@@ -1,28 +1,30 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-14 only (muse/joe-development @ 876e197d).
+SCOPE=Muse-branch discovery checkpoints 1-15 only (muse/joe-development @ f1421ec3).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 4 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 5 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
 security 3/3 LEVEL-4 + static verification-compat — checkpoint 14,
-see §VERIFY14),
+see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
+verification-compat — checkpoint 15, see §VERIFY15),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
-MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md. All probes
+MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md +
+MUSE-WIRING-DISCOVERY-015.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -100,6 +102,24 @@ shapes; P2-019 broadens to ALL non-URL checkers). REUSE=
 MISMATCH #10 scope preference covers both (both take `path`;
 task-level :1570-1578 + gate :2372-2378 — code-indicated;
 P2-018 now covers 4 checkers). Evidence: trunk_security.json.
+
+§VERIFY15 — VERIFICATION-COMPAT STATIC (checkpoint 15, code_understanding 16/16).
+Same consumer/allowlist/verdict-fn as §VERIFY12; L5 live gate proof
+PENDING for this trunk (scopeRoot-nonce extension code-indicated only).
+CHECKER_PARTITION=task-level checkers among the 16: code_reviewer
+ONLY (1); gate opt-ins change nothing; other 15 never receipted
+(static 16/16). Checker set 14/14 CLOSED (013/F77 + 014/F87 notes
+resolved). VERDICT_MAP=11-shape pure-function table: reviewer
+quick-ok->passed, missing/quality-gate->failed; Elite
+'{}'->passed + pattern-empty->passed + refactor-silent->passed +
+analyze-error->passed are NON-CHECKER constraints (F88 class —
+safe today, must gate any allowlist change). RECEIPT_EVIDENCE=
+code_reviewer emits no url/reportPath/evidenceLocation
+({overallScore,...,qualityGate}) -> evidence-hollow receipt
+(7th hollow shape, P2-019). REUSE=MISMATCH #10 scope preference
+covers code_reviewer (takes `projectPath`; task-level :1570-1578
++ gate :2372-2378 — code-indicated, same shape as auto_tester;
+P2-018 now covers 5 checkers). Evidence: trunk_code.json.
 
 ---
 
@@ -2038,5 +2058,419 @@ RECOMMENDED_ACTION=WIRING-P2-020 + P2-004 ts-skip note
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=81 (71 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-13 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 3 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar positive embargoed; risk table SURVEYED), contract audit per boundary (11 mismatches), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa static-only), and NVIDIA cross-review (currently BLOCKED).
+CAPABILITY_ID=TOOL-ambiguity_resolver
+NAME=ambiguity_resolver (AmbiguityResolverTool, EliteTools.ts:205)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:225); required:['text'] (NOT enforced — prompt interpolates unchecked); permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json elite.ambiguity 2x identical): valid input offline -> ok:true + {} FALSE SUCCESS (F92, MISMATCH #11 2nd live tool)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (defaulted read) -> passes default autoSafe
+INPUT_CONTRACT_VALID=NO (missing text unguarded)
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; EliteTools family)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract + input guard; isProviderFailure seam)
+
+---
+
+CAPABILITY_ID=TOOL-analyze_codebase
+NAME=analyze_codebase (AnalyzeCodebaseTool, AnalysisTools.ts:70)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AnalysisTools.ts
+IMPLEMENTATION=local structure walk (depth<=3, 60 files, key-file slurp) + routeToModel architect summary; safePath contained; https? branch redirects to browser_run (no network); graceful-fallback catch ok:true (AnalysisTools.ts:161-164); permissions ['read','internet']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): remote-URL ok:true redirect (no network); offline -> ok:false WITH failure-prose summary via ToolService backstop flip of an ok:true tool result — own fallback catch DEAD on the resolve path (F95, MISMATCH #9 4th instance)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (default tier) -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (missing path honest ok:false 'Path not found')
+OUTPUT_CONTRACT_VALID=PARTIAL ({summary}; ok:true failure-prose pre-flip)
+EVIDENCE_PRODUCED=YES (summary + analyze.root/llm_error logs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (resolve-path honesty depends on backstop scan)
+RECOMMENDED_ACTION=MISMATCH #9 tool-side repair (fail honestly when routeToModel resolves failure prose)
+
+---
+
+CAPABILITY_ID=TOOL-analyze_project
+NAME=analyze_project (AnalyzeProjectTool, AnalysisTools.ts:45)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AnalysisTools.ts
+IMPLEMENTATION=local Analyst.analyze(root) (fs+path only, model-free); safePath contained; required:[] (path optional)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): seeded dir ok:true Analyst shape ({status,type,techStack,structure}); missing path -> ok:true + {status:'error'} (F94, P2-004 9th instance — both siblings return honest ok:false)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (path optional by schema)
+OUTPUT_CONTRACT_VALID=NO (error-status wrapped ok:true)
+EVIDENCE_PRODUCED=YES (Analyst shape + success log)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (missing-path error-as-success)
+RECOMMENDED_ACTION=WIRING-P2-004 extension (surface status:error as ok:false like siblings)
+
+---
+
+CAPABILITY_ID=TOOL-auto_refactor
+NAME=auto_refactor (AutoRefactorTool, AdvancedTools.ts:240)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AdvancedTools.ts
+IMPLEMENTATION=deterministic regex refactors (optimize-imports dedup+sort, simplify if/else+console-strip, extractFunctions STUB always-noop); resolveToolPath contained; writes file when changed; required:['filePath']; permissions ['read','write'] but sideEffects [] (dishonest)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 3 legs 2x identical): scratch ok:true 2 changes + byte-diff (dedup+sort+console-strip, 92->56B); sort-only -> ok:true + changes:[] + diff:0, file byte-identical (computed sort DISCARDED by changed-gate — no-op success, F97); missing file honest error
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier passes default autoSafe on session fixtures; no gate fired
+INPUT_CONTRACT_VALID=YES (filePath enforced, missing honest)
+OUTPUT_CONTRACT_VALID=PARTIAL ({changes,lengths,diff} honest for writes; silent-drop unreported)
+EVIDENCE_PRODUCED=YES (change list + byte verifiable)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (undeclared write side effect; sort-drop no-op success)
+RECOMMENDED_ACTION=WIRING-P2-011/P2-020 family (declare write sideEffects) + P2-004 (report/apply sorts)
+
+---
+
+CAPABILITY_ID=TOOL-business_logic_parser
+NAME=business_logic_parser (BusinessLogicTool, EliteTools.ts:75)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON rules via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:99); required:['requirements'] (NOT enforced); permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json elite.biz-logic 2x identical): valid input offline -> ok:true + {} FALSE SUCCESS (F92, MISMATCH #11 3rd live tool)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (defaulted read) -> passes default autoSafe
+INPUT_CONTRACT_VALID=NO (missing requirements unguarded)
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; EliteTools family)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract + input guard; isProviderFailure seam)
+
+---
+
+CAPABILITY_ID=TOOL-code_reviewer
+NAME=code_reviewer (CodeReviewerTool, CodeReviewerTool.ts:12)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/CodeReviewerTool.ts
+IMPLEMENTATION=deterministic static pass (secrets critical, merge markers critical, eval/new-Function warning, empty-catch warning, TODO info, JS/TS + Python rules, bracket balance; score = 100-30C-10W-3I) + optional LLM pass for non-quick reviewType (merged, LLM findings unverified); files capped at 5 (filesRequested vs filesReviewed both emitted); minimumScore/failOnCritical quality gate; activeRoot containment; required:['files']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 6 quick legs 2x identical): seeded review EXACT score 57 + exact rows (critical L2, warning L4, info L6); missing/empty/bad-score/gate-fail all honest with exact messages; session-outside file rejected -> missingFiles -> ok:false (F99)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe; no gate fired
+INPUT_CONTRACT_VALID=YES (files/minimumScore/projectPath all enforced; outside-workspace rejected)
+OUTPUT_CONTRACT_VALID=YES ({overallScore,files,reviewed,missing,issues,suggestions,summary,qualityGate}; no evidence pointer — hollow receipt, F98)
+EVIDENCE_PRODUCED=YES (issues + logs; receipt hollow — no url/reportPath/evidenceLocation)
+VERIFICATION_COMPATIBLE=PARTIAL (sole task-level checker of the trunk; closes 14/14 — static §VERIFY15; receipt hollow P2-019; scopeRoot preference code-indicated P2-018; L5 live gate proof pending)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (checker evidence + scopeRoot reuse gap code-indicated; non-quick reviewType unprobed)
+RECOMMENDED_ACTION=WIRING-P2-019 + P2-018 (receipt evidence pointer + scope fix)
+
+---
+
+CAPABILITY_ID=TOOL-codebase_outline
+NAME=codebase_outline (CodebaseOutlineTool, CodebaseOutlineTool.ts:7)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/CodebaseOutlineTool.ts
+IMPLEMENTATION=fast regex outline (class/function/interface/import + totalLines); resolves relatives against process.cwd() with NO containment and takes NO context param (CodebaseOutlineTool.ts:34-41); required:['filePath'] enforced
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 4 legs 2x identical): seeded outline EXACT (L2/L5/L6 + import row); relative 'package.json' -> ok:true reading api/package.json (131 split-lines; session has none — cwd-root PROVEN); absolute OS-temp path outside session -> ok:true exact read (UNCONTAINED PROVEN); missing file honest error (F93)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (filePath enforced, missing honest)
+OUTPUT_CONTRACT_VALID=YES (exact outline shape)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (uncontained reads: cwd-rooted relatives + unrestricted absolutes)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (accept context + resolveToolPath + outside rejection)
+
+---
+
+CAPABILITY_ID=TOOL-compliance_validator
+NAME=compliance_validator (ComplianceValidatorTool, EliteTools.ts:135)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON report via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:165); content pre-guard honest (missing content fast-errors); required:['content','standard']; permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): valid input offline -> ok:true + {} FALSE SUCCESS (F92, MISMATCH #11 4th live tool); {} honest pre-LLM error
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (defaulted read) -> passes default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (content guarded; standard unguarded)
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; EliteTools family)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract; isProviderFailure seam)
+
+---
+
+CAPABILITY_ID=TOOL-dead_code_detector
+NAME=dead_code_detector (DeadCodeTool, DeadCodeTool.ts)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/DeadCodeTool.ts
+IMPLEMENTATION=npx knip --reporter json via executionEngine (modes: scan/types/dependencies/files/exports); NO required array in schema; autoFix declared-but-never-read (MISMATCH #4); execute() takes NO context, resolves via no-arg getActiveRoot() (DeadCodeTool.ts:11-19); permissions ['read','execute'], sideEffects ['execute']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=PARTIAL (negative leg only)
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json dead.missing 2x identical): missing projectPath honest pre-knip error (no npx spawned); positive leg EMBARGOED (008 fixture design stands — npx knip over a project)
+PERMISSION_REACHABLE=YES (negative leg passed default autoSafe)
+INPUT_CONTRACT_VALID=PARTIAL (no required array; autoFix dead input)
+OUTPUT_CONTRACT_VALID=UNKNOWN (positive shape code-indicated only)
+EVIDENCE_PRODUCED=PARTIAL (negative-leg error only)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES (negative path)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (no-context root + dead input; positive unprobed)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (context + contained root) + MISMATCH #4 (drop or wire autoFix)
+
+---
+
+CAPABILITY_ID=TOOL-dependency_graph
+NAME=dependency_graph (DependencyGraphTool, EliteTools.ts:30)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON graph via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:66); input.path DEFAULTS to '.' (unguided); required:['path'] (NOT enforced); permissions ['read'] declared
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json elite.dep-graph 2x identical): valid input offline -> ok:true + {} FALSE SUCCESS (F92, MISMATCH #11 5th live tool)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low -> passes default autoSafe
+INPUT_CONTRACT_VALID=NO (missing path unguarded, defaults '.')
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; EliteTools family)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract + input guard; isProviderFailure seam)
+
+---
+
+CAPABILITY_ID=TOOL-engineering_discovery
+NAME=engineering_discovery (EngineeringDiscoveryTool, EngineeringDiscoveryTool.ts:85)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EngineeringDiscoveryTool.ts
+IMPLEMENTATION=read-only workspace evidence (projects, manifests, Git facts, entrypoints, local checks) + deterministic intent regexes (Arabic/English, boundary-asserted); contained via resolveToolPath + isWithinRoot; required:[] (all optional)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): seeded request ok:true greenfield evidence ({evidence:{version,mode,workspaceRoot,...}}); outside path honest path_outside_workspace (F99)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe; fixtures byte-identical (read-only honored)
+INPUT_CONTRACT_VALID=YES (all-optional schema; outside rejected)
+OUTPUT_CONTRACT_VALID=YES ({evidence} shape)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; intent-regex precision out of scope for wiring)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-inspect_symbol
+NAME=inspect_symbol (UtilityTools.ts:220)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/UtilityTools.ts
+IMPLEMENTATION=regex + brace-count symbol extraction (class/function/const/let/var + 20-line fallback); resolveToolPath contained; required:['filePath','symbolName']
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): seeded symbol EXACT 3-line extraction; missing symbol honest error; missing file honest error (F99)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (both fields effectively enforced via honest errors)
+OUTPUT_CONTRACT_VALID=YES ({code} exact)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level; heuristic-extraction precision out of scope for wiring)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-pattern_recognize
+NAME=pattern_recognize (PatternRecognitionTool, AdvancedTools.ts:10)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AdvancedTools.ts
+IMPLEMENTATION=model-free static regex patterns (TS 5 families, JS 3) + anti-patterns + complexity/maintainability metrics; required:['code','language'] but ONLY code enforced; filePath schema property accepted but never read (AdvancedTools.ts:43-91)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 4 legs 2x identical): seeded code exact (Singleton x2 lines 2-3 + Factory); no-language -> ok:true + patterns:[] (decorative-required, F96/P2-004 10th); bogus-filePath vs no-filePath BYTE-IDENTICAL outputs (dead input, F96/MISMATCH #4 2nd instance)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe
+INPUT_CONTRACT_VALID=NO (language decorative; filePath dead)
+OUTPUT_CONTRACT_VALID=PARTIAL (exact when inputs complete; empty-patterns success otherwise)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (decorative-required + dead input)
+RECOMMENDED_ACTION=WIRING-P2-004 extension (enforce language or drop from required) + MISMATCH #4 (drop or wire filePath)
+
+---
+
+CAPABILITY_ID=TOOL-project_detect
+NAME=project_detect (ProjectDetectTool, AnalysisTools.ts:168)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/AnalysisTools.ts
+IMPLEMENTATION=model-free marker scan (package.json / pyproject+requirements+Pipfile+setup.py / go.mod), maxDepth clamped 1-10, node_modules/dist/build/coverage/.git/.next/.turbo/.cache + dot-dirs skipped; safePath contained; required:[] (path/maxDepth optional)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): seeded fixture EXACTLY 1/1/1 projects with node_modules plant absent from all lists; missing path honest 'Path not found' (F99)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (optionals with sane defaults + clamp; missing honest)
+OUTPUT_CONTRACT_VALID=YES ({root,nodeProjects,pythonProjects,goProjects,hint} exact)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (at tool level)
+RECOMMENDED_ACTION=none
+
+---
+
+CAPABILITY_ID=TOOL-request_analyzer
+NAME=request_analyzer (RequestAnalyzerTool, RequestAnalyzerTool.ts:8)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RequestAnalyzerTool.ts
+IMPLEMENTATION=LLM architect analysis (projectType/complexity/modules/files/techStack/requirements) via callLLM; userRequest pre-guard honest; required:['userRequest']; permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=PARTIAL (negative leg only)
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json request.empty 2x identical): {} honest pre-LLM error; valid-input leg NOT run (model-present behavior unprobed by checkpoint rule — would exercise callLLM resolve path)
+PERMISSION_REACHABLE=YES (negative leg passed default autoSafe)
+INPUT_CONTRACT_VALID=YES (userRequest enforced pre-LLM)
+OUTPUT_CONTRACT_VALID=UNKNOWN (model-shaped; offline/online shape unprobed)
+EVIDENCE_PRODUCED=PARTIAL (negative-leg error only)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15)
+CANONICAL_PATH_CONNECTED=YES (negative path)
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=UNKNOWN_REQUIRES_INVESTIGATION (valid-input model path deliberately unprobed; audit further or gate on provider-shape tests)
+RECOMMENDED_ACTION=probe valid-input offline shape in a later checkpoint (same rule as Elite legs) before wiring verdict
+
+---
+
+CAPABILITY_ID=TOOL-self_confidence_evaluator
+NAME=self_confidence_evaluator (SelfConfidenceTool, EliteTools.ts:261)
+CATEGORY=tool/code-understanding-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/EliteTools.ts
+IMPLEMENTATION=model JSON score via getLLM/callLLM + regex-extract-or-{} (EliteTools.ts:284); content pre-guard honest (missing content fast-errors); required:['content']; permissions [] boot-defaulted to read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_code.json, canonical, 2 legs 2x identical): valid input offline -> ok:true + {} FALSE SUCCESS (F92, MISMATCH #11 6th live tool); {} honest pre-LLM error
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=risk low (defaulted read) -> passes default autoSafe
+INPUT_CONTRACT_VALID=PARTIAL (content guarded)
+OUTPUT_CONTRACT_VALID=NO (model-shaped; {} on failure with ok:true)
+EVIDENCE_PRODUCED=PARTIAL ({} carries nothing on the failure path)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY15; would map passed content-blind)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (false-success defect; EliteTools family)
+RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract; isProviderFailure seam)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=98 (88 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-15 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 5 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick unprobed; risk table SURVEYED), contract audit per boundary (11 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).

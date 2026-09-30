@@ -1,0 +1,867 @@
+{
+  "generatedAt": "2026-09-30T02:34:25.539Z",
+  "trunk": "code_understanding",
+  "declarations": {
+    "ambiguity_resolver": {
+      "descriptionHead": "Resolve ambiguity.",
+      "tags": [
+        "analysis",
+        "elite"
+      ],
+      "required": [
+        "text"
+      ],
+      "properties": [
+        "text"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ambiguity_resolver:8.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "analyze_codebase": {
+      "descriptionHead": "Deep analyze of codebase using file structure and LLM summarization.",
+      "tags": [
+        "analysis",
+        "fs",
+        "llm"
+      ],
+      "required": [],
+      "properties": [
+        "path"
+      ],
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "analyze_codebase:7.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "analyze_project": {
+      "descriptionHead": "Analyze the project structure and architectural components.",
+      "tags": [
+        "analysis",
+        "structure",
+        "architect"
+      ],
+      "required": [],
+      "properties": [
+        "path"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "analyze_project:7.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "auto_refactor": {
+      "descriptionHead": "Automatically refactor code based on best practices",
+      "tags": [
+        "refactor",
+        "code-quality",
+        "automation"
+      ],
+      "required": [
+        "filePath"
+      ],
+      "properties": [
+        "filePath",
+        "refactorType"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "auto_refactor:17.5",
+        "code_reviewer:10.6",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "business_logic_parser": {
+      "descriptionHead": "Extract structured business rules.",
+      "tags": [
+        "analysis",
+        "logic",
+        "requirements",
+        "elite"
+      ],
+      "required": [
+        "requirements"
+      ],
+      "properties": [
+        "requirements"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "business_logic_parser:17.7",
+        "business_profile:7.8",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "code_reviewer": {
+      "descriptionHead": "AI-powered code review for quality, best practices, and improvements",
+      "tags": [
+        "review",
+        "quality",
+        "ai"
+      ],
+      "required": [
+        "files"
+      ],
+      "properties": [
+        "files",
+        "projectPath",
+        "reviewType",
+        "minimumScore",
+        "failOnCritical"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "code_reviewer:8.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": true,
+      "checkerGateExistence": true,
+      "checkerGateLive": true
+    },
+    "codebase_outline": {
+      "descriptionHead": "Scan a file and extract its structure (Classes, Functions, Interfaces) using fast regex pattern matching.",
+      "tags": [
+        "code",
+        "analysis",
+        "outline"
+      ],
+      "required": [
+        "filePath"
+      ],
+      "properties": [
+        "filePath"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "codebase_outline:11",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "compliance_validator": {
+      "descriptionHead": "Check compliance.",
+      "tags": [
+        "audit",
+        "compliance",
+        "elite"
+      ],
+      "required": [
+        "content",
+        "standard"
+      ],
+      "properties": [
+        "content",
+        "standard"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "compliance_validator:14",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "dead_code_detector": {
+      "descriptionHead": "Analyzes the codebase using Knip to find unused files, dependencies, exports, and types.",
+      "tags": [
+        "analysis",
+        "cleanup",
+        "dead-code",
+        "maintenance"
+      ],
+      "required": null,
+      "properties": [
+        "mode",
+        "autoFix",
+        "projectPath"
+      ],
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "dead_code_detector:19.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "dependency_graph": {
+      "descriptionHead": "Analyze source code to build a visualization of module dependencies.",
+      "tags": [
+        "analysis",
+        "graph",
+        "architecture",
+        "elite"
+      ],
+      "required": [
+        "path"
+      ],
+      "properties": [
+        "path",
+        "depth"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "dependency_graph:12.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "engineering_discovery": {
+      "descriptionHead": "Read-only engineering discovery. Inspect the selected workspace for existing projects, manifests, Git facts, likely entrypoints, and declared local checks befor",
+      "tags": [
+        "engineering",
+        "discovery",
+        "workspace",
+        "analysis",
+        "evidence"
+      ],
+      "required": [],
+      "properties": [
+        "request",
+        "path",
+        "maxDepth"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "engineering_discovery:14.3",
+        "joe_engineering_report:7.8",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "inspect_symbol": {
+      "descriptionHead": "Extract the code definition of a specific Class or Function by name.",
+      "tags": [
+        "code",
+        "inspect",
+        "read"
+      ],
+      "required": [
+        "filePath",
+        "symbolName"
+      ],
+      "properties": [
+        "filePath",
+        "symbolName",
+        "type"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "inspect_symbol:11.3",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "pattern_recognize": {
+      "descriptionHead": "Analyze code patterns and suggest improvements using static analysis",
+      "tags": [
+        "analysis",
+        "pattern",
+        "code-quality"
+      ],
+      "required": [
+        "code",
+        "language"
+      ],
+      "properties": [
+        "code",
+        "filePath",
+        "language"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "pattern_recognize:14",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "project_detect": {
+      "descriptionHead": "Detect common project roots (Node/Python/Go) under a given path. Use this for initial discovery. After identifying project roots, transition to deep analysis to",
+      "tags": [
+        "analysis",
+        "detect",
+        "project"
+      ],
+      "required": [],
+      "properties": [
+        "path",
+        "maxDepth"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "project_detect:13.9",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "request_analyzer": {
+      "descriptionHead": "Analyze complex build requests to extract requirements, modules, and estimate complexity",
+      "tags": [
+        "analysis",
+        "planning",
+        "llm"
+      ],
+      "required": [
+        "userRequest"
+      ],
+      "properties": [
+        "userRequest",
+        "context"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "request_analyzer:8.8",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "self_confidence_evaluator": {
+      "descriptionHead": "Evaluate confidence.",
+      "tags": [
+        "analysis",
+        "elite"
+      ],
+      "required": [
+        "content"
+      ],
+      "properties": [
+        "content"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "self_confidence_evaluator:14.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "reviewer quick-ok": "passed",
+    "reviewer missing-files": "failed",
+    "reviewer quality-gate": "failed",
+    "elite empty-success": "passed",
+    "pattern no-language": "passed",
+    "outline missing-file": "failed",
+    "refactor wrote": "passed",
+    "refactor silent": "passed",
+    "analyze fallback": "passed",
+    "dead missing-path": "failed",
+    "discovery evidence": "passed"
+  },
+  "live": {
+    "review.quick-seeded": {
+      "input": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"reviewType\"",
+      "ok": true,
+      "error": null,
+      "outputShape": "{overallScore,filesRequested,filesReviewed,reviewedFiles,missingFiles,issues,suggestions,summary,qualityGate}",
+      "outputPreview": "{\"overallScore\":57,\"filesRequested\":1,\"filesReviewed\":1,\"reviewedFiles\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\"],\"missingFiles\":[],\"issues\":[{\"line\":2,\"severity\":\"critical\",\"category\":\"security\",\"message\":\"Hard-coded OpenAI-style API key — move it to an environment variable and revoke it.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"},{\"line\":4,\"severity\":\"warning\",\"category\":\"security\",\"message\":\"Avoid eval()/new Function() — injection risk.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"},{\"line\":6,\"severity\":\"info\",\"category\":\"best-practice\",\"message\":\"Leftover console.log — remove for production.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"}],\"suggestions\":[{\"category\":\"maintainability\",\"message\":\"Consider adding tests and doc comments for key functions.\"}],\"summary\":{\"critical\":1,\"verifiedCritical\":1,\"warning\":1,\"info\":1},\"qu",
+      "log0": "[2026-09-30T02:34:24.481Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "review.missing": {
+      "input": "{\"files\":[\"nope.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"reviewType\":\"quick\"}",
+      "ok": false,
+      "error": "code_reviewer could not review 1 requested file(s): nope.js",
+      "outputShape": "{overallScore,filesRequested,filesReviewed,reviewedFiles,missingFiles,issues,suggestions,summary,qualityGate}",
+      "outputPreview": "{\"overallScore\":0,\"filesRequested\":1,\"filesReviewed\":0,\"reviewedFiles\":[],\"missingFiles\":[\"nope.js\"],\"issues\":[],\"suggestions\":[],\"summary\":{\"critical\":0,\"verifiedCritical\":0,\"warning\":0,\"info\":0},\"qualityGate\":{\"failOnCritical\":false,\"blockingCritical\":0,\"passed\":true}}",
+      "log0": "[2026-09-30T02:34:24.599Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "review.empty-files": {
+      "input": "{}",
+      "ok": false,
+      "error": "code_reviewer requires a non-empty files array of concrete source paths",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:24.632Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "review.bad-score": {
+      "input": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"minimumScor",
+      "ok": false,
+      "error": "code_reviewer minimumScore must be a number from 0 to 100",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:24.651Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "review.gate-fail": {
+      "input": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"reviewType\"",
+      "ok": false,
+      "error": "code_reviewer quality gate failed: overall score 57/100 is below the required 90/100",
+      "outputShape": "{overallScore,filesRequested,filesReviewed,reviewedFiles,missingFiles,issues,suggestions,summary,qualityGate}",
+      "outputPreview": "{\"overallScore\":57,\"filesRequested\":1,\"filesReviewed\":1,\"reviewedFiles\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\"],\"missingFiles\":[],\"issues\":[{\"line\":2,\"severity\":\"critical\",\"category\":\"security\",\"message\":\"Hard-coded OpenAI-style API key — move it to an environment variable and revoke it.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"},{\"line\":4,\"severity\":\"warning\",\"category\":\"security\",\"message\":\"Avoid eval()/new Function() — injection risk.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"},{\"line\":6,\"severity\":\"info\",\"category\":\"best-practice\",\"message\":\"Leftover console.log — remove for production.\",\"file\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\seed.js\",\"evidenceEligible\":true,\"verificationStatus\":\"verified\"}],\"suggestions\":[{\"category\":\"maintainability\",\"message\":\"Consider adding tests and doc comments for key functions.\"}],\"summary\":{\"critical\":1,\"verifiedCritical\":1,\"warning\":1,\"info\":1},\"qu",
+      "log0": "[2026-09-30T02:34:24.668Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "review.outside": {
+      "input": "{\"files\":[\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-code\\\\tmp\\\\wiring-code-outside-WIRING_CODE_TOKEN_9f2e.txt\"],\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-c",
+      "ok": false,
+      "error": "code_reviewer could not review 1 requested file(s): D:\\Joe\\muse-worktree\\tmp\\wiring-audit\\fx-code\\tmp\\wiring-code-outside-WIRING_CODE_TOKEN_9f2e.txt",
+      "outputShape": "{overallScore,filesRequested,filesReviewed,reviewedFiles,missingFiles,issues,suggestions,summary,qualityGate}",
+      "outputPreview": "{\"overallScore\":0,\"filesRequested\":1,\"filesReviewed\":0,\"reviewedFiles\":[],\"missingFiles\":[\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-code\\\\tmp\\\\wiring-code-outside-WIRING_CODE_TOKEN_9f2e.txt\"],\"issues\":[],\"suggestions\":[],\"summary\":{\"critical\":0,\"verifiedCritical\":0,\"warning\":0,\"info\":0},\"qualityGate\":{\"failOnCritical\":false,\"blockingCritical\":0,\"passed\":true}}",
+      "log0": "[2026-09-30T02:34:24.687Z] start code_reviewer (orig=code_reviewer)"
+    },
+    "refactor.scratch": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\refactor.js\",\"refactorType\":\"all\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{changes,originalLength,newLength,diff}",
+      "outputPreview": "{\"changes\":[{\"type\":\"optimize-imports\",\"description\":\"Organized and deduplicated imports\"},{\"type\":\"simplify\",\"description\":\"Simplified expressions and removed dead code\"}],\"originalLength\":92,\"newLength\":56,\"diff\":-36}",
+      "log0": "[2026-09-30T02:34:24.709Z] start auto_refactor (orig=auto_refactor)"
+    },
+    "refactor.sort-only": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\sortonly.js\",\"refactorType\":\"optimize-imports\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{changes,originalLength,newLength,diff}",
+      "outputPreview": "{\"changes\":[],\"originalLength\":51,\"newLength\":51,\"diff\":0}",
+      "log0": "[2026-09-30T02:34:24.731Z] start auto_refactor (orig=auto_refactor)"
+    },
+    "refactor.missing": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\nope.js\"}",
+      "ok": false,
+      "error": "File not found: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-code-fx\\nope.js",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:24.763Z] start auto_refactor (orig=auto_refactor)"
+    },
+    "pattern.seeded": {
+      "input": "{\"code\":\"class A {\\n private static instance;\\n getInstance() { return 1; }\\n}\\nconst f = createWidget();\",\"language\":\"typescript\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{patterns,antiPatterns,suggestions,complexity,maintainability,metrics}",
+      "outputPreview": "{\"patterns\":[{\"name\":\"Singleton\",\"confidence\":0.85,\"line\":2},{\"name\":\"Singleton\",\"confidence\":0.85,\"line\":3},{\"name\":\"Factory\",\"confidence\":0.85,\"line\":5}],\"antiPatterns\":[],\"suggestions\":[\"Consider using dependency injection instead of Singleton for better testability\"],\"complexity\":1,\"maintainability\":85,\"metrics\":{\"linesOfCode\":5,\"functions\":0,\"classes\":1}}",
+      "log0": "[2026-09-30T02:34:24.785Z] start pattern_recognize (orig=pattern_recognize)"
+    },
+    "pattern.no-language": {
+      "input": "{\"code\":\"class A {}\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{patterns,antiPatterns,suggestions,complexity,maintainability,metrics}",
+      "outputPreview": "{\"patterns\":[],\"antiPatterns\":[],\"suggestions\":[],\"complexity\":1,\"maintainability\":85,\"metrics\":{\"linesOfCode\":1,\"functions\":0,\"classes\":1}}",
+      "log0": "[2026-09-30T02:34:24.809Z] start pattern_recognize (orig=pattern_recognize)"
+    },
+    "pattern.dead-filepath-a": {
+      "input": "{\"code\":\"class A {}\",\"language\":\"typescript\",\"filePath\":\"/nonexistent/x.js\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{patterns,antiPatterns,suggestions,complexity,maintainability,metrics}",
+      "outputPreview": "{\"patterns\":[],\"antiPatterns\":[],\"suggestions\":[],\"complexity\":1,\"maintainability\":85,\"metrics\":{\"linesOfCode\":1,\"functions\":0,\"classes\":1}}",
+      "log0": "[2026-09-30T02:34:24.824Z] start pattern_recognize (orig=pattern_recognize)"
+    },
+    "pattern.dead-filepath-b": {
+      "input": "{\"code\":\"class A {}\",\"language\":\"typescript\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{patterns,antiPatterns,suggestions,complexity,maintainability,metrics}",
+      "outputPreview": "{\"patterns\":[],\"antiPatterns\":[],\"suggestions\":[],\"complexity\":1,\"maintainability\":85,\"metrics\":{\"linesOfCode\":1,\"functions\":0,\"classes\":1}}",
+      "log0": "[2026-09-30T02:34:24.837Z] start pattern_recognize (orig=pattern_recognize)"
+    },
+    "detect.seeded": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\",\"maxDepth\":4}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{root,nodeProjects,pythonProjects,goProjects,hint}",
+      "outputPreview": "{\"root\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\",\"nodeProjects\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\\\\node\\\\app\"],\"pythonProjects\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\\\\py\\\\app\"],\"goProjects\":[\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\\\\go\\\\app\"],\"hint\":\"Next step: Select one of the detected roots for deep analysis using \\\"analyze_project\\\" or \\\"analyze_codebase\\\".\"}",
+      "log0": "[2026-09-30T02:34:24.849Z] start project_detect (orig=project_detect)"
+    },
+    "detect.missing": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-proj\\\\nope\"}",
+      "ok": false,
+      "error": "Path not found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:24.886Z] start project_detect (orig=project_detect)"
+    },
+    "symbol.seeded": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\greet.js\",\"symbolName\":\"greet\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{code}",
+      "outputPreview": "{\"code\":\"function greet(name) {\\n  return 'hi ' + name;\\n}\"}",
+      "log0": "[2026-09-30T02:34:24.914Z] start inspect_symbol (orig=inspect_symbol)"
+    },
+    "symbol.missing": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\greet.js\",\"symbolName\":\"nope\"}",
+      "ok": false,
+      "error": "Symbol 'nope' not found in file.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:24.944Z] start inspect_symbol (orig=inspect_symbol)"
+    },
+    "outline.seeded": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\outline.js\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{classes,functions,interfaces,imports,totalLines}",
+      "outputPreview": "{\"classes\":[\"L2: Widget\"],\"functions\":[\"L5: build\"],\"interfaces\":[\"L6: Shape\"],\"imports\":[\"L1: import fs from 'fs';...\"],\"totalLines\":7}",
+      "log0": "[2026-09-30T02:34:24.968Z] start codebase_outline (orig=codebase_outline)"
+    },
+    "outline.relative-cwd": {
+      "input": "{\"filePath\":\"package.json\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{classes,functions,interfaces,imports,totalLines}",
+      "outputPreview": "{\"classes\":[],\"functions\":[],\"interfaces\":[],\"imports\":[],\"totalLines\":131}",
+      "log0": "[2026-09-30T02:34:24.988Z] start codebase_outline (orig=codebase_outline)"
+    },
+    "outline.absolute-outside": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-code\\\\tmp\\\\wiring-code-outside-WIRING_CODE_TOKEN_9f2e.txt\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{classes,functions,interfaces,imports,totalLines}",
+      "outputPreview": "{\"classes\":[],\"functions\":[],\"interfaces\":[],\"imports\":[],\"totalLines\":2}",
+      "log0": "[2026-09-30T02:34:25.001Z] start codebase_outline (orig=codebase_outline)"
+    },
+    "outline.missing": {
+      "input": "{\"filePath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\nope.js\"}",
+      "ok": false,
+      "error": "File not found: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-code-fx\\nope.js",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.019Z] start codebase_outline (orig=codebase_outline)"
+    },
+    "analyze.seeded": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,type,techStack,hasDocker,structure,suggestions}",
+      "outputPreview": "{\"status\":\"success\",\"type\":\"Unknown\",\"techStack\":[],\"hasDocker\":false,\"structure\":{\"greet.js\":\"file\",\"outline.js\":\"file\",\"refactor.js\":\"file\",\"seed.js\":\"file\",\"sortonly.js\":\"file\"},\"suggestions\":[\"Consider adding Docker for containerization.\",\"Migrating to TypeScript is recommended for better maintainability.\"]}",
+      "log0": "[2026-09-30T02:34:25.031Z] start analyze_project (orig=analyze_project)"
+    },
+    "analyze.missing": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\\\\nope\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{status,message}",
+      "outputPreview": "{\"status\":\"error\",\"message\":\"Path does not exist\"}",
+      "log0": "[2026-09-30T02:34:25.051Z] start analyze_project (orig=analyze_project)"
+    },
+    "codebase.remote": {
+      "input": "{\"path\":\"https://github.com/example/repo\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{summary,isRemote,suggestedTool}",
+      "outputPreview": "{\"summary\":\"This is a remote repository URL (https://github.com/example/repo). Please use the 'browser_run' tool with the following instruction: \\\"Visit this URL and perform a deep architectural analysis: https://github.com/example/repo\\\"\",\"isRemote\":true,\"suggestedTool\":\"browser_run\"}",
+      "log0": "[2026-09-30T02:34:25.072Z] start analyze_codebase (orig=analyze_codebase)"
+    },
+    "codebase.offline": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\"}",
+      "ok": false,
+      "error": "⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّ",
+      "outputShape": "{summary}",
+      "outputPreview": "{\"summary\":\"⚠️ تعذّر الوصول إلى محرّك الذكاء (لم يستجب أي مزوّد). لم أستطع تنفيذ الطلب. الحل: شغّل Ollama محلياً (افتح تطبيق Ollama أو نفّذ: ollama serve) ثم أعد المحاولة، أو تحقّق من اتصال الإنترنت لاستخدام الذكاء المجّاني. (لن أدّعي أنني نفّذت شيئاً لم يُنفَّذ.)\"}",
+      "log0": "[2026-09-30T02:34:25.086Z] start analyze_codebase (orig=analyze_codebase)"
+    },
+    "discovery.seeded": {
+      "input": "{\"path\":\"wiring-code-fx\",\"request\":\"Build a todo app\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{evidence}",
+      "outputPreview": "{\"evidence\":{\"version\":1,\"mode\":\"greenfield\",\"workspaceRoot\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"referenceProjects\":[{\"root\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\",\"projectKinds\":[\"other\"],\"manifests\":[],\"git\":{\"isRepository\":false},\"likelyEntrypoints\":[],\"candidateChecks\":[]}],\"instructionFiles\":[],\"constraints\":{\"localOnly\":false,\"forbidDeploy\":false,\"userRequestedExistingProject\":false,\"readOnly\":false,\"createsNewProject\":true},\"facts\":[{\"id\":\"request.creates_new_project\",\"source\":\"request\",\"statement\":\"The request asks for a NEW project; its write scope is a fresh directory, so previously discovered projects cannot be affected.\"},{\"id\":\"workspace.root\",\"source\":\"workspace\",\"statement\":\"Workspace root selected: D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\"},{\"id\":\"request.goal\",\"source\":\"request\",\"statement\":\"Build a todo app\"},{\"id\":\"workspace.reference_projects\",\"source\":\"workspace\",\"statement\":\"The new project may use 1 discovered project(s) as read-only architecture and stack references; their files are not write targets.\"}],\"blockers\":[]}}",
+      "log0": "[2026-09-30T02:34:25.135Z] start engineering_discovery (orig=engineering_discovery)"
+    },
+    "discovery.outside": {
+      "input": "{\"path\":\"../../../../../..\"}",
+      "ok": false,
+      "error": "path_outside_workspace: D:\\ (Root: D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess)",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.402Z] start engineering_discovery (orig=engineering_discovery)"
+    },
+    "dead.missing": {
+      "input": "{\"projectPath\":\"wiring-code-nope\"}",
+      "ok": false,
+      "error": "Project path does not exist",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.422Z] start dead_code_detector (orig=dead_code_detector)"
+    },
+    "request.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "request_analyzer needs userRequest — pass the text to analyse.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.433Z] start request_analyzer (orig=request_analyzer)"
+    },
+    "elite.dep-graph": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-code-fx\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T02:34:25.444Z] start dependency_graph (orig=dependency_graph)"
+    },
+    "elite.biz-logic": {
+      "input": "{\"requirements\":\"orders over $50 ship free\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T02:34:25.455Z] start business_logic_parser (orig=business_logic_parser)"
+    },
+    "elite.compliance": {
+      "input": "{\"content\":\"store passwords in plain text\",\"standard\":\"OWASP\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T02:34:25.469Z] start compliance_validator (orig=compliance_validator)"
+    },
+    "elite.ambiguity": {
+      "input": "{\"text\":\"ship it fast\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T02:34:25.479Z] start ambiguity_resolver (orig=ambiguity_resolver)"
+    },
+    "elite.confidence": {
+      "input": "{\"content\":\"the sky is green\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{}",
+      "outputPreview": "{}",
+      "log0": "[2026-09-30T02:34:25.490Z] start self_confidence_evaluator (orig=self_confidence_evaluator)"
+    },
+    "elite.compliance-empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "compliance_validator needs content to check.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.503Z] start compliance_validator (orig=compliance_validator)"
+    },
+    "elite.confidence-empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "self_confidence_evaluator needs content to judge.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T02:34:25.510Z] start self_confidence_evaluator (orig=self_confidence_evaluator)"
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "readOnlyIntact": true,
+  "refactorDiff": {
+    "before": "import b from './b';\nimport a from './a';\nimport b from './b';\nconst x = 1;\nconsole.log(x);\n",
+    "after": "import a from './a';\nimport b from './b';\n\nconst x = 1;\n"
+  },
+  "sortonlyDiff": {
+    "before": "import b from 'z';\nimport a from 'y';\nconst x = 1;\n",
+    "after": "import b from 'z';\nimport a from 'y';\nconst x = 1;\n"
+  },
+  "fixtures": {
+    "before": {
+      "fx": [
+        "greet.js",
+        "outline.js",
+        "refactor.js",
+        "seed.js",
+        "sortonly.js"
+      ],
+      "fxproj": [
+        "go",
+        "node",
+        "node_modules",
+        "py"
+      ]
+    },
+    "removed": true
+  }
+}

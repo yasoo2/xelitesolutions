@@ -1,27 +1,28 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-30T05:10Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 14 done (security trunk 3/3 storied LEVEL-4: 13/13 live legs canonical 2x verdict-identical + static verification-compat §VERIFY14; checker set closed except code_reviewer; dep_audit ancestor-escape + P2-021 + 6 backlog extensions; matrix 82 rows; 11 mismatches); NVIDIA resumed + CLI-BATCH1 owner ack observed; no Real Joe PASS yet.
+UPDATED=2026-09-30T06:00Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 15 done (code_understanding 16/16 storied LEVEL-4: 36/36 live legs canonical 2x verdict-identical + static verification-compat §VERIFY15; checker set 14/14 CLOSED via code_reviewer; EliteTools false-success live on 5 more tools; 9 backlog extensions; matrix 98 rows; 11 mismatches) + NVIDIA provider consultation answered (APPROVE_WITH_CHANGES, license + duplicate-seam blocks); NVIDIA on CLI-BATCH1 + audit slice; no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
-Muse أكمل المرحلة الرابعة عشرة: توثيق جذع الأمان (3 أدوات) بتنفيذ حي كامل بالمسار الرسمي. أهم النتائج: مسار فارغ صريح يجعل dependency_audit يدقق حزمة Joe نفسه عبر الشبكة (هروب npm الصاعد — توسيع P2-006)؛ ومسار مفقود يُفحص "نظيفًا" (توسيع P2-004)؛ وملف-كهدف يفشل دائمًا في الماسح (P2-021 جديد). اكتشاف فقط — لا حذف ولا إعادة هيكلة.
+Muse أكمل المرحلة الخامسة عشرة: توثيق جذع فهم الشيفرة (16 أداة) بتنفيذ حي كامل بالمسار الرسمي، وأجاب على استشارة مزود NVIDIA. أهم النتائج: خمس أدوات Elite تُرجع ok:true فارغًا دون مزود (توسيع #11)؛ وقارئ المخطط يقرأ خارج الجلسة (توسيع P2-006)؛ ومجموعة الفواحص اكتملت 14/14. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
 
 ## ماذا اكتشفنا؟
-- dependency_audit على مجلد فارغ: التشغيل 1 ضجيج إشعار npm، التشغيل 2 تدقيق حزمة Joe الأصل (multer) — npm يصعد خارج المسار الصريح (توسيع P2-006/P2-005/P2-010).
-- secrets_scan_repo على مسار مفقود يُرجع ok:true نظيفًا — مطابق لشكل النظيف (الحالة 8 من P2-004).
-- secrets: ‏required:['path']‏ شكلي — المسار المفقود يتحول لمسح مساحة العمل الافتراضية (إثبات ربط نقي، لم يُنفذ حيًا).
-- security_scanner: ملف-كهدف يفشل دائمًا (اسم أساسي يُحل ضد مسار الملف) + انقسام اكتشاف/صريح لملفات .env (P2-021 جديد).
-- الفاحصان الجديدان بلا مؤشر دليل (توسيع P2-019 لكل الفواحص غير-URL)؛ ونطاق البصمة يشملهما (توسيع P2-018).
-- الجذع 3/3 صادق sideEffects (الأول الكامل الصدق)؛ وربط الجلسة يعمل (احتواء مثبت حيًا).
+- EliteTools الخمس في الجذع تُرجع ok:true + {} دون مزود (تشغيلان متطابقان) — عائلة F74 مثبتة حيًا 6/8؛ والاستيراد isProviderFailure موجود وغير موصول (توسيع #11).
+- codebase_outline يقرأ أقارب-process.cwd (حزمة api) ومطلقات خارج الجلسة دون قيد (توسيع P2-006).
+- analyze_codebase دون مزود يفشل عبر فحص الصدق الخلفي لا عبر بديله الخاص (الميت على مسار الحل) — الحالة 4 من #9.
+- analyze_project مفقود → ok:true + status:error (الحالة 9)؛ pattern بلا لغة → ok:true فارغ (10)؛ refactor فرز-فقط → نجاح بلا أثر (11) — توسيع P2-004.
+- code_reviewer يغلق مجموعة الفواحص 14/14؛ إيصاله بلا مؤشر دليل (توسيع P2-019) والنطاق يشمله (توسيع P2-018).
+- مراجعة NVIDIA: المرشح c8524f01 سليم ميكانيكيًا لكن isFree:true يخالف شروط المطور (تطوير/اختبار فقط، الإنتاج يحتاج ترخيص AI Enterprise) + توجد مسودة nvidia ثانية غير مدمجة — دمج مشروط بإصلاحين.
 
 ## ماذا أنجزنا؟
-- trunk_security.mts (إعلان 3/3 + حي 13/13 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقا الأحكام) — مساحات معزولة نُظفت.
-- MUSE-WIRING-DISCOVERY-014.md + تحديث المسودات (المصفوفة §VERIFY14 + صف جديد/صفان محدثان، الملخص: 11 تباينًا، التراكم +P2-021 و6 توسيعات).
+- trunk_code.mts (إعلان 16/16 + حي 36/36 عبر الإرسال الرسمي، exit 0، تشغيلان متطابقا الأحكام) — مساحات معزولة نُظفت.
+- MUSE-WIRING-DISCOVERY-015.md + تحديث المسودات (المصفوفة §VERIFY15 + 16 صفًا، الملخص: 11 تباينًا بلا رقم جديد، التراكم +9 توسيعات).
+- NVIDIA-PROVIDER-UI-CONTINUITY-001-MUSE.response.md (موقف مستقل موثق بالأدلة).
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 14 (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=security 3/3 LEVEL-4: 13/13 live legs 2x identical + 7-shape verdict table; checker set 13/14; P2-021 + 6 extensions; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 15 + provider consultation response (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=code_understanding 16/16 LEVEL-4: 36/36 live legs 2x identical + 11-shape verdict table; checker set 14/14; 9 extensions; provider review APPROVE_WITH_CHANGES; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -48,12 +49,13 @@ CONTRACT_MISMATCHES=11 (+ EliteTools match-or-{} false success: chaos ok:true+{}
 VERIFY_SWEEP12=static 21/21 + live 6/6 canonical 2x identical (V1 completed/passed, V2 partial/failed, V3 partial/rejected/0 sessions, V4 completed/url receipt, V5 0 receipts, V6 invalidated-nonce)
 TRUNK_TESTING=6/6 SELECTABLE rank-1; 19/19 live legs canonical 2x identical + 11-shape verdict table; sonar positive embargoed
 TRUNK_SECURITY=3/3 SELECTABLE rank-1; 13/13 live legs canonical 2x identical + 7-shape verdict table; dep_audit positive embargoed; secrets {} mapping-proof-only
-CHECKER_SET=13/14 allowlisted shapes partitioned (code_reviewer pending)
+TRUNK_CODE=16/16 SELECTABLE rank-1; 36/36 live legs canonical 2x identical + 11-shape verdict table; dead_code positive + reviewer non-quick embargoed
+CHECKER_SET=14/14 allowlisted shapes partitioned (code_reviewer closes the set; L5 gate proof pending for 5)
 ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010) + P2-005 4th instance (audit.empty-dir notice-noise vs ancestor JSON) + P2-006 upward escape + P2-021 file-target/vocabulary
-MATRIX_ROWS=82 (72 individual + 8 group + 2 external-cited)
+MATRIX_ROWS=98 (88 individual + 8 group + 2 external-cited)
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
-MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 4/19 STORIED: files + browser_ui + testing_qa + security)
+MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 5/19 STORIED: files + browser_ui + testing_qa + security + code_understanding)
 FULL_SHADOWS=0 | CONDITIONAL_SHADOWS=2 | INLINE_SHADOWS=2 (1 proven live)
 ORPHANED=5 confirmed + 4 preliminary drafts
 DUPLICATE=2 (memory pair)
@@ -64,9 +66,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=trunk_security.mts probe (2x) + guard:architecture + guard:package-scripts
-RESULT=trunk exit 0 both runs (3/3 selectable rank-1; 13/13 live legs canonical, verdict-identical; 7/7 verdict table; fixtures untouched + removed both runs); audit.empty-dir report text varies by mechanism (F83) while ok/error/shape stay identical; guards recorded at commit time
-WHAT_IT_PROVES=security trunk is executor-reachable at LEVEL-4 with exact seeded-signal proofs (5 vulns/risk 83; 4 findings/3 files) plus containment + input-contract gaps evidenced live; checker partition (2/3) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
+TEST=trunk_code.mts probe (2x) + guard:architecture + guard:package-scripts
+RESULT=trunk exit 0 both runs (16/16 selectable rank-1; 36/36 live legs canonical, verdict-identical; 11/11 verdict table; read-only fixtures byte-identical + all removed both runs); guards recorded at commit time
+WHAT_IT_PROVES=code_understanding trunk is executor-reachable at LEVEL-4 with exact seeded-signal proofs (review score 57; detect 1/1/1; symbol/outline exact) plus containment + contract gaps evidenced live; checker partition (1/16, set closed 14/14) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA cross-review of staged audit still pending (worker resumed on CLI-BATCH1 + audit slice).
@@ -75,7 +77,7 @@ WHAT_IT_PROVES=security trunk is executor-reachable at LEVEL-4 with exact seeded
 
 ## الخطوة التالية
 1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 15: code_understanding=16 (holds code_reviewer, the last unsurveyed checker, + 5 F74-siblings); or L5 live gate proof for the 4 deferred checkers.
+2. Muse checkpoint 16: vcs_repo=11 or build_generate=13 (planner-adjacent write paths); or single-method L5 live gate batch for the 5 deferred checkers.
 3. NVIDIA delivers CLI-BATCH1 bounded diff for Muse independent review + wiring cross-review verdict.
 
 ## آخر الإنجازات
@@ -114,3 +116,6 @@ WHAT_IT_PROVES=security trunk is executor-reachable at LEVEL-4 with exact seeded
 [2026-09-30] DELIVERABLE — matrix 81 rows (§VERIFY13 + 6 trunk rows); summary 11 mismatches; backlog +P2-019/P2-020; guard re-run at checkpoint 13 commit.
 [2026-09-30] DISCOVERY — security 3/3 LEVEL-4 (13 legs, canonical, rerun-stable); dep_audit packageless path audits Joe's own root over network (P2-006 ext); secrets missing-as-clean + decorative required (P2-004 ext); scanner file-target always-miss + .env split (P2-021); checkers hollow (P2-019 ext); scope covers 2 more (P2-018 ext); checker set 13/14.
 [2026-09-30] DELIVERABLE — matrix 82 rows (§VERIFY14 + 1 new/2 updated trunk rows); summary 11 mismatches (no new number); backlog +P2-021/6 extensions; guard re-run at checkpoint 14 commit.
+|[2026-09-30] REVIEW — NVIDIA provider candidate c8524f01: mechanics sound, isFree:true contradicts Developer-Program terms (verified from NVIDIA docs), duplicate untracked nvidia seam must be reconciled — APPROVE_WITH_CHANGES with 3 blocks.
+|[2026-09-30] DISCOVERY — code_understanding 16/16 LEVEL-4 (36 legs, canonical, rerun-stable); EliteTools false success live 6/8 (unwired isProviderFailure seam); outline uncontained reads; analyze offline via backstop flip; 3 more P2-004 instances; checker set 14/14 CLOSED.
+|[2026-09-30] DELIVERABLE — matrix 98 rows (§VERIFY15 + 16 trunk rows, tail counter corrected); summary 11 mismatches (no new number); backlog +9 extensions; guard re-run at checkpoint 15 commit.
