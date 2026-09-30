@@ -258,6 +258,8 @@ TESTS=non-zero-exit RED->GREEN (real code preserved end-to-end); no-behavior-cha
 REAL_JOE_UAT=none (evidence fidelity; covered by harness)
 ROLLBACK=revert shape change
 DEPENDENCIES=WIRING-P1-010 (clean isolation needs honored cwd)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=exit collapse SystemTools.ts:1084 both trees; P1-010 dependency is live-proof-only, not a fix blocker
 
 ---
 
@@ -271,6 +273,8 @@ TESTS=missing-path RED->GREEN (found:false in receipt; check fails); present-val
 REAL_JOE_UAT=none (contract harness)
 ROLLBACK=revert shape change
 DEPENDENCIES=MISMATCH #14 batch (same verdict-mapping area)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=JsonQueryTool ContentTools.ts:122 both trees; found-shape + verdict-mapping design (+#14 sibling) first
 
 ---
 
@@ -284,6 +288,8 @@ TESTS=description-accuracy assertion (or live-EXPLAIN flag contract); missing-sq
 REAL_JOE_UAT=none (contract harness)
 ROLLBACK=revert description/guard change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=EXPLAIN ANALYZE text DatabaseEnterpriseTools.ts:183 both trees; description + input guard
 
 ---
 
@@ -297,6 +303,8 @@ TESTS=rows:0 RED->GREEN (reject or honest no-op); absent/NaN default-1000 preser
 REAL_JOE_UAT=none (contract harness)
 ROLLBACK=revert contract change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=Math.max(1 clamp DatabaseEnterpriseTools.ts:258 both trees; tool-local input contract
 
 ---
 
@@ -310,6 +318,8 @@ TESTS=stalled-endpoint RED->GREEN (bounded rejection, no hang); scheme assertion
 REAL_JOE_UAT=none (transport harness; no real endpoints in tests)
 ROLLBACK=revert transport change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=plaintext http://ip-api.com DatasourceTool.ts:116 both trees (scheme read from matched text); transport bounds + scheme
 
 ---
 
@@ -323,6 +333,8 @@ TESTS=missing-file leg carries skipped count (not clean-shaped); empty-array rej
 REAL_JOE_UAT=none (receipt contract tests)
 ROLLBACK=revert receipt change
 DEPENDENCIES=none (sibling of P1-011, same file; may share owner)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=silent-continue PerformanceAnalyzerTool.ts:66 both trees; receipt honesty + input guard (may share P1-011 owner)
 
 ---
 
@@ -336,6 +348,8 @@ TESTS=unknown-event RED->GREEN (tracked:false + accepted list); known-event regr
 REAL_JOE_UAT=none
 ROLLBACK=revert honesty change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=tracked:true MonitoringTool.ts:150 both trees; tool-local honesty
 
 ---
 
@@ -349,6 +363,8 @@ TESTS=two-context isolation (clear in A preserves B); restart-persistence or doc
 REAL_JOE_UAT=none (isolation harness; no cross-user probing in prod)
 ROLLBACK=revert scoping change
 DEPENDENCIES=none (cross-session live probing needs ownership decision first)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=private static stores AlertManagerTool.ts:72 both trees; session-scope/persist design + cross-session probing needs ownership decision
 
 ---
 
@@ -362,6 +378,8 @@ TESTS=canonical-path output-shape assertion (acknowledged/count present); missin
 REAL_JOE_UAT=none (receipt contract tests)
 ROLLBACK=revert receipt change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=data-shape receipt TodoWriteTool.ts:17 both trees; tool-local output shape + input guard
 
 ---
 
@@ -375,6 +393,8 @@ TESTS=second-context test (save in A visible via default in B OR explicitly scop
 REAL_JOE_UAT=none (isolation harness with synthetic fixtures)
 ROLLBACK=revert scope change
 DEPENDENCIES=none (cross-session live probing needs ownership decision first)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=clearProfile business-profile.ts:74 both trees; fixture-level isolation harness, synthetic only
 
 ---
 
@@ -388,6 +408,8 @@ TESTS=English request -> English message; Arabic default preserved; session scop
 REAL_JOE_UAT=none
 ROLLBACK=revert one-line change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=|| true FormInboxTool.ts:26 both trees; one-line i18n fix, smallest batch
 
 ---
 
@@ -401,6 +423,8 @@ TESTS=spawn-failure RED->GREEN (error names the cause: binary/exit/stderr tail);
 REAL_JOE_UAT=none (error-channel contract tests)
 ROLLBACK=revert error-channel change
 DEPENDENCIES=none (do NOT change ToolService's generic synthesis without a broader review -- it affects every tool)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=errorless failure legs InfrastructureTools.ts:125 both trees; tool-local error channel (do not touch generic synthesis)
 
 ---
 
@@ -414,6 +438,8 @@ TESTS=counts RED->GREEN (2 functions + 1 class -> {2,1}; 0-class file -> classes
 REAL_JOE_UAT=none
 ROLLBACK=revert count/write change
 DEPENDENCIES=WIRING-P2-037 for the outside-write half (containment rule decision)
+READINESS=SPLIT (checkpoint 32)
+READINESS_EVIDENCE=lying counter AdvancedTools.ts:823 both trees; counts fix READY now, outside-write half rides P2-037 rule
 
 ---
 
@@ -427,6 +453,8 @@ TESTS=same-path cross-tool RED->GREEN (one outside-session path, every file tool
 REAL_JOE_UAT=none (containment contract tests)
 ROLLBACK=revert rule change
 DEPENDENCIES=decision input from the tool-owner security scope (35bf42dd line) + shared-default semantics (P2-033)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=strict-vs-shared split InfrastructureTools.ts:29 both trees; ONE-rule decision + owner-binding input first
 
 ---
 
@@ -440,6 +468,8 @@ TESTS=empty-path RED->GREEN (refused, nothing written -- assert session root cle
 REAL_JOE_UAT=none
 ROLLBACK=revert guard change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=workflows write QualityTools.ts:371 both trees; tool-local path/kind guards
 
 ---
 
@@ -453,6 +483,8 @@ TESTS=canned-shape RED->GREEN (no success:true without effect; plan-shape pinned
 REAL_JOE_UAT=none (tool-local honesty)
 ROLLBACK=revert shape change
 DEPENDENCIES=WIRING-P1-010 (if the effect is implemented, spawn must use the fixed spawn boundary)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=canned build text GoBuilderTool.ts:520 both trees; shape fix independent; P1-010 dep only if effect implemented
 
 ---
 
@@ -466,6 +498,8 @@ TESTS=generator-vs-writer RED->GREEN per the chosen semantics (either tree mater
 REAL_JOE_UAT=none
 ROLLBACK=revert contract change
 DEPENDENCIES=WIRING-P2-037 if the materialize direction is chosen (session-root anchoring)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=README template crash PythonBuilderTool.ts:107 both trees; contract fix; P2-037 only if materialize chosen
 
 ---
 
@@ -479,6 +513,8 @@ TESTS=staging-contained RED->GREEN (no os.tmpdir writes); outside workingDirecto
 REAL_JOE_UAT=none
 ROLLBACK=revert hardening change
 DEPENDENCIES=WIRING-P2-037 (workingDirectory containment follows the ONE rule); owner live-checks python-present behavior (exit codes, cwd effects, 120s cap) on a box with python3 or a stubbed gateway leg -- embargoed in the audit
+READINESS=SPLIT (checkpoint 32)
+READINESS_EVIDENCE=os.tmpdir staging PythonExecutionTool.ts:66 both trees; description+staging READY now, wd-containment rides P2-037
 
 ---
 
@@ -492,6 +528,8 @@ TESTS=200-shape => passed RED->GREEN; genuine incomplete shapes preserved; UNKNO
 REAL_JOE_UAT=none (mapping-level)
 ROLLBACK=revert mapping change
 DEPENDENCIES=MISMATCH #13 batch (same verdict-mapping area; fix output-semantics blindness as a class)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=workflow vocabulary verification-ledger.ts:663 both trees; #13-class mapping design first
 
 ---
 
@@ -505,6 +543,8 @@ TESTS=escaped-title bytes RED->GREEN; missing-method sentence-error RED->GREEN (
 REAL_JOE_UAT=none
 ROLLBACK=revert correctness change
 DEPENDENCIES=WIRING-P1-015 (same tool; paths first, correctness second)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=unguarded ep.method SwaggerDocsTool.ts:154 both trees; P1-015 paths land first or with
 
 ---
 
@@ -518,6 +558,8 @@ TESTS=CRLF/negative-amount/bad-URL sentence negatives RED->GREEN (fixture-level,
 REAL_JOE_UAT=none (validation-level; no live credentialed legs)
 ROLLBACK=revert validation change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=raw header interpolation GoogleAccountTool.ts:105 both trees; fixture-level validation, never live sends
 
 ---
 
@@ -531,6 +573,8 @@ TESTS=required/validation sentence negatives RED->GREEN ({} + unknown action + t
 REAL_JOE_UAT=none (tool-local contract; no live media processing in the audit)
 ROLLBACK=revert validation/containment change
 DEPENDENCIES=WIRING-P2-037 (path containment must follow the ONE reconciled rule) + WIRING-P1-012 (engine exit-blindness; video ok:false branch becomes reachable after the engine repair)
+READINESS=SPLIT (checkpoint 32)
+READINESS_EVIDENCE=Unknown-action default VideoActionTool.ts:57 both trees; validation+savedPath READY now, containment/argv ride P2-037/P1-012
 
 ---
 
@@ -544,6 +588,8 @@ TESTS=prefixed-cwd RED->GREEN (diagnostic error, never the domain sentence); ESM
 REAL_JOE_UAT=none (receipt honesty; picturesFor ladder still needs credentialed live legs outside the audit embargo)
 ROLLBACK=revert receipt change
 DEPENDENCIES=WIRING-P1-010 (prefix normalization at the entry boundary -- coordinate)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=catch-rendered domain sentence ImageStudioTool.ts:146 both trees; receipt honesty; coordinate P1-010 prefix rule
 
 ---
 
@@ -557,6 +603,8 @@ TESTS=metacharacter-dirname RED->GREEN (no breakout; honest error or correct pac
 REAL_JOE_UAT=none required (local harness)
 ROLLBACK=revert quoting change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=zip -r DeployProjectTool.ts:251/225 (Muse +26 drift from 990cf029 port-guard slice); tool-local quoting
 ---
 
 BATCH_ID=WIRING-P2-001
@@ -569,6 +617,8 @@ TESTS=single-implementation proof (one path owns each name) + permission-enforce
 REAL_JOE_UAT=memory recall/index through real Joe UI
 ROLLBACK=revert to dual implementation
 DEPENDENCIES=none; note vectorDb.clear() global-scope review (security) rides with this batch
+READINESS=COORDINATION_BLOCKED (checkpoint 32)
+READINESS_EVIDENCE=inline recall_memory ToolService.ts:571 both trees; ToolService shared + memory overlaps NVIDIA-claimed files; owner decision first
 
 ---
 
@@ -582,6 +632,8 @@ TESTS=new gate: every resolvable name has exactly one winner; web_search/image_g
 REAL_JOE_UAT=search-via-Joe-UI sanity (browse + API search both work)
 ROLLBACK=revert mapping change
 DEPENDENCIES=image_generate target decision (free-first creative contract)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=web_search anchor ToolService.ts:247 both trees; needs single-winner gate design + image_generate creative decision first
 
 ---
 
@@ -595,6 +647,8 @@ TESTS=declaration-presence gate (no boot-defaulting) + focused tests + AGENTS ga
 REAL_JOE_UAT=none required (no behavior change intended; defaults become explicit)
 ROLLBACK=revert declarations
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=empty-permissions declaration ContentTools.ts:129 both trees; declaration-only, no behavior change
 
 ---
 
@@ -623,6 +677,8 @@ TESTS=schema/execute consistency gate for task_lifecycle ({} -> honest error OR 
 REAL_JOE_UAT=none (contract nits; UI behavior unchanged either way)
 ROLLBACK=revert schema/execute one-liner
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=action-default TaskLifecycleTool.ts:27 both trees; tool-local schema/execute alignment
 
 ---
 
@@ -636,6 +692,8 @@ TESTS=contract test: no ok:false result without a specific error (or wrapper car
 REAL_JOE_UAT=none (error-text quality; behavior unchanged)
 ROLLBACK=revert wrapper/tool one-liners
 DEPENDENCIES=none
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=generic wrapper text ToolService.ts:946 both trees; wrapper-vs-tool-site scope + engine exitCode root need design first
 
 ---
 
@@ -649,6 +707,8 @@ TESTS=root-containment test (default root == session workspace, never Joe repo);
 REAL_JOE_UAT=none (scope correction; behavior on explicit paths unchanged)
 ROLLBACK=revert root/input change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=default-root workDir DeadCodeTool.ts:50 both trees; tool-local containment + dead-input fix
 
 ---
 
@@ -662,6 +722,8 @@ TESTS=scan-coverage gate: destructive strings in ANY tool input classify critica
 REAL_JOE_UAT=none (policy tightening; honest blocks only)
 ROLLBACK=revert classifier order change
 DEPENDENCIES=none
+READINESS=COORDINATION_BLOCKED (checkpoint 32)
+READINESS_EVIDENCE=classifyToolRisk ToolService.ts:142 both trees; shared classifier; owner decision first
 
 ---
 
@@ -675,6 +737,8 @@ TESTS=verdict test: browser_run {} (no browserSessionId anywhere) -> honest "no 
 REAL_JOE_UAT=none (error-path honesty)
 ROLLBACK=revert verdict change
 DEPENDENCIES=none
+READINESS=COORDINATION_BLOCKED (checkpoint 32)
+READINESS_EVIDENCE=sessionId_required guard BrowserRunTool.ts:248 both trees; ToolService injection block shared; owner decision first
 
 ---
 
@@ -688,6 +752,8 @@ TESTS=zip-create on Windows RED->GREEN (or honest binary-missing verdict + docum
 REAL_JOE_UAT=none (tool-local backend; planner-visible behavior unchanged on tar)
 ROLLBACK=revert backend change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=|| true ArchiveFilesTool.ts:92 both trees; tool-local backend honesty
 
 ---
 
@@ -701,6 +767,8 @@ TESTS=ENOLOCK/setup RED->GREEN (honest setup-failure error); empty-dir variant R
 REAL_JOE_UAT=none (error-text honesty)
 ROLLBACK=revert one-liner
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=mislabel text QualityTools.ts:102 both trees; tool-local error-text fix
 
 ---
 
@@ -714,6 +782,8 @@ TESTS=per-tool sideEffects review (mutating tools declare honestly or document w
 REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
 ROLLBACK=revert declaration change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=empty sideEffects BrowserSmartTools.ts:174 both trees; declaration-only (+P2-020 same gate)
 
 ---
 
@@ -727,6 +797,8 @@ TESTS=extract-result contract test: run [goto loopback, extract_text] output con
 REAL_JOE_UAT=extract-via-UI sanity after fix (read a value from a page through real Joe)
 ROLLBACK=revert output change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=pageUrl-only output BrowserRunTool.ts:149 both trees; tool-local output addition, backward-compatible keys
 
 ---
 
@@ -740,6 +812,8 @@ TESTS=vocabulary matrix test (http/data/about-blank/file × action/run/smart-lau
 REAL_JOE_UAT=none (contract expansion; contained cases only)
 ROLLBACK=revert normalizer change
 DEPENDENCIES=none (unblocks audit batch-3 for the 22 (a)-tools either way via loopback pattern)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=normalizeUrl BrowserSmartTools.ts:30 both trees; tool-local vocabulary decision + contract
 
 ---
 
@@ -753,6 +827,8 @@ TESTS=same-size-different-pixel negative (RED->GREEN per decided contract); file
 REAL_JOE_UAT=none (tool-local fidelity)
 ROLLBACK=revert label/sanitize change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=byte-compare ScreenshotTool.ts:244 both trees; tool-local fidelity/containment
 
 ---
 
@@ -766,6 +842,8 @@ TESTS=resolve-vs-throw contract test (no-provider call shape asserted); trio RED
 REAL_JOE_UAT=none (offline-honesty mechanics; behavior on live providers unchanged)
 ROLLBACK=revert contract change (scan backstop stays regardless)
 DEPENDENCIES=none
+READINESS=COORDINATION_BLOCKED (checkpoint 32)
+READINESS_EVIDENCE=match-or-''{}'' EliteTools.ts:66 both trees; router + ToolService shared + NVIDIA provider-adjacent verification needed
 
 ---
 
@@ -779,6 +857,8 @@ TESTS=per-viewport flag test (meta-less fixture -> mobile.hasViewportMeta===fals
 REAL_JOE_UAT=none (reporting completeness)
 ROLLBACK=revert mapper one-liner
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=hasViewportMeta detection BrowserSmartTools.ts:1271 both trees; one-line mapper addition
 
 ---
 
@@ -792,6 +872,8 @@ TESTS=two-session test (same URL baselines independent RED->GREEN per decided co
 REAL_JOE_UAT=none (state-scoping correctness)
 ROLLBACK=revert store-key change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=global baseline store BrowserSmartTools.ts:726 both trees; tool-local scoping + test
 
 ---
 
@@ -805,6 +887,8 @@ TESTS=scope-containment test: read_file gate on workspace-relative path -> recei
 REAL_JOE_UAT=none (ledger mechanics; pass/fail behavior unchanged, only reuse + provenance)
 ROLLBACK=revert scope-resolution change (back to always-run safe default)
 DEPENDENCIES=none
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=scopeRoot PhaseExecutorTool.ts:1570/1568 (Muse +2 drift from verification edits); PhaseExecutor shared + NVIDIA-adjacent; resolution design first
 
 ---
 
@@ -818,6 +902,8 @@ TESTS=receipt-evidence test per decided contract (RED->GREEN) for all 5 non-URL 
 REAL_JOE_UAT=none (receipt mechanics; pass/fail behavior unchanged)
 ROLLBACK=revert output change
 DEPENDENCIES=P2-018 (shared scopeRoot fix lands with or before this)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=receipt reader PhaseExecutorTool.ts:1330/1328 (Muse +2 drift); evidence-meaning decision + P2-018 first
 
 ---
 
@@ -831,6 +917,8 @@ TESTS=declaration review (mutating tools declare honestly); contract test pinnin
 REAL_JOE_UAT=none (declaration honesty; behavior unchanged)
 ROLLBACK=revert declaration change
 DEPENDENCIES=none (coordinate gate shape with P2-011 owner)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=empty sideEffects AutoTesterTool.ts:58/57 (Muse +1 drift); declaration-only, share P2-011 gate
 
 ---
 
@@ -844,6 +932,8 @@ TESTS=file-target contract test (existing file as projectPath -> scans that file
 REAL_JOE_UAT=none (tool-local contract; planner-visible behavior improves only for file targets)
 ROLLBACK=revert resolver/vocabulary change
 DEPENDENCIES=none
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=discoverSourceFiles SecurityScannerTool.ts:108 both trees; tool-local resolver + vocabulary
 
 ---
 
@@ -857,6 +947,8 @@ TESTS=missing-cwd RED->GREEN (honest ok:false, no internal_exception, nothing wr
 REAL_JOE_UAT=none (tool-local shape)
 ROLLBACK=revert guard
 DEPENDENCIES=none (P1-007 owns the sandbox-force rule itself)
+READINESS=READY_FOR_OWNER (checkpoint 32)
+READINESS_EVIDENCE=unguarded config write WebDevelopmentTools.ts:529 both trees; tool-local guard
 
 ---
 
@@ -870,6 +962,8 @@ TESTS=per-checker gate leg asserting non-empty evidenceLocation (028 legs as RED
 REAL_JOE_UAT=gate-verified run through real Joe UI with receipt inspection
 ROLLBACK=revert evidence-pointer change
 DEPENDENCIES=none (verdicts already correct; pointers only)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=evidenceLocation ABSENT QualityTools.ts both trees (absence anchor = defect confirmed); pointer decision, same as P2-019
 
 ---
 
@@ -883,6 +977,8 @@ TESTS=either declared-path reuse test (carried ledger reuses) OR execute-always 
 REAL_JOE_UAT=none until the decision lands
 ROLLBACK=revert policy change
 DEPENDENCIES=WIRING-P2-018 (scopeRoot containment is the read_file-gate reuse blocker)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=narrowed-reuse-disabled verification-ledger.ts:528 both trees; DECISION batch, no code until decided
 
 ---
 
@@ -896,6 +992,8 @@ TESTS=if retired: reference-absence gate (symbol scan in CI) + store removal; if
 REAL_JOE_UAT=none (no user-reachable behavior either way unless wired)
 ROLLBACK=revert retire/wire diff
 DEPENDENCIES=none (no live callers, so no behavior change risk)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=CortexState.ts present both trees (file exists, zero references); retire-vs-wire decision first
 
 ---
 
@@ -909,6 +1007,8 @@ TESTS=if wired: secret-redaction tests (token never in logs/evidence) + webhook-
 REAL_JOE_UAT=wired case only: deploy-via-UI on throwaway target, notification observed, no secret in evidence
 ROLLBACK=revert wire/remove diff
 DEPENDENCIES=none
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=AlertService import DeployManager.ts:9 both trees, never invoked; wire-vs-remove decision first
 
 ---
 
@@ -935,6 +1035,8 @@ TESTS=external-caller rule-out (built bundles + extension + docs sweep); if reti
 REAL_JOE_UAT=none unless wired (then: queue round-trip through real UI)
 ROLLBACK=revert retire/wire diff
 DEPENDENCIES=confirm no out-of-repo caller (sweep built bundles, extension, docs) before unmount
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=stale useTaskQueue comment queue.ts:5 both trees, callerless; out-of-repo caller sweep + disposition decision first
 
 ---
 
@@ -948,6 +1050,8 @@ TESTS=if retired: import-absence gate + channel still feeds remaining subscriber
 REAL_JOE_UAT=if rendered: real run shows session-keyed progress ring; none if retired
 ROLLBACK=revert retire/render diff
 DEPENDENCIES=none (no live renderers, so no behavior change risk if retired)
+READINESS=READY_FOR_PROPOSAL (checkpoint 32)
+READINESS_EVIDENCE=TaskTracker.tsx present both trees, unrendered; retire-vs-render decision first
 
 ---
 

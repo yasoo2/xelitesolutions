@@ -1,0 +1,528 @@
+{
+    "generated_by":  "ready32.ps1 (checkpoint 32, read-only)",
+    "muse_root":  "D:\\Joe\\muse-worktree",
+    "main_root":  "D:\\Joe\\xelitesolutions",
+    "check_count":  52,
+    "rows":  [
+                 {
+                     "batch":  "P2-001",
+                     "rel":  "api\\src\\modules\\services\\ToolService.ts",
+                     "muse_found":  true,
+                     "muse_line":  571,
+                     "muse_text":  "if (name === \u0027recall_memory\u0027) {",
+                     "main_found":  true,
+                     "main_line":  571,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-002",
+                     "rel":  "api\\src\\modules\\services\\ToolService.ts",
+                     "muse_found":  true,
+                     "muse_line":  247,
+                     "muse_text":  "web_search: \u0027search_api\u0027,",
+                     "main_found":  true,
+                     "main_line":  247,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-003",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ContentTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  129,
+                     "muse_text":  "permissions: ToolPermission[] = [];",
+                     "main_found":  true,
+                     "main_line":  129,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-004",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\TaskLifecycleTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  27,
+                     "muse_text":  "const action = input.action || \u0027update\u0027;",
+                     "main_found":  true,
+                     "main_line":  27,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-005",
+                     "rel":  "api\\src\\modules\\services\\ToolService.ts",
+                     "muse_found":  true,
+                     "muse_line":  946,
+                     "muse_text":  "error = \u0027Tool reported failure without an error message\u0027;",
+                     "main_found":  true,
+                     "main_line":  946,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-006",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DeadCodeTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  50,
+                     "muse_text":  "const workDir = projectPathInput ? path.resolve(getWorkspaceRoot(), projectPathInput) : getWorkspaceRoot();",
+                     "main_found":  true,
+                     "main_line":  50,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-007",
+                     "rel":  "api\\src\\modules\\services\\ToolService.ts",
+                     "muse_found":  true,
+                     "muse_line":  142,
+                     "muse_text":  "function classifyToolRisk(name: string, input: any): \u0027low\u0027 | \u0027medium\u0027 | \u0027high\u0027 | \u0027critical\u0027 {",
+                     "main_found":  true,
+                     "main_line":  142,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-008",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserRunTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  248,
+                     "muse_text":  "if (!sid) return { ok: false, error: \u0027sessionId_required\u0027, logs };",
+                     "main_found":  true,
+                     "main_line":  248,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-009",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ArchiveFilesTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  92,
+                     "muse_text":  "cmd = `zip -r --symlinks \"${archivePath}\" ${sourceStr} 2\u003e/dev/null || true`;",
+                     "main_found":  true,
+                     "main_line":  92,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-010",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\QualityTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  102,
+                     "muse_text":  "return { ok: false, error: `Audit found security vulnerabilities.`, output: { report: err || String(r.output || \u0027\u0027) }, logs: [\u0027audit found issues\u0027, ...logs] };",
+                     "main_found":  true,
+                     "main_line":  102,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-011",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserSmartTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  174,
+                     "muse_text":  "outputSchema = { type: \u0027object\u0027 as const }; permissions: ToolPermission[] = [\u0027internet\u0027]; sideEffects: ToolPermission[] = []; rateLimitPerMinute = 20; auditFields = []; mockSupported = false;",
+                     "main_found":  true,
+                     "main_line":  174,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-012",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserRunTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  149,
+                     "muse_text":  "pageUrl: { type: \u0027string\u0027 },",
+                     "main_found":  true,
+                     "main_line":  149,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-013",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserSmartTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  30,
+                     "muse_text":  "function normalizeUrl(raw: string): string {",
+                     "main_found":  true,
+                     "main_line":  30,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-014",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ScreenshotTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  244,
+                     "muse_text":  "// Simple size comparison (basic check)",
+                     "main_found":  true,
+                     "main_line":  244,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-015",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\EliteTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  66,
+                     "muse_text":  "const json = JSON.parse(response.match(/\\{[\\s\\S]*\\}/)?.[0] || \u0027{}\u0027);",
+                     "main_found":  true,
+                     "main_line":  66,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-016",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserSmartTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  1271,
+                     "muse_text":  "const hasViewportMeta = !!document.querySelector(\u0027meta[name=\"viewport\"]\u0027);",
+                     "main_found":  true,
+                     "main_line":  1271,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-017",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\BrowserSmartTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  726,
+                     "muse_text":  "const baselines: Record\u003cstring, { sig: any; png: string }\u003e = (global as any).joeCompareBaselines || ((global as any).joeCompareBaselines = {});",
+                     "main_found":  true,
+                     "main_line":  726,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-018",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  1570,
+                     "muse_text":  "const scopeRoot = String(",
+                     "main_found":  true,
+                     "main_line":  1568,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-019",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PhaseExecutorTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  1330,
+                     "muse_text":  "verificationMetricsFrom: (result: any, timing: { selectedAt?: number; startedAt?: number; lastActivityAt?: number; finishedAt?: number; retryCount?: number }) =\u003e { evidenceLocation: string; queueMs: number; idleMs: number; retryCount: number };",
+                     "main_found":  true,
+                     "main_line":  1328,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-020",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\AutoTesterTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  58,
+                     "muse_text":  "sideEffects: ToolPermission[] = [];",
+                     "main_found":  true,
+                     "main_line":  57,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-021",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\SecurityScannerTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  108,
+                     "muse_text":  ": this.discoverSourceFiles(projectPath);",
+                     "main_found":  true,
+                     "main_line":  108,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-022",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\WebDevelopmentTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  529,
+                     "muse_text":  "const configPath = path.join(actualCwd, \u0027vite.config.js\u0027);",
+                     "main_found":  true,
+                     "main_line":  529,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-023",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DeployProjectTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  251,
+                     "muse_text":  "command: `zip -r ${zipPath} . -x node_modules/* .git/* *.log`,",
+                     "main_found":  true,
+                     "main_line":  225,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-024",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\SystemTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  1084,
+                     "muse_text":  "code = r.data?.exitCode ?? (r.success ? 0 : 1);",
+                     "main_found":  true,
+                     "main_line":  1084,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-025",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ContentTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  122,
+                     "muse_text":  "export class JsonQueryTool extends BaseTool {",
+                     "main_found":  true,
+                     "main_line":  122,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-026",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DatabaseEnterpriseTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  183,
+                     "muse_text":  "description = \u0027Analyze SQL queries for performance bottlenecks using EXPLAIN ANALYZE.\u0027;",
+                     "main_found":  true,
+                     "main_line":  183,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-027",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DatabaseEnterpriseTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  258,
+                     "muse_text":  "const rows = Math.max(1, Math.min(Number(input?.rows) || 1000, 1_000_000));",
+                     "main_found":  true,
+                     "main_line":  258,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-028",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\DatasourceTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  116,
+                     "muse_text":  "? `http://ip-api.com/json/${ip}`",
+                     "main_found":  true,
+                     "main_line":  116,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-029",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PerformanceAnalyzerTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  66,
+                     "muse_text":  "if (!fs.existsSync(filePath)) continue;",
+                     "main_found":  true,
+                     "main_line":  66,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-030",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\MonitoringTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  150,
+                     "muse_text":  "output: { success: true, event, tracked: true },",
+                     "main_found":  true,
+                     "main_line":  150,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-031",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\AlertManagerTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  72,
+                     "muse_text":  "private static alerts = new Map\u003cstring, {",
+                     "main_found":  true,
+                     "main_line":  72,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-032",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\TodoWriteTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  17,
+                     "muse_text":  "acknowledged: { type: \u0027boolean\u0027 },",
+                     "main_found":  true,
+                     "main_line":  17,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-033",
+                     "rel":  "api\\src\\core\\profile\\business-profile.ts",
+                     "muse_found":  true,
+                     "muse_line":  74,
+                     "muse_text":  "export function clearProfile(sessionId: any): void {",
+                     "main_found":  true,
+                     "main_line":  74,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-034",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\FormInboxTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  26,
+                     "muse_text":  "const isAr = /[؀-ۿ]/.test(String(input?.request || \u0027\u0027)) || true;",
+                     "main_found":  true,
+                     "main_line":  26,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-035",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\InfrastructureTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  125,
+                     "muse_text":  "ok: r.code === 0,",
+                     "main_found":  true,
+                     "main_line":  125,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-036",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\AdvancedTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  823,
+                     "muse_text":  "functions: docs.match(/###\\s+Function/g)?.length || 0,",
+                     "main_found":  true,
+                     "main_line":  823,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-037",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\InfrastructureTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  29,
+                     "muse_text":  "if (!inside) throw new Error(\u0027path_outside_workspace\u0027);",
+                     "main_found":  true,
+                     "main_line":  29,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-038",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\QualityTools.ts",
+                     "muse_found":  true,
+                     "muse_line":  371,
+                     "muse_text":  "const workflowsDir = path.join(proj, \u0027.github\u0027, \u0027workflows\u0027);",
+                     "main_found":  true,
+                     "main_line":  371,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-039",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\GoBuilderTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  520,
+                     "muse_text":  "message: `Use \u0027${buildCommand}\u0027 to build the project`",
+                     "main_found":  true,
+                     "main_line":  520,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-040",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PythonBuilderTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  107,
+                     "muse_text":  "content: `# ${projectName}\\n\\n${framework.toUpperCase()} project`",
+                     "main_found":  true,
+                     "main_line":  107,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-041",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\PythonExecutionTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  66,
+                     "muse_text":  "const tmpDir = os.tmpdir();",
+                     "main_found":  true,
+                     "main_line":  66,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-042",
+                     "rel":  "api\\src\\core\\quality\\verification-ledger.ts",
+                     "muse_found":  true,
+                     "muse_line":  663,
+                     "muse_text":  "if (status \u0026\u0026 !/^(?:completed|passed|success|succeeded|ok)$/u.test(status)) return \u0027incomplete\u0027;",
+                     "main_found":  true,
+                     "main_line":  663,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-043",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\SwaggerDocsTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  154,
+                     "muse_text":  "spec.paths[ep.path][ep.method.toLowerCase()] = {",
+                     "main_found":  true,
+                     "main_line":  154,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-044",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\GoogleAccountTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  105,
+                     "muse_text":  "`To: ${to}`, `Subject: ${subject}`, \u0027MIME-Version: 1.0\u0027, \u0027Content-Type: text/plain; charset=\"UTF-8\"\u0027, \u0027\u0027, body,",
+                     "main_found":  true,
+                     "main_line":  105,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-045",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\VideoActionTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  57,
+                     "muse_text":  "return { ok: false, error: \u0027Unknown action\u0027, logs: [] };",
+                     "main_found":  true,
+                     "main_line":  57,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-046",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\ImageStudioTool.ts",
+                     "muse_found":  true,
+                     "muse_line":  146,
+                     "muse_text":  ": \u0027No table here has a picture column — pictures belong to things, not to invoices and people.\u0027,",
+                     "main_found":  true,
+                     "main_line":  146,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-047",
+                     "rel":  "api\\src\\modules\\tools\\definitions\\QualityTools.ts",
+                     "muse_found":  false,
+                     "muse_line":  0,
+                     "muse_text":  "PATTERN_ABSENT",
+                     "main_found":  false,
+                     "main_line":  0,
+                     "parity":  "BOTH_ABSENT"
+                 },
+                 {
+                     "batch":  "P2-048",
+                     "rel":  "api\\src\\core\\quality\\verification-ledger.ts",
+                     "muse_found":  true,
+                     "muse_line":  528,
+                     "muse_text":  "? \u0027selected: declared verification paths were missing or ambiguous, so narrowed reuse is disabled\u0027",
+                     "main_found":  true,
+                     "main_line":  528,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-049",
+                     "rel":  "api\\src\\modules\\services\\CortexState.ts",
+                     "muse_found":  true,
+                     "muse_line":  2,
+                     "muse_text":  "import fs from \u0027fs\u0027;",
+                     "main_found":  true,
+                     "main_line":  2,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-050",
+                     "rel":  "api\\src\\modules\\services\\DeployManager.ts",
+                     "muse_found":  true,
+                     "muse_line":  9,
+                     "muse_text":  "import { alertService } from \u0027./AlertService\u0027;",
+                     "main_found":  true,
+                     "main_line":  9,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-051",
+                     "rel":  "api\\src\\api\\routes\\queue.ts",
+                     "muse_found":  true,
+                     "muse_line":  5,
+                     "muse_text":  "* Per-session task queue. The frontend (useTaskQueue) calls /queue/* but no",
+                     "main_found":  true,
+                     "main_line":  5,
+                     "parity":  "BOTH_PRESENT"
+                 },
+                 {
+                     "batch":  "P2-052",
+                     "rel":  "web\\src\\components\\TaskTracker.tsx",
+                     "muse_found":  true,
+                     "muse_line":  1,
+                     "muse_text":  "import React, { useEffect, useState, useRef } from \u0027react\u0027;",
+                     "main_found":  true,
+                     "main_line":  1,
+                     "parity":  "BOTH_PRESENT"
+                 }
+             ]
+}
