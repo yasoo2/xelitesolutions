@@ -177,6 +177,19 @@ DEPENDENCIES=none (owner also dispositions two code-cited notes WITHOUT live-exp
 
 ---
 
+BATCH_ID=WIRING-P1-014
+CAPABILITIES=go_builder + java_builder scaffold: cwd-anchored unsanitized write (outside session root; traversal reaches recursive mkdir + writeFileSync)
+ROOT_CAUSE=scaffoldProject computes path.join(process.cwd(), projectName) (GoBuilderTool.ts:97, JavaBuilderTool.ts:107) with NO resolveToolPath call and NO projectName sanitization, then fs.mkdirSync(recursive)+fs.writeFileSync directly. Proven live 2x (024/F179): nonce scaffolds landed in the process cwd (worktree root in-probe; api/ in production), session root untouched, 6/6 files byte-verified, probe-removed. A traversal-shaped projectName reaches recursive mkdir + file write by construction (code-cited, embargoed live).
+FILES=GoBuilderTool.ts + JavaBuilderTool.ts scaffoldProject (anchor under session workspace root via shared path util; reject traversal/absolute projectName with a sentence) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=scaffold RED->GREEN (lands inside session root with byte-verified content); traversal/absolute projectName refused with a sentence (fixture-owned outside dir, restored); no api/ strays asserted; AGENTS gates
+REAL_JOE_UAT=none (tool-local containment)
+ROLLBACK=revert path change
+DEPENDENCIES=WIRING-P2-037 (scaffold anchoring must follow the ONE reconciled containment rule)
+
+---
+
 BATCH_ID=WIRING-P2-024
 CAPABILITIES=shell_execute exit-code fidelity
 ROOT_CAUSE=exitCode built as r.ok ? 0 : 1 at the tool layer (SystemTools.ts) -- real codes (3/134/137/...) destroyed; verifiers/self-fix cannot distinguish failure modes. Source-proven + live shape-confirmed (exitCode always in {0,1}); clean live isolation impossible while F135 stands (019/F136). Sibling of F102 (repo_run_command exit=undefined) in the opposite direction.
@@ -369,6 +382,45 @@ TESTS=empty-path RED->GREEN (refused, nothing written -- assert session root cle
 REAL_JOE_UAT=none
 ROLLBACK=revert guard change
 DEPENDENCIES=none
+
+---
+
+BATCH_ID=WIRING-P2-039
+CAPABILITIES=go_builder + java_builder build/test/dependencies canned success:true (no toolchain invocation, no filesystem effect)
+ROOT_CAUSE=buildProject/setupTests/manageDependencies never spawn go/mvn/gradle and never touch the filesystem (GoBuilderTool.ts:481-524, JavaBuilderTool.ts:393-437); they return ok:true + output.success:true with 'Use X to...' messages. Proven live 2x (024/F180): 6/6 canned legs ok:true (gradle/maven switch works, deps echoed-never-installed). Verdict maps them passed, so Joe records builds/tests that never ran.
+FILES=GoBuilderTool.ts + JavaBuilderTool.ts (perform the effect OR return a plan-shape WITHOUT success:true, e.g. {planned:true} + failed/unsupported verdict) + shape tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=canned-shape RED->GREEN (no success:true without effect; plan-shape pinned; gradle/maven switch + deps echo preserved); if the effect is implemented: missing-toolchain honest-fail legs; AGENTS gates
+REAL_JOE_UAT=none (tool-local honesty)
+ROLLBACK=revert shape change
+DEPENDENCIES=WIRING-P1-010 (if the effect is implemented, spawn must use the fixed spawn boundary)
+
+---
+
+BATCH_ID=WIRING-P2-040
+CAPABILITIES=python_builder contract (pure generator in write clothing; unknown-framework silent fallthrough; raw TypeError on {})
+ROOT_CAUSE=(a) execute() only generates file CONTENTS and returns them in output; required projectPath is read solely for the 'cd' nextSteps hint (PythonBuilderTool.ts:63-79) -- yet the tool declares write/write permissions + required projectPath (024/F181, wroteProjectPath:false live 2x). (b) The framework enum is unenforced and generateStructure's switch has no default-reject (:111-130): 'rails' -> ok:true + 3 common files, no error (024/F182 live 2x). (c) {} -> raw "Cannot read properties of undefined (reading 'toUpperCase')" via the README template (:107), same error-hygiene family as F155/F161 (024/F183 live 2x).
+FILES=PythonBuilderTool.ts (materialize-or-declare-generator for projectPath/write; reject unknown framework with the enum sentence; sentence-validate required inputs) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=generator-vs-writer RED->GREEN per the chosen semantics (either tree materialized under session root with F179's rule, or write declarations + required projectPath dropped); unknown-framework refused with enum sentence; {} refused with a sentence (no TypeError); flask/db/auth additivity regression; AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert contract change
+DEPENDENCIES=WIRING-P2-037 if the materialize direction is chosen (session-root anchoring)
+
+---
+
+BATCH_ID=WIRING-P2-041
+CAPABILITIES=execute_python hardening (system-temp code staging; 'isolated environment' overclaim; uncontained workingDirectory)
+ROOT_CAUSE=(a) Code is staged to os.tmpdir() (PythonExecutionTool.ts:66-67) -- outside the session root in production (in-probe TEMP was fx-redirected); the tool unlinks after itself (:82, :103) but a kill between write and unlink leaves Joe-authored code in shared temp. (b) Description claims an 'isolated environment' (:12) -- false by construction: cwd = input.workingDirectory || process.cwd() (:56), no sandboxing, full stdlib incl. os. (c) workingDirectory passes to the gateway uncontained (no resolveToolPath; live UNPROVEN -- every spawn leg died at python3 ENOENT before cwd mattered). Positive anchor: missing interpreter fails HONESTLY (ok:false + 'spawn python3 ENOENT' + exitCode 1, live 2x, 024/F184) -- no F169-class false success.
+FILES=PythonExecutionTool.ts (stage under session/fx temp; contain workingDirectory to session root; correct the description) + tests
+IMPLEMENTATION_OWNER=UNASSIGNED
+REVIEW_OWNER=UNASSIGNED
+TESTS=staging-contained RED->GREEN (no os.tmpdir writes); outside workingDirectory refused; description no longer claims isolation; ENOENT honest-fail regression (ok:false + exitCode 1); AGENTS gates
+REAL_JOE_UAT=none
+ROLLBACK=revert hardening change
+DEPENDENCIES=WIRING-P2-037 (workingDirectory containment follows the ONE rule); owner live-checks python-present behavior (exit codes, cwd effects, 120s cap) on a box with python3 or a stubbed gateway leg -- embargoed in the audit
 
 ---
 

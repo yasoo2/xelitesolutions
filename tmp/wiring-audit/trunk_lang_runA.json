@@ -1,0 +1,522 @@
+{
+  "trunk": "language_runtimes",
+  "registered": 163,
+  "decl": {
+    "execute_python": {
+      "descriptionHead": "Execute a Python 3 script in an isolated environment. Use this for mathematical calculations, data analysis, file processing, JSON/CSV manipulation, or any comp",
+      "tags": [
+        "python",
+        "compute",
+        "math",
+        "data",
+        "analysis",
+        "code-interpreter"
+      ],
+      "required": [
+        "code"
+      ],
+      "properties": [
+        "code",
+        "timeout",
+        "workingDirectory"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "execute_python:13.7",
+        "python_builder:7.8",
+        "shell_execute:7.8"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "go_builder": {
+      "descriptionHead": "Build Go projects with Gin/Echo framework support",
+      "tags": [
+        "go",
+        "golang",
+        "gin",
+        "echo"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "projectName",
+        "framework",
+        "features",
+        "dependencies"
+      ],
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "ask_user:7.1",
+        "user_browser:7.1",
+        "task_lifecycle:6"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "java_builder": {
+      "descriptionHead": "Build Java/Spring Boot projects with Maven/Gradle support",
+      "tags": [
+        "java",
+        "spring-boot",
+        "maven",
+        "gradle"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "projectName",
+        "framework",
+        "buildTool",
+        "javaVersion",
+        "features",
+        "dependencies"
+      ],
+      "permissions": [
+        "write",
+        "read"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "java_builder:12",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "python_builder": {
+      "descriptionHead": "Build Python projects with Django, Flask, or FastAPI",
+      "tags": [
+        "python",
+        "django",
+        "flask",
+        "fastapi"
+      ],
+      "required": [
+        "framework",
+        "projectName",
+        "projectPath"
+      ],
+      "properties": [
+        "framework",
+        "projectName",
+        "projectPath",
+        "features"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "python_builder:10.7",
+        "execute_python:8.6",
+        "ask_user:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "py guard": "failed",
+    "py print-ok": "passed",
+    "py syntax-fail": "failed",
+    "go unknown": "failed",
+    "go scaffold-ok": "passed",
+    "go build-canned": "passed",
+    "jv scaffold-ok": "passed",
+    "pb files": "passed",
+    "pb empty": "failed"
+  },
+  "live": {
+    "py.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "No Python code provided.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.438Z] start execute_python (orig=execute_python)",
+      "logLast": "Error: Empty code input",
+      "logN": 2
+    },
+    "py.blank": {
+      "input": "{\"code\":\"   \\n  \"}",
+      "ok": false,
+      "error": "No Python code provided.",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.486Z] start execute_python (orig=execute_python)",
+      "logLast": "Error: Empty code input",
+      "logN": 2
+    },
+    "py.print": {
+      "input": "{\"code\":\"print('WIRING_LANG_TOKEN_24f1')\"}",
+      "ok": false,
+      "error": "spawn python3 ENOENT",
+      "outputShape": "{stdout,stderr,exitCode}",
+      "outputPreview": "{\"stdout\":\"\",\"stderr\":\"spawn python3 ENOENT\",\"exitCode\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.490Z] start execute_python (orig=execute_python)",
+      "logLast": "No stdout",
+      "logN": 3
+    },
+    "py.print-compare": {
+      "ok": false,
+      "stdoutHasToken": false,
+      "exitCode": 1,
+      "errorPrefix": "spawn python3 ENOENT",
+      "stderrPrefix": "spawn python3 ENOENT"
+    },
+    "py.syntax": {
+      "input": "{\"code\":\"def broken(:\\n  pass\"}",
+      "ok": false,
+      "error": "spawn python3 ENOENT",
+      "outputShape": "{stdout,stderr,exitCode}",
+      "outputPreview": "{\"stdout\":\"\",\"stderr\":\"spawn python3 ENOENT\",\"exitCode\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.516Z] start execute_python (orig=execute_python)",
+      "logLast": "No stdout",
+      "logN": 3
+    },
+    "py.syntax-compare": {
+      "ok": false,
+      "exitCode": 1,
+      "errorPrefix": "spawn python3 ENOENT"
+    },
+    "py.badcwd": {
+      "input": "{\"code\":\"print(1)\",\"workingDirectory\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\no-such-dir\"}",
+      "ok": false,
+      "error": "spawn python3 ENOENT",
+      "outputShape": "{stdout,stderr,exitCode}",
+      "outputPreview": "{\"stdout\":\"\",\"stderr\":\"spawn python3 ENOENT\",\"exitCode\":1}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.530Z] start execute_python (orig=execute_python)",
+      "logLast": "No stdout",
+      "logN": 3
+    },
+    "py.compare": {
+      "emptyOk": false,
+      "emptyError": "No Python code provided.",
+      "blankOk": false,
+      "printOk": false,
+      "syntaxOk": false,
+      "badcwdOk": false,
+      "badcwdErrorPrefix": "spawn python3 ENOENT"
+    },
+    "go.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.542Z] start go_builder (orig=go_builder)",
+      "logLast": "Error: Unknown action: undefined",
+      "logN": 3
+    },
+    "go.badaction": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.546Z] start go_builder (orig=go_builder)",
+      "logLast": "Error: Unknown action: explode",
+      "logN": 3
+    },
+    "go.scaffold": {
+      "input": "{\"action\":\"scaffold\",\"projectName\":\"wiring-go-fx-24f1\",\"framework\":\"plain\",\"features\":[]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectName,projectPath,filesCreated,framework,buildCommand}",
+      "outputPreview": "{\"success\":true,\"projectName\":\"wiring-go-fx-24f1\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\wiring-go-fx-24f1\",\"filesCreated\":[\"go.mod\",\"cmd/app/main.go\",\"config/config.go\",\".env.example\",\"cmd/app/main_test.go\",\"README.md\"],\"framework\":\"plain\",\"buildCommand\":\"go build -o bin/app ./cmd/app\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.550Z] start go_builder (orig=go_builder)",
+      "logLast": "Files created: 6",
+      "logN": 5
+    },
+    "go.scaffold-compare": {
+      "ok": true,
+      "preExisted": false,
+      "wroteApiCwd": true,
+      "wroteSessionRoot": false,
+      "goModExists": true,
+      "goModHasModule": true,
+      "mainIsPlain": true,
+      "filesCreatedN": 6,
+      "projectPath": "\\\\?\\D:\\Joe\\muse-worktree\\wiring-go-fx-24f1",
+      "removed": true
+    },
+    "go.build": {
+      "input": "{\"action\":\"build\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,buildCommand,runCommand,message}",
+      "outputPreview": "{\"success\":true,\"buildCommand\":\"go build -o bin/app ./cmd/app\",\"runCommand\":\"./bin/app\",\"message\":\"Use 'go build -o bin/app ./cmd/app' to build the project\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.568Z] start go_builder (orig=go_builder)",
+      "logLast": "Build command: go build -o bin/app ./cmd/app",
+      "logN": 3
+    },
+    "go.test": {
+      "input": "{\"action\":\"test\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,testCommand,message}",
+      "outputPreview": "{\"success\":true,\"testCommand\":\"go test ./...\",\"message\":\"Test configuration ready\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.572Z] start go_builder (orig=go_builder)",
+      "logLast": "Setting up Go tests",
+      "logN": 3
+    },
+    "go.deps": {
+      "input": "{\"action\":\"dependencies\",\"dependencies\":[\"github.com/fx/mod@v1.0.0\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,dependencies,message}",
+      "outputPreview": "{\"success\":true,\"dependencies\":[\"github.com/fx/mod@v1.0.0\"],\"message\":\"Run \\\"go mod tidy\\\" to install dependencies\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.577Z] start go_builder (orig=go_builder)",
+      "logLast": "Dependencies: github.com/fx/mod@v1.0.0",
+      "logN": 4
+    },
+    "go.compare": {
+      "emptyOk": false,
+      "emptyError": "Unknown action: undefined",
+      "badOk": false,
+      "scaffoldOk": true,
+      "buildOk": true,
+      "buildMsg": "Use 'go build -o bin/app ./cmd/app' to build the project",
+      "testOk": true,
+      "depsOk": true,
+      "depsEchoed": 1
+    },
+    "jv.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Unknown action: undefined",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.580Z] start java_builder (orig=java_builder)",
+      "logLast": "Error: Unknown action: undefined",
+      "logN": 3
+    },
+    "jv.badaction": {
+      "input": "{\"action\":\"explode\"}",
+      "ok": false,
+      "error": "Unknown action: explode",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.583Z] start java_builder (orig=java_builder)",
+      "logLast": "Error: Unknown action: explode",
+      "logN": 3
+    },
+    "jv.scaffold": {
+      "input": "{\"action\":\"scaffold\",\"projectName\":\"wiringjvfx24f1\",\"framework\":\"spring-boot\",\"buildTool\":\"maven\",\"javaVersion\":\"17\",\"features\":[\"web\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,projectName,projectPath,filesCreated,framework,buildTool,javaVersion,buildCommand}",
+      "outputPreview": "{\"success\":true,\"projectName\":\"wiringjvfx24f1\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\wiringjvfx24f1\",\"filesCreated\":[\"pom.xml\",\"src/main/resources/application.properties\",\"src/main/resources/application.yml\",\"src/main/java/com/example/wiringjvfx24f1/Application.java\",\"src/main/java/com/example/wiringjvfx24f1/controller/HelloController.java\",\"src/test/java/com/example/wiringjvfx24f1/ApplicationTests.java\"],\"framework\":\"spring-boot\",\"buildTool\":\"maven\",\"javaVersion\":\"17\",\"buildCommand\":\"mvn clean install\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.585Z] start java_builder (orig=java_builder)",
+      "logLast": "Files created: 6",
+      "logN": 5
+    },
+    "jv.scaffold-compare": {
+      "ok": true,
+      "preExisted": false,
+      "wroteApiCwd": true,
+      "wroteSessionRoot": false,
+      "pomExists": true,
+      "pomHasWeb": true,
+      "controllerExists": true,
+      "filesCreatedN": 6,
+      "removed": true
+    },
+    "jv.build-gradle": {
+      "input": "{\"action\":\"build\",\"buildTool\":\"gradle\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,buildTool,buildCommand,message}",
+      "outputPreview": "{\"success\":true,\"buildTool\":\"gradle\",\"buildCommand\":\"gradle build\",\"message\":\"Use 'gradle build' to build the project\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.603Z] start java_builder (orig=java_builder)",
+      "logLast": "Build command: gradle build",
+      "logN": 3
+    },
+    "jv.test": {
+      "input": "{\"action\":\"test\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,testFramework,message}",
+      "outputPreview": "{\"success\":true,\"testFramework\":\"JUnit 5\",\"message\":\"Test configuration ready\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.607Z] start java_builder (orig=java_builder)",
+      "logLast": "Setting up JUnit tests",
+      "logN": 3
+    },
+    "jv.deps": {
+      "input": "{\"action\":\"dependencies\",\"dependencies\":[\"org.fx:lib:1.0\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,buildTool,dependencies,message}",
+      "outputPreview": "{\"success\":true,\"buildTool\":\"maven\",\"dependencies\":[\"org.fx:lib:1.0\"],\"message\":\"Dependencies configuration ready for maven\"}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.612Z] start java_builder (orig=java_builder)",
+      "logLast": "Dependencies: org.fx:lib:1.0",
+      "logN": 4
+    },
+    "jv.compare": {
+      "emptyOk": false,
+      "badOk": false,
+      "scaffoldOk": true,
+      "buildGradleCmd": "gradle build",
+      "buildGradleOk": true,
+      "testOk": true,
+      "testFramework": "JUnit 5",
+      "depsOk": true
+    },
+    "pb.empty": {
+      "input": "{}",
+      "ok": false,
+      "error": "Cannot read properties of undefined (reading 'toUpperCase')",
+      "outputShape": "null",
+      "outputPreview": "null",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.616Z] start python_builder (orig=python_builder)",
+      "logLast": "Error: Cannot read properties of undefined (reading 'toUpperCase')",
+      "logN": 3
+    },
+    "pb.flask": {
+      "input": "{\"framework\":\"flask\",\"projectName\":\"fxshop\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"features\":[\"db\",\"auth\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,framework,projectName,files,nextSteps}",
+      "outputPreview": "{\"success\":true,\"framework\":\"flask\",\"projectName\":\"fxshop\",\"files\":[{\"path\":\"requirements.txt\",\"content\":\"Flask>=2.3\\nFlask-SQLAlchemy\\nFlask-Login\\npytest\"},{\"path\":\".gitignore\",\"content\":\"__pycache__/\\n*.py[cod]\\nvenv/\\n.env\\n*.sqlite3\"},{\"path\":\"README.md\",\"content\":\"# fxshop\\n\\nFLASK project\"},{\"path\":\"app.py\",\"content\":\"from flask import Flask\\n\\napp = Flask(__name__)\\n\\n@app.route('/')\\ndef hello():\\n    return {'message': 'Hello from Flask!'}\\n\\nif __name__ == '__main__':\\n    app.run(debug=True)\"}],\"nextSteps\":[\"cd \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"python -m venv venv\",\"source venv/bin/activate\",\"pip install -r requirements.txt\",\"python app.py\"]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.619Z] start python_builder (orig=python_builder)",
+      "logLast": "Generated 4 files",
+      "logN": 3
+    },
+    "pb.flask-compare": {
+      "ok": true,
+      "wroteProjectPath": false,
+      "filesN": 4,
+      "reqHasFlask": true,
+      "reqHasDb": true,
+      "reqHasAuth": true,
+      "nextStepsCd": "cd \\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess\\wiring-lang-fx\\pbpr"
+    },
+    "pb.django": {
+      "input": "{\"framework\":\"django\",\"projectName\":\"fxsite\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"features\":[]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,framework,projectName,files,nextSteps}",
+      "outputPreview": "{\"success\":true,\"framework\":\"django\",\"projectName\":\"fxsite\",\"files\":[{\"path\":\"requirements.txt\",\"content\":\"Django>=4.2\\npytest\"},{\"path\":\".gitignore\",\"content\":\"__pycache__/\\n*.py[cod]\\nvenv/\\n.env\\n*.sqlite3\"},{\"path\":\"README.md\",\"content\":\"# fxsite\\n\\nDJANGO project\"},{\"path\":\"manage.py\",\"content\":\"#!/usr/bin/env python\\nimport os\\nimport sys\\n\\nif __name__ == \\\"__main__\\\":\\n    os.environ.setdefault(\\\"DJANGO_SETTINGS_MODULE\\\", \\\"fxsite.settings\\\")\\n    from django.core.management import execute_from_command_line\\n    execute_from_command_line(sys.argv)\"},{\"path\":\"fxsite/settings.py\",\"content\":\"from pathlib import Path\\n\\nBASE_DIR = Path(__file__).resolve().parent.parent\\nSECRET_KEY = 'django-insecure-change-this'\\nDEBUG = True\\nALLOWED_HOSTS = []\\n\\nINSTALLED_APPS = [\\n    'django.contrib.admin',\\n    'django.contrib.auth',\\n    'django.contrib.contenttypes',\\n    'django.contrib.sessions',\\n    'django.contrib.messages',\\n    'django.contrib.staticfiles',\\n]\\n\\nMIDDLEWARE = [\\n    'django.middleware.security.SecurityMiddleware',\\n    'django.contrib.sessions.middleware.SessionMiddleware',\\n    'django.middleware.common.CommonMiddleware',\\n    'django.middleware.csrf.CsrfViewMiddleware',\\n    'django.contrib.auth.middleware.AuthenticationMiddleware',\\n    'django.contrib.messages.middleware.MessageMiddleware',\\n    'django.middleware.clickjacking.XFrameOptionsMiddleware',\\n]",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.622Z] start python_builder (orig=python_builder)",
+      "logLast": "Generated 5 files",
+      "logN": 3
+    },
+    "pb.fastapi": {
+      "input": "{\"framework\":\"fastapi\",\"projectName\":\"fxapi\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"features\":[\"db\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,framework,projectName,files,nextSteps}",
+      "outputPreview": "{\"success\":true,\"framework\":\"fastapi\",\"projectName\":\"fxapi\",\"files\":[{\"path\":\"requirements.txt\",\"content\":\"fastapi>=0.100\\nuvicorn[standard]\\nsqlalchemy\\npytest\"},{\"path\":\".gitignore\",\"content\":\"__pycache__/\\n*.py[cod]\\nvenv/\\n.env\\n*.sqlite3\"},{\"path\":\"README.md\",\"content\":\"# fxapi\\n\\nFASTAPI project\"},{\"path\":\"main.py\",\"content\":\"from fastapi import FastAPI\\n\\napp = FastAPI()\\n\\n@app.get(\\\"/\\\")\\ndef read_root():\\n    return {\\\"message\\\": \\\"Hello from FastAPI!\\\"}\"}],\"nextSteps\":[\"cd \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"python -m venv venv\",\"source venv/bin/activate\",\"pip install -r requirements.txt\",\"python app.py\"]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.627Z] start python_builder (orig=python_builder)",
+      "logLast": "Generated 4 files",
+      "logN": 3
+    },
+    "pb.basic": {
+      "input": "{\"framework\":\"basic\",\"projectName\":\"fxbasic\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,framework,projectName,files,nextSteps}",
+      "outputPreview": "{\"success\":true,\"framework\":\"basic\",\"projectName\":\"fxbasic\",\"files\":[{\"path\":\"requirements.txt\",\"content\":\"pytest\"},{\"path\":\".gitignore\",\"content\":\"__pycache__/\\n*.py[cod]\\nvenv/\\n.env\\n*.sqlite3\"},{\"path\":\"README.md\",\"content\":\"# fxbasic\\n\\nBASIC project\"},{\"path\":\"main.py\",\"content\":\"def main():\\n    print(\\\"Hello, Python!\\\")\\n\\nif __name__ == \\\"__main__\\\":\\n    main()\"}],\"nextSteps\":[\"cd \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"python -m venv venv\",\"source venv/bin/activate\",\"pip install -r requirements.txt\",\"python app.py\"]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.631Z] start python_builder (orig=python_builder)",
+      "logLast": "Generated 4 files",
+      "logN": 3
+    },
+    "pb.badframework": {
+      "input": "{\"framework\":\"rails\",\"projectName\":\"fxbad\",\"projectPath\":\"\\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,framework,projectName,files,nextSteps}",
+      "outputPreview": "{\"success\":true,\"framework\":\"rails\",\"projectName\":\"fxbad\",\"files\":[{\"path\":\"requirements.txt\",\"content\":\"pytest\"},{\"path\":\".gitignore\",\"content\":\"__pycache__/\\n*.py[cod]\\nvenv/\\n.env\\n*.sqlite3\"},{\"path\":\"README.md\",\"content\":\"# fxbad\\n\\nRAILS project\"}],\"nextSteps\":[\"cd \\\\\\\\?\\\\D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-lang-fx\\\\pbproj-should-not-exist\",\"python -m venv venv\",\"source venv/bin/activate\",\"pip install -r requirements.txt\",\"python app.py\"]}",
+      "hasDataField": null,
+      "log0": "[2026-09-30T14:18:17.635Z] start python_builder (orig=python_builder)",
+      "logLast": "Generated 3 files",
+      "logN": 3
+    },
+    "pb.compare": {
+      "emptyOk": false,
+      "emptyError": "Cannot read properties of undefined (reading 'toUpperCase')",
+      "flaskOk": true,
+      "djangoFilesN": 5,
+      "djangoOk": true,
+      "fastapiOk": true,
+      "basicHasMain": true,
+      "badframeworkOk": true,
+      "badframeworkFilesN": 3
+    }
+  },
+  "cleanup": "ok",
+  "sessionRoot": "\\\\?\\D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "apiCwd": "\\\\?\\D:\\Joe\\muse-worktree",
+  "at": "2026-09-30T14:18:17.640Z"
+}

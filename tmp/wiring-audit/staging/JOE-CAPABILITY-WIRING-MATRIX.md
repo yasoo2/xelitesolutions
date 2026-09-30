@@ -4107,5 +4107,109 @@ RECOMMENDED_ACTION=WIRING-P1-013 (fix require path; no-model + model-or-stub tes
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=158 (148 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-23 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 13 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-execute_python
+NAME=execute_python (PythonExecutionTool, PythonExecutionTool.ts:10)
+CATEGORY=tool/language_runtimes-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PythonExecutionTool.ts
+IMPLEMENTATION={} / blank-code guard pre-exec (:58-64, honest sentence); code staged to os.tmpdir()/joe_python_<ts>.py (:66-67, OUTSIDE session root in production) + unlinked after (:82, :103); spawned as ('python3',[tmpFile]) via ExecutionGateway with cwd = input.workingDirectory || process.cwd() (:56, no containment, no sandbox despite the 'isolated environment' description :12); ok = !!result.data?.ok (:94) + exitCode passthrough (:79); timeout capped min(input,120)s (:55, code-cited, no 120s live leg); declares execute/execute, rate 20/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (score 13.7)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_lang_runA/B.json 2x verdict-identical): empty+blank -> honest 'No Python code provided.'; print/syntax/bad-cwd legs ALL ok:false + 'spawn python3 ENOENT' + exitCode 1 + stdout '' (F184 honest-unavailable -- python3 absent on this Windows box; error specific in BOTH error key and stderr). Real-script exit contract + workingDirectory containment UNPROVEN live (every spawn died at ENOENT)
+PERMISSION_REACHABLE=YES (execute declared; PRIORITY-listed)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe
+INPUT_CONTRACT_VALID=YES for probed shapes (guards honest; timeout cap code-cited)
+OUTPUT_CONTRACT_VALID=YES for probed shapes (ok:false + specific error + exitCode 1 on missing interpreter)
+EVIDENCE_PRODUCED=YES (stdout/stderr/exitCode shape; empty on ENOENT)
+VERIFICATION_COMPATIBLE=YES (never a checker -- static VERIFY24; guard shapes => failed, print-ok shape => passed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F185 staging/description/cwd hardening; F184 honest-ENOENT is the healthy control)
+RECOMMENDED_ACTION=WIRING-P2-041 (session-temp staging; contained workingDirectory; honest description; ENOENT regression anchor) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-go_builder
+NAME=go_builder (GoBuilderTool, GoBuilderTool.ts:9)
+CATEGORY=tool/language_runtimes-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GoBuilderTool.ts
+IMPLEMENTATION=action switch with honest 'Unknown action' default (:69-84); scaffoldProject writes path.join(process.cwd(), projectName) via direct mkdirSync(recursive)+writeFileSync (:97-115, NO resolveToolPath, NO name sanitization -- traversal reaches write by construction, code-cited); build/test/dependencies NEVER spawn or touch disk -- canned ok:true+success:true (:481-524); declares write+read/write, rate 10/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (description goal; self-name goal rank-7 score 3 -- weakly self-grounded)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 7; description-goal rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_lang_runA/B.json 2x verdict-identical): empty+bad-action -> honest 'Unknown action'; scaffold nonce -> ok:true + 6 files byte-verified (go.mod module line, plain net/http main) written to the PROCESS CWD (worktree root in-probe; api/ in production), session root untouched, probe-removed (F179); build/test/deps -> canned ok:true+success:true with 'Use X...' messages (F180)
+PERMISSION_REACHABLE=YES (write+read declared; ROUTER_EXCLUDED fast-path-only, still keyword-carried)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (incl. real disk writes)
+INPUT_CONTRACT_VALID=PARTIAL (action enum unenforced at tool level but the switch default rejects honestly)
+OUTPUT_CONTRACT_VALID=NO (build/test/deps success:true without effect -- F180)
+EVIDENCE_PRODUCED=YES (filesCreated + byte-verified bytes for scaffold; echoed inputs for canned legs)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY24; canned shapes => passed without effect -- consumer-side note under P2-039)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F179 uncontained scaffold + F180 canned success)
+RECOMMENDED_ACTION=WIRING-P1-014 (session-root scaffold anchoring + traversal refusal) + WIRING-P2-039 (perform-or-plan-shape for build/test/deps) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-java_builder
+NAME=java_builder (JavaBuilderTool, JavaBuilderTool.ts:9)
+CATEGORY=tool/language_runtimes-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/JavaBuilderTool.ts
+IMPLEMENTATION=same shape as go_builder: honest 'Unknown action' default (:79-94); scaffoldProject writes path.join(process.cwd(), projectName) via direct mkdirSync(recursive)+writeFileSync (:107-125, NO resolveToolPath, NO name sanitization); build/test/dependencies canned ok:true+success:true (:393-437) with a working maven/gradle buildCommand switch (:423-424); declares write+read/write, rate 10/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (score 12)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_lang_runA/B.json 2x verdict-identical): empty+bad-action -> honest 'Unknown action'; scaffold nonce (spring-boot/maven/web) -> ok:true + 6 files byte-verified (pom web dep, HelloController path) written to the PROCESS CWD, session root untouched, probe-removed (F179); build-gradle -> 'gradle build' canned; test -> JUnit 5 canned; deps -> echoed-never-installed canned (F180)
+PERMISSION_REACHABLE=YES (write+read declared; ROUTER_EXCLUDED fast-path-only, still keyword-carried)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (incl. real disk writes)
+INPUT_CONTRACT_VALID=PARTIAL (action enum unenforced at tool level but the switch default rejects honestly)
+OUTPUT_CONTRACT_VALID=NO (build/test/deps success:true without effect -- F180)
+EVIDENCE_PRODUCED=YES (filesCreated + byte-verified bytes for scaffold; echoed inputs for canned legs)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY24; canned shapes => passed without effect -- consumer-side note under P2-039)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F179 uncontained scaffold + F180 canned success)
+RECOMMENDED_ACTION=WIRING-P1-014 (session-root scaffold anchoring + traversal refusal) + WIRING-P2-039 (perform-or-plan-shape for build/test/deps) -- proposed, unactioned
+
+---
+
+CAPABILITY_ID=TOOL-python_builder
+NAME=python_builder (PythonBuilderTool, PythonBuilderTool.ts:7)
+CATEGORY=tool/language_runtimes-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/PythonBuilderTool.ts
+IMPLEMENTATION=PURE GENERATOR: execute() only builds file CONTENTS via generateStructure() and returns them in output; required projectPath is read SOLELY for the 'cd' nextSteps hint (:63-79) -- nothing is ever written; framework switch has NO default-reject (:111-130, unknown values fall through to common-files-only); README template calls framework.toUpperCase() on undefined for {} (:107, raw TypeError via generic catch :81-88); requirements additive per feature (db/auth); declares write/write + required projectPath (over-declared for a pure function), rate 10/min
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 (both goals)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (score 10.7)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_lang_runA/B.json 2x verdict-identical): flask+db+auth -> ok:true + 4 files with wroteProjectPath:false (F181 -- pure generator in write clothing); django/fastapi/basic shapes ok; 'rails' -> ok:true + 3 common files, requirements=pytest only, NO error (F182 silent fallthrough); {} -> ok:false + raw TypeError (F183)
+PERMISSION_REACHABLE=YES (write declared; ROUTER_EXCLUDED fast-path-only, still keyword-carried)
+PERMISSION_EVIDENCE=executed without approval under default autoSafe (zero disk effect despite write tier)
+INPUT_CONTRACT_VALID=NO (framework enum unenforced + silent fallthrough; {} yields TypeError not a sentence)
+OUTPUT_CONTRACT_VALID=PARTIAL (file contents correct and feature-additive; success:true for unknown-framework partial output is misleading)
+EVIDENCE_PRODUCED=YES (in-output file contents; no disk bytes by design)
+VERIFICATION_COMPATIBLE=PARTIAL (never a checker -- static VERIFY24; files shape => passed; rail-fallthrough shape passes silently -- consumer-side note under P2-040)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (F181 generator-vs-writer + F182 fallthrough + F183 TypeError)
+RECOMMENDED_ACTION=WIRING-P2-040 (materialize-or-declare-generator; reject unknown framework; sentence-validate inputs) -- proposed, unactioned
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=162 (152 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-23 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 14 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4 + build_generate 13/13 LEVEL-4 + runtime_services 5/5 LEVEL-4 + shell_terminal 4/4 LEVEL-4 + database_data 6/6 LEVEL-4 + observability 5/5 LEVEL-4 + interaction 8/8 LEVEL-4 + infra_ops 6/6 + documentation 2/2 LEVEL-4 + language_runtimes 4/4 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs + 45 trunk-build + 4 prog-batch3 + 23 trunk-runtime + 4 pages-approved + 25 trunk-shell + 5 shell-cwd + 28 trunk-db + 45 trunk-obs + 37 trunk-ixn + 40 trunk-infradoc + 32 trunk-lang done; traversal live legs + 120s timeout leg + python-present legs embargoed; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; pipeline-named/setActiveRoot + mobile-default-cwd + full-stack-{} + react/api-full + ent/ori-default-root + page-model-present legs embargoed; risk table SURVEYED), contract audit per boundary (19 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui + project_run live-gate receipt; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo + build_generate static-only with 0 checkers each; observability + interaction + infra_ops + documentation + language_runtimes static-only with 0 checkers each), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
