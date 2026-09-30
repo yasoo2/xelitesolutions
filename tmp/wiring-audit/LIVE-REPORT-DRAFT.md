@@ -1,7 +1,7 @@
 # JOE LIVE TEAM REPORT (Muse draft 2026-09-29 — for coordinator to persist to team/LIVE-REPORT.md; Muse sandbox cannot write shared coordination files)
 
-UPDATED=2026-09-30T06:00Z
-OVERALL_STATUS=CRITICAL wiring audit checkpoint 15 done (code_understanding 16/16 storied LEVEL-4: 36/36 live legs canonical 2x verdict-identical + static verification-compat §VERIFY15; checker set 14/14 CLOSED via code_reviewer; EliteTools false-success live on 5 more tools; 9 backlog extensions; matrix 98 rows; 11 mismatches) + NVIDIA provider consultation answered (APPROVE_WITH_CHANGES, license + duplicate-seam blocks); NVIDIA on CLI-BATCH1 + audit slice; no Real Joe PASS yet.
+UPDATED=2026-09-30T07:10Z
+OVERALL_STATUS=CRITICAL wiring audit checkpoint 16 done (vcs_repo 11/11 storied LEVEL-4: 43/43 live legs canonical 2x verdict-identical + static verification-compat §VERIFY16; NEW: repo_run_command shell-escape P1-005 + github_actions traversal P1-006 + run()-exitCode mismatch #12; 2 new P1 batches + 4 extensions; matrix 109 rows; 12 mismatches); NVIDIA on CLI-BATCH1 + audit slice; no Real Joe PASS yet.
 
 ## ماذا نعمل الآن؟
 Muse أكمل المرحلة الخامسة عشرة: توثيق جذع فهم الشيفرة (16 أداة) بتنفيذ حي كامل بالمسار الرسمي، وأجاب على استشارة مزود NVIDIA. أهم النتائج: خمس أدوات Elite تُرجع ok:true فارغًا دون مزود (توسيع #11)؛ وقارئ المخطط يقرأ خارج الجلسة (توسيع P2-006)؛ ومجموعة الفواحص اكتملت 14/14. اكتشاف فقط — لا حذف ولا إعادة هيكلة.
@@ -21,8 +21,8 @@ Muse أكمل المرحلة الخامسة عشرة: توثيق جذع فهم �
 - هذه المسودة محدثة.
 
 ## Muse الآن
-CURRENT_TASK=Wiring audit checkpoint 15 + provider consultation response (staged outputs, awaiting coordinator import + push)
-LATEST_RESULT=code_understanding 16/16 LEVEL-4: 36/36 live legs 2x identical + 11-shape verdict table; checker set 14/14; 9 extensions; provider review APPROVE_WITH_CHANGES; guard re-run at commit
+CURRENT_TASK=Wiring audit checkpoint 16 (staged outputs, awaiting coordinator import + push)
+LATEST_RESULT=vcs_repo 11/11 LEVEL-4: 43/43 live legs 2x identical + 12-shape verdict table; P1-005 shell-escape + P1-006 traversal + mismatch #12; 2 new batches + 4 extensions; guard re-run at commit
 BLOCKER=None for audit; shared coordination writes denied (fallback report used)
 
 ## NVIDIA الآن
@@ -45,17 +45,19 @@ CENSUS=163 rows: 21 perm-defaulted + 2 ratelimit-defaulted + 0 unknown; 25 no-re
 EMPTY_INPUT_BATCH1=8/9 honest ok:false + 1 unvalidated ok:true (task_lifecycle)
 EMPTY_INPUT_BATCH2=19/19 rerun-stable: 8 honest + 7 ok:true reads/absences + 1 approval gate + 1 swallowed-cause + 1 guard rejection + 1 honest offline fail
 NO_REQUIRED_PARTITION=25/25: 18 SAFE + 1 BOUND + 4 EMBARGO + 2 FIXTURE
-CONTRACT_MISMATCHES=11 (+ EliteTools match-or-{} false success: chaos ok:true+{} offline, scan backstop bypassed)
+CONTRACT_MISMATCHES=12 (+ run() drops exitCode while tools require it: runcmd/diff always ok:false; + pr-merge dead enum extends #4)
 VERIFY_SWEEP12=static 21/21 + live 6/6 canonical 2x identical (V1 completed/passed, V2 partial/failed, V3 partial/rejected/0 sessions, V4 completed/url receipt, V5 0 receipts, V6 invalidated-nonce)
 TRUNK_TESTING=6/6 SELECTABLE rank-1; 19/19 live legs canonical 2x identical + 11-shape verdict table; sonar positive embargoed
 TRUNK_SECURITY=3/3 SELECTABLE rank-1; 13/13 live legs canonical 2x identical + 7-shape verdict table; dep_audit positive embargoed; secrets {} mapping-proof-only
 TRUNK_CODE=16/16 SELECTABLE rank-1; 36/36 live legs canonical 2x identical + 11-shape verdict table; dead_code positive + reviewer non-quick embargoed
-CHECKER_SET=14/14 allowlisted shapes partitioned (code_reviewer closes the set; L5 gate proof pending for 5)
-ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010) + P2-005 4th instance (audit.empty-dir notice-noise vs ancestor JSON) + P2-006 upward escape + P2-021 file-target/vocabulary
-MATRIX_ROWS=98 (88 individual + 8 group + 2 external-cited)
+TRUNK_VCS=11/11 SELECTABLE (10 rank-1, git_ops rank-4); 43/43 live legs canonical 2x identical + 12-shape verdict table; github-network/git-push/import-clone/npm-qa embargoed
+CHECKER_SET=14/14 allowlisted shapes partitioned (0/11 vcs checkers; L5 gate proof pending for 5)
+ERROR_EVIDENCE_DEFECTS=2 tool-local (zip cause-swallow P2-009; dep_audit mislabel P2-010) + P2-005 diff-instance MECHANISM-RESOLVED (always-false via #12, not git failure)
+MATRIX_ROWS=109 (99 individual + 8 group + 2 external-cited)
+P1_NEW=P1-005 runcmd shell-escape (&& + > proven live) + P1-006 actions traversal/substitution/containment
 RISK_TIERS=census 9/151/3/0 on {}; 19/19 live rerun-stable (8 blocks/1 critical + 5 honest + 6 ok:true)
 LEVEL4_SPOT=8 case-groups green-or-honest (checkpoint 4, unchanged)
-MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 5/19 STORIED: files + browser_ui + testing_qa + security + code_understanding)
+MERGE_V1=19 trunks / 163 members (PROPOSED, coverage-asserted; 6/19 STORIED: files + browser_ui + testing_qa + security + code_understanding + vcs_repo)
 FULL_SHADOWS=0 | CONDITIONAL_SHADOWS=2 | INLINE_SHADOWS=2 (1 proven live)
 ORPHANED=5 confirmed + 4 preliminary drafts
 DUPLICATE=2 (memory pair)
@@ -66,9 +68,9 @@ VERIFIED=0 new Real Joe UAT this checkpoint
 REAL_JOE_PROVEN=No PASS; latest runs PARTIAL/FAIL (see TEAM-STATE)
 
 ## آخر نتيجة اختبار
-TEST=trunk_code.mts probe (2x) + guard:architecture + guard:package-scripts
-RESULT=trunk exit 0 both runs (16/16 selectable rank-1; 36/36 live legs canonical, verdict-identical; 11/11 verdict table; read-only fixtures byte-identical + all removed both runs); guards recorded at commit time
-WHAT_IT_PROVES=code_understanding trunk is executor-reachable at LEVEL-4 with exact seeded-signal proofs (review score 57; detect 1/1/1; symbol/outline exact) plus containment + contract gaps evidenced live; checker partition (1/16, set closed 14/14) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
+TEST=trunk_vcs.mts probe (2x) + guard:architecture + guard:package-scripts
+RESULT=trunk exit 0 both runs (11/11 selectable, 10 rank-1; 43/43 live legs canonical, verdict-identical; 12/12 verdict table; all fixtures + repo scratch + shellmark removed both runs; real store untouched); guards recorded at commit time
+WHAT_IT_PROVES=vcs_repo trunk is executor-reachable at LEVEL-4 with exact seeded-signal proofs (search count 1; branch/commit positive; byte-preserved dry-run) plus shell-escape + traversal + always-false-ok + dead-enum + containment gaps evidenced live; checker partition (0/11, set stays 14/14) + verdict mapping evidenced statically; NOT a Real Joe UI PASS.
 
 ## المشاكل الحالية
 - NVIDIA cross-review of staged audit still pending (worker resumed on CLI-BATCH1 + audit slice).
@@ -76,9 +78,9 @@ WHAT_IT_PROVES=code_understanding trunk is executor-reachable at LEVEL-4 with ex
 - Untracked SpecificationVerificationTool blocks main boot (known, NVIDIA-owned; fix in CLI-BATCH1 scope).
 
 ## الخطوة التالية
-1. Coordinator imports Muse consultation responses + follow-ups + 5 staged audit drafts + live report.
-2. Muse checkpoint 16: vcs_repo=11 or build_generate=13 (planner-adjacent write paths); or single-method L5 live gate batch for the 5 deferred checkers.
-3. NVIDIA delivers CLI-BATCH1 bounded diff for Muse independent review + wiring cross-review verdict.
+1. Coordinator imports Muse staged audit drafts (matrix 109 rows + summary + backlog with P1-005/P1-006 + arch) + live report; Codex imports pending Muse consultation responses.
+2. Muse checkpoint 17: build_generate=13 (last planner-adjacent write trunk); or single-method L5 live gate batch for the 5 deferred checkers.
+3. NVIDIA delivers CLI-BATCH1 bounded diff for Muse independent review + wiring cross-review verdict; P1-005/P1-006 need implementation owner + security review (ToolService/ExecutionEngine shared).
 
 ## آخر الإنجازات
 [2026-09-29] DISCOVERY — 163 registered tools verified at runtime, 0 dupes.
@@ -119,3 +121,5 @@ WHAT_IT_PROVES=code_understanding trunk is executor-reachable at LEVEL-4 with ex
 |[2026-09-30] REVIEW — NVIDIA provider candidate c8524f01: mechanics sound, isFree:true contradicts Developer-Program terms (verified from NVIDIA docs), duplicate untracked nvidia seam must be reconciled — APPROVE_WITH_CHANGES with 3 blocks.
 |[2026-09-30] DISCOVERY — code_understanding 16/16 LEVEL-4 (36 legs, canonical, rerun-stable); EliteTools false success live 6/8 (unwired isProviderFailure seam); outline uncontained reads; analyze offline via backstop flip; 3 more P2-004 instances; checker set 14/14 CLOSED.
 |[2026-09-30] DELIVERABLE — matrix 98 rows (§VERIFY15 + 16 trunk rows, tail counter corrected); summary 11 mismatches (no new number); backlog +9 extensions; guard re-run at checkpoint 15 commit.
+|[2026-09-30] DISCOVERY — vcs_repo 11/11 LEVEL-4 (43 legs, canonical, rerun-stable); runcmd &&-chain + >-redirect shell-escape (P1-005); actions traversal + silent substitution (P1-006); run()-exitCode always-false (mismatch #12); pr-merge dead enum (#4 ext); push→git_ops redirect proven (hypothesis refuted).
+|[2026-09-30] DELIVERABLE — matrix 109 rows (§VERIFY16 + 11 trunk rows); summary 12 mismatches; backlog +P1-005/P1-006 +4 extensions; guard re-run at checkpoint 16 commit.

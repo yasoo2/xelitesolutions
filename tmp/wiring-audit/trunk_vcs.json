@@ -1,0 +1,827 @@
+{
+  "generatedAt": "2026-09-30T03:56:37.817Z",
+  "trunk": "vcs_repo",
+  "declarations": {
+    "git_local_workflow": {
+      "descriptionHead": "Complete a bounded local Git workflow after a project import: create a local branch, write one requested docs note, verify the staged diff, and commit locally. ",
+      "tags": [
+        "git",
+        "repository",
+        "local",
+        "commit",
+        "verification"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request"
+      ],
+      "permissions": [
+        "read",
+        "write",
+        "execute"
+      ],
+      "sideEffects": [
+        "write",
+        "execute"
+      ],
+      "rateLimitPerMinute": 6,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "git_local_workflow:26.5",
+        "github_pr:15.1",
+        "github_repo_manager:14.5"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "git_ops": {
+      "descriptionHead": "Perform git operations (commit, push, pull, etc) with auto-authentication.",
+      "tags": [
+        "git",
+        "vcs",
+        "source-control"
+      ],
+      "required": [
+        "operation"
+      ],
+      "properties": [
+        "operation",
+        "args",
+        "cwd",
+        "sessionId",
+        "userId"
+      ],
+      "permissions": [
+        "execute",
+        "internet",
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": true,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 4,
+      "bestRankFull": 4,
+      "top3SelfName": [
+        "github_pr:15.1",
+        "github_repo_manager:14.5",
+        "git_local_workflow:13.5"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "github_actions": {
+      "descriptionHead": "Generate GitHub Actions workflows for CI/CD automation",
+      "tags": [
+        "github",
+        "actions",
+        "ci-cd"
+      ],
+      "required": [
+        "workflowType",
+        "projectPath"
+      ],
+      "properties": [
+        "workflowType",
+        "projectPath",
+        "projectName"
+      ],
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "github_actions:18.7",
+        "github_pr:15.1",
+        "github_repo_manager:14.5"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "github_pr": {
+      "descriptionHead": "Create and manage GitHub Pull Requests automatically",
+      "tags": [
+        "github",
+        "pr",
+        "pull-request"
+      ],
+      "required": [
+        "action",
+        "owner",
+        "repo"
+      ],
+      "properties": [
+        "action",
+        "owner",
+        "repo",
+        "title",
+        "body",
+        "head",
+        "base",
+        "token"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "github_pr:15.1",
+        "github_repo_manager:14.5",
+        "git_local_workflow:13.5"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "github_repo_manager": {
+      "descriptionHead": "Create, manage and ANALYZE GitHub repositories (analyze = real repo report: languages, file tree, README, latest commits)",
+      "tags": [
+        "github",
+        "repository",
+        "git",
+        "analysis"
+      ],
+      "required": [
+        "action"
+      ],
+      "properties": [
+        "action",
+        "repoName",
+        "description",
+        "private",
+        "token"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "github_repo_manager:22.9",
+        "git_local_workflow:15.3",
+        "github_pr:15.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "import_project": {
+      "descriptionHead": "Clone an existing GitHub repository (or open a local folder), perform a bounded evidence-backed local engineering review, and make it the session's active proje",
+      "tags": [
+        "import",
+        "github",
+        "project",
+        "analyze",
+        "verify",
+        "folder",
+        "local",
+        "workspace"
+      ],
+      "required": [
+        "request"
+      ],
+      "properties": [
+        "request",
+        "url",
+        "path"
+      ],
+      "permissions": [
+        "execute",
+        "write",
+        "internet"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "routerExcluded": true,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "import_project:12.1",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "repo_apply_patch": {
+      "descriptionHead": "Apply a conservative find/replace patch to a repository file. Supports dryRun preview.",
+      "tags": [
+        "repo",
+        "self-coding",
+        "patch",
+        "write"
+      ],
+      "required": [
+        "path",
+        "find",
+        "replace"
+      ],
+      "properties": [
+        "path",
+        "find",
+        "replace",
+        "dryRun"
+      ],
+      "permissions": [
+        "read",
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "repo_apply_patch:20.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "repo_diff_summary": {
+      "descriptionHead": "Show a git status and diff summary for repository changes.",
+      "tags": [
+        "repo",
+        "self-coding",
+        "diff"
+      ],
+      "required": null,
+      "properties": [],
+      "permissions": [
+        "read",
+        "execute"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "repo_diff_summary:18.6",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "repo_read_file": {
+      "descriptionHead": "Read a UTF-8 file from the current repository using a safe relative path.",
+      "tags": [
+        "repo",
+        "self-coding",
+        "read"
+      ],
+      "required": [
+        "path"
+      ],
+      "properties": [
+        "path"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "repo_read_file:15.1",
+        "read_file:9.5",
+        "user_browser:7.7"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "repo_run_command": {
+      "descriptionHead": "Run a whitelisted repository QA command such as build, test, lint, typecheck, git diff, or git status.",
+      "tags": [
+        "repo",
+        "self-coding",
+        "qa",
+        "command"
+      ],
+      "required": [
+        "command"
+      ],
+      "properties": [
+        "command",
+        "cwd",
+        "timeoutMs"
+      ],
+      "permissions": [
+        "execute"
+      ],
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 30,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "repo_run_command:17.4",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    },
+    "repo_search": {
+      "descriptionHead": "Search repository files by text query with safe default ignores.",
+      "tags": [
+        "repo",
+        "self-coding",
+        "search"
+      ],
+      "required": [
+        "query"
+      ],
+      "properties": [
+        "query",
+        "path",
+        "maxResults"
+      ],
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "routerExcluded": false,
+      "priorityListed": false,
+      "verdict": "SELECTABLE_BY_KEYWORD",
+      "bestRank30": 1,
+      "bestRankFull": 1,
+      "top3SelfName": [
+        "repo_search:10.7",
+        "ask_user:7.1",
+        "user_browser:7.1"
+      ],
+      "checkerTaskLevel": false,
+      "checkerGateExistence": false,
+      "checkerGateLive": false
+    }
+  },
+  "verdictTable": {
+    "git status-ok": "passed",
+    "import no-url-guidance": "passed",
+    "import local-ok": "passed",
+    "read seeded": "passed",
+    "search seeded": "passed",
+    "patch dryrun": "passed",
+    "patch applied": "passed",
+    "runcmd git-ok": "passed",
+    "runcmd failed": "failed",
+    "diff summary": "passed",
+    "actions generated": "passed",
+    "pr listed": "passed"
+  },
+  "live": {
+    "git.status-seeded": {
+      "input": "{\"operation\":\"status\",\"args\":[\"--short\"],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"?? untracked.txt\\n\"}",
+      "log0": "[2026-09-30T03:56:30.256Z] start git_ops (orig=git_ops)"
+    },
+    "git.invalid-op": {
+      "input": "{\"operation\":\"!!!bogus\",\"args\":[],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit\"}",
+      "ok": false,
+      "error": "invalid_git_operation",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:30.669Z] start git_ops (orig=git_ops)"
+    },
+    "git.missing-cwd": {
+      "input": "{\"operation\":\"status\",\"args\":[\"--short\"],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit\\\\nope\"}",
+      "ok": false,
+      "error": "spawn git ENOENT",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:30.686Z] start git_ops (orig=git_ops)"
+    },
+    "git.clone-noargs": {
+      "input": "{\"operation\":\"clone\",\"args\":[],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit\"}",
+      "ok": false,
+      "error": "fatal: You must specify a repository to clone.\n\nusage: git clone [<options>] [--] <repo> [<dir>]\n\n    -v, --[no-]verbose    be more verbose\n    -q, --[no-]quiet      be more quiet\n    --[no-]progress       force progress",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:30.710Z] start git_ops (orig=git_ops)"
+    },
+    "git.outside-cwd": {
+      "input": "{\"operation\":\"status\",\"args\":[\"--short\"],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\\\\ogit\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"\"}",
+      "log0": "[2026-09-30T03:56:30.969Z] start git_ops (orig=git_ops)"
+    },
+    "git.default-cwd": {
+      "input": "{\"operation\":\"status\",\"args\":[\"--short\"]}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{output}",
+      "outputPreview": "{\"output\":\"?? ../../../.issue86-api-live.err\\n?? ../../../.issue86-api-live.out\\n?? ../../../api/.jest-cache/\\n?? ../../../api/.tmp/\\n?? ../../../api/src/.jest-cache/\\n?? ../../../api/src/.tmp/\\n?? ../../../api/src/core/llm/providers/nvidia.ts\\n?? ../../../api/src/core/quality/image-semantic-qa.ts\\n?? ../../../api/src/core/quality/live-data-qa.ts\\n?? ../../../api/src/core/quality/shop-qa.ts\\n?? ../../../api/tmp/\\n?? ../../../tmp/.git-sbx-config\\n?? ../../../tmp/api5101-tmp/\\n?? ../../../tmp/api5101-tmp27/\\n?? ../../../tmp/apply-first-visit.py\\n?? ../../../tmp/apply-m15.cjs\\n?? ../../../tmp/apply-m16.cjs\\n?? ../../../tmp/apply-m17.cjs\\n?? ../../../tmp/apply-m18.cjs\\n?? ../../../tmp/apply-m19.cjs\\n?? ../../../tmp/apply-m21.cjs\\n?? ../../../tmp/apply-m21b.cjs\\n?? ../../../tmp/apply-m25.cjs\\n?? ../../../tmp/apply-m25b.cjs\\n?? ../../../tmp/apply-m26.cjs\\n?? ../../../tmp/apply-seedcount2.py\\n?? ../../../tmp/apply-shelf-repin.py\\n?? ../../../tmp/apply-static-seed-fix.py\\n?? ../../../tmp/apply-verify-drop-tests.py\\n?? ../../../tmp/apply-verify-drop.py\\n?? ../../../tmp/apply-wanted-seedcount-note.py\\n?? ../../../tmp/assert-block.txt\\n?? ../../../tmp/battery-run4.txt\\n?? ../../../tmp/battery",
+      "log0": "[2026-09-30T03:56:31.265Z] start git_ops (orig=git_ops)"
+    },
+    "git.push-approval": {
+      "input": "{\"operation\":\"push\",\"args\":[],\"cwd\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T03:56:31.786Z] start git_ops (orig=git_ops)"
+    },
+    "local.empty-request": {
+      "input": "{\"request\":\"\"}",
+      "ok": false,
+      "error": "request_required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:31.794Z] start git_local_workflow (orig=git_local_workflow)"
+    },
+    "local.no-import": {
+      "input": "{\"request\":\"create branch called joe/fx-audit-16 and documentation note\"}",
+      "ok": false,
+      "error": "no_active_imported_project",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:31.806Z] start git_local_workflow (orig=git_local_workflow)"
+    },
+    "local.positive": {
+      "input": "{\"request\":\"create branch called joe/fx-audit-16 and documentation note docs/fx16/note.md\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{directory,branch,documentationPath,verificationCommand,verificationPerformed,statusBeforeCommit,commitMessage,commitSha,pushed,remotePublication}",
+      "outputPreview": "{\"directory\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxgit2\",\"branch\":\"joe/fx-audit-16\",\"documentationPath\":\"docs/fx16/note.md\",\"verificationCommand\":\"git diff --check\",\"verificationPerformed\":\"git diff --check\",\"statusBeforeCommit\":\"A  docs/fx16/note.md\",\"commitMessage\":\"docs: add Joe Git validation smoke note\",\"commitSha\":\"9d8a374dfe9331cf5215ecc36f269e6c1d9c48e1\",\"pushed\":false,\"remotePublication\":\"not_performed\"}",
+      "log0": "[2026-09-30T03:56:31.819Z] start git_local_workflow (orig=git_local_workflow)"
+    },
+    "import.no-url": {
+      "input": "{\"request\":\"please import my project\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message}",
+      "outputPreview": "{\"message\":\"Give me the repository URL, e.g. \\\"import https://github.com/user/repo\\\".\"}",
+      "log0": "[2026-09-30T03:56:35.073Z] start import_project (orig=import_project)"
+    },
+    "import.missing-path": {
+      "input": "{\"request\":\"open it\",\"path\":\"wiring-vcs-nope\"}",
+      "ok": false,
+      "error": "no_such_path: wiring-vcs-nope",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.084Z] start import_project (orig=import_project)"
+    },
+    "import.outside-absolute": {
+      "input": "{\"request\":\"open it\",\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,dir,analysis,repositoryAudit}",
+      "outputPreview": "{\"message\":\"📦 Understood \\\"wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\\\":  — 2 files, ~0 lines (.md×1، .txt×1). Dirs: ogit.\\n\\n🔎 Local engineering review:\\n• Node packages: none found.\\n• Test verification: No test was run: no test script is declared in the discovered package.json files..\\n• Findings:\\n• [medium] No README exists at the repository root. — evidence: README.md/README not found\\n• [medium] No .gitignore exists at the repository root. — evidence: .gitignore not found\\n• [low] No Node package was discovered within the bounded scan depth. — evidence: max depth 4\\n• [low] No GitHub Actions workflow directory was found; confirm continuous verification exists elsewhere if intentional. — evidence: .github/workflows not found\\n• [medium] No test script is declared in the discovered Node packages. — evidence: package.json scripts.test absent\\n\\nThe project is now active in this session — edit it surgically, run it, install dependencies and run tests on request, or ask about any part of it.\",\"dir\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\",\"analysis\":{\"name\":\"wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\",\"stack\":[],\"scripts\":{}",
+      "log0": "[2026-09-30T03:56:35.096Z] start import_project (orig=import_project)"
+    },
+    "import.local-positive": {
+      "input": "{\"request\":\"open and review this project\",\"path\":\"wiring-vcs-fx/fxproj\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{message,dir,analysis,repositoryAudit}",
+      "outputPreview": "{\"message\":\"📦 Understood \\\"fx-proj\\\": Node.js — 2 files, ~2 lines (.js×1، .json×1). Dirs: .\\nScripts:\\n   • test: jest\\n\\n🔎 Local engineering review:\\n• Node packages: . (fx-proj).\\n• Test verification: The test was not run because required packages are not installed in the imported checkout. The tool did not install dependencies automatically. (npm test).\\n• Findings:\\n• [medium] No README exists at the repository root. — evidence: README.md/README not found\\n• [medium] No .gitignore exists at the repository root. — evidence: .gitignore not found\\n• [low] No GitHub Actions workflow directory was found; confirm continuous verification exists elsewhere if intentional. — evidence: .github/workflows not found\\n• [low] Executable verification is pending dependency installation; import intentionally does not mutate the project environment. — evidence: ./node_modules not found\\n\\nThe project is now active in this session — edit it surgically, run it, install dependencies and run tests on request, or ask about any part of it.\",\"dir\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxproj\",\"analysis\":{\"name\":\"fx-proj\",\"stack\":[\"Node.js\"],\"scripts\":{\"test\":\"jest",
+      "log0": "[2026-09-30T03:56:35.128Z] start import_project (orig=import_project)"
+    },
+    "read.seeded": {
+      "input": "{\"path\":\"AGENTS.md\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,content,bytes}",
+      "outputPreview": "{\"path\":\"AGENTS.md\",\"content\":\"# AGENTS.md — Permanent Joe Development Rules\\r\\n\\r\\nThis file is the first source of truth for any AI coding agent, Codex session, Builder, Antigravity session, or human developer working on the Joe autonomous software engineering system.\\r\\n\\r\\nRepository: `yasoo2/xelitesolutions`\\r\\n\\r\\n## Server Architecture (Hetzner joe-server-1)\\r\\n\\r\\n- **API**: Runs on Host OS via `systemd` (`joe-api.service`). Listening on `5000`.\\r\\n- **Nginx/Web/Mongo**: Run in Docker containers.\\r\\n- **Nginx Proxy**: Routes `/api/*` to `host.docker.internal:5000`.\\r\\n- **Project Path**: `/root/xelitesolutions`.\\r\\n- **Health Check**: Always use `/api/health`.\\r\\n\\r\\n## Mission\\r\\n\\r\\nJoe is an autonomous, multi-agent software engineering platform. The target architecture is not a simple chat assistant. Joe must behave like a disciplined engineering organization:\\r\\n\\r\\n- Product/PM thinking\\r\\n- Architecture planning\\r\\n- Controlled phase execution\\r\\n- Quality gates\\r\\n- Repair diagnosis\\r\\n- One-attempt self-fix\\r\\n- Verification and stop conditions\\r\\n- Strong workspace/user isolation\\r\\n- No unsafe autonomous destructive actions\\r\\n\\r\\n## Canonical execution pipeline\\r",
+      "log0": "[2026-09-30T03:56:35.154Z] start repo_read_file (orig=repo_read_file)"
+    },
+    "read.missing": {
+      "input": "{\"path\":\"wiring-vcs-nope.txt\"}",
+      "ok": false,
+      "error": "file_not_found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.163Z] start repo_read_file (orig=repo_read_file)"
+    },
+    "read.absolute": {
+      "input": "{\"path\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\\\\outside.txt\"}",
+      "ok": false,
+      "error": "absolute_paths_not_allowed",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.175Z] start repo_read_file (orig=repo_read_file)"
+    },
+    "read.env": {
+      "input": "{\"path\":\".env\"}",
+      "ok": false,
+      "error": "secrets_file_write_blocked",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.181Z] start repo_read_file (orig=repo_read_file)"
+    },
+    "read.escape": {
+      "input": "{\"path\":\"../outside.txt\"}",
+      "ok": false,
+      "error": "path_outside_repo",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.191Z] start repo_read_file (orig=repo_read_file)"
+    },
+    "search.seeded": {
+      "input": "{\"query\":\"repo_run_command\",\"path\":\"api/src/modules/tools/definitions\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{query,matches,count}",
+      "outputPreview": "{\"query\":\"repo_run_command\",\"matches\":[{\"path\":\"api/src/modules/tools/definitions/RepoSelfCodingTools.ts\",\"line\":214,\"preview\":\"  name = 'repo_run_command';\\r\"}],\"count\":1}",
+      "log0": "[2026-09-30T03:56:35.201Z] start repo_search (orig=repo_search)"
+    },
+    "search.empty-query": {
+      "input": "{\"query\":\"\"}",
+      "ok": false,
+      "error": "query_required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.346Z] start repo_search (orig=repo_search)"
+    },
+    "search.missing-base": {
+      "input": "{\"query\":\"x\",\"path\":\"wiring-vcs-nope\"}",
+      "ok": false,
+      "error": "ENOENT: no such file or directory, stat 'D:\\Joe\\muse-worktree\\wiring-vcs-nope'",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.355Z] start repo_search (orig=repo_search)"
+    },
+    "patch.dryrun": {
+      "input": "{\"path\":\"tmp/wiring-vcs-patch-fx.txt\",\"find\":\"AAA\",\"replace\":\"BBB\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,dryRun,changed,preview}",
+      "outputPreview": "{\"path\":\"tmp/wiring-vcs-patch-fx.txt\",\"dryRun\":true,\"changed\":true,\"preview\":\"- alpha AAA omega WIRING_VCS_TOKEN_7c1a\\n+ alpha BBB omega WIRING_VCS_TOKEN_7c1a\"}",
+      "log0": "[2026-09-30T03:56:35.365Z] start repo_apply_patch (orig=repo_apply_patch)"
+    },
+    "patch.find-missing": {
+      "input": "{\"path\":\"tmp/wiring-vcs-patch-fx.txt\",\"find\":\"ZZZ-nope-16\",\"replace\":\"x\"}",
+      "ok": false,
+      "error": "find_text_not_found",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.382Z] start repo_apply_patch (orig=repo_apply_patch)"
+    },
+    "patch.env": {
+      "input": "{\"path\":\".env\",\"find\":\"a\",\"replace\":\"b\"}",
+      "ok": false,
+      "error": "secrets_file_write_blocked",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:35.395Z] start repo_apply_patch (orig=repo_apply_patch)"
+    },
+    "patch.real-write": {
+      "input": "{\"path\":\"tmp/wiring-vcs-patch-fx.txt\",\"find\":\"AAA\",\"replace\":\"BBB\",\"dryRun\":false}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{path,dryRun,changed,preview}",
+      "outputPreview": "{\"path\":\"tmp/wiring-vcs-patch-fx.txt\",\"dryRun\":false,\"changed\":true,\"preview\":\"- alpha AAA omega WIRING_VCS_TOKEN_7c1a\\n+ alpha BBB omega WIRING_VCS_TOKEN_7c1a\"}",
+      "log0": "[2026-09-30T03:56:35.403Z] start repo_apply_patch (orig=repo_apply_patch)"
+    },
+    "runcmd.git-status": {
+      "input": "{\"command\":\"git status --short\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{command,exitCode,stdout,stderr}",
+      "outputPreview": "{\"command\":\"git status --short\",\"stdout\":\"19-test-self-fix-typescript-missing-name.txt\\n?? tmp/gate19-test-self-fix-typescript-number-boolean-argument-coercion.txt\\n?? tmp/gate19-test-self-fix-typescript-number-to-boolean.txt\\n?? tmp/gate19-test-self-fix-typescript-number-to-string.txt\\n?? tmp/gate19-test-self-fix-typescript-repair.txt\\n?? tmp/gate19-test-self-fix-typescript-string-to-boolean.txt\\n?? tmp/gate19-test-self-healing-failure.txt\\n?? tmp/gate19-test-self-healing-success.txt\\n?? tmp/gate20-guard-architecture.txt\\n?? tmp/gate20-guard-package-scripts.txt\\n?? tmp/gate20-test-joe-engineer-flow.txt\\n?? tmp/gate20-test-self-fix-build-context.txt\\n?? tmp/gate20-test-self-fix-execution-safety.txt\\n?? tmp/gate20-test-self-fix-typescript-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-to-number.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-to-string.txt\\n?? tmp/gate20-test-self-fix-typescript-missing-name.txt\\n?? tmp/gate20-test-self-fix-typescript-number-boolean-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-number-to-boolean.txt\\n?? tmp/gate20-test-self-fix-typescript-",
+      "log0": "[2026-09-30T03:56:35.423Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "runcmd.blocked": {
+      "input": "{\"command\":\"rm -rf /tmp/x\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"critical\"}",
+      "log0": "[2026-09-30T03:56:35.933Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "runcmd.chain": {
+      "input": "{\"command\":\"git status --short && echo VCSSAFE16\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{command,exitCode,stdout,stderr}",
+      "outputPreview": "{\"command\":\"git status --short && echo VCSSAFE16\",\"stdout\":\"f-fix-typescript-missing-name.txt\\n?? tmp/gate19-test-self-fix-typescript-number-boolean-argument-coercion.txt\\n?? tmp/gate19-test-self-fix-typescript-number-to-boolean.txt\\n?? tmp/gate19-test-self-fix-typescript-number-to-string.txt\\n?? tmp/gate19-test-self-fix-typescript-repair.txt\\n?? tmp/gate19-test-self-fix-typescript-string-to-boolean.txt\\n?? tmp/gate19-test-self-healing-failure.txt\\n?? tmp/gate19-test-self-healing-success.txt\\n?? tmp/gate20-guard-architecture.txt\\n?? tmp/gate20-guard-package-scripts.txt\\n?? tmp/gate20-test-joe-engineer-flow.txt\\n?? tmp/gate20-test-self-fix-build-context.txt\\n?? tmp/gate20-test-self-fix-execution-safety.txt\\n?? tmp/gate20-test-self-fix-typescript-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-to-number.txt\\n?? tmp/gate20-test-self-fix-typescript-boolean-to-string.txt\\n?? tmp/gate20-test-self-fix-typescript-missing-name.txt\\n?? tmp/gate20-test-self-fix-typescript-number-boolean-argument-coercion.txt\\n?? tmp/gate20-test-self-fix-typescript-number-to-boolean.txt\\n?? tmp/gate20-test-self-fix-type",
+      "log0": "[2026-09-30T03:56:35.940Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "runcmd.chain-small": {
+      "input": "{\"command\":\"git log --oneline -n 1 && echo VCSSAFE16\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{command,exitCode,stdout,stderr}",
+      "outputPreview": "{\"command\":\"git log --oneline -n 1 && echo VCSSAFE16\",\"stdout\":\"23718f74 docs(muse): independent position for TOOL-HTTP-OWNER-CANDIDATE-6965D584 consultation (ACCEPT with conditions + ownerless-entry probe PROBE_OK)\\nVCSSAFE16\\r\\n\",\"stderr\":\"\"}",
+      "log0": "[2026-09-30T03:56:36.443Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "runcmd.redirect-shellmark": {
+      "input": "{\"command\":\"git status --short > wiring-vcs-shellmark.txt\"}",
+      "ok": false,
+      "error": "command_failed",
+      "outputShape": "{command,exitCode,stdout,stderr}",
+      "outputPreview": "{\"command\":\"git status --short > wiring-vcs-shellmark.txt\",\"stdout\":\"\",\"stderr\":\"\"}",
+      "log0": "[2026-09-30T03:56:36.752Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "runcmd.cwd-escape": {
+      "input": "{\"command\":\"git status --short\",\"cwd\":\"../..\"}",
+      "ok": false,
+      "error": "path_outside_repo",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.301Z] start repo_run_command (orig=repo_run_command)"
+    },
+    "diff.summary": {
+      "input": "{}",
+      "ok": false,
+      "error": "Tool reported failure without an error message",
+      "outputShape": "{status,diffStat,stderr}",
+      "outputPreview": "{\"status\":\"?? .issue86-api-live.err\\n?? .issue86-api-live.out\\n?? api/.jest-cache/\\n?? api/.tmp/\\n?? api/src/.jest-cache/\\n?? api/src/.tmp/\\n?? api/src/core/llm/providers/nvidia.ts\\n?? api/src/core/quality/image-semantic-qa.ts\\n?? api/src/core/quality/live-data-qa.ts\\n?? api/src/core/quality/shop-qa.ts\\n?? api/tmp/\\n?? tmp/.git-sbx-config\\n?? tmp/api5101-tmp/\\n?? tmp/api5101-tmp27/\\n?? tmp/apply-first-visit.py\\n?? tmp/apply-m15.cjs\\n?? tmp/apply-m16.cjs\\n?? tmp/apply-m17.cjs\\n?? tmp/apply-m18.cjs\\n?? tmp/apply-m19.cjs\\n?? tmp/apply-m21.cjs\\n?? tmp/apply-m21b.cjs\\n?? tmp/apply-m25.cjs\\n?? tmp/apply-m25b.cjs\\n?? tmp/apply-m26.cjs\\n?? tmp/apply-seedcount2.py\\n?? tmp/apply-shelf-repin.py\\n?? tmp/apply-static-seed-fix.py\\n?? tmp/apply-verify-drop-tests.py\\n?? tmp/apply-verify-drop.py\\n?? tmp/apply-wanted-seedcount-note.py\\n?? tmp/assert-block.txt\\n?? tmp/battery-run4.txt\\n?? tmp/battery-run4b.txt\\n?? tmp/bench18/\\n?? tmp/build14.cjs\\n?? tmp/build15.cjs\\n?? tmp/build16.cjs\\n?? tmp/build17-api.txt\\n?? tmp/build17-web.txt\\n?? tmp/build18/\\n?? tmp/build19-api.txt\\n?? tmp/build20-api.txt\\n?? tmp/build20-web.txt\\n?? tmp/build21-api.txt\\n?? tmp/build21-web.txt\\n?? tmp/build22-api.txt\\n?? tmp/b",
+      "log0": "[2026-09-30T03:56:37.311Z] start repo_diff_summary (orig=repo_diff_summary)"
+    },
+    "pr.no-token": {
+      "input": "{\"action\":\"list\",\"owner\":\"o\",\"repo\":\"r\"}",
+      "ok": false,
+      "error": "GitHub token required",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.637Z] start github_pr (orig=github_pr)"
+    },
+    "pr.merge-unknown": {
+      "input": "{\"action\":\"merge\",\"owner\":\"o\",\"repo\":\"r\",\"token\":\"dummy-no-network-token\"}",
+      "ok": false,
+      "error": "Unknown action: merge",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.647Z] start github_pr (orig=github_pr)"
+    },
+    "mgr.no-token-no-repo": {
+      "input": "{\"action\":\"analyze\"}",
+      "ok": false,
+      "error": "A GitHub repository is required first. Send an owner/repo URL or choose one after connecting your account.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.654Z] start github_repo_manager (orig=github_repo_manager)"
+    },
+    "mgr.push-unknown": {
+      "input": "{\"action\":\"push\",\"repoName\":\"o/r\",\"token\":\"dummy-no-network-token\"}",
+      "ok": false,
+      "error": "approval_required",
+      "outputShape": "{risk}",
+      "outputPreview": "{\"risk\":\"high\"}",
+      "log0": "[2026-09-30T03:56:37.674Z] start git_ops (orig=github_repo_manager)"
+    },
+    "actions.list-runs": {
+      "input": "{\"action\":\"list_runs\",\"workflowType\":\"node-ci\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\"}",
+      "ok": false,
+      "error": "github_actions does not list runs. Use the GitHub API / github_repo_manager for real run data.",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.679Z] start github_actions (orig=github_actions)"
+    },
+    "actions.missing-type": {
+      "input": "{\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\"}",
+      "ok": false,
+      "error": "workflowType required for generation",
+      "outputShape": "null",
+      "outputPreview": null,
+      "log0": "[2026-09-30T03:56:37.689Z] start github_actions (orig=github_actions)"
+    },
+    "actions.seeded": {
+      "input": "{\"workflowType\":\"node-ci\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,workflowPath,workflowType,message}",
+      "outputPreview": "{\"success\":true,\"workflowPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\\\\.github\\\\workflows\\\\node-ci.yml\",\"workflowType\":\"node-ci\",\"message\":\"GitHub Actions workflow created: node-ci\"}",
+      "log0": "[2026-09-30T03:56:37.695Z] start github_actions (orig=github_actions)"
+    },
+    "actions.bogus-type": {
+      "input": "{\"workflowType\":\"bogus-type-16\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,workflowPath,workflowType,message}",
+      "outputPreview": "{\"success\":true,\"workflowPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\\\\.github\\\\workflows\\\\bogus-type-16.yml\",\"workflowType\":\"bogus-type-16\",\"message\":\"GitHub Actions workflow created: bogus-type-16\"}",
+      "log0": "[2026-09-30T03:56:37.710Z] start github_actions (orig=github_actions)"
+    },
+    "actions.traversal": {
+      "input": "{\"workflowType\":\"../../traversal16\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,workflowPath,workflowType,message}",
+      "outputPreview": "{\"success\":true,\"workflowPath\":\"D:\\\\Joe\\\\muse-worktree\\\\data\\\\projects\\\\session-audit-sess\\\\wiring-vcs-fx\\\\fxactions\\\\traversal16.yml\",\"workflowType\":\"../../traversal16\",\"message\":\"GitHub Actions workflow created: ../../traversal16\"}",
+      "log0": "[2026-09-30T03:56:37.723Z] start github_actions (orig=github_actions)"
+    },
+    "actions.outside-write": {
+      "input": "{\"workflowType\":\"node-ci\",\"projectPath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\"}",
+      "ok": true,
+      "error": null,
+      "outputShape": "{success,workflowPath,workflowType,message}",
+      "outputPreview": "{\"success\":true,\"workflowPath\":\"D:\\\\Joe\\\\muse-worktree\\\\tmp\\\\wiring-audit\\\\fx-vcs\\\\tmp\\\\wiring-vcs-outside-WIRING_VCS_TOKEN_7c1a\\\\.github\\\\workflows\\\\node-ci.yml\",\"workflowType\":\"node-ci\",\"message\":\"GitHub Actions workflow created: node-ci\"}",
+      "log0": "[2026-09-30T03:56:37.735Z] start github_actions (orig=github_actions)"
+    }
+  },
+  "sessionRoot": "D:\\Joe\\muse-worktree\\data\\projects\\session-audit-sess",
+  "hadGithubTokenEnv": false,
+  "gitEnv": {
+    "homeIsolated": true,
+    "safeDirectory": "D:/Joe/muse-worktree"
+  },
+  "localVerify": {
+    "branch": "joe/fx-audit-16",
+    "status": "",
+    "noteExists": true,
+    "log1": "9d8a374 docs: add Joe Git validation smoke note"
+  },
+  "patchEvidence": {
+    "dryRunPreserved": true,
+    "writeApplied": true
+  },
+  "actionsEvidence": {
+    "seededHead": "name: Node.js CI\n\non:\n  push:\n    branches: [ main, develop ",
+    "bogusHead": "name: Node.js CI\n\non:\n  push:\n    branches: [ main, develop ",
+    "traversalEvidence": {
+      "landedOutsideWorkflowsDir": true,
+      "landedHead": "name: Node.js CI\n\non:\n  push:\n    branches: [ main, develop ",
+      "workflowsDirClean": true,
+      "normalizedSame": true
+    },
+    "outsideWrote": true
+  },
+  "storeEvidence": {
+    "storeFile": true,
+    "storeKeys": [
+      "audit-sess"
+    ]
+  },
+  "realStoreEvidence": {
+    "exists": true
+  },
+  "shellmarkEvidence": {
+    "fileCreated": true,
+    "head": "?? .issue86-api-live.err\n?? .issue86-api-live.out\n?? api/.jest-cache/\n?? api/.tm"
+  },
+  "shellmarkRemoved": true,
+  "fixtures": {
+    "removed": true
+  }
+}

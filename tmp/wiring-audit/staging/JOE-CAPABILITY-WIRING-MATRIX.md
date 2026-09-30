@@ -1,30 +1,31 @@
 # JOE CAPABILITY WIRING MATRIX (Muse draft 2026-09-29 — staging for D:\Joe\coordination\team\JOE-CAPABILITY-WIRING-MATRIX.md)
 
-SCOPE=Muse-branch discovery checkpoints 1-15 only (muse/joe-development @ f1421ec3).
+SCOPE=Muse-branch discovery checkpoints 1-16 only (muse/joe-development @ 23718f74).
 Rows below are EVIDENCED tool-level entries. HIGH_LEVEL_CAPABILITIES grouping
-(merge v1: 19 trunks PROPOSED, 5 STORIED: files 10/10 in checkpoint 8;
+(merge v1: 19 trunks PROPOSED, 6 STORIED: files 10/10 in checkpoint 8;
 browser_ui 33/33 LEVEL-4 complete — checkpoint 11; both trunks
 verification-swept LEVEL-5 — checkpoint 12, see §VERIFY12; testing_qa
 6/6 LEVEL-4 + static verification-compat — checkpoint 13, see §VERIFY13;
 security 3/3 LEVEL-4 + static verification-compat — checkpoint 14,
 see §VERIFY14; code_understanding 16/16 LEVEL-4 + static
-verification-compat — checkpoint 15, see §VERIFY15),
+verification-compat — checkpoint 15, see §VERIFY15; vcs_repo 11/11
+LEVEL-4 + static verification-compat — checkpoint 16, see §VERIFY16),
 services/workers/internal-infra rows, and NVIDIA-owned
 registry/ingress/persistence areas are UNKNOWN/PENDING and must NOT be
 treated as covered.
 Evidence files: D:\Joe\muse-worktree\tmp\wiring-audit\{discovery,exposure,
 classification,reachability,target,exec,sweep1,sweep2,merge,sweep3,trunk_files,
 arch2,trunk_browser1,trunk_browser_live1,trunk_browser_live2,
-trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code}.json +
+trunk_browser_live3,verify_sweep12,trunk_testing,trunk_security,trunk_code,trunk_vcs}.json +
 {discover,exposure,classify,reach,target,exec,
 sweep1,sweep2,merge,sweep3,trunk_files,arch2,trunk_browser1,
 trunk_browser_live1,trunk_browser_live2,trunk_browser_live3,
-verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code}.mts +
+verify_sweep12,trunk_testing,chaos_call_probe,trunk_security,trunk_code,trunk_vcs}.mts +
 MUSE-WIRING-DISCOVERY-00{1,2,3,4,5,6,7}.md + MUSE-WIRING-DISCOVERY-008.md +
 MUSE-WIRING-DISCOVERY-009.md + MUSE-WIRING-DISCOVERY-010.md +
 MUSE-WIRING-DISCOVERY-011.md + MUSE-WIRING-DISCOVERY-012.md +
 MUSE-WIRING-DISCOVERY-013.md + MUSE-WIRING-DISCOVERY-014.md +
-MUSE-WIRING-DISCOVERY-015.md. All probes
+MUSE-WIRING-DISCOVERY-015.md + MUSE-WIRING-DISCOVERY-016.md. All probes
 re-runnable; exec/sweep/trunk probes perform bounded safe runs only
 (fixtures created + removed by the probe; 4 EMBARGO names never executed
 except browser_launch contained-http partial lift in 010 — static fixture
@@ -120,6 +121,21 @@ code_reviewer emits no url/reportPath/evidenceLocation
 covers code_reviewer (takes `projectPath`; task-level :1570-1578
 + gate :2372-2378 — code-indicated, same shape as auto_tester;
 P2-018 now covers 5 checkers). Evidence: trunk_code.json.
+
+§VERIFY16 — VERIFICATION-COMPAT STATIC (checkpoint 16, vcs_repo 11/11).
+Same consumer/allowlist/verdict-fn as §VERIFY12; no checker on this
+trunk so no L5 live gate proof is owed for it (5-checker backlog
+unchanged). CHECKER_PARTITION=task-level checkers among the 11:
+NONE (0); gate opt-ins change nothing (static 11/11). Checker set
+stays 14/14 CLOSED. VERDICT_MAP=12-shape pure-function table, all
+ok:true shapes map passed incl. import-no-url-guidance and
+patch-dryrun-preview (NON-CHECKER constraints, F88 class — safe
+today, must gate any allowlist change); runcmd-failed maps failed.
+RECEIPT_EVIDENCE=N/A (no trunk checker). REUSE=N/A. NOTE: live
+runcmd/diff legs are ALWAYS ok:false via MISMATCH #12 (exitCode
+dropped), so their live verdict is failed-with-output — noisy
+fail-closed, opposite direction from the hollow passes. Evidence:
+trunk_vcs.json.
 
 ---
 
@@ -2472,5 +2488,291 @@ RECOMMENDED_ACTION=WIRING-P2-015 extension (fail on empty-extract; isProviderFai
 
 ---
 
-END-OF-MUSE-DRAFT-ROWS=98 (88 individual + 8 group + 2 external-cited)
-COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-15 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 5 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick unprobed; risk table SURVEYED), contract audit per boundary (11 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
+CAPABILITY_ID=TOOL-git_local_workflow
+NAME=git_local_workflow (GitLocalWorkflowTool, GitLocalWorkflowTool.ts:67)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GitLocalWorkflowTool.ts
+IMPLEMENTATION=bounded local workflow on the session's imported project (global.joeProjects[sessionId].dir): branch from request (safeBranch), one docs note under docs/ (contained), git diff --check + staged checks, local commit, never pushes; capabilityMatchAny gate; required:['request']; permissions read/write/execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 3 legs 2x identical): empty-request honest; no-import honest pre-binding; positive -> ok:true with probe-side git proof (branch EXACTLY joe/fx-audit-16, tree clean, note exists, commit message exact) + pushed:false both runs; pre/post binding contrast proves sessionId reaches tool context (F108)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write+execute tier, no gate fired on these legs
+INPUT_CONTRACT_VALID=YES (request enforced; branch/doc-path validators)
+OUTPUT_CONTRACT_VALID=YES ({directory,branch,documentationPath,verificationCommand,commitSha,pushed,...})
+EVIDENCE_PRODUCED=YES (branch + sha + logs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; network-free by design)
+RECOMMENDED_ACTION=none (clean story; git identity for commits inherits environment)
+
+---
+
+CAPABILITY_ID=TOOL-git_ops
+NAME=git_ops (GitOpsTool, GitTools.ts:38)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GitTools.ts
+IMPLEMENTATION=arbitrary git operation via argv (runGitWithEnv -> runArgv, no shell re-parse); askpass token flow for push/fetch/pull/clone; smart recovery (upstream set, non-fast-forward rebase, remote set-url, auth translation); cwd raw or no-arg getActiveRoot(); required:['operation']; permissions execute/internet/read/write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-4 (behind github_pr/github_repo_manager/git_local_workflow on self-name goal); priority-listed; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 4 (only non-rank-1 trunk member)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 7 legs 2x identical): seeded status exact; invalid-op + missing-cwd + clone-noargs honest (clone fails pre-network); outside-cwd honored raw (UNCONTAINED PROVEN); default-cwd runs in local default workspace (../../../ paths), NOT the session (F107); push -> approval_required/high pre-execution, zero side effects (F106)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=medium at status (autoSafe pass); high at push/commit (AUTO_APPROVE_ALL gate, proven pre-execution)
+INPUT_CONTRACT_VALID=YES (operation regex-validated; args sanitized)
+OUTPUT_CONTRACT_VALID=YES ({output} stdout-or-stderr)
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (default-cwd + explicit-cwd uncontained)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (session-bind cwd; reject outside)
+
+---
+
+CAPABILITY_ID=TOOL-github_actions
+NAME=github_actions (GitHubActionsTool, GitHubActionsTool.ts:9)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GitHubActionsTool.ts
+IMPLEMENTATION=local workflow-file generator (4 templates; unknown type SILENTLY falls back to node-ci); saveWorkflow joins projectPath/.github/workflows/<type>.yml with NO containment and execute takes NO context; list_runs honestly refused; required:['workflowType','projectPath']; permissions write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 5 legs 2x identical): list-runs + missing-type honest; seeded node-ci byte-exact; bogus-type -> ok:true with node-ci CONTENT under the bogus name (SILENT SUBSTITUTION PROVEN); '../../traversal16' -> file lands OUTSIDE .github/workflows (TRAVERSAL PROVEN, contained to fixture); OS-temp projectPath written (UNCONTAINED PROVEN) (F103)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=write tier, no gate fired
+INPUT_CONTRACT_VALID=NO (workflowType unvalidated; projectPath uncontained)
+OUTPUT_CONTRACT_VALID=PARTIAL (reports requested type even when substituted)
+EVIDENCE_PRODUCED=YES (workflowPath + logs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (traversal + substitution + containment defects)
+RECOMMENDED_ACTION=WIRING-P1-006 (context + resolve + type whitelist)
+
+---
+
+CAPABILITY_ID=TOOL-github_pr
+NAME=github_pr (GitHubPRTool, GitHubPRTool.ts:8)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GitHubPRTool.ts
+IMPLEMENTATION=GitHub PR API via https (create/list implemented; NO merge case though the schema enum promises it); token from input/env/user-secret, honest no-token error; required:['action','owner','repo']; permissions execute; sideEffects write (skew noted)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 2 legs 2x identical, zero network): no-token honest pre-network; action=merge + dummy token -> 'Unknown action: merge' (DEAD ENUM PROVEN pre-network, F105)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=execute tier, no gate fired on these legs
+INPUT_CONTRACT_VALID=NO (enum promises merge, switch rejects it)
+OUTPUT_CONTRACT_VALID=UNKNOWN (network paths unprobed by design)
+EVIDENCE_PRODUCED=YES (honest errors + logs on probed legs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (dead merge contract; API paths unprobed)
+RECOMMENDED_ACTION=MISMATCH #4 3rd instance (implement merge or drop from enum; rides P2-002)
+
+---
+
+CAPABILITY_ID=TOOL-github_repo_manager
+NAME=github_repo_manager (GitHubRepoManagerTool, GitHubRepoManagerTool.ts:75)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/GitHubRepoManagerTool.ts
+IMPLEMENTATION=GitHub repo API (create/list/delete/analyze; push is NOT a tool case — ToolService rewrites push -> git_ops by design :547-550); token from input/env/user-secret; public-analyze without token; localized auth errors; required per action; permissions execute; sideEffects write (skew noted)
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES (via ToolService redirect for push)
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 2 legs 2x identical, zero network): analyze-without-repo honest auth gate (tool's own message — redirect does NOT apply); push + dummy token -> 'start git_ops (orig=github_repo_manager)' + approval_required/high (REDIRECT PROVEN end-to-end, F105)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=push inherits git_ops+push high gate pre-execution
+INPUT_CONTRACT_VALID=YES (with redirect: push never reaches the switch)
+OUTPUT_CONTRACT_VALID=UNKNOWN (network paths unprobed by design)
+EVIDENCE_PRODUCED=YES (honest errors + logs on probed legs)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (routing redirect must be cited; API paths unprobed)
+RECOMMENDED_ACTION=REDIRECT note (not a defect): registry-vs-execution routing must cite the push->git_ops rewrite
+
+---
+
+CAPABILITY_ID=TOOL-import_project
+NAME=import_project (ImportProjectTool, ImportProjectTool.ts:219)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/ImportProjectTool.ts
+IMPLEMENTATION=clone a GitHub URL (depth-1) OR open a local folder (resolveToolPath-anchored relatives; absolutes accepted raw), deterministic audit (package roots, key files, hygiene findings, safe-test-gated verification that never installs), register session active project + persist; required:['request']; permissions execute/write/internet
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1 BUT router-excluded (flag/catalog split: exclusion is fast-path/rerank-pool only, same as files-trunk tools)
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1 (catalog; router-side enforcement unprobed)
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 4 legs 2x identical, zero network): no-URL -> ok:true guidance (no-op pass); missing relative -> honest no_such_path (relatives session-anchored); absolute OS-temp dir -> ok:true + full audit + registration (OUTSIDE ACCEPTED PROVEN); local fixture -> skipped_dependencies_missing with zero execution (safe-test allowlist works) (F104)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=no gate fired on these legs
+INPUT_CONTRACT_VALID=PARTIAL (relatives contained; absolutes not)
+OUTPUT_CONTRACT_VALID=YES ({message,dir,analysis,repositoryAudit})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16; no-url guidance maps passed = F88 constraint)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (absolute-path containment gap; clone path unprobed)
+RECOMMENDED_ACTION=WIRING-P2-006 extension (contain absolutes to workspace)
+
+---
+
+CAPABILITY_ID=TOOL-repo_apply_patch
+NAME=repo_apply_patch (RepoApplyPatchTool, RepoSelfCodingTools.ts:169)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=find/replace patch on Joe-repo-relative paths (assertSafeRelativePath: no absolutes, no escapes, .env blocked; dryRun DEFAULTS TRUE); rooted at getRepoRoot() (Joe checkout, not session); required:['path','find','replace']; permissions read/write
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 4 legs 2x identical): dryrun preview byte-exact + file byte-PRESERVED; find-missing + .env honest; dryRun:false byte-APPLIED (F110; probe scratch created + removed)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=no gate fired
+INPUT_CONTRACT_VALID=YES (path/find enforced; .env blocked)
+OUTPUT_CONTRACT_VALID=YES ({path,dryRun,changed,preview})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16; dryrun-preview maps passed = F88 constraint)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; self-coding root is by design)
+RECOMMENDED_ACTION=none (clean story)
+
+---
+
+CAPABILITY_ID=TOOL-repo_diff_summary
+NAME=repo_diff_summary (RepoDiffSummaryTool, RepoSelfCodingTools.ts:252)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=git status + diff --stat of the Joe checkout via runSafeCommand; ok = both codes == 0 — ALWAYS FALSE because run() drops exitCode (MISMATCH #12); no error field on the false path; permissions read/execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 1 leg 2x identical): status/diffStat CORRECT content yet ok:false with NO error -> ToolService generic wrap (ALWAYS-FALSE PROVEN; P2-005 mechanism resolved, F102)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=no gate fired
+INPUT_CONTRACT_VALID=YES (no inputs)
+OUTPUT_CONTRACT_VALID=NO (ok is wrong on success; error missing)
+EVIDENCE_PRODUCED=PARTIAL (status content correct; ok/error wrong)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16; live verdict failed-with-output = noisy fail-closed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (always-false ok defect)
+RECOMMENDED_ACTION=MISMATCH #12 (run() exposes exitCode like runArgv, or tools use result.ok)
+
+---
+
+CAPABILITY_ID=TOOL-repo_read_file
+NAME=repo_read_file (RepoReadFileTool, RepoSelfCodingTools.ts:98)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=UTF-8 read of Joe-repo-relative paths (assertSafeRelativePath: no absolutes, no escapes, .env blocked); rooted at getRepoRoot() (Joe checkout, not session); required:['path']; permissions read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 5 legs 2x identical): AGENTS.md bytes exact; missing/absolute/.env/escape all honest with exact codes (F110; note the .env error NAME says write even on reads)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier (risk low) -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (all guards enforced)
+OUTPUT_CONTRACT_VALID=YES ({path,content,bytes})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; self-coding root is by design)
+RECOMMENDED_ACTION=none (clean story; .env error-name nit optional)
+
+---
+
+CAPABILITY_ID=TOOL-repo_run_command
+NAME=repo_run_command (RepoRunCommandTool, RepoSelfCodingTools.ts:213)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=prefix-allowlisted QA commands (npm test/build/lint/typecheck, tsc, git diff/status/log) + blockedFragments; executed via executionEngine.run STRING path -> cmd.exe shell (metacharacters LIVE); ok = code == 0 — ALWAYS FALSE because run() drops exitCode (MISMATCH #12); required:['command']; permissions execute
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 5 legs 2x identical): git-status stdout correct yet ok:false (ALWAYS-FALSE PROVEN); 'rm -rf' -> firewall critical pre-tool (F106); '&& echo VCSSAFE16' CHAIN EXECUTED (marker in stdout); '> wiring-vcs-shellmark.txt' REDIRECT WROTE the repo-root file (SHELL PROVEN, fixture removed); cwd-escape honest (F101/F102)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=medium (auto-approved) unless destructive scan hits critical
+INPUT_CONTRACT_VALID=NO (prefix gate admits shell metacharacters)
+OUTPUT_CONTRACT_VALID=NO (ok always false; exitCode key present-but-undefined)
+EVIDENCE_PRODUCED=PARTIAL (stdout/stderr correct; ok/exitCode wrong)
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16; live verdict failed-with-output = noisy fail-closed)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=PARTIALLY_WIRED (shell-escape P1 + always-false-ok defects)
+RECOMMENDED_ACTION=WIRING-P1-005 (argv-or-reject + risk re-tier) + MISMATCH #12 (exitCode)
+
+---
+
+CAPABILITY_ID=TOOL-repo_search
+NAME=repo_search (RepoSearchTool, RepoSelfCodingTools.ts:126)
+CATEGORY=tool/vcs-repo-trunk
+SOURCE_FILES=api/src/modules/tools/definitions/RepoSelfCodingTools.ts
+IMPLEMENTATION=substring search over Joe-repo files (safe ignores, 800-file walk cap, 100-match cap, 240-char previews); base = repo-relative safe path or repo root; rooted at getRepoRoot() (Joe checkout, not session); required:['query']; permissions read
+REGISTERED=YES
+REGISTRY_EVIDENCE=in live 163
+PLANNER_VISIBLE=YES
+PLANNER_EVIDENCE=SELECTABLE_BY_KEYWORD best-rank-1; not router-excluded
+SELECTABLE=YES
+SELECTION_EVIDENCE=self-grounded rank 1
+EXECUTOR_REACHABLE=YES
+EXECUTOR_EVIDENCE=LIVE (trunk_vcs.json, canonical, 3 legs 2x identical): seeded query count EXACTLY 1 (RepoSelfCodingTools.ts:214); empty-query honest; missing-base honest ENOENT naming the repo-rooted path (F110)
+PERMISSION_REACHABLE=YES
+PERMISSION_EVIDENCE=read tier -> passes default autoSafe
+INPUT_CONTRACT_VALID=YES (query enforced; base contained)
+OUTPUT_CONTRACT_VALID=YES ({query,matches,count})
+EVIDENCE_PRODUCED=YES
+VERIFICATION_COMPATIBLE=N/A (never a checker — static §VERIFY16)
+CANONICAL_PATH_CONNECTED=YES
+REAL_JOE_PROVEN=NO
+PRIMARY_STATE=FULLY_WIRED (within probed scope; self-coding root is by design)
+RECOMMENDED_ACTION=none (clean story)
+
+---
+
+END-OF-MUSE-DRAFT-ROWS=109 (99 individual + 8 group + 2 external-cited)
+COVERAGE-DISCLAIMER=This draft covers ONLY what Muse checkpoints 1-16 evidenced. Full matrix requires: per-trunk path stories (19 trunks PROPOSED in merge.json, 6 STORIED: files 10/10 + browser_ui 33/33 LEVEL-4 + testing_qa 6/6 LEVEL-4 + security 3/3 LEVEL-4 + code_understanding 16/16 LEVEL-4 + vcs_repo 11/11 LEVEL-4), services/workers/persistence/deployment rows (NVIDIA scope), bulk per-tool firewall sweep (8 spot + 28 empty-input batch-1+2 + 19 risk-tier live + 16 trunk-files + 3 arch-backend + 26 browser live1/live2 + 30 browser live3 + 19 trunk-testing + 13 trunk-security + 36 trunk-code + 43 trunk-vcs done; 25/25 no-required reviewed: 18 SAFE + 1 BOUND + 4 EMBARGO with static fixture designs + 2 FIXTURE probed contained; browser_launch embargo partially lifted for contained-http; sonar/dep_audit/dead_code positives embargoed; code_reviewer non-quick + ALL github-network/git-network-push/import-clone/npm-qa legs embargoed; risk table SURVEYED), contract audit per boundary (12 mismatches + schema/execute family), LEVEL 5-6 proofs (L5 done files+browser_ui; testing_qa + security + code_understanding static-only, 5 checkers pending; vcs_repo static-only with 0 checkers), and NVIDIA cross-review (pending — worker on CLI-BATCH1 + audit slice).
