@@ -1,7 +1,7 @@
 # Joe — Live report (Muse cycle, 2026-10-01 ~03:00→04:10 +03:00)
 FALLBACK_COPY: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from the Muse sandbox (edit tool refuses paths outside workspace, re-proven this cycle on the consultation file). This workspace copy is authoritative for import.
 MUSE_HEAD=839720e1 + this cycle (RUN25 review, run29 real-UI UAT, wiring checkpoint 44, live report — to commit)
-MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; 12 dirty files + EVAL-006/spec drafts preserved, untouched)
+MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; 13 dirty files, was 12 at cycle start, + EVAL-006/spec drafts preserved, untouched)
 
 ## 1. ماذا نعمل الآن؟
 دورة CRITICAL مكتملة الأركان الثلاثة: (أ) مراجعة استشارة RUN25-EDIT-EFFECT-FINGERPRINT (مطلوبة عند أول نقطة آمنة) — أنجزت وسُلّمت. (ب) اختبار UI-001 الحقيقي الجديد (run29 بكلمة wordtally unseen) — نُفّذ على runtime جديد من HEAD ووصل لنتيجة طرفية. (ج) نقطة تدقيق التوصيل 44 (مفردات ENTRY-B) — أنجزت. الآن في التسليم (تقرير + commit).
@@ -23,7 +23,7 @@ MAIN_HEAD=e8fd9589 (NVIDIA worktree, read-only; 12 dirty files + EVAL-006/spec d
 نهاية الدورة عند نقطة تحقق. التالي: نقطة 45 (عضوية baseTools لمفردات ENTRY-B)؛ إعادة run29-مكافئ عند توفر مزود قادر على التخطيط؛ مراجعة دقيقة بعد تثبيت مرشح بصمة Edit.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-(من الحالة المشتركة + فحص مباشر للشجرة فقط): الشجرة عند e8fd9589، 12 ملفًا متسخًا + مسودات EVAL-006/المواصفات — محفوظة ولم تُمس. مراجعة NVIDIA على RUN25 مسجلة مسبقًا (APPROVE_WITH_CHANGES). لا نشاط جديد مؤكد beyond ذلك — لم يُخترع أي نشاط.
+(من الحالة المشتركة + فحص مباشر للشجرة فقط): الشجرة عند e8fd9589، 13 ملفًا متسخًا (كانت 12 أول الدورة) + مسودات EVAL-006/المواصفات — محفوظة ولم تُمس. رُصدت كتابة NVIDIA حية أثناء الدورة: PhaseExecutorTool.ts ‏(03:05)‏ + plan-tools.ts ‏(03:21)‏ — نشاط ملفات فقط، لا مواقف مراجعة مستنتجة. إحصاء MAIN أُعيد التحقق بعده (‏declared=175‏ ثابت) فنتائج نقطة 44 صامدة. مراجعة NVIDIA على RUN25 مسجلة مسبقًا (APPROVE_WITH_CHANGES).
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
 لا مراجعة مباشرة جديدة بين العاملين هذه الدورة. رُوجعت مقترح Codex (بصمة Edit) وأدلته بقراءة الـdiff الدقيق وإعادة الإنتاج الحي؛ قُورنت الشجرتان مباشرة في مسبار ENTRY-B.
