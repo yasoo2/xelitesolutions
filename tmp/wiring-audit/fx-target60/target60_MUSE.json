@@ -1,0 +1,161 @@
+{
+ "probe": "target60",
+ "tree": "muse",
+ "rows": [
+  {
+   "name": "ambiguity_resolver",
+   "registered": true,
+   "retrievedOf3": 3,
+   "bestRank": 1,
+   "bestScore": 9.6,
+   "bestGoal": "t60-amb-1",
+   "perGoal": [
+    {
+     "id": "t60-amb-1",
+     "goal": "resolve the ambiguity in this requirement text",
+     "score": 9.6,
+     "rank": 1,
+     "inTop30": true
+    },
+    {
+     "id": "t60-amb-2",
+     "goal": "this requirement is ambiguous, resolve it before coding",
+     "score": 6,
+     "rank": 1,
+     "inTop30": true
+    },
+    {
+     "id": "t60-amb-3",
+     "goal": "check ambiguity in the login requirement text",
+     "score": 3.6,
+     "rank": 7,
+     "inTop30": true
+    }
+   ]
+  },
+  {
+   "name": "self_confidence_evaluator",
+   "registered": true,
+   "retrievedOf3": 3,
+   "bestRank": 3,
+   "bestScore": 7,
+   "bestGoal": "t60-conf-1",
+   "perGoal": [
+    {
+     "id": "t60-conf-1",
+     "goal": "evaluate your confidence in this plan",
+     "score": 7,
+     "rank": 3,
+     "inTop30": true
+    },
+    {
+     "id": "t60-conf-2",
+     "goal": "how confident are you about this answer, evaluate it",
+     "score": 1,
+     "rank": 7,
+     "inTop30": true
+    },
+    {
+     "id": "t60-conf-3",
+     "goal": "evaluate confidence for the deployment content",
+     "score": 7,
+     "rank": 3,
+     "inTop30": true
+    }
+   ]
+  },
+  {
+   "name": "ask_user",
+   "registered": true,
+   "retrievedOf3": 3,
+   "bestRank": 1,
+   "bestScore": 12.2,
+   "bestGoal": "t60-ask-2",
+   "perGoal": [
+    {
+     "id": "t60-ask-1",
+     "goal": "ask me which region to deploy to",
+     "score": 5.2,
+     "rank": 3,
+     "inTop30": true
+    },
+    {
+     "id": "t60-ask-2",
+     "goal": "ask the user to choose a color for the theme",
+     "score": 12.2,
+     "rank": 1,
+     "inTop30": true
+    },
+    {
+     "id": "t60-ask-3",
+     "goal": "blocked on the api key, ask the user for clarification",
+     "score": 14.2,
+     "rank": 1,
+     "inTop30": true
+    }
+   ]
+  },
+  {
+   "name": "echo",
+   "registered": true,
+   "retrievedOf3": 3,
+   "bestRank": 1,
+   "bestScore": 8.2,
+   "bestGoal": "t60-echo-2",
+   "perGoal": [
+    {
+     "id": "t60-echo-1",
+     "goal": "echo back the text I send",
+     "score": 5.2,
+     "rank": 2,
+     "inTop30": true
+    },
+    {
+     "id": "t60-echo-2",
+     "goal": "ping pong echo this input text",
+     "score": 8.2,
+     "rank": 1,
+     "inTop30": true
+    },
+    {
+     "id": "t60-echo-3",
+     "goal": "return the input text unchanged",
+     "score": 2.9,
+     "rank": 4,
+     "inTop30": true
+    }
+   ]
+  },
+  {
+   "name": "ls",
+   "registered": true,
+   "retrievedOf3": 3,
+   "bestRank": 4,
+   "bestScore": 3,
+   "bestGoal": "t60-ls-3",
+   "perGoal": [
+    {
+     "id": "t60-ls-1",
+     "goal": "list directory entries in the project folder",
+     "score": 3,
+     "rank": 10,
+     "inTop30": true
+    },
+    {
+     "id": "t60-ls-2",
+     "goal": "ls the workspace path and show entries",
+     "score": 1,
+     "rank": 6,
+     "inTop30": true
+    },
+    {
+     "id": "t60-ls-3",
+     "goal": "list the directory entries including hidden files",
+     "score": 3,
+     "rank": 4,
+     "inTop30": true
+    }
+   ]
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+CHECKPOINT-060 MAIN-TREE PROBE BLOCK (read-only observation, 2026-10-01)
+
+Command: node tsx cli.mjs tmp/wiring-audit/target60.mts --tree=main
+  --out=tmp/wiring-audit/fx-target60
+  (same env as the passing --tree=muse run in the same shell)
+
+Result: TransformError, 0 goals evaluated on main:
+  D:\Joe\xelitesolutions\api\src\modules\tools\definitions\
+  ProjectPipelineTool.ts:698:21: ERROR: Expected "}" but found "]"
+
+Cause: NVIDIA's ACTIVE dirty work-in-progress edit (IMPLEMENT003,
+PlanningEngine/ProjectPipelineTool scope per TEAM-STATE cycle43;
+Codex syntax critic already shared with owner). Muse did NOT modify,
+work around, or snapshot-substitute the main tree: the owner's dirty
+state is preserved untouched per control plane.
+
+Consequence: target60_MAIN.json does NOT exist this cycle. Muse-tree
+result (5/5 retrievable, 15/15 goals) stands alone; main parity for
+the new targeted goals is deferred until NVIDIA's syntax stabilizes.
+Checkpoint-059 main 65-goal parity (159/164, identical 5 misses) is
+unaffected historical evidence.
+
+No repair proposed (discovery only; active owner exists).

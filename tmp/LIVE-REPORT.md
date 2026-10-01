@@ -1,63 +1,73 @@
 # LIVE-REPORT (Muse fallback copy — shared write blocked by sandbox)
 FALLBACK_PATH=D:\Joe\muse-worktree\tmp\LIVE-REPORT.md
-SHARED_TARGET=D:\Joe\coordination\team\LIVE-REPORT.md (write blocked: tool policy "absolute path is outside the workspace")
-UPDATED=2026-10-01T11:15:00Z
-MUSE_HEAD=06909957 (pre-cycle; new commit pending this cycle)
+SHARED_TARGET=D:\Joe\coordination\team\LIVE-REPORT.md (write blocked: absolute path outside workspace)
+UPDATED=2026-10-01T14:50:00Z
+MUSE_HEAD=606fb912 (pre-cycle; new commit pending this cycle)
 
 1. ماذا نعمل الآن؟
-Muse: مراجعة DASHBOARD-EVIDENCE-ATTRIBUTION (تمت، APPROVE) + تدقيق الربط
-059 (مجموعات العرض P2) + جدوى UI-001 (لا تشغيل جديد). الهدفان CRITICAL
-محفوظان ولم يُغلق أي منهما.
+Muse: مراجعة الحزمة المثبتة WINDOWS-FALLBACK-CWD-001-INSTALLED (تمت،
+APPROVE) + تدقيق الربط 060 (الاسترجاع الموجه للـ5) + جاهزية UI-001
+run37 (المزود عاد). الهدفان CRITICAL محفوظان ولم يُغلق أي منهما.
 
 2. ماذا اكتشفنا؟
-- استرجاع P2 يعرض 158/163 (Muse) و159/164 (main) على بطارية 65 هدفًا؛
-  5 أسماء لم تُعرض قط لنفس البطارية (4 ازدحام منخفض الدرجات + 1 صفر
-  حقيقي لأداة تفاعلية) — ليست أدلة يُتم.
-- specification_verification (شجرة NVIDIA المتسخة) معروضة على 8 أهداف
-  في main — مرئية للمخطط عبر P2.
-- عطل المزودين مستمر (آخر دليل LLM7 quota ~14.4h) — لا UAT جديد مبرر.
+- الحزمة المثبتة 39fe5c75 فوق 890cc9ee سليمة: 9/9 هاشات تطابق،
+  الفرق ضيق كما هو محدد، الشروط C1-C5 مستوفاة كلها بالأدلة.
+- إعادة تشغيل مستقلة للجناح الدائم 12/13؛ الفشل الوحيد EPERM بيئي
+  (ACL السجلات)، ليس عيب منتج — كل تأكيدات C1/C2 خضراء.
+- الأسماء الـ5 الغائبة سابقًا تُسترجع كلها 3/3 بأهداف موجهة (رتب
+  1-4): فجوة تغطية بطارية فقط، لا يُتم استرجاعي على شجرة Muse.
+- شجرة main غير قابلة للفحص هذه الدورة: كسر نحوي في عمل NVIDIA
+  المتسخ النشط (لا يُلمس). المزود المحلي qwen2.5-coder:7b يولّد
+  بنجاح (SMOKE-OK) — عائق run34-36 مرفوع.
 
 3. ماذا أنجزنا فعليًا؟
-- مراجعة مستقلة كاملة للوحة attribution: فحص collector مقابل النسخة،
-  إعادة تشغيل verifier بنجاح 6/6، فحص status.json الحي — APPROVE.
-- تدقيق 059 بملفات: offered59/score59 + battery + 4 JSON + مذكرة.
-- مذكرة جدوى run36: قرار موثق بعدم التكرار المكلف.
+- مراجعة مثبتة كاملة: التزامات + هاشات + C1-C5 + إعادة تشغيل +
+  red/green/combined/stacked/mains-preflight — APPROVE (التكامل
+  ما زال مشروطًا بالتسوية وUAT :5002 المرخص).
+- تدقيق 060: target60.mts + target60_MUSE.json + main-blocked.txt
+  + مذكرة (اتحاد 80 هدفًا = 163/163 على Muse).
+- جاهزية run37: PROMPT37 (loggrep، جديد) + مذكرة جدوى + إثبات المزود.
 
 4. ماذا يعمل Muse الآن؟
 إنهاء الدورة: تقرير حي + commit موثق + push لفرع muse/joe-development.
 
 5. ماذا يعمل NVIDIA الآن؟
-(من الحالة المشتركة): مالك CLI-batch1 (قبول محفوظ، إصلاح producer
-مطلوب عبر 002) + مراجعات bound/fallback. دورة 40/41 نشطة. لا تأكيد
-جديد من Muse هذه الدورة.
+(من الحالة المشتركة + فحص القراءة فقط): مالك إصلاح CLI-producer
+(IMPLEMENT003، يحرر PlanningEngine/ProjectPipelineTool، كسر نحوي
+قيد العمل، critic مشترك) + مراجعة مثبتة معلقة. main @ e8fd9589
++14 متسخًا محفوظًا. لا تأكيد جديد من Muse على إنجاز NVIDIA.
 
 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-لا مراجعة جديدة متبادلة هذه الدورة. مراجعة Muse للوحة attribution
-منشورة للاستيراد (fallback، الكتابة المشتركة محظورة).
+لا مراجعة جديدة متبادلة هذه الدورة. مراجعة Muse المثبتة منشورة
+للاستيراد (fallback). تصحيحات N1-N3 السابقة على مراجعة NVIDIA
+للتصميم ما زالت قائمة وغير مؤثرة على الحزمة.
 
 7. أين اتفقا وأين اختلفا؟
-لا جديد هذه الدورة. (السابق: اتفاق مشروط على bound-delta/checkpoint؛
-خلاف وقائعي موثق في إنتاجية CLI.)
+اتفاق (من مراجعة التصميم الموثقة): العيب حقيقي، طبقة preflight
+صحيحة، رفض البدائل المبسطة. لا خلاف جديد. المراجعة المثبتة من
+NVIDIA ما زالت معلقة — لا اتفاق مستنتج.
 
 8. الأرقام المؤكدة (لا تخترع):
 DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN
 FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN
 UNKNOWN=UNKNOWN REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
 ملاحظة: أرقام مثبتة جزئيًا فقط:
-REPORTED_BY_MUSE: OFFERED_UNION_MUSE=158/163، OFFERED_UNION_MAIN=159/164،
-NEVER_OFFERED_65GOAL=5 (نفس الأسماء، آلية محلولة)، PHANTOM=0،
-REGISTRY_LIVE_MUSE=163، REGISTRY_LIVE_MAIN=164.
-VERIFIED: مراجعة attribution (verifier مستقل 6/6) + تدقيق 059 + جدوى 36.
+REPORTED_BY_MUSE: TARGET60_MUSE=15/15 (رتب 1-4)، UNION80_MUSE=163/163،
+PHANTOM_65=0، REGISTRY_MUSE=163؛ TARGET60_MAIN=UNKNOWN (محظور نحويًا).
+VERIFIED: الحزمة المثبتة (APPROVE مشروط التكامل) + تدقيق 060 + جاهزية 37.
 غير VERIFIED: أي إحصاء ربط شامل — ما زال UNKNOWN.
 
 9. ما آخر اختبار ونتيجته؟
-تدقيق 059 (غير متصل، tsx): عروض P2 شجرتان خضراء + درجات/رتب الـ5.
-REAL_JOE_UI: لم يُجرَ تشغيل جديد (BLOCKED بيئيًا موثق) — ليس PASS ولا FAIL.
+إعادة تشغيل مستقلة للجناح المثبت: 12/13 (1 EPERM بيئي موثق).
+مسبار الاسترجاع الموجه: 15/15 Muse. دخان المزود: SMOKE-OK.
+REAL_JOE_UI: لم يُجرَ تشغيل جديد (جاهزية فقط) — ليس PASS ولا FAIL.
 
 10. ما المشاكل أو العوائق الحالية؟
-- UI-001: عطل المزودين مستمر — العائق الأكبر أمام UAT حقيقي جديد.
-- كتابة الملفات المشتركة محظورة من sandbox (مراجعات/تقارير fallback للاستيراد).
+- UI-001: يحتاج rebuild + تشغيل :5101 + 10-40 دقيقة جلسة حية —
+  مجدول الدورة القادمة كمهمة أولى (المزود جاهز الآن).
+- main غير قابل للفحص حتى يستقر نحو NVIDIA (عمل نشط محفوظ).
+- كتابة الملفات المشتركة محظورة من sandbox (fallback للاستيراد).
 
 11. ما الخطوة التالية؟
-run36 بموضوع جديد فور تعافي المزودين. تدقيق: أهداف استرجاع موجهة للـ5
-ثم مسبار EXECUTABLE. مراجعة stacked-fallback عند طلبها فعليًا.
+run37 (loggrep) إرسال ومراقبة حتى الحكم. إعادة target60 على main بعد
+استقرار NVIDIA. التكامل المثبت بعد مراجعة NVIDIA + التسوية + UAT :5002.
