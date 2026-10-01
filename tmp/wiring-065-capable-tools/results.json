@@ -1,0 +1,536 @@
+{
+ "registered": 163,
+ "rows": [
+  {
+   "id": "browser",
+   "verdict": "HIT",
+   "markers": [
+    "browser"
+   ],
+   "setupTools": [
+    "browser_run",
+    "browser_summarize",
+    "browser_ui_audit",
+    "browser_ui_fix",
+    "browser_page_fix",
+    "browser_fill_form"
+   ],
+   "hitNames": [
+    "browser_click",
+    "browser_page_fix",
+    "browser_launch",
+    "browser_a11y_deep",
+    "browser_autofix",
+    "browser_check_links",
+    "browser_console_scan",
+    "browser_contrast_audit"
+   ],
+   "top": [
+    {
+     "name": "browser_click",
+     "score": 12,
+     "why": [
+      "open",
+      "page",
+      "browser",
+      "click"
+     ]
+    },
+    {
+     "name": "browser_page_fix",
+     "score": 11,
+     "why": [
+      "open",
+      "page",
+      "browser"
+     ]
+    },
+    {
+     "name": "browser_launch",
+     "score": 9,
+     "why": [
+      "open",
+      "page",
+      "browser"
+     ]
+    },
+    {
+     "name": "browser_a11y_deep",
+     "score": 7,
+     "why": [
+      "open",
+      "page",
+      "browser"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "read",
+   "verdict": "HIT",
+   "markers": [
+    "read"
+   ],
+   "setupTools": [
+    "browser_readability",
+    "repo_read_file",
+    "orders_read",
+    "read_file"
+   ],
+   "hitNames": [
+    "read_file",
+    "repo_read_file",
+    "orders_read"
+   ],
+   "top": [
+    {
+     "name": "read_file",
+     "score": 10,
+     "why": [
+      "read",
+      "file"
+     ]
+    },
+    {
+     "name": "repo_read_file",
+     "score": 10,
+     "why": [
+      "read",
+      "file"
+     ]
+    },
+    {
+     "name": "ai_write_file",
+     "score": 5,
+     "why": [
+      "file"
+     ]
+    },
+    {
+     "name": "delete_file",
+     "score": 5,
+     "why": [
+      "file"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "write",
+   "verdict": "HIT",
+   "markers": [
+    "write"
+   ],
+   "setupTools": [
+    "ai_write_file",
+    "write_file",
+    "todo_write"
+   ],
+   "hitNames": [
+    "ai_write_file",
+    "todo_write",
+    "write_file"
+   ],
+   "top": [
+    {
+     "name": "ai_write_file",
+     "score": 5,
+     "why": [
+      "write"
+     ]
+    },
+    {
+     "name": "todo_write",
+     "score": 5,
+     "why": [
+      "write"
+     ]
+    },
+    {
+     "name": "write_file",
+     "score": 5,
+     "why": [
+      "write"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "npm-test",
+   "verdict": "HIT",
+   "markers": [
+    "npm",
+    "test"
+   ],
+   "setupTools": [
+    "chaos_test_plan",
+    "auto_tester",
+    "npm_manager",
+    "api_tester",
+    "load_tester",
+    "test_generator"
+   ],
+   "hitNames": [
+    "npm_manager",
+    "chaos_test_plan",
+    "test_generator"
+   ],
+   "top": [
+    {
+     "name": "quality_run",
+     "score": 8,
+     "why": [
+      "run",
+      "test"
+     ]
+    },
+    {
+     "name": "npm_manager",
+     "score": 6,
+     "why": [
+      "run",
+      "npm"
+     ]
+    },
+    {
+     "name": "repo_run_command",
+     "score": 6,
+     "why": [
+      "run",
+      "test"
+     ]
+    },
+    {
+     "name": "browser_run",
+     "score": 5,
+     "why": [
+      "run"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "shell",
+   "verdict": "HIT",
+   "markers": [
+    "shell",
+    "terminal"
+   ],
+   "setupTools": [
+    "shell_execute",
+    "shell_check_status",
+    "terminal_manager"
+   ],
+   "hitNames": [
+    "shell_execute",
+    "terminal_manager",
+    "shell_check_status"
+   ],
+   "top": [
+    {
+     "name": "shell_execute",
+     "score": 10,
+     "why": [
+      "execute",
+      "shell"
+     ]
+    },
+    {
+     "name": "terminal_manager",
+     "score": 6,
+     "why": [
+      "shell",
+      "output"
+     ]
+    },
+    {
+     "name": "execute_python",
+     "score": 5,
+     "why": [
+      "execute"
+     ]
+    },
+    {
+     "name": "shell_check_status",
+     "score": 5,
+     "why": [
+      "shell"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "git",
+   "verdict": "MISS",
+   "markers": [
+    "git"
+   ],
+   "setupTools": [
+    "git_local_workflow",
+    "git_ops",
+    "github_repo_manager",
+    "github_pr",
+    "github_actions"
+   ],
+   "hitNames": [],
+   "top": [
+    {
+     "name": "browser_page_fix",
+     "score": 5,
+     "why": [
+      "fix"
+     ]
+    },
+    {
+     "name": "browser_ui_fix",
+     "score": 5,
+     "why": [
+      "fix"
+     ]
+    },
+    {
+     "name": "business_logic_parser",
+     "score": 5,
+     "why": [
+      "parser"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "search",
+   "verdict": "HIT",
+   "markers": [
+    "search",
+    "grep"
+   ],
+   "setupTools": [
+    "browser_search",
+    "repo_search",
+    "search_public_apis",
+    "search_api",
+    "knowledge_search",
+    "search_files"
+   ],
+   "hitNames": [
+    "browser_search",
+    "knowledge_search",
+    "repo_search",
+    "search_api",
+    "search_files"
+   ],
+   "top": [
+    {
+     "name": "analyze_codebase",
+     "score": 5,
+     "why": [
+      "codebase"
+     ]
+    },
+    {
+     "name": "browser_search",
+     "score": 5,
+     "why": [
+      "search"
+     ]
+    },
+    {
+     "name": "codebase_outline",
+     "score": 5,
+     "why": [
+      "codebase"
+     ]
+    },
+    {
+     "name": "knowledge_search",
+     "score": 5,
+     "why": [
+      "search"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "memory",
+   "verdict": "MISS",
+   "markers": [
+    "memory"
+   ],
+   "setupTools": [
+    "recall_memory"
+   ],
+   "hitNames": [],
+   "top": [
+    {
+     "name": "notify_user",
+     "score": 5,
+     "why": [
+      "user"
+     ]
+    },
+    {
+     "name": "user_browser",
+     "score": 5,
+     "why": [
+      "user"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "react",
+   "verdict": "HIT",
+   "markers": [
+    "react",
+    "project"
+   ],
+   "setupTools": [
+    "project_undo",
+    "project_repair",
+    "project_planner",
+    "project_pipeline",
+    "project_run",
+    "project_stop"
+   ],
+   "hitNames": [
+    "react_project",
+    "project_edit",
+    "project_run",
+    "analyze_project",
+    "api_project",
+    "deploy_project",
+    "import_project"
+   ],
+   "top": [
+    {
+     "name": "react_project",
+     "score": 10,
+     "why": [
+      "react",
+      "project"
+     ]
+    },
+    {
+     "name": "project_edit",
+     "score": 8,
+     "why": [
+      "react",
+      "project"
+     ]
+    },
+    {
+     "name": "project_run",
+     "score": 6,
+     "why": [
+      "react",
+      "project"
+     ]
+    },
+    {
+     "name": "analyze_project",
+     "score": 5,
+     "why": [
+      "project"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "image-orphan",
+   "verdict": "HIT",
+   "markers": [
+    "image"
+   ],
+   "setupTools": [
+    "image_studio"
+   ],
+   "hitNames": [
+    "image_studio"
+   ],
+   "top": [
+    {
+     "name": "ci_generate_pipeline",
+     "score": 5,
+     "why": [
+      "generate"
+     ]
+    },
+    {
+     "name": "image_studio",
+     "score": 5,
+     "why": [
+      "image"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "negative",
+   "verdict": "PASS_DECLINED",
+   "top": []
+  },
+  {
+   "id": "chain-observational",
+   "verdict": "OBSERVED",
+   "top": [
+    {
+     "name": "repo_run_command",
+     "score": 6,
+     "why": [
+      "repository",
+      "run"
+     ]
+    },
+    {
+     "name": "analyze_codebase",
+     "score": 5,
+     "why": [
+      "analyze"
+     ]
+    },
+    {
+     "name": "analyze_project",
+     "score": 5,
+     "why": [
+      "analyze"
+     ]
+    },
+    {
+     "name": "browser_page_fix",
+     "score": 5,
+     "why": [
+      "fix"
+     ]
+    },
+    {
+     "name": "browser_run",
+     "score": 5,
+     "why": [
+      "run"
+     ]
+    },
+    {
+     "name": "browser_ui_fix",
+     "score": 5,
+     "why": [
+      "fix"
+     ]
+    },
+    {
+     "name": "project_run",
+     "score": 5,
+     "why": [
+      "run"
+     ]
+    },
+    {
+     "name": "quality_run",
+     "score": 5,
+     "why": [
+      "run"
+     ]
+    }
+   ]
+  }
+ ]
+}

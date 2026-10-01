@@ -1,0 +1,46 @@
+{
+ "startedUtc": "2026-10-01T15:01:05.379Z",
+ "checks": {
+  "duckHandshake": {
+   "ok": true,
+   "status": 200,
+   "ms": 919,
+   "vqdPresent": true
+  },
+  "duckChat": {
+   "ok": false,
+   "status": 418,
+   "ms": 319,
+   "bytes": 570,
+   "containsMarker": false
+  },
+  "llm7models": {
+   "ok": true,
+   "status": 200,
+   "ms": 431,
+   "count": 67,
+   "firstFree": "DeepSeek-V4-Flash-0731"
+  },
+  "llm7chat": {
+   "ok": true,
+   "status": 200,
+   "ms": 4816,
+   "bytes": 545,
+   "containsMarker": true,
+   "retryAfterSec": null,
+   "bodyHead": "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"FEAS-OK\\n\\nWait, the instruction says \\\"Reply with exactly: FEAS-OK\\\". That means I should output **exactly** that string, with no"
+  },
+  "ollama": {
+   "ok": true,
+   "status": 200,
+   "ms": 350,
+   "models": [
+    "qwen2.5:1.5b",
+    "moondream:latest",
+    "llava:latest",
+    "qwen2.5-coder:7b"
+   ]
+  }
+ },
+ "finishedUtc": "2026-10-01T15:01:12.294Z"
+}
