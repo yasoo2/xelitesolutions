@@ -1,0 +1,12 @@
+Build a Node.js command-line tool called wordfreq. It reads a text
+file and prints the most frequent words: `wordfreq FILE N` prints
+the top N words to stdout, one per line, each line holding the word,
+one space, then its count (for example `the 14`). Words are
+case-insensitive maximal runs of English letters; anything else
+separates words. Ties are broken alphabetically (a before b). It must
+print --help output describing usage and arguments. If the file does
+not exist it must exit with code 3 and print a one-line error starting
+with "cannot open" to stderr. If N is not a positive integer it must
+exit with code 2 and print a one-line error starting with "bad count"
+to stderr. Include a sample text file with at least 10 lines and an
+npm test script that verifies the behavior.
