@@ -1,0 +1,21 @@
+\a-short-order-is-still-an-order.test.ts || a column order with a project open is routed to that project
+\people-ask-they-do-not-command.test.ts || desire phrasing counts, in both languages
+\people-ask-they-do-not-command.test.ts || and the imperatives that already worked still do
+\build-not-chat.test.ts || recognises his request as a build at all
+\build-not-chat.test.ts || and so does: Create a multi-vendor marketplace
+\build-not-chat.test.ts || and so does: build an admin panel
+\build-not-chat.test.ts || and so does: create a booking portal
+\a-question-is-not-an-order.test.ts || not a question, because it names a deed: هل يمكنك بناء موقع لي؟
+\a-question-is-not-an-order.test.ts || not a question, because it names a deed: كيف أنشر المشروع؟ انشره الآن
+\a-question-is-not-an-order.test.ts || not a question, because it names a deed: can you build me a website?
+\a-noun-is-not-a-command.test.ts || قاعة أفراح builds instead of opening Google
+\a-noun-is-not-a-command.test.ts || كشف counts as a build
+\a-noun-is-not-a-command.test.ts || list counts as a build
+\a-noun-is-not-a-command.test.ts || تسجيل دخول is not a build
+\a-noun-is-not-a-command.test.ts || بحث حقيقي is still a browser task
+\a-noun-is-not-a-command.test.ts || موقع معروف is still a browser task
+\a-noun-is-not-a-command.test.ts || تصفّح is still a browser task
+\a-noun-is-not-a-command.test.ts || كرّاسة is a build without being in any list
+\a-noun-is-not-a-command.test.ts || فاتورة is a build without being in any list
+\a-noun-is-not-a-command.test.ts || English rolodex is a build without being in any list
+\a-noun-is-not-a-command.test.ts || تسجيل دخول is not a build

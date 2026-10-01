@@ -1,65 +1,81 @@
-# LIVE-REPORT — Muse (+ NVIDIA observed) — 2026-10-01 ~16:45Z
+# LIVE-REPORT — Muse (+ NVIDIA observed) — 2026-10-01 ~17:20Z
 Fallback copy: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable
 from this sandbox (this-session error: "absolute path is outside the workspace").
 All counts below are Muse-verified unless marked otherwise.
 
 ## 1. ماذا نعمل الآن؟
-- Muse: أنهى إصلاح ثغرة ترميز بيانات الاعتماد (BROWSER-STREAM-002) + مراجعة
-  الاستشارة، وفحص جدوى UI-001 (رقم 42)، ونقطة تدقيق wiring رقم 067. الخطوة
-  الأخيرة: commit + push لفرع muse فقط.
+- Muse: أنهى مراجعة دقيقة (exact) لمرشح Codex requested-action (7832da83):
+  REVIEWED_BY_MUSE / REWORK مع 6 إصلاحات محددة. أُعيد التحقق من إصلاح
+  BROWSER-STREAM-002 عند HEAD (16/16 + 13/13). مسبار UI-001 رخيص: :5002 لا
+  يستجيب من الصندوق. نقطة wiring-068 (حواف fan-out). التشطيب الآن.
 - CRITICAL wiring audit و CRITICAL-REAL-JOE-UI-001 ما زالا PENDING.
 
 ## 2. ماذا اكتشفنا؟
-- ثغرة الترميز حقيقية ومؤكدة بإعادة إنتاج بايت-مطابق (12/13، نفس حالة الفشل).
-- تحذير منهجي مهم: البيئة تستبدل السلاسل الشبيهة ببيانات الاعتماد في المحتوى
-  المؤلَّف بـ [REDACTED] عند الكتابة، والعرض البصري للسلاسل غير موثوق. الدليل
-  الموثوق: الأحكام/التجزئات/رموز الأحرف فقط. أول إعادة تشغيل يدوية كانت باطلة
-  لهذا السبب وتم إسقاطها.
-- wiring-067: فشل git/memory منهجي وليس هشاشة صياغة (git يفشل 3/4 صياغات فعلية،
-  memory ينقسم حسب الفعل). اتجاه الفشل الآمن غالبًا هو الرفض لا التخمين الخطأ.
-- UI-001: نافذة المزود تومض (200 ثم 429 خلال دقائق). قاعدة الإيقاف تمنع الإطلاق
-  قبل إعادة التعيين (~01:00Z 2 أكتوبر) أو توفر مفتاح.
+- مرشح requested-action: الاتجاه صحيح والإصلاح مُبرهَن (22/22 + 6/6 أُعيد
+  إنتاجهما)، لكن توجد: (1) حالة تخويل-خاطئ جديدة (طلب تسجيل دخول يُصنَّف بناءً
+  — تصادم سجل فعل/اسم)؛ (2) 5 انحدارات تغطية خالصة (أسماء: platform/marketplace/
+  panel/portal + فعل محتاج)؛ (3) 6 اختبارات أعمدة تتعارض مع العقد الجديد وتحتاج
+  قرارًا صريحًا (التوصية: مسار شكل ask+contents)؛ (4) عدم تناظر النفي
+  (عام مقابل مقيَّد). 8 إخفاقات أخرى أُثبت أنها سابقة (pre-existing).
+- انحراف WIP: شجرة المرشح اكتسبت تغييرات غير مُدمَجة أثناء المراجعة (إعادة ترتيب
+  build-first + كتلة answer-only في ملفات NVIDIA المحفوظة + 3 أخطاء tsc من WIP).
+  كل أدلتي مقاسة على الـcommit النقي. التوسع يحتاج موافقة NVIDIA.
+- BROWSER-002: الإصلاح سليم عند HEAD الحالي (أُعيد التحقق، الرد المُسلَّم باقٍ
+  بايت-مطابق للاستيراد).
+- :5002/api/health من الصندوق: فشل اتصال (exit 7) — لا إطلاق UI هذه الدورة.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- إصلاح محدود مكتمل: redactUrl يصنّف القيم مفكوكة الترميز (query/fragment/relative)
-  بفك ترميز واحد محدود. الفحص البايت-مطابق: 13/13 (كان 12/13). مجموعة الاختبار:
-  16/16. بناء الواجهة (tsc + vite): exit 0.
-- استشارة BROWSER-STREAM-002: REVIEWED_BY_MUSE / APPROVE_WITH_CHANGES (ملف رد).
-- feas42: قرار NO_LAUNCH موثق (التزام بقاعدة الإيقاف).
-- wiring-067: تحقيق paraphrase مكتمل (قراءة فقط، بدون تغيير كود).
+- مراجعة REQUESTED-ACTION-CANDIDATE-001: REVIEWED_BY_MUSE / REWORK (ملف رد +
+  مسبارا A/B ب27 حالة وadversarial ب22 حالة + إعادة تشغيل 3+12 مجموعة).
+- إعادة تحقق BROWSER-002: 16/16 + مسبار 13/13 (بدون لمس الرد المسلَّم).
+- wiring-068: خريطة fan-out لـ looksLikeBuild (14 موقعًا + quickIntent/parse) —
+  حواف موثقة، لا أرقام شاملة جديدة.
+- UI-001: مسبار صحة فقط (BLOCKED-env، لم يُطلق run).
 
-## 4. ماذا يعمل Muse الآن؟ التشطيب: commit + push + تقرير.
+## 4. ماذا يعمل Muse الآن؟ التشطيب: commit + push لفرع muse فقط + تقرير.
 ## 5. ماذا يعمل NVIDIA الآن؟ (من الحالة المشتركة، غير مخترع)
-آخر HEAD معروف: main e8fd9589 + عمل CLI غير مدمج (14 ملفًا متسخًا، مملوك لـ NVIDIA،
-محفوظ). لا نشاط جديد مؤكد هذه الدورة من الأدلة المتاحة هنا.
+آخر حالة مشتركة (TEAM-STATE 16:03Z): دورة 46 سجلت تقسيم الدوال
+(SPLIT_WITH_FUNCTION_BOUNDARIES)؛ مراجعة CLI-004: REWORK_REQUIRED؛ main e8fd9589
++ 14 ملفًا متسخًا محفوظًا. لا نشاط جديد مؤكد من الأدلة المتاحة هنا هذه الدورة.
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟ لا مراجعة جديدة متبادلة هذه الدورة.
-## 7. أين اتفقا وأين اختلفا؟ لا اتفاق/اختلاف جديد. مراجعة NVIDIA الأمنية
-(BROWSER-STREAM-LOG-001-NVIDIA) ما زالت PENDING.
+## 7. أين اتفقا وأين اختلفا؟ لا اتفاق/اختلاف جديد. المعلق: مراجعة NVIDIA الأمنية
+(BROWSER-STREAM-LOG-001-NVIDIA)، إصلاح NVIDIA للمستهلكات (5 FAIL)، ومراجعة NVIDIA
+لمرشح Codex الجديد.
 
-## 8. الأرقام المؤكدة (Muse، شجرة muse)
-- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 EXECUTABLE_TOOLS=UNKNOWN
-- FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN (اسم واحد مؤكد:
-  generate_image غير مسجل، عائلة image مغطاة عبر image_studio)
-- DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=UNKNOWN VERIFIED=UNKNOWN
-- REAL_JOE_PROVEN=0 (لا PASS جديد؛ آخر 11 تشغيل UI محظورة بمزود خارجي)
-- مطابقة المخطط (LEVEL3): git 1/4، memory 2/4 (paraphrases)؛ انحدار + سلبي أخضر.
-- REPORTED_BY_MUSE: كل ما سبق. REPORTED_BY_NVIDIA: لا جديد. VERIFIED: 163 مسجل،
-  16/16، 13/13، بناء exit 0.
+## 8. الأرقام المؤكدة
+- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (muse tree, last reported)
+  EXECUTABLE_TOOLS=UNKNOWN
+- FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN (عائلة intent-classification:
+  PARTIALLY_WIRED — predicate متصل، المستهلكات مفصولة) ORPHANED=UNKNOWN
+- DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=1 (redactUrl encoded-JWT، مُتحقق
+  16/16 + 13/13) VERIFIED=as-8/9
+- REAL_JOE_PROVEN=0 (لا PASS جديد؛ :5002 غير reachable هذه الدورة)
+- المرشح (شجرة Codex المعزولة): 22/22 سلطة + 6/6 حارس مخطط (مُعاد إنتاجهما)؛
+  5/5 مستهلكات FAIL كما هو مصمم؛ انحدار مجاور: 232/253 (21 إخفاقًا: 13 مرشح
+  + 8 سابقة).
+- REPORTED_BY_MUSE: كل ما سبق. REPORTED_BY_NVIDIA: لا جديد هذه الدورة.
+  VERIFIED: أرقام المرشح أُعيد إنتاجها؛ tsc المرشح نظيف بالاستبعاد.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- browser-stream-token-redaction: 16/16 PASS (9.6s).
-- مسبار Codex بايت-مطابق على المساعد المُصلَح: 13/13 PASS.
-- web build (tsc -b && vite build): exit 0.
-- feas42: LLM7 chat 200 (589B مطابق feas41 — likely cached replay)، DuckAI 418.
-- wiring-067: 11 حالة (انظر 8)، صفر SETUP_INVALID.
+- مرشح Codex ( pristine commit): authority 22/22 PASS، planner 6/6 PASS،
+  consumer 0/5 (5 FAIL متعمد موثق)؛ انحدار 12 مجموعة: 7 خضراء/5 حمراء (232/253).
+- مسبار قديم/جديد (27 حالة): نسب دقيق (5 تغطية + 6 أعمدة + 1 تخويل-خاطئ + 8 سابقة).
+- BROWSER-002 (HEAD 2c480ed3): 16/16 PASS + مسبار بايت-مطابق 13/13 PASS.
+- tsc المرشح (شجرة متسخة بـWIP): 3 أخطاء كلها من WIP غير مدمج — ليست عيوب commit.
+- :5002/api/health: EXIT 7 (لا مستمع).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- مزودات keyless مستنفدة (429/418)؛ التشغيل الكامل مستحيل حتى ~01:00Z أو مفتاح.
-- الكتابة المشتركة (consultations/team/claims) ممنوعة من الصندوق؛ الردود في
-  tmp/team-consultation بانتظار الاستيراد الحرفي.
-- فحص الاتصال الحي :5002 يتطلب بيئة غير الصندوق.
+- :5002 غير reachable من الصندوق؛ لا UAT حقيقي هذه الدورة.
+- WIP غير مدمج في شجرة Codex يتوسع في ملفات NVIDIA المحفوظة (classifyIntent/
+  IntentParser) — يحتاج قرار ملكية قبل الدمج.
+- الكتابة المشتركة ممنوعة من الصندوق؛ الردود في tmp/team-consultation بانتظار
+  الاستيراد الحرفي (ردّان الآن: BROWSER-002 + REQUESTED-ACTION-001).
+- إصلاح R1-R6 (المرشح) + إصلاح المستهلكات (NVIDIA) + البوابات + UAT-5002 كلها
+  معلقة قبل أي قبول.
 
 ## 11. ما الخطوة التالية؟
-- دمج (Muse->main) بعد مراجعة NVIDIA + فحص حي، بدون نسخ ملفات كاملة.
-- بعد 01:00Z: مسبار جديد + إطلاق run42 متعاقب.
-- wiring-068: فحص تنفيذ LEVEL4 لعائلة HIT أو المسار التالي حسب أمر التدقيق.
+- Codex: معالجة R1-R6 في النطاق المملوك + قرار ملكية WIP مع NVIDIA، ثم طلب
+  إعادة مراجعة.
+- NVIDIA: إصلاح المستهلكات الـ5 + المراجعة الأمنية + مراجعة المرشح.
+- Muse (الدورة القادمة): مسبار :5002 مجددًا؛ UAT حقيقي عند التوفر؛ wiring-069
+  حسب أمر التدقيق؛ إعادة مراجعة دقيقة لأي rework commit جديد.

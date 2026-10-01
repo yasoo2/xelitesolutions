@@ -1,0 +1,138 @@
+{
+ "pass": 11,
+ "total": 22,
+ "rows": [
+  {
+   "name": "help-me build",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "lets build",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "we need",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "please comma",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "want the bug fixed",
+   "expected": true,
+   "got": true,
+   "ok": true
+  },
+  {
+   "name": "dont backend just static",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "bare create app",
+   "expected": true,
+   "got": true,
+   "ok": true
+  },
+  {
+   "name": "fix failing tests",
+   "expected": true,
+   "got": true,
+   "ok": true
+  },
+  {
+   "name": "polite add feature",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "run tests",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "deploy site",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "delete temp",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "crash report",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "build failed report",
+   "expected": true,
+   "got": false,
+   "ok": false
+  },
+  {
+   "name": "what is api",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "how db stores",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "is site fast",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "remember fact",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "how-to advice",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "empty",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "anaphora build it",
+   "expected": false,
+   "got": false,
+   "ok": true
+  },
+  {
+   "name": "anaphora create it",
+   "expected": false,
+   "got": false,
+   "ok": true
+  }
+ ]
+}

@@ -1,0 +1,245 @@
+[
+ {
+  "name": "people-45 muhtaj",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "people-52 isna",
+  "expected": true,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ },
+ {
+  "name": "build-HIS",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "build-marketplace",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "build-panel",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "build-portal",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-wedding",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-kashf",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 2 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-list",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 2 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-login-NEG",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-kurrasa",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-fatura",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 4 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "noun-rolodex",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "ctrl-badi-table",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container + field indicator",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "ctrl-create-app",
+  "expected": true,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "ctrl-what-api",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "ctrl-explain-cols",
+  "expected": false,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": false,
+  "newReason": "answer-only or global no-execution contract",
+  "verdict": "FIXED_new_repaired_it"
+ },
+ {
+  "name": "ctrl-inventory-build",
+  "expected": true,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "browser-search",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "browser-github",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "browser-tasaffah",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_OK"
+ },
+ {
+  "name": "transfer-poem",
+  "expected": false,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ },
+ {
+  "name": "transfer-illustration",
+  "expected": false,
+  "old": true,
+  "oldReason": "desire verb + container",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ },
+ {
+  "name": "transfer-anaphoric",
+  "expected": true,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "no affirmative construction authority; fields are descriptive",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ },
+ {
+  "name": "transfer-unquoted-spec",
+  "expected": false,
+  "old": true,
+  "oldReason": "derivedColumns found 3 columns",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ },
+ {
+  "name": "transfer-global-prohibit",
+  "expected": false,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": true,
+  "newReason": "affirmative requested action outside quoted examples",
+  "verdict": "REGRESSION_new_broke_it"
+ },
+ {
+  "name": "transfer-scoped-nomod",
+  "expected": true,
+  "old": false,
+  "oldReason": "no build structure detected",
+  "new": false,
+  "newReason": "answer-only or global no-execution contract",
+  "verdict": "SAME_FAIL_PREEXISTING"
+ }
+]
