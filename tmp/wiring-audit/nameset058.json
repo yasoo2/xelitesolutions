@@ -1,0 +1,18 @@
+{
+ "errors": [],
+ "count_5101": 163,
+ "entries_5101": 163,
+ "count_5000": 164,
+ "entries_5000": 164,
+ "dups_5101": [],
+ "dups_5000": [],
+ "only_5101": [],
+ "only_5000": [
+  "specification_verification"
+ ],
+ "src_files_indexed_muse": 635,
+ "src_files_indexed_main": 627,
+ "names_without_any_src_anchor": [],
+ "safenew_count_muse": 71,
+ "safenew_count_main": 71
+}

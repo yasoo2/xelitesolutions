@@ -1,0 +1,17 @@
+Build a Node.js command-line tool called fcount. It counts files by
+extension inside a directory: `fcount DIR` scans only regular files
+directly inside DIR and prints one line per extension found, each line
+`EXT COUNT` where EXT is the lowercase extension without the dot and
+COUNT is the number of files with that extension. Lines are sorted by
+count descending, then by extension ascending. Files with no extension
+are counted under the label `(none)`. With the flag
+`fcount DIR --json` it prints instead a single JSON object mapping each
+lowercase extension to its count (files without extension use the key
+""), with keys sorted alphabetically. It must print --help output
+describing usage, arguments and the --json flag. If DIR does not exist
+it must exit with code 8 and print a one-line error starting with
+"no such directory" to stderr. If DIR exists but is not a directory it
+must exit with code 9 and print a one-line error starting with
+"not a directory" to stderr. Include a sample directory with at least 8
+files across at least 3 different extensions (plus at least one file
+with no extension) and an npm test script that verifies the behavior.

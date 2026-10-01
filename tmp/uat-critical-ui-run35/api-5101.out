@@ -1,0 +1,313 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+[32minfo[39m: [DeployManager] Auto-deploy poller disabled (local/offline mode). {"timestamp":"2026-10-01T10:30:55.228Z"}
+[ExecutionEnforcer] Running Boot-Time Integrity Check...
+[ExecutionEnforcer] Integrity Check PASSED.
+[ExecutionGuard] Global Execution Guard INSTALLED (Full Coverage).
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=deploy_1790850655124 duration=10645ms cmd=git config --global --replace-all safe.directory ' {"timestamp":"2026-10-01T10:31:05.787Z"}
+[33mwarn[39m: [DeployManager] safe.directory setup warning: Command failed: warning: safe.directory ''*'' not absolute
+error: could not lock config file C:/Users/home/.gitconfig: Permission denied
+ {"timestamp":"2026-10-01T10:31:05.792Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790850665701 duration=740ms cmd=git {"timestamp":"2026-10-01T10:31:06.441Z"}
+[2026-10-01 13:31:05.596 +0300] [32mINFO[39m (24464): [36mJOE_BUILD_SHA[39m
+    [35mbuildSha[39m: "unknown"
+    [35mbundleFingerprint[39m: "01947a1586cf"
+    [35mentry[39m: "D:\Joe\muse-worktree\api\dist\index.js"
+[LocalBrain] 👁️ vision model already installed: moondream:latest — attached images are analyzed locally.
+[2026-10-01 13:31:05.598 +0300] [32mINFO[39m (24464): [36m🚀 JOE API STARTUP INITIATED...[39m
+[2026-10-01 13:31:05.987 +0300] [32mINFO[39m (24464): [36m⚠️  JSON Persistence mode enabled: Data will be saved to api/data/db[39m
+[2026-10-01 13:31:06.029 +0300] [32mINFO[39m (24464): [36mAPI server listening and WebSocket attached[39m
+    [35mport[39m: 5101
+    [35mbindHost[39m: "0.0.0.0"
+    [35mcrashLog[39m: "D:\Joe\muse-worktree\tmp\uat-critical-ui-run35\api\data\crash.log"
+[2026-10-01 13:31:06.593 +0300] [32mINFO[39m (24464): [36m🧠 Local brain ready: 3 model(s) — chat=qwen2.5-coder:7b, code=qwen2.5-coder:7b. Warming up in background.[39m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790850666452 duration=740ms cmd=git {"timestamp":"2026-10-01T10:31:07.192Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790850667195 duration=2380ms cmd=git {"timestamp":"2026-10-01T10:31:09.575Z"}
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=runargv_1790850669591 duration=3104ms cmd=git {"timestamp":"2026-10-01T10:31:12.695Z"}
+[LocalBrain] ⏱️ qwen2.5-coder:7b answered a one-token prompt in 25843ms — the router sizes its patience from this.
+[0mGET /login [32m200[0m 156.783 ms - 1756[0m
+[0mGET /fonts/fonts.css [32m200[0m 105.113 ms - 9595[0m
+[0mGET /fonts/cairo-400-arabic.woff2 [32m200[0m 93.652 ms - 30896[0m
+[0mGET /fonts/cairo-600-arabic.woff2 [32m200[0m 146.341 ms - 30896[0m
+[0mGET /assets/vendor-JHjnsBAY.js [32m200[0m 85.462 ms - 161404[0m
+[0mGET /assets/index-cHHoGVbX.js [32m200[0m 77.468 ms - 167210[0m
+[0mGET /assets/index-DPmpSM6o.css [32m200[0m 118.153 ms - 174354[0m
+[0mGET /config.js [32m200[0m 194.510 ms - 46[0m
+[0mGET /assets/ui-Bed4yjHF.js [32m200[0m 195.531 ms - 174330[0m
+[0mGET /assets/Login-ma9Ue3qO.js [32m200[0m 90.312 ms - 12918[0m
+[0mGET /assets/useTranslation-BCPm-o2_.js [32m200[0m 93.432 ms - 3358[0m
+[0mGET /fonts/cairo-400-latin.woff2 [32m200[0m 32.215 ms - 33820[0m
+[0mGET /api/auth/google/config [32m200[0m 18.193 ms - 392[0m
+[0mPOST /api/auth/guest [32m200[0m 125.161 ms - 296[0m
+[0mGET /assets/socket-DtbmwUz1.js [32m200[0m 31.294 ms - 22486[0m
+[0mGET /assets/Joe-BynLPSSc.css [32m200[0m 33.343 ms - 82287[0m
+[0mGET /assets/Joe-Du1P55dX.js [32m200[0m 51.370 ms - 1029478[0m
+[0mGET /assets/workspace-surface-DZZr3wg8.js [32m200[0m 205.986 ms - 30538[0m
+[0mGET /assets/PreviewPanel-MHMt9AwJ.js [32m200[0m 306.906 ms - 8994[0m
+[0mGET /assets/monaco-setup-BdWARbO6.js [32m200[0m 492.686 ms - 17061[0m
+[0mGET /api/system/update/status [32m200[0m 133.471 ms - 169[0m
+[0mPOST /api/runs/verify [32m200[0m 23.712 ms - 65[0m
+[0mGET /api/system/update/check [32m200[0m 18.974 ms - 105[0m
+[WS] Upgrading ws connection at: /api/ws
+[WS] Connection established
+[WS] Client connected to liveWss
+[0mGET /api/project/root [32m200[0m 7.966 ms - 155[0m
+[0mGET /fonts/jetbrains-mono-400-latin.woff2 [32m200[0m 1195.343 ms - 31432[0m
+[0mGET /fonts/outfit-700-latin.woff2 [32m200[0m 1226.333 ms - 32292[0m
+[0mGET /fonts/outfit-600-latin.woff2 [32m200[0m 1238.787 ms - 32292[0m
+[0mGET /api/workspaces [32m200[0m 13.006 ms - 452[0m
+[0mGET /api/oauth/google/profile [32m200[0m 52.323 ms - 69[0m
+[0mGET /api/runs/active [32m200[0m 52.348 ms - 11[0m
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 18.700 ms - 2[0m
+[0mGET /api/github/status?workspaceId=0bc3d29422a95bc53a61a4f2 [32m200[0m 8.817 ms - 19[0m
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 25.257 ms - -[0m
+[0mPOST /api/sessions [32m200[0m 47.985 ms - 313[0m
+[0mGET /api/project/tree [32m200[0m 648.886 ms - 113[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/queue [32m200[0m 7.065 ms - 27[0m
+[SessionController] Listing messages for sessionId: 6abe372ce98fc06549b2526a, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe372ce98fc06549b2526a
+[0mPOST /api/runs/verify [32m200[0m 17.510 ms - 65[0m
+[0mGET /api/extension/status [32m200[0m 3.226 ms - 29[0m
+[SessionController] Listing messages for sessionId: 6abe372ce98fc06549b2526a, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe372ce98fc06549b2526a
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 3.772 ms - 315[0m
+[0mGET /api/project/tree [36m304[0m 141.722 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/history [32m200[0m 171.102 ms - 13[0m
+[0mGET /api/project/root [36m304[0m 22.665 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/workspace [32m200[0m 142.819 ms - 26[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6abe372ce98fc06549b2526a userId=6abe3727e98fc06549b25268
+[BrowserWS] First client for sid=browser:6abe372ce98fc06549b2526a. Calling onFirstClient.
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/messages [32m200[0m 173.025 ms - 13[0m
+[0mGET /api/project/root [36m304[0m 4.091 ms - -[0m
+[0mPUT /api/sessions/6abe372ce98fc06549b2526a/queue [32m200[0m 37.281 ms - 27[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/workspace [36m304[0m 276.783 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790850860621 duration=1085ms cmd=git {"timestamp":"2026-10-01T10:34:21.706Z"}
+[0mGET /joe [32m200[0m 42.875 ms - 1756[0m
+[BrowserWS] Client disconnect. sid=browser:6abe372ce98fc06549b2526a
+[BrowserWS] Last client for sid=browser:6abe372ce98fc06549b2526a. Calling onLastClient.
+[0mGET /fonts/fonts.css [36m304[0m 32.816 ms - -[0m
+[0mGET /fonts/cairo-400-arabic.woff2 [36m304[0m 32.959 ms - -[0m
+[0mGET /fonts/cairo-600-arabic.woff2 [36m304[0m 52.420 ms - -[0m
+[0mGET /assets/index-cHHoGVbX.js [36m304[0m 50.687 ms - -[0m
+[0mGET /assets/vendor-JHjnsBAY.js [36m304[0m 66.121 ms - -[0m
+[0mGET /assets/ui-Bed4yjHF.js [36m304[0m 81.236 ms - -[0m
+[0mGET /assets/index-DPmpSM6o.css [36m304[0m 4.011 ms - -[0m
+[0mGET /config.js [36m304[0m 52.179 ms - -[0m
+[0mGET /assets/Joe-Du1P55dX.js [36m304[0m 13.998 ms - -[0m
+[0mGET /assets/Joe-BynLPSSc.css [36m304[0m 18.500 ms - -[0m
+[0mGET /assets/socket-DtbmwUz1.js [36m304[0m 21.426 ms - -[0m
+[0mGET /assets/useTranslation-BCPm-o2_.js [36m304[0m 63.153 ms - -[0m
+[0mGET /assets/workspace-surface-DZZr3wg8.js [36m304[0m 8.126 ms - -[0m
+[0mGET /assets/PreviewPanel-MHMt9AwJ.js [36m304[0m 54.148 ms - -[0m
+[0mGET /assets/monaco-setup-BdWARbO6.js [36m304[0m 25.955 ms - -[0m
+[0mPOST /api/runs/verify [32m200[0m 56.278 ms - 65[0m
+[0mGET /api/oauth/google/profile [36m304[0m 68.128 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 7.614 ms - -[0m
+[0mGET /api/system/update/status [36m304[0m 31.069 ms - -[0m
+[0mGET /api/system/update/check [36m304[0m 6.706 ms - -[0m
+[0mGET /api/project/root [36m304[0m 4.045 ms - -[0m
+[0mGET /api/workspaces [36m304[0m 27.355 ms - -[0m
+[WS] Upgrading ws connection at: /api/ws
+[WS] Connection established
+[WS] Client connected to liveWss
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 7.145 ms - 367[0m
+[0mGET /api/project/tree [36m304[0m 136.152 ms - -[0m
+[0mGET /api/github/status?workspaceId=0bc3d29422a95bc53a61a4f2 [36m304[0m 3.489 ms - -[0m
+[0mGET /api/project/tree [36m304[0m 37.615 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/queue [32m200[0m 4.966 ms - 27[0m
+[SessionController] Listing messages for sessionId: 6abe372ce98fc06549b2526a, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe372ce98fc06549b2526a
+[0mPOST /api/runs/verify [32m200[0m 7.480 ms - 65[0m
+[0mGET /api/extension/status [36m304[0m 2.572 ms - -[0m
+[SessionController] Listing messages for sessionId: 6abe372ce98fc06549b2526a, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe372ce98fc06549b2526a
+[0mGET /api/sessions?kind=chat%2Cagent [36m304[0m 11.455 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/history [36m304[0m 59.026 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/workspace [36m304[0m 28.196 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/messages [36m304[0m 30.492 ms - -[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6abe372ce98fc06549b2526a userId=6abe3727e98fc06549b25268
+[BrowserWS] First client for sid=browser:6abe372ce98fc06549b2526a. Calling onFirstClient.
+[0mGET /api/project/root [36m304[0m 3.721 ms - -[0m
+[0mPUT /api/sessions/6abe372ce98fc06549b2526a/queue [32m200[0m 8.540 ms - 27[0m
+[0mGET /api/project/root [36m304[0m 11.105 ms - -[0m
+[0mGET /api/sessions/6abe372ce98fc06549b2526a/workspace [36m304[0m 220.105 ms - -[0m
+[0mPOST /api/sessions [32m200[0m 4.763 ms - 313[0m
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/queue [32m200[0m 2.981 ms - 27[0m
+[0mPOST /api/runs/verify [32m200[0m 3.477 ms - 65[0m
+[SessionController] Listing messages for sessionId: 6abe3733e98fc06549b2526c, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe3733e98fc06549b2526c
+[SessionController] Listing messages for sessionId: 6abe3733e98fc06549b2526c, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 0 messages and 0 tools for session 6abe3733e98fc06549b2526c
+[0mGET /api/sessions?kind=chat%2Cagent [32m200[0m 23.033 ms - 681[0m
+[0mPUT /api/sessions/6abe3733e98fc06549b2526c/queue [32m200[0m 1.620 ms - 27[0m
+[0mGET /api/extension/status [36m304[0m 2.514 ms - -[0m
+[WS] Upgrading browser connection
+[WS] Browser connection upgraded
+[BrowserWS] Client connect. sid=browser:6abe3733e98fc06549b2526c userId=6abe3727e98fc06549b25268
+[BrowserWS] First client for sid=browser:6abe3733e98fc06549b2526c. Calling onFirstClient.
+[BrowserWS] Client disconnect. sid=browser:6abe372ce98fc06549b2526a
+[BrowserWS] Last client for sid=browser:6abe372ce98fc06549b2526a. Calling onLastClient.
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/history [32m200[0m 181.708 ms - 13[0m
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/messages [32m200[0m 168.041 ms - 13[0m
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/workspace [32m200[0m 118.978 ms - 26[0m
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/workspace [36m304[0m 7.992 ms - -[0m
+[RunRoute] Unified execution requested for session: 6abe3733e98fc06549b2526c
+[WS] Broadcast type=user_input target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=run_started target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_detail target=6abe3727e98fc06549b25268 clients=1
+[AgentLoopService] REAL-TIME Execution Request: Build a Node.js command-line tool called fcount. It counts files by
+extension inside a directory: `fcount DIR` scans only regular files
+directly inside DIR and prints one line per extension found, each line
+`EXT COUNT` where EXT is the lowercase extension without the dot and
+COUNT is the number of files with that extension. Lines are sorted by
+count descending, then by extension ascending. Files with no extension
+are counted under the label `(none)`. With the flag
+`fcount DIR --json` it prints instead a single JSON object mapping each
+lowercase extension to its count (files without extension use the key
+""), with keys sorted alphabetically. It must print --help output
+describing usage, arguments and the --json flag. If DIR does not exist
+it must exit with code 8 and print a one-line error starting with
+"no such directory" to stderr. If DIR exists but is not a directory it
+must exit with code 9 and print a one-line error starting with
+"not a directory" to stderr. Include a sample directory with at least 8
+files across at least 3 different extensions (plus at least one file
+with no extension) and an npm test script that verifies the behavior. (traceId=trace-d2b66b3e-9e80-4e20-96fd-419f8856ecb4)
+[WS] Broadcast type=thinking_detail target=6abe3727e98fc06549b25268 clients=1
+[0mPOST /api/runs/start [32m200[0m 1603.241 ms - 133[0m
+[LongTermMemory] Loaded 0 profiles and 0 memory stores
+[AgentOrchestrator] Starting REAL-TIME orchestration for goal: Build a Node.js command-line tool called fcount. It counts files by
+extension inside a directory: `fcount DIR` scans only regular files
+directly inside DIR and prints one line per extension found, each line
+`EXT COUNT` where EXT is the lowercase extension without the dot and
+COUNT is the number of files with that extension. Lines are sorted by
+count descending, then by extension ascending. Files with no extension
+are counted under the label `(none)`. With the flag
+`fcount DIR --json` it prints instead a single JSON object mapping each
+lowercase extension to its count (files without extension use the key
+""), with keys sorted alphabetically. It must print --help output
+describing usage, arguments and the --json flag. If DIR does not exist
+it must exit with code 8 and print a one-line error starting with
+"no such directory" to stderr. If DIR exists but is not a directory it
+must exit with code 9 and print a one-line error starting with
+"not a directory" to stderr. Include a sample directory with at least 8
+files across at least 3 different extensions (plus at least one file
+with no extension) and an npm test script that verifies the behavior.
+[AgentOrchestrator] session=6abe3733e98fc06549b2526c goal=Build a Node.js command-line tool called fcount. It counts files by
+extension inside a directory: `fcount DIR` scans onl
+[WS] Broadcast type=thinking_phase target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=department_status target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=department_status target=6abe3727e98fc06549b25268 clients=1
+[IntentParser] ⚙️ Engineering brief detected — routing to evidence-first project_pipeline.
+[WS] Broadcast type=thinking_phase target=6abe3727e98fc06549b25268 clients=1
+[PlanningEngine] deterministic build contract → evidence-first project_pipeline
+[WS] Broadcast type=department_status target=6abe3727e98fc06549b25268 clients=1
+[AgentOrchestrator] Step Iteration. Completed: 0/1
+[AgentOrchestrator] Executing node: project_pipeline (استكشف الأدلة، ثم خطط ونفّذ وتحقق من طلب البناء محلياً)
+[WS] Broadcast type=thinking_phase target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=tool_started target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_detail target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_phase target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=tool_started target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850882800 bytes=114
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850882805 bytes=39
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850882833 bytes=34
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850882836 bytes=43
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850882842 bytes=34
+[WS] Broadcast type=tool_done target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_detail target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_detail target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=thinking_phase target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=tool_started target=6abe3727e98fc06549b25268 clients=1
+[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.
+[IntelligentRouter] 🧭 Engineering mesh prefers LLM7 (Keyless) before paid/proxy fallbacks.
+[IntelligentRouter] 🔄 Attempting provider: LLM7 (Keyless)...
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790850874781 duration=8370ms cmd=git {"timestamp":"2026-10-01T10:34:43.151Z"}
+[0mGET /api/runs/active [32m200[0m 16.119 ms - 98[0m
+[IntelligentRouter] 🔄 Attempting provider: Local (Auto)...
+[0mGET /api/runs/active [36m304[0m 61.011 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 17.232 ms - -[0m
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850912387 bytes=39
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850912971 bytes=38
+[0mGET /api/runs/active [36m304[0m 109.269 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 134.402 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 16.871 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 9.385 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790850954586 duration=16902ms cmd=git {"timestamp":"2026-10-01T10:36:11.488Z"}
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850973333 bytes=38
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790850973366 bytes=37
+[0mGET /api/system/update/check [36m304[0m 1092.449 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 143.412 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 64.199 ms - -[0m
+[IntelligentRouter] 🔄 Attempting provider: DuckAI (Keyless)...
+[IntelligentRouter] 🔄 Attempting provider: DeepSeek (Pollinations)...
+[DeepSeek] Using Free Anonymous Proxy (Pollinations)
+[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.
+[IntelligentRouter] ⏭️  Deferring (cooldown): DuckAI (Keyless), DeepSeek (Pollinations)
+[IntelligentRouter] 🔄 Attempting provider: Local (Auto)...
+[0mGET /api/runs/active [36m304[0m 50.971 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 28.010 ms - -[0m
+[IntelligentRouter] 🔄 Attempting provider: DuckAI (Keyless)...
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851043364 bytes=77
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851043685 bytes=335
+[WS] Broadcast type=tool_done target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851044921 bytes=85
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851046185 bytes=49
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851046188 bytes=67
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851046216 bytes=61
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851046229 bytes=73
+[WS] Broadcast type=terminal_output target=6abe3727e98fc06549b25268 clients=1
+[websocket.outbound.sent] sessionId=panel-terminal ts=1790851046284 bytes=279
+[WS] Broadcast type=tool_done target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=department_status target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=department_status target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=text target=6abe3727e98fc06549b25268 clients=1
+[WS] Broadcast type=run_finished target=6abe3727e98fc06549b25268 clients=1
+[IntelligentRouter] ⚡ Using Groq for instant analysis
+[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.
+[IntelligentRouter] Groq key missing. defaulting to Free Model Strategy.
+[SessionController] Updated mock session title: 6abe3733e98fc06549b2526c -> Build a Node.js command-line tool called fcount. It count…
+[WS] Broadcast type=sessions:refresh target=6abe3727e98fc06549b25268 clients=1
+[SessionController] Auto-renamed session 6abe3733e98fc06549b2526c to: Build a Node.js command-line tool called fcount. It count… (Offline: true)
+[0mGET /api/runs/active [32m200[0m 944.965 ms - 11[0m
+[SessionController] Listing messages for sessionId: 6abe3733e98fc06549b2526c, userId: 6abe3727e98fc06549b25268
+[SessionController] Found 2 messages and 0 tools for session 6abe3733e98fc06549b2526c
+[0mGET /api/sessions/6abe3733e98fc06549b2526c/messages [32m200[0m 1765.121 ms - 1804[0m
+[0mGET /api/runs/active [36m304[0m 1.648 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.754 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 2.361 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790851094412 duration=3026ms cmd=git {"timestamp":"2026-10-01T10:38:17.438Z"}
+[0mGET /api/system/update/check [36m304[0m 2.410 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 3.306 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.753 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790851124448 duration=787ms cmd=git {"timestamp":"2026-10-01T10:38:45.235Z"}
+[0mGET /api/runs/active [36m304[0m 1.610 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790851134430 duration=1167ms cmd=git {"timestamp":"2026-10-01T10:38:55.597Z"}
+[0mGET /api/runs/active [36m304[0m 11.957 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790851154471 duration=2394ms cmd=git {"timestamp":"2026-10-01T10:39:16.866Z"}
+[0mGET /api/runs/active [36m304[0m 75.263 ms - -[0m
+[0mGET /api/runs/active [36m304[0m 1.742 ms - -[0m
+[33mwarn[39m: [ENGINE] SLOW EXECUTION id=gate-1790851184495 duration=2067ms cmd=git {"timestamp":"2026-10-01T10:39:46.562Z"}
+[0mGET /api/tools [32m200[0m 107.015 ms - 120996[0m
+[BrowserWS] Client disconnect. sid=browser:6abe3733e98fc06549b2526c
+[BrowserWS] Last client for sid=browser:6abe3733e98fc06549b2526c. Calling onLastClient.
