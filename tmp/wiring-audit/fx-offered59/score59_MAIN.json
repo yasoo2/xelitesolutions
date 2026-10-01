@@ -1,0 +1,46 @@
+{
+ "probe": "score59",
+ "tree": "main",
+ "rows": [
+  {
+   "name": "ambiguity_resolver",
+   "registered": true,
+   "goalsScoredPositive": 2,
+   "bestRank": 9,
+   "bestScore": 0,
+   "bestGoal": "target:symbols"
+  },
+  {
+   "name": "ask_user",
+   "registered": true,
+   "goalsScoredPositive": 0,
+   "bestRank": 16,
+   "bestScore": 0,
+   "bestGoal": "target:symbols"
+  },
+  {
+   "name": "echo",
+   "registered": true,
+   "goalsScoredPositive": 1,
+   "bestRank": 36,
+   "bestScore": 0.9,
+   "bestGoal": "target:translate"
+  },
+  {
+   "name": "ls",
+   "registered": true,
+   "goalsScoredPositive": 2,
+   "bestRank": 26,
+   "bestScore": 1,
+   "bestGoal": "hand:todo"
+  },
+  {
+   "name": "self_confidence_evaluator",
+   "registered": true,
+   "goalsScoredPositive": 2,
+   "bestRank": 38,
+   "bestScore": 1.4,
+   "bestGoal": "hand:sonar"
+  }
+ ]
+}
