@@ -1,0 +1,827 @@
+{
+ "run": "a",
+ "muse": {
+  "label": "MUSE",
+  "exported": 200,
+  "unreferenced": [
+   {
+    "sym": "LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/ai-write-file.test.tsx3"
+    ]
+   },
+   {
+    "sym": "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/ai-write-file.test.tsx3"
+    ]
+   },
+   {
+    "sym": "CATALOGUE_COLUMNS",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 6,
+    "treeRefFiles": [
+     "api/src/__tests__/relations.test.tsx2",
+     "api/src/__tests__/schema-from-blueprint.test.tsx3",
+     "api/src/__tests__/wiring-policy.test.tsx1"
+    ]
+   },
+   {
+    "sym": "entities",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 208,
+    "treeRefFiles": [
+     "api/src/core/design/data-model.tsx18",
+     "api/src/core/design/declared-tables.tsx3",
+     "api/src/core/design/entity-inference.tsx11",
+     "api/src/core/design/language.tsx1",
+     "api/src/core/design/named-entities.tsx1",
+     "api/src/core/design/schema-designer.tsx12",
+     "api/src/core/intelligence/IntentParser.tsx1",
+     "api/src/core/llm/context-engine.tsx27"
+    ]
+   },
+   {
+    "sym": "ROLES",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 24,
+    "treeRefFiles": [
+     "api/src/core/design/app-blueprints.tsx1",
+     "api/src/core/design/roles.tsx8",
+     "api/src/modules/tools/definitions/react-app-templates.tsx7",
+     "api/src/__tests__/a-team-not-a-person.test.tsx8"
+    ]
+   },
+   {
+    "sym": "sessionConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "PERMISSIONS",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "authConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "PANEL_BROWSER_SID",
+    "kind": "const",
+    "file": "BrowserSmartTools.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 67,
+    "treeRefFiles": [
+     "api/src/modules/tools/definitions/PageFixTool.tsx3",
+     "api/src/modules/tools/definitions/ProjectEditTool.tsx2",
+     "api/src/modules/tools/definitions/ProjectPipelineTool.tsx3",
+     "api/src/modules/tools/definitions/ProjectRepairTool.tsx2",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx5",
+     "api/src/modules/tools/definitions/UiFixTool.tsx3",
+     "api/src/modules/tools/definitions/WebPageBuilderTool.tsx4",
+     "api/src/tests/manual/verify_human_check.tsx5"
+    ]
+   },
+   {
+    "sym": "DISCOVERY_YIELD_EVERY",
+    "kind": "const",
+    "file": "EngineeringDiscoveryTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/engineering-discovery.test.tsx2"
+    ]
+   },
+   {
+    "sym": "metadata",
+    "kind": "const",
+    "file": "EnterprisePlatformFoundationTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 250,
+    "treeRefFiles": [
+     "api/src/api/controllers/sessionController.tsx5",
+     "api/src/api/routes/auth.tsx1",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/system.tsx2",
+     "api/src/core/api-discovery/acceptance-evidence.tsx1",
+     "api/src/core/api-discovery/network-policy.tsx1",
+     "api/src/core/design/app-blueprints.tsx3",
+     "api/src/core/design/images.tsx6"
+    ]
+   },
+   {
+    "sym": "useStore",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": "app",
+    "toolShaped": false,
+    "treeRefs": 15,
+    "treeRefFiles": [
+     "api/src/core/quality/source-contract.tsx3",
+     "api/src/modules/tools/definitions/react-app-templates.tsx1",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx6",
+     "api/src/__tests__/react-project.test.tsx5"
+    ]
+   },
+   {
+    "sym": "store",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 920,
+    "treeRefFiles": [
+     "api/src/api/app.tsx3",
+     "api/src/api/chat-store.tsx1",
+     "api/src/api/controllers/sessionController.tsx9",
+     "api/src/api/index.tsx1",
+     "api/src/api/page-store.tsx9",
+     "api/src/api/routes/audio.tsx1",
+     "api/src/api/routes/browserAgent.tsx1",
+     "api/src/api/routes/folders.tsx6"
+    ]
+   },
+   {
+    "sym": "useApp",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx2"
+    ]
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx2"
+    ]
+   },
+   {
+    "sym": "RUNTIME_LOGICAL_SOURCE_TOOLS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 4,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx4"
+    ]
+   },
+   {
+    "sym": "app",
+    "kind": "const",
+    "file": "ProjectPlannerTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2601,
+    "treeRefFiles": [
+     "api/src/api/app.tsx21",
+     "api/src/api/controllers/sessionController.tsx1",
+     "api/src/api/index.tsx3",
+     "api/src/api/page-store.tsx1",
+     "api/src/api/routes/approvals.tsx1",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/system.tsx1",
+     "api/src/core/api-discovery/acceptance-evidence.tsx4"
+    ]
+   },
+   {
+    "sym": "uid",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 94,
+    "treeRefFiles": [
+     "api/src/api/routes/audio.tsx3",
+     "api/src/api/routes/browserAgent.tsx2",
+     "api/src/api/routes/extension.tsx3",
+     "api/src/api/routes/oauth.tsx5",
+     "api/src/api/routes/status.tsx2",
+     "api/src/api/ws.tsx15",
+     "api/src/core/design/authored-catalogue.tsx1",
+     "api/src/modules/browser/secrets.tsx3"
+    ]
+   },
+   {
+    "sym": "todayISO",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 1,
+    "treeRefFiles": [
+     "api/src/__tests__/self-fix-windows-path.test.tsx1"
+    ]
+   },
+   {
+    "sym": "isToday",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "blank",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 110,
+    "treeRefFiles": [
+     "api/src/api/routes/admin.tsx1",
+     "api/src/api/routes/browser.tsx2",
+     "api/src/core/config/envFile.tsx1",
+     "api/src/core/design/app-blueprints.tsx3",
+     "api/src/core/design/declared-tables.tsx1",
+     "api/src/core/design/design-system.tsx1",
+     "api/src/core/design/entity-inference.tsx2",
+     "api/src/core/design/layouts.tsx2"
+    ]
+   },
+   {
+    "sym": "TABLES",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": "title",
+    "toolShaped": false,
+    "treeRefs": 29,
+    "treeRefFiles": [
+     "api/src/core/design/app-blueprints.tsx1",
+     "api/src/core/design/declared-tables.tsx2",
+     "api/src/core/design/entity-inference.tsx3",
+     "api/src/core/design/named-entities.tsx1",
+     "api/src/core/design/schema-designer.tsx1",
+     "api/src/modules/tools/definitions/ApiProjectTool.tsx3",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx1",
+     "api/src/tests/manual/verify_ai_schema.tsx1"
+    ]
+   },
+   {
+    "sym": "REACT_NETWORK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 14,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx9",
+     "api/src/__tests__/the-terminal-is-where-the-work-happens.test.tsx5"
+    ]
+   },
+   {
+    "sym": "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": "viewport",
+    "toolShaped": false,
+    "treeRefs": 5,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx5"
+    ]
+   },
+   {
+    "sym": "PROJECT_SLUG_FOR_TEST",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/the-prompt-designs-the-page.test.tsx3"
+    ]
+   },
+   {
+    "sym": "PROJECT_DIR_NAME_MAX_LENGTH",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": "viewport",
+    "toolShaped": true,
+    "treeRefs": 4,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx4"
+    ]
+   },
+   {
+    "sym": "pages",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 450,
+    "treeRefFiles": [
+     "api/src/api/app.tsx2",
+     "api/src/api/form-inbox.tsx1",
+     "api/src/api/page-store.tsx3",
+     "api/src/api/routes/formsPublic.tsx4",
+     "api/src/api/routes/github.tsx1",
+     "api/src/api/routes/run.tsx1",
+     "api/src/core/agents/ArchitectAgent.tsx2",
+     "api/src/core/design/app-blueprints.tsx3"
+    ]
+   },
+   {
+    "sym": "GrepSearchTool",
+    "kind": "class",
+    "file": "SystemTools.ts",
+    "toolName": "grep_search",
+    "toolShaped": true,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "x",
+    "kind": "const",
+    "file": "UtilityTools.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 1773,
+    "treeRefFiles": [
+     "api/src/api/app.tsx2",
+     "api/src/api/controllers/sessionController.tsx7",
+     "api/src/api/routes/auth.tsx2",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/github.tsx2",
+     "api/src/api/routes/project.tsx38",
+     "api/src/api/routes/sentinel.tsx1",
+     "api/src/api/routes/webhooks.tsx1"
+    ]
+   }
+  ]
+ },
+ "main": {
+  "label": "MAIN",
+  "exported": 201,
+  "unreferenced": [
+   {
+    "sym": "LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/ai-write-file.test.tsx3"
+    ]
+   },
+   {
+    "sym": "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/ai-write-file.test.tsx3"
+    ]
+   },
+   {
+    "sym": "CATALOGUE_COLUMNS",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 6,
+    "treeRefFiles": [
+     "api/src/__tests__/relations.test.tsx2",
+     "api/src/__tests__/schema-from-blueprint.test.tsx3",
+     "api/src/__tests__/wiring-policy.test.tsx1"
+    ]
+   },
+   {
+    "sym": "entities",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 208,
+    "treeRefFiles": [
+     "api/src/core/design/data-model.tsx18",
+     "api/src/core/design/declared-tables.tsx3",
+     "api/src/core/design/entity-inference.tsx11",
+     "api/src/core/design/language.tsx1",
+     "api/src/core/design/named-entities.tsx1",
+     "api/src/core/design/schema-designer.tsx12",
+     "api/src/core/intelligence/IntentParser.tsx1",
+     "api/src/core/llm/context-engine.tsx27"
+    ]
+   },
+   {
+    "sym": "ROLES",
+    "kind": "const",
+    "file": "ApiProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 24,
+    "treeRefFiles": [
+     "api/src/core/design/app-blueprints.tsx1",
+     "api/src/core/design/roles.tsx8",
+     "api/src/modules/tools/definitions/react-app-templates.tsx7",
+     "api/src/__tests__/a-team-not-a-person.test.tsx8"
+    ]
+   },
+   {
+    "sym": "sessionConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "PERMISSIONS",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "authConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "PANEL_BROWSER_SID",
+    "kind": "const",
+    "file": "BrowserSmartTools.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 67,
+    "treeRefFiles": [
+     "api/src/modules/tools/definitions/PageFixTool.tsx3",
+     "api/src/modules/tools/definitions/ProjectEditTool.tsx2",
+     "api/src/modules/tools/definitions/ProjectPipelineTool.tsx3",
+     "api/src/modules/tools/definitions/ProjectRepairTool.tsx2",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx5",
+     "api/src/modules/tools/definitions/UiFixTool.tsx3",
+     "api/src/modules/tools/definitions/WebPageBuilderTool.tsx4",
+     "api/src/tests/manual/verify_human_check.tsx5"
+    ]
+   },
+   {
+    "sym": "DISCOVERY_YIELD_EVERY",
+    "kind": "const",
+    "file": "EngineeringDiscoveryTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/engineering-discovery.test.tsx2"
+    ]
+   },
+   {
+    "sym": "metadata",
+    "kind": "const",
+    "file": "EnterprisePlatformFoundationTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 253,
+    "treeRefFiles": [
+     "api/src/api/controllers/sessionController.tsx5",
+     "api/src/api/routes/auth.tsx1",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/system.tsx2",
+     "api/src/core/api-discovery/acceptance-evidence.tsx1",
+     "api/src/core/api-discovery/network-policy.tsx1",
+     "api/src/core/design/app-blueprints.tsx3",
+     "api/src/core/design/images.tsx6"
+    ]
+   },
+   {
+    "sym": "useStore",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": "app",
+    "toolShaped": false,
+    "treeRefs": 15,
+    "treeRefFiles": [
+     "api/src/core/quality/source-contract.tsx3",
+     "api/src/modules/tools/definitions/react-app-templates.tsx1",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx6",
+     "api/src/__tests__/react-project.test.tsx5"
+    ]
+   },
+   {
+    "sym": "store",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 834,
+    "treeRefFiles": [
+     "api/src/api/app.tsx3",
+     "api/src/api/chat-store.tsx1",
+     "api/src/api/controllers/sessionController.tsx9",
+     "api/src/api/index.tsx1",
+     "api/src/api/page-store.tsx9",
+     "api/src/api/routes/audio.tsx1",
+     "api/src/api/routes/browserAgent.tsx1",
+     "api/src/api/routes/folders.tsx6"
+    ]
+   },
+   {
+    "sym": "useApp",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx2"
+    ]
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx2"
+    ]
+   },
+   {
+    "sym": "RUNTIME_LOGICAL_SOURCE_TOOLS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 4,
+    "treeRefFiles": [
+     "api/src/__tests__/phase-executor-launcher.test.tsx4"
+    ]
+   },
+   {
+    "sym": "app",
+    "kind": "const",
+    "file": "ProjectPlannerTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 2448,
+    "treeRefFiles": [
+     "api/src/api/app.tsx21",
+     "api/src/api/controllers/sessionController.tsx1",
+     "api/src/api/index.tsx3",
+     "api/src/api/page-store.tsx1",
+     "api/src/api/routes/approvals.tsx1",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/system.tsx1",
+     "api/src/core/api-discovery/acceptance-evidence.tsx4"
+    ]
+   },
+   {
+    "sym": "uid",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 94,
+    "treeRefFiles": [
+     "api/src/api/routes/audio.tsx3",
+     "api/src/api/routes/browserAgent.tsx2",
+     "api/src/api/routes/extension.tsx3",
+     "api/src/api/routes/oauth.tsx5",
+     "api/src/api/routes/status.tsx2",
+     "api/src/api/ws.tsx15",
+     "api/src/core/design/authored-catalogue.tsx1",
+     "api/src/modules/browser/secrets.tsx3"
+    ]
+   },
+   {
+    "sym": "todayISO",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 1,
+    "treeRefFiles": [
+     "api/src/__tests__/self-fix-windows-path.test.tsx1"
+    ]
+   },
+   {
+    "sym": "isToday",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "blank",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 103,
+    "treeRefFiles": [
+     "api/src/api/routes/admin.tsx1",
+     "api/src/api/routes/browser.tsx2",
+     "api/src/core/config/envFile.tsx1",
+     "api/src/core/design/app-blueprints.tsx3",
+     "api/src/core/design/declared-tables.tsx1",
+     "api/src/core/design/design-system.tsx1",
+     "api/src/core/design/entity-inference.tsx2",
+     "api/src/core/design/layouts.tsx2"
+    ]
+   },
+   {
+    "sym": "TABLES",
+    "kind": "const",
+    "file": "react-app-templates.ts",
+    "toolName": "title",
+    "toolShaped": false,
+    "treeRefs": 29,
+    "treeRefFiles": [
+     "api/src/core/design/app-blueprints.tsx1",
+     "api/src/core/design/declared-tables.tsx2",
+     "api/src/core/design/entity-inference.tsx3",
+     "api/src/core/design/named-entities.tsx1",
+     "api/src/core/design/schema-designer.tsx1",
+     "api/src/modules/tools/definitions/ApiProjectTool.tsx3",
+     "api/src/modules/tools/definitions/ReactProjectTool.tsx1",
+     "api/src/tests/manual/verify_ai_schema.tsx1"
+    ]
+   },
+   {
+    "sym": "REACT_NETWORK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 14,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx9",
+     "api/src/__tests__/the-terminal-is-where-the-work-happens.test.tsx5"
+    ]
+   },
+   {
+    "sym": "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": "viewport",
+    "toolShaped": false,
+    "treeRefs": 5,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx5"
+    ]
+   },
+   {
+    "sym": "PROJECT_SLUG_FOR_TEST",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 3,
+    "treeRefFiles": [
+     "api/src/__tests__/the-prompt-designs-the-page.test.tsx3"
+    ]
+   },
+   {
+    "sym": "PROJECT_DIR_NAME_MAX_LENGTH",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": "viewport",
+    "toolShaped": true,
+    "treeRefs": 4,
+    "treeRefFiles": [
+     "api/src/__tests__/react-project.test.tsx4"
+    ]
+   },
+   {
+    "sym": "pages",
+    "kind": "const",
+    "file": "ReactProjectTool.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 433,
+    "treeRefFiles": [
+     "api/src/api/app.tsx2",
+     "api/src/api/form-inbox.tsx1",
+     "api/src/api/page-store.tsx3",
+     "api/src/api/routes/formsPublic.tsx4",
+     "api/src/api/routes/github.tsx1",
+     "api/src/api/routes/run.tsx1",
+     "api/src/core/agents/ArchitectAgent.tsx2",
+     "api/src/core/design/app-blueprints.tsx3"
+    ]
+   },
+   {
+    "sym": "GrepSearchTool",
+    "kind": "class",
+    "file": "SystemTools.ts",
+    "toolName": "grep_search",
+    "toolShaped": true,
+    "treeRefs": 0,
+    "treeRefFiles": []
+   },
+   {
+    "sym": "x",
+    "kind": "const",
+    "file": "UtilityTools.ts",
+    "toolName": null,
+    "toolShaped": false,
+    "treeRefs": 1691,
+    "treeRefFiles": [
+     "api/src/api/app.tsx2",
+     "api/src/api/controllers/sessionController.tsx7",
+     "api/src/api/routes/auth.tsx2",
+     "api/src/api/routes/files.tsx1",
+     "api/src/api/routes/github.tsx2",
+     "api/src/api/routes/project.tsx38",
+     "api/src/api/routes/sentinel.tsx1",
+     "api/src/api/routes/webhooks.tsx1"
+    ]
+   }
+  ]
+ }
+}
