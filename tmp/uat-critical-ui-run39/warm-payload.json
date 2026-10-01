@@ -1,0 +1,1 @@
+{"keep_alive": "30m", "model": "qwen2.5-coder:7b", "options": {"num_predict": 150}, "prompt": "WARMUP: reply with exactly the line WARM-OK then a 100-word paragraph about INI file parsing edge cases.", "stream": false}
