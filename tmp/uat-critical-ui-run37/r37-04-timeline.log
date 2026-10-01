@@ -1,0 +1,12 @@
+SEND-AT 2026-10-01T12:21:15.696Z
+T+31s bodyLen=2827
+T+68s bodyLen=2924
+T+99s bodyLen=2924
+T+132s bodyLen=3019
+T+165s bodyLen=3019
+T+202s bodyLen=4640
+T+232s bodyLen=4640
+T+262s bodyLen=4640
+T+292s bodyLen=4640
+T+324s bodyLen=4640
+EARLY-STOP terminal-phrase at T+324s

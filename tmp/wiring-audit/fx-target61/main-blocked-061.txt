@@ -1,0 +1,9 @@
+target60.mts --tree=main re-probe, 2026-10-01 ~12:30Z, Muse HEAD 9159c8a9.
+BLOCKED: owner dirty syntax break, UNCHANGED since checkpoint 060.
+
+Error: Transform failed with 1 error:
+D:\Joe\xelitesolutions\api\src\modules\tools\definitions\ProjectPipelineTool.ts:698:21:
+ERROR: Expected "}" but found "]"
+  (TransformError from tsx/esbuild import; 0 goals evaluated)
+
+No workaround applied. Owner lane (NVIDIA CLI producer batch).

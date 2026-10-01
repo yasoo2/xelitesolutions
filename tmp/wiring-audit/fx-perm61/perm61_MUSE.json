@@ -1,0 +1,1477 @@
+{
+ "probe": "perm61",
+ "tree": "muse",
+ "registered": 163,
+ "noPermissionsCount": 0,
+ "noPermissions": [],
+ "noSideEffectsCount": 89,
+ "noSideEffects": [
+  "browser_summarize",
+  "browser_ui_audit",
+  "browser_fill_form",
+  "browser_compare",
+  "browser_extract_data",
+  "browser_check_links",
+  "browser_performance",
+  "browser_seo_audit",
+  "browser_console_scan",
+  "browser_readability",
+  "browser_contrast_audit",
+  "browser_a11y_deep",
+  "browser_extract_meta",
+  "browser_translate",
+  "browser_responsive_check",
+  "browser_find_text",
+  "browser_design_tokens",
+  "browser_click",
+  "browser_smart_agent",
+  "browser_consent",
+  "browser_search",
+  "browser_launch",
+  "google_account",
+  "user_browser",
+  "recall_memory",
+  "repo_read_file",
+  "repo_search",
+  "repo_diff_summary",
+  "architect_plan",
+  "dependency_graph",
+  "business_logic_parser",
+  "chaos_test_plan",
+  "compliance_validator",
+  "cloud_cost_estimator",
+  "ambiguity_resolver",
+  "multi_agent_debate",
+  "self_confidence_evaluator",
+  "engineering_discovery",
+  "decide_capability_route",
+  "search_public_apis",
+  "inspect_api",
+  "validate_api",
+  "project_planner",
+  "central_answer",
+  "web_page_builder",
+  "form_inbox",
+  "orders_read",
+  "auto_tester",
+  "code_reviewer",
+  "security_scanner",
+  "performance_analyzer",
+  "joe_engineering_report",
+  "echo",
+  "ls",
+  "shell_check_status",
+  "read_file",
+  "ask_user",
+  "analyze_project",
+  "analyze_codebase",
+  "project_detect",
+  "codebase_outline",
+  "api_tester",
+  "http_fetch",
+  "html_extract",
+  "rss_fetch",
+  "json_query",
+  "search_api",
+  "query_datasource",
+  "screenshot",
+  "visual_compare",
+  "query_optimizer",
+  "cache_manager",
+  "llm_cache",
+  "monitoring",
+  "request_analyzer",
+  "template_manager",
+  "secrets_scan_repo",
+  "pattern_recognize",
+  "auto_refactor",
+  "test_generator",
+  "performance_profile",
+  "doc_generator",
+  "knowledge_search",
+  "task_lifecycle",
+  "inspect_directory",
+  "search_files",
+  "search_text",
+  "inspect_symbol",
+  "payments_create_checkout_session"
+ ],
+ "rows": [
+  {
+   "name": "browser_run",
+   "permissions": [
+    "internet",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute",
+    "internet"
+   ]
+  },
+  {
+   "name": "browser_summarize",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_ui_audit",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_ui_fix",
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "browser_page_fix",
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "project_undo",
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "project_repair",
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "browser_fill_form",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_compare",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_extract_data",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_check_links",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_performance",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_seo_audit",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_console_scan",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_save_pdf",
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "browser_readability",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_contrast_audit",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_a11y_deep",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_extract_meta",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_translate",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_responsive_check",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_find_text",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_design_tokens",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_click",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_fullpage_shot",
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "browser_smart_agent",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_autofix",
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "browser_consent",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_search",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "browser_launch",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "google_account",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "user_browser",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "recall_memory",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "memorize_codebase",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "repo_read_file",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "repo_search",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "repo_apply_patch",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "repo_run_command",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "repo_diff_summary",
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "architect_plan",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "ai_write_file",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "progressive_generator",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "dependency_graph",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "business_logic_parser",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "chaos_test_plan",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "compliance_validator",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "cloud_cost_estimator",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "ambiguity_resolver",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "multi_agent_debate",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "self_confidence_evaluator",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "engineering_discovery",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "decide_capability_route",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "search_public_apis",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "inspect_api",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "validate_api",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "project_planner",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "phase_executor",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "project_pipeline",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "enterprise_platform_foundation",
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "orion_business_foundation",
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "project_run",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "project_stop",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "deploy_pages",
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "internet"
+   ]
+  },
+  {
+   "name": "central_answer",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "web_page_builder",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "react_project",
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ]
+  },
+  {
+   "name": "project_edit",
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "form_inbox",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "import_project",
+   "permissions": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "api_project",
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ]
+  },
+  {
+   "name": "image_studio",
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "orders_read",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "business_profile",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "auto_tester",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "code_reviewer",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "security_scanner",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "performance_analyzer",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "error_recovery",
+   "permissions": [
+    "execute",
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "joe_engineering_report",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "echo",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "file_edit",
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "shell_execute",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "write_file",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "delete_file",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "scaffold_project",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "git_local_workflow",
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "ls",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "npm_manager",
+   "permissions": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "write",
+    "internet"
+   ]
+  },
+  {
+   "name": "shell_check_status",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "terminal_manager",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "read_file",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "ask_user",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "analyze_project",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "analyze_codebase",
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "project_detect",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "codebase_outline",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "dead_code_detector",
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "api_tester",
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "http_fetch",
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "html_extract",
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "rss_fetch",
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "json_query",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "search_api",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "query_datasource",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "auth_builder",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "mobile_builder",
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "swagger_docs",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "i18n_translator",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "website_full_pipeline",
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ]
+  },
+  {
+   "name": "dev_server_start",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "scaffold_full_stack",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "browser_action",
+   "permissions": [
+    "internet",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "browser_vision",
+   "permissions": [
+    "internet",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "screenshot",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "visual_compare",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "video_action",
+   "permissions": [
+    "execute",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ]
+  },
+  {
+   "name": "db_schema_migrator",
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "query_optimizer",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "large_data_seeder",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "docker_manager",
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ]
+  },
+  {
+   "name": "terraform_manager",
+   "permissions": [
+    "execute",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "kubernetes_ops",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "docker_swarm_ops",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "git_ops",
+   "permissions": [
+    "execute",
+    "internet",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write",
+    "internet"
+   ]
+  },
+  {
+   "name": "github_repo_manager",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "github_pr",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "github_actions",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "alert_manager",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "cache_manager",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "go_builder",
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "java_builder",
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "llm_cache",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "logger",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "monitoring",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "project_state_manager",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "python_builder",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "request_analyzer",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "template_manager",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "deploy_project",
+   "permissions": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ]
+  },
+  {
+   "name": "archive_files",
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "execute_python",
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "sonar_analysis",
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "dependency_audit",
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "quality_run",
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "secrets_scan_repo",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "ci_generate_pipeline",
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "load_tester",
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ]
+  },
+  {
+   "name": "pattern_recognize",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "auto_refactor",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "test_generator",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "performance_profile",
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "doc_generator",
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "knowledge_search",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "knowledge_add",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "task_lifecycle",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "inspect_directory",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "search_files",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "search_text",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "inspect_symbol",
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "file_edit_advanced",
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "notify_user",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  },
+  {
+   "name": "payments_create_checkout_session",
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": []
+  },
+  {
+   "name": "todo_write",
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ]
+  }
+ ]
+}
