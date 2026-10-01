@@ -1,0 +1,12 @@
+{
+ "fixed": [
+  "\\a-noun-is-not-a-command.test.ts :: a table is a thing people ask to be built تسجيل دخول is not a build",
+  "\\a-noun-is-not-a-command.test.ts :: a request that says what it will hold is a build, whatever he calls it تسجيل دخول is not a build",
+  "\\build-without-a-brain.test.ts :: «بنِ» is the same verb as «ابنِ» does not turn an information question into a build from a listed noun"
+ ],
+ "broken": [
+  "\\a-noun-is-not-a-command.test.ts :: a calendar noun inside a build brief is not a calendar command كوافير builds instead of opening Google",
+  "\\a-substitution-is-declared-not-silent.test.ts :: a substitution is declared, not performed in silence the build gate the call site uses is a real gate: his request is a build, a question is not"
+ ],
+ "stillFailing": 28
+}

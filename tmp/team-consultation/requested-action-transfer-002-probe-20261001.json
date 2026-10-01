@@ -1,0 +1,431 @@
+{
+ "pass": 27,
+ "decided": 37,
+ "total": 53,
+ "rows": [
+  {
+   "section": "T",
+   "name": "unquoted explanatory body",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "unquoted proposed design",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "software-themed poem",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "dashboard illustration",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "anaphoric implementation",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "global file prohibition",
+   "expected": false,
+   "got": false,
+   "reason": "global no-execution contract",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "existing-file scope only",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "polite control",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "Arabic information control",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "affirmative desired dashboard",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R1 login must not build",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R1 control desire-record builds",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 marketplace",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 panel",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 portal",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 platform HIS",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 Arabic need verb",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 Arabic bare-alef make",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R4 ask-contents unknown noun",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R4 bill builds via verb-artifact",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R5 colon-less framing must stay inert",
+   "expected": false,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R6 wedding Arabic comma",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R6 English bare comma",
+   "expected": true,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "N",
+   "name": "mixed review-then-fix",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "rebuild verb",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "now-transition fix",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "single-quoted suggestion inert",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "contraction targeted exclusion",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "logo request",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "icons for website",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "inspect-only show schema",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "diagnostic find bug",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "incremental add feature",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "single-quoted no-execute",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "adopted quoted spec",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "pure question",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "crash report question",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "delete temp files",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "run test suite",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "Arabic framing with colon",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "Arabic portal noun",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "anaphoric fix with context",
+   "expected": null,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "bare create-it",
+   "expected": false,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "want bug fixed",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "backend refusal plus static",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "please comma build",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "help-me build",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "blockquote does not veto real request",
+   "expected": true,
+   "got": true,
+   "reason": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "no tool execution",
+   "expected": false,
+   "got": false,
+   "reason": "global no-execution contract",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "never modify files",
+   "expected": false,
+   "got": false,
+   "reason": "global no-execution contract",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "without implementing it",
+   "expected": false,
+   "got": false,
+   "reason": "global no-execution contract",
+   "ok": true
+  },
+  {
+   "section": "N",
+   "name": "update headline",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "N",
+   "name": "refactor module",
+   "expected": null,
+   "got": false,
+   "reason": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  }
+ ]
+}

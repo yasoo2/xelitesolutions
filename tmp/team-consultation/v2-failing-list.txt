@@ -1,0 +1,30 @@
+\build-not-chat.test.ts :: an English build request reaches the builders recognises his request as a build at all
+\build-not-chat.test.ts :: an English build request reaches the builders and so does: Create a multi-vendor marketplace
+\build-not-chat.test.ts :: an English build request reaches the builders and so does: build an admin panel
+\build-not-chat.test.ts :: an English build request reaches the builders and so does: create a booking portal
+\a-noun-is-not-a-command.test.ts :: a calendar noun inside a build brief is not a calendar command قاعة أفراح builds instead of opening Google
+\a-noun-is-not-a-command.test.ts :: a calendar noun inside a build brief is not a calendar command كوافير builds instead of opening Google
+\a-noun-is-not-a-command.test.ts :: a table is a thing people ask to be built كشف counts as a build
+\a-noun-is-not-a-command.test.ts :: a table is a thing people ask to be built list counts as a build
+\a-noun-is-not-a-command.test.ts :: a verb he wants inside his app is not a command to Joe بحث حقيقي is still a browser task
+\a-noun-is-not-a-command.test.ts :: a verb he wants inside his app is not a command to Joe موقع معروف is still a browser task
+\a-noun-is-not-a-command.test.ts :: a verb he wants inside his app is not a command to Joe تصفّح is still a browser task
+\a-noun-is-not-a-command.test.ts :: a request that says what it will hold is a build, whatever he calls it كرّاسة is a build without being in any list
+\a-noun-is-not-a-command.test.ts :: a request that says what it will hold is a build, whatever he calls it فاتورة is a build without being in any list
+\a-noun-is-not-a-command.test.ts :: a request that says what it will hold is a build, whatever he calls it English rolodex is a build without being in any list
+\a-substitution-is-declared-not-silent.test.ts :: a substitution is declared, not performed in silence the build gate the call site uses is a real gate: his request is a build, a question is not
+\the-planner-asks-the-tools.test.ts :: the planner uses it — after its own routes, before the model does not let an Arabic no-new-project constraint negate later edit clauses
+\the-planner-asks-the-tools.test.ts :: the planner uses it — after its own routes, before the model routes a selected workspace project to the editor even in a fresh chat
+\the-planner-asks-the-tools.test.ts :: the planner uses it — after its own routes, before the model lets the selected workspace override a stale project remembered by the chat
+\build-without-a-brain.test.ts :: «بنِ» is the same verb as «ابنِ» his sentence, exactly as he typed it
+\build-without-a-brain.test.ts :: «بنِ» is the same verb as «ابنِ» and the other imperatives people actually use
+\build-without-a-brain.test.ts :: «بنِ» is the same verb as «ابنِ» recognizes product nouns that are not named site or app
+\build-without-a-brain.test.ts :: a build does not die because a planner ran out of quota an unreachable planner hands a build to the real builders
+\build-without-a-brain.test.ts :: a build does not die because a planner ran out of quota with the same scope rule as any other build
+\a-short-order-is-still-an-order.test.ts :: and the thing in front of him decides what his word means a column order with a project open is routed to that project
+\engineering-discovery.test.ts :: evidence-first engineering discovery inspects an existing project and declared checks without changing any file
+\a-question-is-not-an-order.test.ts :: INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: هل يمكنك بناء موقع لي؟
+\a-question-is-not-an-order.test.ts :: INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: كيف أنشر المشروع؟ انشره الآن
+\a-question-is-not-an-order.test.ts :: INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: can you build me a website?
+\people-ask-they-do-not-command.test.ts :: INVARIANT: a wish for a page is a build request desire phrasing counts, in both languages
+\people-ask-they-do-not-command.test.ts :: INVARIANT: a wish for a page is a build request and the imperatives that already worked still do

@@ -1,0 +1,4 @@
+TSC2-EXIT=0
+ERRORS=0
+CMD=npx tsc --noEmit (pristine 166bea99 overlay api/ + archived web/src/lib, node_modules junction, redirected TEMP)
+NOTE=v2-pristine-tsc-overlay-artifact.txt holds the api-only run (8 errors, all missing-web-import overlay artifact incl. 2 contextual-typing TS7006; zero in candidate files)
