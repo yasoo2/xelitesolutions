@@ -11,6 +11,12 @@
  * safe identifier. Non-credential values such as sessionId pass through
  * unchanged so logs stay diagnosable.
  *
+ * Percent-encoded credentials are classified by their single-decoded form,
+ * matching one server-side decode: a JWT with encoded characters is still a
+ * JWT once decoded, so decoded query/fragment values are checked as well as
+ * names. Decoding is bounded to one pass per value; double-encoded text is
+ * left alone and the URL structure itself is never decoded wholesale.
+ *
  * Deliberate over-redaction: a name like `author` (contains `auth`) is
  * redacted too. In a log line a hidden non-secret is harmless; a leaked
  * secret is not. Fail closed everywhere: unparseable input still goes
@@ -46,14 +52,31 @@ function isCredentialName(name: string): boolean {
 // A JWT header always starts with eyJ (base64url of {"alg"); three segments.
 const JWT_PATTERN = /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g;
 
+// Non-global twin for testing single decoded values without shared lastIndex.
+const JWT_VALUE_TEST = new RegExp(JWT_PATTERN.source);
+
+function safeDecodeComponent(value: string): string {
+    try {
+        return decodeURIComponent(value);
+    } catch {
+        return value;
+    }
+}
+
 // One `name=value` pair inside a query-like string (query or fragment body).
 const PAIR_PATTERN = /([^?&#;=\s][^?&#;=]*)(=)([^&#;]*)/g;
 
 function redactPairs(body: string): string {
     PAIR_PATTERN.lastIndex = 0;
-    return body.replace(PAIR_PATTERN, (match, name: string, eq: string) =>
-        isCredentialName(name) ? `${name}${eq}${REDACTED_URL_VALUE}` : match,
-    );
+    return body.replace(PAIR_PATTERN, (match, name: string, eq: string, value: string) => {
+        if (isCredentialName(name) || isCredentialName(safeDecodeComponent(name))) {
+            return `${name}${eq}${REDACTED_URL_VALUE}`;
+        }
+        if (JWT_VALUE_TEST.test(safeDecodeComponent(value))) {
+            return `${name}${eq}${REDACTED_URL_VALUE}`;
+        }
+        return match;
+    });
 }
 
 function redactJwtShaped(text: string): string {
@@ -78,7 +101,16 @@ export function redactCredentialsFromUrl(raw: string): string {
         const parsed = new URL(raw);
         const names = Array.from(parsed.searchParams.keys());
         for (const name of names) {
-            if (isCredentialName(name)) parsed.searchParams.set(name, REDACTED_URL_VALUE);
+            if (isCredentialName(name)) {
+                parsed.searchParams.set(name, REDACTED_URL_VALUE);
+                continue;
+            }
+            // searchParams values arrive single-decoded, so an encoded JWT in
+            // any parameter is caught here even when the name is unknown.
+            const values = parsed.searchParams.getAll(name);
+            if (values.some((entry) => JWT_VALUE_TEST.test(entry))) {
+                parsed.searchParams.set(name, REDACTED_URL_VALUE);
+            }
         }
         if (parsed.hash && parsed.hash.includes('=')) {
             parsed.hash = redactPairs(parsed.hash);

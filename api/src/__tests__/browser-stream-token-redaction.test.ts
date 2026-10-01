@@ -14,6 +14,9 @@
  * username in basic-auth URLs, so keeping the username would leak them).
  * Non-credential values such as sessionId pass through so logs stay
  * diagnosable.
+ *
+ * Percent-encoded credentials are classified by their single-decoded form:
+ * decoding the redacted output must never recover the original credential.
  */
 import fs from 'fs';
 import path from 'path';
@@ -47,6 +50,47 @@ describe('redactCredentialsFromUrl', () => {
         const out = redactCredentialsFromUrl(`https://joe.example/login?next=${JWT}&lang=en`);
         expect(out).not.toContain(JWT);
         expect(out).toContain('lang=en');
+    });
+
+    it('redacts a percent-encoded JWT carried by an unknown query parameter', () => {
+        // Encoded variants are built programmatically so the source holds no
+        // additional credential-shaped literals. `%65` is `e`, the JWT head.
+        const firstCharEncoded = '%65' + JWT.slice(1);
+        const out = redactCredentialsFromUrl(`https://joe.example/login?opaque=${firstCharEncoded}&lang=en`);
+        expect(decodeURIComponent(out)).not.toContain(JWT);
+        expect(out).toContain('lang=en');
+        const fullyEncoded = JWT.split('').map((ch) => '%' + ch.charCodeAt(0).toString(16)).join('');
+        const outFull = redactCredentialsFromUrl(`https://joe.example/login?opaque=${fullyEncoded}`);
+        expect(decodeURIComponent(outFull)).not.toContain(JWT);
+    });
+
+    it('redacts percent-encoded credentials in fragments and relative URLs', () => {
+        const encoded = '%65' + JWT.slice(1);
+        const frag = redactCredentialsFromUrl(`https://joe.example/app#opaque=${encoded}&view=main`);
+        expect(decodeURIComponent(frag)).not.toContain(JWT);
+        expect(frag).toContain('view=main');
+        const rel = redactCredentialsFromUrl(`/ws/browser?sessionId=s1&opaque=${encoded}`);
+        expect(decodeURIComponent(rel)).not.toContain(JWT);
+        expect(rel).toContain('sessionId=s1');
+        // An encoded credential name in an unparseable URL is still a name hit.
+        const relName = redactCredentialsFromUrl('/ws/browser?%74oken=supersecret');
+        expect(relName).not.toContain('supersecret');
+    });
+
+    it('bounds decoding to a single pass and stays idempotent', () => {
+        // Double-encoded text is inert after one server-side decode, so the
+        // redactor must neither decode it twice nor mangle the transport URL.
+        const doubleEncoded = JWT.split('')
+            .map((ch) => '%' + ch.charCodeAt(0).toString(16))
+            .join('')
+            .split('')
+            .map((ch) => (ch === '%' ? '%25' : ch))
+            .join('');
+        const once = redactCredentialsFromUrl(`https://joe.example/?sessionId=s1&blob=${doubleEncoded}`);
+        expect(once).toContain('sessionId=s1');
+        expect(redactCredentialsFromUrl(once)).toBe(once);
+        const redacted = redactCredentialsFromUrl('wss://joe.example/stream?token=topsecret&sessionId=public');
+        expect(redactCredentialsFromUrl(redacted)).toBe(redacted);
     });
 
     it('redacts credentials carried in the hash fragment', () => {
@@ -112,5 +156,12 @@ describe('ModernBrowserStream observability surface', () => {
         const src = fs.readFileSync(COMPONENT, 'utf-8');
         expect(src).toContain('redactCredentialsFromUrl');
         expect(src).not.toContain("console.log('[BrowserStream] Connecting to:', wsUrl)");
+    });
+
+    it('keeps the WebSocket connected to the original URL', () => {
+        // Redaction covers the observability surface only; the connection
+        // itself must keep receiving the unmodified authenticated URL.
+        const src = fs.readFileSync(COMPONENT, 'utf-8');
+        expect(src).toContain('new WebSocket(wsUrl)');
     });
 });
