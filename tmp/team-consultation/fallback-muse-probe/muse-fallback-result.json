@@ -1,0 +1,44 @@
+{
+  "tree": "muse-worktree",
+  "naturalPty": "native-available",
+  "fault": "executionEngine.pty=null (own process)",
+  "results": [
+    {
+      "case": "plain-initial",
+      "root": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\plain-uGKT6O",
+      "expected": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\plain-uGKT6O",
+      "actual": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\plain-uGKT6O",
+      "match": true,
+      "sessionOpened": true
+    },
+    {
+      "case": "extended-initial",
+      "root": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\extended-hAyIgb",
+      "requested": "\\\\?\\D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\extended-hAyIgb",
+      "actual": "C:\\Windows",
+      "match": false,
+      "sessionOpened": true
+    },
+    {
+      "case": "cd-extended",
+      "root": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\cdext-ZBkIJ5\\child",
+      "actual": "C:\\Windows",
+      "match": false,
+      "sessionOpened": true
+    },
+    {
+      "case": "missing-initial",
+      "requested": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\does-not-exist-1790847845373",
+      "sessionOpened": true,
+      "error": null,
+      "note": "pre-fix code returns a session; proposal requires success=false"
+    },
+    {
+      "case": "invalid-cd",
+      "root": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\badcd-nBpyjM",
+      "actual": "D:\\Joe\\muse-worktree\\tmp\\team-consultation\\fallback-muse-probe\\fixtures\\badcd-nBpyjM",
+      "match": true,
+      "errorVisible": true
+    }
+  ]
+}
