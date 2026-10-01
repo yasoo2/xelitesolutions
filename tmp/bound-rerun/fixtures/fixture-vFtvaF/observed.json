@@ -1,0 +1,156 @@
+{
+  "resultStatus": "completed",
+  "resultOk": true,
+  "premature": [],
+  "persisted": [
+    {
+      "v": 1,
+      "key": "207704f4b1a12c2046e77d58bfe12793",
+      "ts": 1790848830681,
+      "runId": "checkpoint-terminal-true",
+      "phaseIndex": 1,
+      "phaseName": "Terminal checkpoint audit",
+      "taskDescription": "Phase: Terminal checkpoint audit",
+      "input": {
+        "phase": "completed"
+      },
+      "output": {
+        "phaseNumber": 1,
+        "phaseName": "Terminal checkpoint audit",
+        "status": "completed",
+        "execution": "ran",
+        "completedTasks": 1,
+        "executedTasks": 1,
+        "skippedTasks": 0,
+        "reusedTasks": 0,
+        "totalTasks": 1,
+        "results": [
+          {
+            "task": "Control",
+            "tool": "echo",
+            "ok": true,
+            "execution": "ran"
+          },
+          {
+            "task": "Final verifier",
+            "tool": "quality_run",
+            "ok": true,
+            "execution": "ran"
+          }
+        ],
+        "nextPhase": 2,
+        "deliverables": [],
+        "estimatedTime": "unknown",
+        "verificationLedger": {
+          "version": 1,
+          "receipts": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "tool": "quality_run",
+              "workspaceId": "fixture",
+              "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-vFtvaF",
+              "relevantPaths": [
+                "."
+              ],
+              "mode": "final",
+              "toolchain": "node=v24.18.0;modules=137;platform=win32-x64;packageManager=;environment=5761df8aa26f3fc4d9ee7b55d380c76c47a4785cd0bfca6f0e1a147d8ce5a411",
+              "fingerprintDurationMs": 24,
+              "fingerprint": "3a39d61e4cf1fda4aad30f3fe43a2a08b6aa4a8430efeea0da67f2094182853e",
+              "result": "passed",
+              "queueMs": 0,
+              "idleMs": 20,
+              "retryCount": 0,
+              "decisionReason": "selected: no matching passing receipt",
+              "durationMs": 19,
+              "recordedAt": 1790848830666
+            }
+          ],
+          "decisions": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "action": "selected",
+              "reason": "selected: no matching passing receipt",
+              "fingerprint": "3a39d61e4cf1fda4aad30f3fe43a2a08b6aa4a8430efeea0da67f2094182853e",
+              "at": 1790848830621
+            }
+          ],
+          "accounting": {
+            "executions": 1,
+            "selected": 1,
+            "invalidated": 0,
+            "reused": 0,
+            "executedDurationMs": 19,
+            "fingerprintDurationMs": 24,
+            "estimatedSavedDurationMs": 0,
+            "complete": true
+          }
+        },
+        "verificationMetrics": {
+          "receipts": 1,
+          "passed": 1,
+          "failed": 0,
+          "cancelled": 0,
+          "timedOut": 0,
+          "incomplete": 0,
+          "selected": 1,
+          "invalidated": 0,
+          "reused": 0,
+          "executions": 1,
+          "accountingComplete": true,
+          "executedDurationMs": 19,
+          "fingerprintDurationMs": 24,
+          "estimatedSavedDurationMs": 0
+        }
+      },
+      "runtimeContext": {
+        "projectRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-vFtvaF",
+        "runId": "checkpoint-terminal-true",
+        "verificationLedger": {
+          "version": 1,
+          "receipts": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "tool": "quality_run",
+              "workspaceId": "fixture",
+              "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-vFtvaF",
+              "relevantPaths": [
+                "."
+              ],
+              "mode": "final",
+              "toolchain": "node=v24.18.0;modules=137;platform=win32-x64;packageManager=;environment=5761df8aa26f3fc4d9ee7b55d380c76c47a4785cd0bfca6f0e1a147d8ce5a411",
+              "fingerprintDurationMs": 24,
+              "fingerprint": "3a39d61e4cf1fda4aad30f3fe43a2a08b6aa4a8430efeea0da67f2094182853e",
+              "result": "passed",
+              "queueMs": 0,
+              "idleMs": 20,
+              "retryCount": 0,
+              "decisionReason": "selected: no matching passing receipt",
+              "durationMs": 19,
+              "recordedAt": 1790848830666
+            }
+          ],
+          "decisions": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "action": "selected",
+              "reason": "selected: no matching passing receipt",
+              "fingerprint": "3a39d61e4cf1fda4aad30f3fe43a2a08b6aa4a8430efeea0da67f2094182853e",
+              "at": 1790848830621
+            }
+          ],
+          "accounting": {
+            "executions": 1,
+            "selected": 1,
+            "invalidated": 0,
+            "reused": 0,
+            "executedDurationMs": 19,
+            "fingerprintDurationMs": 24,
+            "estimatedSavedDurationMs": 0,
+            "complete": true
+          }
+        }
+      },
+      "artifacts": []
+    }
+  ]
+}

@@ -1,0 +1,159 @@
+{
+  "resultStatus": "partial",
+  "resultOk": false,
+  "premature": [],
+  "persisted": [
+    {
+      "v": 1,
+      "key": "874832da8804139c0ce17c7f3ee706ce",
+      "ts": 1790848830834,
+      "runId": "checkpoint-terminal-false",
+      "phaseIndex": 1,
+      "phaseName": "Terminal checkpoint audit",
+      "taskDescription": "Phase: Terminal checkpoint audit",
+      "input": {
+        "phase": "partial",
+        "error": "Controlled final verification failure"
+      },
+      "output": {
+        "phaseNumber": 1,
+        "phaseName": "Terminal checkpoint audit",
+        "status": "partial",
+        "execution": "ran",
+        "completedTasks": 1,
+        "executedTasks": 1,
+        "skippedTasks": 0,
+        "reusedTasks": 0,
+        "totalTasks": 1,
+        "results": [
+          {
+            "task": "Control",
+            "tool": "echo",
+            "ok": true,
+            "execution": "ran"
+          },
+          {
+            "task": "Final verifier",
+            "tool": "quality_run",
+            "ok": false,
+            "execution": "ran",
+            "error": "Controlled final verification failure"
+          }
+        ],
+        "nextPhase": 2,
+        "deliverables": [],
+        "estimatedTime": "unknown",
+        "verificationFailed": true,
+        "verificationLedger": {
+          "version": 1,
+          "receipts": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "tool": "quality_run",
+              "workspaceId": "fixture",
+              "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-Zhsvvh",
+              "relevantPaths": [
+                "."
+              ],
+              "mode": "final",
+              "toolchain": "node=v24.18.0;modules=137;platform=win32-x64;packageManager=;environment=5761df8aa26f3fc4d9ee7b55d380c76c47a4785cd0bfca6f0e1a147d8ce5a411",
+              "fingerprintDurationMs": 9,
+              "fingerprint": "1023ad16c2bc82a9f377aa0bb7800e88203125b444ef46584f0b8f8dd45bcb03",
+              "result": "failed",
+              "queueMs": 0,
+              "idleMs": 11,
+              "retryCount": 0,
+              "decisionReason": "selected: no matching passing receipt",
+              "durationMs": 10,
+              "recordedAt": 1790848830830
+            }
+          ],
+          "decisions": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "action": "selected",
+              "reason": "selected: no matching passing receipt",
+              "fingerprint": "1023ad16c2bc82a9f377aa0bb7800e88203125b444ef46584f0b8f8dd45bcb03",
+              "at": 1790848830811
+            }
+          ],
+          "accounting": {
+            "executions": 1,
+            "selected": 1,
+            "invalidated": 0,
+            "reused": 0,
+            "executedDurationMs": 10,
+            "fingerprintDurationMs": 9,
+            "estimatedSavedDurationMs": 0,
+            "complete": true
+          }
+        },
+        "verificationMetrics": {
+          "receipts": 1,
+          "passed": 0,
+          "failed": 1,
+          "cancelled": 0,
+          "timedOut": 0,
+          "incomplete": 0,
+          "selected": 1,
+          "invalidated": 0,
+          "reused": 0,
+          "executions": 1,
+          "accountingComplete": true,
+          "executedDurationMs": 10,
+          "fingerprintDurationMs": 9,
+          "estimatedSavedDurationMs": 0
+        }
+      },
+      "runtimeContext": {
+        "projectRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-Zhsvvh",
+        "runId": "checkpoint-terminal-false",
+        "verificationLedger": {
+          "version": 1,
+          "receipts": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "tool": "quality_run",
+              "workspaceId": "fixture",
+              "scopeRoot": "D:\\Joe\\muse-worktree\\tmp\\bound-rerun\\fixtures\\fixture-Zhsvvh",
+              "relevantPaths": [
+                "."
+              ],
+              "mode": "final",
+              "toolchain": "node=v24.18.0;modules=137;platform=win32-x64;packageManager=;environment=5761df8aa26f3fc4d9ee7b55d380c76c47a4785cd0bfca6f0e1a147d8ce5a411",
+              "fingerprintDurationMs": 9,
+              "fingerprint": "1023ad16c2bc82a9f377aa0bb7800e88203125b444ef46584f0b8f8dd45bcb03",
+              "result": "failed",
+              "queueMs": 0,
+              "idleMs": 11,
+              "retryCount": 0,
+              "decisionReason": "selected: no matching passing receipt",
+              "durationMs": 10,
+              "recordedAt": 1790848830830
+            }
+          ],
+          "decisions": [
+            {
+              "checkId": "quality_run:Final verifier",
+              "action": "selected",
+              "reason": "selected: no matching passing receipt",
+              "fingerprint": "1023ad16c2bc82a9f377aa0bb7800e88203125b444ef46584f0b8f8dd45bcb03",
+              "at": 1790848830811
+            }
+          ],
+          "accounting": {
+            "executions": 1,
+            "selected": 1,
+            "invalidated": 0,
+            "reused": 0,
+            "executedDurationMs": 10,
+            "fingerprintDurationMs": 9,
+            "estimatedSavedDurationMs": 0,
+            "complete": true
+          }
+        }
+      },
+      "artifacts": []
+    }
+  ]
+}
