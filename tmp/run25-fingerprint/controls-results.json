@@ -1,0 +1,61 @@
+{
+  "controls": [
+    {
+      "label": "Edit Bandage",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    },
+    {
+      "label": "Edit Gauze",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    },
+    {
+      "label": "Edit Tape",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    },
+    {
+      "label": "Edit Saline",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    },
+    {
+      "label": "Edit Gloves",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    },
+    {
+      "label": "Bump total",
+      "kind": "button",
+      "worked": true,
+      "effect": "count",
+      "exploratory": false
+    },
+    {
+      "label": "Archive",
+      "kind": "button",
+      "worked": false,
+      "effect": "",
+      "exploratory": false
+    }
+  ],
+  "clickErrors": [],
+  "budgetExhausted": false,
+  "statesVisited": 1,
+  "finalValues": {
+    "name": "Gloves",
+    "qty": "20",
+    "notes": "Nitrile M"
+  }
+}

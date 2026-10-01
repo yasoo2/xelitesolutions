@@ -1,0 +1,54 @@
+{
+  "srcHash": "1d6993af444f4aeedab0094f8b9ffbb091b433266f6e61ad15d8b324b9f7e425",
+  "snapshotSrcHash": "a3603ba94991b29f1a6150c23f0d7af91d2eac2ee25b3be0ac1725d5452fe109",
+  "changedSrcHash": "b597b3031694cc13fc72f3cfa9e2392a9324818651697a93bd197bb7fd727b8d",
+  "cases": {
+    "sanityInitial": {
+      "name": "Bandage",
+      "qty": "12",
+      "notes": "Sterile rolls"
+    },
+    "valueOnlyEdit": {
+      "effect": "",
+      "valuesAfter": {
+        "name": "Tape",
+        "qty": "5",
+        "notes": "Adhesive rolls"
+      },
+      "innerTextIdentical": true,
+      "innerHtmlIdentical": true,
+      "before": {
+        "text": 3295615035,
+        "html": 746911039,
+        "nodes": 47,
+        "visible": 45,
+        "openDetails": 0,
+        "active": 0,
+        "theme": "",
+        "pressed": 2166136261,
+        "scroll": 0,
+        "url": "file:///D:/Joe/muse-worktree/tmp/run25-fingerprint/fixture.html",
+        "digits": 3495687413
+      },
+      "after": {
+        "text": 3295615035,
+        "html": 746911039,
+        "nodes": 47,
+        "visible": 45,
+        "openDetails": 0,
+        "active": 0,
+        "theme": "",
+        "pressed": 2166136261,
+        "scroll": 0,
+        "url": "file:///D:/Joe/muse-worktree/tmp/run25-fingerprint/fixture.html",
+        "digits": 3495687413
+      }
+    },
+    "inertButton": {
+      "effect": ""
+    },
+    "visibleChange": {
+      "effect": "count"
+    }
+  }
+}

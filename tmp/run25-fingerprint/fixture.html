@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>RUN25 fingerprint fixture</title>
+<style>
+body{font-family:sans-serif;margin:16px;max-width:640px}
+table{border-collapse:collapse;margin:12px 0}
+td,th{border:1px solid #999;padding:4px 8px}
+form{border:1px solid #333;padding:12px;margin-top:12px}
+label{display:block;margin:6px 0}
+#total{font-weight:bold;margin-top:12px}
+</style>
+</head>
+<body>
+<h1>Supply room</h1>
+<table id="records">
+<tr><th>Item</th><th>Qty</th><th>Action</th></tr>
+<tr><td>Bandage</td><td>12</td><td><button type="button" data-edit="0">Edit Bandage</button></td></tr>
+<tr><td>Gauze</td><td>8</td><td><button type="button" data-edit="1">Edit Gauze</button></td></tr>
+<tr><td>Tape</td><td>5</td><td><button type="button" data-edit="2">Edit Tape</button></td></tr>
+<tr><td>Saline</td><td>3</td><td><button type="button" data-edit="3">Edit Saline</button></td></tr>
+<tr><td>Gloves</td><td>20</td><td><button type="button" data-edit="4">Edit Gloves</button></td></tr>
+</table>
+<form id="editor" onsubmit="return false;">
+<label>Name <input id="f-name" name="name" type="text"></label>
+<label>Qty <input id="f-qty" name="qty" type="number"></label>
+<label>Notes <textarea id="f-notes" name="notes"></textarea>
+</label><input id="f-internal" type="hidden" name="internal" value="fixture-v1">
+<label>Manager PIN (sensitive, must never enter QA evidence)
+<input id="f-pin" name="pin" type="password" value="S3CR3T-PIN"></label>
+</form>
+<div>
+<button type="button" id="bump">Bump total</button>
+<button type="button" id="archive">Archive</button>
+</div>
+<div id="total">Total: 5</div>
+<script>
+const RECORDS=[
+ {name:'Bandage',qty:'12',notes:'Sterile rolls'},
+ {name:'Gauze',qty:'8',notes:'Pads 10x10'},
+ {name:'Tape',qty:'5',notes:'Adhesive rolls'},
+ {name:'Saline',qty:'3',notes:'500ml bottles'},
+ {name:'Gloves',qty:'20',notes:'Nitrile M'}
+];
+// Form starts filled with record 0: every later Edit is a VALUE-ONLY switch.
+document.getElementById('f-name').value=RECORDS[0].name;
+document.getElementById('f-qty').value=RECORDS[0].qty;
+document.getElementById('f-notes').value=RECORDS[0].notes;
+document.querySelectorAll('[data-edit]').forEach(b=>b.addEventListener('click',()=>{
+ const r=RECORDS[Number(b.getAttribute('data-edit'))];
+ document.getElementById('f-name').value=r.name;
+ document.getElementById('f-qty').value=r.qty;
+ document.getElementById('f-notes').value=r.notes;
+ // Deliberately: no DOM/text/attribute change. input.value only.
+}));
+document.getElementById('bump').addEventListener('click',()=>{
+ const el=document.getElementById('total');
+ const n=Number(el.textContent.replace(/\D/g,''))+1;
+ el.textContent='Total: '+n;
+});
+// #archive has NO handler: true-negative control.
+</script>
+</body>
+</html>

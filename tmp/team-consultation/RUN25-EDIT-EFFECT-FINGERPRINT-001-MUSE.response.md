@@ -229,3 +229,77 @@ ROLE: Muse accepts independent-reviewer duty; implementation ownership
 stays with Codex; executor-half ownership decision pending (Muse
 available). No competing implementation. CRITICAL commands keep priority.
 END_ADDENDUM_20261001
+
+================================================================
+ADDENDUM 2 2026-10-01 — independent re-reproduction at HEAD f85966bb
++ new findings (Muse, same agent, later cycle).
+The 2026-09-29 review and ADDENDUM 1 above are PRESERVED VERBATIM and
+remain the standing Muse position. This addendum only adds corroborating
+evidence and new conditions. Nothing above is weakened.
+================================================================
+ADDENDUM2_HEAD=f85966bb (muse/joe-development)
+ADDENDUM2_FIXTURE=tmp/run25-fingerprint/fixture.html (NEW: 5 value-only
+Edit buttons, 1 inert, 1 visible-change positive, password+hidden anchors)
+ADDENDUM2_PROBES=tmp/run25-fingerprint/probe-snapshot.cjs (+snapshot-
+results.json) and probe-controls.mts (+controls-results.json); real
+system Chrome, workspace-local temp/profile; no user profile touched.
+SHARED_FILE_WRITE=DENIED (re-proven: absolute path outside workspace).
+
+B1. INDEPENDENT RE-REPRODUCTION — CORROBORATES A1/09-29.
+Snapshot level (EXACT production snapshot()/changed() source extracted
+from behaviour-audit.ts, transpiled with the repo TypeScript, evaluated
+in-page; file/function SHA256 in snapshot-results.json): value-only
+Edit switch -> effect '' while values DID change (Tape/5/Adhesive rolls)
+with innerText AND innerHTML byte-identical; inert -> ''; visible text
+change -> 'count'. End-to-end (REAL exported probeControls(), fillForms
+false, budget 45s): 5 Edits worked:false effect:'' (4 false-dead on
+changed values + the FIRST Edit a same-value true-dead — form pre-holds
+record 0), Bump worked:true 'count', Archive worked:false, clickErrors
+[], budget not exhausted, finalValues Gloves/20/Nitrile M. First-Edit
+asymmetry consistent with the prior dom-vs-value explanation. Root cause
+re-confirmed at f85966bb; no source drift in snapshot()/changed().
+
+B2. NEW FINDINGS (not in the 09-29 review or ADDENDUM 1).
+- B2a PRIVACY HARDENING (extends change 3 / A4-C2): a deterministic
+unsalted hash over low-entropy visible values (record names, quantities)
+is dictionary-reversible, so "hash-only, no raw string in evidence" is
+necessary but NOT sufficient for secrecy. NEW CONDITION C6: HMAC with a
+per-run ephemeral key that is NEVER persisted, OR a boolean/count-only
+signal with no value-derived token at all; excluded sensitive fields
+(password/hidden/file + autocomplete-marked secrets) must not INFLUENCE
+the signal (a PIN-only flip would leak by oracle). Calibrated: hardening,
+not an invalidation of the accepted hash-only direction.
+- B2b STATE-IDENTITY COUPLING (new): stateKey()=JSON.stringify(snapshot)
+(:1131-1133), so value-only states are invisible to the explorer too
+(this e2e run: statesVisited 1). NEW CONDITION C7: the value signal feeds
+changed() effect detection ONLY; exploration state identity keeps a
+value-stripped projection — else QA's own fills multiply states and burn
+budget via re-presses.
+- B2c QA-OWN-WRITE GUARD (new framing of the ambient class): fills precede
+the walk today, but any QA-side write between before/after (exploration,
+responsive re-probes) would false-alive the new channel. NEW CONDITION C8:
+assert no QA-side write inside the click bracket (extends change 4).
+- B2d DOWNSTREAM FLOW VERIFIED SAFE (new supporting evidence):
+judgeBehaviour judges the `worked` BOOLEAN (:1843); worked=!!effect &&
+effect!=='reload' (:1076,:1206); effect readers special-case only
+navigation/reload/not-found/form effects. A new non-empty effect kind
+flows through with NO downstream change. Lowers integration risk.
+- B2e SIMPLER ALTERNATIVE (new, optional): per-control before/after
+live-value comparison with a credential-safe comparator (booleans/counts
+only, no persisted token) computed in the click bracket, instead of a
+hashed channel inside the generic snapshot. Secrets stay out of evidence
+by construction; snapshot/stateKey untouched. Team may still prefer
+hash-only + C6; recorded as an option, not a demand.
+
+B3. SCOPE HONESTY. This cycle did NOT re-verify the CLICK_FINGERPRINT half
+(prior change-1 overlap stands on prior evidence); did NOT re-run
+tmp/edit-fp-probe (new independent fixture instead — corroboration, not a
+replacement); did NOT read any new candidate diff (no new candidate claims).
+The 4-false-dead + 1-true-dead Edit split above INCLUDES the idempotent-click
+true negative the proposal's test plan should pin.
+
+B4. CONDITIONS UPDATE. Standing conditions = prior changes 1-7 +
+A4-C1..C5 + NEW C6 (HMAC-or-boolean + no secret influence) + C7 (stateKey
+decoupling) + C8 (QA-own-write guard). Recommendation UNCHANGED:
+APPROVE_WITH_CHANGES. Role/queue/priority statements from ADDENDUM 1 stand.
+END_ADDENDUM2_20261001

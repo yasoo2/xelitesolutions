@@ -1,0 +1,907 @@
+{
+ "revivedSelected": 71,
+ "baseSelected": 92,
+ "selectedUnique": 163,
+ "unmappedClasses": [],
+ "entryb": [
+  {
+   "name": "ai_write_file",
+   "selected": true
+  },
+  {
+   "name": "api_project",
+   "selected": true
+  },
+  {
+   "name": "create_file",
+   "selected": false
+  },
+  {
+   "name": "engineering_discovery",
+   "selected": true
+  },
+  {
+   "name": "file_write",
+   "selected": false
+  },
+  {
+   "name": "inspect_directory",
+   "selected": true
+  },
+  {
+   "name": "npm_manager",
+   "selected": true
+  },
+  {
+   "name": "project_edit",
+   "selected": true
+  },
+  {
+   "name": "project_pipeline",
+   "selected": true
+  },
+  {
+   "name": "project_planner",
+   "selected": true
+  },
+  {
+   "name": "project_repair",
+   "selected": true
+  },
+  {
+   "name": "project_run",
+   "selected": true
+  },
+  {
+   "name": "react_project",
+   "selected": true
+  },
+  {
+   "name": "read_file",
+   "selected": true
+  },
+  {
+   "name": "scaffold_full_stack",
+   "selected": true
+  },
+  {
+   "name": "scaffold_project",
+   "selected": true
+  },
+  {
+   "name": "shell_execute",
+   "selected": true
+  },
+  {
+   "name": "web_page_builder",
+   "selected": true
+  },
+  {
+   "name": "write_file",
+   "selected": true
+  },
+  {
+   "name": "write_to_file",
+   "selected": false
+  }
+ ],
+ "selectedNames": [
+  "ai_write_file",
+  "alert_manager",
+  "ambiguity_resolver",
+  "analyze_codebase",
+  "analyze_project",
+  "api_project",
+  "api_tester",
+  "architect_plan",
+  "archive_files",
+  "ask_user",
+  "auth_builder",
+  "auto_refactor",
+  "auto_tester",
+  "browser_a11y_deep",
+  "browser_action",
+  "browser_autofix",
+  "browser_check_links",
+  "browser_click",
+  "browser_compare",
+  "browser_consent",
+  "browser_console_scan",
+  "browser_contrast_audit",
+  "browser_design_tokens",
+  "browser_extract_data",
+  "browser_extract_meta",
+  "browser_fill_form",
+  "browser_find_text",
+  "browser_fullpage_shot",
+  "browser_launch",
+  "browser_page_fix",
+  "browser_performance",
+  "browser_readability",
+  "browser_responsive_check",
+  "browser_run",
+  "browser_save_pdf",
+  "browser_search",
+  "browser_seo_audit",
+  "browser_smart_agent",
+  "browser_summarize",
+  "browser_translate",
+  "browser_ui_audit",
+  "browser_ui_fix",
+  "browser_vision",
+  "business_logic_parser",
+  "business_profile",
+  "cache_manager",
+  "central_answer",
+  "chaos_test_plan",
+  "ci_generate_pipeline",
+  "cloud_cost_estimator",
+  "code_reviewer",
+  "codebase_outline",
+  "compliance_validator",
+  "db_schema_migrator",
+  "dead_code_detector",
+  "decide_capability_route",
+  "delete_file",
+  "dependency_audit",
+  "dependency_graph",
+  "deploy_pages",
+  "deploy_project",
+  "dev_server_start",
+  "doc_generator",
+  "docker_manager",
+  "docker_swarm_ops",
+  "echo",
+  "engineering_discovery",
+  "enterprise_platform_foundation",
+  "error_recovery",
+  "execute_python",
+  "file_edit",
+  "file_edit_advanced",
+  "form_inbox",
+  "git_local_workflow",
+  "git_ops",
+  "github_actions",
+  "github_pr",
+  "github_repo_manager",
+  "go_builder",
+  "google_account",
+  "html_extract",
+  "http_fetch",
+  "i18n_translator",
+  "image_studio",
+  "import_project",
+  "inspect_api",
+  "inspect_directory",
+  "inspect_symbol",
+  "java_builder",
+  "joe_engineering_report",
+  "json_query",
+  "knowledge_add",
+  "knowledge_search",
+  "kubernetes_ops",
+  "large_data_seeder",
+  "llm_cache",
+  "load_tester",
+  "logger",
+  "ls",
+  "memorize_codebase",
+  "mobile_builder",
+  "monitoring",
+  "multi_agent_debate",
+  "notify_user",
+  "npm_manager",
+  "orders_read",
+  "orion_business_foundation",
+  "pattern_recognize",
+  "payments_create_checkout_session",
+  "performance_analyzer",
+  "performance_profile",
+  "phase_executor",
+  "progressive_generator",
+  "project_detect",
+  "project_edit",
+  "project_pipeline",
+  "project_planner",
+  "project_repair",
+  "project_run",
+  "project_state_manager",
+  "project_stop",
+  "project_undo",
+  "python_builder",
+  "quality_run",
+  "query_datasource",
+  "query_optimizer",
+  "react_project",
+  "read_file",
+  "recall_memory",
+  "repo_apply_patch",
+  "repo_diff_summary",
+  "repo_read_file",
+  "repo_run_command",
+  "repo_search",
+  "request_analyzer",
+  "rss_fetch",
+  "scaffold_full_stack",
+  "scaffold_project",
+  "screenshot",
+  "search_api",
+  "search_files",
+  "search_public_apis",
+  "search_text",
+  "secrets_scan_repo",
+  "security_scanner",
+  "self_confidence_evaluator",
+  "shell_check_status",
+  "shell_execute",
+  "sonar_analysis",
+  "swagger_docs",
+  "task_lifecycle",
+  "template_manager",
+  "terminal_manager",
+  "terraform_manager",
+  "test_generator",
+  "todo_write",
+  "user_browser",
+  "validate_api",
+  "video_action",
+  "visual_compare",
+  "web_page_builder",
+  "website_full_pipeline",
+  "write_file"
+ ],
+ "selectedPairs": [
+  {
+   "class": "AnalyzeProjectTool",
+   "name": "analyze_project"
+  },
+  {
+   "class": "AnalyzeCodebaseTool",
+   "name": "analyze_codebase"
+  },
+  {
+   "class": "ProjectDetectTool",
+   "name": "project_detect"
+  },
+  {
+   "class": "CodebaseOutlineTool",
+   "name": "codebase_outline"
+  },
+  {
+   "class": "DeadCodeTool",
+   "name": "dead_code_detector"
+  },
+  {
+   "class": "ApiTesterTool",
+   "name": "api_tester"
+  },
+  {
+   "class": "HttpFetchTool",
+   "name": "http_fetch"
+  },
+  {
+   "class": "HtmlExtractTool",
+   "name": "html_extract"
+  },
+  {
+   "class": "RssFetchTool",
+   "name": "rss_fetch"
+  },
+  {
+   "class": "JsonQueryTool",
+   "name": "json_query"
+  },
+  {
+   "class": "SearchApiTool",
+   "name": "search_api"
+  },
+  {
+   "class": "DatasourceTool",
+   "name": "query_datasource"
+  },
+  {
+   "class": "AuthBuilderTool",
+   "name": "auth_builder"
+  },
+  {
+   "class": "MobileBuilderTool",
+   "name": "mobile_builder"
+  },
+  {
+   "class": "SwaggerDocsTool",
+   "name": "swagger_docs"
+  },
+  {
+   "class": "I18nTranslatorTool",
+   "name": "i18n_translator"
+  },
+  {
+   "class": "WebPipelineTool",
+   "name": "website_full_pipeline"
+  },
+  {
+   "class": "DevServerTool",
+   "name": "dev_server_start"
+  },
+  {
+   "class": "ScaffoldTool",
+   "name": "scaffold_full_stack"
+  },
+  {
+   "class": "BrowserActionTool",
+   "name": "browser_action"
+  },
+  {
+   "class": "BrowserVisionTool",
+   "name": "browser_vision"
+  },
+  {
+   "class": "ScreenshotTool",
+   "name": "screenshot"
+  },
+  {
+   "class": "VisualComparisonTool",
+   "name": "visual_compare"
+  },
+  {
+   "class": "VideoActionTool",
+   "name": "video_action"
+  },
+  {
+   "class": "DbSchemaMigratorTool",
+   "name": "db_schema_migrator"
+  },
+  {
+   "class": "QueryOptimizerTool",
+   "name": "query_optimizer"
+  },
+  {
+   "class": "LargeDataSeederTool",
+   "name": "large_data_seeder"
+  },
+  {
+   "class": "DockerManagerTool",
+   "name": "docker_manager"
+  },
+  {
+   "class": "TerraformManagerTool",
+   "name": "terraform_manager"
+  },
+  {
+   "class": "KubernetesOpsTool",
+   "name": "kubernetes_ops"
+  },
+  {
+   "class": "DockerSwarmOpsTool",
+   "name": "docker_swarm_ops"
+  },
+  {
+   "class": "GitOpsTool",
+   "name": "git_ops"
+  },
+  {
+   "class": "GitHubRepoManagerTool",
+   "name": "github_repo_manager"
+  },
+  {
+   "class": "GitHubPRTool",
+   "name": "github_pr"
+  },
+  {
+   "class": "GitHubActionsTool",
+   "name": "github_actions"
+  },
+  {
+   "class": "AlertManagerTool",
+   "name": "alert_manager"
+  },
+  {
+   "class": "CacheManagerTool",
+   "name": "cache_manager"
+  },
+  {
+   "class": "GoBuilderTool",
+   "name": "go_builder"
+  },
+  {
+   "class": "JavaBuilderTool",
+   "name": "java_builder"
+  },
+  {
+   "class": "LLMCacheTool",
+   "name": "llm_cache"
+  },
+  {
+   "class": "LoggerTool",
+   "name": "logger"
+  },
+  {
+   "class": "MonitoringTool",
+   "name": "monitoring"
+  },
+  {
+   "class": "ProjectStateManagerTool",
+   "name": "project_state_manager"
+  },
+  {
+   "class": "PythonBuilderTool",
+   "name": "python_builder"
+  },
+  {
+   "class": "RequestAnalyzerTool",
+   "name": "request_analyzer"
+  },
+  {
+   "class": "TemplateManagerTool",
+   "name": "template_manager"
+  },
+  {
+   "class": "DeployProjectTool",
+   "name": "deploy_project"
+  },
+  {
+   "class": "ArchiveFilesTool",
+   "name": "archive_files"
+  },
+  {
+   "class": "PythonExecutionTool",
+   "name": "execute_python"
+  },
+  {
+   "class": "SonarAnalysisTool",
+   "name": "sonar_analysis"
+  },
+  {
+   "class": "DependencyAuditTool",
+   "name": "dependency_audit"
+  },
+  {
+   "class": "QualityRunTool",
+   "name": "quality_run"
+  },
+  {
+   "class": "SecretsScanRepoTool",
+   "name": "secrets_scan_repo"
+  },
+  {
+   "class": "CiGeneratePipelineTool",
+   "name": "ci_generate_pipeline"
+  },
+  {
+   "class": "LoadTesterTool",
+   "name": "load_tester"
+  },
+  {
+   "class": "PatternRecognitionTool",
+   "name": "pattern_recognize"
+  },
+  {
+   "class": "AutoRefactorTool",
+   "name": "auto_refactor"
+  },
+  {
+   "class": "TestGeneratorTool",
+   "name": "test_generator"
+  },
+  {
+   "class": "PerformanceProfilerTool",
+   "name": "performance_profile"
+  },
+  {
+   "class": "DocumentationGeneratorTool",
+   "name": "doc_generator"
+  },
+  {
+   "class": "KnowledgeSearchTool",
+   "name": "knowledge_search"
+  },
+  {
+   "class": "KnowledgeAddTool",
+   "name": "knowledge_add"
+  },
+  {
+   "class": "TaskLifecycleTool",
+   "name": "task_lifecycle"
+  },
+  {
+   "class": "DirectoryInspectionTool",
+   "name": "inspect_directory"
+  },
+  {
+   "class": "FileSearchTool",
+   "name": "search_files"
+  },
+  {
+   "class": "SearchTextTool",
+   "name": "search_text"
+  },
+  {
+   "class": "SymbolInspectorTool",
+   "name": "inspect_symbol"
+  },
+  {
+   "class": "AdvancedFileEditTool",
+   "name": "file_edit_advanced"
+  },
+  {
+   "class": "NotifyUserTool",
+   "name": "notify_user"
+  },
+  {
+   "class": "PaymentsTool",
+   "name": "payments_create_checkout_session"
+  },
+  {
+   "class": "TodoWriteTool",
+   "name": "todo_write"
+  },
+  {
+   "class": "BrowserRunTool",
+   "name": "browser_run"
+  },
+  {
+   "class": "BrowserSummarizeTool",
+   "name": "browser_summarize"
+  },
+  {
+   "class": "BrowserUIAuditTool",
+   "name": "browser_ui_audit"
+  },
+  {
+   "class": "UiFixTool",
+   "name": "browser_ui_fix"
+  },
+  {
+   "class": "PageFixTool",
+   "name": "browser_page_fix"
+  },
+  {
+   "class": "ProjectUndoTool",
+   "name": "project_undo"
+  },
+  {
+   "class": "ProjectRepairTool",
+   "name": "project_repair"
+  },
+  {
+   "class": "BrowserFillFormTool",
+   "name": "browser_fill_form"
+  },
+  {
+   "class": "BrowserCompareTool",
+   "name": "browser_compare"
+  },
+  {
+   "class": "BrowserExtractDataTool",
+   "name": "browser_extract_data"
+  },
+  {
+   "class": "BrowserCheckLinksTool",
+   "name": "browser_check_links"
+  },
+  {
+   "class": "BrowserPerformanceTool",
+   "name": "browser_performance"
+  },
+  {
+   "class": "BrowserSEOAuditTool",
+   "name": "browser_seo_audit"
+  },
+  {
+   "class": "BrowserConsoleScanTool",
+   "name": "browser_console_scan"
+  },
+  {
+   "class": "BrowserSavePdfTool",
+   "name": "browser_save_pdf"
+  },
+  {
+   "class": "BrowserReadabilityTool",
+   "name": "browser_readability"
+  },
+  {
+   "class": "BrowserContrastAuditTool",
+   "name": "browser_contrast_audit"
+  },
+  {
+   "class": "BrowserA11yDeepTool",
+   "name": "browser_a11y_deep"
+  },
+  {
+   "class": "BrowserExtractMetaTool",
+   "name": "browser_extract_meta"
+  },
+  {
+   "class": "BrowserTranslateTool",
+   "name": "browser_translate"
+  },
+  {
+   "class": "BrowserResponsiveCheckTool",
+   "name": "browser_responsive_check"
+  },
+  {
+   "class": "BrowserFindTextTool",
+   "name": "browser_find_text"
+  },
+  {
+   "class": "BrowserDesignTokensTool",
+   "name": "browser_design_tokens"
+  },
+  {
+   "class": "BrowserClickTool",
+   "name": "browser_click"
+  },
+  {
+   "class": "BrowserFullPageShotTool",
+   "name": "browser_fullpage_shot"
+  },
+  {
+   "class": "BrowserSmartAgentTool",
+   "name": "browser_smart_agent"
+  },
+  {
+   "class": "BrowserAutofixTool",
+   "name": "browser_autofix"
+  },
+  {
+   "class": "BrowserConsentTool",
+   "name": "browser_consent"
+  },
+  {
+   "class": "BrowserSearchTool",
+   "name": "browser_search"
+  },
+  {
+   "class": "BrowserOpenTool",
+   "name": "browser_launch"
+  },
+  {
+   "class": "GoogleAccountTool",
+   "name": "google_account"
+  },
+  {
+   "class": "UserBrowserTool",
+   "name": "user_browser"
+  },
+  {
+   "class": "RepoReadFileTool",
+   "name": "repo_read_file"
+  },
+  {
+   "class": "RepoSearchTool",
+   "name": "repo_search"
+  },
+  {
+   "class": "RepoApplyPatchTool",
+   "name": "repo_apply_patch"
+  },
+  {
+   "class": "RepoRunCommandTool",
+   "name": "repo_run_command"
+  },
+  {
+   "class": "RepoDiffSummaryTool",
+   "name": "repo_diff_summary"
+  },
+  {
+   "class": "EliteTools.DependencyGraphTool",
+   "name": "dependency_graph"
+  },
+  {
+   "class": "EliteTools.BusinessLogicTool",
+   "name": "business_logic_parser"
+  },
+  {
+   "class": "EliteTools.ChaosTestingTool",
+   "name": "chaos_test_plan"
+  },
+  {
+   "class": "EliteTools.ComplianceValidatorTool",
+   "name": "compliance_validator"
+  },
+  {
+   "class": "EliteTools.CostEstimatorTool",
+   "name": "cloud_cost_estimator"
+  },
+  {
+   "class": "EliteTools.AmbiguityResolverTool",
+   "name": "ambiguity_resolver"
+  },
+  {
+   "class": "EliteTools.MultiAgentDebateTool",
+   "name": "multi_agent_debate"
+  },
+  {
+   "class": "EliteTools.SelfConfidenceTool",
+   "name": "self_confidence_evaluator"
+  },
+  {
+   "class": "EngineeringDiscoveryTool",
+   "name": "engineering_discovery"
+  },
+  {
+   "class": "CapabilityDecisionTool",
+   "name": "decide_capability_route"
+  },
+  {
+   "class": "SearchPublicApisTool",
+   "name": "search_public_apis"
+  },
+  {
+   "class": "InspectApiTool",
+   "name": "inspect_api"
+  },
+  {
+   "class": "ValidateApiTool",
+   "name": "validate_api"
+  },
+  {
+   "class": "EchoTool",
+   "name": "echo"
+  },
+  {
+   "class": "FileEditTool",
+   "name": "file_edit"
+  },
+  {
+   "class": "ShellExecuteTool",
+   "name": "shell_execute"
+  },
+  {
+   "class": "WriteFileTool",
+   "name": "write_file"
+  },
+  {
+   "class": "DeleteFileTool",
+   "name": "delete_file"
+  },
+  {
+   "class": "ScaffoldProjectTool",
+   "name": "scaffold_project"
+  },
+  {
+   "class": "GitLocalWorkflowTool",
+   "name": "git_local_workflow"
+  },
+  {
+   "class": "LsTool",
+   "name": "ls"
+  },
+  {
+   "class": "NpmManagerTool",
+   "name": "npm_manager"
+  },
+  {
+   "class": "ShellStatusTool",
+   "name": "shell_check_status"
+  },
+  {
+   "class": "TerminalManagerTool",
+   "name": "terminal_manager"
+  },
+  {
+   "class": "SafeReadFileTool",
+   "name": "read_file"
+  },
+  {
+   "class": "AskUserTool",
+   "name": "ask_user"
+  },
+  {
+   "class": "AIGeneratorTool",
+   "name": "ai_write_file"
+  },
+  {
+   "class": "ProgressiveGeneratorTool",
+   "name": "progressive_generator"
+  },
+  {
+   "class": "ProjectPlannerTool",
+   "name": "project_planner"
+  },
+  {
+   "class": "PhaseExecutorTool",
+   "name": "phase_executor"
+  },
+  {
+   "class": "ProjectPipelineTool",
+   "name": "project_pipeline"
+  },
+  {
+   "class": "EnterprisePlatformFoundationTool",
+   "name": "enterprise_platform_foundation"
+  },
+  {
+   "class": "OrionBusinessFoundationTool",
+   "name": "orion_business_foundation"
+  },
+  {
+   "class": "ProjectRunTool",
+   "name": "project_run"
+  },
+  {
+   "class": "ProjectStopTool",
+   "name": "project_stop"
+  },
+  {
+   "class": "DeployPagesTool",
+   "name": "deploy_pages"
+  },
+  {
+   "class": "CentralAnswerTool",
+   "name": "central_answer"
+  },
+  {
+   "class": "WebPageBuilderTool",
+   "name": "web_page_builder"
+  },
+  {
+   "class": "ReactProjectTool",
+   "name": "react_project"
+  },
+  {
+   "class": "ProjectEditTool",
+   "name": "project_edit"
+  },
+  {
+   "class": "FormInboxTool",
+   "name": "form_inbox"
+  },
+  {
+   "class": "ImportProjectTool",
+   "name": "import_project"
+  },
+  {
+   "class": "ApiProjectTool",
+   "name": "api_project"
+  },
+  {
+   "class": "ImageStudioTool",
+   "name": "image_studio"
+  },
+  {
+   "class": "OrdersReadTool",
+   "name": "orders_read"
+  },
+  {
+   "class": "BusinessProfileTool",
+   "name": "business_profile"
+  },
+  {
+   "class": "AutoTesterTool",
+   "name": "auto_tester"
+  },
+  {
+   "class": "CodeReviewerTool",
+   "name": "code_reviewer"
+  },
+  {
+   "class": "SecurityScannerTool",
+   "name": "security_scanner"
+  },
+  {
+   "class": "PerformanceAnalyzerTool",
+   "name": "performance_analyzer"
+  },
+  {
+   "class": "ErrorRecoveryTool",
+   "name": "error_recovery"
+  },
+  {
+   "class": "JoeEngineeringReportTool",
+   "name": "joe_engineering_report"
+  },
+  {
+   "class": "ArchitectTool",
+   "name": "architect_plan"
+  },
+  {
+   "class": "...MemoryTools",
+   "name": "recall_memory"
+  },
+  {
+   "class": "...MemoryTools",
+   "name": "memorize_codebase"
+  }
+ ]
+}
