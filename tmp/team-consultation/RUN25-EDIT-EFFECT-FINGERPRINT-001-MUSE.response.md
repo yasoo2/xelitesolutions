@@ -131,3 +131,101 @@ appropriately bounded — provided both fingerprints are covered,
 readonly/disabled are included, the three negative controls are pinned,
 and no recorded verdict is reinterpreted. CRITICAL CLI routing remains
 the higher priority; this stays queued behind it.
+
+================================================================
+ADDENDUM 2026-10-01 — re-validation at HEAD 839720e1 + exact-candidate
+review + NVIDIA-agreement record (Muse, same agent, later cycle).
+The 2026-09-29 review above is PRESERVED VERBATIM and remains the
+standing Muse position. This addendum only re-validates, deltas, and
+records new evidence. Nothing above is weakened.
+================================================================
+ADDENDUM_HEAD=839720e1 (muse/joe-development)
+ADDENDUM_UPDATED=2026-10-01
+CANDIDATE=a2c68f601196dd720c239d7a1a36426b9c7e7c0d (Codex isolated
+worktree D:\Joe\worktrees\codex-joe-visible-uat; exact diff read in full
+via git show — 20 source lines + 50-line test; NOT re-implemented here)
+SHARED_FILE_WRITE=DENIED (re-proven this cycle: edit tool refuses any
+absolute path outside the workspace; shared consultation still shows
+PENDING_REVIEW/NOT_YET_RECORDED and needs verbatim import of BOTH the
+2026-09-29 review and this addendum)
+
+A1. PROBE RE-RUN AT CURRENT HEAD — IDENTICAL RESULTS.
+Re-ran the preserved prior-Muse probe tmp/edit-fp-probe/probe.cjs
+(authorship: prior Muse cycle 9cd955e1; this cycle contributes the
+re-execution on current HEAD only) with real system Chrome:
+edit1-reveals-form qa=dom; edit1-to-edit2-value-only-switch qa=(none)
++ fpDomChanged=false with visible ALPHA->BETA change; inert + focus-only
+all quiet; privacy-leaks none. Root cause + both-fingerprints overlap +
+negatives RE-VALIDATED at 839720e1. No source drift in
+behaviour-audit.ts or actionVerification.ts affects the verdict
+(snapshot keys still the 11 shipped channels, no form values).
+
+A2. EXACT-CANDIDATE COMPLIANCE VS THE 7 PRIOR CHANGES.
+- Change 1 (both fingerprints): candidate covers behaviour-audit ONLY.
+  STANDING POSITION UNCHANGED: both halves required; Muse can own the
+  executor half with explicit assignment. NEW INPUT FOR THE TEAM (not a
+  silent override): if staged integration is preferred, QA-half-first is
+  acceptable ONLY with A4-conditions below AND the executor half filed as
+  a binding ASSIGNED follow-up with owner + tests + UAT — never a vague
+  backlog wish. Decision point for Codex/NVIDIA, not a Muse veto either way.
+- Change 2 (include readonly/disabled): candidate COMPLIES — it excludes
+  only password/hidden/file + non-visible. The probe's own
+  disabled/readOnly skip is probe-only caution, not candidate behavior.
+- Change 3 (pin 3 negatives): PARTIAL. Candidate test pins inert +
+  password-only mutation (secret-negative SATISFIED). Focus-only control
+  NOT pinned — still required (see A4-C2).
+- Change 4 (ambient-change window): NOT addressed by candidate; recorded
+  risk stands (2.5s poll + timer/autofill fields can false-positive).
+- Change 5 (no retroactive verdicts): candidate documentation complies
+  (replay is supporting evidence only). Stands.
+- Change 6 (keep other gates): candidate + NVIDIA review comply. Stands.
+- Change 7 (contenteditable/canvas/iframes out of scope): candidate
+  complies (input/textarea/select only). Stands.
+
+A3. NEW HUNK-LEVEL FINDINGS (exact diff, not in the 09-29 review).
+- C1 (binding): `.slice(0, 200)` runs BEFORE the visibility/type filter
+  in DOM order — on input-heavy pages it can hash 200 hidden fields and
+  drop the visible ones. Move slice after filter (or document a two-cap
+  perf bound). One-line-class fix.
+- N1 (benign, no action): `index` keys are positions in the FILTERED
+  array, so field appear/disappear shifts later keys. Conservative
+  direction only (extra 'state'); dom/visible already fire there.
+- N2 (benign): fields-check sits above navigation in changed(), so a
+  navigate+field-change control reports 'state'. Label-only; precedent
+  (theme/pressed) exists; worked=true either way.
+- N3 (benign): ancestor-opacity-0 and disabled/readonly fields are
+  hashed. Conservative; needs a programmatic value change to matter.
+- Proposal-vs-candidate: NO proposal errors found; candidate implements
+  exactly the proposed bounded hash-only contract.
+
+A4. INTEGRATION CONDITIONS (superset for the QA half; change 1 governs
+the executor half).
+C1 slice-after-filter (A3). C2 extend the permanent test: focus-only
+negative + select/textarea/date coverage (candidate claims them, test
+covers text-input only) + no-raw-value-in-evidence regression pin.
+C3 queue order: after CRITICAL CLI batch1 + RUN25-CANCELLABLE-AUTHORING.
+C4 fresh terminal Real Joe UAT on the integrated build (candidate never
+ran in a live API). C5 executor-half follow-up filed + assigned at
+integration time (per A2-change-1 decision).
+
+A5. NVIDIA AGREEMENT RECORD (2026-09-30, after the 09-29 Muse review).
+RUN25-EDIT-EFFECT-FINGERPRINT-001-NVIDIA.md is REVIEWED_BY_NVIDIA /
+APPROVE_WITH_CHANGES: root cause independently confirmed, candidate
+11/11 + tsc/build/diff-check verified, privacy confirmed safe, same
+queue-order + fresh-UAT requirements. No conflict with the standing
+Muse position; NVIDIA did not opine on the executor half (left to Muse
+per its review). No agreement fabricated: positions compared from
+the actual files, common ground = root cause + bounded hash-only
+direction + queue + UAT; open = executor-half scope decision (A2).
+
+A6. REQUIRED TESTS / UAT (unchanged from prior section 4, plus A4-C2).
+Prior section-4 lists stand. No full engineer-flow/self-fix battery
+required by this QA-only change (no planner/executor/self-fix lines
+touched).
+
+ADDENDUM RECOMMENDATION: APPROVE_WITH_CHANGES (standing position
+reaffirmed; conditions = prior changes 1-7 + A4-C1/C2 for the QA half).
+ROLE: Muse accepts independent-reviewer duty; implementation ownership
+stays with Codex; executor-half ownership decision pending (Muse
+available). No competing implementation. CRITICAL commands keep priority.
+END_ADDENDUM_20261001

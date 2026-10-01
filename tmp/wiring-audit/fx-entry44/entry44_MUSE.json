@@ -1,0 +1,272 @@
+{
+ "emittedCount": 20,
+ "declaredCount": 174,
+ "aliasCount": 28,
+ "unreachableStatic": [],
+ "aliasResolved": [
+  "create_file->write_file",
+  "file_write->write_file",
+  "write_to_file->write_file"
+ ],
+ "rows": [
+  {
+   "name": "ai_write_file",
+   "sources": [
+    "writeTools"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "AIGeneratorTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "api_project",
+   "sources": [
+    "CAN_BUILD_OR_RUN",
+    "tool-literal"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ApiProjectTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "create_file",
+   "sources": [
+    "writeTools"
+   ],
+   "declaredDirect": false,
+   "declaredIn": [],
+   "aliasOf": "write_file",
+   "aliasTargetDeclared": true,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "engineering_discovery",
+   "sources": [
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "EngineeringDiscoveryTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "file_write",
+   "sources": [
+    "writeTools"
+   ],
+   "declaredDirect": false,
+   "declaredIn": [],
+   "aliasOf": "write_file",
+   "aliasTargetDeclared": true,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "inspect_directory",
+   "sources": [
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "UtilityTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "npm_manager",
+   "sources": [
+    "CAN_BUILD_OR_RUN",
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "SystemTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "project_edit",
+   "sources": [
+    "CAN_BUILD_OR_RUN",
+    "tool-literal"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ProjectEditTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "project_pipeline",
+   "sources": [
+    "tool-literal"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ProjectPipelineTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "project_planner",
+   "sources": [
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ProjectPlannerTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "project_repair",
+   "sources": [
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ProjectRepairTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "project_run",
+   "sources": [
+    "CAN_BUILD_OR_RUN",
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ProjectRunTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "react_project",
+   "sources": [
+    "CAN_BUILD_OR_RUN",
+    "tool-literal"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "ReactProjectTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "read_file",
+   "sources": [
+    "direct-executeTool"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "TaskInteractionTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "scaffold_full_stack",
+   "sources": [
+    "CAN_BUILD_OR_RUN"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "WebDevelopmentTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "scaffold_project",
+   "sources": [
+    "CAN_BUILD_OR_RUN"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "SystemTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "shell_execute",
+   "sources": [
+    "CAN_BUILD_OR_RUN"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "SystemTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "web_page_builder",
+   "sources": [
+    "CAN_BUILD_OR_RUN"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "WebPageBuilderTool.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "write_file",
+   "sources": [
+    "writeTools"
+   ],
+   "declaredDirect": true,
+   "declaredIn": [
+    "SystemTools.ts"
+   ],
+   "aliasOf": null,
+   "aliasTargetDeclared": null,
+   "executorReachableStatic": true
+  },
+  {
+   "name": "write_to_file",
+   "sources": [
+    "writeTools"
+   ],
+   "declaredDirect": false,
+   "declaredIn": [],
+   "aliasOf": "write_file",
+   "aliasTargetDeclared": true,
+   "executorReachableStatic": true
+  }
+ ]
+}
