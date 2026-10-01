@@ -1,0 +1,13 @@
+CYCLE47 FRESH RERUN — PHASE-OBSERVATION R1/R2 REWORK SUITES (transcribed from live run output)
+DATE=2026-10-01 (~06:55Z) | RUNNER=MUSE | CANDIDATE=D:\Joe\worktrees\codex-nvidia-provider-ui @ fdad5955 (read-only; cache+tmp redirected to D:\Joe\muse-worktree\tmp\joe-muse-rereview2)
+ENV=NODE_ENV=test OFFLINE_MODE=true
+CMD=npx jest src/__tests__/phase-output-observation.test.ts src/__tests__/observation-read-gateway-security.test.ts --cacheDirectory <muse-tmp>\jest-cache --silent
+EXIT=0
+RESULT:
+Test Suites: 2 passed, 2 total
+Tests:       40 passed, 40 total
+Snapshots:   0 total
+Time:        47.938 s
+NOTE=Candidate's own file logger emitted EPERM opening api/logs/application-2026-10-01-09.log (pre-existing env quirk; module resolved from D:\Joe\xelitesolutions\api\node_modules). Tests unaffected; verdict green.
+MANIFEST=13/13 hashes MATCH (separate check, same cycle) — zero drift.
+POSITION_STANDS=ACCEPT_NARROW_TEST_ONLY_REWORK / APPROVE (fallback response 2026-10-01 09:39, shared import still pending)
