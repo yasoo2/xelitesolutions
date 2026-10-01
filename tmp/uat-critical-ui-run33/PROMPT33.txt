@@ -1,0 +1,14 @@
+Build a Node.js command-line tool called csvsum. It reads a CSV
+file whose first line is a header row and sums one numeric column:
+`csvsum FILE COLUMN` prints the sum of all data-row values under the
+header named COLUMN, as a single number on stdout. With the flag
+`csvsum FILE COLUMN --average` it prints the arithmetic mean instead.
+Values may contain surrounding spaces; empty cells count as zero;
+a header match is exact and case-sensitive. It must print --help
+output describing usage, arguments and the --average flag. If the
+file does not exist it must exit with code 4 and print a one-line
+error starting with "no such file" to stderr. If the column name is
+not in the header it must exit with code 5 and print a one-line
+error starting with "no such column" to stderr. Include a sample CSV
+file with a header and at least 8 data rows and an npm test script
+that verifies the behavior.
