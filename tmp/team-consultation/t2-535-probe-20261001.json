@@ -1,0 +1,498 @@
+{
+ "pass": 37,
+ "decided": 46,
+ "total": 49,
+ "flips535vs166": 12,
+ "rows": [
+  {
+   "section": "T",
+   "name": "unquoted explanatory body",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "unquoted proposed design",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "software-themed poem",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "dashboard illustration",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "anaphoric implementation",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "global file prohibition",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "global no-execution contract",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "existing-file scope only",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "polite control",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "Arabic information control",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "T",
+   "name": "affirmative desired dashboard",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R1 login must not build",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R1 control desire-record builds",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 marketplace",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 panel",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 portal",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 platform HIS",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 Arabic need verb",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 Arabic bare-alef make",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R2 residue deploy",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 residue give-me",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R2 Arabic statement list",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R4 ask-contents unknown noun",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R4 bill builds via verb-artifact",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "V2R3 colon-less framing must stay inert",
+   "expected": false,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "R6 wedding Arabic comma",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "R6 English bare comma",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "V2R1 kuafor-page colon",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "V2R1 review-noun page",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "V2R1 compare-noun page",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "V2R1 verb control stays inert",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "R",
+   "name": "V2R2 measured request",
+   "expected": true,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": false
+  },
+  {
+   "section": "R",
+   "name": "V2R2 EN twin",
+   "expected": true,
+   "got535": true,
+   "got166": true,
+   "flip": false,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "poem about marketplace",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "explain portal how-it-works",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "platform slow question",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "liking marketplace",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "genuine portal repair",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "outage then status page",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "comma list question",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "need help no artifact",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "make coffee no artifact",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "desire travel no artifact",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "want-learn programming",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "multi-imperative tracker",
+   "expected": true,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "denial comma explain",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "new pin version-build",
+   "expected": false,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": true
+  },
+  {
+   "section": "S",
+   "name": "desire-an-explanation dashboard",
+   "expected": null,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "S",
+   "name": "help-me build",
+   "expected": null,
+   "got535": false,
+   "got166": false,
+   "flip": false,
+   "reason535": "no affirmative construction authority; fields are descriptive",
+   "ok": null
+  },
+  {
+   "section": "S",
+   "name": "please comma build",
+   "expected": null,
+   "got535": true,
+   "got166": false,
+   "flip": true,
+   "reason535": "affirmative requested action outside quoted examples",
+   "ok": null
+  }
+ ]
+}

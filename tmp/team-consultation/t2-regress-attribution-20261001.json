@@ -1,0 +1,13 @@
+{
+ "fixed": [
+  "\\a-noun-is-not-a-command.test.ts :: a calendar noun inside a build brief is not a calendar command \u0638\u201a\u0637\u00a7\u0637\u00b9\u0637\u00a9 \u0637\u00a3\u0638\u067e\u0637\u00b1\u0637\u00a7\u0637\u00ad builds instead of opening Google",
+  "\\build-not-chat.test.ts :: an English build request reaches the builders and so does: Create a multi-vendor marketplace",
+  "\\build-not-chat.test.ts :: an English build request reaches the builders and so does: build an admin panel",
+  "\\build-not-chat.test.ts :: an English build request reaches the builders and so does: create a booking portal",
+  "\\build-not-chat.test.ts :: an English build request reaches the builders recognises his request as a build at all",
+  "\\people-ask-they-do-not-command.test.ts :: INVARIANT: a wish for a page is a build request and the imperatives that already worked still do",
+  "\\people-ask-they-do-not-command.test.ts :: INVARIANT: a wish for a page is a build request desire phrasing counts, in both languages"
+ ],
+ "broken": [],
+ "stillFailing": 23
+}
