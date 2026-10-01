@@ -1,0 +1,46 @@
+{
+ "startedUtc": "2026-10-01T16:29:38.369Z",
+ "checks": {
+  "duckHandshake": {
+   "ok": true,
+   "status": 200,
+   "ms": 839,
+   "vqdPresent": true
+  },
+  "duckChat": {
+   "ok": false,
+   "status": 418,
+   "ms": 252,
+   "bytes": 570,
+   "containsMarker": false
+  },
+  "llm7models": {
+   "ok": true,
+   "status": 200,
+   "ms": 315,
+   "count": 65,
+   "firstFree": "DeepSeek-V4-Flash-0731"
+  },
+  "llm7chat": {
+   "ok": true,
+   "status": 200,
+   "ms": 301,
+   "bytes": 589,
+   "containsMarker": true,
+   "retryAfterSec": null,
+   "bodyHead": "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"FEAS-OKFEAS-OK\\n[Invalid output: the request requires the exact response] The user requested a reply with exactly \\\"FEAS-OK\\\". The"
+  },
+  "ollama": {
+   "ok": true,
+   "status": 200,
+   "ms": 245,
+   "models": [
+    "qwen2.5:1.5b",
+    "moondream:latest",
+    "llava:latest",
+    "qwen2.5-coder:7b"
+   ]
+  }
+ },
+ "finishedUtc": "2026-10-01T16:29:40.375Z"
+}

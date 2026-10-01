@@ -1,0 +1,259 @@
+{
+ "registered": 163,
+ "rows": [
+  {
+   "id": "git-v1-push",
+   "verdict": "MISS",
+   "markers": [
+    "git"
+   ],
+   "hitNames": [],
+   "top": []
+  },
+  {
+   "id": "git-v2-branch",
+   "verdict": "MISS",
+   "markers": [
+    "git"
+   ],
+   "hitNames": [],
+   "top": []
+  },
+  {
+   "id": "git-v3-explicit",
+   "verdict": "HIT",
+   "markers": [
+    "git"
+   ],
+   "hitNames": [
+    "github_repo_manager",
+    "git_ops"
+   ],
+   "top": [
+    {
+     "name": "github_repo_manager",
+     "score": 8,
+     "why": [
+      "git",
+      "repo"
+     ]
+    },
+    {
+     "name": "repo_diff_summary",
+     "score": 8,
+     "why": [
+      "show",
+      "git",
+      "status",
+      "repo"
+     ]
+    },
+    {
+     "name": "repo_run_command",
+     "score": 7,
+     "why": [
+      "git",
+      "status",
+      "repo"
+     ]
+    },
+    {
+     "name": "git_ops",
+     "score": 5,
+     "why": [
+      "git"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "git-v4-commit-neutral",
+   "verdict": "MISS",
+   "markers": [
+    "git"
+   ],
+   "hitNames": [],
+   "top": []
+  },
+  {
+   "id": "mem-v1-recall",
+   "verdict": "HIT",
+   "markers": [
+    "memory"
+   ],
+   "hitNames": [
+    "recall_memory"
+   ],
+   "top": [
+    {
+     "name": "recall_memory",
+     "score": 5,
+     "why": [
+      "recall"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mem-v2-save",
+   "verdict": "MISS",
+   "markers": [
+    "memory"
+   ],
+   "hitNames": [],
+   "top": [
+    {
+     "name": "browser_save_pdf",
+     "score": 5,
+     "why": [
+      "save"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "mem-v3-remember-q",
+   "verdict": "MISS",
+   "markers": [
+    "memory"
+   ],
+   "hitNames": [],
+   "top": []
+  },
+  {
+   "id": "mem-v4-explicit",
+   "verdict": "HIT",
+   "markers": [
+    "memory"
+   ],
+   "hitNames": [
+    "recall_memory"
+   ],
+   "top": [
+    {
+     "name": "recall_memory",
+     "score": 8,
+     "why": [
+      "search",
+      "memory"
+     ]
+    },
+    {
+     "name": "browser_search",
+     "score": 5,
+     "why": [
+      "search"
+     ]
+    },
+    {
+     "name": "knowledge_search",
+     "score": 5,
+     "why": [
+      "search"
+     ]
+    },
+    {
+     "name": "repo_search",
+     "score": 5,
+     "why": [
+      "search"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "reg-read",
+   "verdict": "HIT",
+   "markers": [
+    "read"
+   ],
+   "hitNames": [
+    "read_file",
+    "repo_read_file",
+    "orders_read"
+   ],
+   "top": [
+    {
+     "name": "read_file",
+     "score": 10,
+     "why": [
+      "read",
+      "file"
+     ]
+    },
+    {
+     "name": "repo_read_file",
+     "score": 10,
+     "why": [
+      "read",
+      "file"
+     ]
+    },
+    {
+     "name": "ai_write_file",
+     "score": 5,
+     "why": [
+      "file"
+     ]
+    },
+    {
+     "name": "delete_file",
+     "score": 5,
+     "why": [
+      "file"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "reg-shell",
+   "verdict": "HIT",
+   "markers": [
+    "shell",
+    "terminal"
+   ],
+   "hitNames": [
+    "shell_execute",
+    "terminal_manager",
+    "shell_check_status"
+   ],
+   "top": [
+    {
+     "name": "shell_execute",
+     "score": 10,
+     "why": [
+      "execute",
+      "shell"
+     ]
+    },
+    {
+     "name": "terminal_manager",
+     "score": 6,
+     "why": [
+      "shell",
+      "output"
+     ]
+    },
+    {
+     "name": "execute_python",
+     "score": 5,
+     "why": [
+      "execute"
+     ]
+    },
+    {
+     "name": "shell_check_status",
+     "score": 5,
+     "why": [
+      "shell"
+     ]
+    }
+   ]
+  },
+  {
+   "id": "negative",
+   "verdict": "PASS_DECLINED",
+   "top": []
+  }
+ ]
+}

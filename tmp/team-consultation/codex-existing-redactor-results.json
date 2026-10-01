@@ -1,0 +1,61 @@
+{
+  "sourceFile": "D:/Joe/muse-worktree/web/src/utils/redactUrl.ts",
+  "sha256": "74cafb8046a0bc3d5250a9601c3591fd566e0354d5313d1746e38de513161300",
+  "scope": "Actual existing Muse helper, synthetic inputs only; no network, UI, source mutation or integration",
+  "results": [
+    {
+      "name": "token query",
+      "passed": true
+    },
+    {
+      "name": "credential name affix",
+      "passed": true
+    },
+    {
+      "name": "username token",
+      "passed": true
+    },
+    {
+      "name": "username and password",
+      "passed": true
+    },
+    {
+      "name": "fragment credential",
+      "passed": true
+    },
+    {
+      "name": "unknown query JWT",
+      "passed": true
+    },
+    {
+      "name": "relative credential fallback",
+      "passed": true
+    },
+    {
+      "name": "protocol relative userinfo",
+      "passed": true
+    },
+    {
+      "name": "benign URL",
+      "passed": true
+    },
+    {
+      "name": "bare email",
+      "passed": true
+    },
+    {
+      "name": "nonstring fail closed",
+      "passed": true
+    },
+    {
+      "name": "encoded credential parameter name",
+      "passed": true
+    },
+    {
+      "name": "percent-encoded JWT unknown parameter",
+      "passed": true
+    }
+  ],
+  "passed": 13,
+  "failed": 0
+}
