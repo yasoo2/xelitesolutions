@@ -1,0 +1,7 @@
+DIAGNOSTIC-INTENT-20261001: Answer this conceptual question only, in Arabic. No tool execution or file changes are authorized for this question. Compare two requirements: A) a browser-only bill splitter has numeric inputs for amount, tip percentage and people; it displays calculated total and per-person amount, with no accounts or database. B) an inventory register stores editable records with name, price and quantity in a database. Explain which needs persisted records, which needs an owned backend, and why a list of input labels does not define a CRUD application. Do not perform either requirement.
+===ROW===
+Explain why a calculator with fields amount, rate and people is different from a database register. Answer only; do not create files.
+===ROW===
+اشرح الفرق بين حاسبة فيها حقول: المبلغ، النسبة، عدد الأشخاص، وسجل يحفظ البيانات. أريد شرحاً فقط بدون إنشاء أو تعديل ملفات.
+===ROW===
+Create an inventory register with columns name, price and quantity. Save records in a database.

@@ -1,0 +1,567 @@
+[
+ {
+  "id": "LIVE-EN-EXACT",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": true,
+   "reason": "knowledge question"
+  },
+  "parsed": {
+   "tools": [
+    "central_answer"
+   ],
+   "rawKeys": [
+    "primary",
+    "knowledgeQuestion",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "LIVE-EN-NOWORD",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": true,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "strong web verb"
+  },
+  "parsed": {
+   "tools": [
+    "browser_autofix"
+   ],
+   "rawKeys": [
+    "primary",
+    "capabilityCandidate",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "LIVE-AR-EXACT",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "LIVE-EN-SIMPLE",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "DIAG-RUN-TESTS",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "DIAG-INSPECT",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "URL-GENUINE",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "REVIEW-FIX",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "DENY-BARE",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": true,
+   "isKnowledge": false,
+   "reason": "explicit read-only request"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "readOnly",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "V2R1-KWAFIR",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": true,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "weak web verb + web noun"
+  },
+  "parsed": {
+   "tools": [
+    "browser_run"
+   ],
+   "rawKeys": [
+    "primary",
+    "fast"
+   ]
+  }
+ },
+ {
+  "id": "V2R1-NOUN-MURAJAA",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": true,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "weak web verb + web noun"
+  },
+  "parsed": {
+   "tools": [
+    "code_reviewer"
+   ],
+   "rawKeys": [
+    "primary",
+    "capabilityCandidate",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "V2R1-VERB-CTRL",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "ambiguous - needs LLM analysis"
+  },
+  "parsed": {
+   "tools": [
+    "code_reviewer"
+   ],
+   "rawKeys": [
+    "primary",
+    "capabilityCandidate",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "V2R2-MEASURED",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "ambiguous - needs LLM analysis"
+  },
+  "parsed": {
+   "tools": [],
+   "rawKeys": [
+    "primary",
+    "analysisUnavailable"
+   ]
+  }
+ },
+ {
+  "id": "V2R3-NEWLINE",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": true,
+   "reason": "knowledge question"
+  },
+  "parsed": {
+   "tools": [
+    "central_answer"
+   ],
+   "rawKeys": [
+    "primary",
+    "knowledgeQuestion",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "V2R3-COLON-CTRL",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": true,
+   "reason": "knowledge question"
+  },
+  "parsed": {
+   "tools": [
+    "central_answer"
+   ],
+   "rawKeys": [
+    "primary",
+    "knowledgeQuestion",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "R4-ROLODEX",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "ambiguous - needs LLM analysis"
+  },
+  "parsed": {
+   "tools": [],
+   "rawKeys": [
+    "primary",
+    "analysisUnavailable"
+   ]
+  }
+ },
+ {
+  "id": "R4-CAPITALS",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "ambiguous - needs LLM analysis"
+  },
+  "parsed": {
+   "tools": [],
+   "rawKeys": [
+    "primary",
+    "analysisUnavailable"
+   ]
+  }
+ },
+ {
+  "id": "CTRL-LONGBUILD",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": true,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "engineering brief"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "engineeringBrief",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "CTRL-QUOTED",
+  "helper": {
+   "isBuild": false,
+   "reason": "global no-execution contract"
+  },
+  "cls": {
+   "isBuild": true,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "engineering brief"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "engineeringBrief",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "CTRL-POLITE",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": true,
+   "reason": "knowledge question"
+  },
+  "parsed": {
+   "tools": [
+    "central_answer"
+   ],
+   "rawKeys": [
+    "primary",
+    "knowledgeQuestion",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "R6-WEDDING",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": true,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "buildRequest",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "R2-MARKET",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": true,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "buildRequest",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "R2-PANEL",
+  "helper": {
+   "isBuild": true,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "cls": {
+   "isBuild": true,
+   "isBrowser": false,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "affirmative requested action outside quoted examples"
+  },
+  "parsed": {
+   "tools": [
+    "project_pipeline"
+   ],
+   "rawKeys": [
+    "primary",
+    "buildRequest",
+    "deterministic"
+   ]
+  }
+ },
+ {
+  "id": "CTRL-LOGIN-NEG",
+  "helper": {
+   "isBuild": false,
+   "reason": "no affirmative construction authority; fields are descriptive"
+  },
+  "cls": {
+   "isBuild": false,
+   "isBrowser": true,
+   "isReadOnly": false,
+   "isKnowledge": false,
+   "reason": "strong web verb"
+  },
+  "parsed": {
+   "tools": [
+    "browser_run"
+   ],
+   "rawKeys": [
+    "primary",
+    "fast"
+   ]
+  }
+ }
+]
