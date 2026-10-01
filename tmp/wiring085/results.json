@@ -1,0 +1,99 @@
+{
+ "checks": [
+  {
+   "name": "registered_163",
+   "pass": true,
+   "detail": "registered=163"
+  },
+  {
+   "name": "write5_labels",
+   "pass": true,
+   "detail": "web_page_builder=[\"write\"] alert_manager=[\"write\"] cache_manager=[\"write\"] project_state_manager=[\"write\"] template_manager=[\"write\"]"
+  },
+  {
+   "name": "read16_labels",
+   "pass": true,
+   "detail": "all16=true"
+  },
+  {
+   "name": "declared_empty_templatemanager",
+   "pass": true,
+   "detail": "TemplateManagerTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_cachemanager",
+   "pass": true,
+   "detail": "CacheManagerTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_webpagebuilder",
+   "pass": true,
+   "detail": "WebPageBuilderTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_monitoring",
+   "pass": true,
+   "detail": "MonitoringTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_writefx_alertmanager",
+   "pass": true,
+   "detail": "AlertManagerTool.ts perms=[] fx=['write' as const]"
+  },
+  {
+   "name": "declared_writefx_projectstatemanager",
+   "pass": true,
+   "detail": "ProjectStateManagerTool.ts perms=[] fx=['write' as const]"
+  },
+  {
+   "name": "monitoring_blob_unchanged",
+   "pass": true,
+   "detail": "bbbeaaa712061a84"
+  },
+  {
+   "name": "f0821_auto_assign_before_firewall",
+   "pass": true,
+   "detail": "autoAssign@16340 firewall@39213"
+  },
+  {
+   "name": "f0821_session_prefix_present",
+   "pass": true,
+   "detail": "session- prefix literal present"
+  },
+  {
+   "name": "orphan_lock_generate_image",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_codebase_navigator",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_bulk_file_generator",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_visual_qa",
+   "pass": true,
+   "detail": "implemented=true imported=null registered=false"
+  },
+  {
+   "name": "visual_qa_import_scan",
+   "pass": true,
+   "detail": "registryMentionsVisualQA=true"
+  },
+  {
+   "name": "w735_shell_status_gap",
+   "pass": true,
+   "detail": "offered=true mappedInToolService=false shell_check_status_registered=true"
+  },
+  {
+   "name": "w733_stale_green",
+   "pass": true,
+   "detail": "selfPinsSearchFiles=true importsRealTable=false realTableToSearchText=true"
+  }
+ ]
+}

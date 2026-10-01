@@ -1,0 +1,1 @@
+﻿(merged into raw.txt via 2>&1 on the UTF-8 rerun; tsx boot log lines are the [Config]/[ToolRegistry] header in raw.txt)

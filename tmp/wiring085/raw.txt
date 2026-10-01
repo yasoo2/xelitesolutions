@@ -1,0 +1,116 @@
+﻿[Config] env=development ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+tsx.cmd : [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+At line:1 char:174
++ ... -a-secret"; & D:\Joe\muse-worktree\api\node_modules\.bin\tsx.cmd D:\J ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([ToolRegistry] ...managerظْwrite:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+{
+ "checks": [
+  {
+   "name": "registered_163",
+   "pass": true,
+   "detail": "registered=163"
+  },
+  {
+   "name": "write5_labels",
+   "pass": true,
+   "detail": "web_page_builder=[\"write\"] alert_manager=[\"write\"] cache_manager=[\"write\"] project_state_manager=[\"write\"] template_manager=[\"write\"]"
+  },
+  {
+   "name": "read16_labels",
+   "pass": true,
+   "detail": "all16=true"
+  },
+  {
+   "name": "declared_empty_templatemanager",
+   "pass": true,
+   "detail": "TemplateManagerTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_cachemanager",
+   "pass": true,
+   "detail": "CacheManagerTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_webpagebuilder",
+   "pass": true,
+   "detail": "WebPageBuilderTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_empty_monitoring",
+   "pass": true,
+   "detail": "MonitoringTool.ts perms=[] fx=[]"
+  },
+  {
+   "name": "declared_writefx_alertmanager",
+   "pass": true,
+   "detail": "AlertManagerTool.ts perms=[] fx=['write' as const]"
+  },
+  {
+   "name": "declared_writefx_projectstatemanager",
+   "pass": true,
+   "detail": "ProjectStateManagerTool.ts perms=[] fx=['write' as const]"
+  },
+  {
+   "name": "monitoring_blob_unchanged",
+   "pass": true,
+   "detail": "bbbeaaa712061a84"
+  },
+  {
+   "name": "f0821_auto_assign_before_firewall",
+   "pass": true,
+   "detail": "autoAssign@16340 firewall@39213"
+  },
+  {
+   "name": "f0821_session_prefix_present",
+   "pass": true,
+   "detail": "session- prefix literal present"
+  },
+  {
+   "name": "orphan_lock_generate_image",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_codebase_navigator",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_bulk_file_generator",
+   "pass": true,
+   "detail": "implemented=true imported=true registered=false"
+  },
+  {
+   "name": "orphan_lock_visual_qa",
+   "pass": true,
+   "detail": "implemented=true imported=null registered=false"
+  },
+  {
+   "name": "visual_qa_import_scan",
+   "pass": true,
+   "detail": "registryMentionsVisualQA=true"
+  },
+  {
+   "name": "w735_shell_status_gap",
+   "pass": true,
+   "detail": "offered=true mappedInToolService=false shell_check_status_registered=true"
+  },
+  {
+   "name": "w733_stale_green",
+   "pass": true,
+   "detail": "selfPinsSearchFiles=true importsRealTable=false realTableToSearchText=true"
+  }
+ ]
+}
+ALL_PASS
+[providers] ╪ذ┘╪د ┘à┘╪ز╪د╪ص: Gemini╪î OpenAI╪î Cerebras╪î Mistral ظ¤ ╪ش┘ê ┘è╪╣┘à┘ ╪╣┘┘ë ╪د┘╪░┘â╪د╪ة ╪د┘┘à╪ش╪د┘┘è ┘ê╪د┘┘à╪ص┘┘è. ╪ث╪╢┘ ╪د┘┘à┘╪د╪ز┘è╪ص ┘┘è api/.env ┘à╪ز┘ë ╪┤╪خ╪ز.
