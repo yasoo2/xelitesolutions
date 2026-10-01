@@ -1,0 +1,325 @@
+{
+ "run": "a",
+ "muse": {
+  "label": "MUSE",
+  "exported": 200,
+  "unreferenced": [
+   {
+    "sym": "LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "CATALOGUE_COLUMNS",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "entities",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "ROLES",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "sessionConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "PERMISSIONS",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "authConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "PANEL_BROWSER_SID",
+    "kind": "const",
+    "file": "BrowserSmartTools.ts"
+   },
+   {
+    "sym": "DISCOVERY_YIELD_EVERY",
+    "kind": "const",
+    "file": "EngineeringDiscoveryTool.ts"
+   },
+   {
+    "sym": "metadata",
+    "kind": "const",
+    "file": "EnterprisePlatformFoundationTool.ts"
+   },
+   {
+    "sym": "useStore",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "store",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "useApp",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "RUNTIME_LOGICAL_SOURCE_TOOLS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "app",
+    "kind": "const",
+    "file": "ProjectPlannerTool.ts"
+   },
+   {
+    "sym": "uid",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "todayISO",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "isToday",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "blank",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "TABLES",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "REACT_NETWORK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "PROJECT_SLUG_FOR_TEST",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "PROJECT_DIR_NAME_MAX_LENGTH",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "pages",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "GrepSearchTool",
+    "kind": "class",
+    "file": "SystemTools.ts"
+   },
+   {
+    "sym": "x",
+    "kind": "const",
+    "file": "UtilityTools.ts"
+   }
+  ]
+ },
+ "main": {
+  "label": "MAIN",
+  "exported": 201,
+  "unreferenced": [
+   {
+    "sym": "LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+    "kind": "const",
+    "file": "AIGeneratorTool.ts"
+   },
+   {
+    "sym": "CATALOGUE_COLUMNS",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "entities",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "ROLES",
+    "kind": "const",
+    "file": "ApiProjectTool.ts"
+   },
+   {
+    "sym": "sessionConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "PERMISSIONS",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "authConfig",
+    "kind": "const",
+    "file": "AuthBuilderTool.ts"
+   },
+   {
+    "sym": "PANEL_BROWSER_SID",
+    "kind": "const",
+    "file": "BrowserSmartTools.ts"
+   },
+   {
+    "sym": "DISCOVERY_YIELD_EVERY",
+    "kind": "const",
+    "file": "EngineeringDiscoveryTool.ts"
+   },
+   {
+    "sym": "metadata",
+    "kind": "const",
+    "file": "EnterprisePlatformFoundationTool.ts"
+   },
+   {
+    "sym": "useStore",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "store",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "useApp",
+    "kind": "const",
+    "file": "MobileBuilderTool.ts"
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "RUNTIME_LOGICAL_SOURCE_TOOLS",
+    "kind": "const",
+    "file": "PhaseExecutorTool.ts"
+   },
+   {
+    "sym": "app",
+    "kind": "const",
+    "file": "ProjectPlannerTool.ts"
+   },
+   {
+    "sym": "uid",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "todayISO",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "isToday",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "blank",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "TABLES",
+    "kind": "const",
+    "file": "react-app-templates.ts"
+   },
+   {
+    "sym": "REACT_NETWORK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "PROJECT_SLUG_FOR_TEST",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "PROJECT_DIR_NAME_MAX_LENGTH",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "pages",
+    "kind": "const",
+    "file": "ReactProjectTool.ts"
+   },
+   {
+    "sym": "GrepSearchTool",
+    "kind": "class",
+    "file": "SystemTools.ts"
+   },
+   {
+    "sym": "x",
+    "kind": "const",
+    "file": "UtilityTools.ts"
+   }
+  ]
+ }
+}
