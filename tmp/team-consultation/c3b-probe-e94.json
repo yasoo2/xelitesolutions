@@ -1,0 +1,1228 @@
+{
+ "rows": [
+  {
+   "id": "D1-RUN",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D1-INSPECT",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D1-NODENY",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "answer-only contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D1-NOTOOL",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D1-VERIFY",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D2-URL",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D2-BARE",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": true,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "explicit URL"
+   },
+   "parser": {
+    "tools": [
+     "browser_page_fix"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "capabilityCandidate",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D2-EXAMPLE",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": true,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "explicit URL"
+   },
+   "parser": {
+    "tools": [
+     "browser_run"
+    ],
+    "agent": "Browser",
+    "rawKeys": [
+     "primary",
+     "fast"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D3-NEWLINE",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "knowledge question"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D3-PERIOD",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "D3-COLON",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "knowledge question"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "L1-EXACT",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "knowledge question"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "L1-QONLY",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "knowledge question"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "L1-NOWORD",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "L2-BARE",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": true,
+    "isKnowledge": false,
+    "reason": "explicit read-only request"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "readOnly",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R1-KAWAFIR",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R1-MURAJAA",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R1-MUQARAN",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R1-VERB",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [
+     "code_reviewer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "capabilityCandidate",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R2-MEASURED",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R2-ENTWIN",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R2-POEM",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-SUITE-ROL",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-BARE-TEXT",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-BARE-PHONE",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-CAPITALS",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-LIST-SUITE",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-KASHF",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-QAIMA",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R4-TABLE-CAP",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "RES-DEPLOY",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [
+     "deploy_project"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "capabilityCandidate",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "RES-GIVEME",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "no affirmative construction authority; fields are descriptive"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "ambiguous - needs LLM analysis"
+   },
+   "parser": {
+    "tools": [],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "analysisUnavailable"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R6-WEDDING",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R6-ENCOMMA",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R6-MULTI",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "R6-PLEASE",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "T-POLITE",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "T-POLITE-AR",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "T-R3",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "T-QUOTED",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": true,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": true,
+    "reason": "requested answer-only contract"
+   },
+   "parser": {
+    "tools": [
+     "central_answer"
+    ],
+    "agent": "General",
+    "rawKeys": [
+     "primary",
+     "knowledgeQuestion",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "E-SCOPED",
+   "helper": {
+    "isBuild": false,
+    "requiresAnswerOnly": false,
+    "reason": "global no-execution contract"
+   },
+   "classifier": {
+    "isBuild": false,
+    "isBrowser": false,
+    "isReadOnly": true,
+    "isKnowledge": false,
+    "reason": "explicit read-only request"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "readOnly",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "E-LONGBUILD",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "buildRequest",
+     "deterministic"
+    ],
+    "error": null
+   }
+  },
+  {
+   "id": "E-ENGBRIEF",
+   "helper": {
+    "isBuild": true,
+    "requiresAnswerOnly": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "classifier": {
+    "isBuild": true,
+    "isBrowser": false,
+    "isReadOnly": false,
+    "isKnowledge": false,
+    "reason": "affirmative requested action outside quoted examples"
+   },
+   "parser": {
+    "tools": [
+     "project_pipeline"
+    ],
+    "agent": "Dev",
+    "rawKeys": [
+     "primary",
+     "engineeringBrief",
+     "deterministic"
+    ],
+    "error": null
+   }
+  }
+ ],
+ "reader": [
+  {
+   "id": "M1-LIST-PHONE",
+   "columns": [
+    {
+     "label": "my clients with name",
+     "key": "text1",
+     "type": "text",
+     "role": "text"
+    },
+    {
+     "label": "phone",
+     "key": "tel1",
+     "type": "tel",
+     "role": "tel"
+    }
+   ]
+  },
+  {
+   "id": "M2-LIST-CAPITALS",
+   "columns": [
+    {
+     "label": "Paris",
+     "key": "text1",
+     "type": "text",
+     "role": "text"
+    },
+    {
+     "label": "Rome",
+     "key": "text2",
+     "type": "text",
+     "role": "text"
+    },
+    {
+     "label": "Madrid",
+     "key": "text3",
+     "type": "text",
+     "role": "text"
+    }
+   ]
+  },
+  {
+   "id": "M3-KASHF",
+   "columns": [
+    {
+     "label": "اسم الزبون",
+     "key": "text1",
+     "type": "text",
+     "role": "text"
+    },
+    {
+     "label": "المبلغ",
+     "key": "amount",
+     "type": "number",
+     "role": "money"
+    }
+   ]
+  },
+  {
+   "id": "M4-ROLODEX",
+   "columns": [
+    {
+     "label": "name",
+     "key": "text1",
+     "type": "text",
+     "role": "text"
+    },
+    {
+     "label": "phone",
+     "key": "tel1",
+     "type": "tel",
+     "role": "tel"
+    },
+    {
+     "label": "email",
+     "key": "email1",
+     "type": "email",
+     "role": "email"
+    }
+   ]
+  }
+ ]
+}

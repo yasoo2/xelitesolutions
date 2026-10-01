@@ -1,0 +1,89 @@
+﻿{
+    "overlay":  "c3b-pristine (Muse independent, 2026-10-01)",
+    "five":  {
+                 "file":  "c3b-5f-five.json",
+                 "passed":  145,
+                 "failed":  0,
+                 "total":  145,
+                 "failures":  {
+
+                              }
+             },
+    "broader5f":  {
+                      "file":  "c3b-5f-broader.json",
+                      "passed":  264,
+                      "failed":  15,
+                      "total":  279,
+                      "failures":  [
+                                       "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ط¨ط­ط« ط­ظ‚ظٹظ‚ظٹ is still a browser task",
+                                       "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|طھطµظپظ‘ط­ is still a browser task",
+                                       "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ظ…ظˆظ‚ط¹ ظ…ط¹ط±ظˆظپ is still a browser task",
+                                       "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: can you build me a website?",
+                                       "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظ‡ظ„ ظٹظ…ظƒظ†ظƒ ط¨ظ†ط§ط، ظ…ظˆظ‚ط¹ ظ„ظٹطں",
+                                       "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظƒظٹظپ ط£ظ†ط´ط± ط§ظ„ظ…ط´ط±ظˆط¹طں ط§ظ†ط´ط±ظ‡ ط§ظ„ط¢ظ†",
+                                       "a-short-order-is-still-an-order.test.ts|and the thing in front of him decides what his word means|a column order with a project open is routed to that project",
+                                       "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|an unreachable planner hands a build to the real builders",
+                                       "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|with the same scope rule as any other build",
+                                       "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|and the other imperatives people actually use",
+                                       "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|his sentence, exactly as he typed it",
+                                       "engineering-discovery.test.ts|evidence-first engineering discovery|inspects an existing project and declared checks without changing any file",
+                                       "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|does not let an Arabic no-new-project constraint negate later edit clauses",
+                                       "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|lets the selected workspace override a stale project remembered by the chat",
+                                       "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|routes a selected workspace project to the editor even in a fresh chat"
+                                   ]
+                  },
+    "broadere94":  {
+                       "file":  "c3b-e94-broader.json",
+                       "passed":  264,
+                       "failed":  15,
+                       "total":  279,
+                       "failures":  [
+                                        "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ط¨ط­ط« ط­ظ‚ظٹظ‚ظٹ is still a browser task",
+                                        "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|طھطµظپظ‘ط­ is still a browser task",
+                                        "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ظ…ظˆظ‚ط¹ ظ…ط¹ط±ظˆظپ is still a browser task",
+                                        "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: can you build me a website?",
+                                        "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظ‡ظ„ ظٹظ…ظƒظ†ظƒ ط¨ظ†ط§ط، ظ…ظˆظ‚ط¹ ظ„ظٹطں",
+                                        "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظƒظٹظپ ط£ظ†ط´ط± ط§ظ„ظ…ط´ط±ظˆط¹طں ط§ظ†ط´ط±ظ‡ ط§ظ„ط¢ظ†",
+                                        "a-short-order-is-still-an-order.test.ts|and the thing in front of him decides what his word means|a column order with a project open is routed to that project",
+                                        "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|an unreachable planner hands a build to the real builders",
+                                        "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|with the same scope rule as any other build",
+                                        "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|and the other imperatives people actually use",
+                                        "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|his sentence, exactly as he typed it",
+                                        "engineering-discovery.test.ts|evidence-first engineering discovery|inspects an existing project and declared checks without changing any file",
+                                        "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|does not let an Arabic no-new-project constraint negate later edit clauses",
+                                        "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|lets the selected workspace override a stale project remembered by the chat",
+                                        "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|routes a selected workspace project to the editor even in a fresh chat"
+                                    ]
+                   },
+    "broader7812":  {
+                        "file":  "c3b-7812-broader.json",
+                        "passed":  256,
+                        "failed":  23,
+                        "total":  279,
+                        "failures":  [
+                                         "a-noun-is-not-a-command.test.ts|a calendar noun inside a build brief is not a calendar command|ظƒظˆط§ظپظٹط± builds instead of opening Google",
+                                         "a-noun-is-not-a-command.test.ts|a request that says what it will hold is a build, whatever he calls it|English rolodex is a build without being in any list",
+                                         "a-noun-is-not-a-command.test.ts|a request that says what it will hold is a build, whatever he calls it|ظƒط±ظ‘ط§ط³ط© is a build without being in any list",
+                                         "a-noun-is-not-a-command.test.ts|a request that says what it will hold is a build, whatever he calls it|ظپط§طھظˆط±ط© is a build without being in any list",
+                                         "a-noun-is-not-a-command.test.ts|a table is a thing people ask to be built|list counts as a build",
+                                         "a-noun-is-not-a-command.test.ts|a table is a thing people ask to be built|ظƒط´ظپ counts as a build",
+                                         "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ط¨ط­ط« ط­ظ‚ظٹظ‚ظٹ is still a browser task",
+                                         "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|طھطµظپظ‘ط­ is still a browser task",
+                                         "a-noun-is-not-a-command.test.ts|a verb he wants inside his app is not a command to Joe|ظ…ظˆظ‚ط¹ ظ…ط¹ط±ظˆظپ is still a browser task",
+                                         "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: can you build me a website?",
+                                         "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظ‡ظ„ ظٹظ…ظƒظ†ظƒ ط¨ظ†ط§ط، ظ…ظˆظ‚ط¹ ظ„ظٹطں",
+                                         "a-question-is-not-an-order.test.ts|INVARIANT: the guard refuses questions WITHOUT swallowing orders|not a question, because it names a deed: ظƒظٹظپ ط£ظ†ط´ط± ط§ظ„ظ…ط´ط±ظˆط¹طں ط§ظ†ط´ط±ظ‡ ط§ظ„ط¢ظ†",
+                                         "a-short-order-is-still-an-order.test.ts|and the thing in front of him decides what his word means|a column order with a project open is routed to that project",
+                                         "a-substitution-is-declared-not-silent.test.ts|a substitution is declared, not performed in silence|the build gate the call site uses is a real gate: his request is a build, a question is not",
+                                         "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|an unreachable planner hands a build to the real builders",
+                                         "build-without-a-brain.test.ts|a build does not die because a planner ran out of quota|with the same scope rule as any other build",
+                                         "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|and the other imperatives people actually use",
+                                         "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|his sentence, exactly as he typed it",
+                                         "build-without-a-brain.test.ts|آ«ط¨ظ†ظگآ» is the same verb as آ«ط§ط¨ظ†ظگآ»|recognizes product nouns that are not named site or app",
+                                         "engineering-discovery.test.ts|evidence-first engineering discovery|inspects an existing project and declared checks without changing any file",
+                                         "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|does not let an Arabic no-new-project constraint negate later edit clauses",
+                                         "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|lets the selected workspace override a stale project remembered by the chat",
+                                         "the-planner-asks-the-tools.test.ts|the planner uses it â€” after its own routes, before the model|routes a selected workspace project to the editor even in a fresh chat"
+                                     ]
+                    }
+}
