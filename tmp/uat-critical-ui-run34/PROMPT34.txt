@@ -1,0 +1,15 @@
+Build a Node.js command-line tool called dupfind. It scans a directory
+of text files and reports groups of files with byte-identical content:
+`dupfind DIR` prints one line per duplicate group, each line listing the
+basenames in that group sorted alphabetically and joined with a comma.
+Groups are printed sorted by their first name; files with unique content
+are not printed. Only regular files directly inside DIR are scanned; with
+the flag `dupfind DIR --recursive` subdirectories are scanned too (print
+paths relative to DIR in that case). It must print --help output
+describing usage, arguments and the --recursive flag. If DIR does not
+exist it must exit with code 6 and print a one-line error starting with
+"no such directory" to stderr. If DIR exists but is not a directory it
+must exit with code 7 and print a one-line error starting with
+"not a directory" to stderr. Include a sample directory with at least 6
+files forming at least 2 duplicate groups and an npm test script that
+verifies the behavior.

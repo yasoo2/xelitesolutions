@@ -1,0 +1,40 @@
+[ToolRegistry] 21 tool(s) declared no permissions — defaulted: business_logic_parser→read, chaos_test_plan→read, compliance_validator→read, cloud_cost_estimator→read, ambiguity_resolver→read, multi_agent_debate→read, self_confidence_evaluator→read, project_planner→read, central_answer→read, web_page_builder→write, form_inbox→read, echo→read, shell_check_status→read, ask_user→read, json_query→read, alert_manager→write, cache_manager→write, monitoring→read, project_state_manager→write, request_analyzer→read, template_manager→write
+[ToolRegistry] 2 tool(s) had no rate limit — set to 30/min: central_answer, web_page_builder
+(node:28504) [DEP0190] DeprecationWarning: Passing args to a child process with shell option true can lead to security vulnerabilities, as the arguments are not escaped, only concatenated.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+ℹ️ جو يعمل محلياً بمفاتيح المستخدم الواحد. قبل إخراجه للعامة راجع 1 إعداداً — شغّل: npm run go-live-check
+[SessionController] DB offline or JSON mode - returning mock session list
+[SessionController] DB offline or JSON mode - returning mock session list
+[SessionController] DB offline - created and saved mock session 6abe23f1563f1c6737f3b43b
+[SessionController] DB offline - returning mock session detail from store. Count: 1
+[SessionController] DB offline - returning mock session detail from store. Count: 1
+[SessionController] DB offline or JSON mode - returning mock session list
+[SessionController] DB offline or JSON mode - returning mock session list
+[SessionController] DB offline - returning mock session detail from store. Count: 1
+[SessionController] DB offline - returning mock session detail from store. Count: 1
+[SessionController] DB offline or JSON mode - returning mock session list
+[SessionController] DB offline - created and saved mock session 6abe23f6563f1c6737f3b43d
+[SessionController] DB offline - returning mock session detail from store. Count: 2
+[SessionController] DB offline - returning mock session detail from store. Count: 2
+[SessionController] DB offline or JSON mode - returning mock session list
+[LLM7] rate-limited (429). Cooling down 900s and falling back to other providers.
+[IntelligentRouter] LLM7 (Keyless) failed or timed out: LLM7 keyless gateway failed: 429 Daily token quota exceeded. Retry after 56837 seconds. 
+[IntelligentRouter] Local (Auto) failed or timed out: TIMEOUT 
+[IntelligentRouter] DuckAI (Keyless) failed or timed out: DuckAI keyless failed: DuckAI 429 rate limited 
+Pollinations Chat Failed: Request timed out.
+[IntelligentRouter] DeepSeek (Pollinations) answered but the reply carried no words at all (0 raw → 0 clean chars: "") — counted as a failure and cooled down.
+[IntelligentRouter] CRITICAL: All LLM providers failed. providerAttempts=[{"provider":"LLM7 (Keyless)","success":false,"error":"LLM7 keyless gateway failed: 429 Daily token quota exceeded. Retry after 56837 seconds."},{"provider":"Local (Auto)","success":false,"error":"TIMEOUT"},{"provider":"DuckAI (Keyless)","success":false,"error":"DuckAI keyless failed: DuckAI 429 rate limited"},{"provider":"DeepSeek (Pollinations)","success":false,"error":"empty response (0 raw → 0 clean chars: \"\")"},{"provider":"Pollinations (Backup)","success":false,"error":"skipped: TEMPORARILY_UNAVAILABLE"}]. Returning honest error.
+[ProjectPlanner] provider-failure {"response":{"type":"string","length":317,"prefix":"⚠️ تعذّر الوصول إلى محرّك الذكاء — السبب: الحصص اليومية/الساعية المجانية للمزوّدات استُهلكت. لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة، أو شغّل Ollama محلياً (ollama serve)، أو — الحل الدائم — أضِف مفتاح Gemini المجاني في م","suffix":"وّدات استُهلكت. لم أنفّذ الطلب ولن أدّعي غير ذلك. الحلول: انتظر عودة الحصة، أو شغّل Ollama محلياً (ollama serve)، أو — الحل الدائم — أضِف مفتاح Gemini المجاني في ملف .env بسطر GOOGLE_API_KEY=... من aistudio.google.com (1500 طلب/يوم مجاناً)."}}
+[IntelligentRouter] 🩺 Internal recovery evidence (engineering recovery permit) found after total failure (0s ago) — opening one fresh mesh walk.
+[IntelligentRouter] Local (Auto) failed or timed out: TIMEOUT 
+[IntelligentRouter] 🧠 local brain PAUSED for 10m — 2 consecutive timeouts. The mesh answers meanwhile; one short probe re-tests it after the window.
+[IntelligentRouter] CRITICAL: All LLM providers failed. providerAttempts=[{"provider":"Local (Auto)","success":false,"error":"TIMEOUT"},{"provider":"Pollinations (Backup)","success":false,"error":"skipped: TEMPORARILY_UNAVAILABLE"},{"provider":"DeepSeek (Pollinations)","success":false,"error":"skipped: TEMPORARILY_UNAVAILABLE"}]. Returning honest error.
+[AgentOrchestrator] Node project_pipeline failed: ## ⚠️ Planning stopped honestly
+
+No valid engineering plan was produced for greenfield workspace D:\Joe\muse-worktree\tmp\uat-critical-ui-run34\data\projects\b02d416788d17153cbe55b8e.
+
+Joe did not create a project or template as a substitute for a missing plan.
+[AgentOrchestrator] Final pipeline_final for project_pipeline — stopping without an invented recovery.
+[IntelligentRouter] ⛔ Dead-brain latch: all providers failed 2s ago — answering without a re-walk.
+[IntelligentRouter] ⛔ Dead-brain latch: all providers failed 2s ago — answering without a re-walk.
+[SessionController] DB offline - returning mock session detail from store. Count: 2

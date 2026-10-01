@@ -1,50 +1,48 @@
-# Joe — تقرير حي (Muse + NVIDIA)
-UPDATED=2026-10-01 | WRITER=MUSE @db51125e +this-cycle | NOTE=shared write blocked by sandbox (outside-workspace); fallback copy. External worker: copy to D:\Joe\coordination\team\LIVE-REPORT.md
+# LIVE-REPORT — Muse + NVIDIA (2026-10-01, ~09:30Z)
 
 ## 1. ماذا نعمل الآن؟
-أنهينا: إعادة تأكيد مراجعة INSTALLED-001 (صفر انحراف) + شريحة تدقيق 006 (إعادة أساس التعداد) + تثبيت UI-001 (PARTIAL) + smoke 5/5. إغلاق الدورة: commit + push.
+- MUSE: أنهى مراجعة مستقلة لمرشّح إصلاح مسارات Windows (shell-cwd)، ونفّذ اختبار واجهة حقيقي جديد (run34)، وحقق نقطة تدقيق wiring جديدة. يستعد للحفظ والإغلاق عند نقطة تحقق.
+- NVIDIA: لا نشاط جديد مؤكد هذه الدورة من مصادر مشتركة (آخر المعروف: عملية عامل حيّة + مراجعات معلقة).
 
 ## 2. ماذا اكتشفنا؟
-- مرشح terminal-checkpoint ما زال نظيفًا عند db86f089؛ الهاشات الأربعة طابقت من جديد — المراجعة السابقة سارية بلا إعادة تشغيل مكلفة.
-- مراجعة NVIDIA للتثبيت موجودة: APPROVE_WITH_CHANGES بنفس قراءة السبب الجذري — اتفاق موثق على العيب والاتجاه.
-- إعادة التعداد المصححة (2x متطابقتان): المصدَّر 200/201 وصفر انحراف؛ grep_search رمز-ميت لكن الاسم reachable عبر alias (تأكيد INTENTIONAL_ALIAS)؛ generate_image هي الحالة الحية الوحيدة (مستوردة بلا تسجيل)؛ 6 ثوابت مساعدة ميتة (ليست أدوات).
-- :5002/:5000 صحيحان stale (no-commit-file)؛ :5101 متوقف — نفس الوقفة، لا UAT جديد مبرر.
+- إصلاح shell-cwd سليم النطاق: 7 ملفات فقط، بدون توسع، وRED→GREEN مثبت بالتجربة في الاتجاهين.
+- :5002 (بوابة المستخدم) تنقصها أداة `specification_verification` المسجلة في main — سببه قِدم نسخة المرشح، وليس خلل توصيل. أي قبول عبر :5002 لا يمثل main لهذه الأداة.
+- فجوة العدادات: /api/tools الحي يعرض 164/163 بينما السجل المصدري 153/152 (+11 غير مفسّرة بعد).
 
 ## 3. ماذا أنجزنا فعليًا؟
-- Muse: إعادة تأكيد INSTALLED-001 (REVIEWED_BY_MUSE، APPROVE_WITH_CHANGES قائم، G1/G2 بوابتا تكامل).
-- Muse: تدقيق 006 (منهجية بديلة لـgit-grep المحظور + تصحيح إيجابية كاذبة موثقة).
-- Muse: smoke-verification-rewrite 5/5 PASS (25.1s، JEST_EXIT=0) — إصلاح UI-001 صامد؛ مذكرة UI-001c.
-- صفر تغيير مصدر (دورة مراجعة/تدقيق/تحقق فقط).
+- مراجعة MUSE للمرشح shell-cwd: APPROVE_WITH_CHANGES (4 شروط محدودة)، 26/26 اختبارًا أعيد تشغيلها مستقلة PASS.
+- اختبار واجهة حقيقي جديد run34 (أداة dupfind، طلب جديد كليًا): BLOCKED للمرة 6 (انقطاع المزودات)، وسلوك Joe صحيح وصادق.
+- نقطة تدقيق wiring 055: عدادات حية مقابل المصدر + تصحيح منهجية البحث.
 
 ## 4. ماذا يعمل Muse الآن؟
-إغلاق الدورة. التالي: ساق EXECUTABLE (جدار/تنفيذ لكل أداة) أو توليد dormant-16 من مرجع main.
+- CRITICAL-REAL-JOE-UI-001 (run34 موثق) + مراجعة shell-cwd (مسجلة) + تدقيق wiring (055). لا تنفيذ منافس، لا تعديل لمصدر الإنتاج هذه الدورة.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-(من الحالة المشتركة فقط) مالك CLI batch1؛ راجع التثبيت الطرفي (APPROVE_WITH_CHANGES). لا نشاط جديد تحققت منه Muse مباشرة.
+- UNKNOWN من أدلة مشتركة جديدة هذه الدورة (آخر حالة محفوظة: مراجعات معلقة وعمل CLI محفوظ). لم نخترع نشاطًا.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-لا تواصل مباشر. مراجعتان مستقلتان متطابقتا الاتجاه على نفس الدفعة (طرفا التثبيت).
+- لا مراجعة مباشرة جديدة هذه الدورة. MUSE راجع عمل CODEX (shell-cwd) بشكل مستقل.
 
 ## 7. أين اتفقا وأين اختلفا؟
-اتفاق: عيب الـcheckpoint + إصلاح persistTerminalPhase + APPROVE_WITH_CHANGES (الطرفان). مفتوح: توفيق hunks الـmain الـ14، UAT حقيقي بعد refresh مُصرَّح، ترقية أرقام التدقيق المشتركة (C1-C6 من 004 معلقة).
+- لا اتفاق/اختلاف جديد قابل للتوثيق هذه الدورة (لا مراجعات NVIDIA جديدة على نفس النطاق).
 
-## 8. الأرقام المؤكدة (REPORTED_BY_MUSE @db51125e)
-DISCOVERED_TOOLS=UNKNOWN | REGISTERED_TOOLS=163 (committed، Muse) / 164 (main dirty، +spec_verification) | EXECUTABLE_TOOLS=UNKNOWN
-EXPORTED_SYMBOLS=200/201 | TOOL_SHAPED_UNREF=1 (GrepSearchTool، مُعاد تصنيفه alias مقصود) | IMPLEMENTED_NOT_REGISTERED=1 حي (generate_image)
-FULLY_WIRED=UNKNOWN | PARTIALLY_WIRED=UNKNOWN | ORPHANED=2 (موقف Muse؛ المشترك يقول 7 قديمة) | DUPLICATE=0 | UNKNOWN=الكثير
-REPAIRED=0 | VERIFIED=صدّ 163/164 + تعداد 2x + checkpoint 4/4 هاش + smoke 5/5 | REAL_JOE_PROVEN=0 (PARTIAL قائم)
+## 8. الأرقام المؤكدة (MUSE فقط، مثبتة هذه الدورة)
+- REPORTED_BY_MUSE (طازج): LIVE_5000=164 LIVE_5002=163 LIVE_5101_MUSE=163 REGISTRY_MAIN=153 REGISTRY_MUSE=152
+- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=164(main-live)/163(cand-live) EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN(1 مؤكد: bulk_file_generator) DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
+- shell-cwd: 7/7 هاش مطابق، 26/26 PASS مستقل.
+- REPORTED_BY_NVIDIA: لا جديد. VERIFIED (مشترك): لا جديد.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- census06 a/b: متطابقتان (BYTE-IDENTICAL) — داخلي.
-- smoke-verification-rewrite: 5/5 PASS (25.1s، JEST_EXIT=0) — داخلي، ليس UAT.
-- صحة المنافذ: :5002/:5000 يعملان (stale)، :5101 متوقف.
-- لا Real-Joe-UI PASS مُدَّعى.
+- REAL_JOE_UI run34: BLOCKED (كل المزودات فشلت: LLM7 429، Local TIMEOUT، DuckAI 429، Pollinations غير متاح) — إيقاف صادق، 0 ملفات، تحقق مستقل VERIFY34 يؤكد. фокусد: 26/26 shell-cwd PASS (إعادة MUSE المستقلة).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- UI-001 NOT DONE: UAT مسدود (refresh غير مُصرَّح + :5101 down + :5002 stale)؛ run6 FAIL اليوم عند التخطيط.
-- الترقية للـmain مسدودة: توفيق 14 dirty + UAT حقيقي (G1/G2).
-- كتابة التنسيق المشتركة محظورة — fallback + COORDINATION_FALLBACK.
-- تصحيحات 004 الستة + نتائج 006 تنتظر توفيق Codex.
+- انقطاع المزودات المجانية (6 مرات متتالية) يمنع أي اختبار تخطيط حقيقي. LLM7 محظور ~16 ساعة إضافية؛ النموذج المحلي حي لكن بطيء جدًا (50 ثانية/رمز).
+- لا يمكن الاستغناء عن مزود عامل لاختبار UI-001.
 
 ## 11. ما الخطوة التالية؟
-1. استيراد إعادة التأكيد + تدقيق 006 + UI-001c (Codex). 2. توفيق main + refresh مُصرَّح + UAT مرحلة-فشل→استئناف. 3. ساق EXECUTABLE أو dormant-16.
+- عند عودة مزود: إعادة اختبار UI بطلب جديد + تنفيذ قرار منسق لبوابة التحقق (مالك واحد + مراجع مستقل).
+- تكملة wiring: تفسير فجوة +11 ثم مجموعة PLANNER_VISIBLE.
+- دمج shell-cwd بعد شروط C1–C4 والبوابات عند قاعدة الدمج (مالك الدمج: CODEX).
+
+Files: tmp/uat-critical-ui-run34/RESULT34.md · tmp/team-consultation/WINDOWS-SHELL-CWD-P1-010-INSTALLED-MUSE.response.md · tmp/wiring-audit/checkpoint-055-live-vs-source.md
+MUSE_HEAD=d38ed615 (pre-commit this cycle) · Branch: muse/joe-development · No production source changed.
