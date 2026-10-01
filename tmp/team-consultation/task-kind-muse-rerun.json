@@ -1,0 +1,66 @@
+﻿{
+    "Records":  [
+                    {
+                        "SourceHash":  "0F567060CE4354D9492F954DEEB5AB8DE7F26DD27A2DDE983DECC78637A9D952",
+                        "ParserErrors":  0,
+                        "PendingPath":  "D:\\Joe\\coordination\\team\\consultations\\BROWSER-STREAM-LOG-001-MUSE.md",
+                        "CompositionCases":  [
+                                                 {
+                                                     "Critical":  false,
+                                                     "Pass":  true,
+                                                     "Consultation":  false
+                                                 },
+                                                 {
+                                                     "Critical":  false,
+                                                     "Pass":  true,
+                                                     "Consultation":  true
+                                                 },
+                                                 {
+                                                     "Critical":  true,
+                                                     "Pass":  true,
+                                                     "Consultation":  false
+                                                 },
+                                                 {
+                                                     "Critical":  true,
+                                                     "Pass":  true,
+                                                     "Consultation":  true
+                                                 }
+                                             ],
+                        "OwnedCheckpointPass":  true,
+                        "Worker":  "MUSE",
+                        "CriticalRealJoeDetected":  true
+                    },
+                    {
+                        "SourceHash":  "FB21394AEF6B5E712786C06D4A206BB25DAE0487AAFE887535A17FE7E402E3FA",
+                        "ParserErrors":  0,
+                        "PendingPath":  "D:\\Joe\\coordination\\team\\consultations\\CLI-PRODUCER-BATCH1-IMPLEMENT-004-NVIDIA.md",
+                        "CompositionCases":  [
+                                                 {
+                                                     "Critical":  false,
+                                                     "Pass":  true,
+                                                     "Consultation":  false
+                                                 },
+                                                 {
+                                                     "Critical":  false,
+                                                     "Pass":  true,
+                                                     "Consultation":  true
+                                                 },
+                                                 {
+                                                     "Critical":  true,
+                                                     "Pass":  true,
+                                                     "Consultation":  false
+                                                 },
+                                                 {
+                                                     "Critical":  true,
+                                                     "Pass":  true,
+                                                     "Consultation":  true
+                                                 }
+                                             ],
+                        "OwnedCheckpointPass":  true,
+                        "Worker":  "NVIDIA",
+                        "CriticalRealJoeDetected":  true
+                    }
+                ],
+    "Pass":  true,
+    "Scope":  "Extracted prompt/lookup functions only; no worker script execution/restart or runtime acceptance."
+}

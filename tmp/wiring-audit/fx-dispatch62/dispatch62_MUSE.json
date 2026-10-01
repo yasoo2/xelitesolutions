@@ -1,0 +1,105 @@
+{
+  "legs": [
+    {
+      "leg": 0,
+      "firewall": "ENFORCED",
+      "error": "Execution bypass detected in ToolService:echo. All execution must go through AgentOrchestrator.coordinate()."
+    },
+    {
+      "leg": "A",
+      "tool": "web_page_builder",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "medium",
+      "logTail": [
+        "[2026-10-01T13:29:11.473Z] start web_page_builder (orig=web_page_builder)",
+        "blocked=1 reason=approval_required risk=medium"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "alert_manager",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "medium",
+      "logTail": [
+        "[2026-10-01T13:29:11.759Z] start alert_manager (orig=alert_manager)",
+        "blocked=1 reason=approval_required risk=medium"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "cache_manager",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "medium",
+      "logTail": [
+        "[2026-10-01T13:29:11.764Z] start cache_manager (orig=cache_manager)",
+        "blocked=1 reason=approval_required risk=medium"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "project_state_manager",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "medium",
+      "logTail": [
+        "[2026-10-01T13:29:11.778Z] start project_state_manager (orig=project_state_manager)",
+        "blocked=1 reason=approval_required risk=medium"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "template_manager",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "medium",
+      "logTail": [
+        "[2026-10-01T13:29:11.793Z] start template_manager (orig=template_manager)",
+        "blocked=1 reason=approval_required risk=medium"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "echo",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "low",
+      "logTail": [
+        "[2026-10-01T13:29:11.809Z] start echo (orig=echo)",
+        "blocked=1 reason=approval_required risk=low"
+      ]
+    },
+    {
+      "leg": "A",
+      "tool": "central_answer",
+      "ok": false,
+      "error": "approval_required",
+      "risk": "low",
+      "logTail": [
+        "[2026-10-01T13:29:11.811Z] start central_answer (orig=central_answer)",
+        "blocked=1 reason=approval_required risk=low"
+      ]
+    },
+    {
+      "leg": "B",
+      "case": "missing_user",
+      "ok": false,
+      "error": "unauthorized"
+    },
+    {
+      "leg": "B",
+      "case": "missing_workspace",
+      "ok": false,
+      "error": "approval_required"
+    },
+    {
+      "leg": "C",
+      "tool": "echo",
+      "ok": true,
+      "error": "",
+      "echoed": "dispatch62-ping"
+    }
+  ]
+}
