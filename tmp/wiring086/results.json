@@ -1,0 +1,634 @@
+{
+ "checks": [
+  {
+   "name": "offered_list_nonempty",
+   "pass": true,
+   "detail": "offered=57"
+  },
+  {
+   "name": "alias_table_parsed",
+   "pass": true,
+   "detail": "aliases=28"
+  },
+  {
+   "name": "no_broken_alias_targets",
+   "pass": true,
+   "detail": "all 28 targets registered"
+  },
+  {
+   "name": "offered_reachable_all",
+   "pass": false,
+   "detail": "19 gaps: read_file_tree,fs_glob,check_syntax,generate_tests,generate_docs,db_inspect,command_policy_check,tool_create_shell,shell_status,product_search,github_create_repo,image_generate,deep_research,business_logic,chaos_testing,cost_estimator,self_confidence,terraform_ops,security_scan_repo (of 57 offered)"
+  },
+  {
+   "name": "w735_shell_status_still_gap",
+   "pass": true,
+   "detail": "{\"name\":\"shell_status\",\"registered\":false,\"aliasTarget\":null,\"aliasResolves\":false,\"mentionedInToolService\":false,\"reachable\":false}"
+  },
+  {
+   "name": "image_generate_reconciled",
+   "pass": true,
+   "detail": "{\"name\":\"image_generate\",\"registered\":false,\"aliasTarget\":null,\"aliasResolves\":false,\"mentionedInToolService\":true,\"reachable\":false} image_studio_registered=true"
+  }
+ ],
+ "offered": [
+  {
+   "name": "echo",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": null,
+   "reachable": true
+  },
+  {
+   "name": "notify_user",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "execute_python",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "query_datasource",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "archive_files",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "deploy_project",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "todo_write",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "ask_user",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "project_detect",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "analyze_codebase",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "website_full_pipeline",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "read_file",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "write_file",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "file_edit",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "scaffold_project",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "scaffold_full_stack",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "read_file_tree",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": false
+  },
+  {
+   "name": "ls",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "grep_search",
+   "registered": false,
+   "aliasTarget": "search_text",
+   "aliasResolves": true,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "fs_glob",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "check_syntax",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "generate_tests",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "generate_docs",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "db_inspect",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "quality_run",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "git_ops",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "command_policy_check",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "tool_create_shell",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "shell_execute",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "shell_status",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "product_search",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "web_search",
+   "registered": false,
+   "aliasTarget": "search_api",
+   "aliasResolves": true,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "http_fetch",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "central_answer",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "knowledge_search",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "html_extract",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "github_create_repo",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": false
+  },
+  {
+   "name": "image_generate",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": false
+  },
+  {
+   "name": "deep_research",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "browser_run",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "browser_action",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "browser_vision",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "codebase_outline",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "search_api",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": true,
+   "reachable": true
+  },
+  {
+   "name": "dependency_graph",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "business_logic",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "chaos_testing",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "compliance_validator",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "cost_estimator",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "ambiguity_resolver",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "multi_agent_debate",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "self_confidence",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "terraform_ops",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  },
+  {
+   "name": "kubernetes_ops",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "db_schema_migrator",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "sonar_analysis",
+   "registered": true,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": true
+  },
+  {
+   "name": "security_scan_repo",
+   "registered": false,
+   "aliasTarget": null,
+   "aliasResolves": false,
+   "mentionedInToolService": false,
+   "reachable": false
+  }
+ ],
+ "aliasTargets": [
+  {
+   "alias": "grep_search",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "grep",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "ripgrep",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "code_search",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "search_code",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "find_in_files",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "search_in_files",
+   "target": "search_text",
+   "targetRegistered": true
+  },
+  {
+   "alias": "file_search",
+   "target": "search_files",
+   "targetRegistered": true
+  },
+  {
+   "alias": "find_files",
+   "target": "search_files",
+   "targetRegistered": true
+  },
+  {
+   "alias": "glob_search",
+   "target": "search_files",
+   "targetRegistered": true
+  },
+  {
+   "alias": "file_read",
+   "target": "read_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "cat_file",
+   "target": "read_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "open_file",
+   "target": "read_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "file_write",
+   "target": "write_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "create_file",
+   "target": "write_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "write_to_file",
+   "target": "write_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "remove_file",
+   "target": "delete_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "rm_file",
+   "target": "delete_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "unlink_file",
+   "target": "delete_file",
+   "targetRegistered": true
+  },
+  {
+   "alias": "edit_file",
+   "target": "file_edit",
+   "targetRegistered": true
+  },
+  {
+   "alias": "str_replace",
+   "target": "file_edit",
+   "targetRegistered": true
+  },
+  {
+   "alias": "list_directory",
+   "target": "inspect_directory",
+   "targetRegistered": true
+  },
+  {
+   "alias": "list_files",
+   "target": "inspect_directory",
+   "targetRegistered": true
+  },
+  {
+   "alias": "run_command",
+   "target": "terminal_manager",
+   "targetRegistered": true
+  },
+  {
+   "alias": "bash",
+   "target": "terminal_manager",
+   "targetRegistered": true
+  },
+  {
+   "alias": "shell",
+   "target": "shell_execute",
+   "targetRegistered": true
+  },
+  {
+   "alias": "web_search",
+   "target": "search_api",
+   "targetRegistered": true
+  },
+  {
+   "alias": "fetch_url",
+   "target": "http_fetch",
+   "targetRegistered": true
+  }
+ ]
+}
