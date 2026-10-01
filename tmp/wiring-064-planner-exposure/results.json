@@ -1,0 +1,11 @@
+﻿[Config] env=development ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+ "registered": 163,
+ "plannerProfiled": 156,
+ "reachableCount": 156,
+ "neutralExcluded": 7,
+ "emptyProfiles": [],
+ "thinProfiles": []
+}
+[providers] ╪ذ┘╪د ┘à┘╪ز╪د╪ص: Gemini╪î OpenAI╪î Cerebras╪î Mistral ظ¤ ╪ش┘ê ┘è╪╣┘à┘ ╪╣┘┘ë ╪د┘╪░┘â╪د╪ة ╪د┘┘à╪ش╪د┘┘è ┘ê╪د┘┘à╪ص┘┘è. ╪ث╪╢┘ ╪د┘┘à┘╪د╪ز┘è╪ص ┘┘è api/.env ┘à╪ز┘ë ╪┤╪خ╪ز.

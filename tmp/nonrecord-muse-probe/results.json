@@ -1,0 +1,132 @@
+﻿[Config] env=development ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+ "total": 12,
+ "pass": 5,
+ "fail": 7,
+ "rows": [
+  {
+   "name": "bill inputs",
+   "schema": true,
+   "scope": "page",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": true,
+   "passes": false
+  },
+  {
+   "name": "bill comma exclusions",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": false,
+   "passes": false
+  },
+  {
+   "name": "unit converter",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": false,
+   "passes": false
+  },
+  {
+   "name": "contact form",
+   "schema": true,
+   "scope": "page",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": true,
+   "passes": false
+  },
+  {
+   "name": "loan calculation",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": false,
+   "passes": false
+  },
+  {
+   "name": "Arabic inputs",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": false,
+   "passes": false
+  },
+  {
+   "name": "static brochure",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "page",
+   "schemaPass": false,
+   "scopePass": false,
+   "passes": false
+  },
+  {
+   "name": "persistent inventory",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": true,
+   "expectScope": "system",
+   "schemaPass": true,
+   "scopePass": true,
+   "passes": true
+  },
+  {
+   "name": "mixed positive storage",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": true,
+   "expectScope": "system",
+   "schemaPass": true,
+   "scopePass": true,
+   "passes": true
+  },
+  {
+   "name": "persistent CSV import",
+   "schema": true,
+   "scope": "system",
+   "expectSchema": true,
+   "expectScope": "system",
+   "schemaPass": true,
+   "scopePass": true,
+   "passes": true
+  },
+  {
+   "name": "local saved register",
+   "schema": true,
+   "scope": "app",
+   "expectSchema": true,
+   "expectScope": "app",
+   "schemaPass": true,
+   "scopePass": true,
+   "passes": true
+  },
+  {
+   "name": "point of sale",
+   "schema": false,
+   "scope": "system",
+   "expectSchema": false,
+   "expectScope": "system",
+   "schemaPass": true,
+   "scopePass": true,
+   "passes": true
+  }
+ ]
+}
+{"downstream":{"kind":"custom","fields":["money1","text1","text2"],"metrics":["Records","Total bill amount"],"hasRecordsMetric":true}}
+{"intent":{"directBuild":{"isBuild":true,"confidence":0.95,"reason":"derivedColumns found 3 columns"},"classifier":{"isBuild":false,"isKnowledgeQuestion":true,"isReadOnly":false,"reason":"knowledge question"}}}
+[providers] ╪ذ┘╪د ┘à┘╪ز╪د╪ص: Gemini╪î OpenAI╪î Cerebras╪î Mistral ظ¤ ╪ش┘ê ┘è╪╣┘à┘ ╪╣┘┘ë ╪د┘╪░┘â╪د╪ة ╪د┘┘à╪ش╪د┘┘è ┘ê╪د┘┘à╪ص┘┘è. ╪ث╪╢┘ ╪د┘┘à┘╪د╪ز┘è╪ص ┘┘è api/.env ┘à╪ز┘ë ╪┤╪خ╪ز.
