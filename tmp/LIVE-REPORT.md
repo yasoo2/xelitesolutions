@@ -1,69 +1,68 @@
-# JOE LIVE TEAM REPORT (Muse fallback copy — shared write blocked: "absolute path is outside the workspace")
+# JOE LIVE TEAM REPORT (Muse fallback copy — shared write blocked: access denied)
 
-UPDATED=2026-10-01T20:55Z
-OVERALL_STATUS=Steady state: 5f + 635 reviews stand (targets unchanged, imports pending); wiring 163/164 delta RECONCILED; Real Joe UI retest still pending (provider-gated runtime).
+UPDATED=2026-10-01T21:15Z
+OVERALL_STATUS=005 no-tool review DONE (APPROVE_WITH_CHANGES, 2 genuine defects + independent 100/100); wiring 077 DONE (IMPLEMENTED_NOT_REGISTERED=0); UI-001 retest still NO_LAUNCH (provider-gated).
 
 ## ماذا نعمل الآن؟
-Muse verified the consultation targets are unchanged (no re-review needed), ran Real Joe UI feasibility, reconciled the registry lineage delta, and proportionally reviewed the consultation path-repair. No competing implementation; ownership respected.
+Muse completed the required OBSERVATION-NO-TOOL-005 review with independent test rerun + edge probes, ran UI-001 feasibility, and closed wiring sweep 077. No competing implementation; all foreign trees read-only and untouched.
 
 ## ماذا اكتشفنا؟
-- Candidate tree still exactly 5f82fdee + clean; prior 5F review (committed 0c0deb47) stands — re-affirmed, no re-review.
-- The 163-vs-164 registered-tool delta is FULLY explained: NVIDIA-main registry = Muse registry + exactly SpecificationVerificationTool (2 lines). No hidden divergence.
-- REGISTERED (164) > definition files (94) because files expand (EliteTools spread, MemoryTools, BrowserSmartTools 26-export, revivedTools). Duplicates impossible by construction (startup throw).
-- Proposal-path repair verified: 3/3 absolute PROPOSAL paths + both proposal files + evidence JSON exist — metadata-only fix ACCEPTED.
+- 005 owned helper is real + minimal, but has 2 proven defects: F1 English "without execution delays" over-fire kills legit builds; F2 Arabic trailing adverb ("اليوم/أبدا") under-fire grants build despite tool ban. Bounded fixes preserve all committed greens.
+- The 3 consumer observation FAILs are genuinely consumer-side (classifier isBrowser=false, project_pipeline, browser_page_fix) — correctly stay NVIDIA-owned.
+- Main-lineage IMPLEMENTED_NOT_REGISTERED=0: 93/94 definition files referenced by registry; sole miss is a helper library by design.
+- Shared wiring summary has 4 methodology defects (category double-count, stale orphan label, instantiate≠executable, soft counts) — noted, not edited.
 
 ## ماذا أنجزنا فعليًا؟
-- COMPOSED-003 5f: re-affirmed REVIEWED_BY_MUSE / APPROVE_WITH_CHANGES (target unchanged; shared import still pending with Codex).
-- BACKEND-SYNC-001 635: shared file now REVIEWED_BY_MUSE (imported — confirmed this cycle).
-- Wiring checkpoint 076 recorded (163/164 reconciliation + expansion direction + DUPLICATE=0 by construction).
-- UI-001 feasibility recorded (NO_LAUNCH, reasons below). Candidate/NVIDIA trees untouched (read-only).
+- OBSERVATION-NO-TOOL-005-MUSE: REVIEWED_BY_MUSE / APPROVE_WITH_CHANGES (response committed in Muse worktree; shared import pending with Codex).
+- Independent rerun 100/100 PASS on exact 2c44c72b + 2 edge-probe scripts with receipts.
+- Wiring checkpoint 077 recorded. UI-001 feasibility recorded (NO_LAUNCH).
+- Candidate + NVIDIA + main trees verified untouched (2c44c72b still clean).
 
 ## Muse الآن
-CURRENT_TASK=Consultation verification DONE; UI-001 feasibility DONE; wiring checkpoint 076 DONE; path-repair proportional review DONE.
-LATEST_RESULT=No new verdicts needed; prior reviews stand; 1 wiring reconciliation closed.
-BLOCKER=None for review work. UI-001 retest blocked (see below).
+CURRENT_TASK=005 review DONE; UI-001 feasibility DONE; wiring 077 DONE; committing.
+LATEST_RESULT=1 consultation verdict with 2 proven defects; 1 audit sweep closed.
+BLOCKER=None for review/audit work. UI-001 PASS blocked (see below).
 
 ## NVIDIA الآن
-CURRENT_TASK=Per shared TEAM-STATE: BACKEND-SYNC overlap + composed-004 adoption still pending. (REPORTED_BY_SHARED_STATE, not independently verified by Muse.)
+CURRENT_TASK=Per shared TEAM-STATE: 3 observation-consumer FAILs now handed to NVIDIA; BACKEND-SYNC overlap + composed-004 adoption still pending. (REPORTED_BY_SHARED_STATE + 005 consultation scope, not independently verified.)
 LATEST_RESULT=None new observed by Muse this cycle.
-BLOCKER=Unknown to Muse — no new NVIDIA evidence inspected beyond shared state + read-only main tree (e8fd9589, unchanged).
+BLOCKER=Unknown to Muse.
 
 ## التنسيق بين Muse وNVIDIA
-- No new messages exchanged this cycle; no agreement inferred, no disagreement recorded.
-- Muse touched no provider/pipeline/registry source — all work read-only except Muse's own docs/evidence.
-- 5f + 635 reviews await Codex import/integration steps; NVIDIA 004 response still pending.
+- No new messages exchanged this cycle; no agreement inferred.
+- 005: Muse reviewed Codex-owned helper only; consumer scope explicitly left to NVIDIA — no overlap.
+- Muse touched no provider/pipeline/registry/classifier source — foreign trees read-only.
 
 ## الأرقام الحالية
 DISCOVERED_TOOLS=UNKNOWN
-REGISTERED_TOOLS=164 main-lineage / 163 Muse-lineage (REPORTED_BY_MUSE, reconciled: delta = SpecificationVerificationTool)
-EXECUTABLE_TOOLS=UNKNOWN
+REGISTERED_TOOLS=164 main-lineage / 163 composed-5f-lineage incl. 2c44 candidate (REPORTED_BY_MUSE, owner logs read)
+EXECUTABLE_TOOLS=UNKNOWN (shared summary's 164-by-instantiation rejected as method)
 FULLY_WIRED=UNKNOWN
-PARTIALLY_WIRED=UNKNOWN (verificationTask producer-string + provider-case gap noted as instances)
-ORPHANED=UNKNOWN
-DUPLICATE=0 at registry layer (VERIFIED by source: startup throw on dup name; runtime 164 proves no throw on 635 bytes)
-UNKNOWN=most audit counts pending full wiring audit
+PARTIALLY_WIRED=UNKNOWN (no-tool helper: WIRED with F1/F2 gaps; observation consumers: NOT_WIRED x3)
+ORPHANED=UNKNOWN (shared 10 overlaps UNKNOWN bucket — dedup needed)
+DUPLICATE=0 at registry layer (VERIFIED, carried from 076)
+UNKNOWN=audit counts pending full matrix dedup
 REPAIRED=0 (review/audit only, no source changes by Muse this cycle)
-VERIFIED=163/164 reconciliation (cross-tree byte diff) + 5f front-door (prior cycle) + 635 composition (prior cycle)
+VERIFIED=005 100/100 rerun + 077 sweep (0 unregistered) + prior 076/5f/635 receipts
 REAL_JOE_PROVEN=0 (no UI run this cycle)
 
 ## آخر نتيجة اختبار
-TEST=Cross-tree registry reconciliation (file hashes + diff + definition counts), read-only
-RESULT=PASS (Muse 93 defs / NVIDIA 94 defs; registry diff exactly 2 lines; `new XTool(` 125 both trees)
-WHAT_IT_PROVES=Registry lineage is coherent; the count delta is one known tool, not drift. This is AUDIT evidence, NOT Real Joe UI PASS.
+TEST=Independent jest rerun: request-no-tool-authority + requested-action-authority + requested-answer-planner on exact 2c44c72b
+RESULT=PASS (3 suites, 100/100, EXIT 0, 96.8s; cache/outputs in Muse worktree; candidate untouched)
+WHAT_IT_PROVES=Owner's focused green reproduces independently. Helper PASS ≠ consumer PASS (3 FAILs stand) ≠ Real Joe UI PASS.
 
 ## المشاكل الحالية
-1. UI-001 retest: :5002 UP (200, ~2.1h uptime) but provenance-unbound (no-commit-file) and provider-gated — NO_LAUNCH.
-2. :5000 UP (~33h) but NVIDIA-live unknown provenance — not an acceptance target.
-3. 5f shared import + NVIDIA 004 + bound gates + post-load activation/UAT still pending.
+1. UI-001 retest: :5002 UP (~2.5h) + :5000 UP (~33h) but no-commit-file bundles + :5002 provider-gated — NO_LAUNCH.
+2. 005 F1/F2 need owner fix + pinned tests before integration; 3 consumer FAILs need NVIDIA correction.
+3. Shared wiring summary needs dedup/reevidencing pass (noted for Codex/NVIDIA).
+4. Remaining 2c44 AGENTS gates were still running at read time — no 10/10 claim accepted.
 
 ## الخطوة التالية
-1. Codex imports Muse's 5f review; NVIDIA records overlap + 004 responses.
-2. Final-diff manifest/case fixes + bound gates + load-from-commit, then activation + multi-prompt 5002 UAT.
-3. Wiring 077: IMPLEMENTED_NOT_REGISTERED sweep on main-lineage bytes (read-only).
+1. Codex imports Muse's 005 review; owner fixes F1/F2 with pinned tests; NVIDIA corrects 3 consumers.
+2. 635 mixed-case fix + NVIDIA review + bound gates + load-from-commit, then activation + multi-prompt 5002 UAT (UI-001 PASS path).
+3. Wiring 078: per-file expansion map (sampled), read-only.
 
 ## آخر الإنجازات
-[2026-10-01T20:55Z] REVIEW — COMPOSED-003 5f re-affirmed (tree still 5f82fdee clean; import pending)
-[2026-10-01T20:55Z] REVIEW — BACKEND-SYNC-001 635 confirmed REVIEWED_BY_MUSE in shared file (imported)
-[2026-10-01T20:55Z] REVIEW — Proposal-path repair proportional ACCEPT (3/3 absolute paths + files exist)
-[2026-10-01T20:55Z] AUDIT — Wiring 076: 163/164 reconciled (SpecificationVerificationTool), DUPLICATE=0 by construction
-[2026-10-01T20:55Z] UAT — UI-001 feasibility NO_LAUNCH (:5002/:5000 up but unbound + provider-gated)
+[2026-10-01T21:15Z] REVIEW — OBSERVATION-NO-TOOL-005 REVIEWED_BY_MUSE/APPROVE_WITH_CHANGES (100/100 rerun + F1/F2 proven, import pending)
+[2026-10-01T21:15Z] AUDIT — Wiring 077: IMPLEMENTED_NOT_REGISTERED=0 on main bytes (93/94 + helper-by-design)
+[2026-10-01T21:15Z] UAT — UI-001 feasibility NO_LAUNCH (:5002/:5000 up but unbound + provider-gated)
