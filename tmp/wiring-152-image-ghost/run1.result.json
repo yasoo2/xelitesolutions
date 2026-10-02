@@ -1,0 +1,60 @@
+﻿{
+ "registeredCount": 163,
+ "membership": {
+  "image_generate": false,
+  "generate_image": false,
+  "image_studio": true,
+  "image": false
+ },
+ "aliasLookup": {
+  "image_generate": null,
+  "generate_image": null,
+  "image_studio": null,
+  "image": null
+ },
+ "catalogueImageHits": [],
+ "planToolsImageOccurrences": 0,
+ "registryImgGenOccurrences": 2,
+ "registryImgStudioOccurrences": 3,
+ "registryImgGenCreateTool": false,
+ "registryImgGenSafeNew": false,
+ "registryImgStudioCreateTool": true,
+ "toolServiceRedirectImageGenerate": true,
+ "imgGenRegisteredName": "generate_image",
+ "imgStudioRegisteredName": "image_studio",
+ "imgGenPaidPath": true,
+ "imgGenFallbackPath": true,
+ "resolveOutcomes": {
+  "image_generate": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate_image": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "image_studio": {
+   "tool": "image_studio",
+   "how": "exact"
+  },
+  "image": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate an image": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "create a hero image": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec",
+  "toolServiceTs": "f8608f51d5edf5ad16a95e5ba65ce0c836f63fa0a4af74fa3c3fe855537d3515",
+  "planToolsTs": "5ef3e10899f290d42bd96dcf3675f4eb9b73ea679bd1e28f97f14359490785cc",
+  "imageGenerationToolTs": "03bc9008497c1e3c0006baaafe8cd5ff478ccf11fdb5770d1368db33ec8c827f",
+  "imageStudioToolTs": "62649361e0e4aeac0ecc329b1a94dd68b54ef3ead7b060d8ea45ee539e1b4906"
+ }
+}
