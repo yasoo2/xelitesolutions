@@ -5,7 +5,7 @@ OVERALL_STATUS=Engineering active; Real-Joe acceptance blocked on provider outag
 NOTE=Shared write to D:/Joe/coordination/team/LIVE-REPORT.md is DENIED
 (sandbox workspace policy, long-standing; re-verified this cycle).
 This fallback copy lives at D:/Joe/muse-worktree/tmp/LIVE-REPORT.md
-for the external coordinator to publish. Muse HEAD=f129a379 (local;
+for the external coordinator to publish. Muse HEAD=948513a7 (local;
 push BLOCKED in sandbox: no network/credentials — external worker
 must push origin/muse/joe-development).
 
