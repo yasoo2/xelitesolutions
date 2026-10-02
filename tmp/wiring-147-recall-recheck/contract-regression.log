@@ -1,0 +1,27 @@
+jest-haste-map: Haste module naming collision: first-visit-probe
+  The following files share their name; please adjust your hasteImpl:
+    * <rootDir>\.tmp\generated-first-visit\app-0AxqDc\package.json
+    * <rootDir>\.tmp\generated-first-visit\app-00KDKn\package.json
+
+jest-haste-map: Haste module naming collision: seed-library
+  The following files share their name; please adjust your hasteImpl:
+    * <rootDir>\.tmp\records-seed-delivery\app-6tHxpr\package.json
+    * <rootDir>\.tmp\records-seed-delivery\app-8bUL2w\package.json
+
+jest-haste-map: Haste module naming collision: static-seed-probe
+  The following files share their name; please adjust your hasteImpl:
+    * <rootDir>\.tmp\static-seed-delivery\app-00TGR8\package.json
+    * <rootDir>\.tmp\static-seed-delivery\app-2NTrMM\package.json
+
+jest-haste-map: Haste module naming collision: shift-log
+  The following files share their name; please adjust your hasteImpl:
+    * <rootDir>\.tmp\grounded-smoke\app-0eJ4XH\package.json
+    * <rootDir>\.tmp\grounded-smoke\app-2dMFbH\package.json
+
+PASS src/__tests__/smoke-verification-rewrite.test.ts (21.993 s)
+PASS src/__tests__/prose-verification-contract.test.ts (22.041 s)
+
+Test Suites: 2 passed, 2 total
+Tests:       19 passed, 19 total
+Snapshots:   0 total
+Time:        23.368 s

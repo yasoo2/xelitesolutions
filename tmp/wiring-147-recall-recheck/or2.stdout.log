@@ -1,0 +1,52 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-147-recall-orchestrator",
+  "registeredTools": 163,
+  "vocabSize": 191,
+  "censusNames": 3,
+  "distinctTokens": 1494,
+  "recallGapCount": 3,
+  "recallGaps": [
+    {
+      "name": "browser_run",
+      "lines": [
+        791
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "browser_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "central_answer",
+      "lines": [
+        653,
+        669
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": false,
+      "resolvedTool": "central_answer",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "read_file",
+      "lines": [
+        245
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "read_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    }
+  ],
+  "equalsStyleDefNames": 165,
+  "nonVocabDefHits": [],
+  "nonVocabDefHitCount": 0
+}

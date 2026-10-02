@@ -1,0 +1,32 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-147-recall-executor",
+  "registeredTools": 163,
+  "vocabSize": 191,
+  "censusNames": 46,
+  "distinctTokens": 1426,
+  "recallGapCount": 1,
+  "recallGaps": [
+    {
+      "name": "shell",
+      "lines": [
+        177,
+        195,
+        196,
+        947,
+        1018,
+        1816
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "shell_execute",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    }
+  ],
+  "equalsStyleDefNames": 165,
+  "nonVocabDefHits": [],
+  "nonVocabDefHitCount": 0
+}

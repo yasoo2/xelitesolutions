@@ -1,0 +1,3 @@
+[ToolRegistry] 21 tool(s) declared no permissions — defaulted: business_logic_parser→read, chaos_test_plan→read, compliance_validator→read, cloud_cost_estimator→read, ambiguity_resolver→read, multi_agent_debate→read, self_confidence_evaluator→read, project_planner→read, central_answer→read, web_page_builder→write, form_inbox→read, echo→read, shell_check_status→read, ask_user→read, json_query→read, alert_manager→write, cache_manager→write, monitoring→read, project_state_manager→write, request_analyzer→read, template_manager→write
+[ToolRegistry] 2 tool(s) had no rate limit — set to 30/min: central_answer, web_page_builder
+importMs=7699
