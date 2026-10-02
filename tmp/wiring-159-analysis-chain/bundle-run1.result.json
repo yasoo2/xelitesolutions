@@ -1,0 +1,210 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "analyze_project",
+  "analyze_codebase",
+  "project_detect",
+  "codebase_outline",
+  "dead_code_detector"
+ ],
+ "chainRegistered": [
+  "analyze_codebase",
+  "analyze_project",
+  "codebase_outline",
+  "dead_code_detector",
+  "project_detect"
+ ],
+ "chainRegisteredCount": 5,
+ "adjacentRegistered": [
+  "engineering_discovery"
+ ],
+ "perTool": {
+  "analyze_codebase": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "analyze_project": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "codebase_outline": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "dead_code_detector": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "project_detect": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "engineering_discovery": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "project_detect"
+ ],
+ "aliasChainHits": {},
+ "resolveOutcomes": {
+  "analyze the project structure and architecture": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "give me a deep architectural summary of this codebase": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "detect Node and Python projects under this folder": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "find unused files and dependencies with knip": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "outline the classes and functions in server.js": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "analyze_project": {
+   "tool": "analyze_project",
+   "how": "exact"
+  },
+  "project_detect": {
+   "tool": "project_detect",
+   "how": "exact"
+  },
+  "dead_code_detector": {
+   "tool": "dead_code_detector",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "detect-valid": false,
+  "detect-empty": false,
+  "analyze-project": false,
+  "analyze-codebase": false,
+  "outline-valid": false,
+  "deadcode-scan": false,
+  "deadcode-outside": false
+ },
+ "registryAnalysisRefs": 7,
+ "defDetail": {
+  "AnalysisTools": {
+   "namesColon": [
+    "analyze_project",
+    "analyze_codebase",
+    "project_detect"
+   ],
+   "markers": {
+    "sharedResolveToolPath": 4,
+    "safePath": 4,
+    "routeToModel": 3,
+    "context?.workspaceId": 3,
+    "/root/.ssh": 1,
+    "browser_run": 3,
+    "Analysis failed": 1,
+    "permissions: ToolPermission[] = ['read', 'internet']": 1
+   },
+   "sha256": "901ad6cc6c7f8a74a9bce2aa304e04430aee08753de2309d683f497d6a046bd4",
+   "lines": 259
+  },
+  "DeadCodeTool": {
+   "namesColon": [
+    "dead_code_detector"
+   ],
+   "markers": {
+    "executionEngine": 2,
+    "npx": 1,
+    "knip": 7,
+    "scanned: false": 1,
+    "getActiveRoot()": 1,
+    "autoFix": 1,
+    "auditFields": 1,
+    "scanned: true": 1
+   },
+   "sha256": "0600ac3d37138b68d80d5b40163a5f5c72eacf7750da1545345aa5bd12122052",
+   "lines": 136
+  },
+  "CodebaseOutlineTool": {
+   "namesColon": [
+    "codebase_outline"
+   ],
+   "markers": {
+    "process.cwd()": 1,
+    "resolveToolPath": 0,
+    "filePath is required": 1,
+    "totalLines": 2,
+    "auditFields": 1
+   },
+   "sha256": "e6c56fdd9c098ba7cdf4b42febc087d3fe93b2e9c7f2c63dfe3e996a4fe35979",
+   "lines": 94
+  }
+ },
+ "planChainRefs": [
+  "{ tool: 'project_detect', purpose: 'verify what was actually created on disk' },",
+  "// example project_detect) would otherwise pass through and die at"
+ ],
+ "svcChainRefs": [
+  "if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';",
+  "effectiveName = 'project_detect'; // Safe fallback that returns project info",
+  "effectiveName = 'project_detect';",
+  "else if (effectiveName === 'analyze_codebase') status = say(isAr, 'جاري تحليل بنية المشروع...', 'Analysing the project structure…');"
+ ],
+ "execChainRefs": [
+  "'project_detect',",
+  "'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
