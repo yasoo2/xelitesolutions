@@ -1,0 +1,538 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "browser_action",
+  "browser_click",
+  "browser_run",
+  "browser_launch",
+  "browser_vision",
+  "browser_page_fix",
+  "browser_ui_fix"
+ ],
+ "chainRegistered": [
+  "browser_action",
+  "browser_click",
+  "browser_launch",
+  "browser_page_fix",
+  "browser_run",
+  "browser_ui_fix",
+  "browser_vision"
+ ],
+ "chainRegisteredCount": 7,
+ "adjacentRegistered": [
+  "browser_autofix",
+  "browser_extract_data",
+  "browser_fill_form",
+  "browser_find_text",
+  "browser_fullpage_shot",
+  "browser_search",
+  "browser_smart_agent",
+  "screenshot",
+  "user_browser",
+  "visual_compare"
+ ],
+ "phantomStatus": {
+  "browser_open": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "browser_navigate": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "browser_goto": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "browser_screenshot": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "browser_qa": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "open_browser": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "click_tool": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "browser_action": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "browser_click": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_launch": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_page_fix": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "browser_run": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "execute"
+   ],
+   "sideEffects": [
+    "execute",
+    "internet"
+   ],
+   "mockSupported": false
+  },
+  "browser_ui_fix": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "browser_vision": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "browser_autofix": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "browser_extract_data": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_fill_form": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_find_text": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_fullpage_shot": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "browser_search": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_smart_agent": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "screenshot": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "user_browser": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "visual_compare": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "browser_run",
+  "browser_ui_audit"
+ ],
+ "aliasChainHits": {},
+ "resolveOutcomes": {
+  "open the browser and go to the login page": {
+   "tool": "auth_builder",
+   "how": "meaning"
+  },
+  "click the submit button on the form": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "fill in the registration form with test data": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "find the error message text on this page": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "take a screenshot of the current page": {
+   "tool": "screenshot",
+   "how": "nearest"
+  },
+  "compare these two page screenshots for visual differences": {
+   "tool": "screenshot",
+   "how": "nearest"
+  },
+  "fix the broken layout on the checkout page": {
+   "tool": "payments_create_checkout_session",
+   "how": "meaning"
+  },
+  "search the web for the latest release notes": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "browser_page_fix": {
+   "tool": "browser_page_fix",
+   "how": "exact"
+  },
+  "browser_run": {
+   "tool": "browser_run",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "action-click": false,
+  "run-shape": true,
+  "vision-shape": false,
+  "pagefix-shape": false,
+  "uifix-shape": false,
+  "compare-shape": false,
+  "shot-shape": false,
+  "search-shape": false
+ },
+ "registryBrowserRefs": 77,
+ "defDetail": {
+  "BrowserSmartTools": {
+   "namesColon": [
+    "browser_extract_data",
+    "browser_check_links",
+    "browser_performance",
+    "browser_seo_audit",
+    "browser_console_scan",
+    "browser_save_pdf",
+    "browser_readability",
+    "browser_contrast_audit",
+    "browser_a11y_deep",
+    "browser_extract_meta",
+    "browser_compare",
+    "browser_summarize",
+    "browser_ui_audit",
+    "browser_fill_form",
+    "browser_translate",
+    "browser_responsive_check",
+    "browser_find_text",
+    "browser_design_tokens",
+    "browser_click",
+    "browser_fullpage_shot",
+    "browser_smart_agent",
+    "browser_autofix",
+    "browser_consent",
+    "browser_search",
+    "browser_launch"
+   ],
+   "markers": {
+    "name = 'browser_click'": 1,
+    "name = 'browser_launch'": 1,
+    "name = 'browser_search'": 1,
+    "name = 'browser_fill_form'": 1,
+    "name = 'browser_find_text'": 1,
+    "name = 'browser_extract_data'": 1,
+    "name = 'browser_fullpage_shot'": 1,
+    "name = 'browser_smart_agent'": 1,
+    "name = 'browser_autofix'": 1,
+    "workspaceId": 0,
+    "sessionId": 110,
+    "userId": 0,
+    "mockSupported": 25,
+    "allowlist": 0,
+    "localhost": 0
+   },
+   "sha256": "f2aaddf2313ea76264a24897aee947fcaf11884e55601dad9c16d0c3a03e48bf",
+   "lines": 2126
+  },
+  "BrowserActionTool": {
+   "namesColon": [
+    "browser_action"
+   ],
+   "markers": {
+    "name = 'browser_action'": 1,
+    "workspaceId": 0,
+    "sessionId": 3,
+    "userId": 0,
+    "mockSupported": 0
+   },
+   "sha256": "70d495dea623dd029dc25193c67ed162dd181a314c0b2f51e7577b11ed230fdd",
+   "lines": 201
+  },
+  "BrowserVisionTool": {
+   "namesColon": [
+    "browser_vision"
+   ],
+   "markers": {
+    "name = 'browser_vision'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 0
+   },
+   "sha256": "2323718ff2f59136f045e166d511f1b3c62852d41bfb07a2bb3146637db1c139",
+   "lines": 82
+  },
+  "BrowserRunTool": {
+   "namesColon": [
+    "browser_run"
+   ],
+   "markers": {
+    "name = 'browser_run'": 1,
+    "workspaceId": 0,
+    "sessionId": 10,
+    "userId": 10,
+    "mockSupported": 0,
+    "browser_open": 0
+   },
+   "sha256": "ec524e9c3d66df311d1f5badf9a70e9e5ad10d0bf7c232d27bdb81982c93fe56",
+   "lines": 443
+  },
+  "PageFixTool": {
+   "namesColon": [
+    "browser_page_fix"
+   ],
+   "markers": {
+    "name = 'browser_page_fix'": 1,
+    "workspaceId": 0,
+    "sessionId": 12,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0
+   },
+   "sha256": "97b80b802d1366e47e59ff764011d0a001c713da01e0c26dc24b25a14dddbc54",
+   "lines": 303
+  },
+  "UiFixTool": {
+   "namesColon": [
+    "browser_ui_fix"
+   ],
+   "markers": {
+    "name = 'browser_ui_fix'": 1,
+    "workspaceId": 0,
+    "sessionId": 15,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0
+   },
+   "sha256": "c64e63e69a6b0cd3c932c3563afb575c0e6e5942c67349a855beb65ca3662270",
+   "lines": 142
+  },
+  "ScreenshotTool": {
+   "namesColon": [
+    "screenshot",
+    "visual_compare"
+   ],
+   "markers": {
+    "name = 'screenshot'": 1,
+    "name = 'visual_compare'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 0
+   },
+   "sha256": "e5d7b004214f80db6296a2816e1d33feb4745f990623eda95fbe249b4cff8c84",
+   "lines": 269
+  },
+  "UserBrowserTool": {
+   "namesColon": [
+    "user_browser"
+   ],
+   "markers": {
+    "name = 'user_browser'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 9,
+    "mockSupported": 1
+   },
+   "sha256": "2e9d266001c85e2e0cef3efb52cd5ca73f04595941c5ee983a913ead7138b406",
+   "lines": 85
+  }
+ },
+ "planChainRefs": [
+  "{ tool: 'browser_run', purpose: 'open the built app in a real browser and check it' },",
+  "cypress: 'browser_run', playwright: 'browser_run', selenium: 'browser_run',",
+  "browser: 'browser_run', lighthouse: 'browser_ui_audit', accessibility: 'browser_ui_audit',",
+  "if (verificationIssue && verificationTool !== 'browser_run') {",
+  "if (verificationIssue) notes.push(`[plan] أبقيتُ تحقق browser_run مع عائق عقد مسمّى — ${verificationIssue}؛ لن أستبدله بفحص يوحي بنجاح لم يح",
+  "const NEEDS_BUILT_URL = new Set(['browser_ui_audit', 'browser_screenshot', 'browser_extract', 'browser_open']);",
+  "// contract. Business arguments (for example browser_run instructionText/actions)",
+  "'assert', 'ui_audit', 'back', 'forward', 'reload', 'screenshot', 'extract_text',",
+  "if (toolName === 'browser_run') {",
+  "return 'browser_run يحتاج actions كمصفوفة من كائنات الإجراءات؛ الخطة مرّرت قيمة ليست مصفوفة، لذلك رُفضت قبل فتح المتصفح.';",
+  "return 'browser_run يحتاج instructionText أو actions غير فارغة؛ لم تُحدّد الخطة هدفاً أو إجراءً قابلاً للتنفيذ، لذلك أُوقفت قبل فتح المتصفح.",
+  "return `browser_run action #${i + 1} يجب أن يكون كائناً منسقاً؛ النصوص لا تُحوّل تلقائياً إلى أفعال متصفح، لذلك رُفضت الخطة قبل التنفيذ.`;",
+  "return `browser_run action #${i + 1} يفتقد type؛ لا يمكن تنفيذ فعل مجهول، لذلك رُفضت الخطة قبل التنفيذ.`;",
+  "return `browser_run action #${i + 1} يحمل type غير مدعوم «${type}»؛ الأفعال المدعومة: ${Array.from(BROWSER_ACTION_TYPES).join(', ')}.`;",
+  "// This exception is tool-specific and does not weaken browser_run or any",
+  "// description while the model leaves `args` empty.  BrowserRunTool rightly"
+ ],
+ "svcChainRefs": [
+  "if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {",
+  "const allowedActions = new Set(['goto', 'extract_text', 'get_elements', 'screenshot', 'wait', 'scroll']);",
+  "if (n === 'browser_run') {",
+  "if (name === 'browser_open') {",
+  "effectiveName = 'browser_run';",
+  "effectiveName = 'browser_run';",
+  "effectiveName = 'browser_run';",
+  "effectiveName = 'browser_run';",
+  "effectiveName = 'browser_run';",
+  "if (effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') {",
+  "if (effectiveName === 'browser_run') status = say(isAr, 'جاري استخدام المتصفح...', 'Using the browser…');"
+ ],
+ "execChainRefs": [
+  "// Names the output file in the screenshots area, not an input artifact source.",
+  "'screenshot',",
+  "const checkerError = vToolName === 'browser_run'",
+  "verificationUnavailable = vToolName === 'browser_run';",
+  "const checkerUnavailable = vToolName === 'browser_run'"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
