@@ -1,0 +1,236 @@
+{
+ "registeredCount": 163,
+ "gitRegistered": [
+  "git_local_workflow",
+  "git_ops",
+  "github_actions",
+  "github_pr",
+  "github_repo_manager"
+ ],
+ "gitRegisteredCount": 5,
+ "perTool": {
+  "git_local_workflow": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true
+  },
+  "git_ops": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true
+  },
+  "github_actions": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true
+  },
+  "github_pr": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true
+  },
+  "github_repo_manager": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true
+  }
+ },
+ "catalogueGitHits": [
+  "git_ops",
+  "github_pr",
+  "github_repo_manager"
+ ],
+ "aliasGitHits": {},
+ "resolveOutcomes": {
+  "commit my changes": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "push to github": {
+   "tool": "github_repo_manager",
+   "how": "meaning"
+  },
+  "create a pull request": {
+   "tool": "github_pr",
+   "how": "meaning"
+  },
+  "check github actions status": {
+   "tool": "github_repo_manager",
+   "how": "meaning"
+  },
+  "git_ops": {
+   "tool": "git_ops",
+   "how": "exact"
+  },
+  "github_pr": {
+   "tool": "github_pr",
+   "how": "exact"
+  },
+  "git_local_workflow": {
+   "tool": "git_local_workflow",
+   "how": "exact"
+  },
+  "github_repo_manager": {
+   "tool": "github_repo_manager",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "git_ops-commit": false,
+  "git_ops-status": false,
+  "github_pr-create": false,
+  "git_local_workflow-empty": false
+ },
+ "registryClass": {
+  "GitOpsTool": {
+   "occurrences": 2,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "GitHubRepoManagerTool": {
+   "occurrences": 3,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "GitHubPRTool": {
+   "occurrences": 3,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "GitHubActionsTool": {
+   "occurrences": 3,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "GitLocalWorkflowTool": {
+   "occurrences": 3,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  }
+ },
+ "defDetail": {
+  "GitTools.ts": {
+   "namesEq": [
+    "git_ops"
+   ],
+   "namesColon": [],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "child_process": 1,
+    "https.request": 0,
+    "octokit": 0,
+    "api.github.com": 0
+   },
+   "sha256": "ef15f7ace43d5884bcb126f9e8155005370e5804771546bf77b578ef83279ec1"
+  },
+  "GitLocalWorkflowTool.ts": {
+   "namesEq": [
+    "git_local_workflow"
+   ],
+   "namesColon": [],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "child_process": 0,
+    "https.request": 0,
+    "octokit": 0,
+    "api.github.com": 0
+   },
+   "sha256": "effbc6100712a7e3eb154f59e3ebbc1a4e9a0df10b46d443a334f9c817b6e3d7"
+  },
+  "GitHubRepoManagerTool.ts": {
+   "namesEq": [
+    "github_repo_manager"
+   ],
+   "namesColon": [
+    "api.github.com"
+   ],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "child_process": 0,
+    "https.request": 1,
+    "octokit": 0,
+    "api.github.com": 8
+   },
+   "sha256": "0dbb220ff932e53413049cfaf984afbcc134647aecd967e251515665df7bae51"
+  },
+  "GitHubPRTool.ts": {
+   "namesEq": [
+    "github_pr"
+   ],
+   "namesColon": [
+    "api.github.com"
+   ],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "child_process": 0,
+    "https.request": 1,
+    "octokit": 0,
+    "api.github.com": 1
+   },
+   "sha256": "24b876fe20ae28cde39fea11c1b40b45517d1f7ae54d369741b61c26b07f5061"
+  },
+  "GitHubActionsTool.ts": {
+   "namesEq": [
+    "github_actions"
+   ],
+   "namesColon": [],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "child_process": 0,
+    "https.request": 0,
+    "octokit": 0,
+    "api.github.com": 0
+   },
+   "sha256": "84801d77f5f921d0eea733bbec67f72caa4f8fa6c70c227344da5cbb60ea644d"
+  }
+ },
+ "planGitRefs": [
+  "*   [PhaseExecutor] Task 1/2: \"Create project repository\" — executing tool: Git",
+  "*   [PhaseExecutor] ❌ Task 1 failed: Git — unknown_tool: \"Git\"",
+  "* model answered like a manager: open a repository in Git, open a board in",
+  "*      equivalent exists (\"Git\" is git_ops; \"npm install\" is npm_manager)",
+  "{ tool: 'git_ops', purpose: 'git: init, add, commit, branch, status' },",
+  "{ tool: 'github_repo_manager', purpose: 'create or connect a GitHub repository' },",
+  "{ tool: 'github_pr', purpose: 'open a pull request' },",
+  "* of one. A model naming a PRODUCT (\"Git\", \"Docker\", \"Stripe\") means the",
+  "git: 'git_ops', github: 'github_repo_manager', 'version control': 'git_ops',",
+  "'source control': 'git_ops', gitlab: 'git_ops', bitbucket: 'git_ops',",
+  "'git init': 'git_ops', 'git commit': 'git_ops', repository: 'git_ops', repo: 'git_ops',",
+  "'pull request': 'github_pr', pr: 'github_pr',"
+ ],
+ "svcGitRefs": [
+  "if (n === 'git_ops') {",
+  "if (name === 'git_commit' || name === 'commit') {",
+  "effectiveName = 'git_ops';",
+  "if (name === 'git_push' || name === 'push') {",
+  "effectiveName = 'git_ops';",
+  "if (name === 'github_create_repo') {",
+  "effectiveName = 'github_repo_manager';",
+  "if (name === 'github_repo_manager' && effectiveInput.action === 'push') {",
+  "effectiveName = 'git_ops';",
+  "else if (effectiveName === 'git_ops') status = say(isAr, 'جاري تحديث المستودع...', 'Updating the repository…');"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}

@@ -1,0 +1,15 @@
+node:internal/fs/promises:859
+  return await PromisePrototypeThen(
+         ^
+
+Error: EPERM: operation not permitted, mkdir 'C:\Users\home\AppData\Local\Temp\tsx-muse-sbx-u1'
+    at async Object.mkdir (node:internal/fs/promises:859:10)
+    at async createIpcServer (file:///D:/Joe/muse-worktree/api/node_modules/tsx/dist/cli.mjs:53:31366)
+    at async file:///D:/Joe/muse-worktree/api/node_modules/tsx/dist/cli.mjs:55:542 {
+  errno: -4048,
+  code: 'EPERM',
+  syscall: 'mkdir',
+  path: 'C:\\Users\\home\\AppData\\Local\\Temp\\tsx-muse-sbx-u1'
+}
+
+Node.js v24.18.0

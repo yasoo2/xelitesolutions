@@ -1,0 +1,183 @@
+{
+  "configs": [
+    {
+      "automock": false,
+      "cache": true,
+      "cacheDirectory": "C:\\tmp\\w155\\jest-cache",
+      "clearMocks": true,
+      "collectCoverageFrom": [
+        "core/design/**/*.ts",
+        "core/quality/**/*.ts",
+        "core/orchestrator/promptNormalizer.ts",
+        "modules/tools/utils.ts"
+      ],
+      "coverageDirectory": "D:\\Joe\\muse-worktree\\api\\src\\coverage",
+      "coveragePathIgnorePatterns": [
+        "\\\\node_modules\\\\"
+      ],
+      "coverageReporters": [
+        "json",
+        "text",
+        "lcov",
+        "clover"
+      ],
+      "cwd": "D:\\Joe\\muse-worktree\\api",
+      "detectLeaks": false,
+      "detectOpenHandles": false,
+      "errorOnDeprecated": false,
+      "extensionsToTreatAsEsm": [],
+      "fakeTimers": {
+        "enableGlobally": false
+      },
+      "forceCoverageMatch": [],
+      "globalSetup": "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\globalSetup.ts",
+      "globalTeardown": "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\teardown.ts",
+      "globals": {},
+      "haste": {
+        "computeSha1": false,
+        "enableSymlinks": false,
+        "forceNodeFilesystemAPI": true,
+        "throwOnModuleCollision": false
+      },
+      "id": "f73c249c94108b0c93eee01f2b8b6362",
+      "injectGlobals": true,
+      "moduleDirectories": [
+        "node_modules"
+      ],
+      "moduleFileExtensions": [
+        "js",
+        "mjs",
+        "cjs",
+        "jsx",
+        "ts",
+        "mts",
+        "cts",
+        "tsx",
+        "json",
+        "node"
+      ],
+      "moduleNameMapper": [],
+      "modulePathIgnorePatterns": [],
+      "openHandlesTimeout": 1000,
+      "prettierPath": "prettier",
+      "resetMocks": false,
+      "resetModules": false,
+      "restoreMocks": false,
+      "rootDir": "D:\\Joe\\muse-worktree\\api\\src",
+      "roots": [
+        "D:\\Joe\\muse-worktree\\api\\src"
+      ],
+      "runner": "D:\\Joe\\muse-worktree\\api\\node_modules\\jest-runner\\build\\index.js",
+      "sandboxInjectedGlobals": [],
+      "setupFiles": [
+        "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\setup.ts"
+      ],
+      "setupFilesAfterEnv": [
+        "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\afterEnv.ts"
+      ],
+      "skipFilter": false,
+      "slowTestThreshold": 5,
+      "snapshotFormat": {
+        "escapeString": false,
+        "printBasicPrototype": false
+      },
+      "snapshotSerializers": [],
+      "testEnvironment": "D:\\Joe\\muse-worktree\\api\\node_modules\\jest-environment-node\\build\\index.js",
+      "testEnvironmentOptions": {},
+      "testLocationInResults": false,
+      "testMatch": [
+        "**/__tests__/**/*.test.ts"
+      ],
+      "testPathIgnorePatterns": [
+        "\\\\node_modules\\\\"
+      ],
+      "testRegex": [],
+      "testRunner": "D:\\Joe\\muse-worktree\\api\\node_modules\\jest-circus\\build\\runner.js",
+      "testTimeout": 10000,
+      "transform": [
+        [
+          "^.+\\.ts$",
+          "D:\\Joe\\muse-worktree\\api\\node_modules\\ts-jest\\dist\\index.js",
+          {
+            "diagnostics": false
+          }
+        ],
+        [
+          "^.+\\.tsx?$",
+          "D:\\Joe\\muse-worktree\\api\\node_modules\\ts-jest\\dist\\index.js",
+          {}
+        ]
+      ],
+      "transformIgnorePatterns": [
+        "\\\\node_modules\\\\",
+        "\\.pnp\\.[^\\\\]+$"
+      ],
+      "waitForUnhandledRejections": false,
+      "watchPathIgnorePatterns": []
+    }
+  ],
+  "globalConfig": {
+    "bail": 0,
+    "changedFilesWithAncestor": false,
+    "ci": false,
+    "collectCoverage": false,
+    "collectCoverageFrom": [
+      "core/design/**/*.ts",
+      "core/quality/**/*.ts",
+      "core/orchestrator/promptNormalizer.ts",
+      "modules/tools/utils.ts"
+    ],
+    "coverageDirectory": "D:\\Joe\\muse-worktree\\api\\src\\coverage",
+    "coverageProvider": "babel",
+    "coverageReporters": [
+      "json",
+      "text",
+      "lcov",
+      "clover"
+    ],
+    "detectLeaks": false,
+    "detectOpenHandles": false,
+    "errorOnDeprecated": false,
+    "expand": false,
+    "findRelatedTests": false,
+    "forceExit": false,
+    "globalSetup": "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\globalSetup.ts",
+    "globalTeardown": "D:\\Joe\\muse-worktree\\api\\src\\__tests__\\teardown.ts",
+    "json": false,
+    "lastCommit": false,
+    "listTests": false,
+    "logHeapUsage": false,
+    "maxConcurrency": 5,
+    "maxWorkers": 7,
+    "noStackTrace": false,
+    "nonFlagArgs": [],
+    "notify": false,
+    "notifyMode": "failure-change",
+    "onlyChanged": false,
+    "onlyFailures": false,
+    "openHandlesTimeout": 1000,
+    "passWithNoTests": false,
+    "projects": [],
+    "rootDir": "D:\\Joe\\muse-worktree\\api\\src",
+    "runInBand": false,
+    "runTestsByPath": false,
+    "seed": -1130340643,
+    "skipFilter": false,
+    "snapshotFormat": {
+      "escapeString": false,
+      "printBasicPrototype": false
+    },
+    "testFailureExitCode": 1,
+    "testPathPatterns": [],
+    "testSequencer": "D:\\Joe\\muse-worktree\\api\\node_modules\\@jest\\test-sequencer\\build\\index.js",
+    "testTimeout": 10000,
+    "updateSnapshot": "new",
+    "useStderr": false,
+    "waitForUnhandledRejections": false,
+    "watch": false,
+    "watchAll": false,
+    "watchman": true,
+    "workerThreads": false
+  },
+  "version": "30.1.3"
+}
