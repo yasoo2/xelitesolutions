@@ -6,9 +6,9 @@ NOTE=Shared write to D:/Joe/coordination/team/LIVE-REPORT.md is DENIED
 (UnauthorizedAccessException re-verified this cycle via PowerShell
 Out-File probe on heartbeats/MUSE.md). This fallback copy lives at
 D:/Joe/muse-worktree/tmp/LIVE-REPORT.md for the external coordinator
-to publish. Muse HEAD=a1750fcb+ (local commit this cycle; push
-expected-blocked: sandbox has no GitHub credentials — external worker
-must push origin/muse/joe-development).
+to publish. Muse HEAD=577e4b0a (local commit this cycle; push
+BLOCKED: schannel AcquireCredentialsHandle failed, sandbox has no GitHub
+credentials — external worker must push origin/muse/joe-development).
 
 ## ماذا نعمل الآن؟
 - مراجعة SELF-FIX سارية للمرة السادسة (REVIEWED_BY_MUSE، البصمة مطابقة).
