@@ -1,0 +1,538 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-145-orchestrator-ref-census",
+  "orchestratorFile": "api/src/modules/services/AgentLoopService.ts",
+  "orchestratorBytes": 85462,
+  "orchestratorLines": 1510,
+  "orchestratorSha256": "24e28a435a6768e749b5672c4f60481eb95aa153bba2e5bdaf42e7268924e2f6",
+  "registeredTools": 163,
+  "vocabSize": 203,
+  "declaredNameCount": 16,
+  "referencedVocabCount": 3,
+  "verdictCounts": {
+    "REGISTERED_EXACT": 3,
+    "REGISTERED_NONEXACT": 0,
+    "ALIAS_KEY": 0,
+    "DANGLING_DECLARED": 0,
+    "DANGLING_UNDECLARED": 0
+  },
+  "danglingDeclared": [],
+  "danglingUndeclared": [],
+  "aliasKeysReferenced": [],
+  "registeredNonExact": [],
+  "registeredExactNames": [
+    "code_reviewer",
+    "joe_engineering_report",
+    "phase_executor"
+  ],
+  "nonVocabUnderscoreLiterals": [
+    {
+      "name": "acceptance_gate",
+      "lines": [
+        1280
+      ]
+    },
+    {
+      "name": "continuation_started",
+      "lines": [
+        703
+      ]
+    },
+    {
+      "name": "current_run",
+      "lines": [
+        1285
+      ]
+    },
+    {
+      "name": "direct_response",
+      "lines": [
+        995
+      ]
+    },
+    {
+      "name": "engineering_report_failed",
+      "lines": [
+        1501,
+        1504
+      ]
+    },
+    {
+      "name": "fidelity_unverifiable",
+      "lines": [
+        420,
+        446
+      ]
+    },
+    {
+      "name": "honest_blocker",
+      "lines": [
+        398,
+        417
+      ]
+    },
+    {
+      "name": "permission_stop",
+      "lines": [
+        1307
+      ]
+    },
+    {
+      "name": "recovery_node",
+      "lines": [
+        995
+      ]
+    },
+    {
+      "name": "repair_rerun",
+      "lines": [
+        160,
+        1411
+      ]
+    },
+    {
+      "name": "request_fidelity_mismatch",
+      "lines": [
+        420,
+        447
+      ]
+    },
+    {
+      "name": "reviewer_findings_lost",
+      "lines": [
+        134,
+        392
+      ]
+    },
+    {
+      "name": "run_finished",
+      "lines": [
+        517,
+        727,
+        815,
+        843,
+        922
+      ]
+    },
+    {
+      "name": "stale_run_dropped",
+      "lines": [
+        1302
+      ]
+    },
+    {
+      "name": "verification_final_gate",
+      "lines": [
+        1474
+      ]
+    },
+    {
+      "name": "verification_summary",
+      "lines": [
+        165
+      ]
+    }
+  ],
+  "nonVocabUnderscoreCount": 16,
+  "nonVocabPlainLiterals": [
+    {
+      "name": "analyzing",
+      "lines": [
+        677
+      ]
+    },
+    {
+      "name": "anonymous",
+      "lines": [
+        478
+      ]
+    },
+    {
+      "name": "ask",
+      "lines": [
+        504
+      ]
+    },
+    {
+      "name": "assistant",
+      "lines": [
+        512,
+        835,
+        914
+      ]
+    },
+    {
+      "name": "auto",
+      "lines": [
+        657
+      ]
+    },
+    {
+      "name": "completed",
+      "lines": [
+        204,
+        253,
+        263,
+        268,
+        279,
+        280,
+        288,
+        1207,
+        1216,
+        1422
+      ]
+    },
+    {
+      "name": "conversation",
+      "lines": [
+        875
+      ]
+    },
+    {
+      "name": "data",
+      "lines": [
+        328
+      ]
+    },
+    {
+      "name": "deliverables",
+      "lines": [
+        189
+      ]
+    },
+    {
+      "name": "done",
+      "lines": [
+        827,
+        882,
+        887,
+        977
+      ]
+    },
+    {
+      "name": "dropped",
+      "lines": [
+        209,
+        238
+      ]
+    },
+    {
+      "name": "error",
+      "lines": [
+        190
+      ]
+    },
+    {
+      "name": "execution",
+      "lines": [
+        188
+      ]
+    },
+    {
+      "name": "failed",
+      "lines": [
+        882,
+        887,
+        923,
+        928,
+        929
+      ]
+    },
+    {
+      "name": "final",
+      "lines": [
+        1466
+      ]
+    },
+    {
+      "name": "groq",
+      "lines": [
+        626
+      ]
+    },
+    {
+      "name": "info",
+      "lines": [
+        93
+      ]
+    },
+    {
+      "name": "internal",
+      "lines": [
+        1158
+      ]
+    },
+    {
+      "name": "language0",
+      "lines": [
+        603
+      ]
+    },
+    {
+      "name": "merge",
+      "lines": [
+        520
+      ]
+    },
+    {
+      "name": "message",
+      "lines": [
+        974
+      ]
+    },
+    {
+      "name": "object",
+      "lines": [
+        64,
+        111,
+        185,
+        230,
+        234,
+        265,
+        276,
+        323,
+        341,
+        379,
+        970,
+        994
+      ]
+    },
+    {
+      "name": "observation",
+      "lines": [
+        235
+      ]
+    },
+    {
+      "name": "observed",
+      "lines": [
+        204,
+        244,
+        262,
+        294,
+        298
+      ]
+    },
+    {
+      "name": "output",
+      "lines": [
+        328
+      ]
+    },
+    {
+      "name": "passed",
+      "lines": [
+        280,
+        285,
+        312,
+        1467
+      ]
+    },
+    {
+      "name": "phase",
+      "lines": [
+        160,
+        1193
+      ]
+    },
+    {
+      "name": "ran",
+      "lines": [
+        280
+      ]
+    },
+    {
+      "name": "repairable",
+      "lines": [
+        398,
+        416,
+        1277,
+        1317
+      ]
+    },
+    {
+      "name": "replaced",
+      "lines": [
+        209,
+        228
+      ]
+    },
+    {
+      "name": "result",
+      "lines": [
+        328
+      ]
+    },
+    {
+      "name": "results",
+      "lines": [
+        190,
+        194,
+        328
+      ]
+    },
+    {
+      "name": "review",
+      "lines": [
+        94
+      ]
+    },
+    {
+      "name": "run",
+      "lines": [
+        809
+      ]
+    },
+    {
+      "name": "running",
+      "lines": [
+        686,
+        700
+      ]
+    },
+    {
+      "name": "status",
+      "lines": [
+        188
+      ]
+    },
+    {
+      "name": "steps",
+      "lines": [
+        328
+      ]
+    },
+    {
+      "name": "string",
+      "lines": [
+        57,
+        225,
+        969,
+        971,
+        972,
+        973,
+        978,
+        979,
+        986,
+        993
+      ]
+    },
+    {
+      "name": "summary",
+      "lines": [
+        974
+      ]
+    },
+    {
+      "name": "text",
+      "lines": [
+        516,
+        726,
+        814,
+        842,
+        921
+      ]
+    },
+    {
+      "name": "thinking",
+      "lines": [
+        918
+      ]
+    },
+    {
+      "name": "unknown",
+      "lines": [
+        173,
+        1189
+      ]
+    },
+    {
+      "name": "unverified",
+      "lines": [
+        96
+      ]
+    },
+    {
+      "name": "user",
+      "lines": [
+        873
+      ]
+    },
+    {
+      "name": "verified",
+      "lines": [
+        96,
+        204,
+        245,
+        247,
+        274,
+        285,
+        293,
+        297
+      ]
+    },
+    {
+      "name": "working",
+      "lines": [
+        848
+      ]
+    }
+  ],
+  "nonVocabPlainLiteralCount": 46,
+  "rows": [
+    {
+      "name": "code_reviewer",
+      "quotedLines": [
+        109,
+        377
+      ],
+      "regexLines": [
+        118
+      ],
+      "regexSrc": [
+        "/code_reviewer quality gate failed/i"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "code_reviewer",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "joe_engineering_report",
+      "quotedLines": [
+        1489
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "joe_engineering_report",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "phase_executor",
+      "quotedLines": [
+        1181
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "phase_executor",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    }
+  ]
+}
