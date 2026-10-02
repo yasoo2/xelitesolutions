@@ -1,0 +1,2342 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-142-metacensus",
+  "registeredTools": 163,
+  "uniqueNames": 163,
+  "duplicateRegistrations": 0,
+  "permissionDefaultedCount": 21,
+  "permissionDefaultKindCounts": {
+    "write": 5,
+    "read": 16
+  },
+  "permissionDefaultedNames": [
+    "alert_manager",
+    "ambiguity_resolver",
+    "ask_user",
+    "business_logic_parser",
+    "cache_manager",
+    "central_answer",
+    "chaos_test_plan",
+    "cloud_cost_estimator",
+    "compliance_validator",
+    "echo",
+    "form_inbox",
+    "json_query",
+    "monitoring",
+    "multi_agent_debate",
+    "project_planner",
+    "project_state_manager",
+    "request_analyzer",
+    "self_confidence_evaluator",
+    "shell_check_status",
+    "template_manager",
+    "web_page_builder"
+  ],
+  "rateDefaultedCount": 2,
+  "rateDefaultedNames": [
+    "central_answer",
+    "web_page_builder"
+  ],
+  "unknownDroppedCount": 0,
+  "unknownDropped": [],
+  "shapeBadCount": 0,
+  "shapeBad": [],
+  "emptySideEffectsCount": 89,
+  "emptySideEffects": [
+    "ambiguity_resolver",
+    "analyze_codebase",
+    "analyze_project",
+    "api_tester",
+    "architect_plan",
+    "ask_user",
+    "auto_refactor",
+    "auto_tester",
+    "browser_a11y_deep",
+    "browser_check_links",
+    "browser_click",
+    "browser_compare",
+    "browser_consent",
+    "browser_console_scan",
+    "browser_contrast_audit",
+    "browser_design_tokens",
+    "browser_extract_data",
+    "browser_extract_meta",
+    "browser_fill_form",
+    "browser_find_text",
+    "browser_launch",
+    "browser_performance",
+    "browser_readability",
+    "browser_responsive_check",
+    "browser_search",
+    "browser_seo_audit",
+    "browser_smart_agent",
+    "browser_summarize",
+    "browser_translate",
+    "browser_ui_audit",
+    "business_logic_parser",
+    "cache_manager",
+    "central_answer",
+    "chaos_test_plan",
+    "cloud_cost_estimator",
+    "code_reviewer",
+    "codebase_outline",
+    "compliance_validator",
+    "decide_capability_route",
+    "dependency_graph",
+    "doc_generator",
+    "echo",
+    "engineering_discovery",
+    "form_inbox",
+    "google_account",
+    "html_extract",
+    "http_fetch",
+    "inspect_api",
+    "inspect_directory",
+    "inspect_symbol",
+    "joe_engineering_report",
+    "json_query",
+    "knowledge_search",
+    "llm_cache",
+    "ls",
+    "monitoring",
+    "multi_agent_debate",
+    "orders_read",
+    "pattern_recognize",
+    "payments_create_checkout_session",
+    "performance_analyzer",
+    "performance_profile",
+    "project_detect",
+    "project_planner",
+    "query_datasource",
+    "query_optimizer",
+    "read_file",
+    "recall_memory",
+    "repo_diff_summary",
+    "repo_read_file",
+    "repo_search",
+    "request_analyzer",
+    "rss_fetch",
+    "screenshot",
+    "search_api",
+    "search_files",
+    "search_public_apis",
+    "search_text",
+    "secrets_scan_repo",
+    "security_scanner",
+    "self_confidence_evaluator",
+    "shell_check_status",
+    "task_lifecycle",
+    "template_manager",
+    "test_generator",
+    "user_browser",
+    "validate_api",
+    "visual_compare",
+    "web_page_builder"
+  ],
+  "aliasCount": 28,
+  "brokenAliasCount": 0,
+  "brokenAliases": [],
+  "shadowedAliasCount": 0,
+  "shadowedAliases": [],
+  "aliasRows": [
+    {
+      "alias": "bash",
+      "target": "terminal_manager",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "cat_file",
+      "target": "read_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "code_search",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "create_file",
+      "target": "write_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "edit_file",
+      "target": "file_edit",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "fetch_url",
+      "target": "http_fetch",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "file_read",
+      "target": "read_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "file_search",
+      "target": "search_files",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "file_write",
+      "target": "write_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "find_files",
+      "target": "search_files",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "find_in_files",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "glob_search",
+      "target": "search_files",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "grep",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "grep_search",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "list_directory",
+      "target": "inspect_directory",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "list_files",
+      "target": "inspect_directory",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "open_file",
+      "target": "read_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "remove_file",
+      "target": "delete_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "ripgrep",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "rm_file",
+      "target": "delete_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "run_command",
+      "target": "terminal_manager",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "search_code",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "search_in_files",
+      "target": "search_text",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "shell",
+      "target": "shell_execute",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "str_replace",
+      "target": "file_edit",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "unlink_file",
+      "target": "delete_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "web_search",
+      "target": "search_api",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    },
+    {
+      "alias": "write_to_file",
+      "target": "write_file",
+      "targetRegistered": true,
+      "keyShadowsRegistered": false
+    }
+  ],
+  "toolRows": [
+    {
+      "name": "ai_write_file",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "alert_manager",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "ambiguity_resolver",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "analyze_codebase",
+      "effectivePermissions": [
+        "internet",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "analyze_project",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "api_project",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "api_tester",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "architect_plan",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "archive_files",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "ask_user",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "auth_builder",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "auto_refactor",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "auto_tester",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_a11y_deep",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_action",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_autofix",
+      "effectivePermissions": [
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_check_links",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_click",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_compare",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_consent",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_console_scan",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_contrast_audit",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_design_tokens",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_extract_data",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_extract_meta",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_fill_form",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_find_text",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_fullpage_shot",
+      "effectivePermissions": [
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_launch",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_page_fix",
+      "effectivePermissions": [
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_performance",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_readability",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_responsive_check",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_run",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 120,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_save_pdf",
+      "effectivePermissions": [
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_search",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_seo_audit",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_smart_agent",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_summarize",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_translate",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_ui_audit",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_ui_fix",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "browser_vision",
+      "effectivePermissions": [
+        "internet",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "business_logic_parser",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "business_profile",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "cache_manager",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 100,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "central_answer",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": true,
+      "shapeOk": true
+    },
+    {
+      "name": "chaos_test_plan",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "ci_generate_pipeline",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "cloud_cost_estimator",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "code_reviewer",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "codebase_outline",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "compliance_validator",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "db_schema_migrator",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "dead_code_detector",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "decide_capability_route",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "delete_file",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "dependency_audit",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "dependency_graph",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "deploy_pages",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "internet"
+      ],
+      "rateLimitPerMinute": 4,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "deploy_project",
+      "effectivePermissions": [
+        "execute",
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "dev_server_start",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 15,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "doc_generator",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "docker_manager",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 15,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "docker_swarm_ops",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "echo",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "engineering_discovery",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "enterprise_platform_foundation",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 2,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "error_recovery",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "execute_python",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "file_edit",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "file_edit_advanced",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "form_inbox",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "git_local_workflow",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "git_ops",
+      "effectivePermissions": [
+        "execute",
+        "internet",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "internet",
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "github_actions",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "github_pr",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "github_repo_manager",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "go_builder",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "google_account",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "html_extract",
+      "effectivePermissions": [
+        "internet",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "http_fetch",
+      "effectivePermissions": [
+        "internet",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "i18n_translator",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "image_studio",
+      "effectivePermissions": [
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "import_project",
+      "effectivePermissions": [
+        "execute",
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "inspect_api",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "inspect_directory",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "inspect_symbol",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "java_builder",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "joe_engineering_report",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "json_query",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "knowledge_add",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "knowledge_search",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "kubernetes_ops",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "large_data_seeder",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "llm_cache",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 200,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "load_tester",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "logger",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 100,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "ls",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "memorize_codebase",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "mobile_builder",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "monitoring",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 200,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "multi_agent_debate",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "notify_user",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "npm_manager",
+      "effectivePermissions": [
+        "execute",
+        "internet",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "internet",
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "orders_read",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "orion_business_foundation",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 2,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "pattern_recognize",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "payments_create_checkout_session",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "performance_analyzer",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "performance_profile",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "phase_executor",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "progressive_generator",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_detect",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_edit",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 12,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_pipeline",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 3,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_planner",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 5,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_repair",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_run",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_state_manager",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_stop",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "project_undo",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 12,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "python_builder",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "quality_run",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "query_datasource",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "query_optimizer",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "react_project",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 6,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "read_file",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "recall_memory",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "repo_apply_patch",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "repo_diff_summary",
+      "effectivePermissions": [
+        "execute",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "repo_read_file",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 120,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "repo_run_command",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "repo_search",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "request_analyzer",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "rss_fetch",
+      "effectivePermissions": [
+        "internet",
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "scaffold_full_stack",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "scaffold_project",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "screenshot",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "search_api",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "search_files",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "search_public_apis",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "search_text",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "secrets_scan_repo",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "security_scanner",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "shell_check_status",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "shell_execute",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "sonar_analysis",
+      "effectivePermissions": [
+        "execute",
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "swagger_docs",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "task_lifecycle",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "template_manager",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "terminal_manager",
+      "effectivePermissions": [
+        "execute"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "terraform_manager",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "test_generator",
+      "effectivePermissions": [
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "todo_write",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "user_browser",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "validate_api",
+      "effectivePermissions": [
+        "internet"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "video_action",
+      "effectivePermissions": [
+        "execute",
+        "read",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 5,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "visual_compare",
+      "effectivePermissions": [
+        "read"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "web_page_builder",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": true,
+      "sideEffects": [],
+      "rateLimitPerMinute": 30,
+      "rateDefaulted": true,
+      "shapeOk": true
+    },
+    {
+      "name": "website_full_pipeline",
+      "effectivePermissions": [
+        "execute",
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "execute",
+        "write"
+      ],
+      "rateLimitPerMinute": 10,
+      "rateDefaulted": false,
+      "shapeOk": true
+    },
+    {
+      "name": "write_file",
+      "effectivePermissions": [
+        "write"
+      ],
+      "permissionDefaulted": false,
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "rateDefaulted": false,
+      "shapeOk": true
+    }
+  ]
+}
