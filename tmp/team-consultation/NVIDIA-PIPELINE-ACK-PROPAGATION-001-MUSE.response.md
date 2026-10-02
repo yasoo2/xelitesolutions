@@ -219,3 +219,36 @@ tmp/nvidia-ack-regression-results.json (2 titles + patterns);
 xelitesolutions ProjectPipelineTool.ts dirty-hunk map (122-147, 2468+)
 NO_SOURCE_MODIFIED_BY_THIS_REVIEW=true
 NO_WORKER_INTERRUPTED=true
+
+## 13. Addendum 2026-10-02 - independent RED->GREEN execution (Muse, HEAD 4b9c63d2)
+
+The sections above (committed 2026-09-30 as 70ca099d) are re-affirmed; nothing
+in them is retracted. This addendum records NEW independent execution evidence
+produced this cycle, which the original review explicitly lacked (it inspected
+statically and ran no tests).
+
+Method: isolated detached worktree at the EXACT candidate bytes
+(rev-parse verified 0be2c73e6baba77901cd23b87f5145d657c96dc1), production
+deps via directory junction (no install, no network), workspace TEMP/cache.
+No other tree, process, or worker touched; worktree removed afterwards.
+
+- GREEN: project-pipeline-nvidia-ack.test.ts 3/3 PASS (11.6s) on exact bytes:
+  ack+operator -> fixture_stop_after_authorized_preflight; no-ack ->
+  nvidia_acknowledgement_required; ack+no-operator -> nvidia_operator_access_required.
+- RED: reverted ONLY the 1-line fix to undefined in the isolated copy ->
+  3/3 FAIL at the propagation pin (test.ts:46). The test genuinely guards the
+  fix; the original false-GREEN concern is discharged for this suite.
+- Copy restored byte-identical (isolated status/diff clean); scratch removed.
+- Re-confirmed at exact base 4f1776c1: /runs/verify (run.ts:125) and
+  /runs/start (run.ts:148,380) forward strict-true; router re-checks
+  context.modelConfig (1595,1614); the ONLY dropping call-site is the
+  preflight at ProjectPipelineTool.ts:1353. No second drop exists.
+- Scope honesty: Muse HEAD 4b9c63d2 still lacks the NVIDIA dev-gate stack
+  (no nvidiaDevelopmentUse in api/src; verifyProviderDirect cfg has only
+  apiKey/baseUrl/model), so this evidence is exact-commit scoped, and C4
+  (no lone cherry-pick onto main) is re-affirmed as load-bearing.
+
+Verdict unchanged: APPROVE_WITH_CHANGES subject to C1-C6. T3 (base-identity
+run of project-pipeline.test.ts) remains open and is still recommended.
+SHARED_FILE_WRITE still ACCESS_DENIED this cycle (probe 2026-10-02); this
+fallback file remains the authoritative Muse response pending Codex import.
