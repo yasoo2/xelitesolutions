@@ -1,0 +1,83 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-141-faildir",
+  "registeredTools": 163,
+  "uniqueNames": 163,
+  "toolServiceImport": "ok",
+  "firewallContext": "runInContext-established",
+  "rows": [
+    {
+      "name": "bulk_file_generator",
+      "layerA_registered": false,
+      "alias": null,
+      "dispatched": true,
+      "ok": false,
+      "errorCode": "unknown_tool",
+      "errorPrefix": "unknown_tool: \"bulk_file_generator\" — did you mean: repo_read_file, ai_write_file, progressive_generator, file_edit, write_file?",
+      "logsCount": 2,
+      "lastLog": "unknown_tool: \"bulk_file_generator\" is not registered (closest: repo_read_file, ai_write_file, progressive_generator, file_edit, write_file)",
+      "note": null
+    },
+    {
+      "name": "codebase_navigator",
+      "layerA_registered": false,
+      "alias": null,
+      "dispatched": true,
+      "ok": false,
+      "errorCode": "unknown_tool",
+      "errorPrefix": "unknown_tool: \"codebase_navigator\" — did you mean: memorize_codebase, analyze_codebase, codebase_outline?",
+      "logsCount": 2,
+      "lastLog": "unknown_tool: \"codebase_navigator\" is not registered (closest: memorize_codebase, analyze_codebase, codebase_outline)",
+      "note": null
+    },
+    {
+      "name": "generate_image",
+      "layerA_registered": false,
+      "alias": null,
+      "dispatched": true,
+      "ok": false,
+      "errorCode": "unknown_tool",
+      "errorPrefix": "unknown_tool: \"generate_image\" — did you mean: image_studio, ci_generate_pipeline?",
+      "logsCount": 2,
+      "lastLog": "unknown_tool: \"generate_image\" is not registered (closest: image_studio, ci_generate_pipeline)",
+      "note": null
+    },
+    {
+      "name": "visual_qa",
+      "layerA_registered": false,
+      "alias": null,
+      "dispatched": true,
+      "ok": false,
+      "errorCode": "unknown_tool",
+      "errorPrefix": "unknown_tool: \"visual_qa\" — did you mean: visual_compare?",
+      "logsCount": 2,
+      "lastLog": "unknown_tool: \"visual_qa\" is not registered (closest: visual_compare)",
+      "note": null
+    },
+    {
+      "name": "no_such_tool_141",
+      "layerA_registered": false,
+      "alias": null,
+      "dispatched": true,
+      "ok": false,
+      "errorCode": "unknown_tool",
+      "errorPrefix": "unknown_tool: \"no_such_tool_141\"",
+      "logsCount": 2,
+      "lastLog": "unknown_tool: \"no_such_tool_141\" is not registered",
+      "note": null
+    },
+    {
+      "name": "echo",
+      "layerA_registered": true,
+      "alias": null,
+      "dispatched": true,
+      "ok": true,
+      "errorCode": "ok",
+      "errorPrefix": null,
+      "logsCount": 1,
+      "lastLog": "[2026-10-02T14:04:31.361Z] start echo (orig=echo)",
+      "note": null
+    }
+  ]
+}
