@@ -1,0 +1,158 @@
+{
+ "registeredCount": 163,
+ "repoRegistered": [
+  "github_repo_manager",
+  "repo_apply_patch",
+  "repo_diff_summary",
+  "repo_read_file",
+  "repo_run_command",
+  "repo_search"
+ ],
+ "repoRegisteredCount": 6,
+ "perTool": {
+  "github_repo_manager": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "repo_apply_patch": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "repo_diff_summary": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "repo_read_file": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "mockSupported": false
+  },
+  "repo_run_command": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "repo_search": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "mockSupported": false
+  }
+ },
+ "catalogueRepoHits": [
+  "github_repo_manager"
+ ],
+ "aliasRepoHits": {},
+ "resolveOutcomes": {
+  "read the AuthService file from the repo": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "search the repository for TODO comments": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "apply a patch to the login module": {
+   "tool": "auth_builder",
+   "how": "meaning"
+  },
+  "run the test suite in the repo": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "repo_read_file": {
+   "tool": "repo_read_file",
+   "how": "exact"
+  },
+  "repo_apply_patch": {
+   "tool": "repo_apply_patch",
+   "how": "exact"
+  },
+  "summarize the diff of my changes": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "improve Joe itself": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "gateShapes": {
+  "read-valid": false,
+  "read-empty": false,
+  "search-valid": false,
+  "patch-dryrun": false,
+  "run-allowed": false,
+  "run-smoke": false,
+  "diff-empty": false
+ },
+ "registryRepoSelfCodingRefs": 1,
+ "defDetail": {
+  "namesColon": [
+   "repo_read_file",
+   "repo_search",
+   "repo_apply_patch",
+   "repo_run_command",
+   "repo_diff_summary"
+  ],
+  "markers": {
+   "assertSafeRelativePath": 5,
+   "isAllowedCommand": 2,
+   "executionEngine": 2,
+   "getRepoRoot": 8,
+   "dryRun": 8,
+   "secrets_file_write_blocked": 1
+  },
+  "sha256": "0d7bd1a0b6fcb1f245646fa6ad59b08d5a952ce07dda001178c29f2763724ea2"
+ },
+ "planRepoRefs": [
+  "{ tool: 'github_repo_manager', purpose: 'create or connect a GitHub repository' },",
+  "git: 'git_ops', github: 'github_repo_manager', 'version control': 'git_ops',"
+ ],
+ "svcRepoRefs": [],
+ "execRepoRefs": [
+  "// Self-coding file access is constrained to Joe's current repository root.",
+  "'repo_read_file',",
+  "// Self-coding search is constrained to Joe's current repository root.",
+  "'repo_search',",
+  "// Self-coding patches target Joe's current repository root.",
+  "'repo_apply_patch',"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
