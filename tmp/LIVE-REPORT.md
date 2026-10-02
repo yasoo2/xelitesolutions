@@ -5,9 +5,9 @@ OVERALL_STATUS=Engineering active; Real-Joe acceptance blocked on provider quota
 NOTE=Shared write to D:/Joe/coordination/team/LIVE-REPORT.md is DENIED
 (UnauthorizedAccessException re-verified this cycle via Out-File probe).
 This fallback copy lives at D:/Joe/muse-worktree/tmp/LIVE-REPORT.md
-for the external coordinator to publish. Muse HEAD=ad6f56fd (local
-commits this cycle pending; push BLOCKED historically: schannel /
-no GitHub credentials in sandbox — external worker must push
+for the external coordinator to publish. Muse HEAD=619f72a6 (local
+commit this cycle; push BLOCKED: could not resolve github.com,
+sandbox has no network/credentials — external worker must push
 origin/muse/joe-development).
 
 ## ماذا نعمل الآن؟
