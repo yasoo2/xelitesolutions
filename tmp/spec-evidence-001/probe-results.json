@@ -1,0 +1,65 @@
+{
+  "sha": "0D1026E3807CD98D0574BD53E7BB2DD11A31994248D82024596FD857757982DD",
+  "cases": [
+    {
+      "id": "N1",
+      "question": "missing spec returns ok=false not-found",
+      "observed": "ok=false error=Specification spec_missing not found in memory",
+      "verdict": "PASS"
+    },
+    {
+      "id": "N2",
+      "question": "empty requirements must not verify",
+      "observed": "ok=true verified=true coverage=1",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "N3",
+      "question": "comment-only source must not pass",
+      "observed": "verified=true pass=true impl=[\"src\\\\calc.ts\"]",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "N4",
+      "question": "dangling criterion must fail loudly",
+      "observed": "pass=true failedCriteria=[]",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "N5",
+      "question": "sibling-prefix projectRoot must not reach shell",
+      "observed": "shellCalls=2 cwd=D:\\Joe\\muse-worktree\\tmp\\spec-evidence-001\\fix\\ws-evil",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "N5b",
+      "question": "outside-root projectRoot rejected (control)",
+      "observed": "shellCalls=0",
+      "verdict": "PASS"
+    },
+    {
+      "id": "N6",
+      "question": "criterion-path runTests keeps trusted context",
+      "observed": "shellCtxKeys=[null,[\"userId\",\"sessionId\",\"workspaceId\"]]",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "N7",
+      "question": "foreign userId must not verify another user spec",
+      "observed": "ok=true verified=true",
+      "verdict": "FAIL"
+    },
+    {
+      "id": "P1",
+      "question": "real impl + tests + green suite passes (control)",
+      "observed": "pass=true verifiedBy=[\"tests\\\\calc.test.ts\"]",
+      "verdict": "PASS"
+    },
+    {
+      "id": "P2",
+      "question": "criterion without tests fails (documents coupling)",
+      "observed": "pass=false failed=[\"AC1: No test files found for acceptance criterion AC1: sums two integers\"]",
+      "verdict": "PASS"
+    }
+  ]
+}
