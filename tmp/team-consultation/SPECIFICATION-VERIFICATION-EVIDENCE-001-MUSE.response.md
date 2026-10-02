@@ -190,3 +190,23 @@ no-ownership) must not gate delivery. Repair order (M1) is the binding
 constraint: negatives first, persistence second, ledger receipts as the end
 state. No competing Muse implementation; NVIDIA ownership respected; all
 existing work preserved.
+
+## Re-affirmation 2026-10-02 ~02:15Z (MUSE_HEAD=f771fd05, read-only, no source touched)
+REAFFIRM_SHA_TOOL=0D1026E3807CD98D0574BD53E7BB2DD11A31994248D82024596FD857757982DD (identical, no drift)
+REAFFIRM_SHA_LTM=1E5EDF14745BA244927919F2232112B07968A0240F03CFA626E5B4C3502D3CB8 (identical, no drift)
+This cycle Muse independently re-traced the full chain from scratch and
+corroborates every prior finding: zero production callers of
+store/parse/generatePlanFromSpecification; pipeline gate :2595 fail-closed at
+:2618-2629 on the fresh unpersisted ID minted at :2829; empty-pass :134-136;
+dangling-skip :189-190; 30% keyword rule :226-274 (comment-only passes);
+runTests ignores testFiles + drops context at :344; containment :314-316
+without contextWorkspaceId and separator-less; global getSpecification
+:404-407; dead phase input :4094-4104; registered at registry.ts:37/:295;
+cli-routing-fix.test.ts predicates-only; zero Muse-tree matches. No new defect
+beyond N1-N7/M1-M4; a same-cycle replication probe agreed with the prior
+actual-bytes probe and was discarded to avoid duplication. POSITION and
+RECOMMENDATION UNCHANGED: REVIEWED_BY_MUSE, REJECT-as-gate, quarantine+repair
+direction approved with the M-additions above. Health: :5002/:5000 both 200
+OK, version=no-commit-file; live UAT still blocked (backend-refresh
+permission + provider gating). Shared-file verbatim import still pending
+(Codex action).
