@@ -1,0 +1,61 @@
+{
+ "startedUtc": "2026-10-02T04:09:14.446Z",
+ "mode": "SINGLE_CHAT_GATE_POST_RESET",
+ "checks": {
+  "health5002": {
+   "ok": true,
+   "status": 200,
+   "ms": 68,
+   "uptime": 34275.2712248,
+   "version": "no-commit-file"
+  },
+  "health5000": {
+   "ok": true,
+   "status": 200,
+   "ms": 7,
+   "uptime": 145269.0598669,
+   "version": "no-commit-file"
+  },
+  "duckHandshake": {
+   "ok": true,
+   "status": 200,
+   "ms": 243,
+   "vqdPresent": true
+  },
+  "duckChat": {
+   "ok": false,
+   "status": 418,
+   "ms": 210,
+   "bytes": 568,
+   "containsMarker": false
+  },
+  "llm7models": {
+   "ok": true,
+   "status": 200,
+   "ms": 324,
+   "count": 55,
+   "firstFree": "DeepSeek-V4-Flash-0731"
+  },
+  "llm7chat": {
+   "ok": false,
+   "status": 503,
+   "ms": 1189,
+   "bytes": 142,
+   "containsMarker": false,
+   "retryAfterSec": null,
+   "bodyHead": "{\"error\":{\"message\":\"Upstream provider is temporarily unavailable.\",\"type\":\"upstream_unavailable\",\"param\":null,\"code\":\"upstream_unavailable\"}}"
+  },
+  "ollama": {
+   "ok": true,
+   "status": 200,
+   "ms": 18,
+   "models": [
+    "qwen2.5:1.5b",
+    "moondream:latest",
+    "llava:latest",
+    "qwen2.5-coder:7b"
+   ]
+  }
+ },
+ "finishedUtc": "2026-10-02T04:09:16.534Z"
+}
