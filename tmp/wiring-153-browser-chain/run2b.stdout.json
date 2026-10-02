@@ -1,0 +1,26 @@
+﻿[Config] env=development ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+ "registeredCount": 163,
+ "visual_qa": {
+  "registered": false,
+  "verificationUnconditional": true
+ },
+ "visual_compare": {
+  "registered": true,
+  "verificationUnconditional": false
+ },
+ "browser_page_fix": {
+  "registered": true,
+  "verificationUnconditional": false
+ },
+ "screenshot": {
+  "registered": true,
+  "verificationUnconditional": false
+ },
+ "browser_run": {
+  "registered": true,
+  "verificationUnconditional": true
+ }
+}
+[providers] ╪ذ┘╪د ┘à┘╪ز╪د╪ص: Gemini╪î OpenAI╪î Cerebras╪î Mistral ظ¤ ╪ش┘ê ┘è╪╣┘à┘ ╪╣┘┘ë ╪د┘╪░┘â╪د╪ة ╪د┘┘à╪ش╪د┘┘è ┘ê╪د┘┘à╪ص┘┘è. ╪ث╪╢┘ ╪د┘┘à┘╪د╪ز┘è╪ص ┘┘è api/.env ┘à╪ز┘ë ╪┤╪خ╪ز.
