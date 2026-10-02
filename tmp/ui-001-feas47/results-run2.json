@@ -1,0 +1,46 @@
+{
+ "startedUtc": "2026-10-02T00:11:37.104Z",
+ "checks": {
+  "duckHandshake": {
+   "ok": true,
+   "status": 200,
+   "ms": 589,
+   "vqdPresent": true
+  },
+  "duckChat": {
+   "ok": false,
+   "status": 418,
+   "ms": 248,
+   "bytes": 570,
+   "containsMarker": false
+  },
+  "llm7models": {
+   "ok": true,
+   "status": 200,
+   "ms": 274,
+   "count": 55,
+   "firstFree": "DeepSeek-V4-Flash-0731"
+  },
+  "llm7chat": {
+   "ok": true,
+   "status": 200,
+   "ms": 173,
+   "bytes": 578,
+   "containsMarker": true,
+   "retryAfterSec": null,
+   "bodyHead": "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"FEAS-OK? \\nWait, the instruction says \\\"Reply with exactly: FEAS-OK\\\". \\nI must follow the instruction precisely. \\n\\nFEAS-OK\\nFEA"
+  },
+  "ollama": {
+   "ok": true,
+   "status": 200,
+   "ms": 30,
+   "models": [
+    "qwen2.5:1.5b",
+    "moondream:latest",
+    "llava:latest",
+    "qwen2.5-coder:7b"
+   ]
+  }
+ },
+ "finishedUtc": "2026-10-02T00:11:38.470Z"
+}
