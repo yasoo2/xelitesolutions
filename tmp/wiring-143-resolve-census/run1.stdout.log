@@ -1,0 +1,1677 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-143-resolve-census",
+  "registeredTools": 163,
+  "resolveExactCount": 163,
+  "resolveNonExactCount": 0,
+  "nonExactRegistered": [],
+  "catalogueEntries": 40,
+  "catalogueUniqueTools": 40,
+  "catalogueDupes": 0,
+  "catalogueUnregisteredCount": 0,
+  "catalogueUnregistered": [],
+  "catalogueNotExactCount": 0,
+  "catalogueNotExact": [],
+  "catalogueEmptyPurposeCount": 0,
+  "catalogueEmptyPurpose": [],
+  "registeredNotInCatalogueCount": 123,
+  "registeredNotInCatalogue": [
+    "alert_manager",
+    "ambiguity_resolver",
+    "analyze_codebase",
+    "analyze_project",
+    "api_tester",
+    "architect_plan",
+    "archive_files",
+    "ask_user",
+    "auto_refactor",
+    "browser_a11y_deep",
+    "browser_action",
+    "browser_autofix",
+    "browser_check_links",
+    "browser_click",
+    "browser_compare",
+    "browser_consent",
+    "browser_console_scan",
+    "browser_contrast_audit",
+    "browser_design_tokens",
+    "browser_extract_data",
+    "browser_extract_meta",
+    "browser_fill_form",
+    "browser_find_text",
+    "browser_fullpage_shot",
+    "browser_launch",
+    "browser_page_fix",
+    "browser_performance",
+    "browser_readability",
+    "browser_responsive_check",
+    "browser_save_pdf",
+    "browser_search",
+    "browser_seo_audit",
+    "browser_smart_agent",
+    "browser_summarize",
+    "browser_translate",
+    "browser_ui_fix",
+    "browser_vision",
+    "business_logic_parser",
+    "business_profile",
+    "cache_manager",
+    "central_answer",
+    "chaos_test_plan",
+    "ci_generate_pipeline",
+    "cloud_cost_estimator",
+    "codebase_outline",
+    "compliance_validator",
+    "dead_code_detector",
+    "dependency_graph",
+    "deploy_pages",
+    "dev_server_start",
+    "docker_manager",
+    "docker_swarm_ops",
+    "echo",
+    "engineering_discovery",
+    "enterprise_platform_foundation",
+    "error_recovery",
+    "execute_python",
+    "file_edit_advanced",
+    "form_inbox",
+    "git_local_workflow",
+    "github_actions",
+    "go_builder",
+    "google_account",
+    "html_extract",
+    "http_fetch",
+    "image_studio",
+    "import_project",
+    "inspect_symbol",
+    "java_builder",
+    "joe_engineering_report",
+    "json_query",
+    "knowledge_add",
+    "knowledge_search",
+    "kubernetes_ops",
+    "large_data_seeder",
+    "llm_cache",
+    "load_tester",
+    "logger",
+    "ls",
+    "memorize_codebase",
+    "monitoring",
+    "multi_agent_debate",
+    "notify_user",
+    "orders_read",
+    "orion_business_foundation",
+    "pattern_recognize",
+    "performance_analyzer",
+    "performance_profile",
+    "phase_executor",
+    "progressive_generator",
+    "project_pipeline",
+    "project_planner",
+    "project_repair",
+    "project_state_manager",
+    "project_stop",
+    "project_undo",
+    "python_builder",
+    "query_datasource",
+    "query_optimizer",
+    "recall_memory",
+    "repo_apply_patch",
+    "repo_diff_summary",
+    "repo_read_file",
+    "repo_run_command",
+    "repo_search",
+    "request_analyzer",
+    "rss_fetch",
+    "screenshot",
+    "search_api",
+    "search_files",
+    "secrets_scan_repo",
+    "self_confidence_evaluator",
+    "shell_check_status",
+    "sonar_analysis",
+    "task_lifecycle",
+    "template_manager",
+    "terminal_manager",
+    "terraform_manager",
+    "todo_write",
+    "user_browser",
+    "video_action",
+    "visual_compare",
+    "website_full_pipeline"
+  ],
+  "catalogueTools": [
+    "ai_write_file",
+    "api_project",
+    "auth_builder",
+    "auto_tester",
+    "browser_run",
+    "browser_ui_audit",
+    "code_reviewer",
+    "db_schema_migrator",
+    "decide_capability_route",
+    "delete_file",
+    "dependency_audit",
+    "deploy_project",
+    "doc_generator",
+    "file_edit",
+    "git_ops",
+    "github_pr",
+    "github_repo_manager",
+    "i18n_translator",
+    "inspect_api",
+    "inspect_directory",
+    "mobile_builder",
+    "npm_manager",
+    "payments_create_checkout_session",
+    "project_detect",
+    "project_edit",
+    "project_run",
+    "quality_run",
+    "react_project",
+    "read_file",
+    "scaffold_full_stack",
+    "scaffold_project",
+    "search_public_apis",
+    "search_text",
+    "security_scanner",
+    "shell_execute",
+    "swagger_docs",
+    "test_generator",
+    "validate_api",
+    "web_page_builder",
+    "write_file"
+  ],
+  "aliasResolveCount": 28,
+  "aliasResolveBadCount": 0,
+  "aliasResolveBad": [],
+  "aliasResolveRows": [
+    {
+      "alias": "bash",
+      "target": "terminal_manager",
+      "resolvedTool": "terminal_manager",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "cat_file",
+      "target": "read_file",
+      "resolvedTool": "read_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "code_search",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "create_file",
+      "target": "write_file",
+      "resolvedTool": "write_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "edit_file",
+      "target": "file_edit",
+      "resolvedTool": "file_edit",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "fetch_url",
+      "target": "http_fetch",
+      "resolvedTool": "http_fetch",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "file_read",
+      "target": "read_file",
+      "resolvedTool": "read_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "file_search",
+      "target": "search_files",
+      "resolvedTool": "search_files",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "file_write",
+      "target": "write_file",
+      "resolvedTool": "write_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "find_files",
+      "target": "search_files",
+      "resolvedTool": "search_files",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "find_in_files",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "glob_search",
+      "target": "search_files",
+      "resolvedTool": "search_files",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "grep",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "grep_search",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "list_directory",
+      "target": "inspect_directory",
+      "resolvedTool": "inspect_directory",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "list_files",
+      "target": "inspect_directory",
+      "resolvedTool": "inspect_directory",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "open_file",
+      "target": "read_file",
+      "resolvedTool": "read_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "remove_file",
+      "target": "delete_file",
+      "resolvedTool": "delete_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "ripgrep",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "rm_file",
+      "target": "delete_file",
+      "resolvedTool": "delete_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "run_command",
+      "target": "terminal_manager",
+      "resolvedTool": "terminal_manager",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "search_code",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "search_in_files",
+      "target": "search_text",
+      "resolvedTool": "search_text",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "shell",
+      "target": "shell_execute",
+      "resolvedTool": "shell_execute",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "str_replace",
+      "target": "file_edit",
+      "resolvedTool": "file_edit",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "unlink_file",
+      "target": "delete_file",
+      "resolvedTool": "delete_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "web_search",
+      "target": "search_api",
+      "resolvedTool": "search_api",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    },
+    {
+      "alias": "write_to_file",
+      "target": "write_file",
+      "resolvedTool": "write_file",
+      "how": "alias",
+      "why": null,
+      "ok": true
+    }
+  ],
+  "resolveRows": [
+    {
+      "input": "ai_write_file",
+      "tool": "ai_write_file",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "alert_manager",
+      "tool": "alert_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "ambiguity_resolver",
+      "tool": "ambiguity_resolver",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "analyze_codebase",
+      "tool": "analyze_codebase",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "analyze_project",
+      "tool": "analyze_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "api_project",
+      "tool": "api_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "api_tester",
+      "tool": "api_tester",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "architect_plan",
+      "tool": "architect_plan",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "archive_files",
+      "tool": "archive_files",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "ask_user",
+      "tool": "ask_user",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "auth_builder",
+      "tool": "auth_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "auto_refactor",
+      "tool": "auto_refactor",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "auto_tester",
+      "tool": "auto_tester",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_a11y_deep",
+      "tool": "browser_a11y_deep",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_action",
+      "tool": "browser_action",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_autofix",
+      "tool": "browser_autofix",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_check_links",
+      "tool": "browser_check_links",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_click",
+      "tool": "browser_click",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_compare",
+      "tool": "browser_compare",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_consent",
+      "tool": "browser_consent",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_console_scan",
+      "tool": "browser_console_scan",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_contrast_audit",
+      "tool": "browser_contrast_audit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_design_tokens",
+      "tool": "browser_design_tokens",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_extract_data",
+      "tool": "browser_extract_data",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_extract_meta",
+      "tool": "browser_extract_meta",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_fill_form",
+      "tool": "browser_fill_form",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_find_text",
+      "tool": "browser_find_text",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_fullpage_shot",
+      "tool": "browser_fullpage_shot",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_launch",
+      "tool": "browser_launch",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_page_fix",
+      "tool": "browser_page_fix",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_performance",
+      "tool": "browser_performance",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_readability",
+      "tool": "browser_readability",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_responsive_check",
+      "tool": "browser_responsive_check",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_run",
+      "tool": "browser_run",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_save_pdf",
+      "tool": "browser_save_pdf",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_search",
+      "tool": "browser_search",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_seo_audit",
+      "tool": "browser_seo_audit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_smart_agent",
+      "tool": "browser_smart_agent",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_summarize",
+      "tool": "browser_summarize",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_translate",
+      "tool": "browser_translate",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_ui_audit",
+      "tool": "browser_ui_audit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_ui_fix",
+      "tool": "browser_ui_fix",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "browser_vision",
+      "tool": "browser_vision",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "business_logic_parser",
+      "tool": "business_logic_parser",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "business_profile",
+      "tool": "business_profile",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "cache_manager",
+      "tool": "cache_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "central_answer",
+      "tool": "central_answer",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "chaos_test_plan",
+      "tool": "chaos_test_plan",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "ci_generate_pipeline",
+      "tool": "ci_generate_pipeline",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "cloud_cost_estimator",
+      "tool": "cloud_cost_estimator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "code_reviewer",
+      "tool": "code_reviewer",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "codebase_outline",
+      "tool": "codebase_outline",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "compliance_validator",
+      "tool": "compliance_validator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "db_schema_migrator",
+      "tool": "db_schema_migrator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "dead_code_detector",
+      "tool": "dead_code_detector",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "decide_capability_route",
+      "tool": "decide_capability_route",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "delete_file",
+      "tool": "delete_file",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "dependency_audit",
+      "tool": "dependency_audit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "dependency_graph",
+      "tool": "dependency_graph",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "deploy_pages",
+      "tool": "deploy_pages",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "deploy_project",
+      "tool": "deploy_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "dev_server_start",
+      "tool": "dev_server_start",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "doc_generator",
+      "tool": "doc_generator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "docker_manager",
+      "tool": "docker_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "docker_swarm_ops",
+      "tool": "docker_swarm_ops",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "echo",
+      "tool": "echo",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "engineering_discovery",
+      "tool": "engineering_discovery",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "enterprise_platform_foundation",
+      "tool": "enterprise_platform_foundation",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "error_recovery",
+      "tool": "error_recovery",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "execute_python",
+      "tool": "execute_python",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "file_edit",
+      "tool": "file_edit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "file_edit_advanced",
+      "tool": "file_edit_advanced",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "form_inbox",
+      "tool": "form_inbox",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "git_local_workflow",
+      "tool": "git_local_workflow",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "git_ops",
+      "tool": "git_ops",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "github_actions",
+      "tool": "github_actions",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "github_pr",
+      "tool": "github_pr",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "github_repo_manager",
+      "tool": "github_repo_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "go_builder",
+      "tool": "go_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "google_account",
+      "tool": "google_account",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "html_extract",
+      "tool": "html_extract",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "http_fetch",
+      "tool": "http_fetch",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "i18n_translator",
+      "tool": "i18n_translator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "image_studio",
+      "tool": "image_studio",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "import_project",
+      "tool": "import_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "inspect_api",
+      "tool": "inspect_api",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "inspect_directory",
+      "tool": "inspect_directory",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "inspect_symbol",
+      "tool": "inspect_symbol",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "java_builder",
+      "tool": "java_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "joe_engineering_report",
+      "tool": "joe_engineering_report",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "json_query",
+      "tool": "json_query",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "knowledge_add",
+      "tool": "knowledge_add",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "knowledge_search",
+      "tool": "knowledge_search",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "kubernetes_ops",
+      "tool": "kubernetes_ops",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "large_data_seeder",
+      "tool": "large_data_seeder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "llm_cache",
+      "tool": "llm_cache",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "load_tester",
+      "tool": "load_tester",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "logger",
+      "tool": "logger",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "ls",
+      "tool": "ls",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "memorize_codebase",
+      "tool": "memorize_codebase",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "mobile_builder",
+      "tool": "mobile_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "monitoring",
+      "tool": "monitoring",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "multi_agent_debate",
+      "tool": "multi_agent_debate",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "notify_user",
+      "tool": "notify_user",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "npm_manager",
+      "tool": "npm_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "orders_read",
+      "tool": "orders_read",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "orion_business_foundation",
+      "tool": "orion_business_foundation",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "pattern_recognize",
+      "tool": "pattern_recognize",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "payments_create_checkout_session",
+      "tool": "payments_create_checkout_session",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "performance_analyzer",
+      "tool": "performance_analyzer",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "performance_profile",
+      "tool": "performance_profile",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "phase_executor",
+      "tool": "phase_executor",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "progressive_generator",
+      "tool": "progressive_generator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_detect",
+      "tool": "project_detect",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_edit",
+      "tool": "project_edit",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_pipeline",
+      "tool": "project_pipeline",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_planner",
+      "tool": "project_planner",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_repair",
+      "tool": "project_repair",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_run",
+      "tool": "project_run",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_state_manager",
+      "tool": "project_state_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_stop",
+      "tool": "project_stop",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "project_undo",
+      "tool": "project_undo",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "python_builder",
+      "tool": "python_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "quality_run",
+      "tool": "quality_run",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "query_datasource",
+      "tool": "query_datasource",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "query_optimizer",
+      "tool": "query_optimizer",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "react_project",
+      "tool": "react_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "read_file",
+      "tool": "read_file",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "recall_memory",
+      "tool": "recall_memory",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "repo_apply_patch",
+      "tool": "repo_apply_patch",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "repo_diff_summary",
+      "tool": "repo_diff_summary",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "repo_read_file",
+      "tool": "repo_read_file",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "repo_run_command",
+      "tool": "repo_run_command",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "repo_search",
+      "tool": "repo_search",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "request_analyzer",
+      "tool": "request_analyzer",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "rss_fetch",
+      "tool": "rss_fetch",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "scaffold_full_stack",
+      "tool": "scaffold_full_stack",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "scaffold_project",
+      "tool": "scaffold_project",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "screenshot",
+      "tool": "screenshot",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "search_api",
+      "tool": "search_api",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "search_files",
+      "tool": "search_files",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "search_public_apis",
+      "tool": "search_public_apis",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "search_text",
+      "tool": "search_text",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "secrets_scan_repo",
+      "tool": "secrets_scan_repo",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "security_scanner",
+      "tool": "security_scanner",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "self_confidence_evaluator",
+      "tool": "self_confidence_evaluator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "shell_check_status",
+      "tool": "shell_check_status",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "shell_execute",
+      "tool": "shell_execute",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "sonar_analysis",
+      "tool": "sonar_analysis",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "swagger_docs",
+      "tool": "swagger_docs",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "task_lifecycle",
+      "tool": "task_lifecycle",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "template_manager",
+      "tool": "template_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "terminal_manager",
+      "tool": "terminal_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "terraform_manager",
+      "tool": "terraform_manager",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "test_generator",
+      "tool": "test_generator",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "todo_write",
+      "tool": "todo_write",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "user_browser",
+      "tool": "user_browser",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "validate_api",
+      "tool": "validate_api",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "video_action",
+      "tool": "video_action",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "visual_compare",
+      "tool": "visual_compare",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "web_page_builder",
+      "tool": "web_page_builder",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "website_full_pipeline",
+      "tool": "website_full_pipeline",
+      "how": "exact",
+      "why": null
+    },
+    {
+      "input": "write_file",
+      "tool": "write_file",
+      "how": "exact",
+      "why": null
+    }
+  ],
+  "catalogueRows": [
+    {
+      "tool": "scaffold_project",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "scaffold_full_stack",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "react_project",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "api_project",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "decide_capability_route",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "search_public_apis",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "inspect_api",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "validate_api",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "web_page_builder",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "ai_write_file",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "write_file",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "file_edit",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "project_edit",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "delete_file",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "read_file",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "search_text",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "inspect_directory",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "npm_manager",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "shell_execute",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "git_ops",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "github_repo_manager",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "github_pr",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "auto_tester",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "test_generator",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "quality_run",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "code_reviewer",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "security_scanner",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "dependency_audit",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "db_schema_migrator",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "auth_builder",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "payments_create_checkout_session",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "i18n_translator",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "swagger_docs",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "doc_generator",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "browser_run",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "browser_ui_audit",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "project_detect",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "project_run",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "deploy_project",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    },
+    {
+      "tool": "mobile_builder",
+      "purposeNonEmpty": true,
+      "registered": true,
+      "resolvesExact": true,
+      "how": "exact"
+    }
+  ]
+}
