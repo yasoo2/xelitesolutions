@@ -5,9 +5,9 @@ OVERALL_STATUS=Engineering active; Real-Joe acceptance blocked on provider quota
 NOTE=Shared write to D:/Joe/coordination/team/LIVE-REPORT.md is DENIED
 ("absolute path is outside the workspace", re-verified in prior cycles). This
 fallback copy lives at D:/Joe/muse-worktree/tmp/LIVE-REPORT.md for the
-external coordinator to publish. Muse HEAD=e0c72936+ (local commit this
-cycle pending below; push expected blocked: sandbox has no GitHub
-credentials — external worker must push origin/muse/joe-development).
+external coordinator to publish. Muse HEAD=c21d30e6 (local commit this
+cycle; push blocked: sandbox has no GitHub credentials, SEC_E_NO_CREDENTIALS
+— external worker must push origin/muse/joe-development).
 
 ## ماذا نعمل الآن؟
 - مراجعة SELF-FIX سارية للمرة الخامسة (REVIEWED_BY_MUSE، الاستيراد المشترك مكتمل حسب TEAM-STATE).
