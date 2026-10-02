@@ -1,17 +1,18 @@
 # LIVE-REPORT (Muse fallback copy -- shared write denied)
-UPDATED=2026-10-02T19:08Z // AUTHOR=MUSE // HEAD=4fa3a445 (this cycle's base; new commit below)
+UPDATED=2026-10-02T19:25Z // AUTHOR=MUSE // HEAD=58f65d32 (this cycle's base; new commit below)
 NOTE=Shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from this sandbox (verified again this cycle: fresh OpenWrite access-denied receipt). This workspace copy is authoritative for Muse until the coordinator imports it.
 
-1. ماذا نعمل الآن؟ Muse-155: إحصاء حيّ لسلسلة git (تسجيل ← مخطط ← تحقق ← تنفيذ، 5 أدوات كلها executable) عبر مسبار esbuild-bundle (بديل tsx/jest المعطّلين بيئيًّا اليوم) + جدوى feas-bt لـ UI-001 + مسح التشاور. التالي: commit ثم طلب push.
-2. ماذا اكتشفنا؟ سطح git = 5 أدوات (3 في الكتالوج، 0 ألياس، 0 تحقق-غير-مشروط — صحيح)؛ github_actions مولّد ملفات yml (ليس عميل API) ويرفض list_runs بأمانة؛ 'commit my changes' مجهولة للمخطط لكن commit منفَّذة (فجوة مفردات مخطط↔منفذ)؛ git_local_workflow برمجية-الاستدعاء بالتصميم (PlanningEngine/AgentOrchestrator)؛ دفع push: المخطط→repo_manager والمنفذ→git_ops (مقصود)؛ مفردات git متطابقة في الشجرتين (فرق تعليق واحد فقط).
-3. ماذا أنجزنا فعليًا؟ RESULT155 (مسبار bundle حيّ 2/2 EXIT 0 متطابق البايت 6FA731D4 + OBS-155-1 P3 و155-2 P4) + feas-bt (NO_GATE، صفر شات 52) + تحديث fallback + تحديث التقرير الحي — كلها docs/evidence، ثم commit محلي.
-4. ماذا يعمل Muse الآن؟ أنهى 155/bt. التالي: انتظار بتّ NVIDIA/Codex في OBS-155 (مفاتيح commit للمخطط + اختبار اتفاق) ثم سلسلة memory (156) أو UAT لـ UI-001 عند فك الحظر.
-5. ماذا يعمل NVIDIA الآن؟ (من الملاحظة الفعلية فقط): الأب 12736 حيّ (منذ 9/30)؛ لا ابن opencode مرئيًا بهذه اللحظة (عابر — لا يُدَّعى توقف)؛ HEAD ثابت e8fd9589؛ الشجرة متسخة (47 مسارًا — نفس العدد). يُفترض نشطًا (للقراءة فقط).
-6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟ لا رسائل مباشرة جديدة. مراجعة Muse غير المباشرة: 5/5 ملفات git مطابقة البايت + ToolService مطابق + مفردات git مطابقة. لا PENDING حي: 0 (3 إصابات grep نص قديم، والحالة الحقيقية REVIEWED_BY_MUSE).
-7. أين اتفقا وأين اختلفا؟ (من الأدلة فقط): اتفاق على 163/164 (شجرة+اتساخ)، revived=71، كتالوج 40، وسلاسل الصور والمتصفح والشل وgit (مطابقة في الشجرتين). خلاف/طعن قائم: "MEANS ‏(100+)" (مفاتيح لا أدوات، الجسر 49)، UNKNOWN=0 سابق لأوانه، Level-6 ✅ ×8، وقيم ~20/~100 (مُكذَّبة في 150)، وIMPLEMENTED_NOT_REGISTERED=0 (يتيمتان حيّتان: generate_image وvisual_qa).
+1. ماذا نعمل الآن؟ Muse-156: إحصاء حيّ لسلسلة الذاكرة (تسجيل ← مخطط ← تحقق ← تنفيذ، أداتان) عبر مسبار esbuild-bundle 2/2 متطابق البايت + جدوى feas-bu لـ UI-001 + مسح التشاور. التالي: commit ثم طلب push.
+2. ماذا اكتشفنا؟ سطح الذاكرة = أداتان executable لكن 0 في الكتالوج و0 مفردات مخطط (4 عبارات مجهولة + تضليلان للدفع/الدخول)؛ ToolService يُظلّل الأداتين بنسخة أضعف (تسمح استعلامًا فارغًا، وتمسح الفهرس قبل فهرسة بلا نجاة من ملف تالف — النسخة القانونية هي الأضعف)؛ تعليق النقل في MemoryTool.ts قديم؛ السلسلة مطابقة البايت في الشجرتين.
+3. ماذا أنجزنا فعليًا؟ RESULT156 (مسبار bundle حيّ 2/2 EXIT 0 متطابق البايت 1C64BA29 + OBS-156-1 P2 و156-2 P3 و156-3 P4) + feas-bu (NO_GATE، صفر شات 53) + تحديث fallback + تحديث التقرير الحي — كلها docs/evidence، ثم commit محلي.
+4. ماذا يعمل Muse الآن؟ أنهى 156/bu. التالي: انتظار بتّ NVIDIA/Codex في OBS-156 (توحيد نسختي الذاكرة + مفردات المخطط) ثم السلسلة التالية أو UAT لـ UI-001 عند فك الحظر.
+5. ماذا يعمل NVIDIA الآن؟ (من الملاحظة الفعلية فقط): الأب 12736 حيّ + ابن opencode 19364 حيّ (نشاط جديد 10:02 PM) ⇒ العامل نشط؛ HEAD ثابت e8fd9589؛ الشجرة متسخة (47 مسارًا — نفس العدد). يُفترض نشطًا (للقراءة فقط).
+6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟ لا رسائل مباشرة جديدة. مراجعة Muse غير المباشرة: MemoryTool.ts + ToolService.ts مطابقان البايت (التظليل موجود في الخطين). لا PENDING حي: 0 (كل ملفات MUSE إما REVIEWED_BY_MUSE أو SUPERSEDED أو ردّ مسجّل بانتظار الاستيراد).
+7. أين اتفقا وأين اختلفا؟ (من الأدلة فقط): اتفاق على 163/164 (شجرة+اتساخ)، revived=71، كتالوج 40، وسلاسل الصور والمتصفح والشل وgit والذاكرة (مطابقة في الشجرتين). خلاف/طعن قائم: "MEANS ‏(100+)" (مفاتيح لا أدوات، الجسر 49)، UNKNOWN=0 سابق لأوانه، Level-6 ✅ ×8، وقيم ~20/~100 (مُكذَّبة في 150)، وIMPLEMENTED_NOT_REGISTERED=0 (يتيمتان حيّتان: generate_image وvisual_qa).
 8. ما الأرقام المؤكدة حاليًا للأدوات/القدرات عند توفرها؟ (VERIFIED تعني مثبتة من مصدر/تشغيل حي بهذه الدورة):
    REGISTERED_TOOLS=163 (مثبتة حيًّا) / 164 (شجرة NVIDIA المتسخة فقط) EXECUTABLE_TOOLS=163 (0 بلا execute) DUPLICATE=0 (مثبت)
-   git: مسجل=5 // مخطط-مرئي=3 // تحقق-غير-مشروط=0 (صحيح) // executable=5/5 // ‏'commit my changes'=مجهولة-مخطط/معروفة-منفذ (فجوة، P3) // ‏git_local_workflow=برمجية بالتصميم
+   ذاكرة: مسجل=2 // مخطط-مرئي=0 // تحقق-غير-مشروط=0 (صحيح) // executable=2/2 // ToolService يُظلّل بنسخة أضعف (P2) // 4 عبارات مجهولة + 2 تضليل (P3)
+   git: مسجل=5 // مخطط-مرئي=3 // تحقق-غير-مشروط=0 (صحيح) // executable=5/5 (من 155)
    شل: مسجل=4 // مخطط-مرئي=2 // ‏run_command=منشطرة مخطط↔منفذ (من 154)
    متصفح: مسجل=35 // مخطط-مرئي=3 // تحقق-غير-مشروط=7 // ‏visual_qa=يتيمة+مقبولة-تحققًا (من 153)
    صور: مخطط-مرئي=0 // ‏generate_image=يتيمة // ‏image_studio=مسجل بعقد مختلف (من 152)
@@ -19,11 +20,15 @@ NOTE=Shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from this sa
    DISCOVERED_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=2 مؤكد حيًّا (generate_image + visual_qa) + قيد الحصر
    UNKNOWN=UNKNOWN (ليس 0) REPAIRED=0 (لا إصلاح برمجي) VERIFIED=جزئي (إحصاءات + عقود سارية) REAL_JOE_PROVEN=0 (لا UAT ناجح بعد)
    (REPORTED_BY_NVIDIA: ملخص wiring: FULLY_WIRED=8 وLevel-6 ✅ ×8 وUNKNOWN=0 وIMPLEMENTED_NOT_REGISTERED=0 — كلها قيد طعن Muse.)
-9. ما آخر اختبار ونتيجته؟ wiring-155: مسبار bundle حيّ 2/2 EXIT 0 متطابق البايت (إحصاء 5 + 8 قرارات محلل + 4 دبابيس gate + قراءات مصدر) — أخضر كمراجعة // internal/focused، ليست REAL_JOE_UI PASS. feas-bt: NO_GATE (صفر شات، عملة الإصلاح حية عبر صفر-دلتا). tsx/jest معطّلان بيئيًّا اليوم (EPERM + تجمّد موثّق)، والبديل bundle يعمل.
-10. ما المشاكل أو العوائق الحالية؟ كتابة التقرير المشترك ممنوعة (fallback)؛ UAT الحقيقي محظور (:5002 نفس العملية القديمة PID 31464 uptime 85191s no-commit-file؛ :5000 كذلك؛ Ollama نفس النماذج الـ4 غير مثبتة لمسار :5002)؛ tsx/jest لا يعملان اليوم في sandbox (TEMP) — البديل bundle موثّق؛ NVIDIA مشغول بنطاقه (للقراءة فقط)؛ متابعة TOOL-HTTP مؤجلة خلف CRITICAL.
-11. ما الخطوة التالية؟ commit محلي + محاولة push؛ ثم بتّ OBS-155 من NVIDIA/Codex؛ وUAT لـ UI-001 عند فك الحظر (مفتاح/مسار/توجيه صريح فقط).
+9. ما آخر اختبار ونتيجته؟ wiring-156: مسبار bundle حيّ 2/2 EXIT 0 متطابق البايت (إحصاء 2 + 8 قرارات محلل + 4 دبابيس gate + قراءات مصدر) — أخضر كمراجعة // internal/focused، ليست REAL_JOE_UI PASS. feas-bu: NO_GATE (صفر شات 53، عملة الإصلاح حية عبر صفر-دلتا). لا إعاقة بيئية جديدة (تصحيحات المسبار موثقة).
+10. ما المشاكل أو العوائق الحالية؟ كتابة التقرير المشترك ممنوعة (fallback)؛ UAT الحقيقي محظور (:5002 نفس العملية القديمة PID 31464 uptime 89147s no-commit-file؛ :5000 كذلك؛ Ollama نفس النماذج الـ4 غير مثبتة لمسار :5002)؛ NVIDIA مشغول بنطاقه (للقراءة فقط، عامل نشط)؛ متابعة TOOL-HTTP مؤجلة خلف CRITICAL.
+11. ما الخطوة التالية؟ commit محلي + محاولة push؛ ثم بتّ OBS-156 من NVIDIA/Codex؛ وUAT لـ UI-001 عند فك الحظر (مفتاح/مسار/توجيه صريح فقط).
 
 سجل موجز:
+[2026-10-02] TEST -- wiring-156: esbuild-bundle live probe 2/2 EXIT 0 byte-identical 1C64BA29 (2-tool census + 8 resolutions + 4 gate pins + source reads).
+[2026-10-02] DISCOVERY -- ToolService shadows both memory tools with a WEAKER copy (no empty-query guard; clear-before-index without per-file survival); registry copies shadowed off canonical path; header comment stale. Planner memory vocab missing (4 unknown + 2 misroutes to payments/auth builders). Both lines identical.
+[2026-10-02] REVIEW -- OBS-156-1 P2 (single memory implementation + agreement test) + OBS-156-2 P3 (planner memory MEANS/catalogue + misroute pins) + OBS-156-3 P4 (stale header comment).
+[2026-10-02] COORDINATION -- UI-001 feas-bu NO_GATE (53rd zero-chat); live PENDING 0; NVIDIA worker ACTIVE (parent + fresh child), read-only.
 [2026-10-02] TEST -- wiring-155: esbuild-bundle live probe 2/2 EXIT 0 byte-identical 6FA731D4 (5-tool census + 8 resolutions + 4 gate pins + source reads).
 [2026-10-02] DISCOVERY -- commit-phrase planner gap ('commit my changes' unknown, bare commit dispatched); github_actions is an honest yml generator; git_local_workflow programmatic-by-design; push planner->repo_manager/executor->git_ops deliberate; git vocab identical both trees.
 [2026-10-02] REVIEW -- OBS-155-1 P3 (commit MEANS keys + agreement test) + OBS-155-2 P4 (bundle-probe pattern for denied-temp sandbox).
@@ -34,7 +39,4 @@ NOTE=Shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable from this sa
 [2026-10-02] REVIEW -- OBS-154-1 P2 (one run_command target in BOTH layers + path-pair test) + OBS-154-2 P4 (comment-only fix).
 [2026-10-02] COORDINATION -- UI-001 feas-bs NO_GATE (51st zero-chat); live PENDING 0 (all-header scan); NVIDIA worker live, read-only.
 [2026-10-02] DOCS -- RESULT154 + feas-bs + live report + fallback committed (docs/evidence only, no source change).
-[2026-10-02] TEST -- wiring-153: two live probes 2/2 EXIT 0 byte-identical (35-tool census + 7 resolver phrases + visual pins + source reads).
-[2026-10-02] DISCOVERY -- visual_qa orphaned-but-allowlisted on BOTH lines (2nd live-proven orphan); browser planner vocab gap (3/35 catalogued, 2 phrases unknown, 1 misroute); worker env-gated.
-[2026-10-02] REVIEW -- OBS-153-1 P2 (register visual_qa OR drop from allowlist) + OBS-153-2 P3 (browser MEANS/catalogue) + OBS-153-3 P4 (worker env-gate doc).
-[2026-10-02] COORDINATION -- UI-001 feas-br NO_GATE (50th zero-chat); live PENDING 0 (all-header scan); NVIDIA worker live, read-only.
+[2026-10-02] TEST -- wiring-153: two live probes 2/2 EXIT 0 byte-identical (35-tool census + 7 verification-true, visual_qa orphaned-but-allowlisted both lines).

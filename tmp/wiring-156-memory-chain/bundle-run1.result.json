@@ -1,0 +1,102 @@
+{
+ "registeredCount": 163,
+ "memRegistered": [
+  "memorize_codebase",
+  "recall_memory"
+ ],
+ "memRegisteredCount": 2,
+ "perTool": {
+  "memorize_codebase": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "mockSupported": true
+  },
+  "recall_memory": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "mockSupported": true
+  }
+ },
+ "catalogueMemHits": [],
+ "aliasMemHits": {},
+ "resolveOutcomes": {
+  "recall what we know about auth logic": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "search memory for the User schema": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "index the codebase into memory": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "memorize the codebase": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "recall_memory": {
+   "tool": "recall_memory",
+   "how": "exact"
+  },
+  "memorize_codebase": {
+   "tool": "memorize_codebase",
+   "how": "exact"
+  },
+  "what did we learn about the payment module": {
+   "tool": "payments_create_checkout_session",
+   "how": "meaning"
+  },
+  "remember how login works": {
+   "tool": "auth_builder",
+   "how": "meaning"
+  }
+ },
+ "gateShapes": {
+  "recall-valid": false,
+  "recall-empty": false,
+  "memorize-dir": false,
+  "memorize-empty": false
+ },
+ "registryMemoryToolsRefs": 2,
+ "defDetail": {
+  "namesColon": [
+   "recall_memory",
+   "memorize_codebase"
+  ],
+  "markers": {
+   "vectorDb": 5,
+   "addDocument": 1,
+   ".clear(": 1,
+   "glob(": 1,
+   "getActiveRoot": 1,
+   "require(": 1
+  },
+  "sha256": "823037c814492fc922a7875565883d264769f5f5ffdaf25ce668643101ceb923"
+ },
+ "planMemRefs": [],
+ "svcMemRefs": [
+  "import { vectorDb } from './vectorDb';",
+  "if (name === 'recall_memory') {",
+  "const results = await vectorDb.search(input.query, input.limit || 5);",
+  "if (name === 'memorize_codebase') {",
+  "await vectorDb.clear();",
+  "await vectorDb.addDocument(content.slice(0, 20000), { filePath: file });",
+  "await vectorDb.addDocument(content, { filePath: file });"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
