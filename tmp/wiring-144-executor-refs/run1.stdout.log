@@ -1,0 +1,1610 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-144-executor-ref-census",
+  "executorFile": "api/src/modules/tools/definitions/PhaseExecutorTool.ts",
+  "executorBytes": 152753,
+  "executorLines": 2663,
+  "executorSha256": "81512cc94d18c2b28b304e4cb0b04888821559a75cb718e9ccf64ff0b2becd13",
+  "registeredTools": 163,
+  "vocabSize": 203,
+  "declaredNameCount": 16,
+  "referencedVocabCount": 46,
+  "verdictCounts": {
+    "REGISTERED_EXACT": 40,
+    "REGISTERED_NONEXACT": 0,
+    "ALIAS_KEY": 2,
+    "DANGLING_DECLARED": 4,
+    "DANGLING_UNDECLARED": 0
+  },
+  "danglingDeclared": [
+    {
+      "name": "app",
+      "quotedLines": [],
+      "regexLines": [
+        146
+      ],
+      "regexSrc": [
+        "/(?:\\b(?:start|launch|serve|preview|open|dev)\\b|\\brun\\s+(?:the\\s+)?(?:project|app|application|server)\\b|تشغيل|شغّل|ابدأ|"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "MobileBuilderTool.ts:447"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "bulk_file_generator",
+      "quotedLines": [
+        112,
+        254
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "BulkFileGeneratorTool.ts:6"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "next",
+      "quotedLines": [],
+      "regexLines": [
+        170,
+        171
+      ],
+      "regexSrc": [
+        "/^(?:react|react-dom|next|vite|expo|@vitejs\\/plugin-react|react-scripts)$/iu",
+        "/(?:vite|next|expo|react-scripts|webpack|parcel)/iu"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "OrionBusinessFoundationTool.ts:186"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "visual_qa",
+      "quotedLines": [],
+      "regexLines": [
+        1737,
+        2047,
+        2051
+      ],
+      "regexSrc": [
+        "/^(?:browser_|visual_qa$)/u"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "VisualQATool.ts:13"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    }
+  ],
+  "danglingUndeclared": [],
+  "aliasKeysReferenced": [
+    {
+      "name": "bash",
+      "quotedLines": [
+        946
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "terminal_manager",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "grep_search",
+      "quotedLines": [
+        270
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "search_text",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    }
+  ],
+  "registeredNonExact": [],
+  "registeredExactNames": [
+    "ai_write_file",
+    "analyze_codebase",
+    "analyze_project",
+    "api_project",
+    "auto_tester",
+    "browser_run",
+    "code_reviewer",
+    "decide_capability_route",
+    "deploy_project",
+    "echo",
+    "engineering_discovery",
+    "file_edit",
+    "file_edit_advanced",
+    "import_project",
+    "inspect_api",
+    "inspect_directory",
+    "json_query",
+    "knowledge_add",
+    "npm_manager",
+    "pattern_recognize",
+    "phase_executor",
+    "project_detect",
+    "project_pipeline",
+    "project_run",
+    "quality_run",
+    "react_project",
+    "repo_apply_patch",
+    "repo_read_file",
+    "repo_search",
+    "scaffold_full_stack",
+    "scaffold_project",
+    "screenshot",
+    "search_files",
+    "search_public_apis",
+    "search_text",
+    "shell_execute",
+    "terminal_manager",
+    "validate_api",
+    "web_page_builder",
+    "write_file"
+  ],
+  "nonVocabUnderscoreLiterals": [
+    {
+      "name": "code_fix",
+      "lines": [
+        1810,
+        1813
+      ]
+    },
+    {
+      "name": "current_run",
+      "lines": [
+        840,
+        878,
+        1323,
+        1840,
+        1941,
+        2001
+      ]
+    },
+    {
+      "name": "expose_port",
+      "lines": [
+        1503
+      ]
+    },
+    {
+      "name": "fatal_error",
+      "lines": [
+        2644
+      ]
+    },
+    {
+      "name": "node_modules",
+      "lines": [
+        995,
+        996,
+        997
+      ]
+    },
+    {
+      "name": "npm_install_failed",
+      "lines": [
+        1055
+      ]
+    },
+    {
+      "name": "regenerate_engine",
+      "lines": [
+        1809
+      ]
+    },
+    {
+      "name": "run_cancelled_by_owner",
+      "lines": [
+        1381,
+        1890,
+        1891,
+        1915,
+        1916,
+        1971
+      ]
+    },
+    {
+      "name": "stale_run_dropped",
+      "lines": [
+        840,
+        875,
+        885,
+        1323,
+        1778,
+        1839,
+        1929,
+        1940,
+        2001
+      ]
+    }
+  ],
+  "nonVocabUnderscoreCount": 9,
+  "nonVocabPlainLiterals": [
+    {
+      "name": "accepted",
+      "lines": [
+        88
+      ]
+    },
+    {
+      "name": "affected",
+      "lines": [
+        2335,
+        2517
+      ]
+    },
+    {
+      "name": "array",
+      "lines": [
+        1092,
+        1123
+      ]
+    },
+    {
+      "name": "blockers",
+      "lines": [
+        77,
+        85,
+        101
+      ]
+    },
+    {
+      "name": "boolean",
+      "lines": [
+        89,
+        1850,
+        1858,
+        1951
+      ]
+    },
+    {
+      "name": "build",
+      "lines": [
+        966
+      ]
+    },
+    {
+      "name": "builder",
+      "lines": [
+        1080
+      ]
+    },
+    {
+      "name": "cmd",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "code",
+      "lines": [
+        243
+      ]
+    },
+    {
+      "name": "completed",
+      "lines": [
+        2284,
+        2477,
+        2590
+      ]
+    },
+    {
+      "name": "cwd",
+      "lines": [
+        483
+      ]
+    },
+    {
+      "name": "default",
+      "lines": [
+        611
+      ]
+    },
+    {
+      "name": "dev",
+      "lines": [
+        180
+      ]
+    },
+    {
+      "name": "e2e",
+      "lines": [
+        968
+      ]
+    },
+    {
+      "name": "env",
+      "lines": [
+        947
+      ]
+    },
+    {
+      "name": "error",
+      "lines": [
+        2469
+      ]
+    },
+    {
+      "name": "execute",
+      "lines": [
+        1128,
+        1129
+      ]
+    },
+    {
+      "name": "execution",
+      "lines": [
+        1080
+      ]
+    },
+    {
+      "name": "export",
+      "lines": [
+        947
+      ]
+    },
+    {
+      "name": "failed",
+      "lines": [
+        2287,
+        2445,
+        2475
+      ]
+    },
+    {
+      "name": "false",
+      "lines": [
+        947
+      ]
+    },
+    {
+      "name": "filename",
+      "lines": [
+        234,
+        321
+      ]
+    },
+    {
+      "name": "files",
+      "lines": [
+        238,
+        322
+      ]
+    },
+    {
+      "name": "final",
+      "lines": [
+        1591,
+        2335,
+        2355
+      ]
+    },
+    {
+      "name": "focused",
+      "lines": [
+        1591
+      ]
+    },
+    {
+      "name": "function",
+      "lines": [
+        1380,
+        1970
+      ]
+    },
+    {
+      "name": "high",
+      "lines": [
+        1551,
+        1871,
+        1959
+      ]
+    },
+    {
+      "name": "install",
+      "lines": [
+        1048
+      ]
+    },
+    {
+      "name": "integration",
+      "lines": [
+        968
+      ]
+    },
+    {
+      "name": "invalid",
+      "lines": [
+        2367
+      ]
+    },
+    {
+      "name": "manual",
+      "lines": [
+        1388,
+        1390,
+        1398,
+        1430,
+        1525
+      ]
+    },
+    {
+      "name": "name",
+      "lines": [
+        1094
+      ]
+    },
+    {
+      "name": "node",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "npm",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "npx",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "number",
+      "lines": [
+        1089,
+        1101,
+        1116,
+        1118,
+        1119,
+        1120,
+        1121,
+        1122,
+        1124
+      ]
+    },
+    {
+      "name": "object",
+      "lines": [
+        74,
+        166,
+        167,
+        843,
+        1083,
+        1086,
+        1092,
+        1097,
+        1114,
+        2302,
+        2486
+      ]
+    },
+    {
+      "name": "partial",
+      "lines": [
+        2287,
+        2370,
+        2448,
+        2471,
+        2475,
+        2549,
+        2585,
+        2591,
+        2592
+      ]
+    },
+    {
+      "name": "passed",
+      "lines": [
+        1670,
+        1675,
+        2403,
+        2432,
+        2435,
+        2554
+      ]
+    },
+    {
+      "name": "path",
+      "lines": [
+        3,
+        234,
+        483,
+        487,
+        502
+      ]
+    },
+    {
+      "name": "paths",
+      "lines": [
+        238
+      ]
+    },
+    {
+      "name": "phase",
+      "lines": [
+        1080,
+        1110,
+        1132,
+        2147
+      ]
+    },
+    {
+      "name": "powershell",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "project",
+      "lines": [
+        1080
+      ]
+    },
+    {
+      "name": "pwsh",
+      "lines": [
+        946
+      ]
+    },
+    {
+      "name": "ran",
+      "lines": [
+        1544,
+        1714,
+        1728,
+        1798,
+        1829,
+        1882,
+        1935,
+        1991,
+        2275,
+        2276,
+        2289,
+        2366,
+        2367,
+        2435,
+        2436,
+        2444,
+        2445,
+        2468,
+        2469,
+        2476,
+        2547,
+        2583,
+        2646
+      ]
+    },
+    {
+      "name": "react",
+      "lines": [
+        830
+      ]
+    },
+    {
+      "name": "reuse",
+      "lines": [
+        1618,
+        2400,
+        2525
+      ]
+    },
+    {
+      "name": "reused",
+      "lines": [
+        1623,
+        1991,
+        2191,
+        2215,
+        2274,
+        2288,
+        2289,
+        2402,
+        2403,
+        2648
+      ]
+    },
+    {
+      "name": "scaffold",
+      "lines": [
+        749
+      ]
+    },
+    {
+      "name": "set",
+      "lines": [
+        947
+      ]
+    },
+    {
+      "name": "skipped",
+      "lines": [
+        1390,
+        1398,
+        1430,
+        1516,
+        1525,
+        1991,
+        2273,
+        2286,
+        2647
+      ]
+    },
+    {
+      "name": "start",
+      "lines": [
+        198
+      ]
+    },
+    {
+      "name": "string",
+      "lines": [
+        169,
+        227,
+        298,
+        301,
+        908,
+        911,
+        937,
+        1040,
+        1090,
+        1091,
+        1100,
+        1102,
+        1103,
+        1104,
+        1105,
+        1106,
+        1117,
+        1438,
+        1439,
+        1546,
+        1549,
+        1813,
+        1844,
+        1847,
+        1945,
+        1948,
+        2280,
+        2316,
+        2317,
+        2476
+      ]
+    },
+    {
+      "name": "tasks",
+      "lines": [
+        1094
+      ]
+    },
+    {
+      "name": "test",
+      "lines": [
+        967
+      ]
+    },
+    {
+      "name": "true",
+      "lines": [
+        947
+      ]
+    },
+    {
+      "name": "unit",
+      "lines": [
+        967
+      ]
+    },
+    {
+      "name": "unknown",
+      "lines": [
+        2618
+      ]
+    },
+    {
+      "name": "utf8",
+      "lines": [
+        164,
+        226,
+        1039
+      ]
+    }
+  ],
+  "nonVocabPlainLiteralCount": 60,
+  "rows": [
+    {
+      "name": "ai_write_file",
+      "quotedLines": [
+        112,
+        242,
+        704,
+        894,
+        908,
+        911,
+        1459,
+        2091,
+        2482
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "ai_write_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "analyze_codebase",
+      "quotedLines": [
+        318
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "analyze_codebase",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "analyze_project",
+      "quotedLines": [
+        318
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "analyze_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "api_project",
+      "quotedLines": [
+        704,
+        1441,
+        1469,
+        1492,
+        1495
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "api_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "app",
+      "quotedLines": [],
+      "regexLines": [
+        146
+      ],
+      "regexSrc": [
+        "/(?:\\b(?:start|launch|serve|preview|open|dev)\\b|\\brun\\s+(?:the\\s+)?(?:project|app|application|server)\\b|تشغيل|شغّل|ابدأ|"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "MobileBuilderTool.ts:447"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "auto_tester",
+      "quotedLines": [
+        434,
+        894,
+        964,
+        1030
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "auto_tester",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "bash",
+      "quotedLines": [
+        946
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "terminal_manager",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "browser_run",
+      "quotedLines": [
+        2363,
+        2369,
+        2439
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "browser_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "bulk_file_generator",
+      "quotedLines": [
+        112,
+        254
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "BulkFileGeneratorTool.ts:6"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "code_reviewer",
+      "quotedLines": [
+        2318
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "code_reviewer",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "decide_capability_route",
+      "quotedLines": [
+        1690
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "decide_capability_route",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "deploy_project",
+      "quotedLines": [
+        374,
+        489,
+        1502
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "deploy_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "echo",
+      "quotedLines": [
+        947
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "echo",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "engineering_discovery",
+      "quotedLines": [
+        248
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "engineering_discovery",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "file_edit",
+      "quotedLines": [
+        112,
+        704,
+        894,
+        2482
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "edit_file",
+        "str_replace"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "file_edit",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "file_edit_advanced",
+      "quotedLines": [
+        112,
+        704,
+        894,
+        2482
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "file_edit_advanced",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "grep_search",
+      "quotedLines": [
+        270
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "search_text",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "import_project",
+      "quotedLines": [
+        252
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "import_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "inspect_api",
+      "quotedLines": [
+        1481
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "inspect_api",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "inspect_directory",
+      "quotedLines": [
+        317
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "list_directory",
+        "list_files"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "inspect_directory",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "json_query",
+      "quotedLines": [
+        256
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "json_query",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "knowledge_add",
+      "quotedLines": [
+        258
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "knowledge_add",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "next",
+      "quotedLines": [],
+      "regexLines": [
+        170,
+        171
+      ],
+      "regexSrc": [
+        "/^(?:react|react-dom|next|vite|expo|@vitejs\\/plugin-react|react-scripts)$/iu",
+        "/(?:vite|next|expo|react-scripts|webpack|parcel)/iu"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "OrionBusinessFoundationTool.ts:186"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "npm_manager",
+      "quotedLines": [
+        434,
+        442,
+        1047
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "npm_manager",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "pattern_recognize",
+      "quotedLines": [
+        244
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "pattern_recognize",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "phase_executor",
+      "quotedLines": [
+        1077
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "phase_executor",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "project_detect",
+      "quotedLines": [
+        246,
+        318
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "project_detect",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "project_pipeline",
+      "quotedLines": [
+        250
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "project_pipeline",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "project_run",
+      "quotedLines": [
+        518,
+        1411,
+        1417
+      ],
+      "regexLines": [
+        558
+      ],
+      "regexSrc": [
+        "/ argument that would make project_run execute `src/i"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "project_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "quality_run",
+      "quotedLines": [
+        318,
+        349,
+        369
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "quality_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "react_project",
+      "quotedLines": [
+        704,
+        935,
+        1441,
+        1469,
+        1477,
+        1492,
+        1495
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "react_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "repo_apply_patch",
+      "quotedLines": [
+        268
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "repo_apply_patch",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "repo_read_file",
+      "quotedLines": [
+        264
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "repo_read_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "repo_search",
+      "quotedLines": [
+        266
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "repo_search",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "scaffold_full_stack",
+      "quotedLines": [
+        704
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "scaffold_full_stack",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "scaffold_project",
+      "quotedLines": [
+        704,
+        2482
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "scaffold_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "screenshot",
+      "quotedLines": [
+        260
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "screenshot",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "search_files",
+      "quotedLines": [
+        317
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "file_search",
+        "find_files",
+        "glob_search"
+      ],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "search_files",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "search_public_apis",
+      "quotedLines": [
+        1686
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "search_public_apis",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "search_text",
+      "quotedLines": [
+        317
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "code_search",
+        "find_in_files",
+        "grep",
+        "grep_search",
+        "ripgrep",
+        "search_code",
+        "search_in_files"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "search_text",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "shell_execute",
+      "quotedLines": [
+        434,
+        960,
+        1030,
+        1404,
+        1407,
+        1426,
+        1546,
+        1723,
+        1779,
+        1821,
+        1844,
+        1850,
+        1945,
+        1951,
+        2512,
+        2530,
+        2547,
+        2583
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "shell"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "shell_execute",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "terminal_manager",
+      "quotedLines": [
+        434,
+        960,
+        1030,
+        1404,
+        1407,
+        1426
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "bash",
+        "run_command"
+      ],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "terminal_manager",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "validate_api",
+      "quotedLines": [
+        1481,
+        1694
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "validate_api",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "visual_qa",
+      "quotedLines": [],
+      "regexLines": [
+        1737,
+        2047,
+        2051
+      ],
+      "regexSrc": [
+        "/^(?:browser_|visual_qa$)/u"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "VisualQATool.ts:13"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "web_page_builder",
+      "quotedLines": [
+        262
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "web_page_builder",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "write_file",
+      "quotedLines": [
+        112,
+        704,
+        894,
+        2482
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "create_file",
+        "file_write",
+        "write_to_file"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "write_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    }
+  ]
+}
