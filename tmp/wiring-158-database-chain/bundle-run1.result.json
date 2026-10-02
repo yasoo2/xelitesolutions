@@ -1,0 +1,149 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "db_schema_migrator",
+  "query_optimizer",
+  "large_data_seeder"
+ ],
+ "dbRegistered": [
+  "db_schema_migrator",
+  "large_data_seeder",
+  "query_optimizer"
+ ],
+ "dbRegisteredCount": 3,
+ "adjacentRegistered": [
+  "query_datasource"
+ ],
+ "perTool": {
+  "db_schema_migrator": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "large_data_seeder": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "query_optimizer": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "query_datasource": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  }
+ },
+ "catalogueDbHits": [
+  "db_schema_migrator"
+ ],
+ "aliasDbHits": {},
+ "resolveOutcomes": {
+  "run the database migration for the backend": {
+   "tool": "db_schema_migrator",
+   "how": "meaning"
+  },
+  "optimize this slow SQL query": {
+   "tool": "db_schema_migrator",
+   "how": "meaning"
+  },
+  "generate a large CSV seed file for stress testing": {
+   "tool": "auto_tester",
+   "how": "meaning"
+  },
+  "db_schema_migrator": {
+   "tool": "db_schema_migrator",
+   "how": "exact"
+  },
+  "query_optimizer": {
+   "tool": "query_optimizer",
+   "how": "exact"
+  },
+  "large_data_seeder": {
+   "tool": "large_data_seeder",
+   "how": "exact"
+  },
+  "migrate the SQLite database with schema.sql": {
+   "tool": "db_schema_migrator",
+   "how": "meaning"
+  },
+  "create a million-row test dataset": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "gateShapes": {
+  "migrate-status": false,
+  "migrate-push": false,
+  "optimize-valid": false,
+  "optimize-empty": false,
+  "seed-valid": false,
+  "seed-empty": false,
+  "seed-outside": false
+ },
+ "registryDatabaseEnterpriseRefs": 1,
+ "defDetail": {
+  "namesColon": [
+   "db_schema_migrator",
+   "query_optimizer",
+   "large_data_seeder"
+  ],
+  "markers": {
+   "resolveToolPath": 6,
+   "node:sqlite": 2,
+   "handleShellCommand": 2,
+   "Heuristic Static Analysis": 1,
+   "1_000_000": 1,
+   "outside the workspace": 2,
+   "discoverSqlSchemaPath": 2,
+   "nearestPackageRoot": 2,
+   "EXPLAIN ANALYZE": 1,
+   "permissions: ToolPermission[] = ['internet']": 1
+  },
+  "sha256": "0f40f9e7fd3f9fa5a29419d827ba4c834550fee6c6bd7ec9c6436d48e3de8c30"
+ },
+ "planDbRefs": [
+  "{ tool: 'db_schema_migrator', purpose: 'execute an existing database schema file or SQL migration; action is REQUIRED and must be exactly mi",
+  "postgres: 'db_schema_migrator', postgresql: 'db_schema_migrator', mysql: 'db_schema_migrator',",
+  "mongodb: 'db_schema_migrator', mongoose: 'db_schema_migrator', prisma: 'db_schema_migrator',",
+  "sqlite: 'db_schema_migrator', database: 'db_schema_migrator', sql: 'db_schema_migrator',",
+  "if (toolName === 'db_schema_migrator') {",
+  "return `db_schema_migrator يحتاج action واحداً من ${supported.join(', ')}، لكن الخطة طلبت «${action || 'مفقود'}». يلزم إثبات محرك ومخطط البي"
+ ],
+ "svcDbRefs": [],
+ "execDbRefs": [],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
