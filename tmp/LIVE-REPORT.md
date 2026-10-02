@@ -1,50 +1,59 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03 ~02:00 local)
+# LIVE-REPORT — Muse + NVIDIA (2026-10-03 this cycle)
 # FALLBACK COPY: shared path D:\Joe\coordination\team\LIVE-REPORT.md unwritable from this
-# sandbox ("absolute path is outside the workspace"). External worker: copy verbatim.
+# sandbox (ACCESS_DENIED, verified this cycle). External worker: copy verbatim.
 
 ## 1. ماذا نعمل الآن؟
-- Muse: مراجعة مستقلة لسكربت استلام المراجعات (مكتملة APPROVE) + متابعة CLI + مسار verification.
-- NVIDIA: إعادة عمل مولّد CLI (D1-D12) + نطاقات التخطيط النشطة (ملفات معدّلة غير مُcommitة).
+- Muse: تدقيق سلسلة أدوات التحقق wiring-164 (مكتمل) + مراجعة حالة الاستلام (مكتملة).
+- NVIDIA: ملكية verification-contract + مولّد CLI (ملفات معدّلة غير مُcommitة، worker نشط).
 
 ## 2. ماذا اكتشفنا؟
-- إصلاحات الاستلام F1/F2/F3/F4/F5 صحيحة (أُعيد تشغيلها بمعزل: 8/8 + قفل + تطابق بايت).
-- عيوب CLI ‏D1-D12 ما زالت موجودة بايت-بايت (لا كود NVIDIA جديد منذ المراجعة).
-- خلاف أرقام: الملخص يقول 164 أداة (شجرة NVIDIA المعدّلة) بينما المُثبت على المُcommit هو 163.
+- P1: الـledger يقبل visual_qa كأداة تحقق لكنها غير مسجلة — شكل موت تحقق حي على الخطين.
+- manual_test/verify_build يُستبدلان silently بـproject_detect (يُرجع معلومات مشروع لا فحصًا).
+- 4 عبارات طبيعية UNKNOWN + 4 misroutes رغم أن الأدوات catalogued (منها checkout→payments مجددًا).
+- smoke_test شبح كامل: صفر إشارة في كل api/src (اسم ملف اختبار فقط).
+- auto_tester honesty machinery موجودة فقط في كومتات Muse (تحتاج مراجعة NVIDIA).
 
 ## 3. ماذا أنجزنا فعليًا؟
-- Muse: رد FOLLOWUP + harness + سجلّان (كومت محلي 77f92d31 بعد 3d7d8d63؛ الدفع محظور لغياب credentials).
-- لا تغيير في كود Joe هذا الدور (مراجعة فقط حسب الدور المحدود).
+- Muse: wiring-164 كامل (probe 2/2 byte-identical 41B35A71 + RESULT164 + jest log) — docs فقط.
+- prose-verification-contract أُعيد تشغيلها: 14/14 PASS (JEST_EXIT=0) على نفس الـHEAD.
+- لا تغيير في كود Joe (تدقيق read-only + مراجعة حسب الدور المحدود).
 
 ## 4. ماذا يعمل Muse الآن؟
-- أنهى المراجعة؛ المسار verification جارٍ (14/14)؛ بانتظار مراجعة ACCEPT + تحميل مصدر مراجَع.
+- أنهى wiring-164؛ لا استشارات معلقة جديدة (ردّا 01:38 مستلمَان في الفهرس مؤرشفان).
+- بانتظار ACCEPT مستقل + تحميل مصدر مراجَع على :5002.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- من الحالة المشتركة: ملكية CLI producer + متابعة Gap؛ آخر heartbeat ‏00:56 (لم يُخترع نشاط جديد).
+- من claimها 00:56: verification-contract + متابعات 1-5 + CLI؛ شجرة معدّلة (17 ملفًا) محفوظة.
+- لم يُخترع نشاط جديد؛ worker لم يُلمس.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- نعم غير مباشر عبر Codex: مراجعة Muse استُلمت مؤرشفة؛ رسالة Codex لـNVIDIA تحيل لـNEEDS_REWORK.
+- غير مباشر عبر Codex: ردّا Muse (CLI-FIDELITY + FOLLOWUP) مؤرشفان في received-reviews.
+- لا رسائل جديدة بعد 01:38؛ لا مراجعة NVIDIA جديدة على wiring-164 بعد.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: سبب عطل verification (نص مقابل كائن) + طبقة الإصلاح + فجوة أدلة QA.
-- اختلفا/معلّق: Gap-A/B (Muse: placeholders؛ NVIDIA: FIXED على شجرة معدّلة) + عدد 163 مقابل 164 + CLI NEEDS_REWORK.
+- اتفقا: سبب عطل verification + visual_qa يتيم (NVIDIA dirty تُبقيه في القائمة أيضًا).
+- معلّق: Gap-A/B + ‏163 مقابل 164 + CLI NEEDS_REWORK (D1-D12) + ملكية OBS-164 الجديدة.
 
 ## 8. الأرقام المؤكدة
-- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (VERIFIED على المُcommit؛ ‏164 REPORTED_BY_NVIDIA على المعدّل)
-- EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN ORPHANED=UNKNOWN
-- DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=UNKNOWN (إصلاحات جوهرية بانتظار ACCEPT)
-- VERIFIED=prose 14/14 + receiver 8/8 (داخلي، ليس REAL_JOE_UI) REAL_JOE_PROVEN=0
+- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (VERIFIED خامس عدّ حي؛ ‏164 REPORTED_BY_NVIDIA على المعدّل)
+- EXECUTABLE_TOOLS=UNKNOWN (السلسلة: 9/9 hasExecute) FULLY_WIRED=UNKNOWN (السلسلة: 4 موثقة)
+- ORPHANED=visual_qa مؤكد يتيم-ومقبول-ledger (P1) DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN
+- REPAIRED=UNKNOWN (كل الإصلاحات بانتظار ACCEPT) VERIFIED=prose 14/14 + probe 2/2 (داخلي)
+- REAL_JOE_PROVEN=0 REAL_JOE_UI=PASS لم يتحقق بعد
 
 ## 9. ما آخر اختبار ونتيجته؟
-- receiver-rerun معزول: PASS (8/8 + lease + byte-identity) — أداة تنسيق لا منتج.
+- probe-164: PASS (2/2 byte-identical) — تدقيق تنسيق/اكتشاف لا منتج.
 - prose-verification-contract: 14/14 PASS — داخلي فقط.
-- :5002 health OK لكن ثنائية قديمة (no-commit-file) — لا UAT جديد.
+- :5002 health OK لكن ثنائية قديمة (no-commit-file, uptime ~28h نفس العملية) — لا UAT جديد.
 
 ## 10. ما المشاكل أو العوائق؟
 - UAT محظور: لا تحميل مصدر مراجَع + مسار provider.
 - دفع muse/joe-development محظور (لا credentials في sandbox) — يحتاج worker خارجي.
-- كتابة ملفات التنسيق المشتركة مرفوضة سابقًا (ACCESS_DENIED) — تُرسل عبر fallback.
+- كتابة ملفات التنسيق المشتركة مرفوضة (ACCESS_DENIED) — تُرسل عبر fallback.
+- P1 جديد (visual_qa) يحتاج قرار مالك قبل أي تحميل.
 
 ## 11. ما الخطوة التالية؟
-- NVIDIA: إصلاح CLI ‏D1-D12 باختبارات سالبة + قرار ملكية Gap-B.
+- قرار مالك لـOBS-164-1 (تسجيل visual_qa باحتواء أو إزالته من القائمة) + OBS-164-2 (عقد manual).
+- NVIDIA: إصلاح CLI ‏D1-D12 + مراجعة auto_tester honesty الخاص بـMuse.
 - ثم: تحميل مراجَع على :5002 + UAT متعدد الطلبات unseen.
-- CRITICAL-REAL-JOE-UI-001 يبقى OPEN؛ تدقيق الأرقام 163/164 قبل الاستشهاد.
+- CRITICAL-REAL-JOE-UI-001 + WIRING-AUDIT يبقيان OPEN.

@@ -1,0 +1,405 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "auto_tester",
+  "api_tester",
+  "load_tester",
+  "browser_ui_audit",
+  "quality_run",
+  "dependency_audit",
+  "sonar_analysis"
+ ],
+ "chainRegistered": [
+  "api_tester",
+  "auto_tester",
+  "browser_ui_audit",
+  "dependency_audit",
+  "load_tester",
+  "quality_run",
+  "sonar_analysis"
+ ],
+ "chainRegisteredCount": 7,
+ "adjacentRegistered": [
+  "ci_generate_pipeline",
+  "secrets_scan_repo"
+ ],
+ "phantomStatus": {
+  "smoke_test": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "run_tests": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "test_runner": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "unit_test": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "e2e_test": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "integration_test": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "qa": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "verify_tests": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "api_tester": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "auto_tester": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "browser_ui_audit": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "dependency_audit": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "load_tester": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "quality_run": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "read"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "sonar_analysis": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "ci_generate_pipeline": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "secrets_scan_repo": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "auto_tester",
+  "browser_ui_audit",
+  "dependency_audit",
+  "quality_run",
+  "test_generator"
+ ],
+ "aliasChainHits": {},
+ "resolveOutcomes": {
+  "run the automated tests for this project": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "test this API endpoint for errors": {
+   "tool": "api_project",
+   "how": "meaning"
+  },
+  "load test the checkout page with 100 users": {
+   "tool": "payments_create_checkout_session",
+   "how": "meaning"
+  },
+  "audit the UI of the landing page": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "run a quality check on the codebase": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "audit dependencies for vulnerabilities": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "run a sonar analysis on the project": {
+   "tool": "sonar_analysis",
+   "how": "nearest"
+  },
+  "scan the repo for leaked secrets": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "smoke test the build": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "auto_tester": {
+   "tool": "auto_tester",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "auto-shape": true,
+  "api-shape": false,
+  "load-shape": false,
+  "audit-shape": true,
+  "quality-shape": true,
+  "dep-shape": true,
+  "sonar-shape": false,
+  "manual-shape": false
+ },
+ "registryTestRefs": 22,
+ "defDetail": {
+  "AutoTesterTool": {
+   "namesColon": [
+    "auto_tester"
+   ],
+   "markers": {
+    "name = 'auto_tester'": 1,
+    "workspaceId": 20,
+    "sessionId": 14,
+    "userId": 11,
+    "mockSupported": 1,
+    "chromium": 0,
+    "playwright": 1,
+    "resolveToolPath": 3,
+    "getActiveRoot": 0
+   },
+   "sha256": "521b8478fe3b6d385df1fbe16160d2d6229bc898395b5a65aae3f11182b76cb1",
+   "lines": 455
+  },
+  "ApiTesterTool": {
+   "namesColon": [
+    "api_tester"
+   ],
+   "markers": {
+    "name = 'api_tester'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1,
+    "fetch": 2,
+    "axios": 0,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0
+   },
+   "sha256": "bdbaf26201bb4c9caeecd6db9e8c18630f26b70a96ee3be0113cb12fa41b048a",
+   "lines": 108
+  },
+  "QualityTools": {
+   "namesColon": [
+    "sonar_analysis",
+    "dependency_audit",
+    "quality_run",
+    "secrets_scan_repo",
+    "ci_generate_pipeline",
+    "load_tester"
+   ],
+   "markers": {
+    "name = 'load_tester'": 1,
+    "name = 'quality_run'": 1,
+    "name = 'dependency_audit'": 1,
+    "name = 'sonar_analysis'": 1,
+    "name = 'secrets_scan_repo'": 1,
+    "name = 'ci_generate_pipeline'": 1,
+    "workspaceId": 0,
+    "sessionId": 6,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 6,
+    "getActiveRoot": 0
+   },
+   "sha256": "41283450fbc61e3eb5ff2c5514696accbd46dc99e2b78fc88353f709df5558a4",
+   "lines": 475
+  },
+  "VisualQATool": {
+   "namesColon": [],
+   "markers": {
+    "name = 'visual_qa'": 0,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1
+   },
+   "sha256": "d54694b62112e2d1502d2ad3bd908c0d60c009ab724e4946047ff999db1eb5f5",
+   "lines": 106
+  },
+  "BrowserSmartTools": {
+   "namesColon": [
+    "browser_extract_data",
+    "browser_check_links",
+    "browser_performance",
+    "browser_seo_audit",
+    "browser_console_scan",
+    "browser_save_pdf",
+    "browser_readability",
+    "browser_contrast_audit",
+    "browser_a11y_deep",
+    "browser_extract_meta",
+    "browser_compare",
+    "browser_summarize",
+    "browser_ui_audit",
+    "browser_fill_form",
+    "browser_translate",
+    "browser_responsive_check",
+    "browser_find_text",
+    "browser_design_tokens",
+    "browser_click",
+    "browser_fullpage_shot",
+    "browser_smart_agent",
+    "browser_autofix",
+    "browser_consent",
+    "browser_search",
+    "browser_launch"
+   ],
+   "markers": {
+    "name = 'browser_ui_audit'": 1,
+    "workspaceId": 0,
+    "sessionId": 110,
+    "userId": 0,
+    "mockSupported": 25,
+    "allowlist": 0,
+    "localhost": 0
+   },
+   "sha256": "f2aaddf2313ea76264a24897aee947fcaf11884e55601dad9c16d0c3a03e48bf",
+   "lines": 2126
+  }
+ },
+ "planChainRefs": [
+  "quality_run: ['path'],",
+  "{ tool: 'auto_tester', purpose: 'generate and run tests' },",
+  "{ tool: 'quality_run', purpose: 'run the quality gate (lint, types, build)' },",
+  "{ tool: 'dependency_audit', purpose: 'audit dependencies for vulnerabilities' },",
+  "{ tool: 'browser_ui_audit', purpose: 'audit the built UI for visual and accessibility defects' },",
+  "jest: 'auto_tester', mocha: 'auto_tester', vitest: 'auto_tester', pytest: 'auto_tester',",
+  "testing: 'auto_tester', 'unit tests': 'auto_tester', 'test suite': 'test_generator',",
+  "'github actions': 'github_actions', ci: 'ci_generate_pipeline', 'ci/cd': 'ci_generate_pipeline',",
+  "browser: 'browser_run', lighthouse: 'browser_ui_audit', accessibility: 'browser_ui_audit',",
+  "const sourceDependentTools = new Set(['read_file', 'doc_generator', 'test_generator', 'code_reviewer', 'auto_tester', 'file_edit', 'file_edi",
+  "const sourcePaths = (r.tool === 'code_reviewer' || (r.tool === 'auto_tester' && norm(adaptedArgs?.testType) === 'syntax'))",
+  ": (r.tool === 'auto_tester' ? [] : (sourcePath ? [sourcePath] : []));",
+  "if (r.tool === 'auto_tester' && (requestedTestType === 'unit' || requestedTestType === 'integration')",
+  "notes.push(`[plan] أسقطتُ «${desc}» — auto_tester من نوع ${requestedTestType} ${reason}.`);",
+  "// across phases so a later quality_run may receive its path from the",
+  "const verificationNeedsTestEvidence = verificationTool === 'auto_tester'"
+ ],
+ "svcChainRefs": [
+  "if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {",
+  "if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';",
+  "if (name === 'manual_test' || name === 'verify_build') {",
+  "effectiveName = 'dependency_audit';",
+  "effectiveName = 'quality_run';",
+  "if (effectiveName === 'browser_run' || effectiveName === 'visual_qa' || effectiveName === 'codebase_navigator') {"
+ ],
+ "execChainRefs": [
+  "'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',",
+  "&& toolName !== 'quality_run') {",
+  "// quality_run and deploy_project may omit their project root in the plan",
+  "if (toolName === 'quality_run' && !String(planned.path || '').trim()) {",
+  "logs?.push(`[PhaseExecutor] quality_run: inherited path from runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);",
+  "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);",
+  "const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);",
+  "if (toolName !== 'auto_tester') return [];",
+  "if (!['shell_execute', 'terminal_manager', 'auto_tester'].includes(toolName)) return { ok: true };",
+  "if (!verificationSelection && /^(?:browser_|visual_qa$)/u.test(toolName)) {",
+  "if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';",
+  "if (!/^(?:browser_|visual_qa$)/u.test(toolName)) return '';"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
