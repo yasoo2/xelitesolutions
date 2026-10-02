@@ -1,0 +1,1050 @@
+[Config] env=test · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-146-planner-ref-census",
+  "plannerFile": "api/src/modules/tools/definitions/ProjectPlannerTool.ts",
+  "plannerBytes": 130889,
+  "plannerLines": 1732,
+  "plannerSha256": "399bb699decae7dba84527cc4b9d8e395e0aed6cc52ecaf5e720dbe9f6c40be9",
+  "registeredTools": 163,
+  "vocabSize": 203,
+  "declaredNameCount": 16,
+  "referencedVocabCount": 24,
+  "verdictCounts": {
+    "REGISTERED_EXACT": 19,
+    "REGISTERED_NONEXACT": 0,
+    "ALIAS_KEY": 1,
+    "DANGLING_DECLARED": 4,
+    "DANGLING_UNDECLARED": 0
+  },
+  "danglingDeclared": [
+    {
+      "name": "app",
+      "quotedLines": [],
+      "regexLines": [
+        1053,
+        1055,
+        1175,
+        1184,
+        1594,
+        1619
+      ],
+      "regexSrc": [
+        "/\\b(?:react\\s+native|expo|flutter|swift(?:ui)?|ios|android|xcode|apk|ipa|emulator|simulator|native\\s+app)\\b/i",
+        "/\\b(?:react|vite|browser|web(?:site|\\s+app(?:lication)?)?|frontend|html|css)\\b/i",
+        "/\\b(?:web\\s+(?:app|application|site|page)|browser\\s+(?:app|application|interface)|website|frontend|front[ -]?end|respons"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "MobileBuilderTool.ts:447"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "express",
+      "quotedLines": [],
+      "regexLines": [
+        1041,
+        1065
+      ],
+      "regexSrc": [
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla",
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "DatasourceTool.ts:60"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": "api_project",
+      "resolveHow": "meaning",
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "mobile",
+      "quotedLines": [
+        1046
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "BrowserSmartTools.ts:1234"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": "mobile_builder",
+      "resolveHow": "meaning",
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "next",
+      "quotedLines": [],
+      "regexLines": [
+        1041,
+        1065
+      ],
+      "regexSrc": [
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla",
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "OrionBusinessFoundationTool.ts:186"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    }
+  ],
+  "danglingUndeclared": [],
+  "aliasKeysReferenced": [
+    {
+      "name": "edit_file",
+      "quotedLines": [
+        1186,
+        1531
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "file_edit",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    }
+  ],
+  "registeredNonExact": [],
+  "registeredExactNames": [
+    "ai_write_file",
+    "api_project",
+    "auth_builder",
+    "db_schema_migrator",
+    "decide_capability_route",
+    "file_edit",
+    "file_edit_advanced",
+    "mobile_builder",
+    "project_edit",
+    "project_planner",
+    "project_run",
+    "react_project",
+    "scaffold_full_stack",
+    "scaffold_project",
+    "search_public_apis",
+    "shell_execute",
+    "terminal_manager",
+    "web_page_builder",
+    "write_file"
+  ],
+  "nonVocabUnderscoreLiterals": [
+    {
+      "name": "existing_workspace",
+      "lines": [
+        1623
+      ]
+    },
+    {
+      "name": "no_implementation_artifacts_after_contract_recovery",
+      "lines": [
+        566
+      ]
+    },
+    {
+      "name": "not_run",
+      "lines": [
+        548,
+        1698
+      ]
+    },
+    {
+      "name": "not_started",
+      "lines": [
+        547,
+        1697
+      ]
+    },
+    {
+      "name": "plan_scope_insufficient",
+      "lines": [
+        690
+      ]
+    },
+    {
+      "name": "planner_only",
+      "lines": [
+        208,
+        555,
+        575,
+        597,
+        699,
+        715,
+        728
+      ]
+    },
+    {
+      "name": "planner_unavailable_or_invalid",
+      "lines": [
+        1700
+      ]
+    },
+    {
+      "name": "unportable_native_dependency",
+      "lines": [
+        485,
+        512
+      ]
+    }
+  ],
+  "nonVocabUnderscoreCount": 8,
+  "nonVocabPlainLiterals": [
+    {
+      "name": "affected",
+      "lines": [
+        852
+      ]
+    },
+    {
+      "name": "ambiguous",
+      "lines": [
+        1687
+      ]
+    },
+    {
+      "name": "args",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022
+      ]
+    },
+    {
+      "name": "array",
+      "lines": [
+        56
+      ]
+    },
+    {
+      "name": "blocked",
+      "lines": [
+        546,
+        1696
+      ]
+    },
+    {
+      "name": "boolean",
+      "lines": [
+        55
+      ]
+    },
+    {
+      "name": "command",
+      "lines": [
+        1516
+      ]
+    },
+    {
+      "name": "console",
+      "lines": [
+        1036
+      ]
+    },
+    {
+      "name": "content",
+      "lines": [
+        1505,
+        1514
+      ]
+    },
+    {
+      "name": "dashboard",
+      "lines": [
+        1036
+      ]
+    },
+    {
+      "name": "deliverables",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1025
+      ]
+    },
+    {
+      "name": "dependencies",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1029,
+        1492
+      ]
+    },
+    {
+      "name": "description",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1018,
+        1021,
+        1022
+      ]
+    },
+    {
+      "name": "diagnose",
+      "lines": [
+        1119
+      ]
+    },
+    {
+      "name": "final",
+      "lines": [
+        852
+      ]
+    },
+    {
+      "name": "focused",
+      "lines": [
+        852
+      ]
+    },
+    {
+      "name": "greenfield",
+      "lines": [
+        333,
+        337,
+        384,
+        388,
+        473,
+        477,
+        512,
+        516,
+        645,
+        649
+      ]
+    },
+    {
+      "name": "high",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022,
+        1655,
+        1661,
+        1667
+      ]
+    },
+    {
+      "name": "install",
+      "lines": [
+        1479
+      ]
+    },
+    {
+      "name": "internal",
+      "lines": [
+        135,
+        170,
+        249,
+        374,
+        437,
+        635
+      ]
+    },
+    {
+      "name": "llm",
+      "lines": [
+        37
+      ]
+    },
+    {
+      "name": "low",
+      "lines": [
+        134,
+        169,
+        248,
+        373,
+        436,
+        634
+      ]
+    },
+    {
+      "name": "name",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1017
+      ]
+    },
+    {
+      "name": "node",
+      "lines": [
+        280,
+        1102
+      ]
+    },
+    {
+      "name": "number",
+      "lines": [
+        53,
+        1724
+      ]
+    },
+    {
+      "name": "object",
+      "lines": [
+        40,
+        43,
+        44,
+        50,
+        56,
+        57,
+        747,
+        754,
+        1076,
+        1193,
+        1450,
+        1493,
+        1510,
+        1540
+      ]
+    },
+    {
+      "name": "observe",
+      "lines": [
+        1119
+      ]
+    },
+    {
+      "name": "packages",
+      "lines": [
+        1518
+      ]
+    },
+    {
+      "name": "path",
+      "lines": [
+        4,
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022
+      ]
+    },
+    {
+      "name": "paths",
+      "lines": [
+        852
+      ]
+    },
+    {
+      "name": "phases",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1014
+      ]
+    },
+    {
+      "name": "planning",
+      "lines": [
+        37
+      ]
+    },
+    {
+      "name": "priority",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022
+      ]
+    },
+    {
+      "name": "project",
+      "lines": [
+        37
+      ]
+    },
+    {
+      "name": "python",
+      "lines": [
+        280,
+        1102
+      ]
+    },
+    {
+      "name": "repair",
+      "lines": [
+        979
+      ]
+    },
+    {
+      "name": "sass",
+      "lines": [
+        1484
+      ]
+    },
+    {
+      "name": "string",
+      "lines": [
+        42,
+        52,
+        54,
+        743,
+        756,
+        757,
+        1434,
+        1504,
+        1514,
+        1516
+      ]
+    },
+    {
+      "name": "system",
+      "lines": [
+        114,
+        164,
+        243,
+        368,
+        431,
+        629
+      ]
+    },
+    {
+      "name": "task",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022
+      ]
+    },
+    {
+      "name": "tasks",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1020
+      ]
+    },
+    {
+      "name": "tool",
+      "lines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022,
+        1513
+      ]
+    },
+    {
+      "name": "warehouse",
+      "lines": [
+        1036
+      ]
+    }
+  ],
+  "nonVocabPlainLiteralCount": 43,
+  "rows": [
+    {
+      "name": "ai_write_file",
+      "quotedLines": [
+        914,
+        936,
+        967,
+        979,
+        1021,
+        1022,
+        1186,
+        1531
+      ],
+      "regexLines": [
+        1006
+      ],
+      "regexSrc": [
+        "/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "ai_write_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "api_project",
+      "quotedLines": [
+        1533
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "api_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "app",
+      "quotedLines": [],
+      "regexLines": [
+        1053,
+        1055,
+        1175,
+        1184,
+        1594,
+        1619
+      ],
+      "regexSrc": [
+        "/\\b(?:react\\s+native|expo|flutter|swift(?:ui)?|ios|android|xcode|apk|ipa|emulator|simulator|native\\s+app)\\b/i",
+        "/\\b(?:react|vite|browser|web(?:site|\\s+app(?:lication)?)?|frontend|html|css)\\b/i",
+        "/\\b(?:web\\s+(?:app|application|site|page)|browser\\s+(?:app|application|interface)|website|frontend|front[ -]?end|respons"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "MobileBuilderTool.ts:447"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "auth_builder",
+      "quotedLines": [
+        1534
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "auth_builder",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "db_schema_migrator",
+      "quotedLines": [
+        1534
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "db_schema_migrator",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "decide_capability_route",
+      "quotedLines": [
+        1653
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "decide_capability_route",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "edit_file",
+      "quotedLines": [
+        1186,
+        1531
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": true,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "file_edit",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "express",
+      "quotedLines": [],
+      "regexLines": [
+        1041,
+        1065
+      ],
+      "regexSrc": [
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla",
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "DatasourceTool.ts:60"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": "api_project",
+      "resolveHow": "meaning",
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "file_edit",
+      "quotedLines": [
+        1186,
+        1531
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "edit_file",
+        "str_replace"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "file_edit",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "file_edit_advanced",
+      "quotedLines": [
+        1186,
+        1532
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "file_edit_advanced",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "mobile",
+      "quotedLines": [
+        1046
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "BrowserSmartTools.ts:1234"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": "mobile_builder",
+      "resolveHow": "meaning",
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "mobile_builder",
+      "quotedLines": [
+        1533
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "mobile_builder",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "next",
+      "quotedLines": [],
+      "regexLines": [
+        1041,
+        1065
+      ],
+      "regexSrc": [
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla",
+        "/\\b(?:react(?:\\s+native)?|next(?:\\.js)?|vue|angular|svelte|node(?:\\.js)?|express|typescript|javascript|python|django|fla"
+      ],
+      "registered": false,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [
+        "OrionBusinessFoundationTool.ts:186"
+      ],
+      "inCatalogue": false,
+      "resolvedTool": null,
+      "resolveHow": null,
+      "verdict": "DANGLING_DECLARED"
+    },
+    {
+      "name": "project_edit",
+      "quotedLines": [
+        1186,
+        1531
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "project_edit",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "project_planner",
+      "quotedLines": [
+        34
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "project_planner",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "project_run",
+      "quotedLines": [],
+      "regexLines": [
+        854,
+        977
+      ],
+      "regexSrc": [
+        "/Expo browser project, a task that starts, launches, serves, previews, or opens the project MUST use project_run with th",
+        "/readiness task MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invo"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "project_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "react_project",
+      "quotedLines": [
+        1185,
+        1533,
+        1665
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "react_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "scaffold_full_stack",
+      "quotedLines": [
+        1196,
+        1532
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "scaffold_full_stack",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "scaffold_project",
+      "quotedLines": [
+        1076,
+        1196,
+        1532,
+        1553
+      ],
+      "regexLines": [
+        1006
+      ],
+      "regexSrc": [
+        "/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "scaffold_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "search_public_apis",
+      "quotedLines": [
+        1659
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "search_public_apis",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "shell_execute",
+      "quotedLines": [],
+      "regexLines": [
+        854,
+        977
+      ],
+      "regexSrc": [
+        "/Expo browser project, a task that starts, launches, serves, previews, or opens the project MUST use project_run with th",
+        "/.jsx entrypoint. Use shell_execute only for a declared npm script or a deterministic check evidenced by the manifest. D",
+        "/readiness task MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invo"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "shell"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "shell_execute",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "terminal_manager",
+      "quotedLines": [],
+      "regexLines": [
+        854,
+        977
+      ],
+      "regexSrc": [
+        "/Expo browser project, a task that starts, launches, serves, previews, or opens the project MUST use project_run with th",
+        "/readiness task MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invo"
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "bash",
+        "run_command"
+      ],
+      "declaredIn": [],
+      "inCatalogue": false,
+      "resolvedTool": "terminal_manager",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "web_page_builder",
+      "quotedLines": [
+        1185,
+        1533
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "web_page_builder",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "write_file",
+      "quotedLines": [
+        1186,
+        1531
+      ],
+      "regexLines": [],
+      "regexSrc": [],
+      "registered": true,
+      "aliasKey": false,
+      "aliasTargetOf": [
+        "create_file",
+        "file_write",
+        "write_to_file"
+      ],
+      "declaredIn": [],
+      "inCatalogue": true,
+      "resolvedTool": "write_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    }
+  ]
+}

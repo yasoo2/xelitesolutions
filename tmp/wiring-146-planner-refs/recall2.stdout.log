@@ -1,0 +1,153 @@
+[Config] env=test · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-146-recall-diagnostic",
+  "registeredTools": 163,
+  "vocabSize": 191,
+  "censusNames": 24,
+  "distinctTokens": 1484,
+  "recallGapCount": 10,
+  "recallGaps": [
+    {
+      "name": "auto_tester",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "auto_tester",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "browser_run",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "browser_run",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "code_reviewer",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "code_reviewer",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "deploy_project",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "deploy_project",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "doc_generator",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "doc_generator",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "echo",
+      "lines": [
+        912,
+        965,
+        1214,
+        1225
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": false,
+      "resolvedTool": "echo",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "npm_manager",
+      "lines": [
+        848,
+        1478
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "npm_manager",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "phase_executor",
+      "lines": [
+        716
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": false,
+      "resolvedTool": "phase_executor",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "read_file",
+      "lines": [
+        848
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "read_file",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "test_generator",
+      "lines": [
+        854
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": true,
+      "resolvedTool": "test_generator",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    }
+  ],
+  "equalsStyleDefNames": 165,
+  "nonVocabDefHits": [
+    {
+      "name": "description",
+      "defSites": [
+        "BrowserSmartTools.ts:867",
+        "BrowserSmartTools.ts:1634",
+        "BrowserSmartTools.ts:1821",
+        "ContentTools.ts:76",
+        "ReactProjectTool.ts:2589",
+        "WebPageBuilderTool.ts:1522",
+        "react-app-templates.ts:550",
+        "react-app-templates.ts:4693"
+      ]
+    }
+  ],
+  "nonVocabDefHitCount": 1
+}
