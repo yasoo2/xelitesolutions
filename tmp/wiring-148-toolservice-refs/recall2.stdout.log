@@ -1,0 +1,220 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "probe": "wiring-148-recall-diagnostic",
+  "registeredTools": 163,
+  "vocabSize": 191,
+  "censusNames": 53,
+  "distinctTokens": 1164,
+  "recallGapCount": 17,
+  "recallGaps": [
+    {
+      "name": "bash",
+      "lines": [
+        245
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "terminal_manager",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "browser_summarize",
+      "lines": [
+        933
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": false,
+      "resolvedTool": "browser_summarize",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "browser_translate",
+      "lines": [
+        934
+      ],
+      "registered": true,
+      "aliasKey": false,
+      "inCatalogue": false,
+      "resolvedTool": "browser_translate",
+      "resolveHow": "exact",
+      "verdict": "REGISTERED_EXACT"
+    },
+    {
+      "name": "cat_file",
+      "lines": [
+        229
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "read_file",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "code_search",
+      "lines": [
+        220
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_text",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "fetch_url",
+      "lines": [
+        248
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "http_fetch",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "file_search",
+      "lines": [
+        225
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_files",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "find_files",
+      "lines": [
+        226
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_files",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "glob_search",
+      "lines": [
+        227
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_files",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "open_file",
+      "lines": [
+        230
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "read_file",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "remove_file",
+      "lines": [
+        237
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "delete_file",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "ripgrep",
+      "lines": [
+        219
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_text",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "rm_file",
+      "lines": [
+        238
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "delete_file",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "search_in_files",
+      "lines": [
+        223
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "search_text",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "shell",
+      "lines": [
+        160,
+        246
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "shell_execute",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "str_replace",
+      "lines": [
+        241
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "file_edit",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    },
+    {
+      "name": "unlink_file",
+      "lines": [
+        239
+      ],
+      "registered": false,
+      "aliasKey": true,
+      "inCatalogue": false,
+      "resolvedTool": "delete_file",
+      "resolveHow": "alias",
+      "verdict": "ALIAS_KEY"
+    }
+  ],
+  "equalsStyleDefNames": 165,
+  "nonVocabDefHits": [],
+  "nonVocabDefHitCount": 0
+}
