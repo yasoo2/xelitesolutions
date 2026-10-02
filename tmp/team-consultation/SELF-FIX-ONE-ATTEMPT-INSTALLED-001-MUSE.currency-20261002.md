@@ -240,3 +240,16 @@ CURRENCY CHECKS RE-RUN (read-only, D:/Joe/worktrees/codex-nvidia-provider-ui):
 SHARED STATUS: SELF-FIX-ONE-ATTEMPT-INSTALLED-001-MUSE.md is STATUS=REVIEWED_BY_MUSE (first-STATUS re-verified this cycle via consultation listing).
 CONCLUSION: the 02:35Z review REMAINS CURRENT (223 min, byte-identical). No test rerun (27/27 PASS on identical bytes; rerun adds no evidence). No position change.
 PRESERVATION: no worker/branch modified; Codex worktree untouched; main/Muse/NVIDIA work untouched.
+
+---
+# RE-AFFIRM 20 — 2026-10-02T06:35Z (MUSE_HEAD=c137e382)
+CURRENCY CHECKS RE-RUN (read-only, D:/Joe/worktrees/codex-nvidia-provider-ui):
+- 65e5ddc09988f9155dadd5e7c365281aaa8f2988 -> commit object present.
+- 46bf42f8b4b8d2cae3e66b1f309adc7f1c7a1464 -> commit object present.
+- Worktree HEAD=1fd63763 (unchanged lineage).
+- Working-tree SelfFixExecutionService.ts SHA256=D19D0B7A044B8429056B0B017FB69AA26361DE0AB4165C51AC8DF45D7784DEE0 — EXACT match, twenty-first consecutive pin.
+- `git diff --stat 65e5ddc0 -- api/src/modules/services/SelfFixExecutionService.ts` EMPTY — installed bytes == reviewed bytes.
+- Worktree dirty state: exactly the 3 known creative files (row-image.ts, ImageGenerationTool.ts, verify_pictures_are_fetched.ts); zero drift attributable to Muse.
+SHARED STATUS: SELF-FIX-ONE-ATTEMPT-INSTALLED-001-MUSE.md is STATUS=REVIEWED_BY_MUSE (first-STATUS re-verified this cycle via direct header read).
+CONCLUSION: the 02:35Z review REMAINS CURRENT (240 min, byte-identical). No test rerun (27/27 PASS on identical bytes; rerun adds no evidence). No position change.
+PRESERVATION: no worker/branch modified; Codex worktree untouched; main/Muse/NVIDIA work untouched.
