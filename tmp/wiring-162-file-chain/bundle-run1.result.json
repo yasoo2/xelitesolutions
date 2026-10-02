@@ -1,0 +1,500 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "read_file",
+  "write_file",
+  "file_edit",
+  "file_edit_advanced",
+  "ai_write_file",
+  "delete_file",
+  "bulk_file_generator"
+ ],
+ "chainRegistered": [
+  "ai_write_file",
+  "delete_file",
+  "file_edit",
+  "file_edit_advanced",
+  "read_file",
+  "repo_read_file",
+  "write_file"
+ ],
+ "chainRegisteredCount": 7,
+ "adjacentRegistered": [
+  "archive_files",
+  "inspect_directory",
+  "inspect_symbol",
+  "ls",
+  "repo_read_file",
+  "search_files",
+  "search_text"
+ ],
+ "phantomStatus": {
+  "file_write": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "write_file"
+  },
+  "create_file": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "write_file"
+  },
+  "write_to_file": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "write_file"
+  },
+  "edit_file": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "file_edit"
+  },
+  "project_edit": {
+   "registered": true,
+   "catalogue": true,
+   "alias": null
+  },
+  "grep_search": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "search_text"
+  },
+  "safe_read_file": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "ai_write_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "delete_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "file_edit": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "file_edit_advanced": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "read_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "repo_read_file": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "write_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "archive_files": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "inspect_directory": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "inspect_symbol": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "ls": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "search_files": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "search_text": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "ai_write_file",
+  "delete_file",
+  "file_edit",
+  "inspect_api",
+  "inspect_directory",
+  "project_edit",
+  "read_file",
+  "search_public_apis",
+  "search_text",
+  "write_file"
+ ],
+ "aliasChainHits": {
+  "grep_search": "search_text",
+  "grep": "search_text",
+  "ripgrep": "search_text",
+  "code_search": "search_text",
+  "search_code": "search_text",
+  "find_in_files": "search_text",
+  "search_in_files": "search_text",
+  "file_search": "search_files",
+  "find_files": "search_files",
+  "glob_search": "search_files",
+  "file_read": "read_file",
+  "cat_file": "read_file",
+  "open_file": "read_file",
+  "file_write": "write_file",
+  "create_file": "write_file",
+  "write_to_file": "write_file",
+  "remove_file": "delete_file",
+  "rm_file": "delete_file",
+  "unlink_file": "delete_file",
+  "edit_file": "file_edit",
+  "str_replace": "file_edit",
+  "list_directory": "inspect_directory",
+  "list_files": "inspect_directory",
+  "web_search": "search_api"
+ },
+ "resolveOutcomes": {
+  "read the config file before changing it": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "write a new file with this exact content": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "change part of the existing server file": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate a source file from a plain description": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "delete the temporary scratch file": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate many project files at once": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "find all occurrences of this text in the project": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "list the files in the project directory": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "file_edit_advanced": {
+   "tool": "file_edit_advanced",
+   "how": "exact"
+  },
+  "read_file": {
+   "tool": "read_file",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "read-valid": false,
+  "read-empty": false,
+  "write-shape": false,
+  "edit-shape": false,
+  "aiwrite-shape": false,
+  "delete-shape": false,
+  "bulk-shape": false,
+  "search-shape": false
+ },
+ "flaggedShapes": {
+  "read-flagged": true,
+  "write-flagged": false
+ },
+ "registryFileRefs": 32,
+ "defDetail": {
+  "SystemTools": {
+   "namesColon": [
+    "echo",
+    "file_edit",
+    "delete_file",
+    "write_file",
+    "ls",
+    "grep_search",
+    "npm_manager",
+    "scaffold_project",
+    "shell_execute",
+    "shell_check_status"
+   ],
+   "markers": {
+    "name = 'write_file'": 1,
+    "name = 'file_edit'": 1,
+    "name = 'delete_file'": 1,
+    "name = 'ls'": 1,
+    "getActiveRoot": 2,
+    "resolveToolPath": 3,
+    "path_outside_workspace": 0,
+    "realpath": 0,
+    "mockSupported": 0,
+    "'..'": 1,
+    "filename": 22
+   },
+   "sha256": "280a2393a4decac9c2125f186a9e6a9f4ff8d58c78d6296ce4fb1bd7a9100aff",
+   "lines": 1752
+  },
+  "TaskInteractionTools": {
+   "namesColon": [
+    "terminal_manager",
+    "read_file",
+    "ask_user"
+   ],
+   "markers": {
+    "name = 'read_file'": 1,
+    "getActiveRoot": 1,
+    "resolveToolPath": 2,
+    "path_outside_workspace": 1,
+    "mockSupported": 0
+   },
+   "sha256": "498e52e49c61cffe68ed0fa4cda1870282a9331a553ea7febbbb662ad50879f4",
+   "lines": 272
+  },
+  "AIGeneratorTool": {
+   "namesColon": [
+    "ai_write_file"
+   ],
+   "markers": {
+    "name = 'ai_write_file'": 1,
+    "getActiveRoot": 1,
+    "resolveToolPath": 5,
+    "needs both a path": 1,
+    "mockSupported": 1,
+    "no model was called": 1
+   },
+   "sha256": "51493a3c5f23092e20567575d49c878ab05be645f28cb2749a210b2ffaec6f37",
+   "lines": 1109
+  },
+  "UtilityTools": {
+   "namesColon": [
+    "inspect_directory",
+    "search_files",
+    "search_text",
+    "inspect_symbol",
+    "file_edit_advanced"
+   ],
+   "markers": {
+    "name = 'file_edit_advanced'": 1,
+    "name = 'search_files'": 1,
+    "name = 'search_text'": 1,
+    "name = 'inspect_directory'": 1,
+    "name = 'inspect_symbol'": 1,
+    "getActiveRoot": 1,
+    "resolveToolPath": 6,
+    "mockSupported": 0
+   },
+   "sha256": "97cc01f2c9f11b85e0dd9847ed7f419ab846c6723866e4c924e581fee798b478",
+   "lines": 402
+  },
+  "BulkFileGeneratorTool": {
+   "namesColon": [],
+   "markers": {
+    "bulk_file_generator": 1,
+    "getActiveRoot": 0,
+    "resolveToolPath": 0,
+    "mockSupported": 1,
+    "targetPath": 4
+   },
+   "sha256": "0a49c45656506a4b9c4ce275d588ef2162c13b979149c6185a8917d360efb08a",
+   "lines": 109
+  },
+  "ArchiveFilesTool": {
+   "namesColon": [
+    "archive_files"
+   ],
+   "markers": {
+    "name = 'archive_files'": 1,
+    "getActiveRoot": 0,
+    "resolveToolPath": 0,
+    "mockSupported": 1
+   },
+   "sha256": "1e3cfd4ecc5b38d78117203f8a1a34d308232a7d9df8bcc65b7fd7c24946e822",
+   "lines": 192
+  },
+  "EliteTools": {
+   "namesColon": [
+    "dependency_graph",
+    "business_logic_parser",
+    "chaos_test_plan",
+    "compliance_validator",
+    "cloud_cost_estimator",
+    "ambiguity_resolver",
+    "multi_agent_debate",
+    "self_confidence_evaluator"
+   ],
+   "markers": {
+    "ai_write_file": 2,
+    "Duplicate tool name skipped": 1,
+    "AIWriteFileTool": 2
+   },
+   "sha256": "d58dd229432cabc20da6d8ff0d149765ced56423637bed8c22221d3e40fc17f5",
+   "lines": 303
+  }
+ },
+ "planChainRefs": [
+  "{ tool: 'ai_write_file', purpose: 'write one source file whose content must be generated' },",
+  "{ tool: 'write_file', purpose: 'write one file with content you already know exactly' },",
+  "{ tool: 'file_edit', purpose: 'change part of one existing file; REQUIRED args.filename is one safe workspace-relative file path, args.find ",
+  "{ tool: 'project_edit', purpose: 'surgical edit inside an existing project, with a build check' },",
+  "{ tool: 'delete_file', purpose: 'remove a file' },",
+  "{ tool: 'read_file', purpose: 'read a file before changing it' },",
+  "'file system': 'write_file', fs: 'write_file', editor: 'file_edit', ide: 'file_edit',",
+  "* standing as write_file paths: the executor writes exactly these files",
+  "if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];",
+  "if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return false;",
+  "if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return false;",
+  "const sourceDependentTools = new Set(['read_file', 'doc_generator', 'test_generator', 'code_reviewer', 'auto_tester', 'file_edit', 'file_edi",
+  "* write_file, not ai_write_file, and that is deliberate.",
+  "tool: 'write_file',"
+ ],
+ "svcChainRefs": [
+  "* This service renames the model's tool call (`file_write` → `write_file`) and",
+  "if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';",
+  "if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';",
+  "* something merely similar. `grep_search` is the one that cost a real user",
+  "grep_search: 'search_text',",
+  "file_read: 'read_file',",
+  "cat_file: 'read_file',",
+  "open_file: 'read_file',",
+  "file_write: 'write_file',",
+  "create_file: 'write_file',",
+  "write_to_file: 'write_file',",
+  "remove_file: 'delete_file',",
+  "rm_file: 'delete_file',",
+  "unlink_file: 'delete_file',"
+ ],
+ "execChainRefs": [
+  "'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',",
+  "'ai_write_file',",
+  "'bulk_file_generator',",
+  "'repo_read_file',",
+  "'grep_search',",
+  "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edi",
+  "const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);",
+  "const description = toolName === 'ai_write_file' && typeof args?.description === 'string'",
+  "const artifactContext = toolName === 'ai_write_file' && typeof args?.context === 'string'",
+  "if (toolName === 'ai_write_file') {",
+  ".filter((candidate: any) => String((resolvePlannedTool(String(candidate?.tool || '').trim()) as any).tool || '') === 'ai_write_file')",
+  "['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
