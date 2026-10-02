@@ -1,0 +1,315 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "deploy_project",
+  "deploy_pages",
+  "docker_manager",
+  "terraform_manager",
+  "kubernetes_ops",
+  "docker_swarm_ops",
+  "web_pipeline"
+ ],
+ "chainRegistered": [
+  "deploy_pages",
+  "deploy_project",
+  "docker_manager",
+  "docker_swarm_ops",
+  "kubernetes_ops",
+  "terraform_manager"
+ ],
+ "chainRegisteredCount": 6,
+ "adjacentRegistered": [
+  "dev_server_start",
+  "website_full_pipeline"
+ ],
+ "perTool": {
+  "deploy_pages": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "internet"
+   ],
+   "mockSupported": false
+  },
+  "deploy_project": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "docker_manager": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "docker_swarm_ops": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "kubernetes_ops": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "terraform_manager": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "dev_server_start": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "website_full_pipeline": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "deploy_project"
+ ],
+ "aliasChainHits": {},
+ "resolveOutcomes": {
+  "deploy this project to production": {
+   "tool": "deploy_project",
+   "how": "meaning"
+  },
+  "containerize the app with docker": {
+   "tool": "docker_manager",
+   "how": "meaning"
+  },
+  "provision infrastructure with terraform": {
+   "tool": "terraform_manager",
+   "how": "meaning"
+  },
+  "deploy the stack to the swarm": {
+   "tool": "deploy_project",
+   "how": "meaning"
+  },
+  "scale the kubernetes deployment": {
+   "tool": "deploy_project",
+   "how": "meaning"
+  },
+  "publish the site to GitHub pages": {
+   "tool": "github_repo_manager",
+   "how": "meaning"
+  },
+  "run the full website pipeline": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "docker_manager": {
+   "tool": "docker_manager",
+   "how": "exact"
+  },
+  "deploy_project": {
+   "tool": "deploy_project",
+   "how": "exact"
+  },
+  "web_pipeline": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "gateShapes": {
+  "deploy-valid": false,
+  "deploy-empty": false,
+  "pages-valid": false,
+  "docker-build": false,
+  "terraform-plan": false,
+  "k8s-get": false,
+  "swarm-list": false,
+  "pipeline-run": false
+ },
+ "registryDeployRefs": 12,
+ "defDetail": {
+  "InfrastructureTools": {
+   "namesColon": [
+    "terraform_manager",
+    "kubernetes_ops",
+    "docker_swarm_ops"
+   ],
+   "markers": {
+    "resolveToolPath": 3,
+    "path_outside_workspace": 1,
+    "ExecutionGateway": 3,
+    "getWorkspaceRoot()": 5,
+    "terraform": 9,
+    "kubectl": 8,
+    "-input=false": 2,
+    "-auto-approve": 2,
+    "stackName": 16,
+    "splitCommandLine": 2
+   },
+   "sha256": "ad5905d40041f5b230a2778deb88b99955f40a388eed93548b0e01ceb016beaf",
+   "lines": 243
+  },
+  "DeployPagesTool": {
+   "namesColon": [
+    "deploy_pages"
+   ],
+   "markers": {
+    "getActiveRoot": 1,
+    "GITHUB_TOKEN": 3,
+    "gh-pages": 10,
+    "--force": 1,
+    "needsConnect": 1,
+    "unsupported": 1,
+    "privateEndpointWarning": 2,
+    "stageForPages": 2,
+    "mockSupported = false": 1,
+    ".nojekyll": 2
+   },
+   "sha256": "25629e35387ea9a45b1539c7af232eab8a2634cfb9b73d18c7782f7414fa41aa",
+   "lines": 245
+  },
+  "DeployProjectTool": {
+   "namesColon": [
+    "deploy_project"
+   ],
+   "markers": {
+    "resolveToolPath": 2,
+    "resolvePort": 3,
+    "Invalid port": 2,
+    "localtunnel": 4,
+    "detached: true": 2,
+    ".joe_server.pid": 1,
+    "mockSupported = false": 1,
+    "WIRING-P1-009": 1
+   },
+   "sha256": "3e2775f1f09270f7a64d8c3f11350effb04c1457becf5dd2ed2cb58519f3fae0",
+   "lines": 286
+  },
+  "DockerManagerTool": {
+   "namesColon": [
+    "docker_manager"
+   ],
+   "markers": {
+    "executionEngine": 2,
+    "docker build": 1,
+    "compose_up": 2,
+    "Unknown action": 1,
+    "rateLimitPerMinute": 1,
+    "mockSupported = false": 1,
+    "resolveToolPath": 0,
+    "workspaceId": 1
+   },
+   "sha256": "2e3f87adf210872941d5a1d3daf04171955cdcd2620db31e4ca3e08039c00db3",
+   "lines": 73
+  },
+  "WebDevelopmentTools": {
+   "namesColon": [
+    "website_full_pipeline",
+    "dev_server_start",
+    "scaffold_full_stack"
+   ],
+   "markers": {
+    "name = 'website_full_pipeline'": 1,
+    "web_pipeline": 0,
+    "dev_server_start": 5,
+    "nothing was built": 1,
+    "scaffold_website": 0
+   },
+   "sha256": "2692b58425270572258c8c9e4df9520abc0f1b6ff93505c5b93b20fd302f5bab",
+   "lines": 701
+  }
+ },
+ "planChainRefs": [
+  "deploy_project: ['projectPath'],",
+  "{ tool: 'deploy_project', purpose: 'build, start, or package the project locally for verification; use action build_static, start_server, or",
+  "vercel: 'deploy_project', netlify: 'deploy_project', heroku: 'deploy_project',",
+  "deployment: 'deploy_project', deploy: 'deploy_project', hosting: 'deploy_project',",
+  "docker: 'docker_manager', kubernetes: 'kubernetes_ops', terraform: 'terraform_manager',"
+ ],
+ "svcChainRefs": [
+  "if (n === 'deploy_project') {",
+  "if (name === 'web_pipeline' || name === 'scaffold_website') {",
+  "effectiveName = 'website_full_pipeline';"
+ ],
+ "execChainRefs": [
+  "// quality_run and deploy_project may omit their project root in the plan",
+  "const deployProjectPathField = LATE_BOUND_PLAN_FIELDS.deploy_project?.[0];",
+  "if (toolName === 'deploy_project' && deployProjectPathField) {",
+  "logs?.push(`[PhaseExecutor] deploy_project: inherited ${deployProjectPathField} from runtime-bound project root (${runtimeProjectRoot.slice(",
+  "logs?.push(`[PhaseExecutor] deploy_project: resolved ${deployProjectPathField} under runtime-bound root (${candidate.slice(0, 240)})`);",
+  "if (toolName === 'deploy_project' && field === 'projectPath') continue;",
+  "const requestedPublicExposure = toolName === 'deploy_project'"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
