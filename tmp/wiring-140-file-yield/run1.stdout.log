@@ -1,0 +1,1339 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "registeredTools": 163,
+  "uniqueNames": 163,
+  "filesScanned": 93,
+  "zeroYieldCount": 5,
+  "zeroYield": [
+    {
+      "file": "BulkFileGeneratorTool.ts",
+      "exports": [
+        "BulkFileGeneratorTool"
+      ],
+      "bytes": 3978
+    },
+    {
+      "file": "CodebaseNavigatorTool.ts",
+      "exports": [
+        "CodebaseNavigatorTool"
+      ],
+      "bytes": 5555
+    },
+    {
+      "file": "ImageGenerationTool.ts",
+      "exports": [
+        "ImageGenerationTool"
+      ],
+      "bytes": 2487
+    },
+    {
+      "file": "VisualQATool.ts",
+      "exports": [
+        "VisualQATool"
+      ],
+      "bytes": 3819
+    },
+    {
+      "file": "react-app-templates.ts",
+      "exports": [
+        "requestedBoardField",
+        "guardRequiredInput",
+        "fileAppContentJs",
+        "content",
+        "fileAppShellJsx",
+        "App",
+        "fileAppMainJsx",
+        "fileAppIndexHtml",
+        "fileAppStoreJs",
+        "createStore",
+        "useStore",
+        "uid"
+      ],
+      "bytes": 352884
+    }
+  ],
+  "unattributedCount": 0,
+  "unattributed": [],
+  "multiFileCount": 53,
+  "multi": [
+    {
+      "name": "browser_run",
+      "files": [
+        "AnalysisTools.ts",
+        "BrowserRunTool.ts",
+        "BrowserSmartTools.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "project_repair",
+      "files": [
+        "ProjectPipelineTool.ts",
+        "ProjectRepairTool.ts"
+      ]
+    },
+    {
+      "name": "repo_read_file",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "RepoSelfCodingTools.ts"
+      ]
+    },
+    {
+      "name": "repo_search",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "RepoSelfCodingTools.ts"
+      ]
+    },
+    {
+      "name": "repo_apply_patch",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "RepoSelfCodingTools.ts"
+      ]
+    },
+    {
+      "name": "ai_write_file",
+      "files": [
+        "AIGeneratorTool.ts",
+        "EliteTools.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "engineering_discovery",
+      "files": [
+        "EngineeringDiscoveryTool.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts"
+      ]
+    },
+    {
+      "name": "decide_capability_route",
+      "files": [
+        "CapabilityDecisionTool.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "search_public_apis",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPlannerTool.ts",
+        "PublicApiDiscoveryTools.ts"
+      ]
+    },
+    {
+      "name": "inspect_api",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "PublicApiDiscoveryTools.ts"
+      ]
+    },
+    {
+      "name": "validate_api",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "PublicApiDiscoveryTools.ts"
+      ]
+    },
+    {
+      "name": "project_planner",
+      "files": [
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "project_pipeline",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts"
+      ]
+    },
+    {
+      "name": "project_run",
+      "files": [
+        "AutoTesterTool.ts",
+        "DeployPagesTool.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectRunTool.ts"
+      ]
+    },
+    {
+      "name": "project_stop",
+      "files": [
+        "AutoTesterTool.ts",
+        "ProjectRunTool.ts"
+      ]
+    },
+    {
+      "name": "web_page_builder",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts",
+        "WebPageBuilderTool.ts"
+      ]
+    },
+    {
+      "name": "react_project",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts",
+        "ReactProjectTool.ts"
+      ]
+    },
+    {
+      "name": "project_edit",
+      "files": [
+        "ProjectEditTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "import_project",
+      "files": [
+        "ImportProjectTool.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "api_project",
+      "files": [
+        "ApiProjectTool.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "auto_tester",
+      "files": [
+        "AutoTesterTool.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "code_reviewer",
+      "files": [
+        "CodeReviewerTool.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "echo",
+      "files": [
+        "GoBuilderTool.ts",
+        "PhaseExecutorTool.ts",
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "file_edit",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPlannerTool.ts",
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "shell_execute",
+      "files": [
+        "ApiProjectTool.ts",
+        "AutoTesterTool.ts",
+        "DeployPagesTool.ts",
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "SystemTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "write_file",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts",
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "scaffold_project",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts",
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "ls",
+      "files": [
+        "InfrastructureTools.ts",
+        "SystemTools.ts",
+        "UtilityTools.ts"
+      ]
+    },
+    {
+      "name": "npm_manager",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "SystemTools.ts"
+      ]
+    },
+    {
+      "name": "terminal_manager",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "TaskInteractionTools.ts"
+      ]
+    },
+    {
+      "name": "read_file",
+      "files": [
+        "ProjectPipelineTool.ts",
+        "TaskInteractionTools.ts"
+      ]
+    },
+    {
+      "name": "analyze_project",
+      "files": [
+        "AnalysisTools.ts",
+        "PhaseExecutorTool.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "analyze_codebase",
+      "files": [
+        "AnalysisTools.ts",
+        "PhaseExecutorTool.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "project_detect",
+      "files": [
+        "AnalysisTools.ts",
+        "PhaseExecutorTool.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "json_query",
+      "files": [
+        "ContentTools.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "auth_builder",
+      "files": [
+        "AuthBuilderTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "mobile_builder",
+      "files": [
+        "MobileBuilderTool.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "scaffold_full_stack",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "ProjectPlannerTool.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "screenshot",
+      "files": [
+        "BrowserSmartTools.ts",
+        "BrowserVisionTool.ts",
+        "PhaseExecutorTool.ts",
+        "ScreenshotTool.ts",
+        "UserBrowserTool.ts"
+      ]
+    },
+    {
+      "name": "db_schema_migrator",
+      "files": [
+        "DatabaseEnterpriseTools.ts",
+        "ProjectPlannerTool.ts"
+      ]
+    },
+    {
+      "name": "git_ops",
+      "files": [
+        "DeployPagesTool.ts",
+        "GitTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "monitoring",
+      "files": [
+        "AlertManagerTool.ts",
+        "LoggerTool.ts",
+        "MonitoringTool.ts"
+      ]
+    },
+    {
+      "name": "deploy_project",
+      "files": [
+        "DeployProjectTool.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "dependency_audit",
+      "files": [
+        "QualityTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "quality_run",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "QualityTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "secrets_scan_repo",
+      "files": [
+        "QualityTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "ci_generate_pipeline",
+      "files": [
+        "QualityTools.ts",
+        "WebDevelopmentTools.ts"
+      ]
+    },
+    {
+      "name": "pattern_recognize",
+      "files": [
+        "AdvancedTools.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "knowledge_add",
+      "files": [
+        "KnowledgeTools.ts",
+        "PhaseExecutorTool.ts"
+      ]
+    },
+    {
+      "name": "inspect_directory",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPipelineTool.ts",
+        "UtilityTools.ts"
+      ]
+    },
+    {
+      "name": "search_files",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "UtilityTools.ts"
+      ]
+    },
+    {
+      "name": "search_text",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "UtilityTools.ts"
+      ]
+    },
+    {
+      "name": "file_edit_advanced",
+      "files": [
+        "PhaseExecutorTool.ts",
+        "ProjectPlannerTool.ts",
+        "UtilityTools.ts"
+      ]
+    }
+  ],
+  "multiExcerpts": [
+    {
+      "name": "browser_run",
+      "hits": [
+        {
+          "file": "AnalysisTools.ts",
+          "line": 89,
+          "text": "summary: `This is a remote repository URL (${p}). Please use the 'browser_run' tool with the following instruction: \"Visit this URL and perform a deep architect"
+        },
+        {
+          "file": "BrowserRunTool.ts",
+          "line": 106,
+          "text": "name = 'browser_run';"
+        },
+        {
+          "file": "BrowserSmartTools.ts",
+          "line": 2062,
+          "text": "// aliases 'browser_open' -> the generic 'browser_run', which would shadow this"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 2363,
+          "text": "const checkerError = vToolName === 'browser_run'"
+        }
+      ]
+    },
+    {
+      "name": "project_repair",
+      "hits": [
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 2416,
+          "text": "'project_repair',"
+        },
+        {
+          "file": "ProjectRepairTool.ts",
+          "line": 68,
+          "text": "name = 'project_repair';"
+        }
+      ]
+    },
+    {
+      "name": "repo_read_file",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 264,
+          "text": "'repo_read_file',"
+        },
+        {
+          "file": "RepoSelfCodingTools.ts",
+          "line": 99,
+          "text": "name = 'repo_read_file';"
+        }
+      ]
+    },
+    {
+      "name": "repo_search",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 266,
+          "text": "'repo_search',"
+        },
+        {
+          "file": "RepoSelfCodingTools.ts",
+          "line": 127,
+          "text": "name = 'repo_search';"
+        }
+      ]
+    },
+    {
+      "name": "repo_apply_patch",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 268,
+          "text": "'repo_apply_patch',"
+        },
+        {
+          "file": "RepoSelfCodingTools.ts",
+          "line": 170,
+          "text": "name = 'repo_apply_patch';"
+        }
+      ]
+    },
+    {
+      "name": "ai_write_file",
+      "hits": [
+        {
+          "file": "AIGeneratorTool.ts",
+          "line": 632,
+          "text": "name = 'ai_write_file';"
+        },
+        {
+          "file": "EliteTools.ts",
+          "line": 290,
+          "text": "* There was a ninth tool here — AIWriteFileTool, also named 'ai_write_file'."
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 112,
+          "text": "'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 2947,
+          "text": "const writeTools = new Set(['write_file', 'ai_write_file', 'file_write', 'create_file', 'write_to_file']);"
+        }
+      ]
+    },
+    {
+      "name": "engineering_discovery",
+      "hits": [
+        {
+          "file": "EngineeringDiscoveryTool.ts",
+          "line": 85,
+          "text": "name = 'engineering_discovery';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 248,
+          "text": "'engineering_discovery',"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1242,
+          "text": "const discoveryResult = await executeTool('engineering_discovery',"
+        }
+      ]
+    },
+    {
+      "name": "decide_capability_route",
+      "hits": [
+        {
+          "file": "CapabilityDecisionTool.ts",
+          "line": 9,
+          "text": "name = 'decide_capability_route';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 1690,
+          "text": "if (toolName === 'decide_capability_route') {"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1653,
+          "text": "tool: 'decide_capability_route',"
+        }
+      ]
+    },
+    {
+      "name": "search_public_apis",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 1686,
+          "text": "if (toolName === 'search_public_apis') {"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1659,
+          "text": "tool: 'search_public_apis',"
+        },
+        {
+          "file": "PublicApiDiscoveryTools.ts",
+          "line": 44,
+          "text": "name = 'search_public_apis';"
+        }
+      ]
+    },
+    {
+      "name": "inspect_api",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 1481,
+          "text": "if ((toolName === 'inspect_api' || toolName === 'validate_api')"
+        },
+        {
+          "file": "PublicApiDiscoveryTools.ts",
+          "line": 79,
+          "text": "name = 'inspect_api';"
+        }
+      ]
+    },
+    {
+      "name": "validate_api",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 1481,
+          "text": "if ((toolName === 'inspect_api' || toolName === 'validate_api')"
+        },
+        {
+          "file": "PublicApiDiscoveryTools.ts",
+          "line": 91,
+          "text": "name = 'validate_api';"
+        }
+      ]
+    },
+    {
+      "name": "project_planner",
+      "hits": [
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1467,
+          "text": ": await executeTool('project_planner',"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 34,
+          "text": "name = 'project_planner';"
+        }
+      ]
+    },
+    {
+      "name": "project_pipeline",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 250,
+          "text": "'project_pipeline',"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1089,
+          "text": "name = 'project_pipeline';"
+        }
+      ]
+    },
+    {
+      "name": "project_run",
+      "hits": [
+        {
+          "file": "AutoTesterTool.ts",
+          "line": 386,
+          "text": "const run = await executeTool('project_run', { cwd: projectPath, port: livePort }, ctx);"
+        },
+        {
+          "file": "DeployPagesTool.ts",
+          "line": 171,
+          "text": "output: { unsupported: 'backend', suggestion: 'project_run' },"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 518,
+          "text": "if (toolName !== 'project_run') return planned;"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1572,
+          "text": "'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);"
+        }
+      ]
+    },
+    {
+      "name": "project_stop",
+      "hits": [
+        {
+          "file": "AutoTesterTool.ts",
+          "line": 430,
+          "text": "const stopped = await executeTool('project_stop', {}, ctx);"
+        },
+        {
+          "file": "ProjectRunTool.ts",
+          "line": 1876,
+          "text": "name = 'project_stop';"
+        }
+      ]
+    },
+    {
+      "name": "web_page_builder",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 262,
+          "text": "'web_page_builder',"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 691,
+          "text": "tasks: [{ tool: scope === 'page' ? 'web_page_builder' : 'react_project', description: request, args: { request } }],"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1185,
+          "text": "const implementationTools = new Set(['react_project', 'web_page_builder']);"
+        },
+        {
+          "file": "WebPageBuilderTool.ts",
+          "line": 179,
+          "text": "name = 'web_page_builder';"
+        }
+      ]
+    },
+    {
+      "name": "react_project",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 704,
+          "text": "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advan"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 681,
+          "text": "{ phaseNumber: 2, name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1185,
+          "text": "const implementationTools = new Set(['react_project', 'web_page_builder']);"
+        },
+        {
+          "file": "ReactProjectTool.ts",
+          "line": 4271,
+          "text": "name = 'react_project';"
+        }
+      ]
+    },
+    {
+      "name": "project_edit",
+      "hits": [
+        {
+          "file": "ProjectEditTool.ts",
+          "line": 588,
+          "text": "name = 'project_edit';"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 714,
+          "text": "tasks: [{ tool: 'project_edit', description: text, args: { request: text, dir: root } }],"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1186,
+          "text": "const fileTools = new Set(['ai_write_file', 'write_file', 'file_edit', 'edit_file', 'project_edit', 'file_edit_advanced']);"
+        }
+      ]
+    },
+    {
+      "name": "import_project",
+      "hits": [
+        {
+          "file": "ImportProjectTool.ts",
+          "line": 220,
+          "text": "name = 'import_project';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 252,
+          "text": "'import_project',"
+        }
+      ]
+    },
+    {
+      "name": "api_project",
+      "hits": [
+        {
+          "file": "ApiProjectTool.ts",
+          "line": 686,
+          "text": "app.get('/api/health', (_req, res) => res.json({ ok: true, backend: db.backend, posts: db.count(), joe: 'api_project', resource: 'posts' }));"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 704,
+          "text": "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advan"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 680,
+          "text": "{ phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1533,
+          "text": "'react_project', 'api_project', 'web_page_builder', 'mobile_builder',"
+        }
+      ]
+    },
+    {
+      "name": "auto_tester",
+      "hits": [
+        {
+          "file": "AutoTesterTool.ts",
+          "line": 19,
+          "text": "name = 'auto_tester';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 434,
+          "text": "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);"
+        }
+      ]
+    },
+    {
+      "name": "code_reviewer",
+      "hits": [
+        {
+          "file": "CodeReviewerTool.ts",
+          "line": 13,
+          "text": "name = 'code_reviewer';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 2318,
+          "text": "if (vToolName === 'code_reviewer') {"
+        }
+      ]
+    },
+    {
+      "name": "echo",
+      "hits": [
+        {
+          "file": "GoBuilderTool.ts",
+          "line": 13,
+          "text": "tags = ['go', 'golang', 'gin', 'echo'];"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 947,
+          "text": "'echo', 'true', 'false', 'cd', 'set', 'export', 'env', 'cross-env-shell',"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 660,
+          "text": "name = 'echo';"
+        }
+      ]
+    },
+    {
+      "name": "file_edit",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 112,
+          "text": "'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1186,
+          "text": "const fileTools = new Set(['ai_write_file', 'write_file', 'file_edit', 'edit_file', 'project_edit', 'file_edit_advanced']);"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 674,
+          "text": "name = 'file_edit';"
+        }
+      ]
+    },
+    {
+      "name": "shell_execute",
+      "hits": [
+        {
+          "file": "ApiProjectTool.ts",
+          "line": 3133,
+          "text": "const checked = await executeTool('shell_execute', { command, cwd: proj, timeout: 15000 }, context);"
+        },
+        {
+          "file": "AutoTesterTool.ts",
+          "line": 212,
+          "text": "const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);"
+        },
+        {
+          "file": "DeployPagesTool.ts",
+          "line": 126,
+          "text": "const b = await executeTool('shell_execute', { command: buildCmd, cwd, timeout: 300000, env: { PUBLIC_URL: base.replace(/\\/$/, '') } }, context);"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 434,
+          "text": "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);"
+        }
+      ]
+    },
+    {
+      "name": "write_file",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 112,
+          "text": "'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 2947,
+          "text": "const writeTools = new Set(['write_file', 'ai_write_file', 'file_write', 'create_file', 'write_to_file']);"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1186,
+          "text": "const fileTools = new Set(['ai_write_file', 'write_file', 'file_edit', 'edit_file', 'project_edit', 'file_edit_advanced']);"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 855,
+          "text": "name = 'write_file';"
+        }
+      ]
+    },
+    {
+      "name": "scaffold_project",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 704,
+          "text": "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advan"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 611,
+          "text": "if (String(task?.tool || '').toLowerCase() !== 'scaffold_project') continue;"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1076,
+          "text": "if (tool === 'scaffold_project' && structure && typeof structure === 'object') {"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 1361,
+          "text": "name = 'scaffold_project';"
+        }
+      ]
+    },
+    {
+      "name": "ls",
+      "hits": [
+        {
+          "file": "InfrastructureTools.ts",
+          "line": 224,
+          "text": "args = ['service', 'ls'];"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 655,
+          "text": "const allowedCommands = ['git', 'npm', 'node', 'tsc', 'eslint', 'ls', 'cat', 'grep', 'find'];"
+        },
+        {
+          "file": "UtilityTools.ts",
+          "line": 42,
+          "text": "tags = ['fs', 'ls', 'inspect'];"
+        }
+      ]
+    },
+    {
+      "name": "npm_manager",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 434,
+          "text": "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1572,
+          "text": "'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);"
+        },
+        {
+          "file": "SystemTools.ts",
+          "line": 1190,
+          "text": "name = 'npm_manager';"
+        }
+      ]
+    },
+    {
+      "name": "terminal_manager",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 434,
+          "text": "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);"
+        },
+        {
+          "file": "TaskInteractionTools.ts",
+          "line": 51,
+          "text": "name = 'terminal_manager';"
+        }
+      ]
+    },
+    {
+      "name": "read_file",
+      "hits": [
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1193,
+          "text": "const readme = await executeTool('read_file', { path: rootReadme.name }, context);"
+        },
+        {
+          "file": "TaskInteractionTools.ts",
+          "line": 166,
+          "text": "name = 'read_file';"
+        }
+      ]
+    },
+    {
+      "name": "analyze_project",
+      "hits": [
+        {
+          "file": "AnalysisTools.ts",
+          "line": 46,
+          "text": "name = 'analyze_project';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 318,
+          "text": "'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',"
+        },
+        {
+          "file": "WebDevelopmentTools.ts",
+          "line": 329,
+          "text": "const projectAnalyzeRes = await executeTool('analyze_project', { path: projectPath }, toolContext);"
+        }
+      ]
+    },
+    {
+      "name": "analyze_codebase",
+      "hits": [
+        {
+          "file": "AnalysisTools.ts",
+          "line": 71,
+          "text": "name = 'analyze_codebase';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 318,
+          "text": "'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',"
+        },
+        {
+          "file": "WebDevelopmentTools.ts",
+          "line": 324,
+          "text": "const analyzeRes = await executeTool('analyze_codebase', { path: projectPath }, toolContext);"
+        }
+      ]
+    },
+    {
+      "name": "project_detect",
+      "hits": [
+        {
+          "file": "AnalysisTools.ts",
+          "line": 169,
+          "text": "name = 'project_detect';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 246,
+          "text": "'project_detect',"
+        },
+        {
+          "file": "WebDevelopmentTools.ts",
+          "line": 212,
+          "text": "const detectRes = await executeTool('project_detect', { path: projectPath }, toolContext);"
+        }
+      ]
+    },
+    {
+      "name": "json_query",
+      "hits": [
+        {
+          "file": "ContentTools.ts",
+          "line": 123,
+          "text": "name = 'json_query';"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 256,
+          "text": "'json_query',"
+        }
+      ]
+    },
+    {
+      "name": "auth_builder",
+      "hits": [
+        {
+          "file": "AuthBuilderTool.ts",
+          "line": 17,
+          "text": "name = 'auth_builder';"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1534,
+          "text": "'auth_builder', 'db_schema_migrator',"
+        }
+      ]
+    },
+    {
+      "name": "mobile_builder",
+      "hits": [
+        {
+          "file": "MobileBuilderTool.ts",
+          "line": 17,
+          "text": "name = 'mobile_builder';"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1533,
+          "text": "'react_project', 'api_project', 'web_page_builder', 'mobile_builder',"
+        }
+      ]
+    },
+    {
+      "name": "scaffold_full_stack",
+      "hits": [
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 704,
+          "text": "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edit', 'file_edit_advan"
+        },
+        {
+          "file": "ProjectPipelineTool.ts",
+          "line": 1572,
+          "text": "'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1196,
+          "text": "if (!fileTools.has(tool) && tool !== 'scaffold_project' && tool !== 'scaffold_full_stack') continue;"
+        },
+        {
+          "file": "WebDevelopmentTools.ts",
+          "line": 155,
+          "text": "const scRes = await executeTool('scaffold_full_stack', {"
+        }
+      ]
+    },
+    {
+      "name": "screenshot",
+      "hits": [
+        {
+          "file": "BrowserSmartTools.ts",
+          "line": 1561,
+          "text": "tags = ['browser', 'web', 'screenshot', 'capture', 'fullpage'];"
+        },
+        {
+          "file": "BrowserVisionTool.ts",
+          "line": 12,
+          "text": "tags = ['browser', 'vision', 'screenshot'];"
+        },
+        {
+          "file": "PhaseExecutorTool.ts",
+          "line": 260,
+          "text": "'screenshot',"
+        },
+        {
+          "file": "ScreenshotTool.ts",
+          "line": 14,
+          "text": "name = 'screenshot';"
+        }
+      ]
+    },
+    {
+      "name": "db_schema_migrator",
+      "hits": [
+        {
+          "file": "DatabaseEnterpriseTools.ts",
+          "line": 107,
+          "text": "name = 'db_schema_migrator';"
+        },
+        {
+          "file": "ProjectPlannerTool.ts",
+          "line": 1534,
+          "text": "'auth_builder', 'db_schema_migrator',"
+        }
+      ]
+    }
+  ],
+  "perFileYield": {
+    "AIGeneratorTool.ts": 1,
+    "AdvancedTools.ts": 5,
+    "AlertManagerTool.ts": 2,
+    "AnalysisTools.ts": 4,
+    "ApiProjectTool.ts": 2,
+    "ApiTesterTool.ts": 1,
+    "ArchitectTool.ts": 1,
+    "ArchiveFilesTool.ts": 1,
+    "AuthBuilderTool.ts": 1,
+    "AutoTesterTool.ts": 4,
+    "BrowserActionTool.ts": 1,
+    "BrowserRunTool.ts": 1,
+    "BrowserSmartTools.ts": 27,
+    "BrowserVisionTool.ts": 2,
+    "BulkFileGeneratorTool.ts": 0,
+    "BusinessProfileTool.ts": 1,
+    "CacheManagerTool.ts": 1,
+    "CapabilityDecisionTool.ts": 1,
+    "CentralAnswerTool.ts": 1,
+    "CodeReviewerTool.ts": 1,
+    "CodebaseNavigatorTool.ts": 0,
+    "CodebaseOutlineTool.ts": 1,
+    "ContentTools.ts": 4,
+    "DatabaseEnterpriseTools.ts": 3,
+    "DatasourceTool.ts": 1,
+    "DeadCodeTool.ts": 1,
+    "DeployPagesTool.ts": 4,
+    "DeployProjectTool.ts": 1,
+    "DockerManagerTool.ts": 1,
+    "EliteTools.ts": 9,
+    "EngineeringDiscoveryTool.ts": 1,
+    "EnterprisePlatformFoundationTool.ts": 1,
+    "ErrorRecoveryTool.ts": 1,
+    "FormInboxTool.ts": 1,
+    "GitHubActionsTool.ts": 1,
+    "GitHubPRTool.ts": 1,
+    "GitHubRepoManagerTool.ts": 1,
+    "GitLocalWorkflowTool.ts": 1,
+    "GitTools.ts": 1,
+    "GoBuilderTool.ts": 2,
+    "GoogleAccountTool.ts": 1,
+    "I18nTranslatorTool.ts": 1,
+    "ImageGenerationTool.ts": 0,
+    "ImageStudioTool.ts": 1,
+    "ImportProjectTool.ts": 1,
+    "InfrastructureTools.ts": 4,
+    "JavaBuilderTool.ts": 1,
+    "JoeEngineeringReportTool.ts": 1,
+    "KnowledgeTools.ts": 2,
+    "LLMCacheTool.ts": 1,
+    "LoggerTool.ts": 2,
+    "MemoryTool.ts": 2,
+    "MobileBuilderTool.ts": 1,
+    "MonitoringTool.ts": 1,
+    "NotifyUserTool.ts": 1,
+    "OrdersReadTool.ts": 1,
+    "OrionBusinessFoundationTool.ts": 1,
+    "PageFixTool.ts": 1,
+    "PaymentsTool.ts": 1,
+    "PerformanceAnalyzerTool.ts": 1,
+    "PhaseExecutorTool.ts": 40,
+    "ProgressiveGeneratorTool.ts": 1,
+    "ProjectEditTool.ts": 1,
+    "ProjectPipelineTool.ts": 17,
+    "ProjectPlannerTool.ts": 16,
+    "ProjectRepairTool.ts": 1,
+    "ProjectRunTool.ts": 2,
+    "ProjectStateManagerTool.ts": 1,
+    "ProjectUndoTool.ts": 1,
+    "PublicApiDiscoveryTools.ts": 3,
+    "PythonBuilderTool.ts": 1,
+    "PythonExecutionTool.ts": 1,
+    "QualityTools.ts": 6,
+    "ReactProjectTool.ts": 1,
+    "RepoSelfCodingTools.ts": 5,
+    "RequestAnalyzerTool.ts": 1,
+    "ScreenshotTool.ts": 2,
+    "SearchApiTool.ts": 1,
+    "SecurityScannerTool.ts": 1,
+    "SwaggerDocsTool.ts": 1,
+    "SystemTools.ts": 9,
+    "TaskInteractionTools.ts": 3,
+    "TaskLifecycleTool.ts": 1,
+    "TemplateManagerTool.ts": 1,
+    "TodoWriteTool.ts": 1,
+    "UiFixTool.ts": 1,
+    "UserBrowserTool.ts": 2,
+    "UtilityTools.ts": 6,
+    "VideoActionTool.ts": 1,
+    "VisualQATool.ts": 0,
+    "WebDevelopmentTools.ts": 12,
+    "WebPageBuilderTool.ts": 1,
+    "react-app-templates.ts": 0
+  }
+}
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.

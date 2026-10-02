@@ -1,0 +1,9 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "registeredTools": 163,
+  "exactlyOne": 163,
+  "zeroDefSites": [],
+  "multiDefSites": []
+}
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.

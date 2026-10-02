@@ -1,0 +1,144 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+  "registeredTools": 163,
+  "mappedDefSites": 163,
+  "definingFiles": 88,
+  "zeroDefFiles": [
+    "BulkFileGeneratorTool.ts",
+    "CodebaseNavigatorTool.ts",
+    "ImageGenerationTool.ts",
+    "VisualQATool.ts",
+    "react-app-templates.ts"
+  ],
+  "topDefiningFiles": [
+    {
+      "file": "BrowserSmartTools.ts",
+      "defs": 25
+    },
+    {
+      "file": "SystemTools.ts",
+      "defs": 9
+    },
+    {
+      "file": "EliteTools.ts",
+      "defs": 8
+    },
+    {
+      "file": "QualityTools.ts",
+      "defs": 6
+    },
+    {
+      "file": "AdvancedTools.ts",
+      "defs": 5
+    },
+    {
+      "file": "RepoSelfCodingTools.ts",
+      "defs": 5
+    },
+    {
+      "file": "UtilityTools.ts",
+      "defs": 5
+    },
+    {
+      "file": "ContentTools.ts",
+      "defs": 4
+    }
+  ],
+  "perFileDefCounts": {
+    "AIGeneratorTool.ts": 1,
+    "AdvancedTools.ts": 5,
+    "AlertManagerTool.ts": 1,
+    "AnalysisTools.ts": 3,
+    "ApiProjectTool.ts": 1,
+    "ApiTesterTool.ts": 1,
+    "ArchitectTool.ts": 1,
+    "ArchiveFilesTool.ts": 1,
+    "AuthBuilderTool.ts": 1,
+    "AutoTesterTool.ts": 1,
+    "BrowserActionTool.ts": 1,
+    "BrowserRunTool.ts": 1,
+    "BrowserSmartTools.ts": 25,
+    "BrowserVisionTool.ts": 1,
+    "BulkFileGeneratorTool.ts": 0,
+    "BusinessProfileTool.ts": 1,
+    "CacheManagerTool.ts": 1,
+    "CapabilityDecisionTool.ts": 1,
+    "CentralAnswerTool.ts": 1,
+    "CodeReviewerTool.ts": 1,
+    "CodebaseNavigatorTool.ts": 0,
+    "CodebaseOutlineTool.ts": 1,
+    "ContentTools.ts": 4,
+    "DatabaseEnterpriseTools.ts": 3,
+    "DatasourceTool.ts": 1,
+    "DeadCodeTool.ts": 1,
+    "DeployPagesTool.ts": 1,
+    "DeployProjectTool.ts": 1,
+    "DockerManagerTool.ts": 1,
+    "EliteTools.ts": 8,
+    "EngineeringDiscoveryTool.ts": 1,
+    "EnterprisePlatformFoundationTool.ts": 1,
+    "ErrorRecoveryTool.ts": 1,
+    "FormInboxTool.ts": 1,
+    "GitHubActionsTool.ts": 1,
+    "GitHubPRTool.ts": 1,
+    "GitHubRepoManagerTool.ts": 1,
+    "GitLocalWorkflowTool.ts": 1,
+    "GitTools.ts": 1,
+    "GoBuilderTool.ts": 1,
+    "GoogleAccountTool.ts": 1,
+    "I18nTranslatorTool.ts": 1,
+    "ImageGenerationTool.ts": 0,
+    "ImageStudioTool.ts": 1,
+    "ImportProjectTool.ts": 1,
+    "InfrastructureTools.ts": 3,
+    "JavaBuilderTool.ts": 1,
+    "JoeEngineeringReportTool.ts": 1,
+    "KnowledgeTools.ts": 2,
+    "LLMCacheTool.ts": 1,
+    "LoggerTool.ts": 1,
+    "MemoryTool.ts": 2,
+    "MobileBuilderTool.ts": 1,
+    "MonitoringTool.ts": 1,
+    "NotifyUserTool.ts": 1,
+    "OrdersReadTool.ts": 1,
+    "OrionBusinessFoundationTool.ts": 1,
+    "PageFixTool.ts": 1,
+    "PaymentsTool.ts": 1,
+    "PerformanceAnalyzerTool.ts": 1,
+    "PhaseExecutorTool.ts": 1,
+    "ProgressiveGeneratorTool.ts": 1,
+    "ProjectEditTool.ts": 1,
+    "ProjectPipelineTool.ts": 1,
+    "ProjectPlannerTool.ts": 1,
+    "ProjectRepairTool.ts": 1,
+    "ProjectRunTool.ts": 2,
+    "ProjectStateManagerTool.ts": 1,
+    "ProjectUndoTool.ts": 1,
+    "PublicApiDiscoveryTools.ts": 3,
+    "PythonBuilderTool.ts": 1,
+    "PythonExecutionTool.ts": 1,
+    "QualityTools.ts": 6,
+    "ReactProjectTool.ts": 1,
+    "RepoSelfCodingTools.ts": 5,
+    "RequestAnalyzerTool.ts": 1,
+    "ScreenshotTool.ts": 2,
+    "SearchApiTool.ts": 1,
+    "SecurityScannerTool.ts": 1,
+    "SwaggerDocsTool.ts": 1,
+    "SystemTools.ts": 9,
+    "TaskInteractionTools.ts": 3,
+    "TaskLifecycleTool.ts": 1,
+    "TemplateManagerTool.ts": 1,
+    "TodoWriteTool.ts": 1,
+    "UiFixTool.ts": 1,
+    "UserBrowserTool.ts": 1,
+    "UtilityTools.ts": 5,
+    "VideoActionTool.ts": 1,
+    "VisualQATool.ts": 0,
+    "WebDevelopmentTools.ts": 3,
+    "WebPageBuilderTool.ts": 1,
+    "react-app-templates.ts": 0
+  }
+}
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.
