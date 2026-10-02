@@ -1,0 +1,159 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+ "registeredCount": 163,
+ "shellRegistered": [
+  "npm_manager",
+  "repo_run_command",
+  "shell_check_status",
+  "shell_execute",
+  "terminal_manager"
+ ],
+ "shellRegisteredCount": 5,
+ "perTool": {
+  "npm_manager": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false
+  },
+  "repo_run_command": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false
+  },
+  "shell_check_status": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false
+  },
+  "shell_execute": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false
+  },
+  "terminal_manager": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false
+  }
+ },
+ "catalogueShellHits": [
+  "npm_manager",
+  "shell_execute"
+ ],
+ "aliasShellHits": {
+  "run_command": "terminal_manager",
+  "bash": "terminal_manager",
+  "shell": "shell_execute"
+ },
+ "resolveOutcomes": {
+  "run the tests with npm test": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "run a shell command": {
+   "tool": "shell_execute",
+   "how": "meaning"
+  },
+  "install npm dependencies": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "open a terminal": {
+   "tool": "shell_execute",
+   "how": "meaning"
+  },
+  "shell_execute": {
+   "tool": "shell_execute",
+   "how": "exact"
+  },
+  "run_command": {
+   "tool": "terminal_manager",
+   "how": "alias"
+  },
+  "npm_install": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "terminal_manager": {
+   "tool": "terminal_manager",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "npm-test": false,
+  "node-smoke-redirect": false,
+  "node-test-flag": true
+ },
+ "registryClass": {
+  "ShellExecuteTool": {
+   "occurrences": 2,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "NpmManagerTool": {
+   "occurrences": 2,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "ShellStatusTool": {
+   "occurrences": 2,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  },
+  "TerminalManagerTool": {
+   "occurrences": 2,
+   "directNew": 1,
+   "safeNew": 0,
+   "createTool": 0
+  }
+ },
+ "defDetail": {
+  "SystemTools.ts": {
+   "namesEq": [
+    "echo",
+    "file_edit",
+    "delete_file",
+    "write_file",
+    "ls",
+    "grep_search",
+    "npm_manager",
+    "scaffold_project",
+    "shell_execute",
+    "shell_check_status"
+   ],
+   "namesColon": [],
+   "markers": {
+    "spawn": 0,
+    "execSync": 0,
+    "execFile": 0,
+    "BROWSER_WS_ENDPOINT": 0,
+    "child_process": 0
+   },
+   "sha256": "280a2393a4decac9c2125f186a9e6a9f4ff8d58c78d6296ce4fb1bd7a9100aff"
+  },
+  "TaskInteractionTools.ts": {
+   "namesEq": [
+    "terminal_manager",
+    "read_file",
+    "ask_user"
+   ],
+   "namesColon": [],
+   "markers": {
+    "spawn": 1,
+    "execSync": 0,
+    "execFile": 0,
+    "BROWSER_WS_ENDPOINT": 0,
+    "child_process": 0
+   },
+   "sha256": "498e52e49c61cffe68ed0fa4cda1870282a9331a553ea7febbbb662ad50879f4"
+  }
+ },
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.

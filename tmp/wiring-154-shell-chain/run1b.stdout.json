@@ -1,0 +1,50 @@
+[Config] env=development · storage=JSON · mongo=DEFAULT → mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+{
+ "gate": {
+  "npm-test-plain": true,
+  "npm-run-test": true,
+  "npm-test-watch-flag": false,
+  "npx-jest": true
+ },
+ "alias": {
+  "npm_run": null,
+  "npm_test": null,
+  "npm_build": null,
+  "npm_install": null,
+  "run_command": "terminal_manager",
+  "bash": "terminal_manager",
+  "shell": "shell_execute"
+ },
+ "resolve": {
+  "npm_run": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "npm_test": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "npm_build": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "npm_install": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "run_command": {
+   "tool": "terminal_manager",
+   "how": "alias"
+  },
+  "bash": {
+   "tool": "terminal_manager",
+   "how": "alias"
+  },
+  "shell": {
+   "tool": "shell_execute",
+   "how": "alias"
+  }
+ }
+}
+[providers] بلا مفتاح: Gemini، OpenAI، Cerebras، Mistral — جو يعمل على الذكاء المجاني والمحلي. أضف المفاتيح في api/.env متى شئت.
