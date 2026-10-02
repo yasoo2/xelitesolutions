@@ -1,0 +1,46 @@
+{
+  "builtOk": true,
+  "buildError": "",
+  "dir": "D:\\Joe\\muse-worktree\\tmp\\sbx-tmp\\joe-isp-532sKx\\api-مشروع-النظام",
+  "entryKeys": [
+    "dir",
+    "type",
+    "brand",
+    "resource",
+    "port",
+    "updatedAt",
+    "lastRequest",
+    "appKind",
+    "model",
+    "runtimeAuth",
+    "pipelineRunId"
+  ],
+  "entryResource": "plants",
+  "entryModelKeys": [
+    "plants",
+    "suppliers"
+  ],
+  "files": [
+    ".auth-secret",
+    ".gitignore",
+    ".npm-cache",
+    "auth.js",
+    "data.db",
+    "db.js",
+    "entities.js",
+    "node_modules",
+    "package-lock.json",
+    "package.json",
+    "README.md",
+    "seed.js",
+    "server.js"
+  ],
+  "hasDbJs": true,
+  "hasEntitiesJs": true,
+  "dbCols": "[{\"key\":\"name\",\"type\":\"TEXT\",\"required\":true},{\"key\":\"image\",\"type\":\"TEXT\",\"required\":false},{\"key\":\"price\",\"type\":\"REAL\",\"required\":false},{\"key\":\"quantity\",\"type\":\"INT\",\"required\":false},{\"key\":\"description\",\"type\":\"TEXT\",\"required\":false},{\"key\":\"status\",\"type\":\"TEXT\",\"required\":false}]",
+  "dbHasImageCol": true,
+  "dbTableMatch": "plants",
+  "entitiesTableKeys": [],
+  "entitiesHasPlants": false,
+  "entitiesHasImageField": false
+}

@@ -1,0 +1,12 @@
+{
+  "noFilter": {
+    "ok": false,
+    "error": "No table here has a picture column — pictures belong to things, not to invoices and people.",
+    "output": null
+  },
+  "plantsOnly": {
+    "ok": false,
+    "error": "No table here has a picture column — pictures belong to things, not to invoices and people.",
+    "output": null
+  }
+}
