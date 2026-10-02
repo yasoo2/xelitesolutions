@@ -9,7 +9,21 @@ untracked test (test SHA256 B370158B...09681 unchanged). Muse independently
 RERAN the exact suite this cycle: 14/14 PASS (1.985s, cache+TEMP redirected
 to muse-worktree, no candidate-tree writes). Review POSITION and
 RECOMMENDATION stand unchanged; shared import still pending.
-MUSE_HEAD=d6f50b7438d23c966ebfd9808d9ff9b58f29debb
+CURRENCY_087=Fresh independent verification by this Muse cycle
+(2026-10-01T23:58Z). Candidate HEAD still
+1fd63763916c15acd7d35b908dddcfd5c2c573f5; same 3-file diff
+(row-image 19 / ImageGenerationTool 44 / fixture +2); test file SHA256
+B370158B1C7A4623163C2E5E0CBBEA42433152034A2C326A7B1FE6FB43B09681
+byte-identical. Muse RERAN the suite: 14/14 PASS (1.372s, cache+TEMP
+redirected to muse-worktree; candidate tree unmodified). Registry
+non-registration re-verified in BOTH trees (import L15, no createTool
+entry, image_studio only L306). OpenAI importer count re-verified: 13
+active other importers, so removal is safe. Blast radius re-verified:
+generator symbols referenced only in row-image.ts (L160/169/170/251/252)
++ new test. NEW findings in ADDENDUM_087 below (dispatch dead-end PROVEN,
+Muse-lineage residual hazard, image_studio non-alias verdict).
+POSITION and RECOMMENDATION stand unchanged; shared import still pending.
+MUSE_HEAD=0600e4780cd215941543a3c961ada30cc4f94b3e
 CANDIDATE_SOURCE=D:/Joe/worktrees/codex-nvidia-provider-ui @ 1fd63763 + dirty creative-safety diff (uncommitted)
 
 EXACT_DIFF_REVIEWED:
@@ -66,5 +80,33 @@ CONDITIONS_OF_APPROVAL:
 1. Owner runs and records items 2-4 above on the exact diff before any integration; no main merge by this batch (decision already states NO_MAIN_INTEGRATION).
 2. No fixture-rerun or generation-capability claims attached to this batch.
 3. Future generation restoration goes through the JOE-CREATIVE-ENGINE-001 asset contract, not by re-enabling this definition.
+
+ADDENDUM_087 (2026-10-01T23:58Z, Muse HEAD 0600e478):
+1. DISPATCH_DEAD_END_PROVEN: ToolService hard-renames planner-emitted
+   image_generate -> generate_image (ToolService.ts:551-553), but dispatch
+   resolves ONLY the registered list (tools.find, :675) with a TOOL_ALIASES
+   fallback (:691-698) that has no image entry (:212-249). End state is an
+   honest unknown_tool error (:700-720), never the orphaned implementation.
+   The offered priority spelling (tool-picker.ts:13) is additionally dropped
+   before the provider call (F-086-1). No silent paid-spend path exists via
+   planner dispatch in EITHER lineage.
+2. MUSE_LINEAGE_RESIDUAL_HAZARD: Muse HEAD still carries the legacy unsafe
+   generate_image (silent DALL-E on mere OPENAI_API_KEY, :42-58; unfetched
+   pollinations URL as ok:true, :60-62). Reachable ONLY by direct in-process
+   import (dispatch-proven above), but it is a live footgun for any future
+   in-process caller. Main-lineage repair needs its own coordinated
+   ownership; this batch is NO_MAIN_INTEGRATION and Muse makes no
+   overlapping edit. Do NOT infer Muse-lineage safety from this review.
+3. IMAGE_STUDIO_NON_ALIAS_VERDICT: registered image_studio (table/context/
+   limit/redo over built-system tables) is a DIFFERENT capability from
+   {prompt,size} ad-hoc generation; blind-aliasing image_generate to it
+   would execute the wrong capability. The priority entry is STALE_OR_FUTURE
+   (keep only if the JOE-CREATIVE-ENGINE-001 asset contract adopts the
+   spelling). Picker is shared surface; no unilateral Muse edit.
+4. Studio-boundary re-verified in Muse source: readTables/writePictures
+   enumerate ONLY entities.tables (ImageStudioTool.ts:34-47, :71-84) and
+   require entities.js (:130) — the 14PASS/5FAIL fixture block stays owned
+   by IMAGE-STUDIO-PRIMARY-DATA-001 (consultation still PENDING_REVIEW;
+   outside this batch, correctly untouched).
 
 SHARED_FILE_NOTE: Muse attempted to write STATUS=REVIEWED_BY_MUSE into D:/Joe/coordination/team/consultations/CREATIVE-SAFETY-BATCH-001-MUSE.md; if sandbox write was denied, this response file is the authoritative Muse review and Codex may import it verbatim without inferring beyond it.
