@@ -1,0 +1,1246 @@
+{
+ "registeredCount": 163,
+ "catalogueCount": 40,
+ "batch": {
+  "BATCH-002": [
+   "repo_read_file",
+   "repo_search",
+   "repo_apply_patch",
+   "repo_run_command",
+   "repo_diff_summary"
+  ],
+  "BATCH-003": [
+   "analyze_project",
+   "analyze_codebase",
+   "codebase_outline",
+   "codebase_navigator",
+   "inspect_symbol",
+   "get_codebase_map"
+  ],
+  "BATCH-004": [
+   "deploy_pages",
+   "docker_manager",
+   "terraform_manager",
+   "kubernetes_ops",
+   "docker_swarm_ops",
+   "web_pipeline",
+   "dev_server"
+  ],
+  "BATCH-005": [
+   "query_optimizer",
+   "large_data_seeder",
+   "datasource_tool"
+  ],
+  "BATCH-006": [
+   "github_actions",
+   "git_local_workflow"
+  ],
+  "BATCH-007": [
+   "sonar_analysis",
+   "performance_profile",
+   "load_tester"
+  ]
+ },
+ "perTool": {
+  "repo_read_file": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "RepoSelfCodingTools.ts"
+   ],
+   "markers": {
+    "RepoSelfCodingTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 8,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 1,
+     "chmod": 1,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 1
+    }
+   }
+  },
+  "repo_search": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "RepoSelfCodingTools.ts"
+   ],
+   "markers": {
+    "RepoSelfCodingTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 8,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 1,
+     "chmod": 1,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 1
+    }
+   }
+  },
+  "repo_apply_patch": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "RepoSelfCodingTools.ts"
+   ],
+   "markers": {
+    "RepoSelfCodingTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 8,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 1,
+     "chmod": 1,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 1
+    }
+   }
+  },
+  "repo_run_command": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "RepoSelfCodingTools.ts"
+   ],
+   "markers": {
+    "RepoSelfCodingTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 8,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 1,
+     "chmod": 1,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 1
+    }
+   }
+  },
+  "repo_diff_summary": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "RepoSelfCodingTools.ts"
+   ],
+   "markers": {
+    "RepoSelfCodingTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 8,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 1,
+     "chmod": 1,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 1
+    }
+   }
+  },
+  "analyze_project": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "AnalysisTools.ts"
+   ],
+   "markers": {
+    "AnalysisTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 2,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "analyze_codebase": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read",
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "AnalysisTools.ts"
+   ],
+   "markers": {
+    "AnalysisTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 2,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "codebase_outline": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "CodebaseOutlineTool.ts"
+   ],
+   "markers": {
+    "CodebaseOutlineTool.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "codebase_navigator": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": null,
+   "sideEffects": null,
+   "mockSupported": null,
+   "defFiles": [
+    "CodebaseNavigatorTool.ts"
+   ],
+   "markers": {
+    "CodebaseNavigatorTool.ts": {
+     "hasExecute": false,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 0,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "inspect_symbol": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "UtilityTools.ts"
+   ],
+   "markers": {
+    "UtilityTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "get_codebase_map": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": null,
+   "sideEffects": null,
+   "mockSupported": null,
+   "defFiles": [],
+   "markers": {}
+  },
+  "deploy_pages": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "internet"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "DeployPagesTool.ts"
+   ],
+   "markers": {
+    "DeployPagesTool.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 0,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 1,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 1,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "docker_manager": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "DockerManagerTool.ts"
+   ],
+   "markers": {
+    "DockerManagerTool.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 0,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 8
+    }
+   }
+  },
+  "terraform_manager": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "InfrastructureTools.ts"
+   ],
+   "markers": {
+    "InfrastructureTools.ts": {
+     "hasExecute": true,
+     "shell: true": 1,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 8,
+     "docker ": 0
+    }
+   }
+  },
+  "kubernetes_ops": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "InfrastructureTools.ts"
+   ],
+   "markers": {
+    "InfrastructureTools.ts": {
+     "hasExecute": true,
+     "shell: true": 1,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 8,
+     "docker ": 0
+    }
+   }
+  },
+  "docker_swarm_ops": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "InfrastructureTools.ts"
+   ],
+   "markers": {
+    "InfrastructureTools.ts": {
+     "hasExecute": true,
+     "shell: true": 1,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 8,
+     "docker ": 0
+    }
+   }
+  },
+  "web_pipeline": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": null,
+   "sideEffects": null,
+   "mockSupported": null,
+   "defFiles": [],
+   "markers": {}
+  },
+  "dev_server": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": null,
+   "sideEffects": null,
+   "mockSupported": null,
+   "defFiles": [],
+   "markers": {}
+  },
+  "query_optimizer": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "DatabaseEnterpriseTools.ts"
+   ],
+   "markers": {
+    "DatabaseEnterpriseTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 1,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 1,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "large_data_seeder": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "DatabaseEnterpriseTools.ts"
+   ],
+   "markers": {
+    "DatabaseEnterpriseTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 1,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 1,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "datasource_tool": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": null,
+   "sideEffects": null,
+   "mockSupported": null,
+   "defFiles": [],
+   "markers": {}
+  },
+  "github_actions": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "GitHubActionsTool.ts"
+   ],
+   "markers": {
+    "GitHubActionsTool.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "git_local_workflow": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "GitLocalWorkflowTool.ts"
+   ],
+   "markers": {
+    "GitLocalWorkflowTool.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 0,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 1,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "sonar_analysis": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "QualityTools.ts"
+   ],
+   "markers": {
+    "QualityTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 2,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "performance_profile": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "read",
+    "execute"
+   ],
+   "sideEffects": [],
+   "mockSupported": false,
+   "defFiles": [
+    "AdvancedTools.ts"
+   ],
+   "markers": {
+    "AdvancedTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 1,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 0,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 0,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 2,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  },
+  "load_tester": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "verificationUnconditional": false,
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false,
+   "defFiles": [
+    "QualityTools.ts"
+   ],
+   "markers": {
+    "QualityTools.ts": {
+     "hasExecute": true,
+     "shell: true": 0,
+     "shell:true": 0,
+     "exec(": 0,
+     "execSync": 0,
+     "spawn(": 0,
+     "getRepoRoot": 0,
+     "process.cwd": 1,
+     "unlink": 0,
+     "rmdir": 0,
+     "rm -rf": 0,
+     "process.env": 0,
+     "approval": 0,
+     "confirm": 0,
+     "destructive": 0,
+     "sudo": 0,
+     "chmod": 0,
+     "fetch(": 2,
+     "axios": 0,
+     "http.request": 0,
+     "gh ": 0,
+     "kubectl": 0,
+     "docker ": 0
+    }
+   }
+  }
+ },
+ "registryRefs": {
+  "repo_read_file": 0,
+  "repo_search": 0,
+  "repo_apply_patch": 0,
+  "repo_run_command": 0,
+  "repo_diff_summary": 0,
+  "analyze_project": 1,
+  "analyze_codebase": 1,
+  "codebase_outline": 1,
+  "codebase_navigator": 0,
+  "inspect_symbol": 1,
+  "get_codebase_map": 0,
+  "deploy_pages": 0,
+  "docker_manager": 1,
+  "terraform_manager": 1,
+  "kubernetes_ops": 1,
+  "docker_swarm_ops": 1,
+  "web_pipeline": 1,
+  "dev_server": 1,
+  "query_optimizer": 1,
+  "large_data_seeder": 1,
+  "datasource_tool": 0,
+  "github_actions": 1,
+  "git_local_workflow": 0,
+  "sonar_analysis": 1,
+  "performance_profile": 0,
+  "load_tester": 1
+ },
+ "resolveOutcomes": {
+  "analyze the codebase structure": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "outline the codebase for planning": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "find the definition of the login symbol": {
+   "tool": "auth_builder",
+   "how": "meaning"
+  },
+  "search the repository for auth code": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "apply this patch to the repo": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "run the migration command in the repository": {
+   "tool": "git_ops",
+   "how": "meaning"
+  },
+  "containerize the app with docker": {
+   "tool": "docker_manager",
+   "how": "meaning"
+  },
+  "provision infrastructure with terraform": {
+   "tool": "terraform_manager",
+   "how": "meaning"
+  },
+  "deploy to cloudflare pages": {
+   "tool": "deploy_project",
+   "how": "meaning"
+  },
+  "manage the github actions workflow": {
+   "tool": "github_repo_manager",
+   "how": "meaning"
+  },
+  "optimize the slow database query": {
+   "tool": "db_schema_migrator",
+   "how": "meaning"
+  },
+  "seed a large dataset for testing": {
+   "tool": "auto_tester",
+   "how": "meaning"
+  },
+  "run a load test against staging": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "profile the slow endpoint performance": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "run sonar analysis on the project": {
+   "tool": "sonar_analysis",
+   "how": "nearest"
+  },
+  "start a local dev server for preview": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "gateShapes": {
+  "repo-read-shape": false,
+  "repo-cmd-shape": false,
+  "analyze-shape": false,
+  "docker-shape": false,
+  "sonar-shape": false
+ },
+ "crossTree": {
+  "modules/tools/registry.ts": {
+   "museSha8": "912ce549",
+   "nvSha8": "9c89146b",
+   "identical": false
+  },
+  "core/orchestrator/plan-tools.ts": {
+   "museSha8": "5ef3e108",
+   "nvSha8": "108e7638",
+   "identical": false
+  },
+  "modules/services/ToolService.ts": {
+   "museSha8": "f8608f51",
+   "nvSha8": "f8608f51",
+   "identical": true
+  },
+  "core/quality/verification-ledger.ts": {
+   "museSha8": "0ad84299",
+   "nvSha8": "9b62ff0e",
+   "identical": false
+  },
+  "modules/tools/definitions/AdvancedTools.ts": {
+   "museSha8": "5f5bfba6",
+   "nvSha8": "5f5bfba6",
+   "identical": true
+  },
+  "modules/tools/definitions/AnalysisTools.ts": {
+   "museSha8": "901ad6cc",
+   "nvSha8": "901ad6cc",
+   "identical": true
+  },
+  "modules/tools/definitions/CodebaseNavigatorTool.ts": {
+   "museSha8": "6a283a44",
+   "nvSha8": "6a283a44",
+   "identical": true
+  },
+  "modules/tools/definitions/CodebaseOutlineTool.ts": {
+   "museSha8": "e6c56fdd",
+   "nvSha8": "e6c56fdd",
+   "identical": true
+  },
+  "modules/tools/definitions/DatabaseEnterpriseTools.ts": {
+   "museSha8": "0f40f9e7",
+   "nvSha8": "0f40f9e7",
+   "identical": true
+  },
+  "modules/tools/definitions/DeployPagesTool.ts": {
+   "museSha8": "25629e35",
+   "nvSha8": "25629e35",
+   "identical": true
+  },
+  "modules/tools/definitions/DockerManagerTool.ts": {
+   "museSha8": "2e3f87ad",
+   "nvSha8": "2e3f87ad",
+   "identical": true
+  },
+  "modules/tools/definitions/GitHubActionsTool.ts": {
+   "museSha8": "84801d77",
+   "nvSha8": "84801d77",
+   "identical": true
+  },
+  "modules/tools/definitions/GitLocalWorkflowTool.ts": {
+   "museSha8": "effbc610",
+   "nvSha8": "effbc610",
+   "identical": true
+  },
+  "modules/tools/definitions/InfrastructureTools.ts": {
+   "museSha8": "ad5905d4",
+   "nvSha8": "ad5905d4",
+   "identical": true
+  },
+  "modules/tools/definitions/QualityTools.ts": {
+   "museSha8": "41283450",
+   "nvSha8": "41283450",
+   "identical": true
+  },
+  "modules/tools/definitions/RepoSelfCodingTools.ts": {
+   "museSha8": "0d7bd1a0",
+   "nvSha8": "0d7bd1a0",
+   "identical": true
+  },
+  "modules/tools/definitions/UtilityTools.ts": {
+   "museSha8": "97cc01f2",
+   "nvSha8": "97cc01f2",
+   "identical": true
+  }
+ },
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
