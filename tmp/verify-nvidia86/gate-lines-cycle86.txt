@@ -1,0 +1,17 @@
+Gate/test PASS lines observed in NVIDIA cycle-86 log (read-only UTF-16 decode, ANSI stripped)
+Source: D:\Joe\coordination\logs\nvidia-2026-10-03_08-57-38-cycle-86.log (416 lines)
+
+1. guard:architecture -> "Architecture guard passed"
+2. guard:package-scripts -> "package.json self-fix scripts guard passed" (lists script NAME rows; existence, not execution)
+3. npx jest verification-contract-gaps + smoke-verification-rewrite + prose-verification-contract-regression
+   -> Test Suites: 3 passed, 3 total / Tests: 19 passed, 19 total / Time: 23.909 s
+4. npx jest deterministic-phases-for-cli + cli-routing-fix
+   -> Test Suites: 2 passed, 2 total / Tests: 17 passed, 17 total / Time: 22.068 s
+   -> 19 + 17 = 36; claimed 8/8+5/5+6/6+7/7+10/10 breakdown sums identically (genuine dirty-tree PASS)
+5. test:joe:engineer-flow -> "Full Engineer Flow Verification: PASSED"
+6. test:self-healing:success -> "Verification Complete. Status: PASSED"
+7. test:self-healing:failure -> "SUCCESS: System stopped after failed repair attempt as expected" + PASSED
+
+Also observed: [ToolRegistry] Registered 167 tools (71 revived); 21 no-permission defaults; 2 no-rate-limit defaults.
+Also observed: one `&&` PowerShell syntax error (worker recovered by running the two self-healing gates separately).
+NOT observed anywhere in log: any test:self-fix:* invocation (4th consecutive cycle: c83/c84/c85/c86).
