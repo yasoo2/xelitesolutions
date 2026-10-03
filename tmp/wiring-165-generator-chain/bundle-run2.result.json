@@ -1,0 +1,602 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "scaffold_project",
+  "scaffold_full_stack",
+  "react_project",
+  "api_project",
+  "web_page_builder",
+  "test_generator",
+  "bulk_file_generator"
+ ],
+ "chainRegistered": [
+  "api_project",
+  "react_project",
+  "scaffold_full_stack",
+  "scaffold_project",
+  "test_generator",
+  "web_page_builder"
+ ],
+ "chainRegisteredCount": 6,
+ "adjacentRegistered": [
+  "ai_write_file",
+  "file_edit",
+  "project_detect",
+  "project_pipeline",
+  "write_file"
+ ],
+ "phantomStatus": {
+  "create_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "generate_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "new_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "build_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "init_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "react_app": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "vue_project": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "nextjs_app": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "api_project": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "react_project": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "scaffold_full_stack": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "scaffold_project": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "test_generator": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read",
+    "write"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "web_page_builder": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "ai_write_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "file_edit": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write",
+    "read"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "project_detect": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "read"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "project_pipeline": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "write_file": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "ai_write_file",
+  "api_project",
+  "doc_generator",
+  "file_edit",
+  "project_detect",
+  "react_project",
+  "scaffold_full_stack",
+  "scaffold_project",
+  "test_generator",
+  "web_page_builder",
+  "write_file"
+ ],
+ "aliasChainHits": {
+  "file_write": "write_file",
+  "create_file": "write_file",
+  "write_to_file": "write_file",
+  "edit_file": "file_edit",
+  "str_replace": "file_edit"
+ },
+ "resolveOutcomes": {
+  "scaffold a new Node.js CLI project with TypeScript": {
+   "tool": "shell_execute",
+   "how": "meaning"
+  },
+  "build a React landing page with Vite": {
+   "tool": "react_project",
+   "how": "meaning"
+  },
+  "create an Express API backend with SQLite": {
+   "tool": "db_schema_migrator",
+   "how": "meaning"
+  },
+  "build a complete website for a bakery": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate a test suite for the existing auth module": {
+   "tool": "test_generator",
+   "how": "meaning"
+  },
+  "generate fifty files from this template at once": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "write a French poem file with AI": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "detect what was created in the project folder": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "run the full project pipeline for this request": {
+   "tool": "project_pipeline",
+   "how": "nearest"
+  },
+  "scaffold_project": {
+   "tool": "scaffold_project",
+   "how": "exact"
+  }
+ },
+ "gateShapes": {
+  "scaffold-shape": false,
+  "fullstack-shape": false,
+  "react-shape": false,
+  "api-shape": false,
+  "webpage-shape": false,
+  "testgen-shape": false,
+  "bulk-shape": false,
+  "detect-shape": false
+ },
+ "registryTestRefs": 33,
+ "defDetail": {
+  "SystemTools": {
+   "namesColon": [
+    "echo",
+    "file_edit",
+    "delete_file",
+    "write_file",
+    "ls",
+    "grep_search",
+    "npm_manager",
+    "scaffold_project",
+    "shell_execute",
+    "shell_check_status"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'scaffold_project'": 1,
+    "name = 'write_file'": 1,
+    "name = 'file_edit'": 1,
+    "workspaceId": 18,
+    "sessionId": 13,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 3,
+    "getActiveRoot": 2
+   },
+   "sha256": "280a2393a4decac9c2125f186a9e6a9f4ff8d58c78d6296ce4fb1bd7a9100aff",
+   "lines": 1752
+  },
+  "WebDevelopmentTools": {
+   "namesColon": [
+    "website_full_pipeline",
+    "dev_server_start",
+    "scaffold_full_stack"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'scaffold_full_stack'": 1,
+    "'web_pipeline'": 0,
+    "workspaceId": 20,
+    "sessionId": 77,
+    "userId": 11,
+    "mockSupported": 0,
+    "resolveToolPath": 2,
+    "getActiveRoot": 3
+   },
+   "sha256": "2692b58425270572258c8c9e4df9520abc0f1b6ff93505c5b93b20fd302f5bab",
+   "lines": 701
+  },
+  "ReactProjectTool": {
+   "namesColon": [
+    "react_project"
+   ],
+   "namesObj": [
+    "فحص وضبط شامل",
+    "ضبط الفرامل والتروس",
+    "إصلاح الإطار المثقوب",
+    "Safety tune-up",
+    "Brake & gear setup",
+    "Flat fix",
+    "جلسات شخصية",
+    "تغطية المناسبات",
+    "تصوير المنتجات",
+    "Portrait sessions",
+    "Event coverage",
+    "Product photography",
+    "استشارة أولية",
+    "الخدمة الأساسية",
+    "الخدمة المستعجلة",
+    "Initial consultation",
+    "Standard service",
+    "Priority service",
+    "ليان القحطاني",
+    "فهد الدوسري",
+    "ريم العنزي",
+    "طبق اليوم",
+    "مشاوي مشكلة",
+    "سلطة الموسم",
+    "حلو البيت",
+    "الإصدار الكلاسيكي",
+    "الإصدار الفاخر",
+    "طقم الهدية",
+    "الأكثر مبيعاً",
+    "الأساسية",
+    "الاحترافية",
+    "المؤسسات",
+    "سارة العتيبي",
+    "محمد الشهري",
+    "Layan Q.",
+    "Fahad D.",
+    "Reem A.",
+    "Dish of the day",
+    "Mixed grill",
+    "Season salad",
+    "Classic edition",
+    "Premium edition",
+    "Gift set",
+    "Basic",
+    "Pro",
+    "Enterprise",
+    "Sarah M.",
+    "Omar K.",
+    "جسم الإنسان",
+    "الفضاء العميق",
+    "مختبر الطاقة",
+    "Inside the human body",
+    "Deep space",
+    "Energy lab",
+    "${js(t.name)}",
+    "${js(m.name)}",
+    "${js(p.name)}",
+    "${js(t.name)}",
+    "${js(t.name)}",
+    "الاسم",
+    "Your name"
+   ],
+   "markers": {
+    "name = 'react_project'": 1,
+    "workspaceId": 17,
+    "sessionId": 72,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 0,
+    "getActiveRoot": 3
+   },
+   "sha256": "5d6f4cc854b382b9a1a6aa1cadee041dd1d0f6350f4d056e739eeec7c0586089",
+   "lines": 8928
+  },
+  "ApiProjectTool": {
+   "namesColon": [
+    "api_project"
+   ],
+   "namesObj": [
+    "طبق اليوم",
+    "مشاوي مشكلة",
+    "سلطة الموسم",
+    "Dish of the day",
+    "Mixed grill",
+    "الإصدار الكلاسيكي",
+    "الإصدار الفاخر",
+    "طقم الهدية",
+    "Classic edition",
+    "Premium edition",
+    "عنصر تجريبي أول",
+    "عنصر تجريبي ثانٍ",
+    "First sample item",
+    "${js(s.name)}",
+    "Loop-proof cat",
+    "anonymous-must-be-refused"
+   ],
+   "markers": {
+    "name = 'api_project'": 1,
+    "workspaceId": 5,
+    "sessionId": 21,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 0,
+    "getActiveRoot": 2
+   },
+   "sha256": "c57542f067b3e972a617c066ac5a4495a382ad540f9efe04f59476b3b357808c",
+   "lines": 3524
+  },
+  "WebPageBuilderTool": {
+   "namesColon": [
+    "web_page_builder"
+   ],
+   "namesObj": [
+    "index.html",
+    "styles.css",
+    "script.js",
+    "manifest.webmanifest",
+    "sw.js",
+    "icon-192.png",
+    "icon-512.png",
+    "index.html"
+   ],
+   "markers": {
+    "name = 'web_page_builder'": 1,
+    "workspaceId": 0,
+    "sessionId": 108,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0
+   },
+   "sha256": "edfa98f2b4c7fb0c9ac977b9ac52a81c0b88826b90d893d93a8a2fc823a49c4c",
+   "lines": 2869
+  },
+  "AdvancedTools": {
+   "namesColon": [
+    "pattern_recognize",
+    "auto_refactor",
+    "test_generator",
+    "performance_profile",
+    "doc_generator"
+   ],
+   "namesObj": [
+    "Singleton",
+    "Factory",
+    "Observer",
+    "Strategy",
+    "Decorator",
+    "Module Pattern",
+    "Closure",
+    "Promise Chain",
+    "God Object",
+    "Deep Nesting",
+    "Magic Numbers",
+    "Long Functions"
+   ],
+   "markers": {
+    "name = 'test_generator'": 1,
+    "workspaceId": 12,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 5,
+    "getActiveRoot": 0
+   },
+   "sha256": "5f5bfba63989a9017a2e29a7e16bcd3e71f192c569427bb2a48b2a9fee1f7807",
+   "lines": 881
+  },
+  "BulkFileGeneratorTool": {
+   "namesColon": [],
+   "namesObj": [
+    "bulk_file_generator"
+   ],
+   "markers": {
+    "name: 'bulk_file_generator'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0
+   },
+   "sha256": "0a49c45656506a4b9c4ce275d588ef2162c13b979149c6185a8917d360efb08a",
+   "lines": 109
+  },
+  "AIGeneratorTool": {
+   "namesColon": [
+    "ai_write_file"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'ai_write_file'": 1,
+    "workspaceId": 13,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 5,
+    "getActiveRoot": 1
+   },
+   "sha256": "51493a3c5f23092e20567575d49c878ab05be645f28cb2749a210b2ffaec6f37",
+   "lines": 1109
+  }
+ },
+ "planChainRefs": [
+  "{ tool: 'scaffold_project', purpose: 'create a new project on disk; REQUIRED args.structure is a non-empty object mapping safe workspace-rel",
+  "{ tool: 'scaffold_full_stack', purpose: 'create a full-stack project (frontend + backend together)' },",
+  "{ tool: 'react_project', purpose: 'build a real React + Vite application' },",
+  "{ tool: 'api_project', purpose: 'build a real Express + SQLite backend with working endpoints' },",
+  "{ tool: 'web_page_builder', purpose: 'build a complete website/landing page' },",
+  "{ tool: 'ai_write_file', purpose: 'write one source file whose content must be generated' },",
+  "{ tool: 'write_file', purpose: 'write one file with content you already know exactly' },",
+  "{ tool: 'file_edit', purpose: 'change part of one existing file; REQUIRED args.filename is one safe workspace-relative file path, args.find ",
+  "{ tool: 'test_generator', purpose: 'generate a test suite for existing code' },",
+  "{ tool: 'project_detect', purpose: 'verify what was actually created on disk' },",
+  "testing: 'auto_tester', 'unit tests': 'auto_tester', 'test suite': 'test_generator',",
+  "react: 'react_project', vite: 'react_project', nextjs: 'react_project', 'next.js': 'react_project',",
+  "vue: 'react_project', angular: 'react_project', frontend: 'react_project',",
+  "express: 'api_project', nodejs: 'api_project', 'node.js': 'api_project',",
+  "backend: 'api_project', api: 'api_project', rest: 'api_project',",
+  "'file system': 'write_file', fs: 'write_file', editor: 'file_edit', ide: 'file_edit',"
+ ],
+ "svcChainRefs": [
+  "* This service renames the model's tool call (`file_write` → `write_file`) and",
+  "if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';",
+  "if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';",
+  "file_write: 'write_file',",
+  "create_file: 'write_file',",
+  "write_to_file: 'write_file',",
+  "edit_file: 'file_edit',",
+  "str_replace: 'file_edit',",
+  "* plausibly answer «ابن لي تطبيق React»: react_project (deterministic",
+  "* templates, verified npm install + vite build), scaffold_full_stack (its",
+  "* sends explicit requests to react_project; this catches the WEAK-MODEL",
+  "* TOOL-PICKER choosing scaffold_full_stack for a frontend-flavoured app,",
+  "if (name === 'scaffold_full_stack') {",
+  "effectiveName = 'react_project';",
+  "effectiveName = 'project_detect'; // Safe fallback that returns project info",
+  "effectiveName = 'scaffold_project';"
+ ],
+ "execChainRefs": [
+  "'write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'bulk_file_generator',",
+  "'ai_write_file',",
+  "'project_detect',",
+  "'project_pipeline',",
+  "'bulk_file_generator',",
+  "'web_page_builder',",
+  "'project_detect', 'analyze_project', 'analyze_codebase', 'quality_run',",
+  "// cwd after react_project has rebound the real artifact. Passing that",
+  "if (!projectContext || !['scaffold_project', 'react_project', 'api_project', 'scaffold_full_stack', 'write_file', 'ai_write_file', 'file_edi",
+  "const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);",
+  "const description = toolName === 'ai_write_file' && typeof args?.description === 'string'",
+  "const artifactContext = toolName === 'ai_write_file' && typeof args?.context === 'string'",
+  "if (toolName !== 'react_project') return {};",
+  "if (['api_project', 'react_project'].includes(toolName)) {",
+  "if (toolName === 'ai_write_file') {",
+  "if (['api_project', 'react_project'].includes(toolName)"
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
