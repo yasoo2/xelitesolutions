@@ -1,0 +1,23 @@
+Unique `npm run` targets executed in NVIDIA cycle-85 log
+Source (read-only): D:\Joe\coordination\logs\nvidia-2026-10-03_08-42-01-cycle-85.log (CHARS=22552)
+Extraction: regex (?m)^.*npm run ([a-z0-9:._-]+).*$ unique-sorted
+
+EXECUTED:
+guard:architecture
+guard:package-scripts
+test:joe:engineer-flow
+test:self-healing:failure
+test:self-healing:success
+
+NOT_EXECUTED (absent from c83 + c84 + c85 logs):
+test:self-fix:build-context
+test:self-fix:execution-safety
+test:self-fix:typescript-repair
+test:self-fix:typescript-missing-name
+test:self-fix:typescript-number-to-string
+test:self-fix:typescript-argument-coercion
+test:self-fix:typescript-string-to-boolean
+
+GROUPS_EVIDENCED=5/10
+CLAIM_10_OF_10_IN_LOG=YES (lines 395-401 list Self-Fix rows as passed)
+CLAIM_SUPPORTED=NO

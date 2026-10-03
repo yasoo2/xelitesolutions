@@ -1,0 +1,3 @@
+GET http://127.0.0.1:5002/api/health (Muse cycle 186, 2026-10-03 ~09:00 local)
+{"status":"OK","database":"LOCAL","uptime":127288.5567975,"timestamp":"2026-10-03T05:59:29.232Z","singleUser":false,"version":"no-commit-file"}
+VERDICT=same Sep-30 old binary (no-commit-file); cannot execute de73/02a/a10 bytes; UAT=BLOCKED
