@@ -1,0 +1,215 @@
+{
+  "museHead": "aacc29f9",
+  "method": "resolve-only; no tool executed; contract self-consistency = required keys subset of declared properties",
+  "rows": [
+    {
+      "name": "cloud_cost_estimator",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 1,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 21,
+      "version": "1.0.0",
+      "tags": [
+        "cost",
+        "elite"
+      ],
+      "mockSupported": true,
+      "rateLimitPerMinute": 20,
+      "inputType": "object",
+      "inputProperties": [
+        "resources",
+        "traffic"
+      ],
+      "inputRequired": [
+        "resources"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": null
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 1,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 20,
+      "version": "1.0.0",
+      "tags": [
+        "analysis",
+        "elite"
+      ],
+      "mockSupported": true,
+      "rateLimitPerMinute": 20,
+      "inputType": "object",
+      "inputProperties": [
+        "content"
+      ],
+      "inputRequired": [
+        "content"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": null
+    },
+    {
+      "name": "ask_user",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 1,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 99,
+      "version": "1.0.0",
+      "tags": [
+        "user",
+        "interaction",
+        "blocking"
+      ],
+      "mockSupported": false,
+      "rateLimitPerMinute": 60,
+      "inputType": "object",
+      "inputProperties": [
+        "options",
+        "question"
+      ],
+      "inputRequired": [
+        "question"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": [
+        "response"
+      ]
+    },
+    {
+      "name": "rss_fetch",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 1,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 28,
+      "version": "1.0.0",
+      "tags": [
+        "network",
+        "rss"
+      ],
+      "mockSupported": false,
+      "rateLimitPerMinute": 60,
+      "inputType": "object",
+      "inputProperties": [
+        "limit",
+        "url"
+      ],
+      "inputRequired": [
+        "url"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": [
+        "items"
+      ]
+    },
+    {
+      "name": "task_lifecycle",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 1,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 114,
+      "version": "1.0.0",
+      "tags": [
+        "system",
+        "ui",
+        "lifecycle"
+      ],
+      "mockSupported": false,
+      "rateLimitPerMinute": 60,
+      "inputType": "object",
+      "inputProperties": [
+        "action",
+        "mode",
+        "taskName",
+        "taskStatus",
+        "taskSummary"
+      ],
+      "inputRequired": [
+        "action"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": [
+        "success"
+      ]
+    },
+    {
+      "name": "read_file",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 2,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 48,
+      "version": "1.0.0",
+      "tags": [
+        "fs",
+        "read",
+        "safe"
+      ],
+      "mockSupported": false,
+      "rateLimitPerMinute": 60,
+      "inputType": "object",
+      "inputProperties": [
+        "endLine",
+        "path",
+        "startLine"
+      ],
+      "inputRequired": [
+        "path"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": [
+        "content",
+        "totalLines"
+      ]
+    },
+    {
+      "name": "write_file",
+      "registered": true,
+      "executeType": "function",
+      "executeArity": 2,
+      "descriptionNonEmpty": true,
+      "descriptionLen": 91,
+      "version": "1.0.0",
+      "tags": [
+        "fs",
+        "write",
+        "create"
+      ],
+      "mockSupported": false,
+      "rateLimitPerMinute": 60,
+      "inputType": "object",
+      "inputProperties": [
+        "content",
+        "ensureSingleAppend",
+        "expectedFinalLineCount",
+        "filename",
+        "mode",
+        "path",
+        "requireExisting"
+      ],
+      "inputRequired": [
+        "content"
+      ],
+      "requiredSubsetOfProperties": true,
+      "outputType": "object",
+      "outputProperties": [
+        "success"
+      ]
+    },
+    {
+      "name": "bogus_tool_xyz_7788",
+      "registered": false
+    }
+  ]
+}
