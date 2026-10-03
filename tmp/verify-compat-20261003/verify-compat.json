@@ -1,0 +1,159 @@
+{
+  "probe": "verify-compat-20261003",
+  "museHead": "7f51785b",
+  "method": "static contract comparison; nothing executed",
+  "sourceProvenance": {
+    "api/src/core/quality/verification-ledger.ts": "0ad84299d3ff696aa95527211e59f276012a122ea9c0bcaad043c09d539da672",
+    "api/src/modules/tools/definitions/PhaseExecutorTool.ts": "81512cc94d18c2b28b304e4cb0b04888821559a75cb718e9ccf64ff0b2becd13",
+    "api/src/core/orchestrator/plan-tools.ts": "5ef3e10899f290d42bd96dcf3675f4eb9b73ea679bd1e28f97f14359490785cc",
+    "api/src/modules/tools/definitions/AutoTesterTool.ts": "521b8478fe3b6d385df1fbe16160d2d6229bc898395b5a65aae3f11182b76cb1"
+  },
+  "gateSet": [
+    "auto_tester",
+    "browser_check_links",
+    "browser_console_scan",
+    "browser_contrast_audit",
+    "browser_performance",
+    "browser_responsive_check",
+    "browser_run",
+    "browser_ui_audit",
+    "code_reviewer",
+    "dependency_audit",
+    "quality_run",
+    "secrets_scan_repo",
+    "visual_qa"
+  ],
+  "gateSetSize": 13,
+  "mapperAssertions": {
+    "passVocab": true,
+    "failVocab": true,
+    "okStrict": true,
+    "verificationFailed": true,
+    "cancelled": true,
+    "timedOut": true,
+    "outputEnvelope": true
+  },
+  "mapperFields": [
+    "ok",
+    "status",
+    "error",
+    "stderr",
+    "verificationFailed",
+    "cancelled",
+    "timedOut"
+  ],
+  "passStatusVocab": [
+    "completed",
+    "passed",
+    "success",
+    "succeeded",
+    "ok"
+  ],
+  "failStatusVocab": [
+    "failed",
+    "error",
+    "partial",
+    "incomplete",
+    "blocked",
+    "fatal_error"
+  ],
+  "rows": [
+    {
+      "name": "ask_user",
+      "registered": true,
+      "outputProps": [
+        "response"
+      ],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "bogus_tool_xyz_7788",
+      "registered": false,
+      "outputProps": [],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "cloud_cost_estimator",
+      "registered": true,
+      "outputProps": [],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "read_file",
+      "registered": true,
+      "outputProps": [
+        "content",
+        "totalLines"
+      ],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [
+        "api/src/core/orchestrator/plan-tools.ts",
+        "api/src/core/quality/verification-ledger.ts"
+      ],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "rss_fetch",
+      "registered": true,
+      "outputProps": [
+        "items"
+      ],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "registered": true,
+      "outputProps": [],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "task_lifecycle",
+      "registered": true,
+      "outputProps": [
+        "success"
+      ],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    },
+    {
+      "name": "write_file",
+      "registered": true,
+      "outputProps": [
+        "success"
+      ],
+      "mapperFieldOverlap": [],
+      "asVerifierInGateSet": false,
+      "referencedByVerifierFiles": [
+        "api/src/core/orchestrator/plan-tools.ts",
+        "api/src/modules/tools/definitions/PhaseExecutorTool.ts"
+      ],
+      "asVerifierVerdict": "NO",
+      "evidenceVerdict": "UNKNOWN_REQUIRES_EXECUTION"
+    }
+  ]
+}
