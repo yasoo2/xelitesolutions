@@ -1,37 +1,37 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03, Muse cycle-220)
+# LIVE-REPORT — Muse + NVIDIA (2026-10-03, Muse cycle-221)
 
-SHARED_WRITE=BLOCKED (verified c220: Out-File to shared team path denied UnauthorizedAccessException; shared LIVE-REPORT.md absent).
+SHARED_WRITE=BLOCKED (shared team LIVE-REPORT.md absent; sandbox denies shared writes; prior cycles verified UnauthorizedAccessException).
 FALLBACK=D:\Joe\muse-worktree\tmp\LIVE-REPORT.md (committed; coordinator import requested).
-MUSE_HEAD=95c2dc55 (c220 evidence this cycle, docs/evidence only). NVIDIA_HEAD=a10c71ab (54 dirty, read-only, unchanged).
+MUSE_HEAD=26faf93b (c221 evidence this cycle, docs/evidence only). NVIDIA_HEAD=a10c71ab (19 tracked + 35 untracked = 54, read-only, unchanged = zero drift).
 
 1. ماذا نعمل الآن؟
-- Muse: تدقيق wiring على مستوى المصدر للأدوات الخمس غير المرئية للمخطط — مكتمل بدليل تنفيذي جديد (وصول الموزّع + بوابة الصلاحيات + استدعاء الكتالوج).
-- NVIDIA: لا نشاط جديد مرصود (HEAD/العدّ ثابت منذ c210؛ الشجرة هادئة ≠ متوقفة).
+- Muse: تسوية السجل مقابل التنفيذ (registry reconciliation) على بايتات HEAD الحالية — مكتمل بدليل جديد.
+- NVIDIA: لا نشاط جديد مرصود (HEAD/العدّ ثابت؛ الشجرة هادئة ≠ متوقفة).
 
 2. ماذا اكتشفنا؟
-- الأدوات الخمس كلها مسجلة وقابلة للتوزيع عبر المسار الرسمي، لكن الوصول يتطلب سياق orchestrator (الاستدعاء المباشر يُرفض برمجيًا — مثبت تنفيذيًا).
-- بوابة الصلاحيات تتطلب workspaceId+userId للأدوات الخمس جميعًا (الثلاث ذات التصريح الفارغ حصلت على read افتراضيًا من السجل).
-- الأدوات الخمس تظهر في كتالوج المخطط بالمرتبة 1-4 عند صياغة الهدف بدقة — فجوة الاستدعاء السابقة هي recall وليست استبعادًا هيكليًا.
-- على بايتات Muse الحالية ask_user→read (ملاحظة التصنيف write من c215 غير مُعاد إنتاجها هنا — بايتات مختلفة، لا تصحيح مُدّعى).
+- السجل يحمل 163 أداة فريدة (صفر تكرار). الفحص الاستاتيكي + المراجعة اليدوية سطرًا بسطر أثبتا: 1 تنفيذ حقيقي غير مسجل فقط (grep_search) — وهو متعمَّد (legacy-by-design) والاسم نفسه يعمل عبر alias إلى search_text المسجلة.
+- 4 أدوات بدت "مسجلة بلا تنفيذ" تبين أنها موجودة فعلًا (نمط colon + arrow-execute) — فجوة المسبار فقط، أُغلقت يدويًا.
+- 13 مرشحًا آليًا آخر كلها إيجابيات كاذبة موثقة (وسوم HTML، قوالب مولدة، سلاسل توثيق).
+- انحراف تعليق بسيط: تعليق registry.ts يقول search_files بينما الكود يحوّل إلى search_text (التعليق قديم فقط).
 
 3. ماذا أنجزنا فعليًا؟
-- Muse c220: دليل LEVEL-3 (توزيع/صلاحيات) + LEVEL-4 جزئي (تحقق من مسار التحقق لأداتين) للأدوات الخمس، 2× متطابق بايتيًا (D98A87AD). صفر تغيير في كود Joe.
+- Muse c221: تسوية مثبتة 2× متطابق بايتيًا (422EEFDA)، تصنيف grep_search كامل بالأدلة السطرية. صفر تغيير في كود Joe.
 - NVIDIA: لا مخرج جديد مرصود هذه الدورة.
 
 4. ماذا يعمل Muse الآن؟ تدقيق wiring مستقل + مسار verification-contract فقط. لا تنفيذ منافس في نطاق NVIDIA.
 
-5. ماذا يعمل NVIDIA الآن؟ حسب آخر claim: Batch-2 مكتمل مزعوم + Batch-3 معلن. لم يُرصد نشاط جديد.
+5. ماذا يعمل NVIDIA الآن؟ حسب آخر claim/heartbeat: Batch-2 مكتمل مزعوم + Batch-3 معلن. لم يُرصد نشاط جديد.
 
-6. هل تم التواصل أو المراجعة؟ لا استشارة PENDING جديدة لـMuse (كل استشارات MUSE مسجلة بمواقف حقيقية). لا مراجعة جديدة مطلوبة هذه الدورة. الكتابة المشتركة محظورة — الدليل في fallback بانتظار استيراد Codex.
+6. هل تم التواصل أو المراجعة؟ لا استشارة PENDING لـMuse (الوحيدة المتبقية WINDOWS-FALLBACK مملوكة لـNVIDIA). لا مراجعة جديدة مطلوبة هذه الدورة. الدليل في fallback بانتظار استيراد Codex.
 
 7. أين اتفقا وأين اختلفا؟ لا خلاف جديد. المفتوح: F3 توافق الأسطول، F4 الخلاف التصميمي، مراجعة NVIDIA للمرشح، حدود المشروع الأوسع، استعادة :5002، UAT الحقيقي متعدد المحفزات.
 
 8. الأرقام المؤكدة (نطاق مدقق فقط، الشامل = UNKNOWN):
-DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (Muse HEAD 95c2dc55, c220 rerun) EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=5 (scoped c220: الخمس قابلة للتوزيع + recall-limited) ORPHANED=UNKNOWN DUPLICATE=0 (registry import success) UNKNOWN=global REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
-(REPORTED_BY_MUSE؛ لا ادعاء قبول منتج.)
+DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (Muse HEAD 26faf93b, c221 rerun) EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=5 (c220 scoped, retained) ORPHANED=UNKNOWN DUPLICATE=0 (registry import success) UNKNOWN=global REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
+(إضافي c221: IMPLEMENTED_NOT_REGISTERED=1 verified-real deliberate-legacy؛ REGISTERED_WITHOUT_IMPL=0؛ REPORTED_BY_MUSE؛ لا ادعاء قبول منتج.)
 
-9. ما آخر اختبار ونتيجته؟ مسبار c220: توزيع 5/5 + بوابة جدار ناري (رفض/سماح) + تحقق تنفيذي 4/4 + استدعاء كتالوج 5/5 — كلها GREEN، 2× متطابق بايتيًا. اختبار معزول — ليس REAL_JOE_UI PASS.
+9. ما آخر اختبار ونتيجته؟ مسبار c221 v2: سجل 163/163 + فحص 630 ملفًا + مراجعة يدوية لكل مرشح — GREEN، 2× متطابق بايتيًا. دليل استاتيكي+استيراد — ليس REAL_JOE_UI PASS.
 
-10. المشاكل/العوائق؟ :5002/:5101 DOWN (فحص مباشر c220) — اختبار UAT الرسمي الجديد BLOCKED. :5000 UP لكن API فقط ولا يصلح بديلًا. الكتابة المشتركة محظورة. لا تشغيل ثنائي غير مراجَع على المنفذ الرسمي.
+10. المشاكل/العوائق؟ :5002/:5101 DOWN (فحص مباشر c221) — اختبار UAT الرسمي الجديد BLOCKED. :5000 UP لكن API فقط ولا يصلح بديلًا. الكتابة المشتركة محظورة. لا تشغيل ثنائي غير مراجَع على المنفذ الرسمي.
 
 11. الخطوة التالية؟ استيراد Codex للدليل + استعادة :5002 بمصدر مربوط مراجَع ثم UAT رسمي متعدد المحفزات unseen. كلا CRITICALs مفتوحان.

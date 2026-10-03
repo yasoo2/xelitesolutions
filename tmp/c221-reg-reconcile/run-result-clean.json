@@ -1,0 +1,40 @@
+{
+ "method": "v2: class-style name= (api/src) + literal-style name: (definitions dir), HTML tags stripped, execute( required; see EVIDENCE for limits",
+ "filesTotal": 630,
+ "filesWithExecute": 160,
+ "registryTotal": 163,
+ "registryUnique": 163,
+ "declaredNamesTotal": 169,
+ "implNotRegisteredCount": 8,
+ "implNotRegistered": {
+  "app": [
+   "api/src/modules/tools/definitions/MobileBuilderTool.ts"
+  ],
+  "desktop": [
+   "api/src/modules/tools/definitions/BrowserSmartTools.ts"
+  ],
+  "express": [
+   "api/src/modules/tools/definitions/DatasourceTool.ts"
+  ],
+  "fullstack": [
+   "api/src/modules/tools/definitions/TemplateManagerTool.ts"
+  ],
+  "grep_search": [
+   "api/src/modules/tools/definitions/SystemTools.ts"
+  ],
+  "mobile": [
+   "api/src/modules/tools/definitions/BrowserSmartTools.ts"
+  ],
+  "next": [
+   "api/src/modules/tools/definitions/OrionBusinessFoundationTool.ts"
+  ],
+  "tablet": [
+   "api/src/modules/tools/definitions/BrowserSmartTools.ts"
+  ]
+ },
+ "regWithoutFoundImplCount": 2,
+ "regWithoutFoundImpl": [
+  "architect_plan",
+  "todo_write"
+ ]
+}
