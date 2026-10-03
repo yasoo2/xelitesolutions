@@ -1,0 +1,5 @@
+npm run guard:architecture
+npm run guard:package-scripts
+npm run test:joe:engineer-flow
+npm run test:self-healing:failure
+npm run test:self-healing:success

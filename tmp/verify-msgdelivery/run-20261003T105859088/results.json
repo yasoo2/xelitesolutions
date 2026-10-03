@@ -1,0 +1,82 @@
+﻿[
+    {
+        "agent":  "MUSE",
+        "case":  "composition-1",
+        "passed":  true
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "composition-2",
+        "passed":  true
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "composition-3",
+        "passed":  true
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "composition-4",
+        "passed":  true
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "no-review-no-message",
+        "passed":  true
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "message-without-pending",
+        "passed":  false
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "owned-rework-is-implementation",
+        "passed":  false
+    },
+    {
+        "agent":  "MUSE",
+        "case":  "completed-review-keeps-messages",
+        "passed":  false
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "composition-1",
+        "passed":  true
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "composition-2",
+        "passed":  true
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "composition-3",
+        "passed":  true
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "composition-4",
+        "passed":  true
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "no-review-no-message",
+        "passed":  true
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "message-without-pending",
+        "passed":  false
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "owned-rework-is-implementation",
+        "passed":  false
+    },
+    {
+        "agent":  "NVIDIA",
+        "case":  "completed-review-keeps-messages",
+        "passed":  false
+    }
+]

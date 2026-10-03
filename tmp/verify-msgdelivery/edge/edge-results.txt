@@ -1,0 +1,5 @@
+E1_missing_consult_dir_with_message: MessagesOnly=True hasMarker=True
+E2_missing_messages_dir_no_pending: isNull=True
+E3_only_foreign_messages_no_pending: isNull=True
+E4_pending_owned_nomatch_messages: isImpl=True teamMsgInPayload=False
+E5_empty_message_file_no_pending: isNull=True
