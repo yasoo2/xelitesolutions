@@ -1,51 +1,69 @@
-# LIVE REPORT — Muse + NVIDIA (2026-10-03, ~13:10 local)
+# LIVE-REPORT — fallback copy (shared write denied)
 
-SHARED_WRITE=DENIED ("absolute path is outside the workspace" — sandbox).
-Fallback copy: D:\Joe\muse-worktree\tmp\LIVE-REPORT.md (this file).
-External coordinator: please copy to D:\Joe\coordination\team\LIVE-REPORT.md.
+Muse cycle-205, 2026-10-03. HEAD c5e5b504. Shared path D:\Joe\coordination\team\LIVE-REPORT.md
+is ABSENT/unwritable from this sandbox ("absolute path is outside the workspace").
+Coordinator: import this file verbatim.
 
-## 1. ماذا نعمل الآن؟
-- Muse: فحص مستقل + تثبيت سلوك طبقة التحقق (reconciliation) — انتهت هذه الدورة بتثبيت 5/5.
-- NVIDIA: بين الدورات (لا توجد دورة 95 بعد)؛ آخر عمل: احتواء Batch-2 + إصلاحات الصور Batch-3.
-- Codex: تدقيق إعادة تشغيل :5002 + تنسيق المراجعات.
+1. ماذا نعمل الآن؟
+   - Muse: independent-review + verification-contract lane. This cycle: traced the
+     web_search dispatch fork end-to-end in BOTH trees, and re-verified Batch-2
+     bytes (no drift, probe 30/30). Zero source edits.
+   - NVIDIA (per its 10:55 heartbeat): Batch owner; Batch-2 claimed COMPLETE;
+     next is Batch-3 + web_search fork + fresh UAT.
 
-## 2. ماذا اكتشفنا؟
-- سلوك Muse وNVIDIA **متفق** على شكل الرفض (verification_unavailable) لكن **مختلف** على معنى verificationNote — يحتاج قرار مالك قبل الدمج.
-- عثرة في مسبار الفحص فقط (mock ناقص)، ليست علة منتج — صُححت ووُثقت.
+2. ماذا اكتشفنا؟
+   - web_search has TWO declared dispatch targets: TOOL_ALIASES :247 says
+     search_api, but the executeTool rewrite :368-378 sends it to browser_run.
+     browser_run ALWAYS wins at runtime (both trees, identical lines). The alias
+     entry, the :644 status line, and the tool-aliases.test.ts:39 pin document a
+     path that never executes. search_api and browser_search ARE registered and
+     real — the fork concerns only the legacy web_search name, which receives
+     browser-run evidence where search results were expected (contract mismatch).
+   - Batch-2 bytes show ZERO drift: all 4 pinned hashes match c202; F1 divergence
+     (inline predicate vs isWithinRoot on win32 case/relative paths) re-proven.
 
-## 3. ماذا أنجزنا فعليًا؟
-- Muse: مصفوفة M204 (5 حالات × تشغيلين متطابقين) + جدول تسوية موثق. صفر تعديل كود.
-- NVIDIA: كود Batch-2/3 حقيقي لكن غير مُثبت باختبارات دائمة ولا tsc/build — القبول معلق.
-- لا يوجد PASS لواجهة Joe الحقيقية بعد.
+3. ماذا أنجزنا فعليًا؟
+   - REPORTED_BY_MUSE: fork trace with exact line refs both trees; 30/30 probe
+     rerun receipt on current bytes; response file
+     tmp/team-consultation/CYCLE-205-WEBSEARCH-FORK-001-MUSE.response.md.
+   - No code changed; no integration; no UI run (blocked, see 10).
 
-## 4. ماذا يعمل Muse الآن؟
-تثبيت أدلة + مراجعة مستقلة فقط. لا كود جديد هذه الدورة.
+4. ماذا يعمل Muse الآن؟ Review lane only; awaiting owner's next self-contained
+   commit for independent exact-rerun.
 
-## 5. ماذا يعمل NVIDIA الآن؟
-لا نشاط جديد منذ 11:44 (نهاية دورة 94). آخر مطالبة: Batch-2 COMPLETE (تحتاج شروط قبول).
+5. ماذا يعمل NVIDIA الآن؟ (from its heartbeat/claim only, 10:55) Batch-2 done;
+   Batch-3/f5/fork/UAT next. No new NVIDIA response since 6:09 AM; no new files
+   reviewed this cycle beyond already-known dirty bytes.
 
-## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-نعم عبر القناة الرسمية: Muse راجع BATCH2 (30/30) وc93 وc94 وGaps؛ NVIDIA رد على تدقيق التوصيلات ووعد بإعادة ضبط. لا اتفاق مُختلق.
+6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟ Reviews flow via the receipt
+   channel: Muse c202/c204/c205 delivered. No new NVIDIA reply yet. No agreement
+   inferred.
 
-## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: آلية الاحتواء حقيقية؛ شكل رفض البوابة متطابق (M3/F5).
-- اختلفا/معلق: note⟺prose (M2/M4 ضد wasOriginallyProse)؛ جودة CLI (NEEDS_REWORK)؛ أرقام التدقيق (7/12 فقط).
+7. أين اتفقا وأين اختلفا؟
+   - Agree: containment mechanism is real; ledger 4th-arg completion is correct.
+   - Differ: Batch-2 COMPLETE (Muse: NEEDS_WORK, F1-F4 open) and F5/fork
+     resolution (owner decision still owed). Both CRITICALs stay OPEN.
 
-## 8. الأرقام المؤكدة (نطاق الشجرة فقط، ليست عالمية)
-- REPORTED_BY_MUSE (Muse HEAD): DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 CATALOGUE=40 MEANS_TARGETS=27
-- REPORTED_BY_NVIDIA (dirty): 167 registry / 43 catalogue (غير مُثبتة بتشغيل مستقل)
-- VERIFIED: FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN REPAIRED=0 REAL_JOE_PROVEN=0
-- فجوة واحدة مثبتة ميكانيكيًا: visual_qa مقبولة بالبوابة وغير مسجلة على Muse HEAD (إصلاحها داخل BATCH011 غير المعتمد).
+8. ما الأرقام المؤكدة؟
+   DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN
+   FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN
+   UNKNOWN=UNKNOWN REPAIRED=UNKNOWN VERIFIED=UNKNOWN REAL_JOE_PROVEN=0
+   (Scoped facts only: 30/30 focused probe PASS on current dirty bytes; 163-tool
+   registry census proven earlier on exact-02a bytes only; web_search fork = 1
+   concrete PARTIALLY_WIRED/CONTRACT_MISMATCH row.)
 
-## 9. ما آخر اختبار ونتيجته؟
-- M204 (Muse، داخلي): 5/5 PASS × تشغيلين متطابقين — internal PASS فقط، ليس REAL_JOE_UI.
-- c93 (NVIDIA، داخلي على dirty): 10 بوابات مُعرّفة ذاتيًا خضراء — REPORTED_BY_NVIDIA، تحقق Muse من التنفيذ الحقيقي مع تصحيح النطاق.
-- REAL_JOE_UI: لا PASS — :5002 DOWN.
+9. ما آخر اختبار ونتيجته؟ probe-batch011.cjs rerun: TOTAL pass=30 fail=0.
+   Focused/internal PASS — NOT a Real Joe UI result.
 
-## 10. ما المشاكل أو العوائق الحالية؟
-1. :5002 DOWN (:5101 أيضًا) — اختبار الواجهة الحقيقية محظور. :5000 يعمل (خادم تطوير NVIDIA، API فقط).
-2. الالتزام الجامع (self-contained) من NVIDIA لم يصدر بعد (F1/F2/F3 + pins + tsc/build).
-3. صفّا DIVERGE في جدول التسوية يحتاجان قرار مالك (provenance marker).
+10. ما المشاكل أو العوائق الحالية؟
+    - :5002 DOWN + :5101 DOWN (probed this cycle) → Real Joe UI UAT BLOCKED.
+      :5000 UP but API-only (cannot satisfy "actual Joe UI"), provenance unproven.
+    - Fork unresolved; Batch-2 F1-F4 + permanent pins + owner tsc/build +
+      atomic self-contained commit still owed.
 
-## 11. ما الخطوة التالية؟
-NVIDIA: التزام جامع واحد → مراجعة مستقلة → استعادة :5002 بمراجعة (تدقيق Codex) → اختبار واجهة حقيقية متعدد المحفزات. Muse يعيد تشغيل مسابيره على الالتزام الجامع.
+11. ما الخطوة التالية؟
+    Owner decision + bounded repair (fork, F1-F4, pins), full gates on composed
+    tree, ONE atomic commit, reviewed :5002 adoption, then fresh multi-prompt UAT.
+
+VERIFIED this cycle: fork line refs (both trees), 4/4 hashes no-drift, 30/30
+rerun, port states. Internal PASS ≠ REAL_JOE_UI PASS. Nothing invented about NVIDIA.
