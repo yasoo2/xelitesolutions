@@ -1,0 +1,44 @@
+{
+ "ai_write_file_prose": {
+  "resolution": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "candidates": [
+   "ai_write_file",
+   "write_file"
+  ]
+ },
+ "file_edit_advanced_prose": {
+  "resolution": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "candidates": [
+   "file_edit",
+   "file_edit_advanced"
+  ]
+ },
+ "exact_baselines": {
+  "browser_seo_audit": {
+   "tool": "browser_seo_audit",
+   "how": "exact"
+  },
+  "repo_search": {
+   "tool": "repo_search",
+   "how": "exact"
+  },
+  "github_actions": {
+   "tool": "github_actions",
+   "how": "exact"
+  },
+  "ai_write_file": {
+   "tool": "ai_write_file",
+   "how": "exact"
+  },
+  "browser_ui_audit": {
+   "tool": "browser_ui_audit",
+   "how": "exact"
+  }
+ }
+}

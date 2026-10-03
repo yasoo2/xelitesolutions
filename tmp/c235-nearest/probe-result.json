@@ -1,0 +1,780 @@
+{
+ "registeredCount": 163,
+ "catalogueCount": 40,
+ "gapCount": 123,
+ "gapSelfHitCount": 80,
+ "gapSelfHit": [
+  {
+   "tool": "project_undo",
+   "how": "nearest"
+  },
+  {
+   "tool": "project_repair",
+   "how": "nearest"
+  },
+  {
+   "tool": "google_account",
+   "how": "nearest"
+  },
+  {
+   "tool": "recall_memory",
+   "how": "nearest"
+  },
+  {
+   "tool": "memorize_codebase",
+   "how": "nearest"
+  },
+  {
+   "tool": "architect_plan",
+   "how": "nearest"
+  },
+  {
+   "tool": "progressive_generator",
+   "how": "nearest"
+  },
+  {
+   "tool": "dependency_graph",
+   "how": "nearest"
+  },
+  {
+   "tool": "business_logic_parser",
+   "how": "nearest"
+  },
+  {
+   "tool": "chaos_test_plan",
+   "how": "nearest"
+  },
+  {
+   "tool": "compliance_validator",
+   "how": "nearest"
+  },
+  {
+   "tool": "cloud_cost_estimator",
+   "how": "nearest"
+  },
+  {
+   "tool": "ambiguity_resolver",
+   "how": "nearest"
+  },
+  {
+   "tool": "multi_agent_debate",
+   "how": "nearest"
+  },
+  {
+   "tool": "self_confidence_evaluator",
+   "how": "nearest"
+  },
+  {
+   "tool": "engineering_discovery",
+   "how": "nearest"
+  },
+  {
+   "tool": "project_planner",
+   "how": "nearest"
+  },
+  {
+   "tool": "phase_executor",
+   "how": "nearest"
+  },
+  {
+   "tool": "project_pipeline",
+   "how": "nearest"
+  },
+  {
+   "tool": "enterprise_platform_foundation",
+   "how": "nearest"
+  },
+  {
+   "tool": "orion_business_foundation",
+   "how": "nearest"
+  },
+  {
+   "tool": "project_stop",
+   "how": "nearest"
+  },
+  {
+   "tool": "central_answer",
+   "how": "nearest"
+  },
+  {
+   "tool": "form_inbox",
+   "how": "nearest"
+  },
+  {
+   "tool": "import_project",
+   "how": "nearest"
+  },
+  {
+   "tool": "image_studio",
+   "how": "nearest"
+  },
+  {
+   "tool": "orders_read",
+   "how": "nearest"
+  },
+  {
+   "tool": "business_profile",
+   "how": "nearest"
+  },
+  {
+   "tool": "performance_analyzer",
+   "how": "nearest"
+  },
+  {
+   "tool": "error_recovery",
+   "how": "nearest"
+  },
+  {
+   "tool": "joe_engineering_report",
+   "how": "nearest"
+  },
+  {
+   "tool": "echo",
+   "how": "nearest"
+  },
+  {
+   "tool": "ls",
+   "how": "nearest"
+  },
+  {
+   "tool": "shell_check_status",
+   "how": "nearest"
+  },
+  {
+   "tool": "ask_user",
+   "how": "nearest"
+  },
+  {
+   "tool": "analyze_project",
+   "how": "nearest"
+  },
+  {
+   "tool": "analyze_codebase",
+   "how": "nearest"
+  },
+  {
+   "tool": "codebase_outline",
+   "how": "nearest"
+  },
+  {
+   "tool": "dead_code_detector",
+   "how": "nearest"
+  },
+  {
+   "tool": "http_fetch",
+   "how": "nearest"
+  },
+  {
+   "tool": "html_extract",
+   "how": "nearest"
+  },
+  {
+   "tool": "rss_fetch",
+   "how": "nearest"
+  },
+  {
+   "tool": "json_query",
+   "how": "nearest"
+  },
+  {
+   "tool": "query_datasource",
+   "how": "nearest"
+  },
+  {
+   "tool": "website_full_pipeline",
+   "how": "nearest"
+  },
+  {
+   "tool": "dev_server_start",
+   "how": "nearest"
+  },
+  {
+   "tool": "screenshot",
+   "how": "nearest"
+  },
+  {
+   "tool": "visual_compare",
+   "how": "nearest"
+  },
+  {
+   "tool": "video_action",
+   "how": "nearest"
+  },
+  {
+   "tool": "query_optimizer",
+   "how": "nearest"
+  },
+  {
+   "tool": "large_data_seeder",
+   "how": "nearest"
+  },
+  {
+   "tool": "docker_manager",
+   "how": "meaning"
+  },
+  {
+   "tool": "terraform_manager",
+   "how": "meaning"
+  },
+  {
+   "tool": "kubernetes_ops",
+   "how": "meaning"
+  },
+  {
+   "tool": "alert_manager",
+   "how": "nearest"
+  },
+  {
+   "tool": "cache_manager",
+   "how": "nearest"
+  },
+  {
+   "tool": "go_builder",
+   "how": "nearest"
+  },
+  {
+   "tool": "java_builder",
+   "how": "nearest"
+  },
+  {
+   "tool": "llm_cache",
+   "how": "nearest"
+  },
+  {
+   "tool": "logger",
+   "how": "nearest"
+  },
+  {
+   "tool": "monitoring",
+   "how": "nearest"
+  },
+  {
+   "tool": "project_state_manager",
+   "how": "nearest"
+  },
+  {
+   "tool": "python_builder",
+   "how": "nearest"
+  },
+  {
+   "tool": "request_analyzer",
+   "how": "nearest"
+  },
+  {
+   "tool": "template_manager",
+   "how": "nearest"
+  },
+  {
+   "tool": "archive_files",
+   "how": "nearest"
+  },
+  {
+   "tool": "execute_python",
+   "how": "nearest"
+  },
+  {
+   "tool": "sonar_analysis",
+   "how": "nearest"
+  },
+  {
+   "tool": "ci_generate_pipeline",
+   "how": "meaning"
+  },
+  {
+   "tool": "load_tester",
+   "how": "nearest"
+  },
+  {
+   "tool": "pattern_recognize",
+   "how": "nearest"
+  },
+  {
+   "tool": "auto_refactor",
+   "how": "nearest"
+  },
+  {
+   "tool": "performance_profile",
+   "how": "nearest"
+  },
+  {
+   "tool": "knowledge_search",
+   "how": "nearest"
+  },
+  {
+   "tool": "knowledge_add",
+   "how": "nearest"
+  },
+  {
+   "tool": "task_lifecycle",
+   "how": "nearest"
+  },
+  {
+   "tool": "search_files",
+   "how": "nearest"
+  },
+  {
+   "tool": "inspect_symbol",
+   "how": "nearest"
+  },
+  {
+   "tool": "notify_user",
+   "how": "nearest"
+  },
+  {
+   "tool": "todo_write",
+   "how": "nearest"
+  }
+ ],
+ "gapMisrouteCount": 42,
+ "gapMisroute": [
+  {
+   "tool": "browser_summarize",
+   "prose": "please run browser summarize for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_ui_fix",
+   "prose": "please run browser ui fix for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_page_fix",
+   "prose": "please run browser page fix for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_fill_form",
+   "prose": "please run browser fill form for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_compare",
+   "prose": "please run browser compare for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_extract_data",
+   "prose": "please run browser extract data for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_check_links",
+   "prose": "please run browser check links for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_performance",
+   "prose": "please run browser performance for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_seo_audit",
+   "prose": "please run browser seo audit for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_console_scan",
+   "prose": "please run browser console scan for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_save_pdf",
+   "prose": "please run browser save pdf for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_readability",
+   "prose": "please run browser readability for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_contrast_audit",
+   "prose": "please run browser contrast audit for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_a11y_deep",
+   "prose": "please run browser a11y deep for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_extract_meta",
+   "prose": "please run browser extract meta for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_translate",
+   "prose": "please run browser translate for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_responsive_check",
+   "prose": "please run browser responsive check for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_find_text",
+   "prose": "please run browser find text for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_design_tokens",
+   "prose": "please run browser design tokens for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_click",
+   "prose": "please run browser click for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_fullpage_shot",
+   "prose": "please run browser fullpage shot for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_smart_agent",
+   "prose": "please run browser smart agent for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_autofix",
+   "prose": "please run browser autofix for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_consent",
+   "prose": "please run browser consent for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_search",
+   "prose": "please run browser search for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_launch",
+   "prose": "please run browser launch for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "user_browser",
+   "prose": "please run user browser for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "repo_read_file",
+   "prose": "please run repo read file for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "repo_search",
+   "prose": "please run repo search for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "repo_apply_patch",
+   "prose": "please run repo apply patch for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "repo_run_command",
+   "prose": "please run repo run command for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "repo_diff_summary",
+   "prose": "please run repo diff summary for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "deploy_pages",
+   "prose": "please run deploy pages for this",
+   "resolution": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "git_local_workflow",
+   "prose": "please run git local workflow for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "terminal_manager",
+   "prose": "please run terminal manager for this",
+   "resolution": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "api_tester",
+   "prose": "please run api tester for this",
+   "resolution": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "search_api",
+   "prose": "please run search api for this",
+   "resolution": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_action",
+   "prose": "please run browser action for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "browser_vision",
+   "prose": "please run browser vision for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "docker_swarm_ops",
+   "prose": "please run docker swarm ops for this",
+   "resolution": {
+    "tool": "docker_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "github_actions",
+   "prose": "please run github actions for this",
+   "resolution": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "secrets_scan_repo",
+   "prose": "please run secrets scan repo for this",
+   "resolution": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  }
+ ],
+ "gapNullCount": 1,
+ "gapAmbiguousCount": 1,
+ "gapAmbiguous": [
+  {
+   "tool": "file_edit_advanced",
+   "candidates": [
+    "file_edit",
+    "file_edit_advanced"
+   ]
+  }
+ ],
+ "gapZeroCount": 0,
+ "gapZero": [],
+ "gapOneButNullCount": 0,
+ "gapOneButNull": [],
+ "catalogueSelfHit": "35/40",
+ "catalogueNonSelf": [
+  {
+   "tool": "browser_ui_audit",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "ai_write_file",
+   "resolution": {
+    "tool": null,
+    "why": "unknown"
+   }
+  },
+  {
+   "tool": "inspect_api",
+   "resolution": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "validate_api",
+   "resolution": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "tool": "github_pr",
+   "resolution": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   }
+  }
+ ],
+ "f1_regression": {
+  "tool": "react_project",
+  "how": "meaning"
+ },
+ "f2_regression": {
+  "tool": "github_repo_manager",
+  "how": "meaning"
+ },
+ "sampleRows": [
+  {
+   "tool": "browser_run",
+   "inCatalogue": true,
+   "prose": "please run browser run for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "selfHit": true
+  },
+  {
+   "tool": "browser_summarize",
+   "inCatalogue": false,
+   "prose": "please run browser summarize for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "selfHit": false
+  },
+  {
+   "tool": "browser_ui_audit",
+   "inCatalogue": true,
+   "prose": "please run browser ui audit for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "selfHit": false
+  },
+  {
+   "tool": "browser_ui_fix",
+   "inCatalogue": false,
+   "prose": "please run browser ui fix for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "selfHit": false
+  },
+  {
+   "tool": "browser_page_fix",
+   "inCatalogue": false,
+   "prose": "please run browser page fix for this",
+   "resolution": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "selfHit": false
+  }
+ ]
+}
