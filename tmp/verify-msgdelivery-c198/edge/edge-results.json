@@ -1,0 +1,37 @@
+﻿[
+    {
+        "id":  "E1-missing-consultations-dir",
+        "passed":  true,
+        "detail":  "messagesOnly=True"
+    },
+    {
+        "id":  "E2-missing-messages-dir",
+        "passed":  true,
+        "detail":  "resultIsNull=True"
+    },
+    {
+        "id":  "E3-foreign-only",
+        "passed":  true,
+        "detail":  "resultIsNull=True"
+    },
+    {
+        "id":  "E4-owned-no-messages",
+        "passed":  true,
+        "detail":  "hasImplSection=True"
+    },
+    {
+        "id":  "E5-empty-file",
+        "passed":  true,
+        "detail":  "actual=NULL (recorded; no phantom consultation either way)"
+    },
+    {
+        "id":  "E6-pending-plus-message",
+        "passed":  true,
+        "detail":  "reviewPrompt=True"
+    },
+    {
+        "id":  "E7-message-prompt-shape",
+        "passed":  true,
+        "detail":  "shape ok"
+    }
+]
