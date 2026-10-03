@@ -1,0 +1,5 @@
+﻿guard:architecture
+guard:package-scripts
+test:joe:engineer-flow
+test:self-healing:failure
+test:self-healing:success

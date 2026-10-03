@@ -1,0 +1,47 @@
+﻿L100: ظ£à Architecture guard passed
+L122: ظ£à test:self-healing:success
+L123: ظ£à package.json self-fix scripts guard passed
+L152: Test Suites: 3 passed, 3 total
+L153: Tests:       19 passed, 19 total
+L155: Time:        11.08 s, estimated 13 s
+L176: Test Suites: 2 passed, 2 total
+L177: Tests:       17 passed, 17 total
+L179: Time:        7.891 s, estimated 13 s
+L281: ظ£à Architecture guard passed
+L303: ظ£à test:self-healing:success
+L304: ظ£à package.json self-fix scripts guard passed
+L333: Test Suites: 3 passed, 3 total
+L334: Tests:       19 passed, 19 total
+L336: Time:        10.558 s
+L357: Test Suites: 2 passed, 2 total
+L358: Tests:       17 passed, 17 total
+L360: Time:        9.221 s
+L363: [0m$ [0mcd D:\Joe\xelitesolutions\api; npm run test:self-healing:success
+L364: > api@1.0.0 test:self-healing:success
+L365: > ts-node src/tests/manual/verify_self_healing_success_loop.ts
+L368: ≡ادز Starting Self-Healing Success Loop Verification...
+L382: [DEBUG] Checkpoint artifactDir: D:\Joe\xelitesolutions\api\data\tests\success_path\test-success-workspace, runId:
+L383: test-success-run
+L425: D:\Joe\xelitesolutions\api\data\tests\success_path\test-success-workspace\required_file.txt reboundTarget:
+L450: ظ£à SUCCESS: Pipeline completed after self-healing!
+L455: ظ£ذ Verification Complete. Status: PASSED
+L503: ظ£à SUCCESS: System stopped after failed repair attempt as expected.
+L507: ظ£ذ Verification Complete. Status: PASSED
+L529: ??? PASS: Overall pipeline completed successfully.
+L532: ??? PASS: A distinct final whole-project gate ran and passed once.
+L533: PASS: Independent trace proves smoke once during editing, failed build plus one successful rerun, and both final
+L541: ??? Full Engineer Flow Verification: PASSED
+L564: Test Suites: 5 passed, 5 total
+L565: Tests:       36 passed, 36 total
+L567: Time:        14.977 s
+L596: ظ£à Architecture guard passed
+L618: ظ£à test:self-healing:success
+L619: ظ£à package.json self-fix scripts guard passed
+L642: Test Suites: 5 passed, 5 total
+L643: Tests:       36 passed, 36 total
+L645: Time:        15.89 s
+L682: engineer-flow PASS; self-healing success/failure PASS
+L700: engineer-flow PASS; self-healing success/failure PASS
+L730: | Self-Healing Success | ظ£à PASS |
+L739: - **Self-Healing Success/Failure**: PASS
+L755: TEST_RESULT=All 10 AGENTS gates PASS; 36/36 tests PASS (verification gaps 8/8, smoke 5/5, prose 6/6, CLI 17/17); engineer-flow PASS; self-healing success/failure PASS
