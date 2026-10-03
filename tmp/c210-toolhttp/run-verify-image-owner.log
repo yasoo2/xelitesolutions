@@ -1,0 +1,14 @@
+Muse cycle-210 independent run — verify_image_project_owner.mts on exact Codex bytes
+cwd: D:\Joe\worktrees\codex-local-bind-safety\api  (read-only; drift-verified after)
+runner: node D:\Joe\muse-worktree\api\node_modules\tsx\dist\cli.mjs verification/verify_image_project_owner.mts
+TEMP/TMP/TMPDIR redirected to D:\Joe\muse-worktree\tmp\c210-toolhttp\tmpcache
+harness sha256: 6D9D288F1E42F05CF1354A714CFE463EC4F18EEEAE099E00619919E57095179A
+
+--- stdout (verbatim JSON) ---
+{"crossOwner":{"error":"project_forbidden","fileTouched":false,"scriptAttempted":false},"ownProject":{"error":"synthetic_write_intercepted","fileTouched":true,"scriptAttempted":true},"ownImportedOutside":{"error":"synthetic_write_intercepted","fileTouched":true,"scriptAttempted":true},"legacyOutside":{"error":"project_forbidden","fileTouched":false,"scriptAttempted":false},"legacyInside":{"error":"synthetic_write_intercepted","fileTouched":true,"scriptAttempted":true},"stampedOwner":"user-b","crossOwnerOverwrite":"project_forbidden"}
+
+--- stderr (environment artifact, after verdict printed) ---
+Error: EPERM: operation not permitted, open 'D:\Joe\worktrees\codex-local-bind-safety\api\logs\application-2026-10-03-14.log'
+Emitted 'error' event (file-stream-rotator WriteStream); sandbox user cannot write foreign tree.
+EXIT=1 caused SOLELY by the logger side effect; all 7 harness assertions GREEN per JSON body.
+Codex worktree `git status --short` after run: only pre-existing `?? api/tmp/` (zero drift).
