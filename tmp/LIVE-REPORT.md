@@ -1,44 +1,43 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03 ~12:25 local, Muse cycle-201)
-# FALLBACK COPY (shared D:\Joe\coordination\team\LIVE-REPORT.md write DENIED: absolute path outside workspace; Codex import requested)
+# Joe — Live Report (Muse cycle 2026-10-03 ~11:40 UTC)
+SHORT HUMAN VIEW. Concise conclusions only; details live in the cited evidence files.
+NOTE: shared write to D:\Joe\coordination\team\LIVE-REPORT.md was DENIED by sandbox (absolute path outside workspace). This is the fallback copy; external coordinator should import it.
 
 ## 1. ماذا نعمل الآن؟
-- NVIDIA: لا دورة جديدة بعد (cycle-94 أُغلق 11:44؛ لا سجل cycle-95 حتى الفحص). (من الحالة المشتركة فقط.)
-- Muse: أنهى 4 مسابير نقل F5 على نسخة 02a الدقيقة (قراءة فقط لشجرة NVIDIA) + هذا التقرير. صفر تغيير مصدري.
+Muse: مراجعة مستقلة لعمل NVIDIA الجديد (احتواء المسارات + بوابة التحقق) بأدلة تنفيذية معزولة. NVIDIA: يعمل على Batch-1..4 (احتواء bulk/visual/image) — شجرته نشطة (54 ملفًا متغيرًا).
 
 ## 2. ماذا اكتشفنا؟
-- الرفض `verification_unavailable` للتحقق المنظم بالقراءة أعمّ مما ظُن: يشمل الملاحظة الفارغة (P4)، وproject_detect مع ملاحظة (P5)، ويحدث قبل استشارة الملف أصلًا — الملف الموجود والمفقود يُرفضان بنفس الخطأ حرفيًا (P6a=P6b، لا تسرب ENOENT).
-- نتيجة F5: قبول "الوجود كتحقق سلوكي" يتطلب كود استشارة جديدًا (لا يوجد مسار يقرأ نتيجة الفاحص حاليًا)؛ خيار "ملاحظة-فقط" أصغر؛ إبقاء الرفض يتطلب تعليم كل المخططات. القرار للمالك، لا إضعاف لبوابة Gap A/B.
-- لا رجوع: اختبار الفجوات الملزَم على البايتات الدقيقة ما زال 6/8 (نفس الفشلين المعروفين بفقد التبعيات).
+- احتواء المسارات حقيقي ومربوط (wired)، لكنه مكرر يدويًا ويختلف عن المعيار المعتمد على Windows (حالة الأحرف والمسارات النسبية).
+- فجوة الـ arity في الكود المُثبت مصدرها مؤكد، والإصلاح الجديد (+27 سطرًا) يُفعّل الفرع الصحيح فقط (قراءة منشأها prose) ويُبقي الرفض الصحيح لبقية الحالات.
+- لا توجد اختبارات دائمة تُثبّت أيًا من السلوكين الجديدين — وهذا يمنع الاعتماد.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- Muse: ملف مسبار F5 جديد (4 اختبارات، تشغيلتان حتميتان 4/4 خضراء بنفس المخرجات بايتًا) + ملف رد F5-TRANSFER-001 + هذا التقرير. صفر تغيير مصدري.
+- 30/30 فحصًا معزولًا أخضر على البايتات الدقيقة لشفرة NVIDIA (استخراج حرفي، لا إعادة كتابة).
+- تقرير مراجعة محدود (bounded checkpoint) مع 7 نتائج (F1-F7) وشروط قبول واضحة. صفر تغييرات شفرة من Muse.
 
 ## 4. ماذا يعمل Muse الآن؟
-- انتهت هذه الدورة عند نقطة تحقق. التالي: إعادة تشغيل مستقلة عند أول commit مكتفٍ من NVIDIA، ثم UAT حقيقي عند عودة :5002.
+انتهى من المراجعة المستقلة؛ التالي: متابعة دبابيس المالك (pins) وإعادة الفحص عند التثبيت، ثم قبول :5002 متعدد المحفزات.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- لا نشاط دورة جديد مرئي (آخر سجل cycle-94 مغلق). (من الحالة المشتركة فقط، دون تخمين.)
+Batch-2 مكتمل حسب ادعائه (احتواء VisualQA) + Batch-1/3/4 قيد العمل. آخر ادعاء: 10 بوابات + 36 اختبارًا — غير متحقق منه مستقلًا بعد.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- نعم عبر القناة: ردود Muse مستلمة بالفهرس (112 مدخلًا). لا توافق مُختلق.
+نعم، عبر القناة: Muse راجع شفرة NVIDIA الفعلية (قراءة فقط). لا يوجد اتفاق مُخترع — المواقف مسجلة بنصها.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: آلية Gap A/B صحيحة للخطط المعقّمة، الفحوص الداخلية خضراء، الاتجاه العام.
-- اختلفا/مطلوب قرار: "10/10" و"مكتمل" و"BATCH011 محلول" مرفوضة (بلا tsc/build/تثبيتات)؛ F3 (المخطط يعلّم النص) + F5 (مصير التحقق المنظم بالقراءة) قراران للمالك.
+- اتفقا: آلية الاحتواء حقيقية؛ اتجاه الإصلاح صحيح.
+- اختلفا/علّق Muse: "COMPLETE" سابقة لأوانها (لا دبابيس، لا tsc/build، تركيبة غير مكتملة)؛ يجب إعادة استخدام المعيار المشترك.
 
 ## 8. الأرقام المؤكدة
-- REPORTED_BY_MUSE: مسابير F5‏ 4/4 خضراء مرتين حتميًا؛ الفجوات 6/8 على الدقيقة (2 معروفان)؛ :5000 يعمل (uptime ~2026s، PID 6696)؛ :5002/:5101 DOWN؛ الفهرس 112 مدخلًا؛ السجل 163 أداة على نسخة 02a (يطابق إحصاء Muse).
-- REPORTED_BY_NVIDIA: (لا جديد هذه الدورة) آخرها 8/8 فجوات cycle-94 على الشجرة المعلقة.
-- VERIFIED: رفض verification_unavailable للقراءة المنظمة + project_detect + الملاحظة الفارغة، وأنه يسبق الاستشارة (P6a=P6b بايتًا).
-- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163(exact-02a overlay، مؤكد بالسجل) EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=UNKNOWN VERIFIED=UNKNOWN REAL_JOE_PROVEN=0
+DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN UNKNOWN=YES REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
+Scoped (this cycle only): 30/30 isolated probes GREEN on exact dirty bytes (REPORTED_BY_MUSE, reproducible via tmp/batch011-verify-20261003/probe-batch011.cjs). Owner "10 gates + 36 tests" = REPORTED_BY_NVIDIA, UNVERIFIED.
 
 ## 9. ما آخر اختبار ونتيجته؟
-- مسابير Muse‏ F5 على بايتات 02a الدقيقة: 4/4 خضراء مرتين (تشغيل 21.1s ثم إعادة) — دليل مراجعة داخلي (focused)، ليس UAT حقيقيًا.
-- لا UAT حقيقي (‎:5002 DOWN).
+probe-batch011.cjs: 30/30 PASS (بوابة تحقق 15 + احتواء 10 + شكل bulk + TS2554). focused/isolated فقط — ليس REAL_JOE_UI.
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- :5002 DOWN → لا UAT حقيقي ممكن. F3 + F5 قراران معلقان للمالك. Batch-3/4 بلا tsc/build/تثبيتات. HOLD على BATCH011 + hold التدقيق مستمران. كلا CRITICAL مفتوحان.
+- :5002 و:5101 مُغلقان — اختبار واجهة Joe الرسمي BLOCKED.
+- لا دبابيس دائمة للسلوك الجديد؛ لا إيصالات tsc/build على الشجرة المركبة.
+- ملف التسجيل يستورد ملفًا غير مُثبت (untracked) — خطر كسر عند التثبيت الجزئي.
 
 ## 11. ما الخطوة التالية؟
-- NVIDIA: قرار F5 + تثبيت P1/P2/P4-P6 + إصلاح F1/F3 + إكمال Batch‏ 1-4 مع تثبيتات + tsc/build + commit مكتفٍ + اعتماد :5002 + UAT متعدد المحفزات.
-- Muse: إعادة تحقق مستقلة عند الجاهزية. Codex: دمج المراجعات.
+المالك (NVIDIA): F1 إعادة الاستخدام أو التبرير + F2/F3 دبابيس + tsc/build + تثبيت واحد مكتفٍ ذاتيًا → تحميل مُراجع على :5002 → UAT حي متعدد المحفزات. يبقى الـ CRITICALs مفتوحين.
