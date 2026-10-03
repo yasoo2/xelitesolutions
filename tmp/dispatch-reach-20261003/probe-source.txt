@@ -1,0 +1,67 @@
+/**
+ * DISPOSABLE PROBE — cycle-213, Muse wiring lane.
+ * Resolve-only executor-reachability for the 5 planner-invisible candidates.
+ * NO tool is executed. Deleted after 2x deterministic run; source preserved
+ * in tmp/dispatch-reach-20261003/probe-source.txt
+ */
+import { tools } from '../modules/tools/registry';
+import { resolvePlannedTool } from '../core/orchestrator/plan-tools';
+import { TOOL_ALIASES } from '../modules/services/ToolService';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const NAMES = [
+  'cloud_cost_estimator',
+  'self_confidence_evaluator',
+  'ask_user',
+  'rss_fetch',
+  'task_lifecycle',
+  'read_file', // positive control
+  'bogus_tool_xyz_7788', // negative control
+];
+
+describe('dispatch-reach probe', () => {
+  test('resolve-only reachability matrix', () => {
+    const rows = NAMES.map((n) => {
+      const def: any = (tools as any[]).find((t) => t && t.name === n) || null;
+      const res: any = resolvePlannedTool(n);
+      const aliasKeysTo = Object.entries(TOOL_ALIASES as Record<string, string>)
+        .filter(([, v]) => v === n)
+        .map(([k]) => k);
+      return {
+        name: n,
+        registered: !!def,
+        executeType: def ? typeof def.execute : null,
+        permissions: def ? def.permissions : null,
+        sideEffects: def ? def.sideEffects : null,
+        rateLimit: def ? def.rateLimitPerMinute : null,
+        inputRequired: def && def.inputSchema ? def.inputSchema.required ?? null : null,
+        inputKeys: def && def.inputSchema && def.inputSchema.properties
+          ? Object.keys(def.inputSchema.properties)
+          : null,
+        resolution: res,
+        aliasKeysTo,
+        isAliasKey: ((TOOL_ALIASES as Record<string, string>)[n] as any) ?? null,
+      };
+    });
+    const out = {
+      museHead: 'e0ecca07',
+      method: 'resolve-only; no tool executed; PhaseExecutor routes resolved.tool verbatim (PhaseExecutorTool.ts:1394-1402)',
+      rows,
+    };
+    const dir = path.resolve(__dirname, '../../../tmp/dispatch-reach-20261003');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'reachability.json'), JSON.stringify(out, null, 2));
+    // eslint-disable-next-line no-console
+    console.log('[DISPATCH-REACH] ' + rows.map((r) => `${r.name}:reg=${r.registered}:exec=${r.executeType}:res=${JSON.stringify(r.resolution)}`).join(' | '));
+    for (const r of rows.slice(0, 6)) {
+      expect(r.registered).toBe(true);
+      expect(r.executeType).toBe('function');
+      expect((r.resolution as any).tool).toBe(r.name);
+      expect((r.resolution as any).how).toBe('exact');
+    }
+    const bogus = rows[6];
+    expect(bogus.registered).toBe(false);
+    expect((bogus.resolution as any).tool).toBeNull();
+  });
+});

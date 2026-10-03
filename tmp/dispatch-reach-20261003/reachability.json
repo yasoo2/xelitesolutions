@@ -1,0 +1,168 @@
+{
+  "museHead": "e0ecca07",
+  "method": "resolve-only; no tool executed; PhaseExecutor routes resolved.tool verbatim (PhaseExecutorTool.ts:1394-1402)",
+  "rows": [
+    {
+      "name": "cloud_cost_estimator",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimit": 20,
+      "inputRequired": [
+        "resources"
+      ],
+      "inputKeys": [
+        "resources",
+        "traffic"
+      ],
+      "resolution": {
+        "tool": "cloud_cost_estimator",
+        "how": "exact"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimit": 20,
+      "inputRequired": [
+        "content"
+      ],
+      "inputKeys": [
+        "content"
+      ],
+      "resolution": {
+        "tool": "self_confidence_evaluator",
+        "how": "exact"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    },
+    {
+      "name": "ask_user",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimit": 60,
+      "inputRequired": [
+        "question"
+      ],
+      "inputKeys": [
+        "question",
+        "options"
+      ],
+      "resolution": {
+        "tool": "ask_user",
+        "how": "exact"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    },
+    {
+      "name": "rss_fetch",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimit": 60,
+      "inputRequired": [
+        "url"
+      ],
+      "inputKeys": [
+        "url",
+        "limit"
+      ],
+      "resolution": {
+        "tool": "rss_fetch",
+        "how": "exact"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    },
+    {
+      "name": "task_lifecycle",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimit": 60,
+      "inputRequired": [
+        "action"
+      ],
+      "inputKeys": [
+        "action",
+        "taskName",
+        "taskStatus",
+        "taskSummary",
+        "mode"
+      ],
+      "resolution": {
+        "tool": "task_lifecycle",
+        "how": "exact"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    },
+    {
+      "name": "read_file",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimit": 60,
+      "inputRequired": [
+        "path"
+      ],
+      "inputKeys": [
+        "path",
+        "startLine",
+        "endLine"
+      ],
+      "resolution": {
+        "tool": "read_file",
+        "how": "exact"
+      },
+      "aliasKeysTo": [
+        "file_read",
+        "cat_file",
+        "open_file"
+      ],
+      "isAliasKey": null
+    },
+    {
+      "name": "bogus_tool_xyz_7788",
+      "registered": false,
+      "executeType": null,
+      "permissions": null,
+      "sideEffects": null,
+      "rateLimit": null,
+      "inputRequired": null,
+      "inputKeys": null,
+      "resolution": {
+        "tool": null,
+        "why": "unknown"
+      },
+      "aliasKeysTo": [],
+      "isAliasKey": null
+    }
+  ]
+}
