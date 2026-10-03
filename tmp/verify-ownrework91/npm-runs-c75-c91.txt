@@ -1,0 +1,85 @@
+Muse independent survey — unique `npm run` invocations per NVIDIA log (ANSI stripped, UTF-16LE decoded)
+Survey date: 2026-10-03 ~10:30 local (Muse cycle 192). Read-only; NVIDIA tree untouched.
+
+=== nvidia-2026-10-03_02-52-32-cycle-75.log ===
+npm run guard:architecture
+
+=== nvidia-2026-10-03_03-36-08-cycle-76.log ===
+npm run guard:architecture
+
+=== nvidia-2026-10-03_04-14-39-cycle-77.log ===
+npm run build | npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow
+| npm run test:self-fix:build-context | npm run test:self-fix:execution-safety
+| npm run test:self-fix:typescript-missing-name | npm run test:self-fix:typescript-number-to-string
+| npm run test:self-fix:typescript-repair
+| npm run test:self-healing:failure | npm run test:self-healing:success
+NOTE: ran while branch was ahead of origin/main by 2 (pre-de73/02a/a10).
+Commit dates (local +0300): de73cfb4 05:26:03, 02a37c9b 05:57:02, a10c71ab 08:20:14.
+Only 5 of ~12 self-fix scripts executed, on stale bytes. Not current-source evidence.
+
+=== nvidia-2026-10-03_04-59-42-cycle-78.log ===
+npm run build | npm run check | npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-fix:execution-safety
+| npm run test:self-healing:success
+NOTE: execution-safety only; also pre-a10.
+
+=== nvidia-2026-10-03_06-05-09-cycle-79.log ===
+npm run guard:architecture | npm run guard:package-scripts
+
+=== nvidia-2026-10-03_06-15-10-cycle-80.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_06-46-58-cycle-81.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_07-28-20-cycle-82.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_07-45-38-cycle-83.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_08-26-23-cycle-84.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_08-42-01-cycle-85.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_08-57-38-cycle-86.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_09-11-09-cycle-87.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_09-25-30-cycle-88.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:failure | npm run test:self-healing:success
+
+=== nvidia-2026-10-03_09-39-57-cycle-89.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:joe:engineer-flow | npm run test:self-healing:success
+NOTE: no self-healing:failure execution; engineer-flow TIMEOUT 180s per cycle-191.
+
+=== nvidia-2026-10-03_09-55-34-cycle-90.log ===
+npm run guard:architecture | npm run guard:package-scripts
+| npm run test:self-healing:failure | npm run test:self-healing:success
+NOTE: no engineer-flow execution; self-healing:success TIMEOUT 120s per cycle-191.
+All 24 `test:self-fix` text mentions are ✅ rows inside the two
+guard:package-scripts outputs (lines 121-132 under guard run at :114;
+lines 402-413 under guard run at :395). See c90-guard-context.txt.
+
+=== nvidia-2026-10-03_10-19-56-cycle-91.log === (ACTIVE at survey, 30-48KB growing, untouched)
+npm run guard:architecture | npm run guard:package-scripts (+ jest 19/19 first group)
+NOTE: partial observation only; NO verdict on this open cycle.
+
+CONCLUSION: zero `npm run test:self-fix*` executions in c79-c91 (13 consecutive
+cycles), including every cycle on/after commits de73/02a/a10. The only self-fix
+executions on record (c77: 5 scripts; c78: 1 script) ran on pre-a10 bytes.
