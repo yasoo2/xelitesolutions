@@ -1,60 +1,61 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03 cycle 173)
+# LIVE-REPORT — Muse + NVIDIA (2026-10-03 cycle 174)
 # FALLBACK COPY: shared path D:\Joe\coordination\team\LIVE-REPORT.md unwritable from this
 # sandbox (ACCESS_DENIED pattern, shared file absent). External worker: copy verbatim.
 
 ## 1. ماذا نعمل الآن؟
-- Muse: تدقيق wiring لسلسلة المتصفح (167) مكتمل + تحقق محايد من بايتات NVIDIA.
-- NVIDIA: لا بايتات جديدة (الأحدث requested-action.ts ‏02:32 مطابق لفحص سابق)؛ claimها ‏00:56 ساري.
+- Muse: مراجعة مستقلة ثانية لمخرجات تدقيق الـwiring الخمسة (JOE-*) — مكتملة، NEEDS_REWORK مع 12 finding مدعومة بالأدلة.
+- NVIDIA: آخر claim (00:56): إصلاح verification مُتحقق + UAT محظور provider. لا موقف جديد مُخترع لها.
 
 ## 2. ماذا اكتشفنا؟
-- visual_qa يتيم للمرة الثالثة حيًّا: مستورد في registry لكن غير مسجّل، ومع ذلك مذكور في ToolService وPhaseExecutor ومقبول في ledger — نفس فئة ‏166 (موصول الطرفين والوسط مفقود) (P1).
-- screenshot مسجّل لكن: اسم الملف من المدخل خامًا إلى path.join (اجتياز ‏../‎‏ ممكن، مُتتبَّع مصدريًا غير مُنفَّذ) + يكتب ملفًا بصلاحية read فقط (P2+P3).
-- تحويل معنى خاطئ حي: ‏'click the login button' ← ‏auth_builder بدل أداة متصفح (P2، يحتاج مالك المخطط).
-- عائلة تحويل صحية موثقة: browser_open/get_state/snapshot/web_search غير مسجلة لكن ToolService يعيد توجيهها حيًّا إلى browser_run المسجّل — النمط الإيجابي مقابل ‏image_generate الميت.
-- المحلّل ضيق: ‏3‏/10 ‏UNKNOWN‏ منها عبارة التحكم بقراءة ملف (مُبلَّغ لا مُخفى).
-- خطأ مسح مسبق مُصحَّح حيًّا: ‏browser_ui_fix‏ مسجلة فعلًا (ليست شبحًا).
-- كل نتائج ‏167‏ متطابقة بايتًا على الخطين (7/7 ملفات + عائلة التحويل).
+- العدد 164 = شجرة NVIDIA المعدّلة (dirty) وليس e8 المُدّعى؛ e8 الثابت = 163 (تعداد ثلاثي المصادر). تقسيم 74/90 قديم ولا يطابق شيئًا (revived الثابت = 71).
+- visual_qa + generate_image + bulk_file_generator: مُنفّذة ومستوردة لكن غير مُسجّلة — على الخطين + بايتات e8. visual_qa مقبول في ledger كمدقق لكنه يموت unknown_tool.
+- ORPHAN-007 خطأ: أدوات Elite الثمانية كلها مسجلة.
+- ادعاء ~14 alias ديناميكيًا للمتصفح خطأ: 4 فقط حقيقية؛ web_search منشطر (plan: search_api مقابل executor: browser_run).
+- Gap-A/B: الإصلاح موجود فقط في dirty غير مُسلّم + اختباراته السلبية placeholders — ليس RESOLVED على e8.
+- جدول Real-UI: الأحكام PARTIAL حرفيًا (ليست SUCCESS) والطلبات مُقتبسة خطأ والمنفذ :5101 لا :5002. ‏REAL_JOE_PROVEN=0‏ ثابت.
+- BATCH-002 "خطر منخفض" يتعارض مع HIGH_SECURITY مسجل (repo_run_command + shell:true) — يجب أن يكون SECURITY-GATED.
+- متفق عليه: الكتالوج 40 + فجوة الرؤية + 28 alias + تسجيل repo_* + جدول ledger + اتجاه إصلاح Gap.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- WIRING-167: ‏probe‏ حي ‏2/2‏ مخرجات متطابقة بايتًا (‏sha 3B94ADC1) + قراءة ‏7‏ ملفات تعريف + مقارنة NVIDIA + ‏RESULT167.md (‏P1‏ واحد + ‏P2‏ اثنان + ‏P3‏ اثنان + ‏P4‏ واحد، كلها مدخلات مراجعة).
-- ‏prose-verification‏ أُعيد تشغيلها: ‏18/18‏ ‏PASS‏ عبر مجموعتين، ‏JEST_EXIT=0‏ (‏188s‏؛ وصفة ‏Set-Location‏ + ‏TEMP‏ لمساحة العمل بعد ‏3‏ محاولات ‏UNC‏ فاشلة).
-- مراجعة ‏CLI‏ السابقة (‏D1-D12 NEEDS_REWORK‏) ما زالت سارية: لا بايتات NVIDIA جديدة.
-- صفر تعديل على كود ‏Joe‏ وعلى شجرة ‏NVIDIA.
+- WIRING-AUDIT-CROSS-REVIEW-001-MUSE.response.md (موقف NEEDS_REWORK + 6 صراعات موثقة عبر fallback).
+- RESULT168.md + 6 سكربتات probe (تعداد + grep + فحص ledger/alias/executor).
+- :5002 health: OK لكن نفس الثنائية القديمة (uptime 110194s) — لا UAT جديد.
+- صفر تعديل على كود Joe وعلى شجرة NVIDIA.
 
 ## 4. ماذا يعمل Muse الآن؟
-- أنهى ‏167‏ والتحقق؛ لا استشارات جديدة معلقة (كل استشارات Muse ‏REVIEWED).
-- بانتظار ‏ACCEPT‏ مستقل + تحميل مصدر مراجَع على ‏:5002.
+- أنهى المراجعة؛ بانتظار رد NVIDIA/Codex على F1/F2/F7/F8/F10 قبل أي دمج P1.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- لا نشاط بايتات جديدًا (‏02:32‏ مطابق)؛ آخر ‏claim‏ (‏00:56): إصلاح ‏verification‏ مُتحقق، ‏UAT‏ محظور ‏provider‏. لم يُخترع موقف لها.
+- غير معروف هذه الدورة (لم يُرصد نشاط بايتات جديد)؛ claimها 00:56 ساري. لم يُخترع موقف.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- لا رسائل جديدة بعد ‏01:38؛ هذه الدورة: تحقق قراءة-فقط من بايتات NVIDIA — لا مراجعة متبادلة جديدة.
+- هذه الدورة: مراجعة Muse المستقلة لمخرجات NVIDIA (عبر fallback) — لا رد بعد.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: سبب عطل ‏verification‏ + ‏visual_qa‏ يتيم + تقدم ‏D1‏ حقيقي + ‏163‏ عدّ Muse الحي.
-- معلّق: ‏NEEDS_REWORK‏ المضيّق (‏D2-D12‏) + ‏OBS‏ (‏P1‏ بصري/مجمّع/مسار-ميت/بوابات + ‏P2‏ حقن/اجتياز/تحويل) + ‏163‏ مقابل ‏164‏ + ملكية الإصلاحات.
+- اتفقا: فجوة 40/163 + تسجيل repo_* + جدول ledger + اتجاه Gap + حظر UAT.
+- اختلفا (6 صراعات): مصدر العدد 164 + حالة Gap + جدول Real-UI + ORPHAN-007 + خطر BATCH-002 + "لا عيوب".
 
 ## 8. الأرقام المؤكدة
-- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (‏VERIFIED‏ عدّ حي ثامن على ‏HEAD‏ Muse؛ بايتات NVIDIA قد تختلف: ‏registry.ts‏ معدل +2 غير مُنفَّذ)
-- EXECUTABLE_TOOLS=UNKNOWN (7/7 في السلسلة ‏hasExecute‏ لكن العدد الكلي غير مفحوص) FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN
-- ORPHANED=visual_qa (مؤكد ثالث مرة، ‏P1‏) + ‏bulk_file_generator‏ (مؤكد، ‏P1‏) + ‏generate_image‏ (مؤكد، ‏P1‏) DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN
-- REPAIRED=جزئي: ‏D1‏ (‏py/sh/ts/js‏) VERIFIED=prose ‏18/18‏ + ‏probe-167‏ ‏2/2‏ (داخلي)
+- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (e8/Muse ثابت VERIFIED ثالث مصدر) / 164 (NVIDIA dirty، يتضمن SpecTool غير مُسلّم)
+- EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN
+- ORPHANED=visual_qa + generate_image + bulk_file_generator (مؤكدة ثلاثي المصادر) DUPLICATE=0 (الحارس يمنع) UNKNOWN=الكثير (خلاف F9)
+- REPAIRED=جزئي: اتجاه Gap-A/B في dirty (WIP) VERIFIED=تعداد 163 + كتالوج 40 + alias 28 (ثابت)
 - REAL_JOE_PROVEN=0 REAL_JOE_UI=PASS لم يتحقق بعد
 
 ## 9. ما آخر اختبار ونتيجته؟
-- ‏probe-167‏ الحي: ‏2/2 EXIT=0‏ متطابق بايتًا — يثبت التعداد والتوجيه والبوابات على ‏HEAD‏ Muse (مستوى 2-3، ليس تنفيذًا).
-- ‏prose-verification‏: ‏18/18 PASS‏ — داخلي فقط.
-- ‏:5002‏ ‏health‏: ‏OK‏ لكن ثنائية قديمة (‏no-commit-file‏، ‏uptime‏ ‏108374s‏) — لا ‏UAT‏ جديد.
+- تعداد registry الثابت: 163/163/164 عبر المصادر الثلاثة — يثبت مصدر العدد (مستوى 2).
+- grep الأعلام: 0/0/dirty-only — يثبت أن إصلاح Gap WIP غير مُسلّم.
+- :5002 health OK (ثنائية قديمة) — لا UAT.
 
 ## 10. ما المشاكل أو العوائق؟
-- ‏UAT‏ محظور: لا تحميل مصدر مراجَع + مسار ‏provider‏ (لم يتغير).
-- دفع ‏muse/joe-development‏ يحتاج ‏worker‏ خارجي (لا ‏credentials‏ في ‏sandbox‏ غالبًا).
-- كتابة ملفات التنسيق المشتركة مرفوضة (‏ACCESS_DENIED‏) — تُرسل عبر ‏fallback‏.
-- ‏P1‏ رابع (بوابات ‏visual_qa‏) + ‏P2‏ (اجتياز ‏screenshot‏ + تحويل ‏click‏) + ‏NEEDS_REWORK‏ المضيّق تحتاج قرار مالك.
+- UAT محظور: لا تحميل مصدر مراجَع + مسار provider (لم يتغير).
+- مخرجات التدقيق الخمسة NEEDS_REWORK قبل أي قبول/دمج P1.
+- BATCH-002 محظور أمنيًا حتى إصلاح shell-boundary + مراجعة تهديد.
+- دفع muse/joe-development يحتاج worker خارجي؛ كتابة التنسيق المشتركة مرفوضة.
 
 ## 11. ما الخطوة التالية؟
-- NVIDIA: إغلاق ‏D1‏ (‏go/rust‏) + ‏D2-D12‏ أو قرار نطاق + مراجعة ‏OBS-167.
-- قرار مالك لـOBS-167-1/167-2 (اليتيم المُشار-إليه + الاجتياز) قبل أي تسجيل/كتالوج.
-- ثم: تحميل مراجَع على ‏:5002‏ + ‏UAT‏ متعدد الطلبات ‏unseen‏.
-- CRITICAL-REAL-JOE-UI-001 + ‏WIRING-AUDIT‏ يبقيان ‏OPEN.
+- مؤلف التدقيق: تصحيح F1/F2/F7/F8/F10 أو تقديم أدلة مضادة بمسارات.
+- NVIDIA: إكمال اختبارات Gap السلبية (BATCH-010) ثم مراجعة Muse للـdiff الدقيق.
+- Codex: تدقيق هذه المراجعة + استيرادها حرفيًا.
+- ثم: تحميل مراجَع على :5002 + UAT متعدد الطلبات unseen.
+- CRITICAL-REAL-JOE-UI-001 + WIRING-AUDIT يبقيان OPEN.
