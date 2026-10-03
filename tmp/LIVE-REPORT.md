@@ -1,43 +1,42 @@
-# Joe — Live Report (Muse cycle 2026-10-03 ~11:40 UTC)
+# Joe — Live Report (Muse cycle 203, 2026-10-03 ~09:55 UTC)
 SHORT HUMAN VIEW. Concise conclusions only; details live in the cited evidence files.
 NOTE: shared write to D:\Joe\coordination\team\LIVE-REPORT.md was DENIED by sandbox (absolute path outside workspace). This is the fallback copy; external coordinator should import it.
 
 ## 1. ماذا نعمل الآن؟
-Muse: مراجعة مستقلة لعمل NVIDIA الجديد (احتواء المسارات + بوابة التحقق) بأدلة تنفيذية معزولة. NVIDIA: يعمل على Batch-1..4 (احتواء bulk/visual/image) — شجرته نشطة (54 ملفًا متغيرًا).
+Muse: فحص محدود مُنجز (لا انحراف في شفرة NVIDIA + تعميم فحص الاتساق على البايتات الدقيقة). NVIDIA: بين الدورات (لا دورة جديدة منذ cycle-94).
 
 ## 2. ماذا اكتشفنا؟
-- احتواء المسارات حقيقي ومربوط (wired)، لكنه مكرر يدويًا ويختلف عن المعيار المعتمد على Windows (حالة الأحرف والمسارات النسبية).
-- فجوة الـ arity في الكود المُثبت مصدرها مؤكد، والإصلاح الجديد (+27 سطرًا) يُفعّل الفرع الصحيح فقط (قراءة منشأها prose) ويُبقي الرفض الصحيح لبقية الحالات.
-- لا توجد اختبارات دائمة تُثبّت أيًا من السلوكين الجديدين — وهذا يمنع الاعتماد.
+- شفرة NVIDIA مطابقة تمامًا لآخر مراجعة (3 بصمات، 54 ملفًا، نفس الرأس) — لا انحراف.
+- فحص مُعمّم جديد على 16 اسم بوابة تحقق: الفجوة الوحيدة هي visual_qa (مقبولة بوابيًا وغير مسجلة) — والباقي سليم.
+- الكتالوج (40/40) وأهداف MEANS (27/27) مسجلة بالكامل؛ الطلبات المجهولة (مثل "generate image") تفشل بأمان بدل الالتصاق بأداة خاطئة.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- 30/30 فحصًا معزولًا أخضر على البايتات الدقيقة لشفرة NVIDIA (استخراج حرفي، لا إعادة كتابة).
-- تقرير مراجعة محدود (bounded checkpoint) مع 7 نتائج (F1-F7) وشروط قبول واضحة. صفر تغييرات شفرة من Muse.
+- 5/6 فحوصات خضراء × تشغيلين متطابقين على البايتات الدقيقة (الفشل الوحيد هو فجوة visual_qa المعروفة).
+- تقرير حدّ محدود (bounded checkpoint) + أدلة قابلة لإعادة التشغيل. صفر تغييرات شفرة من Muse.
 
 ## 4. ماذا يعمل Muse الآن؟
-انتهى من المراجعة المستقلة؛ التالي: متابعة دبابيس المالك (pins) وإعادة الفحص عند التثبيت، ثم قبول :5002 متعدد المحفزات.
+أنهى الفحص؛ التالي: إعادة تشغيل نفس الفحص على تثبيت المالك المكتفي ذاتيًا عند وصوله.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-Batch-2 مكتمل حسب ادعائه (احتواء VisualQA) + Batch-1/3/4 قيد العمل. آخر ادعاء: 10 بوابات + 36 اختبارًا — غير متحقق منه مستقلًا بعد.
+لا نشاط جديد منذ cycle-94 (11:44). آخر عمل: Batch-1..4 والاحتواء — شجرته ثابتة بانتظار الإكمال.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-نعم، عبر القناة: Muse راجع شفرة NVIDIA الفعلية (قراءة فقط). لا يوجد اتفاق مُخترع — المواقف مسجلة بنصها.
+نعم عبر القناة: Muse تحقق من شفرة NVIDIA (قراءة فقط) وسجّل موقفه بنصه. لا اتفاق مُخترع.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: آلية الاحتواء حقيقية؛ اتجاه الإصلاح صحيح.
-- اختلفا/علّق Muse: "COMPLETE" سابقة لأوانها (لا دبابيس، لا tsc/build، تركيبة غير مكتملة)؛ يجب إعادة استخدام المعيار المشترك.
+- اتفقا: لا انحراف؛ الإصلاح المطلوب (تسجيل visual_qa) موجود ضمن Batch-011 الجاري.
+- علّق Muse: التثبيت الدائم (pins) + tsc/build + التثبيت الذاتي ما زالت مستحقة قبل الاعتماد.
 
 ## 8. الأرقام المؤكدة
 DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN UNKNOWN=YES REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
-Scoped (this cycle only): 30/30 isolated probes GREEN on exact dirty bytes (REPORTED_BY_MUSE, reproducible via tmp/batch011-verify-20261003/probe-batch011.cjs). Owner "10 gates + 36 tests" = REPORTED_BY_NVIDIA, UNVERIFIED.
+Scoped (Muse HEAD @9a44366d only, REPORTED_BY_MUSE): registered=163, catalogue=40/40 registered, gate vocabulary 15/16 registered (gap: visual_qa), MEANS targets 27/27 registered. Owner claims = REPORTED_BY_NVIDIA (unchanged since c202).
 
 ## 9. ما آخر اختبار ونتيجته؟
-probe-batch011.cjs: 30/30 PASS (بوابة تحقق 15 + احتواء 10 + شكل bulk + TS2554). focused/isolated فقط — ليس REAL_JOE_UI.
+W203 probe: 5/6 PASS × تشغيلين متطابقين (الفشل = فجوة visual_qa المُثبتة آليًا). focused/internal فقط — ليس REAL_JOE_UI.
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- :5002 و:5101 مُغلقان — اختبار واجهة Joe الرسمي BLOCKED.
-- لا دبابيس دائمة للسلوك الجديد؛ لا إيصالات tsc/build على الشجرة المركبة.
-- ملف التسجيل يستورد ملفًا غير مُثبت (untracked) — خطر كسر عند التثبيت الجزئي.
+- :5002 و:5101 مُغلقان — اختبار واجهة Joe الرسمي BLOCKED (لم يتغير).
+- إصلاح visual_qa + الدبابيس + tsc/build ما زالت عند المالك (تثبيت غير مكتمل).
 
 ## 11. ما الخطوة التالية؟
-المالك (NVIDIA): F1 إعادة الاستخدام أو التبرير + F2/F3 دبابيس + tsc/build + تثبيت واحد مكتفٍ ذاتيًا → تحميل مُراجع على :5002 → UAT حي متعدد المحفزات. يبقى الـ CRITICALs مفتوحين.
+المالك (NVIDIA): تثبيت واحد مكتفٍ ذاتيًا (F1/F2/F3 + pins + tsc/build) → تحميل مُراجع على :5002 → UAT حي متعدد المحفزات. يبقى الـ CRITICALs مفتوحين.
