@@ -1,0 +1,677 @@
+{
+  "probe": "muse-adversarial-recall-tsx",
+  "museHead": "c41b6996",
+  "registeredCount": 163,
+  "adversarial": [
+    {
+      "target": "cloud_cost_estimator",
+      "definition": {
+        "description": "Estimate cloud costs.",
+        "tags": [
+          "cost",
+          "elite"
+        ],
+        "required": [
+          "resources"
+        ]
+      },
+      "goals": [
+        {
+          "goal": "Estimate the monthly cloud cost for EC2 t3.small and RDS database",
+          "pickedCount": 22,
+          "top5": [
+            {
+              "name": "cloud_cost_estimator",
+              "score": 13.2
+            },
+            {
+              "name": "llm_cache",
+              "score": 3.1
+            },
+            {
+              "name": "terraform_manager",
+              "score": 2.6
+            },
+            {
+              "name": "api_project",
+              "score": 2.5
+            },
+            {
+              "name": "db_schema_migrator",
+              "score": 2.5
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": 1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": -1
+          },
+          "scores": {
+            "cloud_cost_estimator": 13.2,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 0
+          },
+          "route": null,
+          "terms": [
+            "estimate",
+            "monthly",
+            "cloud",
+            "cost",
+            "ec2",
+            "small",
+            "rds",
+            "database"
+          ]
+        },
+        {
+          "goal": "How much will my AWS infrastructure cost per month",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "terraform_manager",
+              "score": 13.5
+            },
+            {
+              "name": "cloud_cost_estimator",
+              "score": 12.2
+            },
+            {
+              "name": "browser_performance",
+              "score": 5.8
+            },
+            {
+              "name": "performance_analyzer",
+              "score": 5.8
+            },
+            {
+              "name": "performance_profile",
+              "score": 5.8
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": 2,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": -1
+          },
+          "scores": {
+            "cloud_cost_estimator": 12.2,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 0
+          },
+          "route": null,
+          "terms": [
+            "how",
+            "much",
+            "will",
+            "aws",
+            "infrastructure",
+            "cost",
+            "per",
+            "month",
+            "cloud",
+            "terraform"
+          ]
+        }
+      ]
+    },
+    {
+      "target": "self_confidence_evaluator",
+      "definition": {
+        "description": "Evaluate confidence.",
+        "tags": [
+          "analysis",
+          "elite"
+        ],
+        "required": [
+          "content"
+        ]
+      },
+      "goals": [
+        {
+          "goal": "Evaluate your confidence in this generated answer",
+          "pickedCount": 12,
+          "top5": [
+            {
+              "name": "self_confidence_evaluator",
+              "score": 7
+            },
+            {
+              "name": "central_answer",
+              "score": 6
+            },
+            {
+              "name": "browser_summarize",
+              "score": 1
+            },
+            {
+              "name": "image_studio",
+              "score": 0.8
+            },
+            {
+              "name": "delete_file",
+              "score": 0
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": 1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": -1
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 7,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 0
+          },
+          "route": null,
+          "terms": [
+            "evaluate",
+            "confidence",
+            "generated",
+            "answer"
+          ]
+        },
+        {
+          "goal": "How confident are you in the code you just wrote",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "dead_code_detector",
+              "score": 5.3
+            },
+            {
+              "name": "codebase_outline",
+              "score": 4.7
+            },
+            {
+              "name": "analyze_codebase",
+              "score": 3.6
+            },
+            {
+              "name": "code_reviewer",
+              "score": 3.6
+            },
+            {
+              "name": "memorize_codebase",
+              "score": 3.6
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": -1
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 0
+          },
+          "route": null,
+          "terms": [
+            "how",
+            "confident",
+            "code",
+            "just",
+            "wrote"
+          ]
+        }
+      ]
+    },
+    {
+      "target": "ask_user",
+      "definition": {
+        "description": "Ask the user a question and wait for a response. Use this if you are blocked or need clarification.",
+        "tags": [
+          "user",
+          "interaction",
+          "blocking"
+        ],
+        "required": [
+          "question"
+        ]
+      },
+      "goals": [
+        {
+          "goal": "If anything is unclear ask me a clarifying question instead of guessing",
+          "pickedCount": 20,
+          "top5": [
+            {
+              "name": "ask_user",
+              "score": 6.2
+            },
+            {
+              "name": "task_lifecycle",
+              "score": 5.2
+            },
+            {
+              "name": "python_builder",
+              "score": 3.5
+            },
+            {
+              "name": "todo_write",
+              "score": 3.5
+            },
+            {
+              "name": "browser_summarize",
+              "score": 1
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": 1,
+            "rss_fetch": -1,
+            "task_lifecycle": 2
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 6.2,
+            "rss_fetch": 0,
+            "task_lifecycle": 5.2
+          },
+          "route": null,
+          "terms": [
+            "anything",
+            "unclear",
+            "ask",
+            "clarifying",
+            "question",
+            "instead",
+            "guessing"
+          ]
+        },
+        {
+          "goal": "Ask the user which database to use before proceeding",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "ask_user",
+              "score": 19.3
+            },
+            {
+              "name": "user_browser",
+              "score": 14.1
+            },
+            {
+              "name": "notify_user",
+              "score": 9.4
+            },
+            {
+              "name": "task_lifecycle",
+              "score": 6
+            },
+            {
+              "name": "todo_write",
+              "score": 5
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": 1,
+            "rss_fetch": -1,
+            "task_lifecycle": 4
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 19.3,
+            "rss_fetch": 0,
+            "task_lifecycle": 6
+          },
+          "route": null,
+          "terms": [
+            "ask",
+            "user",
+            "which",
+            "database",
+            "use",
+            "before",
+            "proceeding"
+          ]
+        }
+      ]
+    },
+    {
+      "target": "rss_fetch",
+      "definition": {
+        "description": "Fetch and parse an RSS feed.",
+        "tags": [
+          "network",
+          "rss"
+        ],
+        "required": [
+          "url"
+        ]
+      },
+      "goals": [
+        {
+          "goal": "Fetch and parse the RSS feed at https://example.com/feed.xml",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "rss_fetch",
+              "score": 16.2
+            },
+            {
+              "name": "browser_compare",
+              "score": 7.8
+            },
+            {
+              "name": "compliance_validator",
+              "score": 7.8
+            },
+            {
+              "name": "repo_run_command",
+              "score": 7.8
+            },
+            {
+              "name": "http_fetch",
+              "score": 5.2
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": 1,
+            "task_lifecycle": -1
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 16.2,
+            "task_lifecycle": 0
+          },
+          "route": null,
+          "terms": [
+            "fetch",
+            "parse",
+            "rss",
+            "feed",
+            "https",
+            "example",
+            "com",
+            "xml"
+          ]
+        },
+        {
+          "goal": "Read the latest items from our company blog RSS feed",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "rss_fetch",
+              "score": 10
+            },
+            {
+              "name": "query_datasource",
+              "score": 9
+            },
+            {
+              "name": "browser_readability",
+              "score": 5.8
+            },
+            {
+              "name": "orders_read",
+              "score": 5.8
+            },
+            {
+              "name": "read_file",
+              "score": 5.8
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": 1,
+            "task_lifecycle": 21
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 10,
+            "task_lifecycle": 1
+          },
+          "route": null,
+          "terms": [
+            "read",
+            "latest",
+            "items",
+            "our",
+            "company",
+            "blog",
+            "rss",
+            "feed"
+          ]
+        }
+      ]
+    },
+    {
+      "target": "task_lifecycle",
+      "definition": {
+        "description": "Manage the lifecycle of an agent task loop. Use this to update the UI with your current status, summary, and mode.",
+        "tags": [
+          "system",
+          "ui",
+          "lifecycle"
+        ],
+        "required": [
+          "action"
+        ]
+      },
+      "goals": [
+        {
+          "goal": "Update the UI with your current task status and summary",
+          "pickedCount": 28,
+          "top5": [
+            {
+              "name": "task_lifecycle",
+              "score": 9.2
+            },
+            {
+              "name": "shell_check_status",
+              "score": 9
+            },
+            {
+              "name": "repo_diff_summary",
+              "score": 7
+            },
+            {
+              "name": "todo_write",
+              "score": 4.5
+            },
+            {
+              "name": "joe_engineering_report",
+              "score": 2
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": 1
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 9.2
+          },
+          "route": null,
+          "terms": [
+            "update",
+            "current",
+            "task",
+            "status",
+            "summary"
+          ]
+        },
+        {
+          "goal": "Mark the agent task loop as complete with a final summary",
+          "pickedCount": 30,
+          "top5": [
+            {
+              "name": "task_lifecycle",
+              "score": 7.9
+            },
+            {
+              "name": "browser_smart_agent",
+              "score": 6.5
+            },
+            {
+              "name": "repo_diff_summary",
+              "score": 6
+            },
+            {
+              "name": "notify_user",
+              "score": 4.1
+            },
+            {
+              "name": "todo_write",
+              "score": 3.5
+            }
+          ],
+          "ranks": {
+            "cloud_cost_estimator": -1,
+            "self_confidence_evaluator": -1,
+            "ask_user": -1,
+            "rss_fetch": -1,
+            "task_lifecycle": 1
+          },
+          "scores": {
+            "cloud_cost_estimator": 0,
+            "self_confidence_evaluator": 0,
+            "ask_user": 0,
+            "rss_fetch": 0,
+            "task_lifecycle": 7.9
+          },
+          "route": null,
+          "terms": [
+            "mark",
+            "agent",
+            "task",
+            "loop",
+            "complete",
+            "final",
+            "summary"
+          ]
+        }
+      ]
+    }
+  ],
+  "negatives": [
+    {
+      "goal": "Write tests for the project",
+      "pickedCount": 30,
+      "top5": [
+        {
+          "name": "ai_write_file",
+          "score": 5.8
+        },
+        {
+          "name": "write_file",
+          "score": 5.8
+        },
+        {
+          "name": "import_project",
+          "score": 4.1
+        },
+        {
+          "name": "project_detect",
+          "score": 4.1
+        },
+        {
+          "name": "project_edit",
+          "score": 4.1
+        }
+      ],
+      "ranks": {
+        "cloud_cost_estimator": -1,
+        "self_confidence_evaluator": -1,
+        "ask_user": -1,
+        "rss_fetch": -1,
+        "task_lifecycle": -1
+      },
+      "scores": {
+        "cloud_cost_estimator": 0,
+        "self_confidence_evaluator": 0,
+        "ask_user": 0,
+        "rss_fetch": 0,
+        "task_lifecycle": 0
+      },
+      "route": null,
+      "terms": [
+        "write",
+        "tests",
+        "project"
+      ]
+    },
+    {
+      "goal": "Fix the crash and recover",
+      "pickedCount": 13,
+      "top5": [
+        {
+          "name": "error_recovery",
+          "score": 8.9
+        },
+        {
+          "name": "browser_autofix",
+          "score": 7.8
+        },
+        {
+          "name": "browser_ui_fix",
+          "score": 6.9
+        },
+        {
+          "name": "browser_page_fix",
+          "score": 5.2
+        },
+        {
+          "name": "central_answer",
+          "score": 0
+        }
+      ],
+      "ranks": {
+        "cloud_cost_estimator": -1,
+        "self_confidence_evaluator": -1,
+        "ask_user": -1,
+        "rss_fetch": -1,
+        "task_lifecycle": -1
+      },
+      "scores": {
+        "cloud_cost_estimator": 0,
+        "self_confidence_evaluator": 0,
+        "ask_user": 0,
+        "rss_fetch": 0,
+        "task_lifecycle": 0
+      },
+      "route": null,
+      "terms": [
+        "fix",
+        "crash",
+        "recover"
+      ]
+    }
+  ]
+}
