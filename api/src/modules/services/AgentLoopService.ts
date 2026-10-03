@@ -180,10 +180,11 @@ async function recordPhaseVerificationEvidence(
 export function compactPhaseReceipt(output: any, logs: any, status?: string, extras: Record<string, any> = {}): any {
     const source = output && typeof output === 'object' ? output : {};
     const receipt: Record<string, any> = {};
-const retainedKeys = [
+    const retainedKeys = [
         'phaseNumber', 'phaseName', 'status', 'execution', 'completedTasks', 'executedTasks', 'reusedTasks', 'skippedTasks', 'totalTasks', 'nextPhase',
         'deliverables', 'estimatedTime', 'verificationFailed', 'verificationUnavailable', 'requiresUserDecision',
         'primaryError', 'error', 'results', 'honestBlocker', 'verificationMetrics',
+        'verificationNote',
     ];
     for (const key of retainedKeys) {
         if (!Object.prototype.hasOwnProperty.call(source, key)) continue;

@@ -31,6 +31,7 @@
  */
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
+import { isVerificationTool } from '../quality/verification-ledger';
 
 /**
  * Runtime-bound fields are the small, explicit exception to the planner's
@@ -393,10 +394,45 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const stem = dot > 0 ? filename.slice(0, dot) : filename;
         return `${dir ? `${dir}/` : ''}__tests__/${stem}.test.ts`;
     };
+    /**
+     * A scaffold's structure keys are plan-declared file outputs with the same
+     * standing as write_file paths: the executor writes exactly these files
+     * under baseDir. Null values are empty directories, not files. Mirror the
+     * executor's repeated-prefix strip so evidence paths match what lands on
+     * disk. Without this, manifests produced by scaffold_project are invisible
+     * to every evidence gate below (CRITICAL-REAL-JOE-UI-001 run 3: a plan
+     * that scaffolded package.json still had `npm test` dropped as unproven).
+     */
+    const scaffoldOutputPaths = (task: any): string[] => {
+        const structure = task?.args?.structure ?? task?.input?.structure;
+        if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return [];
+        const declaredBaseDir = String(
+            task?.args?.baseDir || task?.args?.projectName || task?.args?.name
+            || task?.input?.baseDir || task?.input?.projectName || task?.input?.name
+            || '.',
+        ).trim() || '.';
+        const basePrefix = declaredBaseDir.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/u, '');
+        const fileKeys = Object.entries(structure)
+            .filter(([, contents]) => typeof contents === 'string')
+            .map(([relativePath]) => String(relativePath).replace(/\\/g, '/'));
+        if (!fileKeys.length) return [];
+        const repeatedPrefix = basePrefix !== '.'
+            && fileKeys.every(key => key === basePrefix || key.startsWith(`${basePrefix}/`));
+        return fileKeys
+            .map(key => {
+                const stripped = repeatedPrefix
+                    ? (key === basePrefix ? '' : key.slice(`${basePrefix}/`.length))
+                    : key;
+                if (!stripped) return '';
+                return basePrefix === '.' ? stripped : `${basePrefix}/${stripped}`;
+            })
+            .filter(key => !!key && !unsafeWorkspacePath(key));
+    };
     const taskOutputPaths = (tasks: any[]) => tasks
         .flatMap((task: any) => {
             const tool = String(task?.tool || '');
             if (tool === 'test_generator') return [testGeneratorOutputPath(task)];
+            if (tool === 'scaffold_project') return scaffoldOutputPaths(task);
             if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];
             return [task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.input?.path || task?.input?.filePath || task?.input?.filename];
         })
@@ -822,7 +858,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
 
         const v = phase?.verificationTask;
         let verification = v;
-        if (v && v.tool) {
+        const observedOutputPaths = phaseProducedPaths
+            .map((candidate: string) => String(candidate || '').trim())
+            .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
+        const observedOutputPath = observedOutputPaths[0];
+        if (v && typeof v === 'object' && v.tool) {
             const rv = resolvePlannedTool(v.tool);
             const verificationTool = rv.tool;
             // A verification task is an acceptance observation, never another
@@ -836,10 +876,6 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             // from an earlier task in execution order, not from the model's
             // verification prose. If the phase has no named file output, inspect
             // the project instead of inventing one.
-            const observedOutputPaths = phaseProducedPaths
-                .map((candidate: string) => String(candidate || '').trim())
-                .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
-            const observedOutputPath = observedOutputPaths[0];
             const runHasRunnableEvidence = [...producedPaths].some(runnableMarker);
             const generatesInsteadOfObserving = new Set([
                 'doc_generator', 'test_generator', 'ai_write_file', 'write_file',
@@ -898,7 +934,21 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
                     : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
                 notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
-            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact) {
+            } else {
+                // A mid-phase shell_execute verification that is neither a recognized
+                // checker contract (isVerificationTool) nor a package-script check
+                // (unprovenProjectCheckIssue) is a runtime smoke command the planner
+                // emitted to run the artifact it just wrote. The sanitizer trusted it
+                // but the phase gate only accepts test-runner invocations as
+                // shell_execute verifications, so the run died before the test
+                // phases executed (CRITICAL-REAL-JOE-UI-001 run 4b). Rewrite it into
+                // the same output-existence observation used for other unverifiable
+                // checkers so execution continues to the genuine test phases.
+                const shellSmokeWithoutCheckerContract = verificationTool === 'shell_execute'
+                    && !isVerificationTool(verificationTool, verificationArgs, false, true)
+                    && !unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands);
+
+                if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact || shellSmokeWithoutCheckerContract) {
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
@@ -912,16 +962,26 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     };
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
-                    : runsBeforeRunnableArtifact
-                        ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
-                        : 'تحققاً مولّداً';
+                    : shellSmokeWithoutCheckerContract
+                        ? 'أمر تدخين وهمياً لا يطابق عقدة تحقق معروفة'
+                        : runsBeforeRunnableArtifact
+                            ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
+                            : 'تحققاً مولّداً';
+                // Name the dropped smoke command so the next such rewrite is
+                // diagnosable from the session log alone (run 4b needed a
+                // run-evidence dig to recover `node index.js < sample.txt`).
+                const droppedSmokeCommand = shellSmokeWithoutCheckerContract
+                    ? String(verificationArgs?.command || '').trim().replace(/\s+/g, ' ').slice(0, 120)
+                    : '';
+                const smokeSuffix = droppedSmokeCommand ? ` — الأمر المسقط: «${droppedSmokeCommand}»` : '';
                 notes.push(observedOutputPath
-                    ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
-                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+                    ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.${smokeSuffix}`
+                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.${smokeSuffix}`);
             } else {
+                const planProducedPathsForCheck = [...generatedPaths, ...phaseProducedPaths];
                 const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
                     || (verificationTool === 'shell_execute'
-                        ? unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands)
+                        ? unprovenProjectCheckIssueUnlessPlanProduced(verificationArgs?.command, candidateCheckCommands, planProducedPathsForCheck)
                         : null);
                 // A browser verifier is itself the evidence boundary. Replacing
                 // an invalid browser contract with project_detect would make an
@@ -936,8 +996,19 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : `[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
             }
         }
+        } else if (typeof v === 'string' && v.trim()) {
+            const prose = v.trim();
+            verification = observedOutputPath
+                ? { task: `Verify phase output exists: ${observedOutputPath}`, tool: 'read_file', args: { path: observedOutputPath } }
+                : { task: 'Inspect phase output on disk', tool: 'project_detect', args: {} };
+            notes.push(observedOutputPath
+                ? `[plan] استبدلتُ مهمة تحقق نصية «${prose.slice(0, 120)}» بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
+                : `[plan] استبدلتُ مهمة تحقق نصية «${prose.slice(0, 120)}» بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+        } else if (typeof v === 'string') {
+            verification = undefined;
+        }
 
-        return { ...phase, tasks: kept, verificationTask: verification };
+        return { ...phase, tasks: kept, verificationTask: verification, verificationNote: typeof v === 'string' && v.trim() ? v : undefined };
     });
 
     const sanitisedTasks = out.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
@@ -1396,6 +1467,23 @@ export function unprovenProjectCheckIssue(command: unknown, declaredChecks: Set<
     if (!/^(?:npm\s+(?:run\s+)?(?:test|build|lint|typecheck)|pnpm\s+(?:run\s+)?(?:test|build|lint|typecheck)|yarn\s+(?:test|build|lint|typecheck))(?:\s|$)/i.test(normalised)) return null;
     if (declaredChecks.has(normalised)) return null;
     return `أمر «${normalised}» ليس فحصاً معلناً في ملفات المشروع التي استكشفها Joe؛ لن يُشغَّل npm بافتراض وجود package.json أو script.`;
+}
+
+export function planProducedCheckProven(command: unknown, planProducedPaths: Iterable<string>): boolean {
+    const normalised = normaliseShellCommand(command);
+    const m = normalised.match(/^(?:npm|pnpm|yarn)\s+(?:run\s+)?([A-Za-z0-9:_-]+)/i);
+    if (!m) return false;
+    const script = m[1];
+    for (const p of planProducedPaths) {
+        if (/(?:^|\/)package\.json$/i.test(p)) return true;
+    }
+    return false;
+}
+
+export function unprovenProjectCheckIssueUnlessPlanProduced(command: unknown, declaredChecks: Set<string>, planProducedPaths: Iterable<string>): string | null {
+    const issue = unprovenProjectCheckIssue(command, declaredChecks);
+    if (!issue) return null;
+    return planProducedCheckProven(command, planProducedPaths) ? null : issue;
 }
 
 export function adaptPlannedArgs(toolName: string, args: any): any {

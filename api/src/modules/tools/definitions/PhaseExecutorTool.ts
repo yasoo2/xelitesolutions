@@ -2269,8 +2269,9 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     : (skippedCount > 0 || completedCount.value > 0 ? 'partial' : 'failed'));
             // Determine phase execution type: 'reused' if all tasks were reused from checkpoints
             const phaseExecution = (reusedCount === totalTasks && executedCount === 0) ? 'reused' : 'ran';
-            let verificationFailed = false;
+let verificationFailed = false;
             let verificationUnavailable = false;
+            let proseObservationPassed = false;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
 
@@ -2280,11 +2281,24 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                 const requestedVerificationTool = String(vTask.tool || '').trim();
                 const vToolName = resolvePlannedTool(requestedVerificationTool).tool || requestedVerificationTool;
                 const vTaskDesc = String(vTask.task || 'Verify phase output');
-                appendLog(`[PhaseExecutor] 🧪 Running verification: "${vTaskDesc}" with ${vToolName}`);
+                
+                // Gap A/B fix: Track if verification was originally prose (via verificationNote)
+                // Prose verifications are normalized to read_file/project_detect by sanitizer,
+                // but should not count as real behavioral verification for phase advancement.
+                const wasOriginallyProse = typeof phase.verificationNote === 'string' && phase.verificationNote.trim().length > 0;
+                const isFinalPhase = projectContext?.isFinalPhase === true;
+                const isReactProject = phase.tasks?.some((t: any) => t.tool === 'react_project') ?? false;
+                
+                if (wasOriginallyProse) {
+                    appendLog(`[PhaseExecutor] ⚠️ Verification was originally prose (normalized from: "${phase.verificationNote}") — treating as observation only`);
+                }
+                
+                appendLog(`[PhaseExecutor] 🧪 Running verification: "${String(vTask.task || 'Verify phase output')}" with ${vToolName}${wasOriginallyProse ? ' (prose-origin)' : ''}`);
                 let phaseVerificationSelection: VerificationSelection | undefined;
                 let phaseVerificationStartedAt = 0;
                 let phaseVerificationSelectedAt = 0;
                 let phaseVerificationLastActivityAt = 0;
+                let verificationWasProseObservation = wasOriginallyProse;
 
                 try {
                     const plannedVerification: any = { ...(vTask.args || {}), ...(vTask.input || {}) };
@@ -2328,7 +2342,8 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
-                        appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue}`);
+                        const rejectedCommand = String((verificationArgs as any)?.command || '').trim().replace(/\s+/g, ' ').slice(0, 160);
+                        appendLog(`[PhaseExecutor] ⚠️ Verification input invalid: ${verificationArgsIssue} (requested=${requestedVerificationTool} resolved=${vToolName}${rejectedCommand ? ` command=${JSON.stringify(rejectedCommand)}` : ''})`);
                         const checkerError = vToolName === 'browser_run'
                             ? `verification_unavailable: ${verificationArgsIssue}`
                             : verificationArgsIssue;
@@ -2396,9 +2411,24 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                             }
 
                             const verificationOutcome = verificationResultFromToolResult(vResult);
-                            if (vResult.ok && verificationOutcome === 'passed') {
-                                appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
-                                results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
+                            const verificationPassed = vResult.ok && verificationOutcome === 'passed';
+                            
+                            // Gap A/B fix: If verification was originally prose (normalized from prose),
+                            // it should not count as a real behavioral verification for phase advancement.
+                            // Prose verifications are observations only, not behavioral checks.
+                            const isProseObservation = verificationWasProseObservation;
+                            
+                            if (verificationPassed) {
+                                if (isProseObservation) {
+                                    appendLog(`[PhaseExecutor] 📝 Prose-origin verification observed (read_file/project_detect) — recorded as observation only, not a behavioral check`);
+                                    results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran', message: 'Prose-origin verification observed; not a behavioral check' });
+                                    // Do NOT mark verification as passed for phase advancement purposes
+                                    // verificationFailed remains false, but we don't count this as a real verification pass
+                                    proseObservationPassed = true;
+                                } else {
+                                    appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
+                                    results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
+                                }
                             } else {
                                 const vErr = String(vResult.error || 'Verification failed');
                                 const checkerUnavailable = vToolName === 'browser_run'
@@ -2541,8 +2571,11 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                 }
             }
 
-            const ok = status === 'completed'
-                || (status === 'partial' && executedCount > 0 && allOk && !verificationFailed && !verificationUnavailable);
+            // Gap A/B fix: Track if a prose-origin verification passed (should not count as real verification pass)
+                const realVerificationPassed = !proseObservationPassed && !verificationFailed && !verificationUnavailable;
+                
+                const ok = status === 'completed'
+                    || (status === 'partial' && executedCount > 0 && allOk && realVerificationPassed);
             const primaryError = ok ? undefined : (results.find(r => !r.ok)?.error || (status === 'partial' ? 'Phase completed only partially' : 'Phase failed'));
             const runtimeProjectEvidence = projectContext?.projectRootRuntimeBound === true
                 && String(projectContext?.projectRoot || '').trim()
@@ -2570,6 +2603,7 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
                     nextPhase: phase.phaseNumber + 1,
                     deliverables: phase.deliverables || [],
                     estimatedTime: phase.estimatedTime || 'unknown',
+                    verificationNote: phase.verificationNote,
                     ...(verificationFailed ? { verificationFailed: true } : {}),
                     ...(verificationUnavailable ? { verificationUnavailable: true } : {}),
                     ...(phaseDelivery ? { delivery: phaseDelivery } : {}),
