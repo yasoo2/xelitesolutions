@@ -2337,8 +2337,10 @@ let verificationFailed = false;
                     delete verificationArgs.verificationBoundary;
                     delete verificationArgs.verificationRelevantPaths;
                     delete verificationArgs.verificationRuntimeRevision;
-                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs)
-                        || !isVerificationTool(vToolName, verificationArgs)
+                    // Allow read_file as existence observation for prose-origin verifications
+                    const allowExistenceObs = wasOriginallyProse === true;
+                    const verificationArgsIssue = !isVerificationTool(requestedVerificationTool, verificationArgs, false, allowExistenceObs)
+                        || !isVerificationTool(vToolName, verificationArgs, false, allowExistenceObs)
                         ? 'verification_unavailable: unsupported verification tool contract'
                         : plannedArgsIssue(vToolName, verificationArgs);
                     if (verificationArgsIssue) {
@@ -2425,6 +2427,9 @@ let verificationFailed = false;
                                     // Do NOT mark verification as passed for phase advancement purposes
                                     // verificationFailed remains false, but we don't count this as a real verification pass
                                     proseObservationPassed = true;
+                                    // Prose-origin observation does not constitute a real verification pass
+                                    // Downgrade status from completed to partial
+                                    status = 'partial';
                                 } else {
                                     appendLog(`[PhaseExecutor] ✅ Verification passed for Phase ${phaseTag}`);
                                     results.push({ task: vTaskDesc, tool: vToolName, ok: true, execution: 'ran' });
