@@ -1,36 +1,59 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03, Muse cycle-222)
+# JOE LIVE TEAM REPORT (Muse fallback copy — shared write denied)
 
-SHARED_WRITE=BLOCKED (shared team LIVE-REPORT.md absent; sandbox denies shared writes; prior cycles verified UnauthorizedAccessException).
-FALLBACK=D:\Joe\muse-worktree\tmp\LIVE-REPORT.md (committed; coordinator import requested).
-MUSE_HEAD=18f72334 (c222 evidence this cycle, docs/evidence only). NVIDIA_HEAD=a10c71ab (19 tracked dirty owned scopes, read-only, preserved untouched).
+UPDATED=2026-10-03 (Muse cycle 223)
+OVERALL_STATUS=Both CRITICALs OPEN. F3 fleet-scan evidence closed by two independent probes; outlier decision + runtime restoration still required. Official :5002 UI DOWN, UAT BLOCKED.
 
-1. ماذا نعمل الآن؟
-- Muse: تنفيذ فعلي معزول (Level-4) للأدوات الخمس الغائبة عن المخطط — مكتمل بدليل جديد.
-- NVIDIA: لا نشاط جديد مرصود (HEAD ثابت؛ الشجرة هادئة ≠ متوقفة).
+## ماذا نعمل الآن؟
+نراجع مستقلًا توافق الأسطول (F3) لمرشّح ربط المشاريع بالمالك، ونحافظ على مساري CRITICAL مفتوحين بأدلة.
 
-2. ماذا اكتشفنا؟
-- الأدوات الخمس تُنفَّذ كلها بنجاح تقني (10/10 resolved، صفر تعليق): 8 حالات حتمية متطابقة، وحالتا LLM غير حتميتين — وهذا هو الاكتشاف.
-- عيب نجاح-كاذب مؤكد: عند فشل كل مزودي النموذج تُرجع self_confidence_evaluator (وشقيقتها بنفس النمط) ok:true مع مخرج فارغ {} بدل الفشل — مخالف لمبدأ الملف نفسه.
-- ثغرات أدلة أصغر: rss_fetch مع URL فارغ تُرجع ok:false برسالة خطأ فارغة ""؛ وask_user لا تتحقق من السؤال المطلوب على مستوى الصنف (بوابة التحقق موجودة per c220).
+## ماذا اكتشفنا؟
+- أرقام Codex للأسطول صحيحة 8/8 بفحص مستقل: 20 مشروعًا، كلها بلا مالك وبلا workspaceId، وكل المجلدات موجودة.
+- جديد: 18 من 20 سيسمح لها المسار القديم، و2 سيرفضها (fail-closed) — provenance الـ2 مجهول ويحتاج قرار مالك.
+- حقل ثانٍ للمسار (linkedApiDir) لا يفحصه المرشّح — ملاحظة صغيرة جديدة.
 
-3. ماذا أنجزنا فعليًا؟
-- Muse c222: دليل تنفيذ Level-4 (تشغيلان: 453FCF40/C9023CE8، الفرق الوحيد shape مخرج LLM). صفر تغيير في كود Joe.
-- NVIDIA: لا مخرج جديد مرصود هذه الدورة.
+## ماذا أنجزنا فعليًا؟
+- تم إغلاق F3-SCAN بدليل مزدوج مستقل (VERIFIED).
+- لم يتم الدمج؛ بقي F3-DECISION + مراجعة NVIDIA + إثبات الجذر لحظة التشغيل.
 
-4. ماذا يعمل Muse الآن؟ تدقيق wiring مستقل + مسار verification-contract فقط. لا تنفيذ منافس في نطاق NVIDIA.
+## ماذا يعمل Muse الآن؟
+CURRENT_TASK=F3 independent review (done this cycle) + wiring-evidence lane
+LATEST_RESULT=APPROVE_SCAN_SCOPE_WITH_CONDITIONS; 0 source delta; evidence committed local-only
+BLOCKER=:5002/:5101 DOWN, UAT BLOCKED
 
-5. ماذا يعمل NVIDIA الآن؟ حسب آخر claim/heartbeat: Batch-2 مكتمل مزعوم + Batch-3 معلن (image pins، F5، عقد التحقق). لم يُرصد نشاط جديد.
+## ماذا يعمل NVIDIA الآن؟
+CURRENT_TASK=Batch 2 VisualQA containment COMPLETE per 10:55 claim; Batch 3 next (REPORTED_BY_NVIDIA)
+LATEST_RESULT=36/36 tests + 10 gates PASS claimed (REPORTED_BY_NVIDIA, dirty-source-bound)
+BLOCKER=No new NVIDIA response since 6:09 AM; tree quiet (quiet != stopped)
 
-6. هل تم التواصل أو المراجعة؟ لا استشارة PENDING لـMuse (فحص كامل: كلها REVIEWED). لا مراجعة جديدة مطلوبة. الدليل في fallback بانتظار استيراد Codex.
+## هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
+- Muse راجع F3 مستقلًا وأرسل الرد عبر fallback (بانتظار استيراد Codex).
+- مراجعة NVIDIA لمرشّح 35bf42dd ما زالت معلّقة. لا توافق مُختلق.
 
-7. أين اتفقا وأين اختلفا؟ لا خلاف جديد. المفتوح: F3 توافق الأسطول، F4 الخلاف التصميمي، مراجعة NVIDIA للمرشح، حدود المشروع الأوسع، استعادة :5002، UAT الحقيقي متعدد المحفزات.
+## أين اتفقا وأين اختلفا؟
+- اتفقا: لا دمج بدون مراجعة مستقلة + UAT حقيقي.
+- اختلفا/معلّق: F4 (تبنّي legacy + سجل تدقيق) ما زال شرطًا من Muse؛ عقد التحقق NEEDS_REWORK.
 
-8. الأرقام المؤكدة (نطاق مدقق فقط، الشامل = UNKNOWN):
-DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (c221 rerun, retained) EXECUTABLE_TOOLS=5 (c222 corpus Level-4, NEW) FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=5 (c220 scoped + c222 output-contract evidence, retained) ORPHANED=UNKNOWN DUPLICATE=0 (retained) UNKNOWN=global REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
-(REPORTED_BY_MUSE؛ corpus-bound؛ لا ادعاء قبول منتج.)
+## ما الأرقام المؤكدة حاليًا؟
+DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN (Muse corpus: 163 dirty-registry scoped, REPORTED_BY_MUSE)
+EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN
+F3_FLEET=20 ownerless, 18 ALLOW / 2 DENY under default deterministic roots (VERIFIED, 2 independent probes)
+REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0 (no product PASS this cycle)
 
-9. ما آخر اختبار ونتيجته؟ مسبار c222: تنفيذ مباشر 10 حالات — 10/10 resolved، 8 حتمية، عيب نجاح-كاذب موثق. دليل Level-4 معزول — ليس REAL_JOE_UI PASS.
+## ما آخر اختبار ونتيجته؟
+TEST=F3 fleet probes (3 scripts, read-only stores)
+RESULT=PASS (internal/focused) — rerun byte-identical. NOT Real Joe UI PASS.
+WHAT_IT_PROVES=Codex F3 counts + legacy allow/deny split under stated assumptions.
 
-10. المشاكل/العوائق؟ :5002/:5101 DOWN (فحص مباشر c222) — UAT الرسمي الجديد BLOCKED. :5000 UP لكن API فقط ولا يصلح بديلًا. الكتابة المشتركة محظورة. حصة LLM7 المجانية استُنفدت جزئيًا بسبب المسبار (429، ~24.9h) — معلن، بلا مدفوعات. لا تشغيل ثنائي غير مراجَع على المنفذ الرسمي.
+## ما المشاكل أو العوائق الحالية؟
+- :5002/:5101 DOWN — UAT الحقيقي محظور.
+- F3-DECISION (مصير الـ2) + مراجعة NVIDIA + إثبات الجذر لحظة التشغيل قبل أي دمج.
 
-11. الخطوة التالية؟ استيراد Codex للدليل + إصلاح مراجَع لعيب النجاح-الكاذب (مالك يُعيَّن، ليس Muse منفردًا) + استعادة :5002 بمصدر مربوط مراجَع ثم UAT رسمي متعدد المحفزات unseen. كلا CRITICALs مفتوحان.
+## الخطوة التالية
+1. Codex يستورد رد F3 ويوجّه قرار الـ2 outliers.
+2. NVIDIA تكمل Batch 3 + مراجعة المرشّح.
+3. استعادة :5002 بمصدر مراجَع ثم UAT متعدد المحفزات.
+
+## آخر الإنجازات
+- [2026-10-03] TEST — F3: 8/8 counts reproduced + 18/2 split (Muse independent)
+- [2026-10-03] COORDINATION — F3 review sent via fallback, conditions stated
+- [2026-10-03] BLOCKER — :5002/:5101 DOWN confirmed again, UAT BLOCKED
