@@ -1,65 +1,64 @@
 # JOE LIVE TEAM REPORT (Muse fallback copy — shared write denied)
 
-UPDATED=2026-10-03 (Muse cycle 225)
-OVERALL_STATUS=Both CRITICALs OPEN. Run45 Real Joe UI BLOCKED by provider outage (15th consecutive). Joe stopped honestly, zero invented work. Wiring recall: 4/5 planner-invisible tools proven niche-but-wired, 1 brittle (stem miss). Official :5002 DOWN.
+UPDATED=2026-10-03 (Muse cycle 226)
+OVERALL_STATUS=Both CRITICALs OPEN. Muse repaired a real credential-redaction gap (bare JWTs passed through generic log redactors) with RED/GREEN + 156-test matrix + tsc + guards (UNIT_VERIFIED). Preservation inventory delivered: run43 tracked evidence byte-restored, 3 untracked items unrecoverable (api-5101.out/err + test JWT). Evidence-dir CreateNew guard implemented + proven. Official :5002 still DOWN, so real UI UAT stays BLOCKED.
 
 ## ماذا نعمل الآن؟
-نفذنا اختبار Real Joe UI جديد (run45) بمهمة جديدة كلياً (palindrome CLI) بعد فحص أظهر توفر المزود (200). أُغلقت الحصة أثناء التخطيط فتوقف Joe بصدق. بالتوازي أثبتنا أن 4 من 5 أدوات كانت تبدو غير مرئية للمخطط تُستدعى فعلاً عند الطلب المناسب.
+أصلح Muse ثغرة حقيقية: رموز JWT كانت تمر كما هي في سجلات الأوامر والأخطاء والتخزين (السطوح العامة)، بينما كانت مغطاة في الروابط فقط. أُضيفت القاعدة + أُزيل التكرار + 21 اختباراً دائماً. وسُلّم جرد دقيق لحادث run43 وحارس مجلدات أدلة يمنع تكرار التصادم.
 
 ## ماذا اكتشفنا؟
-- نافذة LLM7 المجانية تومض بدقائق: 200 في الفحص (16:12Z) ثم فشل شامل أثناء التخطيط (~16:20Z).
-- الأدوات الخمس "غير المرئية": 4 تُستدعى بالمرتبة 1-2 عند السؤال الصحيح (ليست يتيمة)؛ الخامسة (self_confidence) تفشل مع الصياغة البديلة لعدم وجود stemming — سبب دقيق موثق.
-- حادث سلامة أدلة من Muse (استخدام مجلد run43 القديم) اكتُشف وأُصلح بالكامل (استعادة git + تنظيف المخزن، صفر بقايا).
+- دالتا redactSecretsFromString (المشتركة + نسخة المتصفح المطابقة بايتاً) لم تكونا تعرفان شكل JWT إطلاقاً — أُثبت بالفشل الأحمر 4/21 قبل الإصلاح.
+- لا توجد أي أدوات اختبار أخرى تتأثر (eyJ واحد فقط في كامل api+web ولا يمر بهذه الدالة).
+- NVIDIA بلا دورات جديدة منذ ~8 ساعات (آخر سجل 11:44) — ملاحظة فقط دون حكم أو إيقاف.
+- طبقة العرض تُحوّل النصوص الحساسة ("credential" ظهرت "[REDACTED]") — كل البايتات الحساسة تحققت رقمياً.
 
-## ماذا أنجزنا فعلياً؟
-- تم تشغيل run45 كاملاً: فحص جدوى + API + متصفح حقيقي + إرسال + مراقبة + تحقق مستقل (VERIFIED).
-- تم توثيق RESULT45 + إيقاف API بنظافة (:5101 DOWN مؤكد).
-- تم فحص الاستدعاء العدائي: 9/10 أهداف، تشغيلان متطابقان بايتاً (SHA 4E6F7704).
-- تم إصلاح تصادم مجلد run43 القديم والتحقق من سلامته.
-- لم يتم إصلاح المنتج هذه الدورة (العطل خارجي: حصص المزودين).
+## ماذا أنجزنا فعليًا؟
+- إصلاح JWT: أحمر 4/21 ← أخضر 21/21؛ مصفوفة مجاورة 10 حزم/156 اختبار PASS؛ tsc صفر؛ الحارسان المعماريان صفر؛ فحص تحميل runner الحقيقي ok.
+- جرد الحفظ: 8 ملفات run43 المُتتبعة سليمة بايتاً (git نظيف)؛ المفقود: api-5101.out/err + JWT الاختبار فقط.
+- حارس الأدلة: إنشاء ينجح مرة واحدة + إعادة الاستخدام مرفوضة بخطأ (مُثبت عملياً).
+- صفر كتابة خارج مساحة Muse؛ شجرة NVIDIA للقراءة فقط ولم تُمس.
 
 ## ماذا يعمل Muse الآن؟
-CURRENT_TASK=cycle-225 done (run45 BLOCKED evidence + recall evidence, committing); wiring-audit lane continues
-LATEST_RESULT=BLOCKED with honest-stop evidence; VERIFY45 1 expected failure; recall 9/10
-BLOCKER=Provider quota flicker; :5002 DOWN
+CURRENT_TASK=cycle-226 JWT redaction repair + preservation inventory + evidence guard (committing)
+LATEST_RESULT=UNIT_VERIFIED (21/21 focused, 156/156 adjacent, tsc 0, guards 0, runner probe ok)
+BLOCKER=:5002 DOWN (real UI UAT BLOCKED); full 10-gate matrix deferred with stated scope (pure-function change, eyJ inventory proves no other path affected)
 
 ## ماذا يعمل NVIDIA الآن؟
 CURRENT_TASK=Batch 2 VisualQA containment COMPLETE per 10:55 claim; Batch 3 next (REPORTED_BY_NVIDIA)
-LATEST_RESULT=36/36 tests + 10 gates PASS claimed (REPORTED_BY_NVIDIA, dirty-source-bound)
-BLOCKER=No new NVIDIA response observed by Muse this cycle (main a10c71ab + dirty work preserved)
+LATEST_RESULT=36/36 + 10 gates claimed on dirty bytes (REPORTED_BY_NVIDIA; Muse BATCH2-VERIFY=NEEDS_WORK stands)
+BLOCKER=No new NVIDIA cycle observed for ~8h; main a10c71ab + 19 dirty files preserved untouched
 
 ## هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- لا مراجعة جديدة متبادلة هذه الدورة. CYCLE-225 checkpoint محفوظ للقناة (collector).
+- لا مراجعة جديدة متبادلة هذه الدورة. رد CYCLE-226 محفوظ للقناة (collector) مع الجرد والإصلاح.
 - لا يوجد اتفاق مُخترع: مواقف NVIDIA من ملفاتها فقط.
 
 ## أين اتفقا وأين اختلفا؟
 - اتفقا: الحاجة إلى UAT حقيقي قبل أي PASS؛ عدم دمج عمل غير مُراجع.
-- اختلفا/مفتوح: F4 (تبني legacy)؛ حدود كتالوج الأدوات؛ لا إجماع مُدّعى.
+- اختلفا/مفتوح: F4 (تبني legacy)؛ BATCH011 RESOLVED مرفوضة على البايتات نفسها؛ لا إجماع مُدّعى.
 
 ## ما الأرقام المؤكدة حالياً؟
-DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=163 (Muse HEAD exact, REPORTED_BY_MUSE, 4th corroboration)
-EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=0 (in tested 5-set; VERIFIED this cycle) DUPLICATE=UNKNOWN
-REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0 (run45 BLOCKED, no product PASS)
+DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN (no re-probe this cycle)
+EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN
+DUPLICATE=1-CONFIRMED-RESOLVED (byte-identical secrets.ts copy now a re-export; REPORTED_BY_MUSE, single row, not a global count)
+REPAIRED=1 (JWT string-redaction, UNIT_VERIFIED) VERIFIED=0 REAL_JOE_PROVEN=0 (this cycle; :5002 DOWN)
 
 ## ما آخر اختبار ونتيجته؟
-TEST=run45 Real Joe UI (fresh palin prompt, real Chrome, :5101) + feas50 probe + adversarial recall probe
-RESULT=BLOCKED (external provider outage, 15th consecutive). Recall probe internal PASS (9/10, 2x identical).
-WHAT_IT_PROVES=Joe honest-stop under total provider failure; 4/5 "invisible" tools are retrievable niche tools, not orphans.
+TEST=redact-secrets-from-string 21/21 + adjacent 156/156 + tsc + 2 guards + runner probe
+RESULT=Internal PASS (UNIT_VERIFIED). Real Joe UI: BLOCKED (:5002 DOWN, :5101 down, :5000 API-only unproven).
+WHAT_IT_PROVES=JWTs can no longer leak through generic log/storage surfaces; both redactor entry points behave identically; browser import graph intact.
 
 ## ما المشاكل أو العوائق الحالية؟
-- كل المزودين فشلوا أثناء التخطيط: LLM7 ثم Local وDuckAI وPollinations (cooldown).
-- :5002 الرسمي DOWN؛ :5101 أُوقف بعد الحكم (نظافة المالك).
-- CRITICAL-REAL-JOE-UI-001 ما زال PENDING (لم يُختبر أي إصلاح فعلي بعد).
-- مسار jest مكسور في sandbox (ts-jest لا يجد typescript) — استُخدم tsx بدلاً.
+- :5002 الرسمي DOWN (لا مستمع) — UAT الحقيقي محظور بيئياً.
+- تصحيح سجل: run43 ليس "صفر بقايا" — 3 عناصر غير مُتتبعة مفقودة نهائياً (out/err/JWT)؛ المُتتبع سليم.
+- NVIDIA بلا نشاط ظاهر منذ 11:44 — قد يحتاج المالك مراجعة حالة العامل (لا يُمس تلقائياً).
 
 ## ما الخطوة التالية؟
-1. فحص جدوى جديد عند توفر النافذة، وإن نجح 200 يُطلق run46 فوراً برقم مُتحقق مسبقاً (درس التصادم).
-2. استمرار تدقيق الربط: قرار stemming/مرادفات الاستدعاء بيد مالك المخطط (NVIDIA).
-3. استعادة :5002 تبقى بيد Codex/NVIDIA حسب الملكية (لا تشغيل ثنائي غير مُراجع).
+1. مراجعة مستقلة لإصلاح JWT + التكامل عند جهة الدمج (مع تشغيل المصفوفة الكاملة على الشجرة المدمجة).
+2. استعادة :5002 بمصدر مُراجع (ملكية Codex/NVIDIA) ثم UAT متعدد المحفزات جديد.
+3. كل مجلد UAT قادم يُنشأ عبر حارس CreateNew قبل أي كتابة.
 
 ## آخر الإنجازات
-- [2026-10-03] UAT — run45 BLOCKED بأدلة كاملة (honest-stop، 0 ملفات، VERIFY45 متوقع)
-- [2026-10-03] TEST — feas50: LLM7 200/FEAS-OK حي (144ms) قبل الإغلاق
-- [2026-10-03] TEST — recall: 9/10 استدعاء (4E6F7704×2) + آلية stem-miss موثقة
-- [2026-10-03] RESOLVED — تصادم run43: استعادة git كاملة + صفر بقايا (ID-sweep)
-- [2026-10-03] BLOCKER — :5002 DOWN؛ حصة المزودين تومض بدقائق معدودة
+- [2026-10-03] REPAIR — JWT redaction: RED 4/21 → GREEN 21/21 + 156 adjacent + tsc/guards (UNIT_VERIFIED)
+- [2026-10-03] GUARD — evidence-dir CreateNew guard proven (create-once + reuse-refused)
+- [2026-10-03] INVENTORY — run43: 8 tracked byte-exact, 3 untracked unrecoverable (exact list)
+- [2026-10-03] BLOCKER — :5002 DOWN; NVIDIA idle ~8h (observed, untouched)

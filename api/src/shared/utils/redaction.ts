@@ -1,6 +1,13 @@
+// JWT-shaped bearer credential: eyJ header plus three dot-separated
+// segments. Same shape contract as web/src/utils/redactUrl.ts. No leading
+// word boundary on purpose: a JWT embedded in a longer run must still be
+// caught (fail closed), never missed because of a missing boundary.
+const JWT_SHAPED_CREDENTIAL = /eyJ[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}\.[A-Za-z0-9_-]{5,}/g;
+
 export function redactSecretsFromString(input: string): string {
     if (!input) return input;
     return input
+        .replace(JWT_SHAPED_CREDENTIAL, '[REDACTED]')
         .replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]')
         .replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]')
         .replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]')

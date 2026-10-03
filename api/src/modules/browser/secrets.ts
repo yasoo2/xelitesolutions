@@ -129,16 +129,8 @@ export function rewriteInlineLoginCredentialsToSecrets(rawText: string) {
   return { ok: true as const, email, password, sanitizedText: sanitized };
 }
 
-export function redactSecretsFromString(s: string) {
-  let out = String(s || '');
-  out = out.replace(/\bsk-[A-Za-z0-9_-]{10,}\b/g, 'sk-[REDACTED]');
-  out = out.replace(/\bghp_[A-Za-z0-9_]{10,}\b/g, 'ghp_[REDACTED]');
-  out = out.replace(/\bgithub_pat_[A-Za-z0-9_]{10,}\b/g, 'github_pat_[REDACTED]');
-  out = out.replace(/\bBearer\s+[A-Za-z0-9._-]{10,}\b/g, 'Bearer [REDACTED]');
-  out = out.replace(/([?&]token=)[^&\s]+/gi, '$1[REDACTED]');
-  out = out.replace(/([?&]password=)[^&\s]+/gi, '$1[REDACTED]');
-  out = out.replace(/([?&]key=)[^&\s]+/gi, '$1[REDACTED]');
-  out = out.replace(/\bx-worker-key\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, 'x-worker-key:[REDACTED]');
-  out = out.replace(/\b(WORKER_API_KEY|BROWSER_WORKER_KEY|JWT_SECRET|OPENAI_API_KEY)\b\s*[:=]\s*[A-Za-z0-9._-]{6,}/gi, '$1=[REDACTED]');
-  return out;
-}
+// Single implementation lives in shared/utils/redaction: this re-export keeps
+// the browser runner's existing `from './secrets'` import working while
+// guaranteeing both entry points redact exactly the same credential shapes.
+export { redactSecretsFromString } from '../../shared/utils/redaction';
+
