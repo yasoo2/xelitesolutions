@@ -128,3 +128,102 @@ describe('redactSecretsFromString', () => {
         expect(redactSecretsFromString('')).toBe('');
     });
 });
+
+// Transfer cases: spelled-out and long-form credential names the original
+// enumeration never listed. A redactor must classify by the MEANING of the
+// class (a named credential), not by the few short spellings it was built
+// with — otherwise every synonym silently leaks.
+describe('redactSecretsFromString transfer: non-enumerated credential spellings', () => {
+    test.each([
+        ['bare password assignment', 'prefix password=hunter2 suffix', 'hunter2'],
+        ['digitless secret value still redacted (fail closed)', 'prefix secret: blueberry-patch suffix', 'blueberry-patch'],
+        ['spelled-out api_key compound', 'prefix api_key=AKIAIOSFODNN7EXAMPLE suffix', 'AKIAIOSFODNN7EXAMPLE'],
+        ['JSON password field', 'prefix {"password": "hunter2"} suffix', 'hunter2'],
+        ['JSON token field with digit', 'prefix {"token": "abc123"} suffix', 'abc123'],
+        ['client_secret compound', 'prefix client_secret=shhh-value-1 suffix', 'shhh-value-1'],
+        ['token with digit', 'prefix token: abc123 suffix', 'abc123'],
+        ['camelCase accessToken', 'prefix accessToken=abc123 suffix', 'abc123'],
+        ['camelCase apiKey', 'prefix apiKey=hunter2 suffix', 'hunter2'],
+        ['csrf token', 'prefix _csrf=abc123 suffix', 'abc123'],
+    ])('redacts %s', (_label, input, leaked) => {
+        const out = redactSecretsFromString(input);
+        expect(out).not.toContain(leaked);
+        expect(out).toContain('[REDACTED]');
+        expect(out).toContain('prefix');
+        expect(out).toContain('suffix');
+    });
+
+    it('redacts a non-enumerated query parameter but keeps its neighbors', () => {
+        const out = redactSecretsFromString('prefix ?access_token=secret123&x=1 suffix');
+        expect(out).not.toContain('secret123');
+        expect(out).toContain('?access_token=[REDACTED]&x=1');
+    });
+
+    it('redacts a compound query parameter', () => {
+        const out = redactSecretsFromString('prefix ?api_key=xyz789 suffix');
+        expect(out).not.toContain('xyz789');
+        expect(out).toContain('[REDACTED]');
+    });
+
+    it('redacts a URI userinfo password but keeps user, host and path', () => {
+        const out = redactSecretsFromString('prefix mongodb://joe:hunter2@db.internal:27017/app suffix');
+        expect(out).not.toContain('hunter2');
+        expect(out).toContain('mongodb://joe:[REDACTED]@db.internal:27017/app');
+    });
+
+    it('keeps trailing punctuation outside the redaction', () => {
+        const out = redactSecretsFromString('prefix token=abc123. suffix');
+        expect(out).not.toContain('abc123');
+        expect(out).toContain('token=[REDACTED].');
+    });
+
+    it('documents the fail-closed over-redaction: password: required is redacted', () => {
+        // `required` after a password cue is indistinguishable from a real
+        // password by shape. The redactor fails closed (redacts) rather than
+        // leaking digitless passwords such as `blueberry`. Pinned on purpose.
+        const out = redactSecretsFromString('prefix password: required suffix');
+        expect(out).not.toContain('required');
+        expect(out).toContain('password:[REDACTED]');
+    });
+
+    test.each([
+        ['mustache secret placeholder keeps its key name', 'send {{SECRET:JOE_LOGIN_PASSWORD}} now'],
+        ['keyboard key name is not a credential', '{"key":"Enter"}'],
+        ['usage telemetry is not a credential', 'prompt tokens: 150 done'],
+        ['null literal is not a credential', 'prefix token: null suffix'],
+        ['none literal is not a credential', 'prefix auth: none suffix'],
+        ['false literal is not a credential', 'prefix secret: false suffix'],
+        ['correlation UUID is not redacted', 'key: 550e8400-e29b-41d4-a716-446655440000'],
+        ['empty quoted value means unset', 'prefix password: "" suffix'],
+        ['port number is not a userinfo password', 'see https://host:5000/api for details'],
+        ['cue must not match the tail of a longer word', 'prefix monkey=banana suffix'],
+        ['cue must not match the head of a longer word', 'the tokenizer=X1 setting'],
+        ['auth must not match author', 'node app.js --author bob done'],
+        ['digitless short token value is kept (documented residual)', 'prefix token=panel-browser suffix'],
+    ])('leaves intact: %s', (_label, text) => {
+        expect(redactSecretsFromString(text)).toBe(text);
+    });
+
+    it('is idempotent: re-redacting never appends extra markers', () => {
+        const mixed = 'u=joe password=hunter2 token=abc123 tokens=150 key=Enter ?a=1&token=xyz9 end';
+        const once = redactSecretsFromString(mixed);
+        expect(once).toContain('password=[REDACTED]');
+        expect(once).toContain('token=[REDACTED]');
+        expect(once).toContain('tokens=150');
+        expect(once).toContain('key=Enter');
+        expect(redactSecretsFromString(once)).toBe(once);
+    });
+
+    it('browser entry agrees byte-for-byte on the new shapes', () => {
+        const samples = [
+            'prefix password=hunter2 suffix',
+            '{"key":"Enter"}',
+            'prefix ?access_token=x1&y=2 suffix',
+            'send {{SECRET:JOE_LOGIN_EMAIL}} now',
+            'prompt tokens: 150 done',
+        ];
+        for (const sample of samples) {
+            expect(redactSecretsFromStringBrowser(sample)).toBe(redactSecretsFromString(sample));
+        }
+    });
+});
