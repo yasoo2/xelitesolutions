@@ -1,0 +1,79 @@
+/**
+ * DISPOSABLE PROBE — cycle-215, Muse wiring lane.
+ * Permission/firewall posture for the 5 planner-invisible candidates.
+ * Resolve-only: reads registry metadata, executes NOTHING.
+ * Deleted after 2x deterministic run; source preserved in
+ * tmp/perm-reach-20261003/probe-source.txt
+ */
+import { tools, contractDefaults } from '../modules/tools/registry';
+import * as fs from 'fs';
+import * as path from 'path';
+
+const NAMES = [
+  'cloud_cost_estimator',
+  'self_confidence_evaluator',
+  'ask_user',
+  'rss_fetch',
+  'task_lifecycle',
+  'read_file', // read control
+  'write_file', // write control
+  'bogus_tool_xyz_7788', // negative control
+];
+
+// Same heuristic as write-tools-contract.test.ts:61-63 (verbatim copy of the regex).
+const UNSAFE = /(write|create|delete|remove|deploy|publish|push|commit|install|npm|exec|run|terminal|shell|browser|http|fetch|url|api_test|rss|search_api|clone|import|edit|generate|build|scaffold|project_pipeline|ask_user|screenshot|kill|move|rename|archive|extract|upload|mail|send)/i;
+
+describe('perm-reach probe', () => {
+  test('permission/firewall metadata matrix', () => {
+    const defaulted = new Set(
+      (contractDefaults.permissions as string[]).map((e) => String(e).split('→')[0]),
+    );
+    const rows = NAMES.map((n) => {
+      const def: any = (tools as any[]).find((t) => t && t.name === n) || null;
+      const perms: string[] = def && Array.isArray(def.permissions) ? def.permissions : [];
+      const effects: string[] = def && Array.isArray(def.sideEffects) ? def.sideEffects : [];
+      // ToolService.ts:726-727 — the ONLY production permission consumer on dispatch.
+      const needsWorkspace = perms.length > 0 || effects.length > 0;
+      const needsUser = perms.length > 0 || effects.length > 0;
+      const writeClass = def
+        ? UNSAFE.test(def.name) || perms.some((p) => p === 'write' || p === 'execute')
+        : false;
+      return {
+        name: n,
+        registered: !!def,
+        executeType: def ? typeof def.execute : null,
+        permissions: def ? perms : null,
+        sideEffects: def ? effects : null,
+        rateLimitPerMinute: def ? def.rateLimitPerMinute : null,
+        declaredVsDefaulted: !def ? null : defaulted.has(n) ? 'DEFAULTED' : 'DECLARED',
+        needsWorkspace,
+        needsUser,
+        writeClass,
+      };
+    });
+    const out = {
+      museHead: '08f9424e',
+      method: 'resolve-only; no tool executed; permission values never gate dispatch (ToolService.ts:724-727 length-only); registry defaulting at registry.ts:384-387',
+      contractDefaultsCount: (contractDefaults.permissions as string[]).length,
+      contractDefaultsEntries: contractDefaults.permissions,
+      rows,
+    };
+    const dir = path.resolve(__dirname, '../../../tmp/perm-reach-20261003');
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'permissions.json'), JSON.stringify(out, null, 2));
+    // eslint-disable-next-line no-console
+    console.log('[PERM-REACH] ' + rows.map((r) => `${r.name}:reg=${r.registered}:perm=${JSON.stringify(r.permissions)}:fx=${JSON.stringify(r.sideEffects)}:${r.declaredVsDefaulted}:ws=${r.needsWorkspace}:wc=${r.writeClass}`).join(' | '));
+    for (const r of rows.slice(0, 7)) {
+      expect(r.registered).toBe(true);
+      expect(r.executeType).toBe('function');
+      expect((r.permissions as string[]).length).toBeGreaterThan(0);
+      expect(r.needsWorkspace).toBe(true);
+      expect(r.needsUser).toBe(true);
+    }
+    const bogus = rows[7];
+    expect(bogus.registered).toBe(false);
+    expect(bogus.permissions).toBeNull();
+    expect(bogus.needsWorkspace).toBe(false);
+    expect(bogus.needsUser).toBe(false);
+  });
+});

@@ -1,0 +1,143 @@
+{
+  "museHead": "08f9424e",
+  "method": "resolve-only; no tool executed; permission values never gate dispatch (ToolService.ts:724-727 length-only); registry defaulting at registry.ts:384-387",
+  "contractDefaultsCount": 21,
+  "contractDefaultsEntries": [
+    "business_logic_parser→read",
+    "chaos_test_plan→read",
+    "compliance_validator→read",
+    "cloud_cost_estimator→read",
+    "ambiguity_resolver→read",
+    "multi_agent_debate→read",
+    "self_confidence_evaluator→read",
+    "project_planner→read",
+    "central_answer→read",
+    "web_page_builder→write",
+    "form_inbox→read",
+    "echo→read",
+    "shell_check_status→read",
+    "ask_user→read",
+    "json_query→read",
+    "alert_manager→write",
+    "cache_manager→write",
+    "monitoring→read",
+    "project_state_manager→write",
+    "request_analyzer→read",
+    "template_manager→write"
+  ],
+  "rows": [
+    {
+      "name": "cloud_cost_estimator",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "declaredVsDefaulted": "DEFAULTED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": false
+    },
+    {
+      "name": "self_confidence_evaluator",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 20,
+      "declaredVsDefaulted": "DEFAULTED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": false
+    },
+    {
+      "name": "ask_user",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "declaredVsDefaulted": "DEFAULTED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": true
+    },
+    {
+      "name": "rss_fetch",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read",
+        "internet"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "declaredVsDefaulted": "DECLARED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": true
+    },
+    {
+      "name": "task_lifecycle",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "declaredVsDefaulted": "DECLARED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": true
+    },
+    {
+      "name": "read_file",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "read"
+      ],
+      "sideEffects": [],
+      "rateLimitPerMinute": 60,
+      "declaredVsDefaulted": "DECLARED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": false
+    },
+    {
+      "name": "write_file",
+      "registered": true,
+      "executeType": "function",
+      "permissions": [
+        "write"
+      ],
+      "sideEffects": [
+        "write"
+      ],
+      "rateLimitPerMinute": 60,
+      "declaredVsDefaulted": "DECLARED",
+      "needsWorkspace": true,
+      "needsUser": true,
+      "writeClass": true
+    },
+    {
+      "name": "bogus_tool_xyz_7788",
+      "registered": false,
+      "executeType": null,
+      "permissions": null,
+      "sideEffects": null,
+      "rateLimitPerMinute": null,
+      "declaredVsDefaulted": null,
+      "needsWorkspace": false,
+      "needsUser": false,
+      "writeClass": false
+    }
+  ]
+}
