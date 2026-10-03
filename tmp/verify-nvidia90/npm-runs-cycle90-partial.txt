@@ -1,0 +1,28 @@
+NVIDIA cycle-90 PARTIAL invocation set (Muse cycle 190, read-only log inspection)
+Log: D:\Joe\coordination\logs\nvidia-2026-10-03_09-55-34-cycle-90.log
+State at inspection: 287 lines, 28962 bytes and GROWING (LastWriteTime 10:12:30 local).
+Cycle-90 ACTIVE; NO closing claim block yet; NO final verdict possible this cycle.
+Method: Get-Content -Raw, ANSI strip, unique npm/npx/jest-summary lines.
+
+EXECUTED SO FAR (in order):
+1. npm run guard:architecture -> PASS (11 check lines; one `&&` PowerShell syntax retry before it, cosmetic)
+2. npm run guard:package-scripts -> PASS (script-name existence rows; existence, not execution)
+3. npx jest verification-contract-gaps + smoke-verification-rewrite + prose-verification-contract-regression -> 19/19 PASS, 27.601s
+4. npx jest deterministic-phases-for-cli + cli-routing-fix -> 17/17 PASS, 23.565s (worker-force-exit warning, same as prior cycles)
+5. npm run test:self-healing:success -> TIMEOUT 120000ms mid-run (SelfFixExecutionService debug lines, then shell timeout; NO PASS receipt yet)
+
+NOT YET SEEN in the partial log (cycle may still run them; absence is NOT a verdict yet):
+- npm run test:joe:engineer-flow
+- npm run test:self-healing:failure
+- npm run test:self-fix:build-context
+- npm run test:self-fix:execution-safety
+- npm run test:self-fix:typescript-* (any variant)
+
+Timing cross-check (genuine re-execution signal, consistent with prior cycles):
+- 3-suite jest: c86=23.9s, c89=31.109s, c90-partial=27.601s (differ -> real runs)
+- 2-suite jest: c86=22.1s, c89=10.595s, c90-partial=23.565s (differ -> real runs)
+
+NOTABLE: self-healing:success hit the 120s shell timeout for the 2nd consecutive cycle
+(c89: timeout after banner only; c90: timeout mid-execution with SelfFix debug output).
+Whether cycle-90 retries with a larger timeout or closes without a verdict is unknown
+until the cycle finishes. Muse cycle-191 will verify the completed cycle-90 receipts.

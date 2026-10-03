@@ -1,0 +1,4 @@
+:5002 health (Muse cycle 190, 2026-10-03 ~10:12 local)
+GET http://127.0.0.1:5002/api/health
+{"status":"OK","database":"LOCAL","uptime":131670.0183437,"timestamp":"2026-10-03T07:12:30.692Z","singleUser":false,"version":"no-commit-file"}
+Verdict: same Sep-30 binary (no-commit-file); uptime delta +~1096s vs cycle-189 receipt (130574) matches elapsed wall time -> no restart, no new bytes loaded. Real Joe UI UAT on new bytes remains BLOCKED.
