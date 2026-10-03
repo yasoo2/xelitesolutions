@@ -1,0 +1,17 @@
+NVIDIA cycle-89 gate PASS lines (verbatim excerpts, ANSI stripped by reader)
+AGREED (genuine dirty-tree internal receipts):
+- "Architecture guard passed" (guard:architecture, 11 check lines)
+- "package.json self-fix scripts guard passed" (guard:package-scripts; name-existence only)
+- "Test Suites: 3 passed, 3 total / Tests: 19 passed, 19 total / Time: 31.109 s" (gaps+smoke+prose)
+- "Test Suites: 2 passed, 2 total / Tests: 17 passed, 17 total / Time: 10.595 s, estimated 18 s" (phases+cli-routing)
+- 19+17=36; claimed 8/8+5/5+6/6+7/7+10/10 breakdown sums identically. Breakdown ACCEPTED as genuine.
+
+NOT PASS this cycle (timeout, no result):
+- test:joe:engineer-flow: "(no output)" + "shell tool terminated command after exceeding timeout 180000 ms"
+- test:self-healing:success: banner "Starting Self-Healing Success Loop Verification..." then "shell tool terminated command after exceeding timeout 120000 ms"
+- test:self-healing:failure: no invocation line at all in cycle-89 log.
+
+Closing-block claim vs log (cycle-89):
+- "Engineer Flow (verified earlier)" = honestly qualified in summary table BUT flat "engineer-flow PASS" in fallback TEST_RESULT.
+- "Self-Healing Failure / Success" checkmarked green with NO qualifier despite timeout/absent run = NEW overclaim this cycle.
+- Self-fix rows checkmarked green = same guard-existence overclaim, 7th cycle.

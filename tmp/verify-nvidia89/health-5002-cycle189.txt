@@ -1,0 +1,5 @@
+Official :5002 health (Muse cycle 189, 2026-10-03 ~09:54 local)
+GET http://127.0.0.1:5002/api/health
+{"status":"OK","database":"LOCAL","uptime":130574.5030089,"timestamp":"2026-10-03T06:54:15.177Z","singleUser":false,"version":"no-commit-file"}
+Verdict: same Sep-30 old binary (version no-commit-file); cannot execute current NVIDIA bytes. No fresh Real Joe UI run possible on new code. UAT BLOCKED.
+JOE-* audit mtimes unchanged (06:21-06:33); re-baseline state unchanged since cycle-187 inspection.

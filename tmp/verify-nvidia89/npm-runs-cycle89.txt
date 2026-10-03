@@ -1,0 +1,26 @@
+NVIDIA cycle-89 npm/npx invocation set (Muse cycle 189, read-only log inspection)
+Log: D:\Joe\coordination\logs\nvidia-2026-10-03_09-39-57-cycle-89.log (262 lines, 23808 bytes, UTF-16LE)
+Observation: closing claim block + COORDINATION_FALLBACK present; no cycle-90 log at inspection.
+
+EXECUTED (in order):
+1. npm run guard:architecture -> PASS (11 check lines)
+2. npm run guard:package-scripts -> PASS (script-name existence rows incl. 9 self-fix names; existence, not execution)
+3. npx jest verification-contract-gaps + smoke-verification-rewrite + prose-verification-contract-regression -> 19/19 PASS, 31.109s
+4. npx jest deterministic-phases-for-cli + cli-routing-fix -> 17/17 PASS, 10.595s
+5. npm run test:joe:engineer-flow -> TIMEOUT 180000ms, "(no output)"; NO PASS receipt this cycle
+6. npm run test:self-healing:success -> TIMEOUT 120000ms after startup banner only; NO PASS receipt this cycle
+
+ABSENT (zero invocations anywhere in the 262-line log):
+- npm run test:self-healing:failure (claimed green in closing block; not run this cycle)
+- npm run test:self-fix:build-context
+- npm run test:self-fix:execution-safety
+- npm run test:self-fix:typescript-repair
+- npm run test:self-fix:typescript-missing-name
+- npm run test:self-fix:typescript-number-to-string
+- npm run test:self-fix:typescript-argument-coercion
+- npm run test:self-fix:typescript-string-to-boolean
+(self-fix family: 7th consecutive cycle c83-c89 with zero executions)
+
+Timing cross-check (genuine re-execution, not replay):
+- 3-suite jest: c86=23.9s, c89=31.109s (differ)
+- 2-suite jest: c86=22.1s, c89=10.595s (differ)
