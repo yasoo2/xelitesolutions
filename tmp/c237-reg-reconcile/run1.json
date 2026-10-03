@@ -1,0 +1,101 @@
+﻿{
+  "provenance": {
+    "museHead": "62f8a0ec1f4891e6af458b2baaa07b205b494bda",
+    "registrySha256": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec",
+    "defFiles": 93
+  },
+  "counts": {
+    "definitionFiles": 93,
+    "exportedToolSymbols": 171,
+    "registeredUniqueRefs": 161,
+    "registeredInstances": 163,
+    "baseNew": 56,
+    "createTool": 26,
+    "eliteNew": 8,
+    "safeNew": 70,
+    "memoryMembers": 2,
+    "bareObjects": 1,
+    "memoryNames": [
+      "recall_memory",
+      "memorize_codebase"
+    ]
+  },
+  "IMPLEMENTED_NOT_REGISTERED": [
+    {
+      "cls": "AdvancedTools",
+      "file": "AdvancedTools.ts",
+      "toolName": null
+    },
+    {
+      "cls": "BulkFileGeneratorTool",
+      "file": "BulkFileGeneratorTool.ts",
+      "toolName": "bulk_file_generator"
+    },
+    {
+      "cls": "CodebaseNavigatorTool",
+      "file": "CodebaseNavigatorTool.ts",
+      "toolName": "codebase_navigator"
+    },
+    {
+      "cls": "GrepSearchTool",
+      "file": "SystemTools.ts",
+      "toolName": "grep_search"
+    },
+    {
+      "cls": "ImageGenerationTool",
+      "file": "ImageGenerationTool.ts",
+      "toolName": "generate_image"
+    },
+    {
+      "cls": "TodoWriteTool",
+      "file": "TodoWriteTool.ts",
+      "toolName": "todo_write"
+    },
+    {
+      "cls": "VisualQATool",
+      "file": "VisualQATool.ts",
+      "toolName": "visual_qa"
+    },
+    {
+      "cls": "interruptedWindowsNativeTools",
+      "file": "ReactProjectTool.ts",
+      "toolName": null
+    },
+    {
+      "cls": "planContainsTool",
+      "file": "ProjectPipelineTool.ts",
+      "toolName": null
+    },
+    {
+      "cls": "shouldRepairInterruptedNativeBuildTools",
+      "file": "ReactProjectTool.ts",
+      "toolName": null
+    }
+  ],
+  "REGISTERED_WITHOUT_IMPLEMENTATION": [
+    "Error"
+  ],
+  "DUPLICATE_INSTANTIATION": [],
+  "safeNewLabelMismatches": [
+    {
+      "label": "web_pipeline",
+      "cls": "WebPipelineTool",
+      "declared": "website_full_pipeline"
+    },
+    {
+      "label": "dev_server",
+      "cls": "DevServerTool",
+      "declared": "dev_server_start"
+    },
+    {
+      "label": "performance_profiler",
+      "cls": "PerformanceProfilerTool",
+      "declared": "performance_profile"
+    },
+    {
+      "label": "documentation_generator",
+      "cls": "DocumentationGeneratorTool",
+      "declared": "doc_generator"
+    }
+  ]
+}
