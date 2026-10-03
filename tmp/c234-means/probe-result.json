@@ -1,0 +1,1269 @@
+{
+ "meansKeys": 100,
+ "distinctTargets": 27,
+ "registeredCount": 163,
+ "catalogueCount": 40,
+ "danglingTargets": [],
+ "mismatchedDirectCount": 2,
+ "mismatchedDirect": [
+  {
+   "key": "bash",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "terminal_manager",
+    "how": "alias"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "github actions",
+   "meansTarget": "github_actions",
+   "direct": {
+    "tool": "github_actions",
+    "how": "normalised"
+   },
+   "contains": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   }
+  }
+ ],
+ "gapVisibleViaMeans": [
+  {
+   "tool": "docker_manager",
+   "keys": [
+    "docker"
+   ]
+  },
+  {
+   "tool": "kubernetes_ops",
+   "keys": [
+    "kubernetes"
+   ]
+  },
+  {
+   "tool": "terraform_manager",
+   "keys": [
+    "terraform"
+   ]
+  },
+  {
+   "tool": "github_actions",
+   "keys": [
+    "github actions"
+   ]
+  },
+  {
+   "tool": "ci_generate_pipeline",
+   "keys": [
+    "ci",
+    "ci/cd"
+   ]
+  }
+ ],
+ "keyResults": [
+  {
+   "key": "github",
+   "meansTarget": "github_repo_manager",
+   "direct": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "version control",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "source control",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "gitlab",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "bitbucket",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "git init",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "git commit",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "repository",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "repo",
+   "meansTarget": "git_ops",
+   "direct": {
+    "tool": "git_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "git_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "pull request",
+   "meansTarget": "github_pr",
+   "direct": {
+    "tool": "github_pr",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "github_pr",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "pr",
+   "meansTarget": "github_pr",
+   "direct": {
+    "tool": "github_pr",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "github_pr",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "npm",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "yarn",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "pnpm",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "package manager",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "npm install",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "dependencies",
+   "meansTarget": "npm_manager",
+   "direct": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "npm_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "bash",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "terminal_manager",
+    "how": "alias"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "sh",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "terminal",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "cli",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "command",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "command line",
+   "meansTarget": "shell_execute",
+   "direct": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "shell_execute",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "jest",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "mocha",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "vitest",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "pytest",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "cypress",
+   "meansTarget": "browser_run",
+   "direct": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "playwright",
+   "meansTarget": "browser_run",
+   "direct": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "selenium",
+   "meansTarget": "browser_run",
+   "direct": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "testing",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "unit tests",
+   "meansTarget": "auto_tester",
+   "direct": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auto_tester",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "test suite",
+   "meansTarget": "test_generator",
+   "direct": {
+    "tool": "test_generator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "test_generator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "eslint",
+   "meansTarget": "code_reviewer",
+   "direct": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "prettier",
+   "meansTarget": "code_reviewer",
+   "direct": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "linter",
+   "meansTarget": "code_reviewer",
+   "direct": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "sonarqube",
+   "meansTarget": "code_reviewer",
+   "direct": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "code review",
+   "meansTarget": "code_reviewer",
+   "direct": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "code_reviewer",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "postgres",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "postgresql",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "mysql",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "mongodb",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "mongoose",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "prisma",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "sqlite",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "database",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "sql",
+   "meansTarget": "db_schema_migrator",
+   "direct": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "db_schema_migrator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "stripe",
+   "meansTarget": "payments_create_checkout_session",
+   "direct": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "paypal",
+   "meansTarget": "payments_create_checkout_session",
+   "direct": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "payment",
+   "meansTarget": "payments_create_checkout_session",
+   "direct": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "payments",
+   "meansTarget": "payments_create_checkout_session",
+   "direct": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "checkout",
+   "meansTarget": "payments_create_checkout_session",
+   "direct": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "payments_create_checkout_session",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "auth0",
+   "meansTarget": "auth_builder",
+   "direct": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "jwt",
+   "meansTarget": "auth_builder",
+   "direct": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "oauth",
+   "meansTarget": "auth_builder",
+   "direct": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "authentication",
+   "meansTarget": "auth_builder",
+   "direct": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "login",
+   "meansTarget": "auth_builder",
+   "direct": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "auth_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "react",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "vite",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "nextjs",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "next.js",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "vue",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "angular",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "frontend",
+   "meansTarget": "react_project",
+   "direct": {
+    "tool": "react_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "express",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "nodejs",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "node.js",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "backend",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "api",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "rest",
+   "meansTarget": "api_project",
+   "direct": {
+    "tool": "api_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "api_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "swagger",
+   "meansTarget": "swagger_docs",
+   "direct": {
+    "tool": "swagger_docs",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "swagger_docs",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "openapi",
+   "meansTarget": "swagger_docs",
+   "direct": {
+    "tool": "swagger_docs",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "swagger_docs",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "i18n",
+   "meansTarget": "i18n_translator",
+   "direct": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "localization",
+   "meansTarget": "i18n_translator",
+   "direct": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "translation",
+   "meansTarget": "i18n_translator",
+   "direct": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "i18n_translator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "react native",
+   "meansTarget": "mobile_builder",
+   "direct": {
+    "tool": "mobile_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "react_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "flutter",
+   "meansTarget": "mobile_builder",
+   "direct": {
+    "tool": "mobile_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "mobile_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "mobile",
+   "meansTarget": "mobile_builder",
+   "direct": {
+    "tool": "mobile_builder",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "mobile_builder",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "vercel",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "netlify",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "heroku",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "deployment",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "deploy",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "hosting",
+   "meansTarget": "deploy_project",
+   "direct": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "deploy_project",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "docker",
+   "meansTarget": "docker_manager",
+   "direct": {
+    "tool": "docker_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "docker_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "kubernetes",
+   "meansTarget": "kubernetes_ops",
+   "direct": {
+    "tool": "kubernetes_ops",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "kubernetes_ops",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "terraform",
+   "meansTarget": "terraform_manager",
+   "direct": {
+    "tool": "terraform_manager",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "terraform_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "github actions",
+   "meansTarget": "github_actions",
+   "direct": {
+    "tool": "github_actions",
+    "how": "normalised"
+   },
+   "contains": {
+    "tool": "github_repo_manager",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "ci",
+   "meansTarget": "ci_generate_pipeline",
+   "direct": {
+    "tool": "ci_generate_pipeline",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "ci_generate_pipeline",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "ci/cd",
+   "meansTarget": "ci_generate_pipeline",
+   "direct": {
+    "tool": "ci_generate_pipeline",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "ci_generate_pipeline",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "documentation",
+   "meansTarget": "doc_generator",
+   "direct": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "readme",
+   "meansTarget": "doc_generator",
+   "direct": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "docs",
+   "meansTarget": "doc_generator",
+   "direct": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "doc_generator",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "file system",
+   "meansTarget": "write_file",
+   "direct": {
+    "tool": "write_file",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "write_file",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "fs",
+   "meansTarget": "write_file",
+   "direct": {
+    "tool": "write_file",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "write_file",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "editor",
+   "meansTarget": "file_edit",
+   "direct": {
+    "tool": "file_edit",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "file_edit",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "ide",
+   "meansTarget": "file_edit",
+   "direct": {
+    "tool": "file_edit",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "file_edit",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "browser",
+   "meansTarget": "browser_run",
+   "direct": {
+    "tool": "browser_run",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_run",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "lighthouse",
+   "meansTarget": "browser_ui_audit",
+   "direct": {
+    "tool": "browser_ui_audit",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_ui_audit",
+    "how": "meaning"
+   }
+  },
+  {
+   "key": "accessibility",
+   "meansTarget": "browser_ui_audit",
+   "direct": {
+    "tool": "browser_ui_audit",
+    "how": "meaning"
+   },
+   "contains": {
+    "tool": "browser_ui_audit",
+    "how": "meaning"
+   }
+  }
+ ]
+}
