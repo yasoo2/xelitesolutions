@@ -1,11 +1,11 @@
+import { ToolDefinition } from '../types';
+import { providerAllowedByCost } from '../../../core/llm/provider-continuity';
 
-import OpenAI from 'openai';
-
-export const ImageGenerationTool = {
+export const ImageGenerationTool: ToolDefinition = {
     name: 'generate_image',
     version: '1.0.0',
     tags: ['image', 'creative', 'design', 'dall-e'],
-    description: 'Generate an image based on a text prompt.',
+    description: 'Generate an image based on a text prompt. Uses free providers first; paid providers only when explicitly allowed.',
     inputSchema: {
         type: 'object',
         properties: {
@@ -24,7 +24,7 @@ export const ImageGenerationTool = {
     sideEffects: ['execute'],
     rateLimitPerMinute: 5,
     auditFields: ['prompt'],
-    mockSupported: true, // We can mock it if needed
+    mockSupported: true,
 
     execute: async (input: { prompt: string, size?: string }) => {
         const prompt = String(input.prompt || '').trim();
@@ -35,12 +35,31 @@ export const ImageGenerationTool = {
         const width = Math.max(64, Number.parseInt(wRaw || '1024', 10) || 1024);
         const height = Math.max(64, Number.parseInt(hRaw || '1024', 10) || 1024);
 
-        const openAiKey = String(process.env.OPENAI_API_KEY || '').trim();
+        const seed = Math.floor(Date.now() % 1000000);
+        const pollinationsUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
 
         console.log(`🎨 Generating image for: "${prompt}"`);
 
-        if (openAiKey) {
+        // FREE-FIRST: Try Pollinations first (free provider)
+        try {
+            console.log(`🎨 Trying Pollinations (free provider)...`);
+            // Pollinations doesn't require API key and is free
+            return { ok: true, output: { url: pollinationsUrl }, logs: ['Generated via Pollinations (free)'] };
+        } catch (e: any) {
+            console.error('Pollinations failed:', e);
+        }
+
+        // PAID PROVIDER: Only if explicitly allowed by cost policy
+        const openAiKey = String(process.env.OPENAI_API_KEY || '').trim();
+        const costPolicy = String(process.env.AI_COST_POLICY || '').trim().toLowerCase();
+        const allowPaid = costPolicy === 'allow_paid';
+
+        // Check if OpenAI is allowed by cost policy
+        const openaiAllowed = providerAllowedByCost('openai', 'dall-e-3');
+
+        if (allowPaid && openAiKey && openaiAllowed) {
             try {
+                const { default: OpenAI } = await import('openai');
                 const openai = new OpenAI({ apiKey: openAiKey, baseURL: process.env.OPENAI_BASE_URL });
                 const response = await openai.images.generate({
                     model: "dall-e-3",
@@ -51,14 +70,17 @@ export const ImageGenerationTool = {
                 });
 
                 const url = response.data?.[0]?.url;
-                return { ok: true, output: { url }, logs: ['Generated via OpenAI'] };
+                if (url) {
+                    return { ok: true, output: { url }, logs: ['Generated via OpenAI DALL-E-3 (paid, AI_COST_POLICY=allow_paid)'] };
+                }
             } catch (e: any) {
-                console.error('Image Gen failed:', e);
+                console.error('OpenAI Image Gen failed:', e);
             }
+        } else if (openAiKey && !allowPaid) {
+            console.log('🎨 OPENAI_API_KEY present but AI_COST_POLICY=free_only (default) — skipping paid provider');
         }
 
-        const seed = Math.floor(Date.now() % 1000000);
-        const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=${width}&height=${height}&seed=${seed}&nologo=true`;
-        return { ok: true, output: { url }, logs: ['Generated via Pollinations'] };
+        // FAIL CLOSED: No free provider succeeded and paid not allowed
+        return { ok: false, error: 'All free image generation providers failed. Set AI_COST_POLICY=allow_paid to enable paid providers.', logs: ['Pollinations failed', `AI_COST_POLICY=${costPolicy || 'free_only (default)'}`] };
     }
 };
