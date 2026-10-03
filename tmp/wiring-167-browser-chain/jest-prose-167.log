@@ -1,0 +1,225 @@
+﻿
+> api@1.0.0 test
+> jest src/__tests__/prose-verification-contract.test.ts src/__tests__/prose-verification-final-gate.test.ts --cacheDirectory=D:/Joe/muse-worktree/tmp/wiring-167-browser-chain/jest-cache
+
+node.exe : PASS src/__tests__/prose-verification-contract.test.ts (177.355 s)
+At line:1 char:1
++ & "C:\Program Files\nodejs/node.exe" "C:\Program Files\nodejs/node_mo ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS src/__test....ts (177.355 s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  ظù Console
+
+    console.info
+      [Config] env=test ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+          at Array.map (<anonymous>)
+
+    console.info
+      [ToolRegistry] Registered 163 tools (71 revived).
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+          at Array.map (<anonymous>)
+
+    console.warn
+      [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:416:13
+      at Object.<anonymous> (modules/tools/registry.ts:422:3)
+      at registered (core/orchestrator/plan-tools.ts:64:23)
+      at resolvePlannedTool (core/orchestrator/plan-tools.ts:232:9)
+      at core/orchestrator/plan-tools.ts:531:23
+          at Array.map (<anonymous>)
+      at sanitisePlanPhases (core/orchestrator/plan-tools.ts:517:55)
+      at Object.<anonymous> (__tests__/prose-verification-contract.test.ts:65:49)
+
+    console.warn
+      [ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:419:13
+      at Object.<anonymous> (modules/tools/registry.ts:422:3)
+      at registered (core/orchestrator/plan-tools.ts:64:23)
+      at resolvePlannedTool (core/orchestrator/plan-tools.ts:232:9)
+      at core/orchestrator/plan-tools.ts:531:23
+          at Array.map (<anonymous>)
+      at sanitisePlanPhases (core/orchestrator/plan-tools.ts:517:55)
+      at Object.<anonymous> (__tests__/prose-verification-contract.test.ts:65:49)
+
+    console.log
+      [DEBUG] Task key: echo:Run the real phase task, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: echo:Run the real phase task, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: echo:Run the real phase task, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: write_file:Write manifest, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: write_file:Write entry, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: echo:Run the real phase task, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [DEBUG] Task key: write_file:Write entry, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+PASS src/__tests__/prose-verification-final-gate.test.ts (183.982 s)
+  ظù Console
+
+    console.info
+      [Config] env=test ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.info
+      [ToolRegistry] Registered 163 tools (71 revived).
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.warn
+      [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:416:13
+      at Object.<anonymous> (modules/tools/registry.ts:422:3)
+      at Object.<anonymous> (core/orchestrator/toolCatalog.ts:33:1)
+      at Object.<anonymous> (core/orchestrator/PlanningEngine.ts:2:1)
+      at Object.<anonymous> (orchestration/AgentOrchestrator.ts:1:1)
+      at Object.<anonymous> (modules/services/AgentLoopService.ts:2:1)
+      at Object.<anonymous> (__tests__/prose-verification-final-gate.test.ts:41:1)
+
+    console.warn
+      [ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:419:13
+      at Object.<anonymous> (modules/tools/registry.ts:422:3)
+      at Object.<anonymous> (core/orchestrator/toolCatalog.ts:33:1)
+      at Object.<anonymous> (core/orchestrator/PlanningEngine.ts:2:1)
+      at Object.<anonymous> (orchestration/AgentOrchestrator.ts:1:1)
+      at Object.<anonymous> (modules/services/AgentLoopService.ts:2:1)
+      at Object.<anonymous> (__tests__/prose-verification-final-gate.test.ts:41:1)
+
+    console.log
+      [DEBUG] Task key: write_file:Write entry, in completedTaskKeys: false
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.warn
+      [WS] broadcast called but liveWssRef is null
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at broadcast (api/ws.ts:594:13)
+      at broadcastThinkingDetail (api/ws.ts:725:3)
+      at voice (modules/services/AgentLoopService.ts:1087:81)
+      at AgentLoopService._executePhases (modules/services/AgentLoopService.ts:1177:13)
+      at AgentExecutionFirewall_1.executionFirewall.runInContext.userId (modules/services/AgentLoopService.ts:1046:69)
+      at AgentExecutionFirewall.runInContext (orchestration/AgentExecutionFirewall.ts:42:29)
+      at AgentLoopService.runPlannedPhasesIfPresent (modules/services/AgentLoopService.ts:1046:34)
+      at Object.<anonymous> (__tests__/prose-verification-final-gate.test.ts:140:48)
+
+    console.warn
+      [WS] broadcast called but liveWssRef is null
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at broadcast (api/ws.ts:594:13)
+      at broadcastThinkingDetail (api/ws.ts:725:3)
+      at voice (modules/services/AgentLoopService.ts:1087:81)
+      at AgentLoopService._executePhases (modules/services/AgentLoopService.ts:1210:17)
+      at Object.<anonymous> (__tests__/prose-verification-final-gate.test.ts:140:25)
+
+A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due 
+to improper teardown. Try running with --detectOpenHandles to find leaks. Active timers can also cause this, ensure 
+that .unref() was called on them.
+
+Test Suites: 2 passed, 2 total
+Tests:       18 passed, 18 total
+Snapshots:   0 total
+Time:        188.392 s
+Ran all test suites matching 
+src/__tests__/prose-verification-contract.test.ts|src/__tests__/prose-verification-final-gate.test.ts.
