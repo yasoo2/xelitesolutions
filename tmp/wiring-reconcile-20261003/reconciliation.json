@@ -1,0 +1,829 @@
+{
+  "probe": "zz-muse-catalogue-reconcile",
+  "corpusGoals": 66,
+  "registeredCount": 163,
+  "aliasCount": 28,
+  "staticCatalogueCount": 40,
+  "staticCatalogueDupes": [],
+  "staticCatalogueUnregistered": [],
+  "staticCatalogueViaAlias": [],
+  "staticCatalogueDead": [],
+  "coreTools": [
+    "central_answer",
+    "read_file",
+    "write_file",
+    "file_edit",
+    "delete_file",
+    "inspect_directory",
+    "search_files",
+    "search_text",
+    "shell_execute"
+  ],
+  "coreUnregistered": [],
+  "coreDead": [],
+  "retrievedUnionCount": 158,
+  "perGoalRetrieved": {
+    "min": 9,
+    "max": 30
+  },
+  "neverSurfacedInCorpus": [
+    "cloud_cost_estimator",
+    "self_confidence_evaluator",
+    "ask_user",
+    "rss_fetch",
+    "task_lifecycle"
+  ],
+  "surfacedOnlyViaCoreZeroScore": [],
+  "surfacedDetail": [
+    {
+      "name": "central_answer",
+      "goals": 66,
+      "maxScore": 1.8
+    },
+    {
+      "name": "delete_file",
+      "goals": 66,
+      "maxScore": 13.7
+    },
+    {
+      "name": "file_edit",
+      "goals": 66,
+      "maxScore": 3.7
+    },
+    {
+      "name": "inspect_directory",
+      "goals": 66,
+      "maxScore": 6
+    },
+    {
+      "name": "read_file",
+      "goals": 66,
+      "maxScore": 3.7
+    },
+    {
+      "name": "search_files",
+      "goals": 66,
+      "maxScore": 7.7
+    },
+    {
+      "name": "search_text",
+      "goals": 66,
+      "maxScore": 8.1
+    },
+    {
+      "name": "shell_execute",
+      "goals": 66,
+      "maxScore": 10.5
+    },
+    {
+      "name": "write_file",
+      "goals": 66,
+      "maxScore": 5.8
+    },
+    {
+      "name": "browser_ui_audit",
+      "goals": 25,
+      "maxScore": 16.6
+    },
+    {
+      "name": "browser_page_fix",
+      "goals": 24,
+      "maxScore": 10.7
+    },
+    {
+      "name": "browser_autofix",
+      "goals": 23,
+      "maxScore": 12
+    },
+    {
+      "name": "browser_check_links",
+      "goals": 18,
+      "maxScore": 19
+    },
+    {
+      "name": "browser_responsive_check",
+      "goals": 18,
+      "maxScore": 16.2
+    },
+    {
+      "name": "browser_click",
+      "goals": 17,
+      "maxScore": 7.2
+    },
+    {
+      "name": "browser_contrast_audit",
+      "goals": 17,
+      "maxScore": 19.7
+    },
+    {
+      "name": "website_full_pipeline",
+      "goals": 17,
+      "maxScore": 8
+    },
+    {
+      "name": "browser_ui_fix",
+      "goals": 16,
+      "maxScore": 11.8
+    },
+    {
+      "name": "browser_compare",
+      "goals": 15,
+      "maxScore": 7.1
+    },
+    {
+      "name": "browser_design_tokens",
+      "goals": 15,
+      "maxScore": 22.3
+    },
+    {
+      "name": "quality_run",
+      "goals": 15,
+      "maxScore": 4.1
+    },
+    {
+      "name": "repo_run_command",
+      "goals": 15,
+      "maxScore": 8.8
+    },
+    {
+      "name": "browser_seo_audit",
+      "goals": 14,
+      "maxScore": 10.5
+    },
+    {
+      "name": "browser_smart_agent",
+      "goals": 14,
+      "maxScore": 7.3
+    },
+    {
+      "name": "dependency_audit",
+      "goals": 14,
+      "maxScore": 15.5
+    },
+    {
+      "name": "load_tester",
+      "goals": 14,
+      "maxScore": 18
+    },
+    {
+      "name": "visual_compare",
+      "goals": 14,
+      "maxScore": 7.8
+    },
+    {
+      "name": "auto_tester",
+      "goals": 13,
+      "maxScore": 7.4
+    },
+    {
+      "name": "browser_a11y_deep",
+      "goals": 13,
+      "maxScore": 16.7
+    },
+    {
+      "name": "web_page_builder",
+      "goals": 13,
+      "maxScore": 13
+    },
+    {
+      "name": "deploy_project",
+      "goals": 12,
+      "maxScore": 14.4
+    },
+    {
+      "name": "large_data_seeder",
+      "goals": 12,
+      "maxScore": 6.9
+    },
+    {
+      "name": "project_repair",
+      "goals": 12,
+      "maxScore": 9.4
+    },
+    {
+      "name": "browser_consent",
+      "goals": 11,
+      "maxScore": 4
+    },
+    {
+      "name": "deploy_pages",
+      "goals": 11,
+      "maxScore": 29.9
+    },
+    {
+      "name": "git_local_workflow",
+      "goals": 11,
+      "maxScore": 13.5
+    },
+    {
+      "name": "import_project",
+      "goals": 11,
+      "maxScore": 5.8
+    },
+    {
+      "name": "test_generator",
+      "goals": 11,
+      "maxScore": 8
+    },
+    {
+      "name": "browser_console_scan",
+      "goals": 10,
+      "maxScore": 14.2
+    },
+    {
+      "name": "chaos_test_plan",
+      "goals": 10,
+      "maxScore": 6.8
+    },
+    {
+      "name": "dead_code_detector",
+      "goals": 10,
+      "maxScore": 6.2
+    },
+    {
+      "name": "ai_write_file",
+      "goals": 9,
+      "maxScore": 5.8
+    },
+    {
+      "name": "api_tester",
+      "goals": 9,
+      "maxScore": 7.4
+    },
+    {
+      "name": "browser_fullpage_shot",
+      "goals": 9,
+      "maxScore": 11.9
+    },
+    {
+      "name": "ci_generate_pipeline",
+      "goals": 9,
+      "maxScore": 15
+    },
+    {
+      "name": "doc_generator",
+      "goals": 9,
+      "maxScore": 4.2
+    },
+    {
+      "name": "docker_manager",
+      "goals": 9,
+      "maxScore": 11.8
+    },
+    {
+      "name": "enterprise_platform_foundation",
+      "goals": 9,
+      "maxScore": 1.7
+    },
+    {
+      "name": "project_pipeline",
+      "goals": 9,
+      "maxScore": 7.1
+    },
+    {
+      "name": "repo_apply_patch",
+      "goals": 9,
+      "maxScore": 6
+    },
+    {
+      "name": "user_browser",
+      "goals": 9,
+      "maxScore": 6.8
+    },
+    {
+      "name": "analyze_codebase",
+      "goals": 8,
+      "maxScore": 5.7
+    },
+    {
+      "name": "browser_find_text",
+      "goals": 8,
+      "maxScore": 10
+    },
+    {
+      "name": "browser_summarize",
+      "goals": 8,
+      "maxScore": 10.2
+    },
+    {
+      "name": "business_profile",
+      "goals": 8,
+      "maxScore": 4.9
+    },
+    {
+      "name": "form_inbox",
+      "goals": 8,
+      "maxScore": 10.6
+    },
+    {
+      "name": "mobile_builder",
+      "goals": 8,
+      "maxScore": 17.9
+    },
+    {
+      "name": "orders_read",
+      "goals": 8,
+      "maxScore": 9
+    },
+    {
+      "name": "search_public_apis",
+      "goals": 8,
+      "maxScore": 5.1
+    },
+    {
+      "name": "api_project",
+      "goals": 7,
+      "maxScore": 5.8
+    },
+    {
+      "name": "browser_launch",
+      "goals": 7,
+      "maxScore": 9.7
+    },
+    {
+      "name": "browser_vision",
+      "goals": 7,
+      "maxScore": 12.1
+    },
+    {
+      "name": "dependency_graph",
+      "goals": 7,
+      "maxScore": 6
+    },
+    {
+      "name": "engineering_discovery",
+      "goals": 7,
+      "maxScore": 1.6
+    },
+    {
+      "name": "error_recovery",
+      "goals": 7,
+      "maxScore": 16.6
+    },
+    {
+      "name": "github_actions",
+      "goals": 7,
+      "maxScore": 12.2
+    },
+    {
+      "name": "github_repo_manager",
+      "goals": 7,
+      "maxScore": 14.5
+    },
+    {
+      "name": "image_studio",
+      "goals": 7,
+      "maxScore": 16.7
+    },
+    {
+      "name": "memorize_codebase",
+      "goals": 7,
+      "maxScore": 4.4
+    },
+    {
+      "name": "payments_create_checkout_session",
+      "goals": 7,
+      "maxScore": 25.7
+    },
+    {
+      "name": "recall_memory",
+      "goals": 7,
+      "maxScore": 12.9
+    },
+    {
+      "name": "validate_api",
+      "goals": 7,
+      "maxScore": 5.1
+    },
+    {
+      "name": "auth_builder",
+      "goals": 6,
+      "maxScore": 3
+    },
+    {
+      "name": "auto_refactor",
+      "goals": 6,
+      "maxScore": 11.4
+    },
+    {
+      "name": "browser_extract_data",
+      "goals": 6,
+      "maxScore": 6.6
+    },
+    {
+      "name": "browser_extract_meta",
+      "goals": 6,
+      "maxScore": 10.1
+    },
+    {
+      "name": "browser_fill_form",
+      "goals": 6,
+      "maxScore": 4.4
+    },
+    {
+      "name": "browser_performance",
+      "goals": 6,
+      "maxScore": 11.4
+    },
+    {
+      "name": "browser_run",
+      "goals": 6,
+      "maxScore": 3.4
+    },
+    {
+      "name": "browser_search",
+      "goals": 6,
+      "maxScore": 6.1
+    },
+    {
+      "name": "codebase_outline",
+      "goals": 6,
+      "maxScore": 5.7
+    },
+    {
+      "name": "google_account",
+      "goals": 6,
+      "maxScore": 3.5
+    },
+    {
+      "name": "inspect_api",
+      "goals": 6,
+      "maxScore": 5.1
+    },
+    {
+      "name": "notify_user",
+      "goals": 6,
+      "maxScore": 6
+    },
+    {
+      "name": "pattern_recognize",
+      "goals": 6,
+      "maxScore": 2.6
+    },
+    {
+      "name": "progressive_generator",
+      "goals": 6,
+      "maxScore": 2.6
+    },
+    {
+      "name": "project_run",
+      "goals": 6,
+      "maxScore": 7
+    },
+    {
+      "name": "project_undo",
+      "goals": 6,
+      "maxScore": 4.1
+    },
+    {
+      "name": "react_project",
+      "goals": 6,
+      "maxScore": 4.2
+    },
+    {
+      "name": "architect_plan",
+      "goals": 5,
+      "maxScore": 2.4
+    },
+    {
+      "name": "business_logic_parser",
+      "goals": 5,
+      "maxScore": 8
+    },
+    {
+      "name": "code_reviewer",
+      "goals": 5,
+      "maxScore": 10.6
+    },
+    {
+      "name": "decide_capability_route",
+      "goals": 5,
+      "maxScore": 30.7
+    },
+    {
+      "name": "execute_python",
+      "goals": 5,
+      "maxScore": 1.8
+    },
+    {
+      "name": "orion_business_foundation",
+      "goals": 5,
+      "maxScore": 1
+    },
+    {
+      "name": "performance_analyzer",
+      "goals": 5,
+      "maxScore": 5.8
+    },
+    {
+      "name": "project_detect",
+      "goals": 5,
+      "maxScore": 4.1
+    },
+    {
+      "name": "project_edit",
+      "goals": 5,
+      "maxScore": 4.1
+    },
+    {
+      "name": "query_optimizer",
+      "goals": 5,
+      "maxScore": 6.8
+    },
+    {
+      "name": "repo_search",
+      "goals": 5,
+      "maxScore": 5.1
+    },
+    {
+      "name": "swagger_docs",
+      "goals": 5,
+      "maxScore": 19.7
+    },
+    {
+      "name": "terminal_manager",
+      "goals": 5,
+      "maxScore": 28
+    },
+    {
+      "name": "analyze_project",
+      "goals": 4,
+      "maxScore": 5.7
+    },
+    {
+      "name": "archive_files",
+      "goals": 4,
+      "maxScore": 6.6
+    },
+    {
+      "name": "compliance_validator",
+      "goals": 4,
+      "maxScore": 10.6
+    },
+    {
+      "name": "db_schema_migrator",
+      "goals": 4,
+      "maxScore": 13.5
+    },
+    {
+      "name": "dev_server_start",
+      "goals": 4,
+      "maxScore": 6.6
+    },
+    {
+      "name": "i18n_translator",
+      "goals": 4,
+      "maxScore": 11.4
+    },
+    {
+      "name": "inspect_symbol",
+      "goals": 4,
+      "maxScore": 3.4
+    },
+    {
+      "name": "joe_engineering_report",
+      "goals": 4,
+      "maxScore": 5.6
+    },
+    {
+      "name": "knowledge_add",
+      "goals": 4,
+      "maxScore": 9
+    },
+    {
+      "name": "knowledge_search",
+      "goals": 4,
+      "maxScore": 7.8
+    },
+    {
+      "name": "multi_agent_debate",
+      "goals": 4,
+      "maxScore": 2.6
+    },
+    {
+      "name": "python_builder",
+      "goals": 4,
+      "maxScore": 3.6
+    },
+    {
+      "name": "scaffold_full_stack",
+      "goals": 4,
+      "maxScore": 3.1
+    },
+    {
+      "name": "scaffold_project",
+      "goals": 4,
+      "maxScore": 2.7
+    },
+    {
+      "name": "screenshot",
+      "goals": 4,
+      "maxScore": 10.2
+    },
+    {
+      "name": "terraform_manager",
+      "goals": 4,
+      "maxScore": 10.9
+    },
+    {
+      "name": "todo_write",
+      "goals": 4,
+      "maxScore": 3.2
+    },
+    {
+      "name": "ambiguity_resolver",
+      "goals": 3,
+      "maxScore": 3.6
+    },
+    {
+      "name": "browser_save_pdf",
+      "goals": 3,
+      "maxScore": 9
+    },
+    {
+      "name": "browser_translate",
+      "goals": 3,
+      "maxScore": 19.4
+    },
+    {
+      "name": "cache_manager",
+      "goals": 3,
+      "maxScore": 1.9
+    },
+    {
+      "name": "file_edit_advanced",
+      "goals": 3,
+      "maxScore": 3.7
+    },
+    {
+      "name": "github_pr",
+      "goals": 3,
+      "maxScore": 15.1
+    },
+    {
+      "name": "go_builder",
+      "goals": 3,
+      "maxScore": 3.6
+    },
+    {
+      "name": "html_extract",
+      "goals": 3,
+      "maxScore": 8.4
+    },
+    {
+      "name": "java_builder",
+      "goals": 3,
+      "maxScore": 3.6
+    },
+    {
+      "name": "logger",
+      "goals": 3,
+      "maxScore": 12
+    },
+    {
+      "name": "performance_profile",
+      "goals": 3,
+      "maxScore": 9.5
+    },
+    {
+      "name": "phase_executor",
+      "goals": 3,
+      "maxScore": 1.8
+    },
+    {
+      "name": "project_state_manager",
+      "goals": 3,
+      "maxScore": 3.1
+    },
+    {
+      "name": "project_stop",
+      "goals": 3,
+      "maxScore": 2.9
+    },
+    {
+      "name": "request_analyzer",
+      "goals": 3,
+      "maxScore": 5.7
+    },
+    {
+      "name": "search_api",
+      "goals": 3,
+      "maxScore": 5.1
+    },
+    {
+      "name": "secrets_scan_repo",
+      "goals": 3,
+      "maxScore": 11.1
+    },
+    {
+      "name": "shell_check_status",
+      "goals": 3,
+      "maxScore": 7.1
+    },
+    {
+      "name": "sonar_analysis",
+      "goals": 3,
+      "maxScore": 4.1
+    },
+    {
+      "name": "video_action",
+      "goals": 3,
+      "maxScore": 16
+    },
+    {
+      "name": "alert_manager",
+      "goals": 2,
+      "maxScore": 9
+    },
+    {
+      "name": "docker_swarm_ops",
+      "goals": 2,
+      "maxScore": 10.1
+    },
+    {
+      "name": "git_ops",
+      "goals": 2,
+      "maxScore": 6.8
+    },
+    {
+      "name": "ls",
+      "goals": 2,
+      "maxScore": 1
+    },
+    {
+      "name": "monitoring",
+      "goals": 2,
+      "maxScore": 4
+    },
+    {
+      "name": "npm_manager",
+      "goals": 2,
+      "maxScore": 16.7
+    },
+    {
+      "name": "query_datasource",
+      "goals": 2,
+      "maxScore": 4.7
+    },
+    {
+      "name": "repo_diff_summary",
+      "goals": 2,
+      "maxScore": 9.3
+    },
+    {
+      "name": "repo_read_file",
+      "goals": 2,
+      "maxScore": 3.7
+    },
+    {
+      "name": "security_scanner",
+      "goals": 2,
+      "maxScore": 18.5
+    },
+    {
+      "name": "browser_action",
+      "goals": 1,
+      "maxScore": 2.8
+    },
+    {
+      "name": "browser_readability",
+      "goals": 1,
+      "maxScore": 9.1
+    },
+    {
+      "name": "echo",
+      "goals": 1,
+      "maxScore": 0.9
+    },
+    {
+      "name": "http_fetch",
+      "goals": 1,
+      "maxScore": 1
+    },
+    {
+      "name": "json_query",
+      "goals": 1,
+      "maxScore": 4.7
+    },
+    {
+      "name": "kubernetes_ops",
+      "goals": 1,
+      "maxScore": 11.4
+    },
+    {
+      "name": "llm_cache",
+      "goals": 1,
+      "maxScore": 1
+    },
+    {
+      "name": "project_planner",
+      "goals": 1,
+      "maxScore": 4.1
+    },
+    {
+      "name": "template_manager",
+      "goals": 1,
+      "maxScore": 9
+    }
+  ]
+}

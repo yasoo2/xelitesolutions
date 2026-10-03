@@ -1,0 +1,149 @@
+/**
+ * DISPOSABLE wiring-reconciliation probe (Muse cycle 2026-10-03, c212).
+ * NOT a permanent test. Run once with jest, capture evidence JSON, delete.
+ *
+ * Reconciles, on exact Muse HEAD bytes:
+ *   REGISTRY (tools[]) vs PLANNER_TOOL_CATALOGUE (static prompt list)
+ *   vs CORE_TOOLS (always-offered) vs TOOL_ALIASES (execution snap)
+ *   vs retrieved catalogueFor(goal) over a diverse EN/AR goal corpus.
+ *
+ * Assertions are structural-only (sets non-empty, entries well-formed).
+ * Wiring defects are REPORTED as data for the owner, never asserted,
+ * so this probe cannot fail the suite — it is deleted after the run.
+ */
+import * as fs from 'fs';
+import * as path from 'path';
+
+describe('zz-muse-catalogue-reconcile probe (disposable)', () => {
+    it('reconciles registry vs planner surfaces and writes evidence', () => {
+        const { tools } = require('../modules/tools/registry');
+        const { PLANNER_TOOL_CATALOGUE } = require('../core/orchestrator/plan-tools');
+        const { CORE_TOOLS, selectToolsFor } = require('../core/orchestrator/toolCatalog');
+        const { TOOL_ALIASES } = require('../modules/services/ToolService');
+
+        const registered: string[] = (tools || []).map((t: any) => String(t?.name || '')).filter(Boolean);
+        const regSet = new Set(registered);
+        expect(registered.length).toBeGreaterThan(50);
+
+        const catalogue: Array<{ tool: string; purpose: string }> = PLANNER_TOOL_CATALOGUE || [];
+        expect(catalogue.length).toBeGreaterThan(10);
+        for (const e of catalogue) {
+            expect(typeof e.tool).toBe('string');
+            expect(e.tool.length).toBeGreaterThan(0);
+            expect(typeof e.purpose).toBe('string');
+            expect(e.purpose.length).toBeGreaterThan(0);
+        }
+
+        const aliases: Record<string, string> = TOOL_ALIASES || {};
+        const resolveName = (n: string): string => {
+            let cur = n;
+            const seen = new Set<string>();
+            while (aliases[cur] && !seen.has(cur)) { seen.add(cur); cur = aliases[cur]; }
+            return cur;
+        };
+
+        // 1. Static catalogue vs registry.
+        const catalogueNames = catalogue.map(e => e.tool);
+        const dupes = catalogueNames.filter((n, i) => catalogueNames.indexOf(n) !== i);
+        const catalogueUnregistered = catalogueNames.filter(n => !regSet.has(n));
+        const catalogueUnregisteredUnaliased = catalogueUnregistered.filter(n => !regSet.has(resolveName(n)));
+        const catalogueViaAlias = catalogueUnregistered.filter(n => regSet.has(resolveName(n)));
+
+        // 2. Core tools vs registry.
+        const core: string[] = CORE_TOOLS || [];
+        const coreUnregistered = core.filter((n: string) => !regSet.has(n));
+        const coreUnregisteredUnaliased = coreUnregistered.filter((n: string) => !regSet.has(resolveName(n)));
+
+        // 3. Retrieved coverage over a diverse corpus (EN + AR, many domains).
+        const CORPUS: string[] = [
+            'Translate the website to Arabic', 'ترجم الموقع إلى الإنجليزية',
+            'Write tests for the project', 'اكتب اختبارات للمشروع',
+            'Deploy the site to production', 'انشر الموقع على الاستضافة',
+            'Design the database schema', 'صمم قاعدة البيانات',
+            'Audit the UI in a real browser', 'افحص الواجهة في المتصفح',
+            'Take a screenshot of the homepage', 'خذ لقطة شاشة للصفحة',
+            'Scan the code for security vulnerabilities', 'افحص الثغرات الأمنية',
+            'Profile performance and load test', 'اختبر الأداء والضغط',
+            'Remember my preferences for later', 'تذكر تفضيلاتي',
+            'Commit the changes to git', 'احفظ التغييرات في جيت',
+            'Build a docker container for the app', 'ابن حاوية دوكر',
+            'What was the last error in the terminal', 'ما آخر خطأ ظهر في الترمنال',
+            'Install npm dependencies', 'ثبت الحزم',
+            'Write API documentation with swagger', 'اكتب التوثيق',
+            'Find and fix broken links', 'أصلح الروابط المكسورة',
+            'Generate a PDF report', 'أنشئ تقرير pdf',
+            'Summarize this web page', 'لخص محتوى الصفحة',
+            'Check responsive layout on mobile', 'افحص الاستجابة على الجوال',
+            'Improve SEO meta tags', 'حسن السيو والأرشفة',
+            'Set up a CI pipeline', 'أنشئ خط أنابيب CI',
+            'Build a mobile app', 'ابن تطبيق جوال',
+            'Add checkout payments', 'أضف الدفع والفواتير',
+            'Choose local or external provider with least setup', 'اختر المسار الأنسب بأقل إعداد',
+            'Send me an email notification', 'أرسل تنبيها بالبريد',
+            'Delete the temp files and list the folder', 'احذف الملفات المؤقتة',
+            'Search the codebase for the login function', 'ابحث في الكود عن الدخول',
+            'Fix the crash and recover', 'أصلح العطل',
+            'Analyze sales and produce a report', 'حلل المبيعات وأعط تقريرا',
+            'Check color contrast for accessibility', 'افحص التباين والوصول',
+            'Review the orders inbox', 'راجع طلبات الزبائن',
+            'Generate an image for the hero section', 'أنشئ صورة للواجهة',
+            'Run visual QA on the checkout page', 'افحص الصفحة بصريا',
+            'Create the video thumbnail', 'أنشئ مقطع فيديو',
+        ];
+        const surfaced = new Map<string, { goals: number; maxScore: number }>();
+        const perGoalCounts: number[] = [];
+        for (const goal of CORPUS) {
+            const picked = selectToolsFor(goal, 30) as Array<{ name: string; score: number }>;
+            perGoalCounts.push(picked.length);
+            for (const s of picked) {
+                const e = surfaced.get(s.name) || { goals: 0, maxScore: 0 };
+                e.goals += 1;
+                if (s.score > e.maxScore) e.maxScore = s.score;
+                surfaced.set(s.name, e);
+            }
+        }
+        const neverSurfaced = registered.filter(n => !surfaced.has(n));
+        const surfacedOnlyViaCore = core.filter((n: string) => {
+            const e = surfaced.get(n);
+            return !!e && e.maxScore === 0;
+        });
+
+        const evidence = {
+            probe: 'zz-muse-catalogue-reconcile',
+            corpusGoals: CORPUS.length,
+            registeredCount: registered.length,
+            aliasCount: Object.keys(aliases).length,
+            staticCatalogueCount: catalogue.length,
+            staticCatalogueDupes: [...new Set(dupes)],
+            staticCatalogueUnregistered: catalogueUnregistered,
+            staticCatalogueViaAlias: catalogueViaAlias,
+            staticCatalogueDead: catalogueUnregisteredUnaliased,
+            coreTools: core,
+            coreUnregistered: coreUnregistered,
+            coreDead: coreUnregisteredUnaliased,
+            retrievedUnionCount: surfaced.size,
+            perGoalRetrieved: { min: Math.min(...perGoalCounts), max: Math.max(...perGoalCounts) },
+            neverSurfacedInCorpus: neverSurfaced,
+            surfacedOnlyViaCoreZeroScore: surfacedOnlyViaCore,
+            surfacedDetail: [...surfaced.entries()].map(([name, e]) => ({ name, goals: e.goals, maxScore: e.maxScore }))
+                .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name)),
+        };
+
+        const outDir = path.resolve(__dirname, '..', '..', '..', 'tmp', 'wiring-reconcile-20261003');
+        fs.mkdirSync(outDir, { recursive: true });
+        fs.writeFileSync(path.join(outDir, 'reconciliation.json'), JSON.stringify(evidence, null, 2));
+
+        // Compact console summary (single line each for log capture).
+        // eslint-disable-next-line no-console
+        console.log('[WIRING-RECONCILE] ' + JSON.stringify({
+            registered: registered.length,
+            staticCatalogue: catalogue.length,
+            staticDead: catalogueUnregisteredUnaliased,
+            staticViaAlias: catalogueViaAlias,
+            coreDead: coreUnregisteredUnaliased,
+            retrievedUnion: surfaced.size,
+            neverSurfaced: neverSurfaced.length,
+            perGoalMinMax: [Math.min(...perGoalCounts), Math.max(...perGoalCounts)],
+        }));
+    });
+});
