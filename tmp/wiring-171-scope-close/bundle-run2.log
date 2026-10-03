@@ -1,0 +1,18 @@
+﻿[Config] env=development ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+[ToolRegistry] Registered 163 tools (71 revived).
+node : [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+At line:1 char:291
++ ... al-secret'; node D:\Joe\muse-worktree\tmp\wiring-171-scope-close\bund ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: ([ToolRegistry] ...managerظْwrite:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+[ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+importMs=7056
+wrote=D:\Joe\muse-worktree\tmp\wiring-171-scope-close\bundle-run2.result.json
+[providers] ╪ذ┘╪د ┘à┘╪ز╪د╪ص: Gemini╪î OpenAI╪î Cerebras╪î Mistral ظ¤ ╪ش┘ê ┘è╪╣┘à┘ ╪╣┘┘ë ╪د┘╪░┘â╪د╪ة ╪د┘┘à╪ش╪د┘┘è ┘ê╪د┘┘à╪ص┘┘è. ╪ث╪╢┘ ╪د┘┘à┘╪د╪ز┘è╪ص ┘┘è api/.env ┘à╪ز┘ë ╪┤╪خ╪ز.

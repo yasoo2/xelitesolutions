@@ -1,0 +1,318 @@
+{
+ "registeredCount": 163,
+ "catalogueCount": 40,
+ "names": [
+  "web_pipeline",
+  "scaffold_website",
+  "dev_server",
+  "website_full_pipeline",
+  "dev_server_start",
+  "scaffold_full_stack",
+  "load_tester",
+  "git_local_workflow",
+  "query_datasource"
+ ],
+ "perTool": {
+  "web_pipeline": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": null,
+    "why": "unknown"
+   },
+   "permissions": null,
+   "sideEffects": null,
+   "rateLimitPerMinute": null,
+   "auditFields": null,
+   "inputRequired": null,
+   "defFiles": []
+  },
+  "scaffold_website": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": null,
+    "why": "unknown"
+   },
+   "permissions": null,
+   "sideEffects": null,
+   "rateLimitPerMinute": null,
+   "auditFields": null,
+   "inputRequired": null,
+   "defFiles": []
+  },
+  "dev_server": {
+   "registered": false,
+   "hasExecute": false,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": null,
+    "why": "unknown"
+   },
+   "permissions": null,
+   "sideEffects": null,
+   "rateLimitPerMinute": null,
+   "auditFields": null,
+   "inputRequired": null,
+   "defFiles": []
+  },
+  "website_full_pipeline": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "website_full_pipeline",
+    "how": "exact"
+   },
+   "permissions": [
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ],
+   "rateLimitPerMinute": 10,
+   "auditFields": [
+    "name"
+   ],
+   "inputRequired": [
+    "name"
+   ],
+   "defFiles": [
+    "WebDevelopmentTools.ts"
+   ]
+  },
+  "dev_server_start": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "dev_server_start",
+    "how": "exact"
+   },
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "rateLimitPerMinute": 15,
+   "auditFields": [
+    "cwd"
+   ],
+   "inputRequired": [
+    "cwd"
+   ],
+   "defFiles": [
+    "WebDevelopmentTools.ts"
+   ]
+  },
+  "scaffold_full_stack": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": true,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "scaffold_full_stack",
+    "how": "exact"
+   },
+   "permissions": [
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "rateLimitPerMinute": 30,
+   "auditFields": [
+    "name",
+    "type"
+   ],
+   "inputRequired": [
+    "name"
+   ],
+   "defFiles": [
+    "WebDevelopmentTools.ts"
+   ]
+  },
+  "load_tester": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "load_tester",
+    "how": "exact"
+   },
+   "permissions": [
+    "execute",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "rateLimitPerMinute": 60,
+   "auditFields": [],
+   "inputRequired": [
+    "url"
+   ],
+   "defFiles": [
+    "QualityTools.ts"
+   ]
+  },
+  "git_local_workflow": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "git_local_workflow",
+    "how": "exact"
+   },
+   "permissions": [
+    "read",
+    "write",
+    "execute"
+   ],
+   "sideEffects": [
+    "write",
+    "execute"
+   ],
+   "rateLimitPerMinute": 6,
+   "auditFields": [
+    "request"
+   ],
+   "inputRequired": [
+    "request"
+   ],
+   "defFiles": [
+    "GitLocalWorkflowTool.ts"
+   ]
+  },
+  "query_datasource": {
+   "registered": true,
+   "hasExecute": true,
+   "catalogue": false,
+   "alias": null,
+   "planResolveBareName": {
+    "tool": "query_datasource",
+    "how": "exact"
+   },
+   "permissions": [
+    "internet"
+   ],
+   "sideEffects": [],
+   "rateLimitPerMinute": 20,
+   "auditFields": [
+    "source",
+    "query"
+   ],
+   "inputRequired": [
+    "source"
+   ],
+   "defFiles": [
+    "DatasourceTool.ts"
+   ]
+  }
+ },
+ "executorRedirects": {
+  "web_pipeline_branch": true,
+  "scaffold_website_branch": true,
+  "dev_server_branch": false,
+  "dev_server_any_mention": 0
+ },
+ "registryRefs": {
+  "web_pipeline": 1,
+  "scaffold_website": 0,
+  "dev_server": 1,
+  "website_full_pipeline": 0,
+  "dev_server_start": 0,
+  "scaffold_full_stack": 1,
+  "load_tester": 1,
+  "git_local_workflow": 0,
+  "query_datasource": 1
+ },
+ "resolveOutcomes": {
+  "run the full web pipeline": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "build and deploy my website end to end": {
+   "tool": "deploy_project",
+   "how": "meaning"
+  },
+  "scaffold a website for my bakery": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "start a local dev server for preview": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "run a load test against staging": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "create a local branch and commit the docs note": {
+   "tool": "doc_generator",
+   "how": "meaning"
+  }
+ },
+ "gateShapes": {
+  "load-shape": false,
+  "gitwf-shape": false,
+  "sitepipe-shape": false,
+  "devsrv-shape": false,
+  "webpipe-label-shape": false,
+  "devsrv-label-shape": false
+ },
+ "crossTree": {
+  "modules/tools/registry.ts": {
+   "museSha8": "912ce549",
+   "nvSha8": "9c89146b",
+   "identical": false
+  },
+  "core/orchestrator/plan-tools.ts": {
+   "museSha8": "5ef3e108",
+   "nvSha8": "108e7638",
+   "identical": false
+  },
+  "modules/services/ToolService.ts": {
+   "museSha8": "f8608f51",
+   "nvSha8": "f8608f51",
+   "identical": true
+  },
+  "core/quality/verification-ledger.ts": {
+   "museSha8": "0ad84299",
+   "nvSha8": "9b62ff0e",
+   "identical": false
+  },
+  "modules/tools/definitions/WebDevelopmentTools.ts": {
+   "museSha8": "2692b584",
+   "nvSha8": "2692b584",
+   "identical": true
+  },
+  "modules/tools/definitions/QualityTools.ts": {
+   "museSha8": "41283450",
+   "nvSha8": "41283450",
+   "identical": true
+  },
+  "modules/tools/definitions/GitLocalWorkflowTool.ts": {
+   "museSha8": "effbc610",
+   "nvSha8": "effbc610",
+   "identical": true
+  },
+  "modules/tools/definitions/DatabaseEnterpriseTools.ts": {
+   "museSha8": "0f40f9e7",
+   "nvSha8": "0f40f9e7",
+   "identical": true
+  }
+ }
+}
