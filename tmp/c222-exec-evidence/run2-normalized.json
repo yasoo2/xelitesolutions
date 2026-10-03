@@ -1,0 +1,120 @@
+{
+ "method": "Level-4 direct execute() in isolated tsx, 12s timeout/case, normalized (no timestamps/durations); rss localhost-only, no keys in env",
+ "cases": 10,
+ "records": [
+  {
+   "tool": "cloud_cost_estimator",
+   "kase": "invalid-empty-resources",
+   "settled": "resolved",
+   "ok": false,
+   "outKeys": null,
+   "errPrefix": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "cloud_cost_estimator",
+   "kase": "valid-llm-path",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [
+    "costs",
+    "instance_type",
+    "region"
+   ],
+   "errPrefix": null,
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "self_confidence_evaluator",
+   "kase": "invalid-blank-content",
+   "settled": "resolved",
+   "ok": false,
+   "outKeys": null,
+   "errPrefix": "self_confidence_evaluator needs content to judge.",
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "self_confidence_evaluator",
+   "kase": "valid-llm-path",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [],
+   "errPrefix": null,
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "ask_user",
+   "kase": "valid",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [
+    "message",
+    "status"
+   ],
+   "errPrefix": null,
+   "logsCount": 1,
+   "log0": "ask=\"c222-probe?\""
+  },
+  {
+   "tool": "ask_user",
+   "kase": "missing-question",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [
+    "message",
+    "status"
+   ],
+   "errPrefix": null,
+   "logsCount": 1,
+   "log0": "ask=\"undefined\""
+  },
+  {
+   "tool": "rss_fetch",
+   "kase": "refused-localhost",
+   "settled": "resolved",
+   "ok": false,
+   "outKeys": null,
+   "errPrefix": "connect ECONNREFUSED 127.0.0.1:9",
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "rss_fetch",
+   "kase": "empty-url",
+   "settled": "resolved",
+   "ok": false,
+   "outKeys": null,
+   "errPrefix": "",
+   "logsCount": 0,
+   "log0": null
+  },
+  {
+   "tool": "task_lifecycle",
+   "kase": "valid",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [
+    "success"
+   ],
+   "errPrefix": null,
+   "logsCount": 1,
+   "log0": "Task update: done"
+  },
+  {
+   "tool": "task_lifecycle",
+   "kase": "minimal-defaults",
+   "settled": "resolved",
+   "ok": true,
+   "outKeys": [
+    "success"
+   ],
+   "errPrefix": null,
+   "logsCount": 1,
+   "log0": "Task update: undefined"
+  }
+ ]
+}
