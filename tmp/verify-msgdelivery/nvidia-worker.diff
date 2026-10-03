@@ -1,0 +1,77 @@
+﻿diff --git "a/D:\\Joe\\coordination\\nvidia-worker.ps1.before-message-delivery-20261003T104319400.bak" "b/D:\\Joe\\coordination\\nvidia-worker.ps1"
+index 164e1645..09186099 100644
+--- "a/D:\\Joe\\coordination\\nvidia-worker.ps1.before-message-delivery-20261003T104319400.bak"
++++ "b/D:\\Joe\\coordination\\nvidia-worker.ps1"
+@@ -24,16 +24,12 @@ function Get-PendingTeamConsultation {
+         [string]$Agent
+     )
+ 
+     $consultations = "D:\Joe\coordination\team\consultations"
+     $messages      = "D:\Joe\coordination\team\messages"
+ 
+-    if (!(Test-Path $consultations)) {
+-        return $null
+-    }
+-
+     $pending = Get-ChildItem $consultations -File -ErrorAction SilentlyContinue |
+         Where-Object { $_.Name -match "-$Agent\.md$" } |
+         ForEach-Object {
+             $text = Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+             $status = [regex]::Match($text, '(?mi)^STATUS=([^\r\n]+)').Groups[1].Value.Trim()
+             $recommendation = [regex]::Match($text, '(?mi)^RECOMMENDATION=([^\r\n]+)').Groups[1].Value.Trim()
+@@ -52,16 +48,12 @@ function Get-PendingTeamConsultation {
+                 }
+             }
+         } |
+         Sort-Object -Property @{Expression='PriorityRank';Descending=$true}, @{Expression='CreatedUtc';Descending=$false}, @{Expression='Path';Descending=$false} |
+         Select-Object -First 1
+ 
+-    if (!$pending) {
+-        return $null
+-    }
+-
+     $relatedMessages = @()
+ 
+     if (Test-Path $messages) {
+         $relatedMessages = Get-ChildItem $messages -File -ErrorAction SilentlyContinue |
+             Where-Object {
+                 $_.Name -match "-TO-$Agent-"
+@@ -69,12 +61,16 @@ function Get-PendingTeamConsultation {
+             Sort-Object LastWriteTime |
+             ForEach-Object {
+                 Get-Content $_.FullName -Raw -ErrorAction SilentlyContinue
+             }
+     }
+ 
++    if (!$pending) {
++        if (@($relatedMessages).Count -eq 0) { return $null }
++        return @{ Path = $messages; Text = ''; Messages = ($relatedMessages -join "`r`n`r`n--- RELATED TEAM MESSAGE ---`r`n"); MessagesOnly = $true }
++    }
+     return @{
+         Path     = $pending.Path
+         Text     = $pending.Text
+         Messages = ($relatedMessages -join "`r`n`r`n--- RELATED TEAM MESSAGE ---`r`n")
+     }
+ }
+@@ -139,16 +135,19 @@ $commandReferences
+ 
+ Follow each command's applicable instructions and record its required evidence/result.
+ A pending team consultation below remains required at the nearest safe checkpoint.
+ "@.Trim())
+     }
+ 
+-    if ($PendingConsultation) {
++    if ($PendingConsultation -and $PendingConsultation.MessagesOnly) {
++        $sections.Add(("THREE-AGENT TEAM CHECKPOINT MESSAGES - READ AT THE NEAREST SAFE CHECKPOINT.`r`nSOURCE: {0}`r`nRead current messages addressed to {1}, current TEAM-STATE and ACTIVE-PLAN. Continue only assigned work; preserve CRITICAL priority and atomic operations. This is message delivery, not a pending consultation or another agent's approval. No synthetic review response is required." -f $PendingConsultation.Path, $Agent))
++    }
++    elseif ($PendingConsultation) {
+         $isImplementationCheckpoint = [regex]::IsMatch(
+             [string]$PendingConsultation.Text,
+-            '(?mi)^TASK_KIND=IMPLEMENTATION_CHECKPOINT_WITHIN_ACCEPTED_OWNERSHIP\s*$'
++            '(?mi)^TASK_KIND=(IMPLEMENTATION_CHECKPOINT_WITHIN_ACCEPTED_OWNERSHIP|OWNED_REWORK_CHECKPOINT)\s*$'
+         )
+         $taskInstruction = 'Perform your REAL independent technical review.'
+         $taskOutcome = "STATUS=REVIEWED_BY_$Agent`r`nPOSITION=<your evidence-based position>`r`nRECOMMENDATION=APPROVE|APPROVE_WITH_CHANGES|REJECT|NEEDS_EVIDENCE"
+         if ($isImplementationCheckpoint) {
+             $taskInstruction = 'ASSIGNED IMPLEMENTATION CHECKPOINT: continue the implementation within your explicitly accepted ownership. Read the actual task and current criticism, preserve existing work, and do not substitute a review-only response for the requested implementation. Do not claim independent acceptance of your own changes.'
+             $taskOutcome = "IMPLEMENTATION_STATUS=IN_PROGRESS|READY_FOR_INDEPENDENT_REVIEW|BLOCKED`r`nIMPLEMENTATION_EVIDENCE=<exact source hashes, diff, focused tests and applicable gates, or exact blocker>`r`nNEXT_REVIEW=<named independent reviewer and exact handoff scope>`r`nRecord implementation progress in the consultation, but do not mark the technical proposal accepted or fabricate another agent's review. Follow the task's actual status and stop conditions."
