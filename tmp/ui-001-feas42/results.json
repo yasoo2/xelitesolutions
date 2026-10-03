@@ -1,39 +1,33 @@
 {
- "startedUtc": "2026-10-01T23:07:54.970Z",
+ "startedUtc": "2026-10-03T15:42:30.039Z",
  "checks": {
   "duckHandshake": {
-   "ok": true,
-   "status": 200,
-   "ms": 333,
-   "vqdPresent": true
+   "ok": false,
+   "error": "fetch failed"
   },
   "duckChat": {
-   "ok": false,
-   "status": 418,
-   "ms": 181,
-   "bytes": 570,
-   "containsMarker": false
+   "skipped": "handshake failed"
   },
   "llm7models": {
    "ok": true,
    "status": 200,
-   "ms": 221,
-   "count": 55,
+   "ms": 450,
+   "count": 68,
    "firstFree": "DeepSeek-V4-Flash-0731"
   },
   "llm7chat": {
-   "ok": false,
-   "status": 402,
-   "ms": 183,
-   "bytes": 138,
-   "containsMarker": false,
+   "ok": true,
+   "status": 200,
+   "ms": 666,
+   "bytes": 486,
+   "containsMarker": true,
    "retryAfterSec": null,
-   "bodyHead": "{\"error\":{\"message\":\"Upstream provider rejected the request.\",\"type\":\"upstream_client_error\",\"param\":null,\"code\":\"upstream_client_error\"}}"
+   "bodyHead": "{\"choices\":[{\"finish_reason\":\"length\",\"index\":0,\"message\":{\"content\":\"FEAS-OK.FEAS-OK.FEAS-OK.FEAS-OK. responseFEAS-OK.FEAS-OK. responseFEAS-OK. responseFEAS-OK. responseFEAS-OK. responseFEAS-OK. resp"
   },
   "ollama": {
    "ok": true,
    "status": 200,
-   "ms": 17,
+   "ms": 25,
    "models": [
     "qwen2.5:1.5b",
     "moondream:latest",
@@ -42,5 +36,5 @@
    ]
   }
  },
- "finishedUtc": "2026-10-01T23:07:55.932Z"
+ "finishedUtc": "2026-10-03T15:42:31.563Z"
 }

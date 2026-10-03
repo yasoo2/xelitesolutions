@@ -33,3 +33,15 @@ cycle (11 BLOCKED runs + feas-only cycles; no run sent since run41).
 ## Durable paths (unchanged)
 - Post-reset run (~01:00Z Oct 2): fresh probe + back-to-back launch.
 - Operator key, or reviewed local planner-budget architecture change.
+
+## Re-probe 2026-10-03T15:42Z (Muse cycle 224) — LAUNCH, run42 sent
+- Same probe bytes re-run: llm7chat 200 in 666ms with FEAS-OK marker, 486-byte
+  body with a DIFFERENT bodyHead vs the Oct-1 589-byte cached replay
+  ("FEAS-OK.FEAS-OK... responseFEAS-OK..." fragments) — fresh generation, not
+  the cached edge replay. Conditions changed (2 days post-reset window).
+- GATE_DECISION=LAUNCH per stop-rule clause (a). Run42 launched back-to-back
+  (SEND 15:48:23Z, ~6 min after probe) with fresh swatch prompt.
+- Outcome: window closed mid-planning (LLM7 429 ~15:49Z); run42 BLOCKED, Joe
+  honest-stop, 0 files. See tmp/uat-critical-ui-run42/RESULT42.md.
+- results.json in this dir now holds the Oct-3 LAUNCH probe (overwrites Oct-1
+  NO_LAUNCH bytes; history preserved in git).
