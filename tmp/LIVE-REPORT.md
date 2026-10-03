@@ -1,58 +1,59 @@
-# LIVE-REPORT — Muse + NVIDIA (2026-10-03 cycle 183)
-# FALLBACK COPY: shared path D:\Joe\coordination\team\LIVE-REPORT.md does not exist / unwritable from this
-# sandbox (established pattern). External worker: copy verbatim.
+# LIVE-REPORT — Muse + NVIDIA (2026-10-03 cycle 184)
+# FALLBACK COPY: shared path D:\Joe\coordination\team\LIVE-REPORT.md unwritable from this
+# sandbox (this cycle: "absolute path is outside the workspace"). External worker: copy verbatim.
 
 ## 1. ماذا نعمل الآن؟
-- Muse: أنهى مراجعة عقود أدوات BATCH-011 الثلاثة (فحص + اختبار، صفر كود منتج).
-- NVIDIA: بين الدورات (لا نشاط جديد منذ heartbeat 07:45). عمله محفوظ ولم يُقاطَع.
+- Muse: راجع إصلاح الصور الجديد من NVIDIA (a10c71ab) سطرًا بسطر مع اختبار سلوكي — انتهى.
+- NVIDIA: أرسل إصلاح generate_image استجابةً لحظر Muse (بعد ~14 دقيقة). عمله محفوظ ولم يُقاطَع.
 
 ## 2. ماذا اكتشفنا؟
-- generate_image: تستدعي DALL-E مدفوعة بمجرد وجود المفتاح، وتُخفي الفشل كنجاح Pollinations غير متحقق. (BLOCK)
-- bulk_file_generator: كتابة بلا احتواء — تهرب ../ ومسارات مطلقة خارج cwd، وبوابة الموافقة تسمح تلقائيًا. (BLOCK)
-- visual_qa: تفشل بأمان للملف المفقود، وتوجَّه لمزوّد مجاني — لكن الوصف يكذب (GPT-4o) وتقرأ أي مسار. (مشروط)
-- رقعة الأمان الإبداعي المراجَعة سابقًا غير مطبقة على أي شجرة — الكود الحالي ما زال يحمل DALL-E حرفيًا.
+- الإصلاح الجديد يمنع الدفع فعلًا: مع وجود مفتاح وتحت free_only لا تُستدعى DALL-E أبدًا (مثبت سلوكيًا). ✅
+- لكن "الفشل المغلق" المعلن غير مطبق: كود الفشل والمسار المدفوع ميتان (لا يمكن الوصول إليهما). ⚠️
+- عنوان Pollinations ما زال يُعاد كنجاح دون أي تحقق، والسجل يدّعي "تم التوليد" بصيغة الماضي. ⚠️
+- bulk (كتابة بلا احتواء) وvisual_qa (مشروطة) لم تتغيرا — نفس البايتات والسلوك.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- مسبار vc5: 6/6 PASS (3 ثوانٍ، بلا شبكة، بلا مفاتيح مدفوعة، كتابة محصورة بمجلد مؤقت مُزال).
-- رد BATCH011-CONTRACT-001: مواقف مثبتة بالأدلة لكل أداة + شروط الإصلاح المطلوبة.
+- مسبار vc6 على البايتات الدقيقة: 8/8 PASS (6 ثوانٍ، بلا شبكة، بلا مفاتيح حقيقية).
+- إعادة vc4: 8/8 PASS (استقرار) + مسار Muse النصي: 14/14 PASS.
+- رد BATCH011-IMAGE-A10C71AB: قبول مشروط بثلاثة تغييرات (نطاق الفشل المغلق + صدق الادعاء + اختبارات دائمة).
 - صفر تعديل على كود Joe وعلى شجرة NVIDIA.
 
 ## 4. ماذا يعمل Muse الآن؟
-- أنهى المراجعة والتوثيق؛ الرد عبر fallback بانتظار استيراد Codex. بانتظار التزام مكتفٍ ذاتيًا.
+- أنهى المراجعة والتوثيق؛ الرد عبر fallback بانتظار استيراد Codex.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-- لا دورة نشطة وقت الفحص. المعلن: BATCH-011 + hunks + F5 + CLI + UAT. (REPORTED_BY_NVIDIA).
+- آخر المعلن (heartbeat 07:45): BATCH-011 + hunks + F5 + CLI + UAT. (REPORTED_BY_NVIDIA)
+- جديد مثبت: التزام a10c71ab للصور (1 ملف، بلا اختبارات). باقي النطاق بيده.
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- لا رسائل جديدة منذ heartbeat 07:45 (مقروءة سابقًا).
-- Muse → رد BATCH011-CONTRACT-001 عبر fallback (الكتابة المشتركة مرفوضة؛ الاستيراد معلق).
+- NVIDIA استجاب لحظر Muse فعليًا (a10c71ab يذكر HOLD صراحة) — تعاون مثبت بالأدلة.
+- Muse → رد a10 عبر fallback (الكتابة المشتركة مرفوضة؛ الاستيراد معلق).
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا (مثبت): تسجيل BATCH-011 صحيح الشكل ✅؛ HOLD على الاعتماد ✅ (Codex أكد الخطر)؛ UAT=PARTIAL.
-- مختلف عليه: تسمية "complete" (مرفوضة)؛ "إثبات UI جديد" (غير مثبت)؛ R1-R5 (مفتوحة).
-- جديد: عقدا أداتين مرفوضان بالأدلة (BLOCK)، الثالثة مشروطة — بيد مالك التنفيذ NVIDIA.
+- اتفقا (مثبت): اتجاه free-first للصور ✅؛ HOLD على الاعتماد ✅؛ UAT=PARTIAL.
+- جديد: ساق الدفع مغلقة ✅؛ ساق الفشل المغلق + صدق "تم التوليد" + غياب الاختبارات = تغييرات مطلوبة.
+- مفتوح: تسمية "complete" (مرفوضة)؛ hunks السجل؛ F5؛ CLI؛ R1-R5.
 
 ## 8. الأرقام المؤكدة
-- REPORTED_BY_MUSE + VERIFIED هذه الدورة: vc5 6/6؛ الملفات الثلاثة متطابقة البايت بين الشجرتين؛ ToolService متطابق؛ فرع vision متطابق (muse :468-471، NVIDIA :469-470).
-- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=167 (dirty VERIFIED سابقًا) / 163 (e8)
-- EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN (R1-R5 مفتوحة)
-- ORPHANED=متناقض سابقًا (R5 مفتوحة) DUPLICATE=0 UNKNOWN=الكثير REPAIRED=0 (مراجعة فقط)
-- VERIFIED=عقود BATCH-011: 2 مرفوضة + 1 مشروطة REAL_JOE_PROVEN=0
+- VERIFIED هذه الدورة: vc6 8/8 (بايتات a10 الدقيقة)؛ vc4 8/8 (استقرار)؛ prose 14/14؛ bulk/visual بلا تغيير.
+- DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=167 (dirty سابقًا) / 163 (e8؛ a10 لا يغيّر العدد)
+- EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN
+- ORPHANED=مفتوحة (R5) DUPLICATE=0 UNKNOWN=الكثير REPAIRED=0 (NVIDIA أصلح ساقًا؛ Muse راجع فقط)
+- VERIFIED=صور: ساق مدفوعة مغلقة + مشروطتان؛ bulk مرفوضة؛ visual مشروطة REAL_JOE_PROVEN=0
 
 ## 9. ما آخر اختبار ونتيجته؟
-- vc5-batch011-contracts: 6/6 PASS — إثبات سلوكي: URL غير متحقق ok:true؛ هروب ../ ومسار مطلق خارج cwd؛ فشل مغلق visual_qa؛ الأدوات تتجاهل سياق workspace.
-- :5002 health (curl): OK/LOCAL/no-commit-file/uptime 124023 — نفس الثنائية القديمة.
-- أول تشغيل 5/6 بسبب خطأ مسار في اختباري أنا (../.. هربت أبعد) — صُحح علنًا وأُعيد أخضر.
+- vc6-image-a10-contracts: 8/8 PASS — إثبات: لا دفع مع مفتاح مزيف وقاعدة غير قابلة للوصول؛ بطارية 7 حالات كلها ok:true (الذيل الميت)؛ لا استدعاء تحقق خارج الفرع الميت؛ دبابيس bulk/visual ثابتة.
+- :5002 health: OK/LOCAL/no-commit-file/uptime 124841 — نفس الثنائية القديمة، لا تنفذ a10.
 
 ## 10. ما المشاكل أو العوائق؟
 - UAT محظور: :5002 ثنائية قديمة + provider. لا تغيير.
-- BATCH-011: تسجيل صحيح لكن العقود تمنع الاعتماد (2 BLOCK + 1 مشروط) — HOLD يبقى.
-- hunks السجل/المخطط ما زالت غير مثبتة (HEAD=02a) — بيد مالك main.
+- HOLD يبقى: bulk BLOCK + visual مشروطة + C1/C2/C3 للصور — كلها بيد مالك التنفيذ.
+- a10 بلا اختبارات دائمة — عرضة للتراجع الصامت.
 - كتابة التنسيق المشتركة مرفوضة؛ الدفع يحتاج worker خارجيًا غالبًا.
 
 ## 11. ما الخطوة التالية؟
-- NVIDIA: تركيب fail-closed لـgenerate_image + احتواء bulk_file_generator + تصحيح visual_qa (أو إبقاؤها خارج المدى) + تثبيت ذاتي الاكتفاء + R1-R4 + F5 + CLI.
-- Codex: استيراد BATCH011-CONTRACT-001 + السابق؛ الحظر يبقى.
-- Muse: إعادة تشغيل دقيقة على الالتزام المكتفي ذاتيًا فور نزوله.
+- NVIDIA: C1 (نطاق fail-closed صادق) + C2 (ادعاء متحقق) + C3 (اختبارات دائمة) + احتواء bulk + شروط visual + hunks + F5 + CLI.
+- Codex: استيراد رد a10 + السابق؛ الحظر يبقى.
+- Muse: إعادة دقيقة على الالتزام المكتفي ذاتيًا فور نزوله.
 - ثم: تحميل مراجَع على :5002 + UAT متعدد الطلبات unseen.
 - CRITICAL-REAL-JOE-UI-001 + WIRING-AUDIT يبقيان OPEN.
