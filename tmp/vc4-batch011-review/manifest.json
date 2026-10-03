@@ -1,0 +1,145 @@
+{
+ "base": "02a37c9bc6c1ad53d1df61bc04f324807168ca26",
+ "files": {
+  "api/src/__tests__/tool-aliases.test.ts": {
+   "sha256": "063131322c9cb9286093ee96ff91b4e0970251ba9007cdd86d082f14f231a8bb",
+   "bytes": 2868,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/design/app-blueprints.ts": {
+   "sha256": "6ff627c5b557461abacbae1872d8586e838775775c0b932ce2ee833cfe414c1a",
+   "bytes": 240222,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/intelligence/IntentParser.ts": {
+   "sha256": "b6ab4f628602685613fb0af26343503dcf443b3d4ec98fa3577fbbfc7824ba7b",
+   "bytes": 26130,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/intelligence/intent-classifier.ts": {
+   "sha256": "3965d4cc65c754dac940c6cde272db9020fcb277cc015855bfe4e9302feca1ce",
+   "bytes": 18528,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/llm/context-engine.ts": {
+   "sha256": "b7b3cac53418f336e4d396cc874b9e70b8bf6a516a46f4e44038d920db54c65b",
+   "bytes": 18094,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/memory/long-term-memory.ts": {
+   "sha256": "1e5edf14745ba244927919f2232112b07968a0240f03cfa626e5b4c3502d3cb8",
+   "bytes": 23378,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/orchestrator/PlanningEngine.ts": {
+   "sha256": "7439d96e7de37d02b63c256c5d6f8b15b43b41d46c43f1e924138a0677ebe388",
+   "bytes": 272032,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/orchestrator/plan-tools.ts": {
+   "sha256": "eed5fa00670ae8229b2c88c77019ea330fa7e6393a3792102e59243990e3164c",
+   "bytes": 109781,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/quality/ui-inspection.ts": {
+   "sha256": "0d4fb69a58005087234932950649c5f386c1ca637ec4c5e6be0d972f9a4fd610",
+   "bytes": 59535,
+   "kind": "dirty-tracked"
+  },
+  "api/src/core/quality/verification-ledger.ts": {
+   "sha256": "9b62ff0eeb9aec96cd3fac8020e432b294c4adf28845b03c345bcede190a1e93",
+   "bytes": 37591,
+   "kind": "dirty-tracked"
+  },
+  "api/src/modules/tools/definitions/ProjectPipelineTool.ts": {
+   "sha256": "a8d9c7ce235ea580d5b709ce6d7e7897b7212d7ceeb070d51f26f68b03804bf3",
+   "bytes": 222373,
+   "kind": "dirty-tracked"
+  },
+  "api/src/modules/tools/registry.ts": {
+   "sha256": "185d58447c0dfa2c8943efbb3c9043fc0ede2bb669a96cdce48569524497fb04",
+   "bytes": 22455,
+   "kind": "dirty-tracked"
+  },
+  "api/src/__tests__/cli-routing-fix.test.ts": {
+   "sha256": "9398a5e88bbc84dacd9874bdd733b62d21a74949fec5fe5e8921fa2e3079edfa",
+   "bytes": 2397,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/cli-scaffold-fidelity.test.ts": {
+   "sha256": "e9772774f0a262aa6b3d60c6d77cf9a11c3a4fe4d54c007a8033d16910b18b19",
+   "bytes": 3738,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/debug-pkg.ts": {
+   "sha256": "36baec6040781346e36a609cb5ab6add8ac0176d0edddf875f6e880d77a854e0",
+   "bytes": 1017,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/debug-scaffold.ts": {
+   "sha256": "586762aab4a8f23f868e3f679eec629823367feedf535c911f8f01bf83c68e64",
+   "bytes": 1286,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/deterministic-phases-for-cli.test.ts": {
+   "sha256": "a982423a4decd1484d1c6cbb2e1a2dafd01cc3162a277a41d792958b87ccbe4f",
+   "bytes": 4713,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/requested-action-authority.test.ts": {
+   "sha256": "650c11cccf6dee0a8f71fa4ac2fce78d02f25e59a94bf1758df9af763dc9c0da",
+   "bytes": 9778,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/requested-action-consumer-contract.test.ts": {
+   "sha256": "bc0c1afcc99b00293da0d511f85bd5fbf1d101f5924b05cf17b69916080c94d9",
+   "bytes": 2609,
+   "kind": "untracked"
+  },
+  "api/src/__tests__/requested-answer-planner.test.ts": {
+   "sha256": "db5adccbf090c06d435d3530d4c924b7da35de2b894ce7fc26c4fd1f88b73029",
+   "bytes": 10351,
+   "kind": "untracked"
+  },
+  "api/src/core/design/request-classifiers.ts": {
+   "sha256": "6e292469b9e425d78bac633fc7aa7c2c447a7400662978cd3261160262d6d92b",
+   "bytes": 1446,
+   "kind": "untracked"
+  },
+  "api/src/core/intelligence/requested-action.ts": {
+   "sha256": "91c75403199bc894824ca0ee0cb7dad59b8a347c095cc0255ee0be4985bc71af",
+   "bytes": 22800,
+   "kind": "untracked"
+  },
+  "api/src/core/intelligence/specification.ts": {
+   "sha256": "2d95ab3e3dace5199110c76a7111782af27c4edf78668402cf002bc56ba482a1",
+   "bytes": 3224,
+   "kind": "untracked"
+  },
+  "api/src/modules/tools/definitions/SpecificationVerificationTool.ts": {
+   "sha256": "0d1026e3807cd98d0574bd53e7bb2dd11a31994248d82024596fd857757982dd",
+   "bytes": 16040,
+   "kind": "untracked"
+  },
+  "api/src/tests/manual/eval_006_long_specification.ts": {
+   "sha256": "58d753e612bc5693d58f0d6f1cd8e20333ef99c469571c470731cf6ceb312c04",
+   "bytes": 15526,
+   "kind": "untracked"
+  },
+  "api/src/tests/manual/real-joe-uat.test.ts": {
+   "sha256": "c82a637948bfa1e805814c8e7067d57f64b6579a05bde1ef7b0c19d88715db0a",
+   "bytes": 16362,
+   "kind": "untracked"
+  },
+  "api/src/tests/manual/real-joe-ui-fresh-test.spec.ts": {
+   "sha256": "db1d2f56ed59f19c4490926d93e7c7059ffea50f2688f05c6aa24522fcbe32fd",
+   "bytes": 7474,
+   "kind": "untracked"
+  },
+  "api/tmp-test-sanitise.ts": {
+   "sha256": "e41a40996e4f1cac71b74515af85afe9d27a186dda5258a3422299b2ff514503",
+   "bytes": 707,
+   "kind": "untracked"
+  }
+ }
+}
