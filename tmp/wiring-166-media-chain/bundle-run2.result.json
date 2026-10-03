@@ -1,0 +1,216 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "generate_image",
+  "image_studio"
+ ],
+ "chainRegistered": [
+  "image_studio"
+ ],
+ "chainRegisteredCount": 1,
+ "adjacentRegistered": [
+  "video_action"
+ ],
+ "redirectStatus": {
+  "image_generate": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "phantomStatus": {
+  "create_image": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "generate_picture": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "make_image": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "image_create": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "picture_generator": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "image_editor": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "generate_video": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "video_generator": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "image_studio": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "internet",
+    "write"
+   ],
+   "sideEffects": [
+    "write"
+   ],
+   "mockSupported": false
+  },
+  "video_action": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "read",
+    "write"
+   ],
+   "sideEffects": [
+    "execute",
+    "write"
+   ],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [],
+ "aliasChainHits": {},
+ "resolveOutcomes": {
+  "generate_image": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "image_studio": {
+   "tool": "image_studio",
+   "how": "exact"
+  },
+  "image_generate": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate an image of a sunset over mountains": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "create a logo image for my bakery website": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "fill in the missing product pictures for my store system": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "generate a product video from these clips": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "edit this photo to remove the background": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "draw a diagram of the system architecture": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "take a screenshot of the homepage": {
+   "tool": "screenshot",
+   "how": "nearest"
+  }
+ },
+ "gateShapes": {
+  "genimage-shape": false,
+  "studio-shape": false,
+  "video-shape": false
+ },
+ "registryTestRefs": 8,
+ "defDetail": {
+  "ImageGenerationTool": {
+   "namesColon": [],
+   "namesObj": [
+    "generate_image"
+   ],
+   "markers": {
+    "name: 'generate_image'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0,
+    "OPENAI_API_KEY": 1,
+    "openai": 3
+   },
+   "sha256": "03bc9008497c1e3c0006baaafe8cd5ff478ccf11fdb5770d1368db33ec8c827f",
+   "lines": 65
+  },
+  "ImageStudioTool": {
+   "namesColon": [
+    "image_studio"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'image_studio'": 1,
+    "workspaceId": 0,
+    "sessionId": 4,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0,
+    "joeProjects": 1,
+    "entities.js": 3
+   },
+   "sha256": "62649361e0e4aeac0ecc329b1a94dd68b54ef3ead7b060d8ea45ee539e1b4906",
+   "lines": 191
+  },
+  "VideoActionTool": {
+   "namesColon": [
+    "video_action"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'video_action'": 1,
+    "workspaceId": 1,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 1,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0,
+    "ffmpeg": 6,
+    "executionEngine": 2
+   },
+   "sha256": "6140b8cf3a0eebff4df418b1a0cb75b2edac961eaa140d37436d0711830aa4e1",
+   "lines": 80
+  }
+ },
+ "planChainRefs": [],
+ "svcChainRefs": [
+  "if (name === 'image_generate') {",
+  "effectiveName = 'generate_image';"
+ ],
+ "execChainRefs": [],
+ "pickerChainRefs": [
+  "\"html_extract\", \"github_create_repo\", \"image_generate\", \"deep_research\", \"browser_run\","
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
