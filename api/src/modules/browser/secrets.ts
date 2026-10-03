@@ -129,8 +129,14 @@ export function rewriteInlineLoginCredentialsToSecrets(rawText: string) {
   return { ok: true as const, email, password, sanitizedText: sanitized };
 }
 
-// Single implementation lives in shared/utils/redaction: this re-export keeps
+// Single implementation lives in shared/utils/redaction: this thin wrapper keeps
 // the browser runner's existing `from './secrets'` import working while
-// guaranteeing both entry points redact exactly the same credential shapes.
-export { redactSecretsFromString } from '../../shared/utils/redaction';
+// guaranteeing both entry points redact exactly the same credential shapes,
+// while preserving the old browser boundary normalization (String(s || '')) so
+// falsy inputs become '' and truthy non-strings are coerced, never leaked.
+import { redactSecretsFromString as redactSharedSecretsFromString } from '../../shared/utils/redaction';
+
+export function redactSecretsFromString(s: string): string {
+  return redactSharedSecretsFromString(String(s || ''));
+}
 

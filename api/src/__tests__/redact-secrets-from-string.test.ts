@@ -91,4 +91,40 @@ describe('redactSecretsFromString', () => {
     ])('leaves benign lookalike text intact: %s', text => {
         expect(redactSecretsFromString(text)).toBe(text);
     });
+
+    // Boundary contract (Codex c226 review condition): the pre-consolidation
+    // browser entry normalized with String(s || ''), so every falsy input
+    // became ''. The browser wrapper must preserve that; it must never leak
+    // a non-string through a log/debug path that expects a string.
+    test.each([
+        ['undefined', undefined],
+        ['null', null],
+        ['zero', 0],
+        ['false', false],
+        ['empty string', ''],
+    ])('browser entry normalizes falsy input (%s) to an empty string', (_label, value) => {
+        expect(redactSecretsFromStringBrowser(value as unknown as string)).toBe('');
+    });
+
+    // Same pre-consolidation contract: truthy non-strings were coerced with
+    // String(...) and then redacted, never thrown on.
+    test.each([
+        [123456789012, '123456789012'],
+        [true, 'true'],
+    ])('browser entry coerces truthy non-string %s instead of throwing', (value, expected) => {
+        expect(redactSecretsFromStringBrowser(value as unknown as string)).toBe(expected);
+    });
+
+    it('browser entry coerces then redacts a secret hidden in a non-string object', () => {
+        const carrier = { toString: () => `prefix ${JWT} suffix` };
+        const out = redactSecretsFromStringBrowser(carrier as unknown as string);
+        expect(out).not.toContain(JWT);
+        expect(out).not.toContain(JWT_PAYLOAD);
+        expect(out).toContain('[REDACTED]');
+        expect(out).toContain('prefix');
+    });
+
+    it('shared entry keeps its strict string contract on the empty string', () => {
+        expect(redactSecretsFromString('')).toBe('');
+    });
 });
