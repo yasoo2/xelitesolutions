@@ -1,42 +1,51 @@
-# Joe — Live Report (Muse cycle 203, 2026-10-03 ~09:55 UTC)
-SHORT HUMAN VIEW. Concise conclusions only; details live in the cited evidence files.
-NOTE: shared write to D:\Joe\coordination\team\LIVE-REPORT.md was DENIED by sandbox (absolute path outside workspace). This is the fallback copy; external coordinator should import it.
+# LIVE REPORT — Muse + NVIDIA (2026-10-03, ~13:10 local)
+
+SHARED_WRITE=DENIED ("absolute path is outside the workspace" — sandbox).
+Fallback copy: D:\Joe\muse-worktree\tmp\LIVE-REPORT.md (this file).
+External coordinator: please copy to D:\Joe\coordination\team\LIVE-REPORT.md.
 
 ## 1. ماذا نعمل الآن؟
-Muse: فحص محدود مُنجز (لا انحراف في شفرة NVIDIA + تعميم فحص الاتساق على البايتات الدقيقة). NVIDIA: بين الدورات (لا دورة جديدة منذ cycle-94).
+- Muse: فحص مستقل + تثبيت سلوك طبقة التحقق (reconciliation) — انتهت هذه الدورة بتثبيت 5/5.
+- NVIDIA: بين الدورات (لا توجد دورة 95 بعد)؛ آخر عمل: احتواء Batch-2 + إصلاحات الصور Batch-3.
+- Codex: تدقيق إعادة تشغيل :5002 + تنسيق المراجعات.
 
 ## 2. ماذا اكتشفنا؟
-- شفرة NVIDIA مطابقة تمامًا لآخر مراجعة (3 بصمات، 54 ملفًا، نفس الرأس) — لا انحراف.
-- فحص مُعمّم جديد على 16 اسم بوابة تحقق: الفجوة الوحيدة هي visual_qa (مقبولة بوابيًا وغير مسجلة) — والباقي سليم.
-- الكتالوج (40/40) وأهداف MEANS (27/27) مسجلة بالكامل؛ الطلبات المجهولة (مثل "generate image") تفشل بأمان بدل الالتصاق بأداة خاطئة.
+- سلوك Muse وNVIDIA **متفق** على شكل الرفض (verification_unavailable) لكن **مختلف** على معنى verificationNote — يحتاج قرار مالك قبل الدمج.
+- عثرة في مسبار الفحص فقط (mock ناقص)، ليست علة منتج — صُححت ووُثقت.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- 5/6 فحوصات خضراء × تشغيلين متطابقين على البايتات الدقيقة (الفشل الوحيد هو فجوة visual_qa المعروفة).
-- تقرير حدّ محدود (bounded checkpoint) + أدلة قابلة لإعادة التشغيل. صفر تغييرات شفرة من Muse.
+- Muse: مصفوفة M204 (5 حالات × تشغيلين متطابقين) + جدول تسوية موثق. صفر تعديل كود.
+- NVIDIA: كود Batch-2/3 حقيقي لكن غير مُثبت باختبارات دائمة ولا tsc/build — القبول معلق.
+- لا يوجد PASS لواجهة Joe الحقيقية بعد.
 
 ## 4. ماذا يعمل Muse الآن؟
-أنهى الفحص؛ التالي: إعادة تشغيل نفس الفحص على تثبيت المالك المكتفي ذاتيًا عند وصوله.
+تثبيت أدلة + مراجعة مستقلة فقط. لا كود جديد هذه الدورة.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-لا نشاط جديد منذ cycle-94 (11:44). آخر عمل: Batch-1..4 والاحتواء — شجرته ثابتة بانتظار الإكمال.
+لا نشاط جديد منذ 11:44 (نهاية دورة 94). آخر مطالبة: Batch-2 COMPLETE (تحتاج شروط قبول).
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-نعم عبر القناة: Muse تحقق من شفرة NVIDIA (قراءة فقط) وسجّل موقفه بنصه. لا اتفاق مُخترع.
+نعم عبر القناة الرسمية: Muse راجع BATCH2 (30/30) وc93 وc94 وGaps؛ NVIDIA رد على تدقيق التوصيلات ووعد بإعادة ضبط. لا اتفاق مُختلق.
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا: لا انحراف؛ الإصلاح المطلوب (تسجيل visual_qa) موجود ضمن Batch-011 الجاري.
-- علّق Muse: التثبيت الدائم (pins) + tsc/build + التثبيت الذاتي ما زالت مستحقة قبل الاعتماد.
+- اتفقا: آلية الاحتواء حقيقية؛ شكل رفض البوابة متطابق (M3/F5).
+- اختلفا/معلق: note⟺prose (M2/M4 ضد wasOriginallyProse)؛ جودة CLI (NEEDS_REWORK)؛ أرقام التدقيق (7/12 فقط).
 
-## 8. الأرقام المؤكدة
-DISCOVERED_TOOLS=UNKNOWN REGISTERED_TOOLS=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN UNKNOWN=YES REPAIRED=0 VERIFIED=0 REAL_JOE_PROVEN=0
-Scoped (Muse HEAD @9a44366d only, REPORTED_BY_MUSE): registered=163, catalogue=40/40 registered, gate vocabulary 15/16 registered (gap: visual_qa), MEANS targets 27/27 registered. Owner claims = REPORTED_BY_NVIDIA (unchanged since c202).
+## 8. الأرقام المؤكدة (نطاق الشجرة فقط، ليست عالمية)
+- REPORTED_BY_MUSE (Muse HEAD): DISCOVERED_TOOLS=163 REGISTERED_TOOLS=163 CATALOGUE=40 MEANS_TARGETS=27
+- REPORTED_BY_NVIDIA (dirty): 167 registry / 43 catalogue (غير مُثبتة بتشغيل مستقل)
+- VERIFIED: FULLY_WIRED=UNKNOWN PARTIALLY_WIRED=UNKNOWN ORPHANED=UNKNOWN DUPLICATE=UNKNOWN EXECUTABLE_TOOLS=UNKNOWN REPAIRED=0 REAL_JOE_PROVEN=0
+- فجوة واحدة مثبتة ميكانيكيًا: visual_qa مقبولة بالبوابة وغير مسجلة على Muse HEAD (إصلاحها داخل BATCH011 غير المعتمد).
 
 ## 9. ما آخر اختبار ونتيجته؟
-W203 probe: 5/6 PASS × تشغيلين متطابقين (الفشل = فجوة visual_qa المُثبتة آليًا). focused/internal فقط — ليس REAL_JOE_UI.
+- M204 (Muse، داخلي): 5/5 PASS × تشغيلين متطابقين — internal PASS فقط، ليس REAL_JOE_UI.
+- c93 (NVIDIA، داخلي على dirty): 10 بوابات مُعرّفة ذاتيًا خضراء — REPORTED_BY_NVIDIA، تحقق Muse من التنفيذ الحقيقي مع تصحيح النطاق.
+- REAL_JOE_UI: لا PASS — :5002 DOWN.
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- :5002 و:5101 مُغلقان — اختبار واجهة Joe الرسمي BLOCKED (لم يتغير).
-- إصلاح visual_qa + الدبابيس + tsc/build ما زالت عند المالك (تثبيت غير مكتمل).
+1. :5002 DOWN (:5101 أيضًا) — اختبار الواجهة الحقيقية محظور. :5000 يعمل (خادم تطوير NVIDIA، API فقط).
+2. الالتزام الجامع (self-contained) من NVIDIA لم يصدر بعد (F1/F2/F3 + pins + tsc/build).
+3. صفّا DIVERGE في جدول التسوية يحتاجان قرار مالك (provenance marker).
 
 ## 11. ما الخطوة التالية؟
-المالك (NVIDIA): تثبيت واحد مكتفٍ ذاتيًا (F1/F2/F3 + pins + tsc/build) → تحميل مُراجع على :5002 → UAT حي متعدد المحفزات. يبقى الـ CRITICALs مفتوحين.
+NVIDIA: التزام جامع واحد → مراجعة مستقلة → استعادة :5002 بمراجعة (تدقيق Codex) → اختبار واجهة حقيقية متعدد المحفزات. Muse يعيد تشغيل مسابيره على الالتزام الجامع.
