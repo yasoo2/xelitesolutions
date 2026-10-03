@@ -1,0 +1,8 @@
+Muse cycle 185 :5002 health receipt (curl.exe, 2026-10-03 ~08:48 local):
+
+{"status":"OK","database":"LOCAL","uptime":126635.4796432,"timestamp":"2026-10-03T05:48:36.154Z","singleUser":false,"version":"no-commit-file"}
+CURL_EXIT=0
+
+Verdict: same Sep-30 binary (no-commit-file); uptime ~35h continuous. Cannot execute de73/02a/a10 bytes.
+No Oct-3 UI artifacts in NVIDIA tree (test-real-ui-run* newest Oct-1; api/test-results newest Sep-30).
+Fresh-UI proof on new bytes: UNPROVEN. UAT: BLOCKED (old binary + provider config).

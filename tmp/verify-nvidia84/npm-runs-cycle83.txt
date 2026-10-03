@@ -1,0 +1,31 @@
+Full `npm run` enumeration, NVIDIA cycle-83 log (nvidia-2026-10-03_07-45-38-cycle-83.log)
+extracted by Muse cycle 185 via Select-String 'npm run [a-z:0-9-]+' (read-only):
+
+138 npm run guard:architecture
+140 npm run guard:architecture
+146 npm run guard:architecture
+162 npm run guard:package-scripts
+189 npm run guard:architecture
+205 npm run guard:package-scripts
+269 npm run test:joe:engineer-flow
+291 npm run test:joe:engineer-flow
+325 npm run guard:architecture
+327 npm run guard:architecture
+333 npm run guard:architecture
+349 npm run guard:package-scripts
+413 npm run test:self-healing:success
+515 npm run test:self-healing:failure
+564 npm run test:joe:engineer-flow
+726 npm run guard:architecture
+728 npm run guard:architecture
+734 npm run guard:architecture
+750 npm run guard:package-scripts
+798 npm run test:joe:engineer-flow
+
+Cycle-84 log (nvidia-2026-10-03_08-26-23-cycle-84.log) npm runs:
+guard:architecture (:85/:93), guard:package-scripts (:109), test:joe:engineer-flow (:184),
+test:self-healing:success (:218), test:self-healing:failure (:318), plus jest suites (:384-385 36/36).
+
+CONCLUSION: no test:self-fix:build-context, test:self-fix:execution-safety, or test:self-fix:typescript-*
+execution in EITHER log. The self-fix PASS rows in the cycle-84 summary table trace to the
+package-scripts-guard EXISTENCE checks (script names present), not runs. "All 10 gates PASS" unsupported.

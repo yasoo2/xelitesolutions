@@ -1,0 +1,12 @@
+NVIDIA key-file pins re-verified by Muse cycle 185 (2026-10-03 ~08:48 local, read-only)
+method: Get-FileHash SHA256 on live NVIDIA bytes
+result: ALL 5 MATCH vc4/vc6 pins; mtimes unchanged => zero byte drift since Muse's last review
+
+registry.ts                  185D58447C0DFA2C8943EFBB3C9043FC0EDE2BB669A96CDCE48569524497FB04  MATCH (mtime 06:56:39)
+plan-tools.ts                EED5FA00670AE8229B2C88C77019EA330FA7E6393A3792102E59243990E3164C  MATCH (mtime 07:14:58)
+ImageGenerationTool.ts       F8E321345F58256612BEC594F7C42D416E209F86FC49D3477145DBFEA2CDF274  MATCH (= a10 blob)
+BulkFileGeneratorTool.ts     0A49C45656506A4B9C4CE275D588EF2162C13B979149C6185A8917D360EFB08A  MATCH (vc5/vc6)
+VisualQATool.ts              D54694B62112E2D1502D2AD3BD908C0D60C009AB724E4946047FF999DB1EB5F5  MATCH (vc5/vc6)
+
+NVIDIA_HEAD=a10c71ab14411e682be7a7e4e5ffd07467d960ac (unchanged; 15 modified + untracked, same list as vc6)
+JOE-* files: mtimes still 2026-10-03 06:21-06:33 (no edits since e7978549 review)
