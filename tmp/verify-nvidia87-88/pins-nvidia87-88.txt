@@ -1,0 +1,27 @@
+NVIDIA cycle-87+88 pin recheck (Muse cycle 188, 2026-10-03 ~09:40 local)
+Method: Get-FileHash SHA256 read-only on NVIDIA tree; compared to Muse vc4/vc5/vc6 pins and cycle-187 pins.
+
+FILE=api/src/modules/tools/registry.ts
+SHA256=185D58447C0DFA2C8943EFBB3C9043FC0EDE2BB669A96CDCE48569524497FB04
+MTIME=2026-10-03 06:56:39
+
+FILE=api/src/core/orchestrator/plan-tools.ts
+SHA256=EED5FA00670AE8229B2C88C77019EA330FA7E6393A3792102E59243990E3164C
+MTIME=2026-10-03 07:14:58
+
+FILE=api/src/modules/tools/definitions/ImageGenerationTool.ts
+SHA256=F8E321345F58256612BEC594F7C42D416E209F86FC49D3477145DBFEA2CDF274
+MTIME=2026-10-03 08:06:05
+
+FILE=api/src/modules/tools/definitions/BulkFileGeneratorTool.ts
+SHA256=0A49C45656506A4B9C4CE275D588EF2162C13B979149C6185A8917D360EFB08A
+MTIME=2026-09-24 18:03:47
+
+FILE=api/src/modules/tools/definitions/VisualQATool.ts
+SHA256=D54694B62112E2D1502D2AD3BD908C0D60C009AB724E4946047FF999DB1EB5F5
+MTIME=2026-09-24 18:03:47
+
+MATCH_VC4/VC5/VC6=YES (5/5: registry 185D..=vc4, plan-tools EED5..=vc4, image F8E3..=vc6=a10 blob, bulk 0A49..=vc5, visual D546..=vc5)
+MATCH_CYCLE187=YES (5/5 hashes + 3/3 checked mtimes identical)
+NVIDIA_HEAD=a10c71ab (unchanged; ahead origin/main by 5, same 15 tracked-modified + untracked)
+DRIFT=NONE (zero byte changes; "BATCH011 HOLD resolved" byte-evidence: ABSENT)

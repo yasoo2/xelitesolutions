@@ -1,0 +1,26 @@
+Gate + suite receipt lines, NVIDIA cycle-87 and cycle-88 (read-only log extraction)
+
+CYCLE-87 (09:11-09:24):
+  guard:architecture            -> Architecture guard passed
+  guard:package-scripts         -> package.json self-fix scripts guard passed
+  jest 3 suites                 -> 19 passed (28.179s) verification-contract-gaps|smoke-verification-rewrite|prose-verification-contract-regression
+  jest 2 suites                 -> 17 passed (26.148s) deterministic-phases-for-cli|cli-routing-fix
+  test:joe:engineer-flow        -> Full Engineer Flow Verification: PASSED
+  test:self-healing:success     -> Verification Complete. Status: PASSED
+  test:self-healing:failure     -> Verification Complete. Status: PASSED
+  36/36 = 19+17, suite names + timings present. GENUINE.
+
+CYCLE-88 (09:25-09:39):
+  guard:architecture            -> Architecture guard passed
+  guard:package-scripts         -> package.json self-fix scripts guard passed
+  jest 3 suites                 -> 19 passed (23.473s) same 3 suites
+  jest 2 suites                 -> 17 passed (21.335s) same 2 suites
+  test:joe:engineer-flow        -> Full Engineer Flow Verification: PASSED
+  test:self-healing:success     -> Verification Complete. Status: PASSED
+  test:self-healing:failure     -> Verification Complete. Status: PASSED
+  36/36 = 19+17, DIFFERENT timings from cycle-87 -> genuinely re-executed, not pasted.
+
+AGREED (both cycles, dirty-tree internal): 5/5 gate groups PASS, 36/36 jest PASS.
+REJECTED (both cycles): "All 10 AGENTS Gates PASS" (self-fix family never run);
+  "BATCH011 HOLD resolved" (5/5 pins MATCH, zero drift); UAT=PARTIAL as product
+  claim (old :5002 binary cannot execute new bytes; no Oct-3 Real-Joe-UI artifacts).

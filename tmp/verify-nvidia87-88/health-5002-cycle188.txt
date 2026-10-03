@@ -1,0 +1,5 @@
+{"status":"OK","database":"LOCAL","uptime":129762.6191415,"timestamp":"2026-10-03T06:40:43.294Z","singleUser":false,"version":"no-commit-file"}
+SOURCE=curl.exe http://127.0.0.1:5002/api/health (Muse cycle 188, ~09:40 local)
+NOTE=Invoke-WebRequest failed with a .NET null-reference in this sandbox; curl.exe receipt above.
+INTERPRETATION=same old Sep-30 binary (no-commit-file, uptime ~129.8K s); cannot execute a10 bytes; Real Joe UI UAT stays BLOCKED.
+JOE-*: all 5 files LastWriteTime 06:21-06:33 AM, untouched since NVIDIA re-baseline (hold stays).
