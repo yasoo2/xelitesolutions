@@ -1,0 +1,236 @@
+{
+ "registryTotal": 163,
+ "contractDefaults": {
+  "permissions": [
+   "business_logic_parser→read",
+   "chaos_test_plan→read",
+   "compliance_validator→read",
+   "cloud_cost_estimator→read",
+   "ambiguity_resolver→read",
+   "multi_agent_debate→read",
+   "self_confidence_evaluator→read",
+   "project_planner→read",
+   "central_answer→read",
+   "web_page_builder→write",
+   "form_inbox→read",
+   "echo→read",
+   "shell_check_status→read",
+   "ask_user→read",
+   "json_query→read",
+   "alert_manager→write",
+   "cache_manager→write",
+   "monitoring→read",
+   "project_state_manager→write",
+   "request_analyzer→read",
+   "template_manager→write"
+  ],
+  "rateLimit": [
+   "central_answer",
+   "web_page_builder"
+  ],
+  "unknown": []
+ },
+ "tools": {
+  "cloud_cost_estimator": {
+   "resolved": true,
+   "class": "CostEstimatorTool",
+   "description": "Estimate cloud costs.",
+   "tags": [
+    "cost",
+    "elite"
+   ],
+   "runtimePermissions": [
+    "read"
+   ],
+   "runtimeSideEffects": [],
+   "rateLimitPerMinute": 20,
+   "inputRequired": [
+    "resources"
+   ],
+   "inputProps": [
+    "resources",
+    "traffic"
+   ],
+   "hasExecuteFn": true,
+   "mockSupported": true,
+   "defaultedEntry": "cloud_cost_estimator→read"
+  },
+  "self_confidence_evaluator": {
+   "resolved": true,
+   "class": "SelfConfidenceTool",
+   "description": "Evaluate confidence.",
+   "tags": [
+    "analysis",
+    "elite"
+   ],
+   "runtimePermissions": [
+    "read"
+   ],
+   "runtimeSideEffects": [],
+   "rateLimitPerMinute": 20,
+   "inputRequired": [
+    "content"
+   ],
+   "inputProps": [
+    "content"
+   ],
+   "hasExecuteFn": true,
+   "mockSupported": true,
+   "defaultedEntry": "self_confidence_evaluator→read"
+  },
+  "ask_user": {
+   "resolved": true,
+   "class": "AskUserTool",
+   "description": "Ask the user a question and wait for a response. Use this if you are blocked or need clarification.",
+   "tags": [
+    "user",
+    "interaction",
+    "blocking"
+   ],
+   "runtimePermissions": [
+    "read"
+   ],
+   "runtimeSideEffects": [],
+   "rateLimitPerMinute": 60,
+   "inputRequired": [
+    "question"
+   ],
+   "inputProps": [
+    "question",
+    "options"
+   ],
+   "hasExecuteFn": true,
+   "mockSupported": false,
+   "defaultedEntry": "ask_user→read"
+  },
+  "rss_fetch": {
+   "resolved": true,
+   "class": "RssFetchTool",
+   "description": "Fetch and parse an RSS feed.",
+   "tags": [
+    "network",
+    "rss"
+   ],
+   "runtimePermissions": [
+    "read",
+    "internet"
+   ],
+   "runtimeSideEffects": [],
+   "rateLimitPerMinute": 60,
+   "inputRequired": [
+    "url"
+   ],
+   "inputProps": [
+    "url",
+    "limit"
+   ],
+   "hasExecuteFn": true,
+   "mockSupported": false,
+   "defaultedEntry": null
+  },
+  "task_lifecycle": {
+   "resolved": true,
+   "class": "TaskLifecycleTool",
+   "description": "Manage the lifecycle of an agent task loop. Use this to update the UI with your current status, summary, and mode.",
+   "tags": [
+    "system",
+    "ui",
+    "lifecycle"
+   ],
+   "runtimePermissions": [
+    "write"
+   ],
+   "runtimeSideEffects": [],
+   "rateLimitPerMinute": 60,
+   "inputRequired": [
+    "action"
+   ],
+   "inputProps": [
+    "action",
+    "taskName",
+    "taskStatus",
+    "taskSummary",
+    "mode"
+   ],
+   "hasExecuteFn": true,
+   "mockSupported": false,
+   "defaultedEntry": null
+  }
+ },
+ "firewall": {
+  "isSystemContextOutside": false,
+  "directValidate": "THROWS:Execution bypass detected in C220-PROBE:direct. All execution must go through AgentOrchest",
+  "orchestratorValidate": "ALLOWED"
+ },
+ "catalogue": {
+  "cloud_cost_estimator": {
+   "surfaced": true,
+   "rank": 1,
+   "score": 7,
+   "of": 16
+  },
+  "self_confidence_evaluator": {
+   "surfaced": true,
+   "rank": 1,
+   "score": 8.4,
+   "of": 30
+  },
+  "ask_user": {
+   "surfaced": true,
+   "rank": 1,
+   "score": 7.2,
+   "of": 19
+  },
+  "rss_fetch": {
+   "surfaced": true,
+   "rank": 1,
+   "score": 15.2,
+   "of": 20
+  },
+  "task_lifecycle": {
+   "surfaced": true,
+   "rank": 4,
+   "score": 7.2,
+   "of": 30
+  },
+  "coreTools": [
+   "central_answer",
+   "read_file",
+   "write_file",
+   "file_edit",
+   "delete_file",
+   "inspect_directory",
+   "search_files",
+   "search_text",
+   "shell_execute"
+  ],
+  "fiveInCore": []
+ },
+ "validationProbes": {
+  "cce_empty_resources": {
+   "ok": false,
+   "error": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+   "logs": []
+  },
+  "cce_missing_arg": {
+   "ok": false,
+   "error": "cloud_cost_estimator needs a resources list (e.g. [\"EC2 t3.small\", \"RDS\"]).",
+   "logs": []
+  },
+  "sce_empty_content": {
+   "ok": false,
+   "error": "self_confidence_evaluator needs content to judge.",
+   "logs": []
+  },
+  "sce_missing_arg": {
+   "ok": false,
+   "error": "self_confidence_evaluator needs content to judge.",
+   "logs": []
+  },
+  "notExecuted": [
+   "ask_user (broadcasts unconditionally)",
+   "rss_fetch (network, no input validation)",
+   "task_lifecycle (broadcasts unconditionally)"
+  ]
+ }
+}
