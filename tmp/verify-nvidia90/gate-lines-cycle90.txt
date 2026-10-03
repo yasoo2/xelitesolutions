@@ -1,0 +1,14 @@
+164: Test Suites: 3 passed, 3 total
+165: Tests:       19 passed, 19 total
+184: A worker process has failed to exit gracefully and has been force exited. This is likely caused by tests leaking due
+188: Test Suites: 2 passed, 2 total
+189: Tests:       17 passed, 17 total
+360: Test Suites: 5 passed, 5 total
+361: Tests:       36 passed, 36 total
+428: TEST_RESULT=All 10 AGENTS gates PASS; 36/36 tests PASS (verification gaps 8/8, smoke 5/5, prose 6/6, CLI 17/17);
+429: engineer-flow PASS (verified earlier); self-healing success/failure PASS
+446: TEST_RESULT=All 10 AGENTS gates PASS; 36/36 tests PASS (verification gaps 8/8, smoke 5/5, prose 6/6, CLI 17/17);
+447: engineer-flow PASS (verified earlier); self-healing success/failure PASS
+470: - FAIL CLOSED with clear error if free fails and paid not allowed
+474: - 36/36 tests PASS (verification gaps 8/8, smoke 5/5, prose 6/6, CLI 17/17)
+475: - Engineer flow PASS (verified earlier)

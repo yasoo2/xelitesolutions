@@ -1,0 +1,35 @@
+106: ظ£à SelfFixService produces structured self-fix plans
+107: ظ£à SelfFixService limits repair attempts
+108: ظ£à AgentLoop is connected to self-fix execution
+121: ظ£à test:self-fix:build-context
+122: ظ£à test:self-fix:execution-safety
+123: ظ£à test:self-fix:typescript-repair
+124: ظ£à test:self-fix:typescript-missing-name
+125: ظ£à test:self-fix:typescript-number-to-string
+126: ظ£à test:self-fix:typescript-argument-coercion
+127: ظ£à test:self-fix:typescript-string-to-boolean
+128: ظ£à test:self-fix:typescript-boolean-to-string
+129: ظ£à test:self-fix:typescript-boolean-argument-coercion
+130: ظ£à test:self-fix:typescript-boolean-to-number
+131: ظ£à test:self-fix:typescript-number-to-boolean
+132: ظ£à test:self-fix:typescript-number-boolean-argument-coercion
+135: ظ£à package.json self-fix scripts guard passed
+260: [DEBUG SelfFixExecutionService] repairedFile: required_file.txt absoluteRepairedFile:
+263: [DEBUG SelfFixExecutionService] calling projectContextAfterRepair
+331: ظ£à selfFixPlan generated
+387: ظ£à SelfFixService produces structured self-fix plans
+388: ظ£à SelfFixService limits repair attempts
+389: ظ£à AgentLoop is connected to self-fix execution
+402: ظ£à test:self-fix:build-context
+403: ظ£à test:self-fix:execution-safety
+404: ظ£à test:self-fix:typescript-repair
+405: ظ£à test:self-fix:typescript-missing-name
+406: ظ£à test:self-fix:typescript-number-to-string
+407: ظ£à test:self-fix:typescript-argument-coercion
+408: ظ£à test:self-fix:typescript-string-to-boolean
+409: ظ£à test:self-fix:typescript-boolean-to-string
+410: ظ£à test:self-fix:typescript-boolean-argument-coercion
+411: ظ£à test:self-fix:typescript-boolean-to-number
+412: ظ£à test:self-fix:typescript-number-to-boolean
+413: ظ£à test:self-fix:typescript-number-boolean-argument-coercion
+416: ظ£à package.json self-fix scripts guard passed

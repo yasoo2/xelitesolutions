@@ -1,0 +1,5 @@
+UNIQUE_NPM_RUNS:
+guard:architecture
+guard:package-scripts
+test:self-healing:failure
+test:self-healing:success

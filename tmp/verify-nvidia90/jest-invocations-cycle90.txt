@@ -1,0 +1,3 @@
+137: [0m$ [0mcd D:\Joe\xelitesolutions\api; npx jest src/__tests__/verification-contract-gaps.test.ts
+171: [0m$ [0mcd D:\Joe\xelitesolutions\api; npx jest src/__tests__/deterministic-phases-for-cli.test.ts
+339: [0m$ [0mcd D:\Joe\xelitesolutions\api; npx jest src/__tests__/verification-contract-gaps.test.ts
