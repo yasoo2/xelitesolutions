@@ -1,0 +1,388 @@
+{
+ "registeredCount": 163,
+ "chain": [
+  "shell_execute",
+  "terminal_manager",
+  "npm_manager",
+  "repo_run_command",
+  "project_run",
+  "auto_tester"
+ ],
+ "chainRegistered": [
+  "auto_tester",
+  "npm_manager",
+  "project_run",
+  "repo_run_command",
+  "shell_execute",
+  "terminal_manager"
+ ],
+ "chainRegisteredCount": 6,
+ "adjacentRegistered": [],
+ "redirectStatus": {},
+ "phantomStatus": {
+  "run_command": {
+   "registered": false,
+   "catalogue": false,
+   "alias": "terminal_manager"
+  },
+  "shell_exec": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "shell_status": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "tool_create_shell": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "command_policy_check": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "run_shell_command": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "execute_command": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  },
+  "terminal": {
+   "registered": false,
+   "catalogue": false,
+   "alias": null
+  }
+ },
+ "perTool": {
+  "auto_tester": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": true,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [],
+   "mockSupported": false
+  },
+  "npm_manager": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "sideEffects": [
+    "execute",
+    "write",
+    "internet"
+   ],
+   "mockSupported": false
+  },
+  "project_run": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "repo_run_command": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "shell_execute": {
+   "alias": null,
+   "catalogue": true,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  },
+  "terminal_manager": {
+   "alias": null,
+   "catalogue": false,
+   "verificationUnconditional": false,
+   "hasExecute": true,
+   "permissions": [
+    "execute"
+   ],
+   "sideEffects": [
+    "execute"
+   ],
+   "mockSupported": false
+  }
+ },
+ "catalogueChainHits": [
+  "auto_tester",
+  "npm_manager",
+  "project_run",
+  "shell_execute"
+ ],
+ "aliasChainHits": {
+  "run_command": "terminal_manager",
+  "bash": "terminal_manager",
+  "shell": "shell_execute"
+ },
+ "resolveOutcomes": {
+  "shell_execute": {
+   "tool": "shell_execute",
+   "how": "exact"
+  },
+  "npm_manager": {
+   "tool": "npm_manager",
+   "how": "exact"
+  },
+  "terminal_manager": {
+   "tool": "terminal_manager",
+   "how": "exact"
+  },
+  "run the build command in the project folder": {
+   "tool": "shell_execute",
+   "how": "meaning"
+  },
+  "install the npm dependencies for the project": {
+   "tool": "npm_manager",
+   "how": "meaning"
+  },
+  "open a terminal and show the current directory": {
+   "tool": "shell_execute",
+   "how": "meaning"
+  },
+  "execute the test suite and report failures": {
+   "tool": "test_generator",
+   "how": "meaning"
+  },
+  "run_command": {
+   "tool": "terminal_manager",
+   "how": "alias"
+  },
+  "shell_exec": {
+   "tool": null,
+   "why": "unknown"
+  },
+  "read the contents of package.json": {
+   "tool": null,
+   "why": "unknown"
+  }
+ },
+ "gateShapes": {
+  "shell-test-shape": true,
+  "shell-install-shape": false,
+  "npm-shape": false,
+  "auto-shape": true
+ },
+ "registryTestRefs": 16,
+ "defDetail": {
+  "SystemTools": {
+   "namesColon": [
+    "echo",
+    "file_edit",
+    "delete_file",
+    "write_file",
+    "ls",
+    "grep_search",
+    "npm_manager",
+    "scaffold_project",
+    "shell_execute",
+    "shell_check_status"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'shell_execute'": 1,
+    "name = 'npm_manager'": 1,
+    "workspaceId": 18,
+    "sessionId": 13,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 3,
+    "getActiveRoot": 2,
+    "shell: true": 0,
+    "spawn": 0,
+    "redact": 9,
+    "timeout": 15,
+    "background": 15
+   },
+   "sha256": "280a2393a4decac9c2125f186a9e6a9f4ff8d58c78d6296ce4fb1bd7a9100aff",
+   "lines": 1752
+  },
+  "TaskInteractionTools": {
+   "namesColon": [
+    "terminal_manager",
+    "read_file",
+    "ask_user"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'terminal_manager'": 1,
+    "workspaceId": 7,
+    "sessionId": 3,
+    "userId": 4,
+    "mockSupported": 0,
+    "resolveToolPath": 2,
+    "getActiveRoot": 1,
+    "shell: true": 0,
+    "spawn": 1,
+    "session": 7,
+    "visible": 1
+   },
+   "sha256": "498e52e49c61cffe68ed0fa4cda1870282a9331a553ea7febbbb662ad50879f4",
+   "lines": 272
+  },
+  "RepoSelfCodingTools": {
+   "namesColon": [
+    "repo_read_file",
+    "repo_search",
+    "repo_apply_patch",
+    "repo_run_command",
+    "repo_diff_summary"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'repo_run_command'": 1,
+    "workspaceId": 0,
+    "sessionId": 0,
+    "userId": 0,
+    "mockSupported": 0,
+    "resolveToolPath": 0,
+    "getActiveRoot": 0,
+    "shell: true": 0,
+    "spawn": 0,
+    "policy": 0,
+    "HIGH_SECURITY": 0
+   },
+   "sha256": "0d7bd1a0b6fcb1f245646fa6ad59b08d5a952ce07dda001178c29f2763724ea2",
+   "lines": 281
+  },
+  "ProjectRunTool": {
+   "namesColon": [
+    "project_run",
+    "project_stop"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'project_run'": 1,
+    "workspaceId": 2,
+    "sessionId": 18,
+    "userId": 0,
+    "mockSupported": 2,
+    "resolveToolPath": 0,
+    "getActiveRoot": 1,
+    "shell: true": 1,
+    "spawn": 5,
+    "manifest": 30,
+    "readiness": 10
+   },
+   "sha256": "dd38cbb99add57bd7781340fa7dd8fc7986b936989d0d313cc630cb86dad3437",
+   "lines": 1900
+  },
+  "AutoTesterTool": {
+   "namesColon": [
+    "auto_tester"
+   ],
+   "namesObj": [],
+   "markers": {
+    "name = 'auto_tester'": 1,
+    "workspaceId": 20,
+    "sessionId": 14,
+    "userId": 11,
+    "mockSupported": 1,
+    "resolveToolPath": 3,
+    "getActiveRoot": 0,
+    "shell_execute": 3,
+    "testType": 10,
+    "projectPath": 42
+   },
+   "sha256": "521b8478fe3b6d385df1fbe16160d2d6229bc898395b5a65aae3f11182b76cb1",
+   "lines": 455
+  }
+ },
+ "planChainRefs": [
+  "*      equivalent exists (\"Git\" is git_ops; \"npm install\" is npm_manager)",
+  "{ tool: 'npm_manager', purpose: 'install or manage npm dependencies' },",
+  "{ tool: 'shell_execute', purpose: 'run a build/test command (npm run build, npm test)' },",
+  "{ tool: 'auto_tester', purpose: 'generate and run tests' },",
+  "{ tool: 'project_run', purpose: 'start the built project and get a live URL' },",
+  "npm: 'npm_manager', yarn: 'npm_manager', pnpm: 'npm_manager', 'package manager': 'npm_manager',",
+  "'npm install': 'npm_manager', dependencies: 'npm_manager',",
+  "bash: 'shell_execute', sh: 'shell_execute', terminal: 'shell_execute',",
+  "cli: 'shell_execute', command: 'shell_execute', 'command line': 'shell_execute',",
+  "jest: 'auto_tester', mocha: 'auto_tester', vitest: 'auto_tester', pytest: 'auto_tester',",
+  "testing: 'auto_tester', 'unit tests': 'auto_tester', 'test suite': 'test_generator',",
+  "(Array.isArray(phase?.tasks) ? phase.tasks : []).some((task: any) => String(task?.tool || '') === 'project_run')",
+  "|| String(phase?.verificationTask?.tool || '') === 'project_run'",
+  "* Keep the planner's runnable contract aligned with ProjectRunTool. A nested",
+  "return (tool === 'npm_manager' && /^(?:install|ci|setup)$/.test(action))",
+  "|| (tool === 'shell_execute' && /(?:^|[;&|])\\s*npm\\s+(?:install|ci)(?:\\s|$)/i.test(action));"
+ ],
+ "svcChainRefs": [
+  "if (n === 'shell_execute') {",
+  "// gate. The command itself remains subject to ShellExecuteTool's safety",
+  "if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';",
+  "run_command: 'terminal_manager',",
+  "bash: 'terminal_manager',",
+  "shell: 'shell_execute',",
+  "effectiveName = 'npm_manager';",
+  "effectiveName = 'npm_manager';",
+  "effectiveName = 'npm_manager';",
+  "effectiveName = 'npm_manager';",
+  "effectiveName = 'npm_manager';",
+  "if (name === 'command_execute' || name === 'run_command' || name === 'exec' || name === 'terminal') {",
+  "effectiveName = 'shell_execute';",
+  "else if (effectiveName === 'npm_manager') status = say(isAr, 'جاري معالجة المكتبات...', 'Working through the packages…');"
+ ],
+ "execChainRefs": [
+  "* Add only trusted project evidence to a phase-level project_run call.",
+  "* filesystem guess. ProjectRunTool remains responsible for matching it against",
+  "const cwdInheritedTools = new Set(['npm_manager', 'shell_execute', 'terminal_manager', 'auto_tester']);",
+  "if (toolName === 'npm_manager' && runtimeProjectRoot) {",
+  "if (toolName !== 'project_run') return planned;",
+  "// argument that would make project_run execute `src/index.js` outside the",
+  "logs?.push(`[PhaseExecutor] project_run: replaced stale cwd with runtime-bound project root (${projectRoot.slice(0, 240)})`);",
+  "// directory) into project_run, honoring it turns the generated app's",
+  "logs?.push(`[PhaseExecutor] project_run: ignored stale greenfield cwd (${existingCwd}); using accepted project evidence instead`);",
+  "logs?.push(`[PhaseExecutor] project_run: using discovery-selected project root (${projectRoot.slice(0, 240)})`);",
+  "? `[PhaseExecutor] project_run: ignored pre-creation root and used accepted project query (${projectName})`",
+  ": `[PhaseExecutor] project_run: using accepted plan project evidence (${projectName})`);",
+  "// now, otherwise project_run falls back to an unrelated workspace root and",
+  "const fileTools = new Set(['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced', 'auto_tester']);",
+  "if (toolName === 'shell_execute' || toolName === 'terminal_manager') {",
+  "if (toolName !== 'auto_tester') return [];"
+ ],
+ "pickerChainRefs": [
+  "\"git_ops\", \"command_policy_check\", \"tool_create_shell\", \"shell_execute\", \"shell_status\","
+ ],
+ "sha": {
+  "registryTs": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec"
+ }
+}
