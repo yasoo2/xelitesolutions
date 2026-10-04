@@ -1,0 +1,51 @@
+﻿group,file,name,count
+registry,registry.ts,git_ops,1
+registry,registry.ts,github_repo_manager,2
+registry,registry.ts,github_pr,1
+registry,registry.ts,github_actions,1
+deterministic_planner,PlanningEngine.ts,git_local_workflow,2
+deterministic_planner,PlanningEngine.ts,github_repo_manager,5
+deterministic_planner,plan-tools.ts,git_ops,16
+deterministic_planner,plan-tools.ts,github_repo_manager,2
+deterministic_planner,plan-tools.ts,github_pr,3
+deterministic_planner,plan-tools.ts,github_actions,1
+tool_picker,tool-picker.ts,git_ops,1
+toolservice,ToolService.ts,git_ops,5
+toolservice,ToolService.ts,github_repo_manager,2
+--- file census ---
+git_ops: 14 prod files
+  api\routes\github.ts
+  core\llm\tool-picker.ts
+  core\orchestrator\plan-tools.ts
+  modules\services\ToolService.ts
+  modules\tools\definitions\DeployPagesTool.ts
+  modules\tools\definitions\GitTools.ts
+  modules\tools\definitions\WebDevelopmentTools.ts
+  modules\tools\registry.ts
+  tests\manual\verify_deploy_pages.ts
+  tests\manual\verify_git_push.ts
+  tests\manual\verify_github_connect.ts
+  tests\manual\verify_plan_binding.ts
+  tests\manual\verify_push_conflict.ts
+  tests\manual\verify_token_revoked.ts
+git_local_workflow: 3 prod files
+  core\orchestrator\PlanningEngine.ts
+  modules\tools\definitions\GitLocalWorkflowTool.ts
+  orchestration\AgentOrchestrator.ts
+github_repo_manager: 8 prod files
+  core\orchestrator\PlanningEngine.ts
+  core\orchestrator\plan-tools.ts
+  modules\services\ToolService.ts
+  modules\tools\definitions\GitHubActionsTool.ts
+  modules\tools\definitions\GitHubRepoManagerTool.ts
+  modules\tools\registry.ts
+  orchestration\AgentOrchestrator.ts
+  tests\manual\verify_tool_reach.ts
+github_pr: 3 prod files
+  core\orchestrator\plan-tools.ts
+  modules\tools\definitions\GitHubPRTool.ts
+  modules\tools\registry.ts
+github_actions: 3 prod files
+  core\orchestrator\plan-tools.ts
+  modules\tools\definitions\GitHubActionsTool.ts
+  modules\tools\registry.ts
