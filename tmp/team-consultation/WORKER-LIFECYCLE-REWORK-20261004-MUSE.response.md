@@ -1,114 +1,132 @@
-# Muse independent review — worker lifecycle REWORK (F1-F5)
+# Muse independent RE-review — worker lifecycle REWORK delta (G1 closure)
 AGENT=MUSE
 CONSULTATION_ID=WORKER-LIFECYCLE-REWORK-20261004-MUSE
 STATUS=REVIEWED_BY_MUSE
-POSITION=APPROVE_REWORK_WITH_CHANGES__RECOVERY_STILL_OPEN
+POSITION=APPROVE_REWORK_G1_CLOSED__RECOVERY_STILL_OPEN
 RECOMMENDATION=APPROVE_WITH_CHANGES
-REVIEWED_UTC=2026-10-04T11:30Z
-MUSE_HEAD=281b99ccb3c0ad924ca8924af533c68c1c4e0285
+REVIEWED_UTC=2026-10-04T11:45Z
+MUSE_HEAD=182c256ee1b3c4927eff27e4b0c47070fc006407
 MUSE_BRANCH=muse/joe-development
+SUPERSEDES_REVIEW=2026-10-04T11:30Z (old pinned bytes 715E0A2C/9C469780)
 
-## Exact scope reviewed (byte-pinned)
-All four SHA256 match team/worker-lifecycle/rework-source-20261004T142216919.json exactly:
-- team/runtime/Worker-LifecyclePolicy.ps1 SHA256=3F72F36575813EBC256E0F43E20BD5504096C0D7BDD8E8AFF60E54B2806DA42C
-- team/runtime/Watch-TeamWorkerLifecycle.ps1 SHA256=715E0A2CED4B700897BBAE42DCEAE02E2611FED6B2AAFC84AE9EB52A4EFE663D
-- team/runtime/Test-WorkerLifecyclePolicy.ps1 SHA256=075276C06C799FC544B0C0782E53262EB191E3090DA760F0613C248FFA5AA4EE
-- team/runtime/Test-WorkerLifecycleIntegration.ps1 SHA256=9C4697809956D8366731454EF4C21A9EB5B3993B60E51108B338F03B8B0A3E75
-Staged copies under D:\Joe\muse-worktree\tmp\lifecycle-rework-review\ match shared bytes
-exactly. Both suites were executed against the staged byte-identical copies. No shared file
-was modified by this review. No live worker, process, Git, source, or runtime state touched.
+## Why a re-review was required
+Source drift detected this cycle: current shared bytes differ from the
+11:30Z-reviewed bytes. Policy + policy-test unchanged; Watch + integration
+test changed:
+- team/runtime/Worker-LifecyclePolicy.ps1 SHA256=3F72F36575813EBC256E0F43E20BD5504096C0D7BDD8E8AFF60E54B2806DA42C (UNCHANGED)
+- team/runtime/Watch-TeamWorkerLifecycle.ps1 SHA256=9374D28B26A864A1B7EDF15302A6D4A85E90DA3C6110623826EA1901E9ABFAD7 (WAS 715E0A2C...)
+- team/runtime/Test-WorkerLifecyclePolicy.ps1 SHA256=075276C06C799FC544B0C0782E53262EB191E3090DA760F0613C248FFA5AA4EE (UNCHANGED)
+- team/runtime/Test-WorkerLifecycleIntegration.ps1 SHA256=DA9B742AFBE2CB7C7A8DD910FB41024FB105388133A4271B5EADD5551DED930E (WAS 9C469780...)
+The 11:30Z APPROVE_WITH_CHANGES applies to the old bytes only. This review
+covers the exact current bytes above.
+
+## Exact delta reviewed (byte-pinned, additions only)
+Diffed current shared bytes against staged 11:30Z copies
+(D:\Joe\muse-worktree\tmp\lifecycle-rework-review\): no line removed or
+altered; 9 lines added, nothing else:
+1. Watch-TeamWorkerLifecycle.ps1:142-143 — 2 comment lines documenting the
+   fail-loud persistence semantic ("Persistence is shared: fail loud on
+   archive/alert/state-write faults. One-shot throws; watch warns/retries.
+   Never publish a false healthy receipt."). Comment-only; zero behavior
+   change. This is the "document" alternative of required item G1.
+2. Test-WorkerLifecycleIntegration.ps1:110-116 — 7-line pin: occupies
+   team\worker-lifecycle\current-<PID>.tmp with a directory so the atomic
+   state write fails, then asserts one-shot throws AND current.json is absent
+   ("Failed persistence cannot publish a healthy receipt"). Genuine
+   fail-loud pin on the state-write path, same fault family as alert/archive
+   writes (all uncaught -> throw in one-shot, warn/retry in watch loop).
+Staged copies under D:\Joe\muse-worktree\tmp\lifecycle-rework-review2\
+match current shared bytes exactly (hash-verified). Both suites executed
+against the staged byte-identical copies. No shared file modified by this
+review. No live worker, process, Git, source, or runtime state touched.
 
 ## Independent verification performed (this review, PS5.1; no provider calls)
-1. Policy suite: PASS 63/63 lifecycle assertions, EXIT=0 (Windows PowerShell 5.1).
-   Assertion budget independently counted in source: 15 Check-State x3 = 45 + 18 Assert-Equal
-   = 63. Matches owner claim; no hidden/extra checks.
-2. Watcher integration suite: PASS 30/30, EXIT=0 (PS5.1). Assert budget counted: 30 Assert
-   calls. Matches owner claim. First attempt failed ONLY because this sandbox denies writes
-   to C:\Users\home\AppData\Local\Temp (system temp); reran with TEMP/TMP redirected to the
-   writable review dir. Reviewed bytes were NOT modified; the fixture path is opaque/unique
-   by design. This is a sandbox-only path restriction, not a product defect — but see G3.
-3. PS7 leg NOT rerun here: pwsh.exe absent in this sandbox. Owner's 63/63+30/30 PS7 receipt
-   is cited, not independently confirmed (same caveat as the HANG review; carried as R1).
-4. Full source read of all four files, including the new QUIET_AWAITING_CONFIRMATION state,
-   cooldown gate, per-agent isolation, corrupt-state preservation, and bounded session scan.
+1. Policy suite: PASS 63/63, EXIT=0 (Windows PowerShell 5.1). Bytes
+   unchanged; rerun confirms no environment surprise.
+2. Watcher integration suite: PASS 32/32, EXIT=0 (PS5.1) — old 30 plus the
+   2 new G1 pins, all green. Assert budget counted in source: 30 old Assert
+   calls + 2 new = 32. Matches.
+3. TEMP/TMP redirected to the writable review dir (this sandbox denies
+   writes to system temp; sandbox-only restriction, not a product defect).
+4. PS7 leg NOT rerun here: pwsh.exe absent in this sandbox. Carried as R1.
+5. Full read of both changed files in context; verified the new test blocks
+   the real temp-receipt path (Watch:156) and that one-shot rethrow
+   (Watch:177) is the asserted loud failure.
 
-## F1-F5 disposition (each verified against exact source + passing pins)
-F1 (stall flap) CLOSED: policy requires 3 consecutive quiet zero-descendant polls
-  (Worker-LifecyclePolicy.ps1:30,46-50; Watch:119-123, counter resets on any descendant
-  or output delta); new QUIET_AWAITING_CONFIRMATION state carries no alert; 600s per-cycle
-  attention cooldown (policy:64-71; Watch:139-151). Integration pins flap protection,
-  counter reset, and no re-alert inside the cooldown window (all green in my rerun).
-F2 (unguarded per-worker collection) CLOSED: per-agent try/catch (Watch:37/133-137)
-  degrades one worker to OBSERVATION_FAILED and continues. Missing-logs, session-probe,
-  and invalid-timestamp fault pins all green. Residual G1 below is narrower than F2.
-F3 (unreachable exit-code states) CLOSED as documented-reserved: policy lines 27-29 state
-  the external CIM observer cannot retrieve exited codes; tests pin the reserved contract.
-  This matches the "document OR remove" allowance. No false coverage is now implied.
-F4 (zero Watch tests) CLOSED: new Test-WorkerLifecycleIntegration.ps1, 30 checks covering
-  empty root, lease contention, first-sight/restart freshness, stall confirmation, flap,
-  fault isolation, corrupt JSON, CIM denial, real bounded session wiring, ambiguity,
-  budget overflow, and PID reuse. Independently rerun 30/30.
-F5 (unbounded session scan) CLOSED: scan limited to 2 date buckets, one level, 128 dirs
-  per bucket with a visible budget failure (Watch:66-85). No recursive store walk remains.
+## F1-F5 + G1 disposition
+F1-F5: CLOSED per 11:30Z review; delta touches none of that logic (verified
+by additions-only diff), so all five closures stand on the new bytes.
+G1 (persistence outside per-agent isolation): CLOSED as documented-fail-loud
++ pinned. The 2-line comment states the intended semantic at the exact
+decision point; the 2-assert pin proves one-shot loudness and no false
+healthy receipt. Matches the "isolate OR document + pin" requirement.
+Residual notes G2 (-like wildcard identity, pre-existing, out of scope) and
+G3 (test fixture temp override, test-only portability) stand unchanged.
 
-## New findings (minor; none blocks the observer)
-G1. Alert emission (Watch:142-151) and corrupt-state copy (Watch:25) sit outside per-agent
-  isolation. A persistence fault there still fails the whole observation (one-shot throws;
-  watch loop warns and continues). Fail-loud and acceptable; REQUIRE either per-agent
-  isolation or one comment line documenting fail-loud as the intended persistence semantic.
-G2. Pre-existing, out of rework scope: identity match uses -like "*$scriptPath*" (Watch:46);
-  -like treats [ ] as wildcards, so an exotic coordination path could mis-identify. No
-  action required now; noted so a future identity change escapes the pattern.
-G3. Test-only portability note: the integration suite writes fixtures under GetTempPath().
-  In restricted sandboxes that path may be read-only (observed here). Consider honoring
-  an env override or falling back to the script directory for fixtures. No behavior change.
+## Root cause (of this delta)
+Not a defect: owner implemented the G1 isolate-or-document requirement via
+the document+pin alternative. Minimal, surgical, correctly placed.
+
+## Proposal errors
+None in this delta. The pin targets the real atomic-write path; the comment
+sits at the exact branch (alert emission inside the per-agent loop). No
+over-claim: alert/archive faults share the asserted code path but only the
+state-write fault is pinned; the comment's broader wording is accurate
+because all three faults propagate identically (uncaught in one-shot).
 
 ## Simpler alternatives considered
-- Accept the rework as-is (APPROVE): rejected only because R1 (PS7 confirmation on exact
-  new bytes) was already a required item in the HANG review and this sandbox still cannot
-  supply it. The PS5.1 evidence is complete and strong; PS7 is the single remaining leg.
-- No alternative implementation proposed; the owner addressed every F-item directly.
+- Accept delta as-is within an overall APPROVE: rejected only because R1
+  (PS7 confirmation on exact new bytes) remains the single required leg
+  this sandbox cannot supply. PS5.1 evidence is complete and strong.
+- No alternative implementation proposed; per-agent isolation of shared
+  persistence would be MORE complex, not simpler.
 
 ## Overlap with existing work
-None. Coordination-only scope (team/runtime + team/worker-lifecycle). NVIDIA's owned
-verification/CLI work (including new commit f40f6100, PhaseExecutor/ledger/blueprints,
-3 files 52+/14-, read-only corroborated, NOT reviewed here) and Muse's security/wiring
-review lanes are untouched. No competing implementation created.
+None. Coordination-only scope. NVIDIA's owned verification/CLI work
+(currently f40f6100 on main, read-only observed, NOT reviewed here) and
+Muse's security/wiring lanes untouched. No competing implementation created.
+
+## Conflict/regression risks
+Nil. Production change is comment-only; test change is additive (new
+isolated fixture root, no shared state). Full 63/63+32/32 green on exact
+new bytes. No Joe product behavior changed.
+
+## Maintainability/security impact
+Maintainability: improved (explicit semantic + regression pin at decision
+point). Security: none (metadata-only observer; no identity material, no
+log content, no credentials; new test uses opaque fixtures).
 
 ## Live corroboration (read-only, no action taken)
-- team/worker-lifecycle/current.json is FRESH: ObservedUtc 2026-10-04T11:24:59Z, MonitorId
-  13168, ~15s old at observation. Both workers OUTPUT_PROGRESS_NOT_ENGINEERING_VERIFIED,
-  quiet=0. No stall signal currently. Which script bytes the live monitor runs is NOT
-  proven by this receipt; no activation claim is made for the rework.
-- NVIDIA cycle96 log (nvidia-2026-10-04_14-03-53-cycle-96.log) is 102906 bytes, updated
-  ~3 min before observation: genuinely fresh output, consistent with natural cycle advance.
-  The prior cycle95 early STALL_SUSPECTED signal is superseded (cycle95 log later grew to
-  147010 bytes); taking no action then was correct.
-- Runtime: :5002 UNREACHABLE and :5000 UNREACHABLE this cycle; no listeners on either
-  port (Invoke-WebRequest + Get-NetTCPConnection agree). :5000 was last reported OK, so
-  this is a CHANGED runtime status, recorded here as observation only. No runtime action
-  taken: restoration ownership is Codex/human per control plane.
+- team/worker-lifecycle/current.json FRESH at observation: ObservedUtc
+  2026-10-04T11:35:16Z, MonitorId 13168. Which script bytes the live monitor
+  runs is NOT proven; no activation claim for the rework.
+- Runtime: :5002 UNREACHABLE and :5000 UNREACHABLE this cycle (no listeners
+  on either port). :5000 was last reported OK, so this remains a CHANGED
+  runtime status, recorded as observation only. No runtime action taken:
+  restoration ownership is Codex/human per control plane.
 
 ## Required tests (before calling the rework DONE)
-1. R1 (carried): confirm 63/63 + 30/30 on PowerShell 7 outside this sandbox on the exact
-   hashes above; record the receipt hash-bound.
-2. G1: isolate-or-document persistence-fault semantics; pin with one integration check.
-3. One live end-to-end confirmation remains: a real future stall alert carries correct
-   identity/descendant evidence and any recovery follows the guarded human-authorized
-   procedure. No synthetic PASS. Automatic recovery design is still unfinished by design.
+1. R1 (carried): confirm 63/63 + 32/32 on PowerShell 7 outside this sandbox
+   on the exact new hashes above; record the receipt hash-bound.
+2. One live end-to-end confirmation remains: a real future stall alert
+   carries correct identity/descendant evidence and any recovery follows the
+   guarded human-authorized procedure. No synthetic PASS. Automatic recovery
+   design is still unfinished by design (Muse C257 F7: source-drift, atomic
+   work, preservation, identity checks required).
 
 ## Real Joe UAT
-NOT APPLICABLE to this batch (coordination observer; no Joe product behavior changed).
-No Real Joe UAT is claimed or required. CRITICAL-REAL-JOE-UI-001 (:5002 unreachable,
-verified this cycle) and CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT remain open and are
-not affected by this review.
+NOT APPLICABLE to this batch (coordination observer; no Joe product
+behavior changed). No Real Joe UAT claimed or required.
+CRITICAL-REAL-JOE-UI-001 (:5002 unreachable, verified this cycle) and
+CRITICAL-JOE-DEEP-CAPABILITY-WIRING-AUDIT remain open and unaffected.
 
 ## Required outcome
 STATUS=REVIEWED_BY_MUSE
-POSITION=APPROVE_REWORK_WITH_CHANGES__RECOVERY_STILL_OPEN
+POSITION=APPROVE_REWORK_G1_CLOSED__RECOVERY_STILL_OPEN
 RECOMMENDATION=APPROVE_WITH_CHANGES
-NOTE=Shared consultation file not written: this sandbox permits writes only under
-D:\Joe\muse-worktree (plus temp), and prior cycles verified shared-write denial. This
-fallback response is written for collector receipt per the consultation's own fallback
-rule. No agreement with any other agent is inferred or claimed.
-SHARED_FILE_WRITE=ACCESS_DENIED_KNOWN_FROM_PRIOR_CYCLES
+NOTE=Shared consultation file not written: this sandbox denies writes
+outside D:\Joe\muse-worktree (probe: consultations write DENIED this
+cycle). This fallback response is written for collector receipt per the
+consultation's own fallback rule. No agreement with any other agent is
+inferred or claimed.
+SHARED_FILE_WRITE=ACCESS_DENIED_PROBED_20261004T1145Z
