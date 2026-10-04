@@ -1,0 +1,53 @@
+diff --git "a/D:\\Joe\\worktrees\\codex-readonly-browser-20261004\\tmp\\browser-contract-baseline\\requested-action-before-arabic.ts" "b/D:\\Joe\\worktrees\\codex-readonly-browser-20261004\\api\\src\\core\\intelligence\\requested-action.ts"
+index 65facf6b..12be7942 100644
+--- "a/D:\\Joe\\worktrees\\codex-readonly-browser-20261004\\tmp\\browser-contract-baseline\\requested-action-before-arabic.ts"
++++ "b/D:\\Joe\\worktrees\\codex-readonly-browser-20261004\\api\\src\\core\\intelligence\\requested-action.ts"
+@@ -8,13 +8,13 @@ const END_BOUNDARY = '(?:$|[\\s،:؛.!?])';
+ // ANSWER_ONLY patterns - check for explicit answer-only / no-execution contracts
+ // Note: "change" is intentionally excluded here - it's handled by read-only patterns
+ const ANSWER_ONLY_EN = `(?:answer\\s+only|answer\\-only|only\\s+answer|without\\s+(?:executing|running|building|creating|implementing|generating|writing|changing|modifying|file\\s+changes?)|no\\s+(?:execution|build|implementation|file\\s+changes?)|do\\s+not\\s+(?:execute|run|build|create|implement|write)\\b|explain\\s+(?:without|instead\\s+of)\\s+(?:executing|building|running)|describe\\s+(?:without|instead\\s+of)\\s+(?:executing|building|running)|without\\s+(?:building|creating|implementing|generating|writing))`;
+-const ANSWER_ONLY_AR = `(?:الرد\\s+(?:فقط|بدون\\s+تنفيذ)|(?:دون|بدون)\\s+(?:تنفيذ|بناء|إنشاء|تعديل|كتابة|تغيير)|اشرح\\s+(?:فقط|بدون\\s+تنفيذ)|وصف\\s+(?:فقط|بدون\\s+تنفيذ)|اشرح\\s+(?:هذا|那些)\\s+(?:那些|那些)\\s+(?:那些|那些))`;
++const ANSWER_ONLY_AR = `(?:الرد\\s+(?:فقط|بدون\\s+تنفيذ)|(?:دون|بدون)\\s+(?:أي\\s+)?(?:تنفيذ|بناء|إنشاء|تعديل|كتابة|تغيير)|اشرح\\s+(?:فقط|بدون\\s+تنفيذ)|وصف\\s+(?:فقط|بدون\\s+تنفيذ)|اشرح\\s+(?:هذا|那些)\\s+(?:那些|那些)\\s+(?:那些|那些))`;
+ // Use START_BOUNDARY but not END_BOUNDARY for denial phrases, as they can appear mid-sentence
+ const ANSWER_ONLY_PATTERN = new RegExp(`${START_BOUNDARY}(?:${ANSWER_ONLY_EN}|${ANSWER_ONLY_AR})`, 'i');
+ 
+ // NO_FILE_CHANGES patterns
+ const NO_FILE_CHANGES_EN = `(?:no\\s+file\\s+changes?|without\\s+file\\s+changes?|do\\s+not\\s+(?:create|write|modify|edit|change)\\s+files?|without\\s+(?:creating|writing|modifying|editing|making)\\s+(?:any\\s+)?(?:file\\s+)?changes?)`;
+-const NO_FILE_CHANGES_AR = `(?:(?:那些|那些)\\s+(那些|那些|那些|那些)\\s+(那些|那些)|那些\\s+(那些|那些?)\\s+(那些|那些)\\s+(那些|那些))`;
++const NO_FILE_CHANGES_AR = `(?:(?:بدون|دون)\\s+(?:أي\\s+)?(?:تعديل|كتابة|إنشاء|انشاء|تغيير)\\s+(?:(?:على|في)\\s+)?(?:الملفات|ملفات|الملف|ملف)|لا\\s+(?:تعدل|تغير|تكتب|تنشئ)\\s+(?:أي\\s+)?(?:الملفات|ملفات|الملف|ملف))`;
+ // Use START_BOUNDARY but not END_BOUNDARY for denial phrases, as they can appear mid-sentence
+ const NO_FILE_CHANGES_PATTERN = new RegExp(`${START_BOUNDARY}(?:${NO_FILE_CHANGES_EN}|${NO_FILE_CHANGES_AR})`, 'i');
+ 
+@@ -25,7 +25,7 @@ const POLITE_BUILD_PATTERN = new RegExp(`${START_BOUNDARY}(?:${POLITE_BUILD_EN}|
+ 
+ // EXPLAIN_THEN_BUILD patterns
+ const EXPLAIN_THEN_BUILD_EN = `(?:explain\\s+(?:the\\s+)?(?:approach|design|plan|solution|architecture)\\s+(?:briefly|first|then)(?:\\s*,?\\s*(?:then|and\\s+then))?[,\\s]*\\s*(?:build|create|implement|develop|make|code)|(?:briefly\\s+)?(?:explain|describe)\\s+(?:.+?\\s+)?(?:first|then|and\\s+then)(?:\\s*,?\\s*(?:then|and\\s+then))?[,\\s]*\\s*(?:build|create|implement|develop|make|code))`;
+-const EXPLAIN_THEN_BUILD_AR = `(?:那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些|那些)/iu`;
++const EXPLAIN_THEN_BUILD_AR = `(?:اشرح|وضح)[^.!؟\\n]{0,120}(?:ثم|وبعدها)\\s+(?:ابني|ابن|أنشئ|انشئ|صمم|طور|نفذ)`;
+ const EXPLAIN_THEN_BUILD_PATTERN = new RegExp(`${START_BOUNDARY}(?:${EXPLAIN_THEN_BUILD_EN}|${EXPLAIN_THEN_BUILD_AR})${END_BOUNDARY}`, 'i');
+ 
+ // AFFIRMATIVE_BUILD patterns (imperative verbs)
+@@ -137,7 +137,10 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
+         });
+ 
+         // If denial comes first, or it's in an explanatory context, treat as denial
+-        if (hasEarlyDenial || isInExplanatoryContext) {
++        // A scoped no-write contract cannot become build authority. Arabic
++        // explicit no-execution clauses must survive explain-then-build signals.
++        const explicitArabicDenial = /(?:اشرح\s+فقط|الرد\s+فقط|(?:بدون|دون)\s+(?:أي\s+)?(?:تنفيذ|بناء|إنشاء|انشاء|تعديل|كتابة|تغيير))/u.test(g);
++        if (hasEarlyDenial || isInExplanatoryContext || isNoFileChanges || (isAnswerOnly && explicitArabicDenial)) {
+             return {
+                 hasAffirmativeAction: false,
+                 hasDenial: true,
+@@ -303,7 +306,10 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
+         // Also check if the affirmative build verb is in an explanatory context
+         const isInExplanatoryContext = /(?:explain|describe|specification|proposed specification|this specification|spec|brief|approach)\s*[:،]\s*.*(?:build|create|implement|develop|make|code)/i.test(probe);
+ 
+-        if (hasEarlyDenial || isInExplanatoryContext) {
++        // A scoped no-write contract cannot become build authority. Arabic
++        // explicit no-execution clauses must survive explain-then-build signals.
++        const explicitArabicDenial = /(?:اشرح\s+فقط|الرد\s+فقط|(?:بدون|دون)\s+(?:أي\s+)?(?:تنفيذ|بناء|إنشاء|انشاء|تعديل|كتابة|تغيير))/u.test(g);
++        if (hasEarlyDenial || isInExplanatoryContext || isNoFileChanges || (isAnswerOnly && explicitArabicDenial)) {
+             // Denial phrase comes first, or affirmative verb is in explanatory context
+             // Treat as denial (answer-only)
+             return {
