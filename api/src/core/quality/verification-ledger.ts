@@ -716,7 +716,21 @@ export function verificationEvidenceDetails(value: unknown) {
     };
 }
 
-export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false): boolean {
+export function isSingleOutputObservationPath(args: Record<string, unknown>): string | null {
+    const values = new Set(
+        ['path', 'filePath', 'file', 'filename', 'sourceFile']
+            .map(key => String((args as any)?.[key] || '').trim().replace(/^\.\//u, ''))
+            .filter(Boolean),
+    );
+    if (values.size !== 1) return null;
+    const candidate = Array.from(values)[0];
+    const segments = candidate.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (!segments.length || segments.some(segment => segment === '..')) return null;
+    if (segments.every(segment => segment === '.')) return null;
+    return candidate;
+}
+
+export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false, allowExistenceObservation = false): boolean {
     const name = String(tool || '').trim().toLowerCase();
     if (new Set([
         'quality_run', 'auto_tester', 'code_reviewer', 'browser_console_scan', 'browser_ui_audit',
@@ -747,6 +761,17 @@ export function isVerificationTool(tool: string, args: Record<string, unknown> =
         if (checker === 'tsc') return words.length === 1 && words[0] === '--noEmit';
         if (checker === 'eslint') return words.length > 0 && words.every(word => !word.startsWith('-'));
         return checker === 'jest' && testArgs(words);
+    }
+    // A phase-output existence observation is a genuine check: read_file fails
+    // honestly when the named phase output is missing, and verification
+    // receipts record the outcome without embedding file content. The plan
+    // sanitizer substitutes exactly this contract when a planner invents an
+    // unverifiable checker, so the phase gate opts in explicitly. Final
+    // quality gates never opt in: a read must not masquerade as final
+    // delivery evidence. Execution authority stays with ToolService, which
+    // resolves the same read contracts for ordinary phase tasks.
+    if (allowExistenceObservation && name === 'read_file') {
+        return isSingleOutputObservationPath(args) !== null;
     }
     // Untrusted plan metadata cannot certify an arbitrary tool as a checker.
     return false;

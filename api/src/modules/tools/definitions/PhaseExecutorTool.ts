@@ -2397,11 +2397,25 @@ let verificationFailed = false;
                                     executionContext.onProgress?.(message);
                                 },
                             });
+
+                            const verificationOutcome = verificationResultFromToolResult(vResult);
+                            const verificationPassed = vResult.ok && verificationOutcome === 'passed';
+                            
+                            // Gap A/B fix: If verification was originally prose (normalized from prose),
+                            // it should not count as a real behavioral verification for phase advancement.
+                            // Prose verifications are observations only, not behavioral checks.
+                            const isProseObservation = verificationWasProseObservation;
+                            
+                            // Determine the verification result to record in the ledger.
+                            // For prose observations that pass, we record 'incomplete' (not 'passed')
+                            // so they don't mint passed receipts that could be reused incorrectly.
+                            const ledgerResult = isProseObservation && verificationPassed ? 'incomplete' : verificationOutcome;
+                            
                             if (selected) {
                                 verificationLedger = recordVerification(
                                     verificationLedger,
                                     selected.selection,
-                                    verificationResultFromToolResult(vResult),
+                                    ledgerResult,
                                     Date.now() - startedAt,
                                     Date.now(),
                                     verificationMetricsFrom(vResult, {
@@ -2411,14 +2425,6 @@ let verificationFailed = false;
                                     }),
                                 );
                             }
-
-                            const verificationOutcome = verificationResultFromToolResult(vResult);
-                            const verificationPassed = vResult.ok && verificationOutcome === 'passed';
-                            
-                            // Gap A/B fix: If verification was originally prose (normalized from prose),
-                            // it should not count as a real behavioral verification for phase advancement.
-                            // Prose verifications are observations only, not behavioral checks.
-                            const isProseObservation = verificationWasProseObservation;
                             
                             if (verificationPassed) {
                                 if (isProseObservation) {

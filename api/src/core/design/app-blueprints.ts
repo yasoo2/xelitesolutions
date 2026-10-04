@@ -3228,17 +3228,24 @@ function canonicalFieldKey(label: string): string | null {
  * Callers must not grow their own field-name catalogues: those duplicate paths
  * drift and eventually mistake capability lists for record schemas.
  */
+export function isCliRequest(requestRaw: string): boolean {
+    const request = stripArabicDiacritics(String(requestRaw || '')).trim();
+    const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
+    if (cliSignals.test(request)) return true;
+    const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
+    if (csvInputSignals.test(request)) return true;
+    return false;
+}
+
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
     const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    // A user often states context before making the request: "I run a
-    // camel farm. I want a register...". The build verb begins the second
-    // sentence, not the whole message. Read a clause boundary, while still
-    // refusing a mere description that never asks Joe to create anything.
     const clauseStart = '(?:^|[.؟!\\n]\\s*)';
     const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
         || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;
+    // CLI/utility/script requests are NOT persistent record schemas
+    if (isCliRequest(requestRaw)) return false;
     const columns = columnsAnywhereInHisRequest(requestRaw);
     return Array.isArray(columns) && columns.length >= 2;
 }
