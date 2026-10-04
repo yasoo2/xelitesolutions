@@ -1,78 +1,78 @@
 # JOE LIVE TEAM REPORT (Muse fallback copy — shared write denied)
-UPDATED=2026-10-04T14:10Z
-OVERALL_STATUS=AUDIT_AND_REVIEW — Muse reviews stand; browser-family wiring slice added (B1-B3); owner repairs pending.
+UPDATED=2026-10-04T14:35Z
+OVERALL_STATUS=REVIEW — Codex isolated browser candidate independently verified GREEN (22/22); integration blocked on C1-C5. f40 F1 still open. No owner repair commit yet.
 SHARED_WRITE=DENIED (sandbox writes limited to workspace/tmp; D:\Joe\coordination\team\LIVE-REPORT.md absent, this fallback stands for verbatim import)
 
 ## ماذا نعمل الآن؟
-Muse: مراجعة مستقلة + تدقيق ربط عائلة أدوات المتصفح على بايتات f40 الدقيقة (ثابت، بدون إزعاج تحقق NVIDIA).
-NVIDIA: يملك إصلاح عقد المتصفح (IntentParser/PlanningEngine) وإصلاح F1 (مطابق CLI) — بانتظار أول نسخة مُصلحة.
-Codex: يملك التحميل المرتبط بالمصدر وإعادة اختبار الواجهة الحقيقية بعد الإصلاح.
+Muse: مراجعة مستقلة لمرشّح Codex المعزول لعقد المتصفح (اكتملت: APPROVE_WITH_CHANGES) + تأكيد ثابت.
+NVIDIA: يملك lane الرئيسي (IntentParser/PlanningEngine/CLI) — لا commit جديد منذ f40؛ مهمة المتصفح ما زالت بانتظار إقراره.
+Codex: مرشّح معزول + التحميل المرتبط بالمصدر + إعادة اختبار الواجهة بعد الشروط.
 
 ## ماذا اكتشفنا؟
-- عائلة المتصفح على f40: 32 أداة منفذة، 31 مسجلة — `visual_qa` منفذة ومستوردة لكن غير مسجلة (B1).
-- `visual_qa` متوقعة في 7 مواضع إنتاجية (ledger/ToolService/PhaseExecutor) رغم غياب تسجيلها — أي خطة تستخدمها تفشل.
-- فرع ميت: فحص `browser_open` في rate-limit لا يمكن أن يعمل (يُستدعى بعد التحويل إلى browser_run) — B2.
-- مدخلان قديمان في NEEDS_BUILT_URL (`browser_screenshot`/`browser_extract`) لا يطابقان أي أداة أو alias — B3 (كامن).
-- `browser_action`/`browser_vision` مسجلتان لكن المخطط الحتمي لا يستخدمهما أبدًا — متاحتان للـLLM فقط عبر tool-picker.
-- tool-picker يعرض `web_search` و`image_generate` كأولوية رغم عدم تسجيلهما — خانات أولوية ضائعة (alias يمسك النداء المباشر فقط).
+- مرشّح Codex يطبق بالضبط ما طلبه بوابة Muse: مساعد مشترك واحد يستشيره الحارسان (ليس نسختين).
+- آلية E1 مؤكدة في البايتات: "Do not create..." تصل عبر isAnswerOnly (قائمة الأفعال)، والمرشّح يعالج الحالتين.
+- لا قارئ لـ answerOnly في الإنتاج — لا خطر تسمم بيانات؛ والمرشّح يضبط القيم الصحيحة.
+- الإخفاقات الموروثة (4) مطابقة بالاسم على الأساس والمرشّح — صفر انحراف من التعديل.
+- قائمة كلمات التعديل دفاعية فقط؛ الحد الأمني الحقيقي هو ToolService + عقد browser_launch.
+- hasEarlyDenial self-match ما زال كامنًا (خارج النطاق، سُجل كمتابعة).
 
 ## ماذا أنجزنا فعليًا؟
-- تأكيد ثابت: NVIDIA ما زال على f40 بدون commit جديد؛ lane المتسخ محفوظ؛ المنفذان 5000/5002 سليمان.
-- شريحة تدقيق موثقة (FINDINGS.md + refcount.csv) — بدون أي تعديل كود (audit-first) وبدون تداخل مع lane المالك.
-- لا استشارة تنتظر رد Muse الأول؛ المراجعتان السابقتان ثابتتان.
+- مراجعة مستقلة كاملة بالأدلة (SHA + إعادة تشغيل + فحص خصوماتي 10 حالات) — ملف fallback جاهز للاستيراد.
+- إعادة تشغيل مستقلة نظيفة: 22/22 خروج 0؛ التوجيه 12/1؛ الصلاحيات 35/3 (نفس الأسماء الموروثة).
+- تأكيد ثابت: f40 سليم، F1 مفتوح، lane المتسخ محفوظ (53 مسارًا)، بايتات المرشّح مجمدة.
 
 ## ماذا يعمل Muse الآن؟
-CURRENT_TASK=Independent review + browser-family wiring slice on exact f40 (B1-B3)
-LATEST_RESULT=Standing confirm + wiring slice committed as docs (read-only vs NVIDIA tree)
-BLOCKER=None for review lane; re-reviews gated on owner fixed bytes (not yet present)
+CURRENT_TASK=Independent review of Codex isolated browser candidate (DONE this cycle)
+LATEST_RESULT=APPROVE_WITH_CHANGES: mechanism green, integration blocked C1-C5
+BLOCKER=None for review lane; re-review gated on integrated bytes (not yet present)
 
 ## ماذا يعمل NVIDIA الآن؟
-CURRENT_TASK=Owned browser-contract + F1 CLI-matcher repair (dirty IntentParser/PlanningEngine/pipeline lane)
-LATEST_RESULT=No new commit since f40 (REPORTED_BY_MUSE, git log read-only); cycle98 STALL_SUSPECTED (REPORTED_BY_CODEX 13:16Z)
-BLOCKER=Needs safe checkpoint/recovery; acknowledgement of browser assignment still pending
+CURRENT_TASK=Owned main lane (browser-contract + F1 CLI-matcher + verification)
+LATEST_RESULT=No new commit since f40 (REPORTED_BY_MUSE, read-only git log); cycle98 STALL_SUSPECTED (REPORTED_BY_CODEX 13:16Z)
+BLOCKER=Needs safe checkpoint/recovery; browser assignment acknowledgement still pending
 
 ## هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- آخر مراجعتين من Muse مستلمتان ومحفوظتان حرفيًا (f40 APPROVE_WITH_CHANGES؛ عقد المتصفح NEEDS_EVIDENCE).
-- لا رد إصلاح جديد من NVIDIA بعد (لا commit ولا ملاحظة fallback جديدة شوهدت).
-- لا خلاف جديد؛ الخلافات المسجلة (F1/F2) ما زالت مفتوحة بانتظار الإصلاح.
+- مراجعة Muse الثالثة (مرشّح Codex) مكتوبة كـ fallback بانتظار استيراد Codex حرفيًا.
+- لا رد إصلاح جديد من NVIDIA بعد (لا commit ولا fallback جديد).
+- تنبيه للمنسقين: مساران متوازيان لنفس العقد (مرشّح Codex + مهمة NVIDIA) — يجب دمج واحد فقط.
 
 ## أين اتفقا وأين اختلفا؟
-- متفق: تشخيص عقد المتصفح صحيح الاتجاه (مع تصحيح دقة Muse: isAnswerOnly هو المشغّل).
-- مختلف/مفتوح: F1 (مطابق CLI) + أدلة البوابات العشر + B1 (visual_qa غير مسجلة) — بانتظار إصلاح المالك وإعادة مراجعة Muse.
+- متفق: تشخيص العقد + الحل (مساعد مشترك) — المرشّح يطابق بوابة Muse.
+- مفتوح: F1/F2 (f40) + C1-C5 (المرشّح: 4 بوابات، 4 إخفاقات موروثة، إعادة manifest، إعادة مراجعة، UAT).
 
 ## الأرقام المؤكدة حاليًا
 DISCOVERED_TOOLS=167 (REPORTED_BY_MUSE, exact-f40 static, commit d17a9822)
-REGISTERED_TOOLS=163 (REPORTED_BY_MUSE, static ceiling reconstructed prior cycle on Muse HEAD)
+REGISTERED_TOOLS=167 (REPORTED_BY_CODEX candidate log: "Registered 167 tools (71 revived)"; Muse static ceiling 163 prior cycle — scope differs, not reconciled)
 EXECUTABLE_TOOLS=UNKNOWN
-FULLY_WIRED=28 (browser family only, REPORTED_BY_MUSE, exact-f40 static this cycle)
-PARTIALLY_WIRED=1 (browser family: visual_qa, REPORTED_BY_MUSE this cycle)
-ORPHANED=UNKNOWN (registry-wide; browser family: 0)
-DUPLICATE=0 (registry throws on duplicate names by construction — VERIFIED static)
+FULLY_WIRED=UNKNOWN (registry-wide; browser-family slice 28 stands from prior cycle)
+PARTIALLY_WIRED=UNKNOWN (registry-wide)
+ORPHANED=UNKNOWN
+DUPLICATE=0 (registry throws on duplicate names — VERIFIED static, prior cycle)
 UNKNOWN=many (registry-wide wiring counts not yet proven)
-REPAIRED=0 (this cycle; audit-first, no code edits)
-VERIFIED=19/19 + engineer-flow on exact f40 (REPORTED_BY_MUSE, prior cycle)
-REAL_JOE_PROVEN=0 (latest official5002 read-only prompt FAILED per Codex 12:24Z receipt; no new UAT)
+REPAIRED=0 (by Muse this cycle; Codex candidate exists but NOT integrated — not counted)
+VERIFIED=22/22 focused + 47/51 inherited-baseline on isolated candidate (REPORTED_BY_MUSE, exit-0 reruns this cycle)
+REAL_JOE_PROVEN=0 (no new UAT; latest official5002 read-only prompt FAILED per Codex 12:24Z)
 
 ## آخر نتيجة اختبار
-TEST=Standing re-confirm (read-only git/health) + browser-family static wiring slice (refcount.py on extracted f40)
-RESULT=PASS (facts confirmed; zero test processes started to avoid contention with owned verification)
-WHAT_IT_PROVES=Review basis unchanged; B1-B3 grounded in exact f40 bytes with file:line evidence
-Note: focused/static PASS only — NOT Real Joe UI PASS. No UAT attempted (owned by Codex after repair).
+TEST=Independent rerun on exact Codex candidate bytes (scratch CWD, exit 0) + 10-case adversarial probe
+RESULT=PASS (22/22; inherited 4 fail identically on baseline — zero delta; probe observations recorded)
+WHAT_IT_PROVES=Candidate mechanism correct and general (transfer URL green); integration still needs C1-C5
+Note: focused PASS only — NOT Real Joe UI PASS. No UAT attempted (Codex-owned after integration).
 
 ## المشاكل الحالية
-1. إصلاح عقد المتصفح غير موجود بعد (NVIDIA cycle98 متعثر/مشتبه توقفه).
-2. F1 (مطابق CLI) ما زال مفتوحًا ويمنع اعتماد f40.
-3. B1: `visual_qa` متوقعة تنفيذيًا لكن غير مسجلة (سُجلت للمالك، lane نشط لديه).
-4. الكتابة المشتركة من sandbox ما زالت ممنوعة (fallback channel نشط).
+1. لا تكامل بعد: المرشّح معزول؛ المالك NVIDIA لم يقر المهمة؛ خطر مسارين متوازيين.
+2. F1 (مطابق CLI) مفتوح ويمنع اعتماد f40.
+3. 4 إخفاقات موروثة + 4 بوابات testenv تنتظر الأدلة/التصريف.
+4. الكتابة المشتركة من sandbox ممنوعة (fallback channel نشط).
 
 ## الخطوة التالية
-1. NVIDIA: إصلاح محدود (shared helper + تضييق المطابق + تسجيل visual_qa + اختبارات سالبة) ثم commit واحد متكامل.
-2. Muse: إعادة مراجعة مستقلة للبايتات المُصلحة فور ظهورها.
-3. Codex: تحميل مرتبط بالمصدر + إعادة تشغيل طلب 5002 الرسمي + UAT متعدد.
+1. المنسقون: حسم مسار التكامل الواحد (مرشّح Codex أو إصلاح NVIDIA — لا كلاهما).
+2. المالك: C1-C5 (بوابات + تصريف الموروث + manifest جديد + دمج يحفظ المتسخ).
+3. Muse: إعادة مراجعة البايتات المدمجة فور ظهورها.
+4. Codex: تحميل مرتبط بالمصدر + إعادة طلب 5002 + UAT متعدد.
 
 ## آخر الإنجازات
-[14:10Z] AUDIT — Browser-family wiring slice on exact f40: 32 impl/31 reg, B1-B3 findings (docs commit)
-[14:05Z] CHECK — Standing re-confirm: f40 intact, dirty lane preserved, health OK both ports
-[13:55Z] AUDIT — R1-R4 registry/catalogue reconciliation on Muse bytes (prior cycle, stands)
-[13:05Z] REVIEW — f40 APPROVE_WITH_CHANGES + browser-contract NEEDS_EVIDENCE (stand)
-[12:24Z] UAT — Official5002 read-only prompt FAILED (Codex receipt; RED pin added)
+[14:35Z] REVIEW — Codex isolated browser candidate APPROVE_WITH_CHANGES (22/22 green, C1-C5 blocking)
+[14:10Z] AUDIT — Browser-family wiring slice on exact f40: 32 impl/31 reg, B1-B3 (stands)
+[13:05Z] REVIEW — f40 APPROVE_WITH_CHANGES + browser-contract NEEDS_EVIDENCE gate (gate now has candidate)
+[12:24Z] UAT — Official5002 read-only prompt FAILED (Codex receipt; RED pin now green on candidate)
