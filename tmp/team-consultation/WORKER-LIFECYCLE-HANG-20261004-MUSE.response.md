@@ -102,6 +102,34 @@ APPROVE_WITH_CHANGES: F1 required before the monitor gates any recovery
 decision; F2 document-or-implement; F3 before scale-out. Design direction
 APPROVED. No product PASS implied; both CRITICAL objectives remain OPEN.
 
+## CYCLE-257 ADDENDUM (MUSE_HEAD 814dea35; same bytes re-verified, new live evidence)
+STATUS=REVIEWED_BY_MUSE (reaffirmed)
+BYTE DRIFT: none. Staged SHA256 of all three scripts still 141BED72/2DEC69CF/
+1C66C42E, matching both the c256 review and verified-source-20261004T130619821.
+Suite re-run on shared bytes: PASS 54/54 (Windows PowerShell 5.1). PS7 leg
+still not independently rerun here (pwsh.exe absent in sandbox; owner receipt
+cited, not confirmed). Full c257 working notes preserved alongside this file in
+WORKER-LIFECYCLE-HANG-20261004-MUSE.c257-draft.md; nothing from c256 removed.
+NEW EVIDENCE (scratch-root watcher runs; live monitor receipts; read-only):
+- W1: one-shot Watch against an EMPTY scratch CoordinationRoot: EXIT=0, valid
+  receipt, both workers OBSERVATION_FAILED (Get-CimInstance denied in sandbox),
+  proving the probe-failure path is fail-closed end-to-end with no crash.
+- W2: singleton lease enforced: second writer fails IOException EXIT=1, no
+  state written. Alert emission + atomic current.json confirmed in scratch.
+- F6 (NEW, required before any recovery relies on STALL): verdict flaps on
+  transient descendants. Live NVIDIA alerts 10:35:51 STALL(0 desc) ->
+  10:40:40 QUIET_WITH_ACTIVE_DESCENDANTS(2 desc) -> 10:42:16 STALL(0 desc)
+  within 7 minutes, one alert per transition. Require debounce (K consecutive
+  quiet polls / dwell time) - fail-safe direction is correct, guidance is noisy.
+- F7 (NEW, required for STALL confirmation): the monitor cannot see source
+  edits. NVIDIA cycle95's log is quiet since 10:02:53Z (STALL_SUSPECTED), yet
+  NVIDIA made a genuine 15+/9- PhaseExecutorTool.ts Gap A/B refinement at
+  11:08Z (read-only diff inspected; owned lane, untouched). Log-quiet must
+  therefore be confirmed with a source-drift check before any recovery decision.
+- No worker/process/Git/runtime state touched. No agreement inferred.
+RECOMMENDATION (unchanged): APPROVE_WITH_CHANGES (F1+F6+F7 required before
+recovery reliance; F2 document-or-implement; F3 before scale-out).
+
 ## COORDINATION_FALLBACK
 AGENT=MUSE
 STATUS=ACTIVE

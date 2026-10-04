@@ -1,0 +1,16 @@
+{
+    "Agent":  "NVIDIA",
+    "ParentId":  0,
+    "CycleIdentity":  "",
+    "LastOutputUtc":  "2026-10-04T11:01:06.6147177Z",
+    "Outputs":  [
+
+                ],
+    "Descendants":  0,
+    "RuntimeSeconds":  0,
+    "QuietSeconds":  0,
+    "State":  "OBSERVATION_FAILED",
+    "NeedsAttention":  true,
+    "EngineeringVerified":  false,
+    "AutomaticTerminationAllowed":  false
+}
