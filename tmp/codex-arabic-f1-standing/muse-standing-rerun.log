@@ -1,0 +1,28 @@
+﻿node : PASS ../../../worktrees/codex-readonly-browser-20261004/api/src/__tests__/arabic-authority-constraints.test.ts
+At line:1 char:207
++ ... 1-standing; node D:\Joe\worktrees\codex-readonly-browser-20261004\api ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (PASS ../../../w...traints.test.ts:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  Arabic authority constraints
+    ظêأ retains a scoped no-file contract: ╪د╪┤╪▒╪ص ╪د┘┘â┘ê╪» ╪ذ╪»┘ê┘ ╪ث┘è ╪ز╪╣╪»┘è┘ ╪╣┘┘ë ╪د┘┘à┘┘╪د╪ز (31 ms)
+    ظêأ retains a scoped no-file contract: ╪▒╪د╪ش╪╣ ╪د┘┘à╪┤╪▒┘ê╪╣ ╪»┘ê┘ ┘â╪ز╪د╪ذ╪ر ┘┘è ╪د┘┘à┘┘╪د╪ز (16 ms)
+    ظêأ retains a scoped no-file contract: ┘╪د ╪ز╪╣╪»┘ ╪د┘┘à┘┘╪د╪ز ┘ê╪د╪┤╪▒╪ص ╪د┘┘╪ز┘è╪ش╪ر (51 ms)
+    ظêأ recognizes explain then build: ╪د╪┤╪▒╪ص ╪د┘┘┘ç╪ش ╪ذ╪د╪«╪ز╪╡╪د╪▒ ╪س┘à ╪د╪ذ┘┘è ┘à╪ص┘ê┘ ┘ê╪ص╪»╪د╪ز (4 ms)
+    ظêأ recognizes explain then build: ┘ê╪╢╪ص ╪د┘╪ز╪╡┘à┘è┘à ╪س┘à ╪╡┘à┘à ╪ز╪╖╪ذ┘è┘é ┘à┘ç╪د┘à (5 ms)
+    ظêأ an explicit denial cannot be overridden by the build signal: ╪د╪┤╪▒╪ص ┘┘é╪╖ ╪د┘┘┘ç╪ش ╪س┘à ╪د╪ذ┘┘è ┘à╪ص┘ê┘ 
+┘ê╪ص╪»╪د╪ز (2 ms)
+    ظêأ an explicit denial cannot be overridden by the build signal: ┘ê╪╡┘ ┘┘é╪╖ ╪س┘à ╪د╪ذ┘┘è ┘à╪ز╪ش╪▒ (1 ms)
+    ظêأ an explicit denial cannot be overridden by the build signal: ╪د╪┤╪▒╪ص ╪د┘┘┘ç╪ش ╪ذ╪»┘ê┘ ╪ز┘┘┘è╪░ ╪س┘à 
+╪د╪ذ┘┘è ┘à╪ص┘ê┘ ┘ê╪ص╪»╪د╪ز (2 ms)
+    ظêأ an explicit denial cannot be overridden by the build signal: ╪د╪┤╪▒╪ص ╪د┘┘┘ç╪ش ╪ذ╪»┘ê┘ ╪ث┘è ╪ز┘┘┘è╪░ ╪س┘à 
+╪د╪ذ┘┘è ┘à╪ص┘ê┘ ┘ê╪ص╪»╪د╪ز (2 ms)
+    ظêأ an explicit denial cannot be overridden by the build signal: ╪د╪┤╪▒╪ص ╪د┘┘┘ç╪ش ╪ذ╪»┘ê┘ ╪ث┘è ╪ز╪╣╪»┘è┘ 
+╪╣┘┘ë ╪د┘┘à┘┘╪د╪ز ╪س┘à ╪د╪ذ┘┘è ┘à╪ص┘ê┘ ┘ê╪ص╪»╪د╪ز (3 ms)
+
+Test Suites: 1 passed, 1 total
+Tests:       10 passed, 10 total
+Snapshots:   0 total
+Time:        1.926 s
+Ran all test suites matching arabic-authority-constraints.
