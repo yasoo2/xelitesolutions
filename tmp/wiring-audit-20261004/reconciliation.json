@@ -1,0 +1,7671 @@
+{
+ "probe": "muse-wiring-reconcile-20261004",
+ "methodCompatibleWith": "c212 zz-muse-catalogue-reconcile (same 45-goal corpus)",
+ "head": "e1b01c16d8335ed7e65f7c82cfd34970531995f6",
+ "registrySha256": "912ce54942a3ced650fdac2f440f7cdd33f317eee704e226da52b95eacc1eaec",
+ "planToolsSha256": "5ef3e10899f290d42bd96dcf3675f4eb9b73ea679bd1e28f97f14359490785cc",
+ "toolCatalogSha256": "cf1f13f8645809b1b5a20ffeb6b01cf75cb92b434342a7cbfdf5a328996a65ce",
+ "level1": {
+  "definitionFiles": 93,
+  "registryImportsDefModules": 92,
+  "defFilesNeverImported": [
+   "react-app-templates.ts"
+  ]
+ },
+ "level2": {
+  "registered": 163,
+  "missingNameEntries": 0,
+  "namesUnique": true,
+  "withExecute": 163,
+  "withDescription": 163,
+  "withSchema": 163,
+  "defaultedPermissions": 21,
+  "defaultedRateLimit": 2,
+  "unknownPermissions": 0
+ },
+ "staticCatalogue": {
+  "count": 40,
+  "dupes": [],
+  "unregistered": [],
+  "viaAlias": [],
+  "dead": []
+ },
+ "core": {
+  "tools": [
+   "central_answer",
+   "read_file",
+   "write_file",
+   "file_edit",
+   "delete_file",
+   "inspect_directory",
+   "search_files",
+   "search_text",
+   "shell_execute"
+  ],
+  "dead": []
+ },
+ "aliases": {
+  "count": 28
+ },
+ "retrieval45": {
+  "corpusGoals": 66,
+  "unionCount": 158,
+  "perGoalMinMax": [
+   9,
+   30
+  ],
+  "collapsedGoals": [
+   "Remember my preferences for later"
+  ],
+  "neverSurfaced": [
+   "ask_user",
+   "cloud_cost_estimator",
+   "rss_fetch",
+   "self_confidence_evaluator",
+   "task_lifecycle"
+  ],
+  "detail": [
+   {
+    "name": "central_answer",
+    "goals": 66,
+    "maxScore": 1.8
+   },
+   {
+    "name": "delete_file",
+    "goals": 66,
+    "maxScore": 13.7
+   },
+   {
+    "name": "file_edit",
+    "goals": 66,
+    "maxScore": 3.7
+   },
+   {
+    "name": "inspect_directory",
+    "goals": 66,
+    "maxScore": 6
+   },
+   {
+    "name": "read_file",
+    "goals": 66,
+    "maxScore": 3.7
+   },
+   {
+    "name": "search_files",
+    "goals": 66,
+    "maxScore": 7.7
+   },
+   {
+    "name": "search_text",
+    "goals": 66,
+    "maxScore": 8.1
+   },
+   {
+    "name": "shell_execute",
+    "goals": 66,
+    "maxScore": 10.5
+   },
+   {
+    "name": "write_file",
+    "goals": 66,
+    "maxScore": 5.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "goals": 25,
+    "maxScore": 16.6
+   },
+   {
+    "name": "browser_page_fix",
+    "goals": 24,
+    "maxScore": 10.7
+   },
+   {
+    "name": "browser_autofix",
+    "goals": 23,
+    "maxScore": 12
+   },
+   {
+    "name": "browser_check_links",
+    "goals": 18,
+    "maxScore": 19
+   },
+   {
+    "name": "browser_responsive_check",
+    "goals": 18,
+    "maxScore": 16.2
+   },
+   {
+    "name": "browser_click",
+    "goals": 17,
+    "maxScore": 7.2
+   },
+   {
+    "name": "browser_contrast_audit",
+    "goals": 17,
+    "maxScore": 19.7
+   },
+   {
+    "name": "website_full_pipeline",
+    "goals": 17,
+    "maxScore": 8
+   },
+   {
+    "name": "browser_ui_fix",
+    "goals": 16,
+    "maxScore": 11.8
+   },
+   {
+    "name": "browser_compare",
+    "goals": 15,
+    "maxScore": 7.1
+   },
+   {
+    "name": "browser_design_tokens",
+    "goals": 15,
+    "maxScore": 22.3
+   },
+   {
+    "name": "quality_run",
+    "goals": 15,
+    "maxScore": 4.1
+   },
+   {
+    "name": "repo_run_command",
+    "goals": 15,
+    "maxScore": 8.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "goals": 14,
+    "maxScore": 10.5
+   },
+   {
+    "name": "browser_smart_agent",
+    "goals": 14,
+    "maxScore": 7.3
+   },
+   {
+    "name": "dependency_audit",
+    "goals": 14,
+    "maxScore": 15.5
+   },
+   {
+    "name": "load_tester",
+    "goals": 14,
+    "maxScore": 18
+   },
+   {
+    "name": "visual_compare",
+    "goals": 14,
+    "maxScore": 7.8
+   },
+   {
+    "name": "auto_tester",
+    "goals": 13,
+    "maxScore": 7.4
+   },
+   {
+    "name": "browser_a11y_deep",
+    "goals": 13,
+    "maxScore": 16.7
+   },
+   {
+    "name": "web_page_builder",
+    "goals": 13,
+    "maxScore": 13
+   },
+   {
+    "name": "deploy_project",
+    "goals": 12,
+    "maxScore": 14.4
+   },
+   {
+    "name": "large_data_seeder",
+    "goals": 12,
+    "maxScore": 6.9
+   },
+   {
+    "name": "project_repair",
+    "goals": 12,
+    "maxScore": 9.4
+   },
+   {
+    "name": "browser_consent",
+    "goals": 11,
+    "maxScore": 4
+   },
+   {
+    "name": "deploy_pages",
+    "goals": 11,
+    "maxScore": 29.9
+   },
+   {
+    "name": "git_local_workflow",
+    "goals": 11,
+    "maxScore": 13.5
+   },
+   {
+    "name": "import_project",
+    "goals": 11,
+    "maxScore": 5.8
+   },
+   {
+    "name": "test_generator",
+    "goals": 11,
+    "maxScore": 8
+   },
+   {
+    "name": "browser_console_scan",
+    "goals": 10,
+    "maxScore": 14.2
+   },
+   {
+    "name": "chaos_test_plan",
+    "goals": 10,
+    "maxScore": 6.8
+   },
+   {
+    "name": "dead_code_detector",
+    "goals": 10,
+    "maxScore": 6.2
+   },
+   {
+    "name": "ai_write_file",
+    "goals": 9,
+    "maxScore": 5.8
+   },
+   {
+    "name": "api_tester",
+    "goals": 9,
+    "maxScore": 7.4
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "goals": 9,
+    "maxScore": 11.9
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "goals": 9,
+    "maxScore": 15
+   },
+   {
+    "name": "doc_generator",
+    "goals": 9,
+    "maxScore": 4.2
+   },
+   {
+    "name": "docker_manager",
+    "goals": 9,
+    "maxScore": 11.8
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "goals": 9,
+    "maxScore": 1.7
+   },
+   {
+    "name": "project_pipeline",
+    "goals": 9,
+    "maxScore": 7.1
+   },
+   {
+    "name": "repo_apply_patch",
+    "goals": 9,
+    "maxScore": 6
+   },
+   {
+    "name": "user_browser",
+    "goals": 9,
+    "maxScore": 6.8
+   },
+   {
+    "name": "analyze_codebase",
+    "goals": 8,
+    "maxScore": 5.7
+   },
+   {
+    "name": "browser_find_text",
+    "goals": 8,
+    "maxScore": 10
+   },
+   {
+    "name": "browser_summarize",
+    "goals": 8,
+    "maxScore": 10.2
+   },
+   {
+    "name": "business_profile",
+    "goals": 8,
+    "maxScore": 4.9
+   },
+   {
+    "name": "form_inbox",
+    "goals": 8,
+    "maxScore": 10.6
+   },
+   {
+    "name": "mobile_builder",
+    "goals": 8,
+    "maxScore": 17.9
+   },
+   {
+    "name": "orders_read",
+    "goals": 8,
+    "maxScore": 9
+   },
+   {
+    "name": "search_public_apis",
+    "goals": 8,
+    "maxScore": 5.1
+   },
+   {
+    "name": "api_project",
+    "goals": 7,
+    "maxScore": 5.8
+   },
+   {
+    "name": "browser_launch",
+    "goals": 7,
+    "maxScore": 9.7
+   },
+   {
+    "name": "browser_vision",
+    "goals": 7,
+    "maxScore": 12.1
+   },
+   {
+    "name": "dependency_graph",
+    "goals": 7,
+    "maxScore": 6
+   },
+   {
+    "name": "engineering_discovery",
+    "goals": 7,
+    "maxScore": 1.6
+   },
+   {
+    "name": "error_recovery",
+    "goals": 7,
+    "maxScore": 16.6
+   },
+   {
+    "name": "github_actions",
+    "goals": 7,
+    "maxScore": 12.2
+   },
+   {
+    "name": "github_repo_manager",
+    "goals": 7,
+    "maxScore": 14.5
+   },
+   {
+    "name": "image_studio",
+    "goals": 7,
+    "maxScore": 16.7
+   },
+   {
+    "name": "memorize_codebase",
+    "goals": 7,
+    "maxScore": 4.4
+   },
+   {
+    "name": "payments_create_checkout_session",
+    "goals": 7,
+    "maxScore": 25.7
+   },
+   {
+    "name": "recall_memory",
+    "goals": 7,
+    "maxScore": 12.9
+   },
+   {
+    "name": "validate_api",
+    "goals": 7,
+    "maxScore": 5.1
+   },
+   {
+    "name": "auth_builder",
+    "goals": 6,
+    "maxScore": 3
+   },
+   {
+    "name": "auto_refactor",
+    "goals": 6,
+    "maxScore": 11.4
+   },
+   {
+    "name": "browser_extract_data",
+    "goals": 6,
+    "maxScore": 6.6
+   },
+   {
+    "name": "browser_extract_meta",
+    "goals": 6,
+    "maxScore": 10.1
+   },
+   {
+    "name": "browser_fill_form",
+    "goals": 6,
+    "maxScore": 4.4
+   },
+   {
+    "name": "browser_performance",
+    "goals": 6,
+    "maxScore": 11.4
+   },
+   {
+    "name": "browser_run",
+    "goals": 6,
+    "maxScore": 3.4
+   },
+   {
+    "name": "browser_search",
+    "goals": 6,
+    "maxScore": 6.1
+   },
+   {
+    "name": "codebase_outline",
+    "goals": 6,
+    "maxScore": 5.7
+   },
+   {
+    "name": "google_account",
+    "goals": 6,
+    "maxScore": 3.5
+   },
+   {
+    "name": "inspect_api",
+    "goals": 6,
+    "maxScore": 5.1
+   },
+   {
+    "name": "notify_user",
+    "goals": 6,
+    "maxScore": 6
+   },
+   {
+    "name": "pattern_recognize",
+    "goals": 6,
+    "maxScore": 2.6
+   },
+   {
+    "name": "progressive_generator",
+    "goals": 6,
+    "maxScore": 2.6
+   },
+   {
+    "name": "project_run",
+    "goals": 6,
+    "maxScore": 7
+   },
+   {
+    "name": "project_undo",
+    "goals": 6,
+    "maxScore": 4.1
+   },
+   {
+    "name": "react_project",
+    "goals": 6,
+    "maxScore": 4.2
+   },
+   {
+    "name": "architect_plan",
+    "goals": 5,
+    "maxScore": 2.4
+   },
+   {
+    "name": "business_logic_parser",
+    "goals": 5,
+    "maxScore": 8
+   },
+   {
+    "name": "code_reviewer",
+    "goals": 5,
+    "maxScore": 10.6
+   },
+   {
+    "name": "decide_capability_route",
+    "goals": 5,
+    "maxScore": 30.7
+   },
+   {
+    "name": "execute_python",
+    "goals": 5,
+    "maxScore": 1.8
+   },
+   {
+    "name": "orion_business_foundation",
+    "goals": 5,
+    "maxScore": 1
+   },
+   {
+    "name": "performance_analyzer",
+    "goals": 5,
+    "maxScore": 5.8
+   },
+   {
+    "name": "project_detect",
+    "goals": 5,
+    "maxScore": 4.1
+   },
+   {
+    "name": "project_edit",
+    "goals": 5,
+    "maxScore": 4.1
+   },
+   {
+    "name": "query_optimizer",
+    "goals": 5,
+    "maxScore": 6.8
+   },
+   {
+    "name": "repo_search",
+    "goals": 5,
+    "maxScore": 5.1
+   },
+   {
+    "name": "swagger_docs",
+    "goals": 5,
+    "maxScore": 19.7
+   },
+   {
+    "name": "terminal_manager",
+    "goals": 5,
+    "maxScore": 28
+   },
+   {
+    "name": "analyze_project",
+    "goals": 4,
+    "maxScore": 5.7
+   },
+   {
+    "name": "archive_files",
+    "goals": 4,
+    "maxScore": 6.6
+   },
+   {
+    "name": "compliance_validator",
+    "goals": 4,
+    "maxScore": 10.6
+   },
+   {
+    "name": "db_schema_migrator",
+    "goals": 4,
+    "maxScore": 13.5
+   },
+   {
+    "name": "dev_server_start",
+    "goals": 4,
+    "maxScore": 6.6
+   },
+   {
+    "name": "i18n_translator",
+    "goals": 4,
+    "maxScore": 11.4
+   },
+   {
+    "name": "inspect_symbol",
+    "goals": 4,
+    "maxScore": 3.4
+   },
+   {
+    "name": "joe_engineering_report",
+    "goals": 4,
+    "maxScore": 5.6
+   },
+   {
+    "name": "knowledge_add",
+    "goals": 4,
+    "maxScore": 9
+   },
+   {
+    "name": "knowledge_search",
+    "goals": 4,
+    "maxScore": 7.8
+   },
+   {
+    "name": "multi_agent_debate",
+    "goals": 4,
+    "maxScore": 2.6
+   },
+   {
+    "name": "python_builder",
+    "goals": 4,
+    "maxScore": 3.6
+   },
+   {
+    "name": "scaffold_full_stack",
+    "goals": 4,
+    "maxScore": 3.1
+   },
+   {
+    "name": "scaffold_project",
+    "goals": 4,
+    "maxScore": 2.7
+   },
+   {
+    "name": "screenshot",
+    "goals": 4,
+    "maxScore": 10.2
+   },
+   {
+    "name": "terraform_manager",
+    "goals": 4,
+    "maxScore": 10.9
+   },
+   {
+    "name": "todo_write",
+    "goals": 4,
+    "maxScore": 3.2
+   },
+   {
+    "name": "ambiguity_resolver",
+    "goals": 3,
+    "maxScore": 3.6
+   },
+   {
+    "name": "browser_save_pdf",
+    "goals": 3,
+    "maxScore": 9
+   },
+   {
+    "name": "browser_translate",
+    "goals": 3,
+    "maxScore": 19.4
+   },
+   {
+    "name": "cache_manager",
+    "goals": 3,
+    "maxScore": 1.9
+   },
+   {
+    "name": "file_edit_advanced",
+    "goals": 3,
+    "maxScore": 3.7
+   },
+   {
+    "name": "github_pr",
+    "goals": 3,
+    "maxScore": 15.1
+   },
+   {
+    "name": "go_builder",
+    "goals": 3,
+    "maxScore": 3.6
+   },
+   {
+    "name": "html_extract",
+    "goals": 3,
+    "maxScore": 8.4
+   },
+   {
+    "name": "java_builder",
+    "goals": 3,
+    "maxScore": 3.6
+   },
+   {
+    "name": "logger",
+    "goals": 3,
+    "maxScore": 12
+   },
+   {
+    "name": "performance_profile",
+    "goals": 3,
+    "maxScore": 9.5
+   },
+   {
+    "name": "phase_executor",
+    "goals": 3,
+    "maxScore": 1.8
+   },
+   {
+    "name": "project_state_manager",
+    "goals": 3,
+    "maxScore": 3.1
+   },
+   {
+    "name": "project_stop",
+    "goals": 3,
+    "maxScore": 2.9
+   },
+   {
+    "name": "request_analyzer",
+    "goals": 3,
+    "maxScore": 5.7
+   },
+   {
+    "name": "search_api",
+    "goals": 3,
+    "maxScore": 5.1
+   },
+   {
+    "name": "secrets_scan_repo",
+    "goals": 3,
+    "maxScore": 11.1
+   },
+   {
+    "name": "shell_check_status",
+    "goals": 3,
+    "maxScore": 7.1
+   },
+   {
+    "name": "sonar_analysis",
+    "goals": 3,
+    "maxScore": 4.1
+   },
+   {
+    "name": "video_action",
+    "goals": 3,
+    "maxScore": 16
+   },
+   {
+    "name": "alert_manager",
+    "goals": 2,
+    "maxScore": 9
+   },
+   {
+    "name": "docker_swarm_ops",
+    "goals": 2,
+    "maxScore": 10.1
+   },
+   {
+    "name": "git_ops",
+    "goals": 2,
+    "maxScore": 6.8
+   },
+   {
+    "name": "ls",
+    "goals": 2,
+    "maxScore": 1
+   },
+   {
+    "name": "monitoring",
+    "goals": 2,
+    "maxScore": 4
+   },
+   {
+    "name": "npm_manager",
+    "goals": 2,
+    "maxScore": 16.7
+   },
+   {
+    "name": "query_datasource",
+    "goals": 2,
+    "maxScore": 4.7
+   },
+   {
+    "name": "repo_diff_summary",
+    "goals": 2,
+    "maxScore": 9.3
+   },
+   {
+    "name": "repo_read_file",
+    "goals": 2,
+    "maxScore": 3.7
+   },
+   {
+    "name": "security_scanner",
+    "goals": 2,
+    "maxScore": 18.5
+   },
+   {
+    "name": "browser_action",
+    "goals": 1,
+    "maxScore": 2.8
+   },
+   {
+    "name": "browser_readability",
+    "goals": 1,
+    "maxScore": 9.1
+   },
+   {
+    "name": "echo",
+    "goals": 1,
+    "maxScore": 0.9
+   },
+   {
+    "name": "http_fetch",
+    "goals": 1,
+    "maxScore": 1
+   },
+   {
+    "name": "json_query",
+    "goals": 1,
+    "maxScore": 4.7
+   },
+   {
+    "name": "kubernetes_ops",
+    "goals": 1,
+    "maxScore": 11.4
+   },
+   {
+    "name": "llm_cache",
+    "goals": 1,
+    "maxScore": 1
+   },
+   {
+    "name": "project_planner",
+    "goals": 1,
+    "maxScore": 4.1
+   },
+   {
+    "name": "template_manager",
+    "goals": 1,
+    "maxScore": 9
+   }
+  ]
+ },
+ "registeredNames": [
+  "ai_write_file",
+  "alert_manager",
+  "ambiguity_resolver",
+  "analyze_codebase",
+  "analyze_project",
+  "api_project",
+  "api_tester",
+  "architect_plan",
+  "archive_files",
+  "ask_user",
+  "auth_builder",
+  "auto_refactor",
+  "auto_tester",
+  "browser_a11y_deep",
+  "browser_action",
+  "browser_autofix",
+  "browser_check_links",
+  "browser_click",
+  "browser_compare",
+  "browser_consent",
+  "browser_console_scan",
+  "browser_contrast_audit",
+  "browser_design_tokens",
+  "browser_extract_data",
+  "browser_extract_meta",
+  "browser_fill_form",
+  "browser_find_text",
+  "browser_fullpage_shot",
+  "browser_launch",
+  "browser_page_fix",
+  "browser_performance",
+  "browser_readability",
+  "browser_responsive_check",
+  "browser_run",
+  "browser_save_pdf",
+  "browser_search",
+  "browser_seo_audit",
+  "browser_smart_agent",
+  "browser_summarize",
+  "browser_translate",
+  "browser_ui_audit",
+  "browser_ui_fix",
+  "browser_vision",
+  "business_logic_parser",
+  "business_profile",
+  "cache_manager",
+  "central_answer",
+  "chaos_test_plan",
+  "ci_generate_pipeline",
+  "cloud_cost_estimator",
+  "code_reviewer",
+  "codebase_outline",
+  "compliance_validator",
+  "db_schema_migrator",
+  "dead_code_detector",
+  "decide_capability_route",
+  "delete_file",
+  "dependency_audit",
+  "dependency_graph",
+  "deploy_pages",
+  "deploy_project",
+  "dev_server_start",
+  "doc_generator",
+  "docker_manager",
+  "docker_swarm_ops",
+  "echo",
+  "engineering_discovery",
+  "enterprise_platform_foundation",
+  "error_recovery",
+  "execute_python",
+  "file_edit",
+  "file_edit_advanced",
+  "form_inbox",
+  "git_local_workflow",
+  "git_ops",
+  "github_actions",
+  "github_pr",
+  "github_repo_manager",
+  "go_builder",
+  "google_account",
+  "html_extract",
+  "http_fetch",
+  "i18n_translator",
+  "image_studio",
+  "import_project",
+  "inspect_api",
+  "inspect_directory",
+  "inspect_symbol",
+  "java_builder",
+  "joe_engineering_report",
+  "json_query",
+  "knowledge_add",
+  "knowledge_search",
+  "kubernetes_ops",
+  "large_data_seeder",
+  "llm_cache",
+  "load_tester",
+  "logger",
+  "ls",
+  "memorize_codebase",
+  "mobile_builder",
+  "monitoring",
+  "multi_agent_debate",
+  "notify_user",
+  "npm_manager",
+  "orders_read",
+  "orion_business_foundation",
+  "pattern_recognize",
+  "payments_create_checkout_session",
+  "performance_analyzer",
+  "performance_profile",
+  "phase_executor",
+  "progressive_generator",
+  "project_detect",
+  "project_edit",
+  "project_pipeline",
+  "project_planner",
+  "project_repair",
+  "project_run",
+  "project_state_manager",
+  "project_stop",
+  "project_undo",
+  "python_builder",
+  "quality_run",
+  "query_datasource",
+  "query_optimizer",
+  "react_project",
+  "read_file",
+  "recall_memory",
+  "repo_apply_patch",
+  "repo_diff_summary",
+  "repo_read_file",
+  "repo_run_command",
+  "repo_search",
+  "request_analyzer",
+  "rss_fetch",
+  "scaffold_full_stack",
+  "scaffold_project",
+  "screenshot",
+  "search_api",
+  "search_files",
+  "search_public_apis",
+  "search_text",
+  "secrets_scan_repo",
+  "security_scanner",
+  "self_confidence_evaluator",
+  "shell_check_status",
+  "shell_execute",
+  "sonar_analysis",
+  "swagger_docs",
+  "task_lifecycle",
+  "template_manager",
+  "terminal_manager",
+  "terraform_manager",
+  "test_generator",
+  "todo_write",
+  "user_browser",
+  "validate_api",
+  "video_action",
+  "visual_compare",
+  "web_page_builder",
+  "website_full_pipeline",
+  "write_file"
+ ],
+ "perGoal": {
+  "Translate the website to Arabic": [
+   {
+    "name": "browser_translate",
+    "score": 10
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.1
+   },
+   {
+    "name": "i18n_translator",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 0.3
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ز╪▒╪ش┘à ╪د┘┘à┘ê┘é╪╣ ╪ح┘┘ë ╪د┘╪ح┘╪ش┘┘è╪▓┘è╪ر": [
+   {
+    "name": "browser_translate",
+    "score": 19.4
+   },
+   {
+    "name": "i18n_translator",
+    "score": 11.4
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 11.3
+   },
+   {
+    "name": "browser_launch",
+    "score": 9.7
+   },
+   {
+    "name": "deploy_pages",
+    "score": 8.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 8.3
+   },
+   {
+    "name": "web_page_builder",
+    "score": 8.3
+   },
+   {
+    "name": "browser_click",
+    "score": 5.4
+   },
+   {
+    "name": "browser_compare",
+    "score": 5.4
+   },
+   {
+    "name": "browser_summarize",
+    "score": 5
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 4.7
+   },
+   {
+    "name": "browser_vision",
+    "score": 4.6
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 4.4
+   },
+   {
+    "name": "browser_autofix",
+    "score": 4.4
+   },
+   {
+    "name": "browser_check_links",
+    "score": 4.4
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 4.4
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.4
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 4.4
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 4.4
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 4.4
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 4.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Write tests for the project": [
+   {
+    "name": "ai_write_file",
+    "score": 5.8
+   },
+   {
+    "name": "write_file",
+    "score": 5.8
+   },
+   {
+    "name": "import_project",
+    "score": 4.1
+   },
+   {
+    "name": "project_detect",
+    "score": 4.1
+   },
+   {
+    "name": "project_edit",
+    "score": 4.1
+   },
+   {
+    "name": "project_pipeline",
+    "score": 4.1
+   },
+   {
+    "name": "project_planner",
+    "score": 4.1
+   },
+   {
+    "name": "project_repair",
+    "score": 4.1
+   },
+   {
+    "name": "project_undo",
+    "score": 4.1
+   },
+   {
+    "name": "react_project",
+    "score": 4.1
+   },
+   {
+    "name": "todo_write",
+    "score": 3.2
+   },
+   {
+    "name": "api_project",
+    "score": 2.9
+   },
+   {
+    "name": "analyze_project",
+    "score": 2.7
+   },
+   {
+    "name": "deploy_project",
+    "score": 2.7
+   },
+   {
+    "name": "project_run",
+    "score": 2.7
+   },
+   {
+    "name": "project_state_manager",
+    "score": 2.7
+   },
+   {
+    "name": "project_stop",
+    "score": 2.7
+   },
+   {
+    "name": "scaffold_project",
+    "score": 2.7
+   },
+   {
+    "name": "file_edit",
+    "score": 1.9
+   },
+   {
+    "name": "file_edit_advanced",
+    "score": 1.9
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 1.9
+   },
+   {
+    "name": "phase_executor",
+    "score": 1.8
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 1.1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "╪د┘â╪ز╪ذ ╪د╪«╪ز╪ذ╪د╪▒╪د╪ز ┘┘┘à╪┤╪▒┘ê╪╣": [
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "load_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 6.5
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 2.2
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 2.1
+   },
+   {
+    "name": "project_repair",
+    "score": 2.1
+   },
+   {
+    "name": "browser_click",
+    "score": 1.9
+   },
+   {
+    "name": "browser_compare",
+    "score": 1.8
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Deploy the site to production": [
+   {
+    "name": "deploy_pages",
+    "score": 21.1
+   },
+   {
+    "name": "deploy_project",
+    "score": 14.4
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 6
+   },
+   {
+    "name": "browser_launch",
+    "score": 1
+   },
+   {
+    "name": "form_inbox",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 1
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪┤╪▒ ╪د┘┘à┘ê┘é╪╣ ╪╣┘┘ë ╪د┘╪د╪│╪ز╪╢╪د┘╪ر": [
+   {
+    "name": "deploy_pages",
+    "score": 29.9
+   },
+   {
+    "name": "deploy_project",
+    "score": 11.4
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 11.3
+   },
+   {
+    "name": "browser_launch",
+    "score": 9.7
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 8.3
+   },
+   {
+    "name": "web_page_builder",
+    "score": 8.3
+   },
+   {
+    "name": "browser_click",
+    "score": 5.4
+   },
+   {
+    "name": "browser_compare",
+    "score": 5.4
+   },
+   {
+    "name": "browser_summarize",
+    "score": 5
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 4.7
+   },
+   {
+    "name": "browser_vision",
+    "score": 4.6
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 4.4
+   },
+   {
+    "name": "browser_autofix",
+    "score": 4.4
+   },
+   {
+    "name": "browser_check_links",
+    "score": 4.4
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 4.4
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.4
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 4.4
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 4.4
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 4.4
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 4.4
+   },
+   {
+    "name": "browser_find_text",
+    "score": 4.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Design the database schema": [
+   {
+    "name": "db_schema_migrator",
+    "score": 9.3
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 7.1
+   },
+   {
+    "name": "image_studio",
+    "score": 3.1
+   },
+   {
+    "name": "api_project",
+    "score": 2.5
+   },
+   {
+    "name": "orders_read",
+    "score": 2.5
+   },
+   {
+    "name": "architect_plan",
+    "score": 2.4
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 1.9
+   },
+   {
+    "name": "query_optimizer",
+    "score": 1.9
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 0.8
+   },
+   {
+    "name": "react_project",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪╡┘à┘à ┘é╪د╪╣╪»╪ر ╪د┘╪ذ┘è╪د┘╪د╪ز": [
+   {
+    "name": "db_schema_migrator",
+    "score": 13.5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 6.9
+   },
+   {
+    "name": "query_optimizer",
+    "score": 6.8
+   },
+   {
+    "name": "json_query",
+    "score": 4.7
+   },
+   {
+    "name": "query_datasource",
+    "score": 4.7
+   },
+   {
+    "name": "api_project",
+    "score": 3.5
+   },
+   {
+    "name": "orders_read",
+    "score": 2.5
+   },
+   {
+    "name": "browser_search",
+    "score": 0.8
+   },
+   {
+    "name": "repo_search",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Audit the UI in a real browser": [
+   {
+    "name": "browser_contrast_audit",
+    "score": 7.2
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 7.2
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 7.2
+   },
+   {
+    "name": "user_browser",
+    "score": 6.8
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 4.6
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 4.3
+   },
+   {
+    "name": "project_repair",
+    "score": 4.3
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_check_links",
+    "score": 4
+   },
+   {
+    "name": "browser_performance",
+    "score": 4
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 4
+   },
+   {
+    "name": "browser_launch",
+    "score": 3.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 3.8
+   },
+   {
+    "name": "browser_vision",
+    "score": 3.8
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 3
+   },
+   {
+    "name": "browser_action",
+    "score": 2.8
+   },
+   {
+    "name": "browser_run",
+    "score": 2.8
+   },
+   {
+    "name": "browser_summarize",
+    "score": 2.8
+   },
+   {
+    "name": "browser_autofix",
+    "score": 2.5
+   },
+   {
+    "name": "browser_click",
+    "score": 2.5
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪ص╪╡ ╪د┘┘ê╪د╪ش┘ç╪ر ┘┘è ╪د┘┘à╪ز╪╡┘╪ص": [
+   {
+    "name": "browser_design_tokens",
+    "score": 22.3
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 16.6
+   },
+   {
+    "name": "web_page_builder",
+    "score": 13
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 11.9
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 10.7
+   },
+   {
+    "name": "browser_launch",
+    "score": 9.7
+   },
+   {
+    "name": "deploy_pages",
+    "score": 9.4
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 9.1
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 9.1
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 8.6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 8.3
+   },
+   {
+    "name": "test_generator",
+    "score": 8
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 8
+   },
+   {
+    "name": "browser_check_links",
+    "score": 7.7
+   },
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "load_tester",
+    "score": 7.4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 7.3
+   },
+   {
+    "name": "browser_click",
+    "score": 7.2
+   },
+   {
+    "name": "browser_compare",
+    "score": 7.1
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Take a screenshot of the homepage": [
+   {
+    "name": "screenshot",
+    "score": 7.1
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 3.1
+   },
+   {
+    "name": "browser_vision",
+    "score": 3.1
+   },
+   {
+    "name": "project_undo",
+    "score": 1
+   },
+   {
+    "name": "browser_autofix",
+    "score": 0.8
+   },
+   {
+    "name": "browser_click",
+    "score": 0.8
+   },
+   {
+    "name": "browser_find_text",
+    "score": 0.8
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 0.8
+   },
+   {
+    "name": "user_browser",
+    "score": 0.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪«╪░ ┘┘é╪╖╪ر ╪┤╪د╪┤╪ر ┘┘╪╡┘╪ص╪ر": [
+   {
+    "name": "image_studio",
+    "score": 13
+   },
+   {
+    "name": "browser_vision",
+    "score": 12.1
+   },
+   {
+    "name": "screenshot",
+    "score": 10.2
+   },
+   {
+    "name": "visual_compare",
+    "score": 7.8
+   },
+   {
+    "name": "browser_compare",
+    "score": 4.1
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 3.1
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 1
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1
+   },
+   {
+    "name": "docker_manager",
+    "score": 1
+   },
+   {
+    "name": "project_repair",
+    "score": 1
+   },
+   {
+    "name": "browser_autofix",
+    "score": 0.8
+   },
+   {
+    "name": "browser_click",
+    "score": 0.8
+   },
+   {
+    "name": "browser_find_text",
+    "score": 0.8
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 0.8
+   },
+   {
+    "name": "dependency_graph",
+    "score": 0.8
+   },
+   {
+    "name": "user_browser",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Scan the code for security vulnerabilities": [
+   {
+    "name": "security_scanner",
+    "score": 18.5
+   },
+   {
+    "name": "secrets_scan_repo",
+    "score": 9.8
+   },
+   {
+    "name": "codebase_outline",
+    "score": 5.6
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 5.3
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 4.4
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 4.3
+   },
+   {
+    "name": "dependency_audit",
+    "score": 3.7
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "code_reviewer",
+    "score": 3.6
+   },
+   {
+    "name": "sonar_analysis",
+    "score": 3.5
+   },
+   {
+    "name": "auto_refactor",
+    "score": 2.4
+   },
+   {
+    "name": "inspect_symbol",
+    "score": 2.4
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 2.4
+   },
+   {
+    "name": "auth_builder",
+    "score": 2.1
+   },
+   {
+    "name": "ai_write_file",
+    "score": 1.8
+   },
+   {
+    "name": "execute_python",
+    "score": 1.8
+   },
+   {
+    "name": "progressive_generator",
+    "score": 1.8
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.7
+   },
+   {
+    "name": "auto_tester",
+    "score": 0.6
+   },
+   {
+    "name": "dependency_graph",
+    "score": 0.6
+   },
+   {
+    "name": "doc_generator",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪ص╪╡ ╪د┘╪س╪║╪▒╪د╪ز ╪د┘╪ث┘à┘┘è╪ر": [
+   {
+    "name": "secrets_scan_repo",
+    "score": 11.1
+   },
+   {
+    "name": "compliance_validator",
+    "score": 10.6
+   },
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "load_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "dependency_audit",
+    "score": 7
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 6.5
+   },
+   {
+    "name": "security_scanner",
+    "score": 6.2
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_consent",
+    "score": 4
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 2.2
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Profile performance and load test": [
+   {
+    "name": "load_tester",
+    "score": 16.2
+   },
+   {
+    "name": "performance_profile",
+    "score": 9.5
+   },
+   {
+    "name": "browser_performance",
+    "score": 6.8
+   },
+   {
+    "name": "performance_analyzer",
+    "score": 5.8
+   },
+   {
+    "name": "api_tester",
+    "score": 5.6
+   },
+   {
+    "name": "auto_tester",
+    "score": 5.6
+   },
+   {
+    "name": "test_generator",
+    "score": 5.6
+   },
+   {
+    "name": "business_profile",
+    "score": 4.9
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 4.9
+   },
+   {
+    "name": "query_optimizer",
+    "score": 2.6
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 2.5
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "browser_click",
+    "score": 1.9
+   },
+   {
+    "name": "cache_manager",
+    "score": 1.9
+   },
+   {
+    "name": "visual_compare",
+    "score": 1.9
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_launch",
+    "score": 1
+   },
+   {
+    "name": "browser_consent",
+    "score": 0.6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 0.6
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د╪«╪ز╪ذ╪▒ ╪د┘╪ث╪»╪د╪ة ┘ê╪د┘╪╢╪║╪╖": [
+   {
+    "name": "load_tester",
+    "score": 18
+   },
+   {
+    "name": "browser_performance",
+    "score": 11.4
+   },
+   {
+    "name": "performance_profile",
+    "score": 9.5
+   },
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 6.5
+   },
+   {
+    "name": "performance_analyzer",
+    "score": 5.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "business_profile",
+    "score": 4.9
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "query_optimizer",
+    "score": 2.6
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Remember my preferences for later": [
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ز╪░┘â╪▒ ╪ز┘╪╢┘è┘╪د╪ز┘è": [
+   {
+    "name": "recall_memory",
+    "score": 12.9
+   },
+   {
+    "name": "knowledge_add",
+    "score": 7.8
+   },
+   {
+    "name": "knowledge_search",
+    "score": 7.8
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 3.1
+   },
+   {
+    "name": "business_profile",
+    "score": 2.4
+   },
+   {
+    "name": "project_undo",
+    "score": 1
+   },
+   {
+    "name": "cache_manager",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Commit the changes to git": [
+   {
+    "name": "github_pr",
+    "score": 15.1
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 14.5
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 13.5
+   },
+   {
+    "name": "github_actions",
+    "score": 11.7
+   },
+   {
+    "name": "repo_diff_summary",
+    "score": 9.3
+   },
+   {
+    "name": "git_ops",
+    "score": 6.8
+   },
+   {
+    "name": "import_project",
+    "score": 5.8
+   },
+   {
+    "name": "deploy_pages",
+    "score": 5.2
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 3.9
+   },
+   {
+    "name": "browser_compare",
+    "score": 3.1
+   },
+   {
+    "name": "project_edit",
+    "score": 3.1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 2.1
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 1.6
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 0.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 0.8
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 0.6
+   },
+   {
+    "name": "repo_read_file",
+    "score": 0.6
+   },
+   {
+    "name": "repo_search",
+    "score": 0.6
+   },
+   {
+    "name": "secrets_scan_repo",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د╪ص┘╪╕ ╪د┘╪ز╪║┘è┘è╪▒╪د╪ز ┘┘è ╪ش┘è╪ز": [
+   {
+    "name": "github_pr",
+    "score": 15.1
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 14.5
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 13.5
+   },
+   {
+    "name": "recall_memory",
+    "score": 12.9
+   },
+   {
+    "name": "github_actions",
+    "score": 11.7
+   },
+   {
+    "name": "repo_diff_summary",
+    "score": 8.3
+   },
+   {
+    "name": "knowledge_add",
+    "score": 7.8
+   },
+   {
+    "name": "knowledge_search",
+    "score": 7.8
+   },
+   {
+    "name": "git_ops",
+    "score": 6.8
+   },
+   {
+    "name": "import_project",
+    "score": 5.8
+   },
+   {
+    "name": "deploy_pages",
+    "score": 5.2
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 3.9
+   },
+   {
+    "name": "browser_compare",
+    "score": 3.1
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 3.1
+   },
+   {
+    "name": "project_edit",
+    "score": 3.1
+   },
+   {
+    "name": "business_profile",
+    "score": 2.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 2.1
+   },
+   {
+    "name": "project_undo",
+    "score": 1
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 0.8
+   },
+   {
+    "name": "cache_manager",
+    "score": 0.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Build a docker container for the app": [
+   {
+    "name": "docker_manager",
+    "score": 11.8
+   },
+   {
+    "name": "docker_swarm_ops",
+    "score": 7.8
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 6
+   },
+   {
+    "name": "web_page_builder",
+    "score": 4.7
+   },
+   {
+    "name": "mobile_builder",
+    "score": 4
+   },
+   {
+    "name": "go_builder",
+    "score": 3.6
+   },
+   {
+    "name": "java_builder",
+    "score": 3.6
+   },
+   {
+    "name": "python_builder",
+    "score": 3.6
+   },
+   {
+    "name": "auth_builder",
+    "score": 3
+   },
+   {
+    "name": "project_pipeline",
+    "score": 2.4
+   },
+   {
+    "name": "quality_run",
+    "score": 2.4
+   },
+   {
+    "name": "react_project",
+    "score": 2.4
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.4
+   },
+   {
+    "name": "api_project",
+    "score": 1.8
+   },
+   {
+    "name": "phase_executor",
+    "score": 1.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 1.6
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "form_inbox",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "terraform_manager",
+    "score": 1
+   },
+   {
+    "name": "write_file",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "╪د╪ذ┘ ╪ص╪د┘ê┘è╪ر ╪»┘ê┘â╪▒": [
+   {
+    "name": "kubernetes_ops",
+    "score": 11.4
+   },
+   {
+    "name": "docker_manager",
+    "score": 11.2
+   },
+   {
+    "name": "terraform_manager",
+    "score": 10.9
+   },
+   {
+    "name": "docker_swarm_ops",
+    "score": 10.1
+   },
+   {
+    "name": "dev_server_start",
+    "score": 6.6
+   },
+   {
+    "name": "deploy_project",
+    "score": 2.9
+   },
+   {
+    "name": "project_run",
+    "score": 2.9
+   },
+   {
+    "name": "project_stop",
+    "score": 2.9
+   },
+   {
+    "name": "orion_business_foundation",
+    "score": 0.8
+   },
+   {
+    "name": "image_studio",
+    "score": 0.7
+   },
+   {
+    "name": "orders_read",
+    "score": 0.7
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "What was the last error in the terminal": [
+   {
+    "name": "terminal_manager",
+    "score": 13.2
+   },
+   {
+    "name": "error_recovery",
+    "score": 7.8
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 3.5
+   },
+   {
+    "name": "shell_execute",
+    "score": 2.6
+   },
+   {
+    "name": "project_repair",
+    "score": 1.9
+   },
+   {
+    "name": "browser_click",
+    "score": 1
+   },
+   {
+    "name": "browser_compare",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "┘à╪د ╪ت╪«╪▒ ╪«╪╖╪ث ╪╕┘ç╪▒ ┘┘è ╪د┘╪ز╪▒┘à┘╪د┘": [
+   {
+    "name": "terminal_manager",
+    "score": 28
+   },
+   {
+    "name": "error_recovery",
+    "score": 16.6
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 14.2
+   },
+   {
+    "name": "logger",
+    "score": 12
+   },
+   {
+    "name": "shell_execute",
+    "score": 10.5
+   },
+   {
+    "name": "browser_autofix",
+    "score": 10
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 9.8
+   },
+   {
+    "name": "project_repair",
+    "score": 9.1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 8.8
+   },
+   {
+    "name": "business_logic_parser",
+    "score": 8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 7.4
+   },
+   {
+    "name": "shell_check_status",
+    "score": 7.1
+   },
+   {
+    "name": "quality_run",
+    "score": 4
+   },
+   {
+    "name": "project_undo",
+    "score": 2.6
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1.7
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "docker_manager",
+    "score": 1
+   },
+   {
+    "name": "inspect_api",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "recall_memory",
+    "score": 1
+   },
+   {
+    "name": "search_public_apis",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Install npm dependencies": [
+   {
+    "name": "npm_manager",
+    "score": 16.7
+   },
+   {
+    "name": "dependency_audit",
+    "score": 15.5
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 15
+   },
+   {
+    "name": "github_actions",
+    "score": 12.2
+   },
+   {
+    "name": "deploy_project",
+    "score": 9.6
+   },
+   {
+    "name": "deploy_pages",
+    "score": 7.8
+   },
+   {
+    "name": "project_pipeline",
+    "score": 7.1
+   },
+   {
+    "name": "decide_capability_route",
+    "score": 6.9
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 6.3
+   },
+   {
+    "name": "dependency_graph",
+    "score": 6
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 6
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_run",
+    "score": 3.1
+   },
+   {
+    "name": "notify_user",
+    "score": 2.7
+   },
+   {
+    "name": "multi_agent_debate",
+    "score": 2.6
+   },
+   {
+    "name": "auto_refactor",
+    "score": 2.1
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 2.1
+   },
+   {
+    "name": "browser_click",
+    "score": 2.1
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 2.1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪س╪ذ╪ز ╪د┘╪ص╪▓┘à": [
+   {
+    "name": "npm_manager",
+    "score": 15
+   },
+   {
+    "name": "dependency_audit",
+    "score": 8.6
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_graph",
+    "score": 4.3
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 2.1
+   },
+   {
+    "name": "project_repair",
+    "score": 2.1
+   },
+   {
+    "name": "browser_check_links",
+    "score": 1.6
+   },
+   {
+    "name": "browser_performance",
+    "score": 1.6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 1.6
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 1.6
+   },
+   {
+    "name": "compliance_validator",
+    "score": 1.6
+   },
+   {
+    "name": "deploy_project",
+    "score": 1
+   },
+   {
+    "name": "notify_user",
+    "score": 1
+   },
+   {
+    "name": "react_project",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 1
+   },
+   {
+    "name": "video_action",
+    "score": 1
+   },
+   {
+    "name": "api_project",
+    "score": 0.9
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 0.5
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 0.5
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Write API documentation with swagger": [
+   {
+    "name": "swagger_docs",
+    "score": 14.7
+   },
+   {
+    "name": "ai_write_file",
+    "score": 5.8
+   },
+   {
+    "name": "api_project",
+    "score": 5.8
+   },
+   {
+    "name": "write_file",
+    "score": 5.8
+   },
+   {
+    "name": "api_tester",
+    "score": 5.1
+   },
+   {
+    "name": "inspect_api",
+    "score": 5.1
+   },
+   {
+    "name": "search_public_apis",
+    "score": 5.1
+   },
+   {
+    "name": "validate_api",
+    "score": 5.1
+   },
+   {
+    "name": "doc_generator",
+    "score": 3.5
+   },
+   {
+    "name": "todo_write",
+    "score": 3.2
+   },
+   {
+    "name": "search_api",
+    "score": 2.8
+   },
+   {
+    "name": "orders_read",
+    "score": 2.3
+   },
+   {
+    "name": "python_builder",
+    "score": 2.3
+   },
+   {
+    "name": "file_edit",
+    "score": 1.9
+   },
+   {
+    "name": "file_edit_advanced",
+    "score": 1.9
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 1.9
+   },
+   {
+    "name": "query_datasource",
+    "score": 1.7
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.6
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 0.6
+   },
+   {
+    "name": "google_account",
+    "score": 0.6
+   },
+   {
+    "name": "payments_create_checkout_session",
+    "score": 0.6
+   },
+   {
+    "name": "web_page_builder",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "╪د┘â╪ز╪ذ ╪د┘╪ز┘ê╪س┘è┘é": [
+   {
+    "name": "swagger_docs",
+    "score": 19.7
+   },
+   {
+    "name": "doc_generator",
+    "score": 3.5
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 1
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Find and fix broken links": [
+   {
+    "name": "browser_check_links",
+    "score": 10
+   },
+   {
+    "name": "browser_autofix",
+    "score": 8.8
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 7.9
+   },
+   {
+    "name": "browser_find_text",
+    "score": 7.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 5.2
+   },
+   {
+    "name": "search_files",
+    "score": 2.6
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 1
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1
+   },
+   {
+    "name": "project_repair",
+    "score": 1
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 0.9
+   },
+   {
+    "name": "error_recovery",
+    "score": 0.9
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 0.9
+   },
+   {
+    "name": "search_public_apis",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث╪╡┘╪ص ╪د┘╪▒┘ê╪د╪ذ╪╖ ╪د┘┘à┘â╪│┘ê╪▒╪ر": [
+   {
+    "name": "browser_check_links",
+    "score": 19
+   },
+   {
+    "name": "error_recovery",
+    "score": 16.6
+   },
+   {
+    "name": "browser_autofix",
+    "score": 12
+   },
+   {
+    "name": "logger",
+    "score": 12
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 11.8
+   },
+   {
+    "name": "project_repair",
+    "score": 9.4
+   },
+   {
+    "name": "business_logic_parser",
+    "score": 8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 7.4
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 6.5
+   },
+   {
+    "name": "quality_run",
+    "score": 4
+   },
+   {
+    "name": "terminal_manager",
+    "score": 3.5
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 2
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 2
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1.9
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "docker_manager",
+    "score": 1
+   },
+   {
+    "name": "inspect_api",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "recall_memory",
+    "score": 1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 1
+   },
+   {
+    "name": "search_public_apis",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Generate a PDF report": [
+   {
+    "name": "browser_save_pdf",
+    "score": 9
+   },
+   {
+    "name": "joe_engineering_report",
+    "score": 5.6
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 4.7
+   },
+   {
+    "name": "doc_generator",
+    "score": 4.2
+   },
+   {
+    "name": "swagger_docs",
+    "score": 4.2
+   },
+   {
+    "name": "scaffold_full_stack",
+    "score": 3.1
+   },
+   {
+    "name": "scaffold_project",
+    "score": 2.4
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 1.5
+   },
+   {
+    "name": "terminal_manager",
+    "score": 1
+   },
+   {
+    "name": "knowledge_add",
+    "score": 0.9
+   },
+   {
+    "name": "ai_write_file",
+    "score": 0.8
+   },
+   {
+    "name": "architect_plan",
+    "score": 0.8
+   },
+   {
+    "name": "auth_builder",
+    "score": 0.8
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 0.8
+   },
+   {
+    "name": "github_actions",
+    "score": 0.8
+   },
+   {
+    "name": "image_studio",
+    "score": 0.8
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 0.8
+   },
+   {
+    "name": "mobile_builder",
+    "score": 0.8
+   },
+   {
+    "name": "progressive_generator",
+    "score": 0.8
+   },
+   {
+    "name": "test_generator",
+    "score": 0.8
+   },
+   {
+    "name": "web_page_builder",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث┘╪┤╪خ ╪ز┘é╪▒┘è╪▒ pdf": [
+   {
+    "name": "browser_save_pdf",
+    "score": 9
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 5.7
+   },
+   {
+    "name": "analyze_project",
+    "score": 5.7
+   },
+   {
+    "name": "performance_analyzer",
+    "score": 5.7
+   },
+   {
+    "name": "request_analyzer",
+    "score": 5.7
+   },
+   {
+    "name": "joe_engineering_report",
+    "score": 5.6
+   },
+   {
+    "name": "sonar_analysis",
+    "score": 4.1
+   },
+   {
+    "name": "monitoring",
+    "score": 4
+   },
+   {
+    "name": "doc_generator",
+    "score": 3.5
+   },
+   {
+    "name": "swagger_docs",
+    "score": 3.5
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 2.8
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 2.7
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 2.6
+   },
+   {
+    "name": "project_detect",
+    "score": 2.6
+   },
+   {
+    "name": "import_project",
+    "score": 2.2
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 2.1
+   },
+   {
+    "name": "dependency_graph",
+    "score": 2.1
+   },
+   {
+    "name": "execute_python",
+    "score": 1.8
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 1.5
+   },
+   {
+    "name": "ambiguity_resolver",
+    "score": 1.4
+   },
+   {
+    "name": "business_logic_parser",
+    "score": 1.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Summarize this web page": [
+   {
+    "name": "browser_summarize",
+    "score": 10.2
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 8.8
+   },
+   {
+    "name": "web_page_builder",
+    "score": 8.3
+   },
+   {
+    "name": "deploy_pages",
+    "score": 7.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 5.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 3.1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 2.2
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 1.9
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1.9
+   },
+   {
+    "name": "browser_check_links",
+    "score": 1.9
+   },
+   {
+    "name": "browser_click",
+    "score": 1.9
+   },
+   {
+    "name": "browser_compare",
+    "score": 1.9
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 1.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 1.9
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 1.9
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 1.9
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 1.9
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 1.9
+   },
+   {
+    "name": "browser_find_text",
+    "score": 1.9
+   },
+   {
+    "name": "browser_launch",
+    "score": 1.9
+   },
+   {
+    "name": "browser_performance",
+    "score": 1.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "┘╪«╪╡ ┘à╪ص╪ز┘ê┘ë ╪د┘╪╡┘╪ص╪ر": [
+   {
+    "name": "browser_readability",
+    "score": 9.1
+   },
+   {
+    "name": "browser_summarize",
+    "score": 9
+   },
+   {
+    "name": "html_extract",
+    "score": 8.4
+   },
+   {
+    "name": "browser_find_text",
+    "score": 7.8
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 6.6
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 6.6
+   },
+   {
+    "name": "search_text",
+    "score": 5.2
+   },
+   {
+    "name": "browser_click",
+    "score": 1.9
+   },
+   {
+    "name": "archive_files",
+    "score": 1.7
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 1.6
+   },
+   {
+    "name": "browser_translate",
+    "score": 1.6
+   },
+   {
+    "name": "ai_write_file",
+    "score": 1
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 1
+   },
+   {
+    "name": "browser_performance",
+    "score": 1
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 1
+   },
+   {
+    "name": "http_fetch",
+    "score": 1
+   },
+   {
+    "name": "inspect_directory",
+    "score": 1
+   },
+   {
+    "name": "read_file",
+    "score": 1
+   },
+   {
+    "name": "write_file",
+    "score": 1
+   },
+   {
+    "name": "browser_autofix",
+    "score": 0.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 0.9
+   },
+   {
+    "name": "browser_run",
+    "score": 0.9
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 0.9
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 0.9
+   },
+   {
+    "name": "echo",
+    "score": 0.9
+   },
+   {
+    "name": "file_edit",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "Check responsive layout on mobile": [
+   {
+    "name": "browser_responsive_check",
+    "score": 16.2
+   },
+   {
+    "name": "mobile_builder",
+    "score": 7.8
+   },
+   {
+    "name": "browser_check_links",
+    "score": 4.7
+   },
+   {
+    "name": "payments_create_checkout_session",
+    "score": 4.7
+   },
+   {
+    "name": "shell_check_status",
+    "score": 4.7
+   },
+   {
+    "name": "project_state_manager",
+    "score": 3.1
+   },
+   {
+    "name": "quality_run",
+    "score": 3.1
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 2.6
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 0.9
+   },
+   {
+    "name": "auto_tester",
+    "score": 0.8
+   },
+   {
+    "name": "compliance_validator",
+    "score": 0.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 0.8
+   },
+   {
+    "name": "docker_manager",
+    "score": 0.8
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 0.8
+   },
+   {
+    "name": "project_pipeline",
+    "score": 0.8
+   },
+   {
+    "name": "repo_run_command",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪ص╪╡ ╪د┘╪د╪│╪ز╪ش╪د╪ذ╪ر ╪╣┘┘ë ╪د┘╪ش┘ê╪د┘": [
+   {
+    "name": "mobile_builder",
+    "score": 17.9
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 14.4
+   },
+   {
+    "name": "load_tester",
+    "score": 8.4
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 7.5
+   },
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 6
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 3.6
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 2.5
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "write_file",
+    "score": 1
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "Improve SEO meta tags": [
+   {
+    "name": "browser_seo_audit",
+    "score": 10.5
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 10.1
+   },
+   {
+    "name": "browser_autofix",
+    "score": 4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 1.6
+   },
+   {
+    "name": "code_reviewer",
+    "score": 1
+   },
+   {
+    "name": "llm_cache",
+    "score": 1
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 1
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 0.9
+   },
+   {
+    "name": "html_extract",
+    "score": 0.9
+   },
+   {
+    "name": "inspect_api",
+    "score": 0.9
+   },
+   {
+    "name": "browser_search",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ص╪│┘ ╪د┘╪│┘è┘ê ┘ê╪د┘╪ث╪▒╪┤┘╪ر": [
+   {
+    "name": "browser_seo_audit",
+    "score": 10.5
+   },
+   {
+    "name": "browser_extract_meta",
+    "score": 10.1
+   },
+   {
+    "name": "browser_autofix",
+    "score": 4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 1.6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 0.9
+   },
+   {
+    "name": "html_extract",
+    "score": 0.9
+   },
+   {
+    "name": "inspect_api",
+    "score": 0.9
+   },
+   {
+    "name": "browser_search",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Set up a CI pipeline": [
+   {
+    "name": "ci_generate_pipeline",
+    "score": 15
+   },
+   {
+    "name": "github_actions",
+    "score": 12.2
+   },
+   {
+    "name": "decide_capability_route",
+    "score": 9.9
+   },
+   {
+    "name": "deploy_project",
+    "score": 8.6
+   },
+   {
+    "name": "deploy_pages",
+    "score": 7.8
+   },
+   {
+    "name": "project_pipeline",
+    "score": 7.1
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 6.3
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 6
+   },
+   {
+    "name": "dependency_audit",
+    "score": 3.5
+   },
+   {
+    "name": "browser_run",
+    "score": 3.1
+   },
+   {
+    "name": "multi_agent_debate",
+    "score": 2.6
+   },
+   {
+    "name": "auto_refactor",
+    "score": 2.1
+   },
+   {
+    "name": "browser_click",
+    "score": 2.1
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 2.1
+   },
+   {
+    "name": "doc_generator",
+    "score": 2.1
+   },
+   {
+    "name": "test_generator",
+    "score": 2.1
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 1.7
+   },
+   {
+    "name": "google_account",
+    "score": 1.6
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 1
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 0.9
+   },
+   {
+    "name": "browser_summarize",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث┘╪┤╪خ ╪«╪╖ ╪ث┘╪د╪ذ┘è╪ذ CI": [
+   {
+    "name": "ci_generate_pipeline",
+    "score": 15
+   },
+   {
+    "name": "github_actions",
+    "score": 12.2
+   },
+   {
+    "name": "deploy_project",
+    "score": 8.6
+   },
+   {
+    "name": "deploy_pages",
+    "score": 7.8
+   },
+   {
+    "name": "project_pipeline",
+    "score": 7.1
+   },
+   {
+    "name": "decide_capability_route",
+    "score": 6.9
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 6.3
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 6
+   },
+   {
+    "name": "dependency_audit",
+    "score": 3.5
+   },
+   {
+    "name": "browser_run",
+    "score": 3.1
+   },
+   {
+    "name": "multi_agent_debate",
+    "score": 2.6
+   },
+   {
+    "name": "auto_refactor",
+    "score": 2.1
+   },
+   {
+    "name": "browser_click",
+    "score": 2.1
+   },
+   {
+    "name": "browser_fill_form",
+    "score": 2.1
+   },
+   {
+    "name": "doc_generator",
+    "score": 2.1
+   },
+   {
+    "name": "test_generator",
+    "score": 2.1
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 1.7
+   },
+   {
+    "name": "google_account",
+    "score": 1.6
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 0.9
+   },
+   {
+    "name": "browser_summarize",
+    "score": 0.9
+   },
+   {
+    "name": "business_profile",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Build a mobile app": [
+   {
+    "name": "mobile_builder",
+    "score": 11.7
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 6
+   },
+   {
+    "name": "web_page_builder",
+    "score": 4.7
+   },
+   {
+    "name": "go_builder",
+    "score": 3.6
+   },
+   {
+    "name": "java_builder",
+    "score": 3.6
+   },
+   {
+    "name": "python_builder",
+    "score": 3.6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 3.5
+   },
+   {
+    "name": "auth_builder",
+    "score": 3
+   },
+   {
+    "name": "project_pipeline",
+    "score": 2.4
+   },
+   {
+    "name": "quality_run",
+    "score": 2.4
+   },
+   {
+    "name": "react_project",
+    "score": 2.4
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.4
+   },
+   {
+    "name": "api_project",
+    "score": 1.8
+   },
+   {
+    "name": "phase_executor",
+    "score": 1.8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 1.6
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "form_inbox",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "terraform_manager",
+    "score": 1
+   },
+   {
+    "name": "write_file",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "╪د╪ذ┘ ╪ز╪╖╪ذ┘è┘é ╪ش┘ê╪د┘": [
+   {
+    "name": "mobile_builder",
+    "score": 17.9
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 6
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 3.5
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 1
+   },
+   {
+    "name": "form_inbox",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "terraform_manager",
+    "score": 1
+   },
+   {
+    "name": "write_file",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "Add checkout payments": [
+   {
+    "name": "payments_create_checkout_session",
+    "score": 25.7
+   },
+   {
+    "name": "knowledge_add",
+    "score": 9
+   },
+   {
+    "name": "browser_compare",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث╪╢┘ ╪د┘╪»┘╪╣ ┘ê╪د┘┘┘ê╪د╪ز┘è╪▒": [
+   {
+    "name": "payments_create_checkout_session",
+    "score": 17.7
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Choose local or external provider with least setup": [
+   {
+    "name": "decide_capability_route",
+    "score": 15.1
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 7.1
+   },
+   {
+    "name": "import_project",
+    "score": 3.1
+   },
+   {
+    "name": "i18n_translator",
+    "score": 2.4
+   },
+   {
+    "name": "browser_consent",
+    "score": 0.8
+   },
+   {
+    "name": "deploy_project",
+    "score": 0.8
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 0.8
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.8
+   },
+   {
+    "name": "orion_business_foundation",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د╪«╪ز╪▒ ╪د┘┘à╪│╪د╪▒ ╪د┘╪ث┘╪│╪ذ ╪ذ╪ث┘é┘ ╪ح╪╣╪»╪د╪»": [
+   {
+    "name": "decide_capability_route",
+    "score": 30.7
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 7.1
+   },
+   {
+    "name": "import_project",
+    "score": 3.1
+   },
+   {
+    "name": "multi_agent_debate",
+    "score": 2.6
+   },
+   {
+    "name": "i18n_translator",
+    "score": 2.4
+   },
+   {
+    "name": "progressive_generator",
+    "score": 1
+   },
+   {
+    "name": "search_public_apis",
+    "score": 1
+   },
+   {
+    "name": "browser_consent",
+    "score": 0.8
+   },
+   {
+    "name": "deploy_project",
+    "score": 0.8
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 0.8
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.8
+   },
+   {
+    "name": "orion_business_foundation",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Send me an email notification": [
+   {
+    "name": "alert_manager",
+    "score": 4
+   },
+   {
+    "name": "google_account",
+    "score": 1
+   },
+   {
+    "name": "notify_user",
+    "score": 1
+   },
+   {
+    "name": "business_profile",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث╪▒╪│┘ ╪ز┘╪ذ┘è┘ç╪د ╪ذ╪د┘╪ذ╪▒┘è╪»": [
+   {
+    "name": "alert_manager",
+    "score": 9
+   },
+   {
+    "name": "notify_user",
+    "score": 6
+   },
+   {
+    "name": "google_account",
+    "score": 3.5
+   },
+   {
+    "name": "business_profile",
+    "score": 1.7
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Delete the temp files and list the folder": [
+   {
+    "name": "delete_file",
+    "score": 9
+   },
+   {
+    "name": "template_manager",
+    "score": 9
+   },
+   {
+    "name": "archive_files",
+    "score": 6.6
+   },
+   {
+    "name": "import_project",
+    "score": 4
+   },
+   {
+    "name": "search_files",
+    "score": 3.7
+   },
+   {
+    "name": "browser_autofix",
+    "score": 1
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 1
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 1
+   },
+   {
+    "name": "deploy_project",
+    "score": 1
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 1
+   },
+   {
+    "name": "execute_python",
+    "score": 1
+   },
+   {
+    "name": "form_inbox",
+    "score": 1
+   },
+   {
+    "name": "google_account",
+    "score": 1
+   },
+   {
+    "name": "inspect_directory",
+    "score": 1
+   },
+   {
+    "name": "ls",
+    "score": 1
+   },
+   {
+    "name": "orders_read",
+    "score": 1
+   },
+   {
+    "name": "orion_business_foundation",
+    "score": 1
+   },
+   {
+    "name": "project_undo",
+    "score": 1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 1
+   },
+   {
+    "name": "todo_write",
+    "score": 1
+   },
+   {
+    "name": "db_schema_migrator",
+    "score": 0.6
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 0.6
+   },
+   {
+    "name": "project_edit",
+    "score": 0.6
+   },
+   {
+    "name": "repo_search",
+    "score": 0.6
+   },
+   {
+    "name": "search_text",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د╪ص╪░┘ ╪د┘┘à┘┘╪د╪ز ╪د┘┘à╪ج┘é╪ز╪ر": [
+   {
+    "name": "delete_file",
+    "score": 13.7
+   },
+   {
+    "name": "inspect_directory",
+    "score": 6
+   },
+   {
+    "name": "archive_files",
+    "score": 5.6
+   },
+   {
+    "name": "business_profile",
+    "score": 4.9
+   },
+   {
+    "name": "import_project",
+    "score": 4
+   },
+   {
+    "name": "ai_write_file",
+    "score": 3.7
+   },
+   {
+    "name": "file_edit",
+    "score": 3.7
+   },
+   {
+    "name": "file_edit_advanced",
+    "score": 3.7
+   },
+   {
+    "name": "performance_profile",
+    "score": 3.7
+   },
+   {
+    "name": "read_file",
+    "score": 3.7
+   },
+   {
+    "name": "repo_read_file",
+    "score": 3.7
+   },
+   {
+    "name": "search_files",
+    "score": 3.7
+   },
+   {
+    "name": "write_file",
+    "score": 3.7
+   },
+   {
+    "name": "browser_compare",
+    "score": 1
+   },
+   {
+    "name": "browser_search",
+    "score": 1
+   },
+   {
+    "name": "ls",
+    "score": 1
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 1
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 0.6
+   },
+   {
+    "name": "architect_plan",
+    "score": 0.6
+   },
+   {
+    "name": "browser_consent",
+    "score": 0.6
+   },
+   {
+    "name": "browser_extract_data",
+    "score": 0.6
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 0.6
+   },
+   {
+    "name": "browser_save_pdf",
+    "score": 0.6
+   },
+   {
+    "name": "codebase_outline",
+    "score": 0.6
+   },
+   {
+    "name": "db_schema_migrator",
+    "score": 0.6
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 0.6
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 0.6
+   },
+   {
+    "name": "search_text",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "Search the codebase for the login function": [
+   {
+    "name": "browser_search",
+    "score": 5.1
+   },
+   {
+    "name": "knowledge_search",
+    "score": 5.1
+   },
+   {
+    "name": "repo_search",
+    "score": 5.1
+   },
+   {
+    "name": "search_api",
+    "score": 5.1
+   },
+   {
+    "name": "search_files",
+    "score": 5.1
+   },
+   {
+    "name": "search_text",
+    "score": 5.1
+   },
+   {
+    "name": "codebase_outline",
+    "score": 4
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "search_public_apis",
+    "score": 2.8
+   },
+   {
+    "name": "browser_find_text",
+    "score": 2.3
+   },
+   {
+    "name": "recall_memory",
+    "score": 2.3
+   },
+   {
+    "name": "browser_summarize",
+    "score": 1.7
+   },
+   {
+    "name": "auto_tester",
+    "score": 1
+   },
+   {
+    "name": "inspect_symbol",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 1
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 0.6
+   },
+   {
+    "name": "image_studio",
+    "score": 0.6
+   },
+   {
+    "name": "project_detect",
+    "score": 0.6
+   },
+   {
+    "name": "project_edit",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د╪ذ╪ص╪س ┘┘è ╪د┘┘â┘ê╪» ╪╣┘ ╪د┘╪»╪«┘ê┘": [
+   {
+    "name": "auto_refactor",
+    "score": 11.4
+   },
+   {
+    "name": "code_reviewer",
+    "score": 10.6
+   },
+   {
+    "name": "browser_find_text",
+    "score": 10
+   },
+   {
+    "name": "search_text",
+    "score": 8.1
+   },
+   {
+    "name": "search_files",
+    "score": 7.7
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 6.2
+   },
+   {
+    "name": "browser_search",
+    "score": 6.1
+   },
+   {
+    "name": "codebase_outline",
+    "score": 5.7
+   },
+   {
+    "name": "knowledge_search",
+    "score": 5.1
+   },
+   {
+    "name": "repo_search",
+    "score": 5.1
+   },
+   {
+    "name": "search_api",
+    "score": 5.1
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 4.7
+   },
+   {
+    "name": "web_page_builder",
+    "score": 3.9
+   },
+   {
+    "name": "search_public_apis",
+    "score": 3.7
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "inspect_symbol",
+    "score": 3.4
+   },
+   {
+    "name": "project_run",
+    "score": 3.1
+   },
+   {
+    "name": "scaffold_full_stack",
+    "score": 3.1
+   },
+   {
+    "name": "recall_memory",
+    "score": 2.9
+   },
+   {
+    "name": "ai_write_file",
+    "score": 2.6
+   },
+   {
+    "name": "progressive_generator",
+    "score": 2.6
+   },
+   {
+    "name": "dev_server_start",
+    "score": 2.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Fix the crash and recover": [
+   {
+    "name": "error_recovery",
+    "score": 8.9
+   },
+   {
+    "name": "browser_autofix",
+    "score": 7.8
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 6.9
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 5.2
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث╪╡┘╪ص ╪د┘╪╣╪╖┘": [
+   {
+    "name": "error_recovery",
+    "score": 16.6
+   },
+   {
+    "name": "logger",
+    "score": 12
+   },
+   {
+    "name": "browser_autofix",
+    "score": 10
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 9.8
+   },
+   {
+    "name": "project_repair",
+    "score": 8.4
+   },
+   {
+    "name": "business_logic_parser",
+    "score": 8
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 7.4
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 6.5
+   },
+   {
+    "name": "quality_run",
+    "score": 4
+   },
+   {
+    "name": "terminal_manager",
+    "score": 3.5
+   },
+   {
+    "name": "browser_consent",
+    "score": 1
+   },
+   {
+    "name": "docker_manager",
+    "score": 1
+   },
+   {
+    "name": "inspect_api",
+    "score": 1
+   },
+   {
+    "name": "load_tester",
+    "score": 1
+   },
+   {
+    "name": "recall_memory",
+    "score": 1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 1
+   },
+   {
+    "name": "search_public_apis",
+    "score": 1
+   },
+   {
+    "name": "user_browser",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Analyze sales and produce a report": [
+   {
+    "name": "joe_engineering_report",
+    "score": 5.6
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 4.4
+   },
+   {
+    "name": "analyze_project",
+    "score": 4.4
+   },
+   {
+    "name": "performance_analyzer",
+    "score": 4.4
+   },
+   {
+    "name": "request_analyzer",
+    "score": 4.4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 2.8
+   },
+   {
+    "name": "import_project",
+    "score": 2.2
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 1.3
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 0.7
+   },
+   {
+    "name": "dependency_graph",
+    "score": 0.7
+   },
+   {
+    "name": "error_recovery",
+    "score": 0.7
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 0.7
+   },
+   {
+    "name": "project_detect",
+    "score": 0.7
+   },
+   {
+    "name": "query_optimizer",
+    "score": 0.7
+   },
+   {
+    "name": "browser_check_links",
+    "score": 0.6
+   },
+   {
+    "name": "browser_click",
+    "score": 0.6
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 0.6
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 0.6
+   },
+   {
+    "name": "project_pipeline",
+    "score": 0.6
+   },
+   {
+    "name": "visual_compare",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ص┘┘ ╪د┘┘à╪ذ┘è╪╣╪د╪ز ┘ê╪ث╪╣╪╖ ╪ز┘é╪▒┘è╪▒╪د": [
+   {
+    "name": "form_inbox",
+    "score": 10.6
+   },
+   {
+    "name": "orders_read",
+    "score": 9
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 5.7
+   },
+   {
+    "name": "analyze_project",
+    "score": 5.7
+   },
+   {
+    "name": "performance_analyzer",
+    "score": 5.7
+   },
+   {
+    "name": "request_analyzer",
+    "score": 5.7
+   },
+   {
+    "name": "joe_engineering_report",
+    "score": 5.6
+   },
+   {
+    "name": "sonar_analysis",
+    "score": 4.1
+   },
+   {
+    "name": "monitoring",
+    "score": 4
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 2.8
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 2.7
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 2.6
+   },
+   {
+    "name": "project_detect",
+    "score": 2.6
+   },
+   {
+    "name": "import_project",
+    "score": 2.2
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 2.1
+   },
+   {
+    "name": "dependency_graph",
+    "score": 2.1
+   },
+   {
+    "name": "execute_python",
+    "score": 1.8
+   },
+   {
+    "name": "ambiguity_resolver",
+    "score": 1.4
+   },
+   {
+    "name": "business_logic_parser",
+    "score": 1.4
+   },
+   {
+    "name": "codebase_outline",
+    "score": 1.4
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 1.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Check color contrast for accessibility": [
+   {
+    "name": "browser_contrast_audit",
+    "score": 14.9
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 14.6
+   },
+   {
+    "name": "browser_check_links",
+    "score": 4.7
+   },
+   {
+    "name": "payments_create_checkout_session",
+    "score": 4.7
+   },
+   {
+    "name": "shell_check_status",
+    "score": 4.7
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 3.9
+   },
+   {
+    "name": "project_state_manager",
+    "score": 3.1
+   },
+   {
+    "name": "quality_run",
+    "score": 3.1
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 3
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 2.9
+   },
+   {
+    "name": "browser_autofix",
+    "score": 2.6
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 2.6
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 2.6
+   },
+   {
+    "name": "auto_tester",
+    "score": 0.8
+   },
+   {
+    "name": "compliance_validator",
+    "score": 0.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 0.8
+   },
+   {
+    "name": "docker_manager",
+    "score": 0.8
+   },
+   {
+    "name": "engineering_discovery",
+    "score": 0.8
+   },
+   {
+    "name": "project_pipeline",
+    "score": 0.8
+   },
+   {
+    "name": "repo_run_command",
+    "score": 0.8
+   },
+   {
+    "name": "browser_smart_agent",
+    "score": 0.6
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪ص╪╡ ╪د┘╪ز╪ذ╪د┘è┘ ┘ê╪د┘┘ê╪╡┘ê┘": [
+   {
+    "name": "browser_contrast_audit",
+    "score": 19.7
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 16.7
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 9.1
+   },
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "load_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 3.1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 2.9
+   },
+   {
+    "name": "browser_autofix",
+    "score": 2.6
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 2.2
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Review the orders inbox": [
+   {
+    "name": "orders_read",
+    "score": 9
+   },
+   {
+    "name": "form_inbox",
+    "score": 8
+   },
+   {
+    "name": "code_reviewer",
+    "score": 7.1
+   },
+   {
+    "name": "project_run",
+    "score": 3.1
+   },
+   {
+    "name": "web_page_builder",
+    "score": 3.1
+   },
+   {
+    "name": "dev_server_start",
+    "score": 2.4
+   },
+   {
+    "name": "import_project",
+    "score": 0.8
+   },
+   {
+    "name": "repo_apply_patch",
+    "score": 0.8
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪▒╪د╪ش╪╣ ╪╖┘╪ذ╪د╪ز ╪د┘╪▓╪ذ╪د╪خ┘": [
+   {
+    "name": "auto_refactor",
+    "score": 11.4
+   },
+   {
+    "name": "code_reviewer",
+    "score": 10.6
+   },
+   {
+    "name": "form_inbox",
+    "score": 10.6
+   },
+   {
+    "name": "orders_read",
+    "score": 9
+   },
+   {
+    "name": "codebase_outline",
+    "score": 5.7
+   },
+   {
+    "name": "dead_code_detector",
+    "score": 5.3
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 4.7
+   },
+   {
+    "name": "web_page_builder",
+    "score": 3.9
+   },
+   {
+    "name": "analyze_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "memorize_codebase",
+    "score": 3.6
+   },
+   {
+    "name": "inspect_symbol",
+    "score": 3.4
+   },
+   {
+    "name": "project_run",
+    "score": 3.1
+   },
+   {
+    "name": "scaffold_full_stack",
+    "score": 3.1
+   },
+   {
+    "name": "ai_write_file",
+    "score": 2.6
+   },
+   {
+    "name": "progressive_generator",
+    "score": 2.6
+   },
+   {
+    "name": "dev_server_start",
+    "score": 2.4
+   },
+   {
+    "name": "pattern_recognize",
+    "score": 2.4
+   },
+   {
+    "name": "scaffold_project",
+    "score": 2.4
+   },
+   {
+    "name": "execute_python",
+    "score": 1.8
+   },
+   {
+    "name": "auto_tester",
+    "score": 1.6
+   },
+   {
+    "name": "doc_generator",
+    "score": 1.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Generate an image for the hero section": [
+   {
+    "name": "image_studio",
+    "score": 9.8
+   },
+   {
+    "name": "ci_generate_pipeline",
+    "score": 4.7
+   },
+   {
+    "name": "scaffold_full_stack",
+    "score": 3.1
+   },
+   {
+    "name": "scaffold_project",
+    "score": 2.4
+   },
+   {
+    "name": "browser_compare",
+    "score": 1
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 1
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 1
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1
+   },
+   {
+    "name": "browser_vision",
+    "score": 1
+   },
+   {
+    "name": "docker_manager",
+    "score": 1
+   },
+   {
+    "name": "project_repair",
+    "score": 1
+   },
+   {
+    "name": "ai_write_file",
+    "score": 0.8
+   },
+   {
+    "name": "architect_plan",
+    "score": 0.8
+   },
+   {
+    "name": "auth_builder",
+    "score": 0.8
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 0.8
+   },
+   {
+    "name": "doc_generator",
+    "score": 0.8
+   },
+   {
+    "name": "github_actions",
+    "score": 0.8
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 0.8
+   },
+   {
+    "name": "mobile_builder",
+    "score": 0.8
+   },
+   {
+    "name": "progressive_generator",
+    "score": 0.8
+   },
+   {
+    "name": "swagger_docs",
+    "score": 0.8
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪ث┘╪┤╪خ ╪╡┘ê╪▒╪ر ┘┘┘ê╪د╪ش┘ç╪ر": [
+   {
+    "name": "browser_design_tokens",
+    "score": 17.4
+   },
+   {
+    "name": "image_studio",
+    "score": 16.7
+   },
+   {
+    "name": "browser_vision",
+    "score": 12.1
+   },
+   {
+    "name": "screenshot",
+    "score": 10.2
+   },
+   {
+    "name": "visual_compare",
+    "score": 7.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 6.3
+   },
+   {
+    "name": "browser_ui_fix",
+    "score": 5.3
+   },
+   {
+    "name": "web_page_builder",
+    "score": 4.7
+   },
+   {
+    "name": "react_project",
+    "score": 4.2
+   },
+   {
+    "name": "browser_compare",
+    "score": 4.1
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 3.7
+   },
+   {
+    "name": "ambiguity_resolver",
+    "score": 3.6
+   },
+   {
+    "name": "go_builder",
+    "score": 3.6
+   },
+   {
+    "name": "java_builder",
+    "score": 3.6
+   },
+   {
+    "name": "python_builder",
+    "score": 3.6
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 3.4
+   },
+   {
+    "name": "auth_builder",
+    "score": 3
+   },
+   {
+    "name": "mobile_builder",
+    "score": 3
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 2.6
+   },
+   {
+    "name": "architect_plan",
+    "score": 2.4
+   },
+   {
+    "name": "notify_user",
+    "score": 2.4
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Run visual QA on the checkout page": [
+   {
+    "name": "payments_create_checkout_session",
+    "score": 17.7
+   },
+   {
+    "name": "deploy_pages",
+    "score": 8.5
+   },
+   {
+    "name": "browser_fullpage_shot",
+    "score": 7.8
+   },
+   {
+    "name": "visual_compare",
+    "score": 7.1
+   },
+   {
+    "name": "project_run",
+    "score": 7
+   },
+   {
+    "name": "browser_page_fix",
+    "score": 5.2
+   },
+   {
+    "name": "web_page_builder",
+    "score": 5.2
+   },
+   {
+    "name": "quality_run",
+    "score": 4.1
+   },
+   {
+    "name": "repo_run_command",
+    "score": 4.1
+   },
+   {
+    "name": "browser_compare",
+    "score": 4
+   },
+   {
+    "name": "screenshot",
+    "score": 4
+   },
+   {
+    "name": "browser_run",
+    "score": 3.4
+   },
+   {
+    "name": "project_stop",
+    "score": 2.7
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 1.5
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 1.5
+   },
+   {
+    "name": "browser_autofix",
+    "score": 0.9
+   },
+   {
+    "name": "browser_check_links",
+    "score": 0.9
+   },
+   {
+    "name": "browser_click",
+    "score": 0.9
+   },
+   {
+    "name": "browser_console_scan",
+    "score": 0.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 0.9
+   },
+   {
+    "name": "browser_design_tokens",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "╪د┘╪ص╪╡ ╪د┘╪╡┘╪ص╪ر ╪ذ╪╡╪▒┘è╪د": [
+   {
+    "name": "api_tester",
+    "score": 7.4
+   },
+   {
+    "name": "auto_tester",
+    "score": 7.4
+   },
+   {
+    "name": "load_tester",
+    "score": 7.4
+   },
+   {
+    "name": "test_generator",
+    "score": 7.4
+   },
+   {
+    "name": "chaos_test_plan",
+    "score": 6.8
+   },
+   {
+    "name": "browser_ui_audit",
+    "score": 6.5
+   },
+   {
+    "name": "visual_compare",
+    "score": 5.5
+   },
+   {
+    "name": "validate_api",
+    "score": 5
+   },
+   {
+    "name": "large_data_seeder",
+    "score": 4.9
+   },
+   {
+    "name": "browser_contrast_audit",
+    "score": 4.8
+   },
+   {
+    "name": "browser_seo_audit",
+    "score": 4.8
+   },
+   {
+    "name": "dependency_audit",
+    "score": 4.2
+   },
+   {
+    "name": "browser_check_links",
+    "score": 3.4
+   },
+   {
+    "name": "repo_run_command",
+    "score": 3
+   },
+   {
+    "name": "quality_run",
+    "score": 2.5
+   },
+   {
+    "name": "website_full_pipeline",
+    "score": 2.5
+   },
+   {
+    "name": "browser_responsive_check",
+    "score": 2.2
+   },
+   {
+    "name": "browser_a11y_deep",
+    "score": 2.1
+   },
+   {
+    "name": "project_repair",
+    "score": 2.1
+   },
+   {
+    "name": "browser_click",
+    "score": 1.9
+   },
+   {
+    "name": "browser_compare",
+    "score": 1.8
+   },
+   {
+    "name": "central_answer",
+    "score": 1.8
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ],
+  "Create the video thumbnail": [
+   {
+    "name": "video_action",
+    "score": 9
+   },
+   {
+    "name": "payments_create_checkout_session",
+    "score": 5.2
+   },
+   {
+    "name": "write_file",
+    "score": 2.6
+   },
+   {
+    "name": "archive_files",
+    "score": 0.9
+   },
+   {
+    "name": "deploy_project",
+    "score": 0.9
+   },
+   {
+    "name": "enterprise_platform_foundation",
+    "score": 0.9
+   },
+   {
+    "name": "git_local_workflow",
+    "score": 0.9
+   },
+   {
+    "name": "github_pr",
+    "score": 0.9
+   },
+   {
+    "name": "github_repo_manager",
+    "score": 0.9
+   },
+   {
+    "name": "orion_business_foundation",
+    "score": 0.9
+   },
+   {
+    "name": "todo_write",
+    "score": 0.9
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   }
+  ],
+  "╪ث┘╪┤╪خ ┘à┘é╪╖╪╣ ┘┘è╪»┘è┘ê": [
+   {
+    "name": "video_action",
+    "score": 16
+   },
+   {
+    "name": "notify_user",
+    "score": 1
+   },
+   {
+    "name": "central_answer",
+    "score": 0
+   },
+   {
+    "name": "delete_file",
+    "score": 0
+   },
+   {
+    "name": "file_edit",
+    "score": 0
+   },
+   {
+    "name": "inspect_directory",
+    "score": 0
+   },
+   {
+    "name": "read_file",
+    "score": 0
+   },
+   {
+    "name": "search_files",
+    "score": 0
+   },
+   {
+    "name": "search_text",
+    "score": 0
+   },
+   {
+    "name": "shell_execute",
+    "score": 0
+   },
+   {
+    "name": "write_file",
+    "score": 0
+   }
+  ]
+ }
+}
