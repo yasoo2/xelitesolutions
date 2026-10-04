@@ -1,0 +1,2283 @@
+{
+  "exactSource": "f40f6100e8083bfefeef54eb7812c3690b068048 (api/src/modules/tools subtree)",
+  "definitionFiles": 93,
+  "exportedSymbols": 480,
+  "registryReferencedIdentifiers": 165,
+  "implementedAndRegistered": 162,
+  "implementedNotRegistered": [
+    {
+      "symbol": "Accounts",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "AdminPanel",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "AdvancedTools",
+      "files": [
+        "AdvancedTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "App",
+      "files": [
+        "MobileBuilderTool.ts",
+        "react-app-templates.ts",
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "AppNavigator",
+      "files": [
+        "MobileBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "AppProvider",
+      "files": [
+        "MobileBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "BulkFileGeneratorTool",
+      "files": [
+        "BulkFileGeneratorTool.ts"
+      ],
+      "toolName": "bulk_file_generator"
+    },
+    {
+      "symbol": "CATALOGUE_COLUMNS",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "CalculatorApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ChatApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "CodebaseNavigatorTool",
+      "files": [
+        "CodebaseNavigatorTool.ts"
+      ],
+      "toolName": "codebase_navigator"
+    },
+    {
+      "symbol": "Compare",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Contact",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "CostCalculator",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Cta",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "CustomApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "DISCOVERY_YIELD_EVERY",
+      "files": [
+        "EngineeringDiscoveryTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS",
+      "files": [
+        "AIGeneratorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ENGINEERING_LLM_GENERATION_DEADLINE_MS",
+      "files": [
+        "AIGeneratorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Faq",
+      "files": [
+        "ProjectEditTool.ts",
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Features",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "FinanceApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Footer",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Gallery",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "GrepSearchTool",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": "grep_search"
+    },
+    {
+      "symbol": "Hero",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ImageGenerationTool",
+      "files": [
+        "ImageGenerationTool.ts"
+      ],
+      "toolName": "generate_image"
+    },
+    {
+      "symbol": "LLM_GENERATION_DEADLINE_MS",
+      "files": [
+        "AIGeneratorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": "viewport"
+    },
+    {
+      "symbol": "Layout",
+      "files": [
+        "OrionBusinessFoundationTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "LedgerApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Link",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Location",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "MapApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Menu",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Navbar",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "OperationsConsole",
+      "files": [
+        "EnterprisePlatformFoundationTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "OrderButton",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "PANEL_BROWSER_SID",
+      "files": [
+        "BrowserSmartTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "PERMISSIONS",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "PROJECT_DIR_NAME_MAX_LENGTH",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": "فحص وضبط شامل"
+    },
+    {
+      "symbol": "PROJECT_SLUG_FOR_TEST",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Page",
+      "files": [
+        "OrionBusinessFoundationTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Pricing",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ProductView",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ProductivityApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Products",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "REACT_NETWORK_INSTALL_TIMEOUTS",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ROLES",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": "${js(s.name)}"
+    },
+    {
+      "symbol": "RUNTIME_ARTIFACT_SOURCE_ARRAY_KEYS",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "RUNTIME_ARTIFACT_SOURCE_KEYS",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "RUNTIME_LOGICAL_SOURCE_TOOLS",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "RecordsApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "RootLayout",
+      "files": [
+        "EnterprisePlatformFoundationTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ShopApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "SocialApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Stats",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Steps",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Story",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "TABLES",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": "title"
+    },
+    {
+      "symbol": "TablesAdmin",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Team",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "Testimonials",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "VisualQATool",
+      "files": [
+        "VisualQATool.ts"
+      ],
+      "toolName": "visual_qa"
+    },
+    {
+      "symbol": "WeatherApp",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "_runningServers",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "adoptLocalImage",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "alignGreenfieldPlanIdentity",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiColumnsForRequest",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiLogout",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiPrimaryColumnsForApp",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiRelationForRequest",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiResourceForKind",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiSibling",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "apiSiblingOf",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "app",
+      "files": [
+        "ProjectPlannerTool.ts"
+      ],
+      "toolName": "React browser application"
+    },
+    {
+      "symbol": "appPagesFor",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyBundledPhotographyFallback",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyEditBlock",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyLiveRunOutcome",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyPhaseExecutionEvidence",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyProjectQualityContractOutcome",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "applyScopeAuditOutcome",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "artifactLanguageIsArabic",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "asksToOpenTheActiveApp",
+      "files": [
+        "BrowserRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "assessWebDeliveryQuality",
+      "files": [
+        "WebPageBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "attachedImagePath",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "authConfig",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "authMiddleware",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "blank",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "boundedChangeValue",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildAppFiles",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildDeliveryBlocked",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildPipelineDecisionEvidence",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildPlannerEvidence",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildProbeList",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "buildTimeBlock",
+      "files": [
+        "CentralAnswerTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canAdoptRecordedLive",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canBindRuntimeProjectEvidence",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canBuildDependencyFreeRecordsApp",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canManageUsers",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canRetireSupersededLiveServer",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canSyncRuntimeProjectContext",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canWrite",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "canWriteNow",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "capabilityEvidenceNotice",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "cardFor",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "classifyStructuredRuntimeEvidence",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "clearMisses",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "computeMetric",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "content",
+      "files": [
+        "react-app-templates.ts",
+        "ReactProjectTool.ts"
+      ],
+      "toolName": "${js(t.name)}"
+    },
+    {
+      "symbol": "createStore",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "dayPartFor",
+      "files": [
+        "CentralAnswerTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "db",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "declaredLaunchPrerequisitePackages",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deliveryErrorForAcceptance",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deliveryErrorForBuild",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deliveryErrorForVisualAudit",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deliveryVoiceOverlap",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "dependencyFreeRecordsBuildEvidence",
+      "files": [
+        "QualityTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "dependencyFreeRecordsBundleRoot",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deriveRequestFidelity",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "destroySession",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "detectStart",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deterministicExistingEditPhasesFor",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deterministicPhasesFor",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deterministicRescueAllowed",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "deterministicRescueForDeadPlanner",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "diffSummary",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "download",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "durablePreviewEligible",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "earlyProjectDeclaration",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ensureReactRuntimeImport",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "entities",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "entityCounts",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "externalApiExpectationFromRecord",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "extractMissingLocalRuntimeImportLedger",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "extractNpmInvalidVersionEvidence",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAccountsCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAccountsJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppContentJs",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppIndexHtml",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppMainJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppPackageJson",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppShellJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppSmokeTest",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileAppStoreJs",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileCalculatorAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileCalculatorCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileChatAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileFinanceAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileLedgerAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileLedgerCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileMapAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileProductivityAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileProductivityCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileRecordsAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileRecordsControllerJs",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileRecordsViewJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileRecordsWrapperJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileShopAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileShopCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileSocialAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileTablesAdminCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileTablesAdminJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileWeatherAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileWorkflowAppJsx",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "fileWorkflowCss",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "finalBrowserQaUrl",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "gapsProvenByAcceptance",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "generateToken",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "getRole",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "getToken",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "githubReportLanguage",
+      "files": [
+        "GitHubRepoManagerTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "githubUrlFrom",
+      "files": [
+        "ImportProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "groupTotals",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "guardRequiredInput",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasOnlyBrowserQaInfrastructureFindings",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasPermission",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasRequestFidelityEvidenceUnavailable",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasRequestFidelityMismatch",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasRole",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hasUsableReactDependencyTree",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "hashPassword",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "heroLayoutFor",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "heroSecondaryDestination",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "imageOf",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "inheritRuntimeProjectArguments",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "inspectProjectQualityContract",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "installTimeoutsForRecordsRecovery",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "interactiveAppNeedsReactBuilder",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "interruptedWindowsNativeTools",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isActionableEditRequest",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isAdmin",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isExternalIntegrationArtifact",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isFeedResource",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isLocked",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isModerator",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isNamedRowTextEditRequest",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isOwnerNow",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isReactViteProjectDir",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isRole",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isSafeTestScript",
+      "files": [
+        "ImportProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isToday",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "isWorkspaceOverviewRequest",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "launchPrerequisiteError",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "launchabilityError",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "liveProjectRecord",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "localFileExistsWithExactCase",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "localLivePreviewFor",
+      "files": [
+        "BrowserRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "mapRuntimeArtifactSourceArguments",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "matchingLocalNpmCache",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "mayTouch",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "measuredAppAbilities",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "mergeCredits",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "metadata",
+      "files": [
+        "EnterprisePlatformFoundationTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "missingLocalRuntimeImports",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "missingRuntimeDependencies",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "modelCannotTell",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "mountEntities",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "namesAnExternalTarget",
+      "files": [
+        "BrowserRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "nativeBuildToolRepairSpec",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "normalizeEmail",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "normalizeReactScaffoldStructure",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "noteMiss",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "nowFacts",
+      "files": [
+        "CentralAnswerTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "npmInstallTimeoutMs",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "npmPackageNameForTest",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "optionalAuth",
+      "files": [
+        "ApiProjectTool.ts",
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "ownRowsOnly",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "pages",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "pagesForKind",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "parseEditBlocks",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "parseLiteralTextReplacement",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "parsePresentationEdits",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "parseServicesSectionEdit",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "photoRows",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "pickImage",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "pickPhotoRow",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "placeholderLifecycleScriptError",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "planContainsReactBuilder",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "planContainsTool",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "planContainsUnrequestedApiBuilder",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "portableViteBuildArgs",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "previewUrlFromStatus",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "projectAuditDirectory",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "projectAuditRoots",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "projectDirNameForTest",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "projectRootFromWrittenFile",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "provesContactLinkAndPhoneAudit",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "rankFilesForEdit",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reactProjectServerFallback",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reactProjectStartFallback",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "readOrders",
+      "files": [
+        "OrdersReadTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reconcileDeliveryVoices",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reconcileMissingRuntimeImports",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reconcileMissingRuntimeTarget",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reconcileNpmManifest",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "recoverMissingNpmLauncher",
+      "files": [
+        "PhaseExecutorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "refusalOf",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "repairNpmManifestVersion",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "repairRecordsViewBlankImport",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "repairRecordsViewToggleControl",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "repairRecordsViewVisualBaseline",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestDerivedEngineFallbackEligible",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestDerivedRecordsPresentation",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestDrivenServiceProducts",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestFidelityEvidenceUnavailable",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestFidelityMismatch",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestRequiresLocalSpecification",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestSpokenCapabilities",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestedBoardField",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requestsVisibleBrowserAudit",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requireAuth",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requireRole",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requireSession",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "requireWrite",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "resolveProjectIdentity",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "resolveRunnableProject",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "reuseLocalReactDependencies",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "scopeOf",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "scopedNpmCache",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "sectionNameFor",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "sectionsForKind",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "sectionsForRequest",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "seed",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "seedOwner",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "selectApiPrimary",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "selectStableNpmVersion",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "sessionConfig",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "setupOAuth",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "setupSession",
+      "files": [
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "shouldRepairInterruptedNativeBuildTools",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "shouldUseActiveProjectDirectly",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "signToken",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "snapshotBefore",
+      "files": [
+        "ProjectUndoTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "sourceRepairAllowedForArtifact",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "store",
+      "files": [
+        "MobileBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "summarizeScopeRepairPipeline",
+      "files": [
+        "ProjectPipelineTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "syntaxOk",
+      "files": [
+        "ProjectEditTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "theServerThisSessionLeftRunning",
+      "files": [
+        "ProjectRunTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "throttleKey",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "toCsv",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "todayISO",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "uid",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "unparenthesizedLogicalTernaryError",
+      "files": [
+        "AIGeneratorTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "useApp",
+      "files": [
+        "MobileBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "usePath",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "useRecordsController",
+      "files": [
+        "react-app-templates.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "useReveal",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "useStore",
+      "files": [
+        "MobileBuilderTool.ts",
+        "react-app-templates.ts"
+      ],
+      "toolName": "app"
+    },
+    {
+      "symbol": "verifyPassword",
+      "files": [
+        "ApiProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "verifyToken",
+      "files": [
+        "ApiProjectTool.ts",
+        "AuthBuilderTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "wantsMultiPage",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "writeDependencyFreeRecordsBundle",
+      "files": [
+        "ReactProjectTool.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "x",
+      "files": [
+        "UtilityTools.ts"
+      ],
+      "toolName": null
+    },
+    {
+      "symbol": "yieldToDiscoveryScheduler",
+      "files": [
+        "EngineeringDiscoveryTool.ts"
+      ],
+      "toolName": null
+    }
+  ],
+  "referencedNotImplemented": [],
+  "eliteReferencedMissing": [],
+  "toolClasses": 167,
+  "toolClassesRegistered": 162,
+  "toolClassesNotRegistered": [
+    {
+      "symbol": "BulkFileGeneratorTool",
+      "files": [
+        "BulkFileGeneratorTool.ts"
+      ],
+      "toolName": "bulk_file_generator"
+    },
+    {
+      "symbol": "CodebaseNavigatorTool",
+      "files": [
+        "CodebaseNavigatorTool.ts"
+      ],
+      "toolName": "codebase_navigator"
+    },
+    {
+      "symbol": "ImageGenerationTool",
+      "files": [
+        "ImageGenerationTool.ts"
+      ],
+      "toolName": "generate_image"
+    },
+    {
+      "symbol": "GrepSearchTool",
+      "files": [
+        "SystemTools.ts"
+      ],
+      "toolName": "grep_search"
+    },
+    {
+      "symbol": "VisualQATool",
+      "files": [
+        "VisualQATool.ts"
+      ],
+      "toolName": "visual_qa"
+    }
+  ]
+}
