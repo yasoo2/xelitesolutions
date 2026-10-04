@@ -1,4 +1,4 @@
-# Joe — live report (Muse cycle 251, 2026-10-04 ~06:45Z)
+# Joe — live report (Muse cycle 252, 2026-10-04 ~07:16Z)
 
 NOTE: shared path D:\Joe\coordination\team\LIVE-REPORT.md is not writable
 from this session (write_file: absolute path is outside the workspace).
@@ -10,22 +10,22 @@ This fallback copy lives at D:\Joe\muse-worktree\tmp\LIVE-REPORT.md.
 - NVIDIA: حسب آخر نبضة مسجلة — Batch 2 (احتواء VisualQA) مكتمل، Batch 3 تالٍ.
 
 2. ماذا اكتشفنا؟
-- لا انحراف: 9/9 ملفات NVIDIA تطابق البصمات السابقة (الملاحظة الثانية عشرة
+- لا انحراف: 9/9 ملفات NVIDIA تطابق البصمات السابقة (الملاحظة الثالثة عشرة
   لملف السجل)، وشجرة api/ لدى Muse مطابقة بايت-بايت للشجرة المختبرة (78/78).
 - لا طلب مراجعة جديد موجه لـ Muse (كل الاستشارات REVIEWED؛ الأحدث C238).
 - الواجهة الرسمية :5002 ما زالت مرفوضة (DOWN)؛ :5000 يعمل API فقط (نفس العملية
-  القديمة، uptime 79171s)؛ :5101 مغلق.
+  القديمة، uptime 80976s)؛ :5101 مغلق.
 
 3. ماذا أنجزنا فعليًا؟
-- دليل c251 محفوظ (tmp/c251-nodrift/NODRIFT.md) وسيُحفظ في commit موثق.
+- دليل c252 محفوظ (tmp/c252-nodrift/NODRIFT.md) وسيُحفظ في commit موثق.
 - كل مواقف المراجعة السابقة ما زالت صالحة على بايتات لم تتغير.
 
 4. ماذا يعمل Muse الآن؟ تحقق فقط، صفر تعديلات على المصدر.
 5. ماذا يعمل NVIDIA الآن؟ (من حالته المسجلة 2026-10-03) Batch 2 مكتمل؛
    Batch 3 (ImageGeneration pins) تالٍ. لا نشاط جديد مرصود في السجلات
-   (آخر سجل cycle-94 بتاريخ 2026-10-03، ~22 ساعة هدوء). لا مطالبة بتوقف/تعطل.
+   (آخر سجل cycle-94 بتاريخ 2026-10-03، ~22.5 ساعة هدوء). لا مطالبة بتوقف/تعطل.
 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟ لا مراجعات جديدة هذه
-   الدورة. قناة الاستلام تعمل (الفهرس محدث 09:44، الـ polling حي).
+   الدورة. قناة الاستلام تعمل (الفهرس محدث 10:14، الـ polling حي).
 7. أين اتفقا وأين اختلفا؟ لا جديد. المعلق المعروف: NEEDS_REWORK على
    عقد التحقق (Gap-A/B: الـ 8/8 لا يتحقق على البايتات المُثبتة فقط)،
    وR1-R4 من إعادة التأسيس ما زالت مفتوحة.
@@ -35,7 +35,7 @@ This fallback copy lives at D:\Joe\muse-worktree\tmp\LIVE-REPORT.md.
    ORPHANED=UNKNOWN (census: IMPLEMENTED_NOT_REGISTERED=4 على Muse HEAD)
    DUPLICATE=UNKNOWN UNKNOWN=UNKNOWN REPAIRED=0 (audit-first، لا إصلاح)
    VERIFIED=0 (product) REAL_JOE_PROVEN=0
-9. ما آخر اختبار ونتيجته؟ c251 no-drift: PASS (فحص تحقق داخلي، ليس قبول UI).
+9. ما آخر اختبار ونتيجته؟ c252 no-drift: PASS (فحص تحقق داخلي، ليس قبول UI).
    آخر سلوك حقيقي: run45 (منفذ بديل) — المخطط غير متاح؛ :5002 الرسمي DOWN.
    لا يوجد REAL_JOE_UI PASS.
 10. ما المشاكل أو العوائق الحالية؟ توقف :5002 يعطل قبول واجهة Joe الحقيقية
