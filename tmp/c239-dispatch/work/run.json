@@ -1,0 +1,20 @@
+{
+ "registryTotal": 163,
+ "head": "HEAD",
+ "checks": {
+  "registryMiss": "MISS",
+  "aliasMiss": "NO-ALIAS",
+  "directCall": "THROWS:Execution bypass detected in ToolService:codebase_navigator. All execution must go through AgentOrch",
+  "dispatchMiss": {
+   "ok": false,
+   "errorHead": "unknown_tool: \"codebase_navigator\" — did you mean: memorize_codebase, analyze_codebase, codebase_outline?",
+   "logHead": "[2026-10-04T00:23:15.546Z] start codebase_navigator (orig=codebase_navigator) | unknown_tool: \"codebase_navigator\" is not registered (closest: memorize_codebase, analyze_codebase, codebase_outline)"
+  },
+  "positiveControl": {
+   "ok": true,
+   "sawFixture": true,
+   "errorHead": null,
+   "wsRoot": "D:\\Joe\\muse-worktree\\data\\projects\\default-workspace"
+  }
+ }
+}
