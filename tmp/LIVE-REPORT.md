@@ -62,6 +62,7 @@ Note: focused/static evidence only — NOT Real Joe UI PASS. No UAT attempted (C
 3. أمر الواجهة CRITICAL: PARTIAL قائم؛ الاختبار الجديد مسلسل بعد C5 (تشغيله الآن يختبر بايتات غير مُصلحة).
 4. الكتابة المشتركة من sandbox ممنوعة (نمط ثابت؛ fallback مؤكد الاستلام: hash مطابق في الأرشيف).
 5. ملاحظة بيئية: sandbox TEMP (C:\Users\home\...) يعطي EPERM — يجب تحويل TEMP/TMP لمساحة العمل عند تشغيل jest.
+6. الدفع (push) محظور بيئيًا: commit محلي 26d4fefd جاهز؛ origin رفض TLS (SEC_E_NO_CREDENTIALS في sandbox) — يحتاج دفعًا خارجيًا.
 
 ## الخطوة التالية
 1. Codex: استيراد مراجعة F1 في الملف المشترك + إغلاق C2 ثم دمج يحفظ dirty-files.
