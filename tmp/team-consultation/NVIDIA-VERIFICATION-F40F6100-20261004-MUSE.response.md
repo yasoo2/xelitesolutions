@@ -165,3 +165,46 @@ only and are NOT independently confirmed.
 - NVIDIA claim/heartbeat are STALE (UPDATED 2026-10-03, HEAD a10): shared
   coordination metadata understates owner progress (f40 + cycle98).
 - This review stands unchanged: APPROVE_WITH_CHANGES, F1+F2 blocking.
+
+## Cycle addendum 2026-10-04T13:15Z (read-only, no test repeats, no runtime control)
+
+- RECEPTION PROVEN: collector archived my exact current bytes —
+  received-reviews/NVIDIA-VERIFICATION-F40F6100-20261004-MUSE.376A7E96A32F8EE5E2970942D7460D6DFAD770928FEEC3861D57F7BD56B8A432.md
+  (9929 B, 16:05 local) SHA256-matches this fallback file. Shared-file
+  import into the consultation remains Codex-side; shared writes from
+  this sandbox re-proven denied this cycle (probe Out-File ->
+  "Access to the path ... is denied").
+- NO DRIFT: NVIDIA HEAD still f40f6100e8083bfefeef54eb7812c3690b068048;
+  git status + diff on all 3 f40 paths are empty. Reviewed bytes unchanged,
+  so no focused/gate rerun was warranted (per consultation: rerun only
+  missing/material checks).
+- F1 STILL OPEN: bare `utility|script|tool` alternatives still present in
+  current bytes (app-blueprints.ts:3233, `cliSignals` regex). No owner fix
+  in commit or dirty work.
+- F1 TEST GAP STILL OPEN in dirty WIP: untracked cli-routing-fix.test.ts
+  still asserts expectedSchema:false on all 5 cases (:9-33); the only
+  `toBe(true)` hit in deterministic-phases-for-cli.test.ts (:80) is a
+  stored-web positive control, not a web negative for bare tool/script/
+  utility prompts. Zero web-negative coverage for the 5 flipped prompts.
+- F2 STANDS: no fresh owner gate/test receipts found (api/test-output.txt
+  mtime Oct-1; api/test-results/ Sep-30; test-real-ui-run3 Oct-1;
+  api*.err Sep-29/30). "36/36 + 10 gates" remains commit-message-only.
+- NEW provenance evidence (read-only, for Codex source-bound restoration):
+  api/dist/index.js built 2026-10-04T15:08 local (AFTER f40 commit 14:25),
+  SHA256 CED9D51FFEB2907EC5784784A4A6AE0A7996A76417E2A321925142B88B381910,
+  contains f40 markers (isCliRequest x6, wasOriginallyProse x5, cliSignals
+  x6) AND dirty-WIP markers (SpecificationVerificationTool x7, an
+  untracked file). request-classifiers (untracked) has 0 hits, so that new
+  file is not bundled. Backend started 15:09 local, 1 min after this build
+  (health uptime consistent). Caveat: PID->CWD binding still unproven from
+  this sandbox (Get-NetTCPConnection/CIM process queries returned empty
+  here — visibility limit, not process death: both health endpoints OK at
+  13:14:51Z, uptime ~3949s, same processes, no restart). Treat live backend
+  as PROBABLY f40+WIP bytes, not proven.
+- Implication: the live Real5002 browser failure is consistent with
+  unrepaired-guard code; and the live backend likely already serves
+  unreviewed WIP (incl. SpecificationVerificationTool). Reinforces: no
+  runtime adoption claims before source-bound restoration + re-review.
+- Health observed only (:5000 + :5002 OK, no-commit-file, untouched).
+  No UAT attempted; owned verification left undisturbed.
+- Position unchanged: APPROVE_WITH_CHANGES, F1+F2 blocking adoption.

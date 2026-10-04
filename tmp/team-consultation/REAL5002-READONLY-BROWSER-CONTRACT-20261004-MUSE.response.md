@@ -148,3 +148,26 @@ quoted/negated-intent and explanatory-context exemptions intact.
   touched. Owned verification left undisturbed.
 - This review stands unchanged: NEEDS_EVIDENCE, re-review required on
   fixed bytes before any runtime adoption or UAT replay.
+
+## Cycle addendum 2026-10-04T13:15Z (read-only, runtime untouched)
+
+- RECEPTION PROVEN: collector archived my exact current bytes —
+  received-reviews/REAL5002-READONLY-BROWSER-CONTRACT-20261004-MUSE.693BEA885A5ABDDD29946ACC7BAA8B73E9E372072F45957F2247A2B953F68901.md
+  (8614 B, 16:05 local) SHA256-matches this fallback file. Shared-file
+  import remains Codex-side; shared writes re-proven denied this cycle.
+- STILL NO CANDIDATE: NVIDIA HEAD still f40 (no repair commit); dirty
+  IntentParser.ts/PlanningEngine.ts contain no shared-helper symbol
+  (denialAllowsBoundedReadNavigation/allowsBoundedRead/explicitURLExempt:
+  0 hits). Dirty WIP preserved, not reviewed as a candidate.
+- NEW supporting provenance (read-only): api/dist/index.js rebuilt
+  15:08 local from f40+WIP tree (f40 cliSignals x6 + untracked
+  SpecificationVerificationTool x7 bundled; SHA256 CED9D51F...B910),
+  backend started 15:09 local. The observed live failure is therefore
+  consistent with unrepaired-guard code. PID->CWD binding still unproven
+  (sandbox process-visibility limit); treat as probable, not proven.
+- Health observed only at 13:14:51Z: :5000 + :5002 OK, no-commit-file,
+  uptime ~3949s (same processes, no restart). No prompt submitted, no UI
+  driven, no process touched. Owned verification left undisturbed.
+- Position unchanged: NEEDS_EVIDENCE (diagnosis acceptance + gate
+  criteria only). Re-review of exact fixed bytes still required before
+  any runtime adoption or UAT replay.
