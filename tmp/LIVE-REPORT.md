@@ -1,29 +1,29 @@
 # JOE LIVE TEAM REPORT (Muse fallback copy — shared write denied)
-UPDATED=2026-10-04T15:57Z
-OVERALL_STATUS=Arabic authority rework reviewed: APPROVE_WITH_CHANGES. Mechanism green 68/69 rerun; one subset gap (وصف فقط) required before integration. V2 gates 10/10 PASS receipts verified. NVIDIA f40 intact.
+UPDATED=2026-10-04T16:15Z
+OVERALL_STATUS=Arabic review stands (8/8 zero-drift, no new owner bytes; F1 still open). Memory-family wiring slice done on exact f40: 2/3 registered, 0 planner-visible, navigator orphaned, 1 shadow-duplicate. NVIDIA f40 intact.
 SHARED_WRITE=DENIED (standing: shared path outside sandbox workspace; fallback stands for verbatim import)
 
 ## ماذا نعمل الآن؟
-Muse: اكتملت المراجعة المستقلة لإصلاح السلطة العربي (C2 جزئي) — التقرير أدناه.
+Muse: ثبات مراجعة العربي مؤكد (8/8 صفر انحراف) + شريحة تدقيق عائلة الذاكرة على f40 مكتملة — التفاصيل أدناه.
 NVIDIA: يملك lane الرئيسي — HEAD ما زال f40f6100 (فحص read-only هذا الدور).
 Codex: استيراد المراجعة + إغلاق F1 + حسم C2-C5 + UAT لاحقًا.
 
 ## ماذا اكتشفنا؟
-- الإصلاح العربي يعمل على الأشكال المثبتة: 9/9 عربي + 22/22 متصفح + 37/38 سلطة (إعادة تشغيل مستقلة 68/69).
-- ثغرة واحدة حقيقية: `وصف فقط` + بناء يُتجاوز (مثبتة بمسبار محقق الشيفرات) — إصلاح سطر واحد مطلوب (F1).
-- البصمات 8/8 مطابقة؛ الأساس يطابق بايتات NVIDIA الحية صفر انحراف؛ التصحيح يطابق الفرق المعاد حسابه.
-- بوابات v2 العشر + البناء كلها PASS (إيصالات المالك بعد تثبيت المصدر)؛ الأخطاء النوعية موروثة مطابقة للأساس.
-- لا إضعاف لمنع التنفيذ: بناء القيود السلبية بقي إيجابيًا؛ المنوعات المقتبسة غير ملزمة (حدود مسبقة).
+- عائلة الذاكرة (f40): أداتان مسجلتان لكن المخطط لا يراهما أبدًا (صفر إشارة) — Joe المستقل لا يستطيع اختيار ذاكرته.
+- codebase_navigator منفذ كامل لكن غير مسجل (استيراد فقط) — يتيم؛ التوثيق يدّعيه والتنفيذ يحمل استثناءات له.
+- نسخة ToolService الداخلية لذاكرة الاستدعاء/الحفظ تتجاوز النسخة المسجلة (return قبل البحث في السجل) — ازدواج بدأ يتباعد.
+- مخزنا متجهات: المسجل مجاني (TF-IDF)؛ المدفوع-عند-المفتاح خلف الأداة اليتيمة فقط — لا مسار مدفوع حي اليوم.
+- العربي: لا بايتات مالك جديدة منذ المراجعة؛ F1 (وصف فقط) ما زال مفتوحًا.
 
 ## ماذا أنجزنا فعليًا؟
-- مراجعة مستقلة كاملة للدلتا العربي (fallback) — APPROVE_WITH_CHANGES مع F1 + تحديث C1-C5.
-- إعادة تشغيل مستقلة 68/69 + مسبارا سلوك (11 + 3 حالات) على البايتات الدقيقة.
+- تأكيد ثبات مراجعة العربي (8/8 بصمات + صفر ملفات جديدة) — المراجعة الأصلية قائمة بلا تغيير.
+- شريحة تدقيق الذاكرة: M1-M7 على بايتات f40 الدقيقة (read-only) + ملف fallback للفريق.
 - لا كود إنتاجي؛ لا مقاطعة لأي عامل؛ لا UAT منافس.
 
 ## ماذا يعمل Muse الآن؟
-CURRENT_TASK=Arabic rework review DONE; next: re-review F1-amended + integrated bytes on arrival
-LATEST_RESULT=APPROVE_WITH_CHANGES: mechanism green, F1 (وصف فقط) required, C2-C5 open
-BLOCKER=None for review lane; F1 fix + integration/UAT owned by Codex
+CURRENT_TASK=Memory wiring slice DONE + Arabic standing confirmed; next: re-review F1-amended + integrated bytes on arrival
+LATEST_RESULT=M1 orphan navigator pinned; M2 shadow-duplicate; M4 planner-invisible x2; internal lesson-memory wired (M7)
+BLOCKER=None for review/audit lane; F1 fix + integration/UAT owned by Codex; memory repairs owned by NVIDIA
 
 ## ماذا يعمل NVIDIA الآن؟
 CURRENT_TASK=Owned main lane (last REPORTED_BY_CODEX 14:26Z: candidate-compatibility review)
@@ -36,31 +36,32 @@ BLOCKER=Owner acknowledgement still pending; no interruption performed
 
 ## أين اتفقا وأين اختلفا؟
 - المراجعة تؤكد آلية Codex على الأشكال المثبتة + تغلق C1 بالإيصالات — بانتظار تدقيق Codex.
-- مفتوح: F1 (وصف فقط) + C2 (سجل/تجارة/نوع) + C3-C5 + F1/F2 (f40).
+- مفتوح: F1 (وصف فقط) + C2 (سجل/تجارة/نوع) + C3-C5 + F1/F2 (f40) + نتائج الذاكرة M1-M4 (بانتظار مراجعة ثانية).
 
 ## الأرقام المؤكدة حاليًا
 DISCOVERED_TOOLS=167 (REPORTED_BY_MUSE, exact-f40 static, commit d17a9822 — stands)
 REGISTERED_TOOLS=167 (REPORTED_BY_CODEX candidate log; scope differs from Muse static — not reconciled)
 EXECUTABLE_TOOLS=UNKNOWN
 FULLY_WIRED=UNKNOWN (registry-wide; family slices stand)
-PARTIALLY_WIRED=UNKNOWN (registry-wide; V2 = 1 proven instance in verif family)
-ORPHANED=UNKNOWN (registry-wide; visual_qa = implemented-not-registered on f40, 1 instance)
-DUPLICATE=0 (VERIFIED static, prior cycle — stands)
+PARTIALLY_WIRED=UNKNOWN (registry-wide; verif V2 + memory M4 x2 proven instances)
+ORPHANED=UNKNOWN (registry-wide; visual_qa + codebase_navigator implemented-not-registered on f40)
+DUPLICATE=0 duplicate registrations (prior VERIFIED stands) + 1 shadow-duplicate implementation pair (M2: inline ToolService handler shadows registered execute)
 UNKNOWN=many (registry-wide wiring counts not yet proven)
 REPAIRED=0 (audit/review only; no source repairs by Muse)
-VERIFIED=arabic delta 8/8 hashes + 68/69 rerun + patch fidelity + v2 10/10 receipts (this cycle)
+VERIFIED=memory M1-M7 on exact f40 (static, read-only) + arabic 8/8 standing re-hash (this cycle)
 REAL_JOE_PROVEN=0 (no new UAT; focused PASS is not UI PASS)
 
 ## آخر نتيجة اختبار
-TEST=Independent 69-case rerun on exact candidate bytes + 14 probe cases (read-only)
-RESULT=68/69 PASS (single inherited Recording failure); probes: F1 hole proven, no denial weakening
-WHAT_IT_PROVES=Arabic mechanism green on pinned shapes; one subset gap must close; no regressions
-Note: focused evidence only — NOT Real Joe UI PASS. No UAT attempted (Codex-owned after integration).
+TEST=Memory-family static wiring census on exact f40 bytes (git show/grep, read-only)
+RESULT=3 defs / 2 registered / 0 planner-visible; M1 orphan, M2 shadow-duplicate, M4 planner-invisible x2
+WHAT_IT_PROVES=Memory capability connected-but-not-Joe-reachable; navigator revival needs security gating; no live paid path
+Note: static evidence only — NOT Real Joe UI PASS. No UAT attempted (Codex-owned after integration).
 
 ## المشاكل الحالية
 1. F1 (وصف فقط) + C2-C5 + إقرار NVIDIA معلقة وتمنع الدمج/الاعتماد.
 2. F1 (مطابق CLI على f40) مفتوح ويمنع اعتماد f40.
-3. الكتابة المشتركة من sandbox ممنوعة (نمط ثابت؛ fallback مؤكد الاستلام سابقًا).
+3. M1/M2/M4 (الذاكرة) بانتظار مالك NVIDIA + مراجعة ثانية.
+4. الكتابة المشتركة من sandbox ممنوعة (نمط ثابت؛ fallback مؤكد الاستلام سابقًا).
 
 ## الخطوة التالية
 1. Codex: استيراد المراجعة حرفيًا + إغلاق F1 (سطر + اختبار) على البايتات المعزولة.
@@ -69,6 +70,8 @@ Note: focused evidence only — NOT Real Joe UI PASS. No UAT attempted (Codex-ow
 4. Codex: تحميل مرتبط بالمصدر + UAT رسمي متعدد (C5).
 
 ## آخر الإنجازات
+[16:15Z] AUDIT — Memory-family wiring slice on f40: 2/3 registered, 0 planner-visible, M1-M7
+[16:15Z] REVIEW — Arabic standing re-confirmed 8/8 zero-drift; F1 still open, review stands
 [15:57Z] REVIEW — Arabic authority rework APPROVE_WITH_CHANGES (68/69, F1 required, v2 10/10)
 [15:10Z] AUDIT — Git-family wiring slice on f40: 5/5 wired, G1 low, G2/G3 positive
 [15:05Z] REVIEW — Candidate 5/5 re-hash zero-drift; standing addendum filed
