@@ -1,0 +1,193 @@
+﻿node : FAIL ../../../../worktrees/codex-readonly-browser-20261004/api/src/__tests__/requested-action-authority.test.ts 
+(5.408 s)
+At line:1 char:170
++ ... \rerun-cwd; node D:\Joe\worktrees\codex-readonly-browser-20261004\api ...
++                 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (FAIL ../../../....st.ts (5.408 s):String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+  ظù requested-action authority: 22 cases + 6 guards ظ║ Recording verb with container and fields
+
+    expect(received).toBe(expected) // Object.is equality
+
+    Expected: true
+    Received: false
+
+    [0m [90m 168 |[39m         [36mconst[39m result [33m=[39m hasRequestedAction(input)[33m;[39m
+     [90m 169 |[39m         [36mfor[39m ([36mconst[39m [key[33m,[39m expectedValue] [36mof[39m 
+[33mObject[39m[33m.[39mentries(expected)) {
+    [31m[1m>[22m[39m[90m 170 |[39m             expect(result[key [36mas[39m keyof [36mtypeof[39m 
+result])[33m.[39mtoBe(expectedValue)[33m;[39m
+     [90m     |[39m                                                        [31m[1m^[22m[39m
+     [90m 171 |[39m         }
+     [90m 172 |[39m     })[33m;[39m
+     [90m 173 |[39m[0m
+
+      at __tests__/requested-action-authority.test.ts:170:56
+
+PASS ../../../../worktrees/codex-readonly-browser-20261004/api/src/__tests__/bounded-read-navigation.test.ts (40.27 s)
+  ظù Console
+
+    console.info
+      [Config] env=test ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.info
+      [ToolRegistry] Registered 167 tools (71 revived).
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.warn
+      [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:423:13
+      at Object.<anonymous> (modules/tools/registry.ts:429:3)
+      at Object.<anonymous> (core/orchestrator/capability-match.ts:26:1)
+      at Object.<anonymous> (core/intelligence/IntentParser.ts:7:1)
+      at Object.<anonymous> (__tests__/bounded-read-navigation.test.ts:2:1)
+
+    console.warn
+      [ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:426:13
+      at Object.<anonymous> (modules/tools/registry.ts:429:3)
+      at Object.<anonymous> (core/orchestrator/capability-match.ts:26:1)
+      at Object.<anonymous> (core/intelligence/IntentParser.ts:7:1)
+      at Object.<anonymous> (__tests__/bounded-read-navigation.test.ts:2:1)
+
+    console.log
+      [PlanningEngine] early explicit URL open -> browser_launch https://example.com
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [IntentParser] ظأة Answer-only / no file changes contract detected ظ¤ routing to central_answer.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [PlanningEngine] ظأة Answer-only / no file changes contract detected ظ¤ returning answer-only plan.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [IntentParser] ظأة Answer-only / no file changes contract detected ظ¤ routing to central_answer.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [PlanningEngine] ظأة Answer-only / no file changes contract detected ظ¤ returning answer-only plan.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [IntentParser] ظأة Answer-only / no file changes contract detected ظ¤ routing to central_answer.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [PlanningEngine] ظأة Answer-only / no file changes contract detected ظ¤ returning answer-only plan.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+PASS ../../../../worktrees/codex-readonly-browser-20261004/api/src/__tests__/arabic-authority-constraints.test.ts
+PASS 
+../../../../worktrees/codex-readonly-browser-20261004/api/src/__tests__/codex-readonly-browser-live-regression.test.ts
+  ظù Console
+
+    console.info
+      [Config] env=test ┬╖ storage=JSON ┬╖ mongo=DEFAULT ظْ mongodb://localhost:27017/joe
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.info
+      [ToolRegistry] Registered 167 tools (71 revived).
+
+      at console.<computed> [as info] (__tests__/setup.ts:79:9)
+
+    console.warn
+      [ToolRegistry] 21 tool(s) declared no permissions ظ¤ defaulted: business_logic_parserظْread, 
+chaos_test_planظْread, compliance_validatorظْread, cloud_cost_estimatorظْread, ambiguity_resolverظْread, 
+multi_agent_debateظْread, self_confidence_evaluatorظْread, project_plannerظْread, central_answerظْread, 
+web_page_builderظْwrite, form_inboxظْread, echoظْread, shell_check_statusظْread, ask_userظْread, 
+json_queryظْread, alert_managerظْwrite, cache_managerظْwrite, monitoringظْread, project_state_managerظْwrite, 
+request_analyzerظْread, template_managerظْwrite
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:423:13
+      at Object.<anonymous> (modules/tools/registry.ts:429:3)
+      at Object.<anonymous> (core/orchestrator/capability-match.ts:26:1)
+      at Object.<anonymous> (core/intelligence/IntentParser.ts:7:1)
+      at Object.<anonymous> (__tests__/codex-readonly-browser-live-regression.test.ts:1:1)
+
+    console.warn
+      [ToolRegistry] 2 tool(s) had no rate limit ظ¤ set to 30/min: central_answer, web_page_builder
+
+    [0m [90m 77 |[39m     console[level] [33m=[39m ([33m...[39margs[33m:[39m any[]) [33m=>[39m {
+     [90m 78 |[39m         [36mif[39m ([36mtypeof[39m args[[35m0[39m] [33m===[39m [32m'string'[39m 
+[33m&&[39m [33mEXPECTED_AT_IMPORT[39m[33m.[39mtest(args[[35m0[39m])) [36mreturn[39m[33m;[39m
+    [31m[1m>[22m[39m[90m 79 |[39m         real([33m...[39margs)[33m;[39m
+     [90m    |[39m         [31m[1m^[22m[39m
+     [90m 80 |[39m     }[33m;[39m
+     [90m 81 |[39m }
+     [90m 82 |[39m[0m
+
+      at console.<computed> [as warn] (__tests__/setup.ts:79:9)
+      at modules/tools/registry.ts:426:13
+      at Object.<anonymous> (modules/tools/registry.ts:429:3)
+      at Object.<anonymous> (core/orchestrator/capability-match.ts:26:1)
+      at Object.<anonymous> (core/intelligence/IntentParser.ts:7:1)
+      at Object.<anonymous> (__tests__/codex-readonly-browser-live-regression.test.ts:1:1)
+
+    console.log
+      [PlanningEngine] early explicit URL open -> browser_launch http://127.0.0.1:5000/api/health + visible content
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+    console.log
+      [IntentParser] ظأة Answer-only / no file changes contract detected ظ¤ routing to central_answer.
+
+      at console.<computed> [as log] (__tests__/setup.ts:79:9)
+
+
+Test Suites: 1 failed, 3 passed, 4 total
+Tests:       1 failed, 69 passed, 70 total
+Snapshots:   0 total
+Time:        49.645 s
+Ran all test suites matching 
+arabic-authority-constraints|bounded-read-navigation|codex-readonly-browser-live-regression|requested-action-authority.
