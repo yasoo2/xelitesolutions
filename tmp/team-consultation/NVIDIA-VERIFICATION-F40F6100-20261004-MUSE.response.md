@@ -9,7 +9,7 @@ EXACT_SOURCE=f40f6100e8083bfefeef54eb7812c3690b068048
 EXACT_DIFF=3 files, 52+/14- (PhaseExecutorTool.ts, verification-ledger.ts, app-blueprints.ts)
 PARENT=a10c71ab14411e682be7a7e4e5ffd07467d960ac
 REVIEW_DATE=2026-10-04
-SHARED_WRITE=NOT_ATTEMPTED_BY_SANDBOX_POLICY (fallback file; Codex to import verbatim)
+SHARED_WRITE=DENIED (muse.edit_file on shared consultation path failed 2026-10-04T13:05Z: "absolute path is outside the workspace"; fallback file stands; Codex to import verbatim)
 
 ## Scope actually inspected (exact bytes, read-only)
 
@@ -149,3 +149,19 @@ only and are NOT independently confirmed.
   Muse has re-reviewed the fixed bytes.
 - Preserve all NVIDIA dirty work and untracked CLI tests; the fix should
   promote the CLI tests (with added web negatives) into a commit.
+
+## Standing confirmation 2026-10-04T13:05Z (no test repeats, read-only)
+
+- NVIDIA HEAD is still f40f6100e8083bfefeef54eb7812c3690b068048; no new
+  commit to review.
+- All 3 f40 files unmodified in the NVIDIA working tree (git status on the
+  3 paths is empty); reviewed bytes are unchanged.
+- isCliRequest in current bytes still contains bare `utility|script|tool`
+  alternatives: F1 REMAINS OPEN, no owner fix yet (not in commit, not in
+  dirty work for that file).
+- NVIDIA dirty WIP (17 tracked files incl. IntentParser/PlanningEngine +
+  untracked CLI/spec tests) is owner work in progress; not reviewed as a
+  candidate, fully preserved.
+- NVIDIA claim/heartbeat are STALE (UPDATED 2026-10-03, HEAD a10): shared
+  coordination metadata understates owner progress (f40 + cycle98).
+- This review stands unchanged: APPROVE_WITH_CHANGES, F1+F2 blocking.

@@ -8,7 +8,7 @@ RECOMMENDATION=NEEDS_EVIDENCE
 REVIEW_DATE=2026-10-04
 MUSE_HEAD=d1837a0f451d3006f67ca5680f64eeed19f5240b
 NVIDIA_HEAD=f40f6100e8083bfefeef54eb7812c3690b068048
-SHARED_WRITE=NOT_ATTEMPTED_BY_SANDBOX_POLICY (fallback file; Codex to import verbatim)
+SHARED_WRITE=DENIED (muse.edit_file on shared consultation path failed 2026-10-04T13:05Z: "absolute path is outside the workspace"; fallback file stands; Codex to import verbatim)
 
 ## Scope actually inspected (read-only, no source edits, no runtime control)
 
@@ -138,3 +138,13 @@ quoted/negated-intent and explanatory-context exemptions intact.
 - This NEEDS_EVIDENCE covers diagnosis acceptance + gate criteria only.
 - Do NOT adopt any repair to a runtime until 1-6 pass and Muse re-reviews.
 - Preserve NVIDIA dirty work, Codex test, all runtimes and workers.
+
+## Standing confirmation 2026-10-04T13:05Z (read-only, runtime untouched)
+
+- No owner repair commit exists yet (NVIDIA HEAD still f40); dirty
+  IntentParser/PlanningEngine WIP is uncommitted owner work, preserved.
+- Both :5000 and :5002 /api/health OK (uptime ~3231s, no-commit-file);
+  health observed only, no prompt submitted, no UI driven, no process
+  touched. Owned verification left undisturbed.
+- This review stands unchanged: NEEDS_EVIDENCE, re-review required on
+  fixed bytes before any runtime adoption or UAT replay.
