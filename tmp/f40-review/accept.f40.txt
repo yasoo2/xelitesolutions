@@ -1,0 +1,1401 @@
+/**
+
+ * WHAT HE ASKED FOR, CHECKED ONE BY ONE, BEFORE ANYTHING IS CALLED DONE.
+ *
+ * An outside audit put it exactly right: ┬س┘╪ش╪د╪ص ╪د┘╪ذ┘╪د╪ة ┘╪د ┘è╪│╪د┘ê┘è ┘╪ش╪د╪ص ╪د┘┘ê┘â┘è┘┬╗.
+ * A wide brief asked for a booking board with six rows, search, a status
+ * filter, an add form, empty states, a local export, a README, a production
+ * build and a preview. What came back was a working project, a message listing
+ * files, and `success: true` ظ¤ with no build, no README, and no mention that
+ * seven of the nine things asked for had not been demonstrated.
+ *
+ * Nothing in the run was lying. Each individual claim was true. The failure
+ * was that nobody ever ASKED the question the user cares about: of the things
+ * I was told to deliver, which ones can I actually show?
+ *
+ * That question is this file. It has three parts, and the third is the one
+ * that matters:
+ *
+ *   1. READ the brief into a list of criteria ظ¤ features, artifacts and
+ *      verifications, each with a stable id.
+ *   2. LOOK for evidence of each one in what was really produced: files on
+ *      disk, the build flag, a running server, the browser audit, and the
+ *      generated source itself.
+ *   3. REFUSE to call the run accepted while any criterion is unmet, and name
+ *      every one of them in the delivery.
+ *
+ * The judge never invents a criterion the user did not ask for, and never
+ * marks one met on anything except evidence it can point at. A criterion it
+ * cannot test says ┬سunprovable┬╗ rather than passing quietly ظ¤ because a check
+ * that cannot fail is the thing this project keeps deleting.
+ */
+import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisRequest, detectAppKind, requestedFilterFields, hasExplicitRecordSchema } from '../design/app-blueprints';
+import { hisWordsOnly } from '../design/page-head';
+import fs from 'fs';
+import path from 'path';
+import { thePagesHeNamed } from '../design/site-plan';
+import { saysAny, saysWord } from '../language/arabic';
+import { requestedCapabilities, type Capability } from './scope-audit';
+
+//  The same folding the page reader itself uses ظ¤ a request written with
+//  tanween must reach it in the shape its patterns are spelled in.
+const DIACRITICS_FOR_PAGES = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'g');
+const HAMZAS_FOR_PAGES = new RegExp('[╪ث╪ح╪ت]', 'g');
+const MAQSURA_FOR_PAGES = new RegExp('┘ë', 'g');
+
+/**
+ * Gate062's fixed acceptance input: four source-backed UI criteria.
+ * Keep this separate from the live-run input below, which also asks for a
+ * verified preview and therefore yields five criteria.
+ */
+export const GATE062_ACCEPTANCE_PROMPT =
+    'Build a small project called Gate062. Create one polished page titled Gate 062 with a heading, a short status message, and a button that increments a visible counter.';
+
+export const GATE062_LIVE_PROMPT =
+    GATE062_ACCEPTANCE_PROMPT + ' Run the real build and open the live preview. Do not modify existing projects.';
+
+export type CriterionKind = 'feature' | 'artifact' | 'verification';
+export type Verdict = 'met' | 'unmet' | 'unprovable';
+
+export interface Criterion {
+    id: string;
+    kind: CriterionKind;
+    ar: string;
+    en: string;
+    /**
+     *  The WORDS that ask for this, in any form he writes them.
+     *
+     *  A regex over raw Arabic reads characters, not words ظ¤ ┬س╪▓╪▒┬╗ matched
+     *  inside ┬س╪ث╪▓╪▒┘é┬╗ and ┬س╪╣╪»╪»┬╗ inside ┬س┘à╪ز╪╣╪»╪»┬╗, so a request for a blue
+     *  page was refused for want of a button. These go through the language
+     *  layer instead, which segments with Unicode's own rules and stems with
+     *  the same Snowball stemmer Elasticsearch uses, so ┬س╪╣╪»╪د╪»┬╗ is ┬س╪د┘╪╣╪»╪د╪»┬╗ is
+     *  ┬س╪╣╪»╪د╪»┘ï╪د┬╗ is ┬س╪╣╪»╪د╪»╪د╪ز┘ç╪د┬╗ ظ¤ and is never ┬س╪د╪│╪ز╪╣╪»╪د╪»┬╗.
+     *
+     *  `asked` stays for the entries that match a PHRASE rather than a word.
+     */
+    says?: string[];
+    /** Source markers that prove a FEATURE was really generated. */
+    markers?: RegExp[];
+    /** Shape-aware proof shared with the request capability reader. */
+    evidenceCheck?: (source: string) => boolean;
+    /** Exact user-requested title text, when it can be extracted safely. */
+    expectedText?: string;
+    /**
+     *  The page he named, when the criterion is about one.
+     *
+     *  Measured live on ┬س╪د╪╣┘à┘ ┘┘è ╪╡┘╪ص╪ر ┘ç╪ذ┘ê╪╖ ┘ê╪╡┘╪ص╪ر ╪ز┘ê╪د╪╡┘ ┘╪┤╪▒┘â╪ر ╪ز┘╪╕┘è┘┬╗,
+     *  after Joe had already built both pages correctly:
+     *
+     *      ظأبي╕ ┘┘à ╪ث╪│╪ز╪«╪▒╪ش ┘à╪╣┘è╪د╪▒╪د┘ï ┘é╪د╪ذ┘╪د┘ï ┘┘┘╪ص╪╡ ┘à┘ ╪╖┘╪ذ┘â╪î ┘╪░┘┘â ┘┘à ╪ث╪╡╪»╪▒ ╪ص┘â┘à ┘é╪ذ┘ê┘.
+     *
+     *  He had named two pages in one sentence, and thePagesHeNamed() had
+     *  read them ظ¤ the page plan was built from them. The judge could not
+     *  derive a criterion because nothing asked that reader. The same shape
+     *  as the columns below: a reader that already knew, never consulted.
+     */
+    expectedPage?: { slug: string; title: string };
+
+    /**
+     *  A VERDICT THAT WAS READ, NOT PATTERN-MATCHED.
+     *
+     *  Everything else on this interface is a way to PROVE a criterion with a
+     *  marker, a column, a bound. That works because the catalogue only ever
+     *  admitted criteria it already knew how to check ظ¤ and that is exactly
+     *  why the denominator was one for a request that named five things.
+     *
+     *  A requirement taken from HIS sentence has no marker and must not be
+     *  given one; inventing a regex per phrase is the catalogue rebuilt under
+     *  a new name. It is proven instead by reading the built source, and the
+     *  verdict arrives here already settled, with the source line behind it.
+     *
+     *  ظؤ¤ This is a door for a verdict that has ALREADY been grounded in the
+     *  source ظ¤ see `verifyNamed`, which downgrades any `met` whose evidence
+     *  it could not find. It must never become a door for a caller that simply
+     *  wants a green mark.
+     */
+    preJudged?: { verdict: Verdict; why: string };
+
+    /**
+     *  The rule he stated, when the criterion is about one.
+     *
+     *  Measured across a thousand requests: a request carrying an explicit
+     *  condition read clean 5% of the time. ┬س╪د╪╣┘à┘ ┘à┘ê┘é╪╣ ╪┤╪▒┘â╪ر ╪ز┘╪╕┘è┘ ┘ê┘╪د ╪ز┘é╪ذ┘
+     *  ┘à╪ذ┘╪║┘ï╪د ╪╡┘╪▒┘ï╪د┬╗ derived NOTHING ظ¤ not the site, not the rule. The
+     *  condition was not obeyed, not checked, and not mentioned, which is the
+     *  worst of the three: he cannot even know it was lost.
+     *
+     *  statedRules() has read rules on this project for a long time. Nothing
+     *  asked it. The same shape as the pages and the columns above.
+     *
+     *  A rule Joe cannot prove is still a criterion ظ¤ it comes back
+     *  `unprovable`, which is declared to him and does not block delivery.
+     *  Silence is the only outcome that is never acceptable.
+     */
+    /**
+     *  THE READER KNEW THE FIELD, THE VALUE AND THE STRICTNESS. THE JUDGE
+     *  ASKED FOR NONE OF THEM.
+     *
+     *  `StatedRule` already carries `field`, `min` and `minExclusive`, and
+     *  only `text` and `kind` were copied across. The proof left behind was
+     *  `/min:\s*-?\d/` against the WHOLE project ظ¤ any digit after any `min:`
+     *  anywhere earned the ظ£à. So ┬س┘╪د ╪ز┘é╪ذ┘ ╪│╪╣╪▒┘ï╪د ╪╡┘╪▒┘ï╪د┬╗ was reported as met by
+     *  a build whose bound sat on a different column, or carried a different
+     *  number, or ظ¤ worst ظ¤ omitted `minExclusive`, which is a build that
+     *  accepts the exact value he forbade while being told it obeys.
+     */
+    expectedRule?: {
+        text: string;
+        kind?: 'bound' | 'forbid' | 'require' | 'change';
+        field?: string;
+        min?: number;
+        minExclusive?: boolean;
+    };
+    /**
+     *  The exact column he listed, when the criterion is about one.
+     *
+     *  Measured live on his own brief ظ¤ five columns, a search and a total:
+     *
+     *      ┬سI could not derive a checkable criterion from your request,
+     *       so I did not issue an acceptance judgment.┬╗
+     *
+     *  The schema layer had already read every one of those columns from
+     *  his sentence. The judge could not derive a single criterion, because
+     *  it only knew five it had been taught: counter, button, title, status
+     *  message, search. A checklist, in the one place the fourth law says
+     *  must come from the request.
+     *
+     *  A column he named is the most checkable criterion there is: it is
+     *  either a field in the built app or it is not.
+     */
+    expectedColumn?: string;
+    /**
+     *  The explicit lower bound stated for a named numeric column, when any.
+     *  A view of the same `expectedRule` value, never a second record of it.
+     */
+    expectedBound?: { min: number; minExclusive: boolean };
+    /** A request-derived filter that must be wired to the named field. */
+    expectedFilter?: { field: string; label: string };
+    /** A request-derived progress metric backed by the row state. */
+    expectedProgress?: boolean;
+}
+
+export interface JudgedCriterion extends Criterion {
+    verdict: Verdict;
+    /** The evidence, or the reason there is none ظ¤ in one line. */
+    why: string;
+}
+
+export interface Acceptance {
+    criteria: JudgedCriterion[];
+    met: number;
+    unmet: number;
+    /** Stated, judged, and impossible for THIS judge to check. Never hidden. */
+    unprovable: number;
+    /** True only when nothing he asked for was looked for and missing. */
+    accepted: boolean;
+}
+
+/**
+ * THE CATALOGUE OF THINGS A BRIEF CAN ASK FOR.
+ *
+ * Shapes, not domains: ┬س╪ذ╪ص╪س┬╗ is a shape a request has or has not got, and it
+ * means the same thing for a clinic, a warehouse and a bookings board. Each
+ * entry carries what would have to exist in the generated source for the
+ * answer to be yes ظ¤ so ┬سmet┬╗ is a grep with a reason, never an opinion.
+ */
+const CATALOGUE: Array<Criterion & { asked: RegExp }> = [
+    {
+        id: 'search', kind: 'feature',
+        says: ['╪ذ╪ص╪س', '╪د╪ذ╪ص╪س', 'search'],
+        asked: /(╪ذ╪ص╪س|╪د╪ذ╪ص╪س|\bsearch\b)/iu,
+        ar: '╪ذ╪ص╪س ╪»╪د╪«┘ ╪د┘╪ذ┘è╪د┘╪د╪ز', en: 'search across the data',
+        markers: [/type=["']search["']/i, /\bsearch\b/i, /╪ذ╪ص╪س/u, /filter\(/],
+    },
+    {
+        id: 'filter', kind: 'feature',
+        says: ['┘à╪▒╪┤╪ص', '┘┘╪ز╪▒', '╪ز╪╡┘┘è╪ر', 'filter'],
+        asked: /(┘à╪▒╪┤┘ّ?╪ص|┘┘╪ز╪▒|╪ز╪╡┘┘è╪ر|\bfilter\b)/iu,
+        ar: '┘à┘╪▒╪┤┘ّ╪ص ╪ص╪د┘╪ر', en: 'a status filter',
+        markers: [/status/i, /╪د┘╪ص╪د┘╪ر/u, /<select/i],
+    },
+    {
+        id: 'counter', kind: 'feature',
+        says: ['╪╣╪»╪د╪»', '╪╣╪»╪»', '╪ح╪ش┘à╪د┘┘è', '┘à╪ش┘à┘ê╪╣', 'counter', 'count', 'total', 'badge'],
+        //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+        //
+        //  ┬س╪د┘┘à╪ش┘à┘ê╪╣┬╗ cannot match ┬س┘à╪ش┘à┘ê╪╣┬╗, and ┬س╪د┘╪╣╪»╪»┬╗ cannot match ┬س╪╣╪»╪»┬╗.
+        //  So ┬س┘ê╪╡┘╪ص╪ر ╪س╪د┘┘è╪ر ╪ز╪╣╪▒╪╢ ┘à╪ش┘à┘ê╪╣ ╪د┘╪▒┘ê╪د╪ز╪ذ┬╗ asked for a total and
+        //  produced no criterion at all ظ¤ not a criterion that failed, one
+        //  that was never written, which Joe can report success around.
+        //  The bare form matches both, which is why every other entry in
+        //  this catalogue is written bare and only these two were not.
+        asked: /(╪╣╪»╪د╪»|╪╣╪»╪»|╪ح╪ش┘à╪د┘┘è|╪د╪ش┘à╪د┘┘è|┘à╪ش┘à┘ê╪╣|\bcounter\b|\bcount\b|\btotal\b|\bbadge\b)/iu,
+        ar: '╪╣╪»╪د╪» ╪ث┘ê ╪ح╪ش┘à╪د┘┘è', en: 'a counter or total',
+        markers: [],
+    },
+    {
+        id: 'button', kind: 'feature',
+        says: ['╪▓╪▒', '╪ث╪▓╪▒╪د╪▒', 'button', 'cta'],
+        asked: /(╪▓╪▒|╪ث╪▓╪▒╪د╪▒|\bbutton\b|\bcta\b|call[- ]?to[- ]?action)/iu,
+        ar: '╪▓╪▒ ╪ز┘╪د╪╣┘┘è', en: 'an interactive button',
+        markers: [],
+    },
+    {
+        id: 'title', kind: 'feature',
+        says: ['╪╣┘┘ê╪د┘', 'title', 'titled', 'heading', 'headline'],
+        asked: /(╪╣┘┘ê╪د┘|╪د┘╪╣┘┘ê╪د┘|\btitle\b|\btitled\b|\bheading\b|\bheadline\b)/iu,
+        ar: '╪╣┘┘ê╪د┘ ╪ث┘ê ╪▒╪ث╪│ ╪╡┘╪ص╪ر', en: 'a title or heading',
+        markers: [/<h[1-6]\b/i, /<title\b/i],
+    },
+    {
+        id: 'status_message', kind: 'feature',
+        asked: /(╪▒╪│╪د┘╪ر\s*(?:╪ص╪د┘╪ر|┘╪ش╪د╪ص|╪«╪╖╪ث)|╪ص╪د┘╪ر\s*(?:┘╪ش╪د╪ص|╪«╪╖╪ث)|status\s*message|success\s*message|error\s*message|\btoast\b)/iu,
+        ar: '╪▒╪│╪د┘╪ر ╪ص╪د┘╪ر ╪ث┘ê ┘╪ز┘è╪ش╪ر', en: 'a status or result message',
+        markers: [],
+    },
+    {
+        id: 'form_validation', kind: 'feature',
+        asked: /required\s+fields?|prevent(?:s|ing)?\s+submission|submission\s+prevention|clear\s+error\s+summary|form\s+validation|╪ص┘é┘ê┘?\s+(?:╪ح┘╪▓╪د┘à┘è|┘à╪╖┘┘ê╪ذ)|┘à┘╪╣\s+(?:╪د┘╪ح╪▒╪│╪د┘|╪د┘╪ز┘é╪»┘è┘à)|┘à┘╪«╪╡\s+(?:┘ê╪د╪╢╪ص\s+)?┘┘╪ث╪«╪╖╪د╪ة/iu,
+        ar: '┘à┘╪╣ ╪د┘╪ح╪▒╪│╪د┘ ┘ê┘à┘╪«╪╡ ┘ê╪د╪╢╪ص ┘┘╪ث╪«╪╖╪د╪ة', en: 'required-field validation with a clear error summary',
+        markers: [/\.required\b|fields\s*\.filter/i, /setError\(|role\s*=\s*["']alert["']|aria-live/i],
+    },
+    {
+        id: 'contact_form', kind: 'feature',
+        asked: /(?:contact|enquiry|inquiry)\s+form|form\s+(?:on|for)\s+(?:the\s+)?(?:contact|visit)\s+page|┘┘à┘ê╪░╪ش\s+(?:╪ز┘ê╪د╪╡┘|╪د╪ز╪╡╪د┘|╪▓┘è╪د╪▒╪ر)|╪د╪│╪ز┘à╪د╪▒╪ر\s+(?:╪ز┘ê╪د╪╡┘|╪د╪ز╪╡╪د┘|╪▓┘è╪د╪▒╪ر)/iu,
+        ar: '┘┘à┘ê╪░╪ش ╪ز┘ê╪د╪╡┘ ╪ث┘ê ╪▓┘è╪د╪▒╪ر', en: 'a Visit contact form',
+        markers: [/<form\b/i, /type\s*=\s*["']email["']/i, /onSubmit\s*=/i],
+    },
+    {
+        id: 'add_row', kind: 'feature',
+        asked: /(?:╪ح╪╢╪د┘╪ر|╪د╪╢╪د┘╪ر|╪ث╪╢┘|\badd\b|\bcreate\b)\s+(?:(?:a|an|the)\s+)?(?:new\s+)?(?:╪ص╪ش╪▓|╪╡┘|╪╣┘╪╡╪▒|╪│╪ش┘|╪ذ┘è╪د┘|┘à┘ç┘à╪ر|┘à╪┤╪▒┘ê╪╣|╪╣┘à┘è┘|╪ش┘ç╪ر|┘à┘╪ز╪ش|╪╖┘╪ذ|╪ز╪░┘â╪▒╪ر|┘à┘╪د╪ص╪╕╪ر|row|record|entry|item|booking|task|project|customer|contact|product|order|ticket|note)(?:\s+(?:record|entry|item))?/iu,
+        ar: '╪ح╪╢╪د┘╪ر ╪│╪ش┘┘ّ ╪ش╪»┘è╪»', en: 'adding a new record',
+        markers: [/<form/i, /onSubmit/i, /\bcreate\b/i, /╪ح╪╢╪د┘╪ر/u],
+    },
+    {
+        id: 'export', kind: 'feature',
+        says: ['╪ز╪╡╪»┘è╪▒', '╪╡╪»╪▒', '╪ز┘╪▓┘è┘', 'export', 'download', 'csv'],
+        asked: /(╪ز╪╡╪»┘è╪▒|╪╡╪»┘ّ?╪▒|╪ز┘╪▓┘è┘|\bexport\b|\bdownload\b|\bcsv\b)/iu,
+        ar: '╪ز╪╡╪»┘è╪▒ ┘à╪ص┘┘ّ┘è', en: 'a local export',
+        markers: [/createObjectURL|download=|\bcsv\b|toCSV|Blob\(/i],
+    },
+    {
+        id: 'dashboard', kind: 'feature',
+        asked: /(┘┘ê╪ص╪ر\s*(┘à╪ج╪┤╪▒╪د╪ز|╪ز╪ص┘â┘à|┘é┘è╪د╪»╪ر)|╪ح╪ص╪╡╪د╪ة|╪د╪ص╪╡╪د╪ة|┘à╪ج╪┤╪▒╪د╪ز|\bdashboard\b|\bkpi\b|\bstats?\b)/iu,
+        ar: '┘┘ê╪ص╪ر ┘à╪ج╪┤┘ّ╪▒╪د╪ز', en: 'a dashboard of indicators',
+        markers: [/stat|kpi|┘à╪ج╪┤╪▒|╪ح╪ص╪╡╪د╪ة/iu],
+    },
+    {
+        id: 'empty_state', kind: 'feature',
+        asked: /(╪ص╪د┘╪د╪ز?\s*(┘╪▒╪د╪║|┘╪د╪▒╪║╪ر|╪«╪╖╪ث)|\bempty\s*state|\berror\s*state)/iu,
+        ar: '╪ص╪د┘╪د╪ز ╪د┘┘╪▒╪د╪║ ┘ê╪د┘╪«╪╖╪ث', en: 'empty and error states',
+        markers: [/empty|┘╪د ╪ز┘ê╪ش╪»|┘╪د ┘è┘ê╪ش╪»|┘╪د╪▒╪║/iu],
+    },
+    {
+        id: 'rtl', kind: 'feature',
+        asked: /\brtl\b|╪╣╪▒╪ذ┘è╪ر?\s*(┘à╪ز╪ش╪د┘ê╪ذ╪ر|┘ê╪د╪ش┘ç╪ر)?|╪د╪ز╪ش╪د┘ç\s*╪╣╪▒╪ذ┘è/iu,
+        ar: '┘ê╪د╪ش┘ç╪ر ╪╣╪▒╪ذ┘è╪ر RTL', en: 'an Arabic RTL interface',
+        markers: [/dir=["']rtl["']/i],
+    },
+    {
+        id: 'readme', kind: 'artifact',
+        asked: /\breadme\b|┘à┘┘\s*(╪ز╪╣╪▒┘è┘|╪┤╪▒╪ص)/iu,
+        ar: '┘à┘┘ README', en: 'a README file',
+    },
+    {
+        id: 'production_build', kind: 'verification',
+        asked: /(?:╪ذ┘╪د╪ة|╪د╪ذ┘┘)\s*(?:┘┘è\s*)?(?:┘╪│╪«╪ر\s*)?(?:╪ح┘╪ز╪د╪ش|╪د┘╪ح┘╪ز╪د╪ش)|(?:┘╪│╪«╪ر|╪ذ┘è╪خ╪ر)\s*(?:╪ح┘╪ز╪د╪ش|╪د┘╪ح┘╪ز╪د╪ش)|production\s+build|build\s+for\s+production|npm\s+run\s+build/iu,
+        ar: '╪ذ┘╪د╪ة ┘╪│╪«╪ر ╪د┘╪ح┘╪ز╪د╪ش', en: 'a production build',
+    },
+    {
+        id: 'preview', kind: 'verification',
+        says: ['┘à╪╣╪د┘è┘╪ر', '╪╣╪د┘è┘', 'preview', 'serve'],
+        asked: /(┘à╪╣╪د┘è┘╪ر|╪╣╪د┘è┘|\bpreview\b|\bserve\b)/iu,
+        ar: '┘à╪╣╪د┘è┘╪ر ┘à╪ص┘┘ّ┘è╪ر ╪ز╪╣┘à┘', en: 'a working local preview',
+    },
+    {
+        id: 'browser_check', kind: 'verification',
+        asked: /(┘à╪ز╪╡┘╪ص|╪د┘┘à╪ز╪╡┘╪ص|\bbrowser\b|┘╪ص╪╡\s*╪ذ╪╡╪▒┘è|visual\s*check)/iu,
+        ar: '┘╪ص╪╡ ┘┘è ┘à╪ز╪╡┘┘ّ╪ص ╪ص┘é┘è┘é┘è', en: 'a check in a real browser',
+    },
+];
+
+/**
+ * Older acceptance ids that already represent a capability from the shared
+ * request reader. Reuse the stable id, but strengthen its label and evidence
+ * with the capability contract. This keeps one fact from becoming two checks.
+ */
+const CAPABILITY_CATALOGUE_ALIAS: Record<string, string> = {
+    search: 'search',
+    filtering: 'filter',
+    form_validation: 'form_validation',
+    contact_form: 'contact_form',
+    arabic_rtl: 'rtl',
+    contact_cta: 'button',
+};
+
+function mergeRequestedCapabilities(catalogue: Criterion[], request: string): Criterion[] {
+    const requested = requestedCapabilities(request);
+    const consumed = new Set<string>();
+    const strengthened = catalogue.map(criterion => {
+        const capability = requested.find(candidate =>
+            (CAPABILITY_CATALOGUE_ALIAS[candidate.id] || candidate.id) === criterion.id,
+        );
+        if (!capability) return criterion;
+        consumed.add(capability.id);
+        return {
+            ...criterion,
+            ar: capability.ar,
+            en: capability.en,
+            markers: [capability.evidence],
+            evidenceCheck: capability.evidenceCheck,
+        };
+    });
+    const additional = requested
+        .filter(capability => !consumed.has(capability.id))
+        .map((capability: Capability): Criterion => ({
+            id: capability.id,
+            kind: 'feature',
+            ar: capability.ar,
+            en: capability.en,
+            markers: [capability.evidence],
+            evidenceCheck: capability.evidenceCheck,
+        }));
+    return [...strengthened, ...additional];
+}
+
+/** Extract a literal title only when the request gives a safe structural boundary. */
+function extractRequestedTitle(request: string): string | undefined {
+    const patterns = [
+        // Quoted, in either language: the closing quote IS the boundary,
+        // so there is no lookahead and no guessing where the name stops.
+        /(?:titled|called|named|╪ذ╪╣┘┘ê╪د┘|╪╣┘┘ê╪د┘┘ç╪د|╪╣┘┘ê╪د┘┘ç|╪د╪│┘à┘ç╪د|╪ح╪│┘à┘ç╪د|╪د╪│┘à┘ç|╪ح╪│┘à┘ç)\s*[:ي╝أ]?\s*[┬س"'`ظءظ£]([^┬╗"'`ظآظإ]{1,60})[┬╗"'`ظآظإ]/iu,
+        /\btitled\s+(.+?)(?=\s+(?:with|that|which|containing|including|and)\b|[,.;]|$)/iu,
+        /(?:╪ذ╪╣┘┘ê╪د┘|╪╣┘┘ê╪د┘┘ç╪د|╪╣┘┘ê╪د┘┘ç|╪د╪│┘à┘ç╪د|╪ح╪│┘à┘ç╪د|╪د╪│┘à┘ç|╪ح╪│┘à┘ç)\s+(.+?)(?=\s+(?:┘┘è┘ç╪د|┘è╪ص╪ز┘ê┘è|╪ز╪ص╪ز┘ê┘è|┘à╪╣|┘ê╪ذ┘ç╪د|┘ê╪د┘╪ز┘è|┘ê)(?=\s|[╪î,╪ؤ.;]|$)|[╪î,╪ؤ.;]|$)/u,
+    ];
+    for (const pattern of patterns) {
+        const match = pattern.exec(request);
+        if (!match) continue;
+        const value = match[1].trim().replace(/["'`]+$/g, '').trim();
+        const words = value.split(/\s+/u).filter(Boolean);
+        if (words.length > 0 && words.length <= 4) return value;
+    }
+    return undefined;
+}
+
+/** The named, regression-tested title extractor used by acceptanceFor. */
+export function titleTextFrom(request: string): string | undefined {
+    return extractRequestedTitle(request);
+}
+
+/**
+ * A WORD, NOT A RUN OF LETTERS THAT HAPPENS TO SIT INSIDE ONE.
+ *
+ * Every English alternative in the catalogue above is written \bcounter\b.
+ * Not one Arabic alternative had a boundary of any kind, and it could not:
+ * JavaScript defines \b by \w, which is [A-Za-z0-9_], so between two
+ * Arabic letters there is NEVER a \b position. Writing \b╪╣╪»╪»\b does not
+ * make it stricter ظ¤ it makes it unmatchable. So the Arabic side was left
+ * bare, and matched fragments.
+ *
+ * Measured, before this existed ظ¤ each of these BLOCKED delivery on a
+ * criterion the request never asked for:
+ *
+ *     ┬س┘à╪ز╪╣╪»╪» ╪د┘╪╡┘╪ص╪د╪ز┬╗        -> counter   (┬س╪╣╪»╪»┬╗ inside ┬س┘à╪ز╪╣╪»╪»┬╗)
+ *     ┬س┘┘ê┘ ╪ث╪▓╪▒┘é ┘╪د╪ز╪ص┬╗        -> button    (┬س╪▓╪▒┬╗ inside ┬س╪ث╪▓╪▒┘é┬╗)
+ *     ┬س┘à╪ش┘à┘ê╪╣╪ر ╪╡┘ê╪▒┬╗            -> counter   (┬س┘à╪ش┘à┘ê╪╣┬╗ inside ┬س┘à╪ش┘à┘ê╪╣╪ر┬╗)
+ *     ┬س╪╣┘╪»┘è ╪د╪│╪ز╪╣╪»╪د╪»┬╗          -> counter   (┬س╪╣╪»╪د╪»┬╗ inside ┬س╪د╪│╪ز╪╣╪»╪د╪»┬╗)
+ *     ┬س┘╪ذ┘è╪╣ ╪د┘╪ش╪▓╪▒ ┘ê╪د┘╪«╪╢╪د╪▒┬╗    -> button    (┬س╪▓╪▒┬╗ inside ┬س╪د┘╪ش╪▓╪▒┬╗)
+ *
+ * So the boundary is checked on the MATCH instead of inside the pattern:
+ * a hit that begins or ends flush against another Arabic letter was a
+ * fragment ظ¤ unless the letters before it are one of the particles Arabic
+ * glues onto the front of a word (╪د┘╪î ┘ê╪î ╪ذ╪î ┘╪î ┘â╪î ┘ and their pairs), or the
+ * letters after it are one of the endings it takes (╪د╪ز╪î ┘ç╪د╪î ┘è┘ ظخ). ┬س╪د┘╪╣╪»╪د╪»┬╗
+ * is the counter; ┬س╪د╪│╪ز╪╣╪»╪د╪»┬╗ is readiness; only a boundary tells them apart.
+ *
+ * This is deliberately generic: it fixes every pattern in the catalogue at
+ * once, and every pattern added to it later, instead of the one that was
+ * caught. A fix that names ┬س╪╣╪»╪»┬╗ would leave ┬س╪▓╪▒┬╗ standing.
+ */
+const DIACRITIC = new RegExp('[\\u064B-\\u0652\\u0670\\u0640]', 'gu');
+const AR_LETTER = new RegExp('[\\u0621-\\u064A]', 'u');
+const AR_LEAD = new RegExp('[\\u0621-\\u064A]+$', 'u');
+const AR_TAIL = new RegExp('^[\\u0621-\\u064A]+', 'u');
+/** The particles Arabic writes joined to the front of the next word. */
+const GLUED_BEFORE = new RegExp('^(?:[┘ê┘╪ذ┘â]?╪د┘|┘┘|[┘ê┘╪ذ┘â┘])$', 'u');
+/** The endings a noun takes without becoming a different noun. */
+//  ┬س╪╣╪»╪د╪»┘ï╪د┬╗ keeps its accusative alif after the tanween mark is stripped,
+//  and ┬س╪╣╪»╪د╪»╪د┘┬╗ is two of them. Neither is a different word.
+const GLUED_AFTER = new RegExp('^(?:╪د┘|╪د╪ز|┘ç╪د|┘ç┘à|┘ç┘|┘è┘|┘ê┘|┘╪د|┘â┘à|╪د|┘ç|┘è)$', 'u');
+
+export function requestAsksFor(asked: RegExp, text: string): boolean {
+    const flags = asked.flags.includes('g') ? asked.flags : asked.flags + 'g';
+    const re = new RegExp(asked.source, flags);
+    //  Diacritics are not letters and must not split a word: ┬س╪╣╪»┘ّ╪د╪»┬╗ with a
+    //  shadda is the same word as ┬س╪╣╪»╪د╪»┬╗, and a pattern spelled without one
+    //  never reaches it. Strip them before asking, never in what is stored.
+    text = String(text || '').replace(DIACRITIC, '');
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(text))) {
+        const hit = m[0];
+        if (!hit) { re.lastIndex = m.index + 1; continue; }
+        //  Step by ONE on rejection, never past it: the alternative that
+        //  matched a fragment here may have a longer sibling starting later.
+        const reject = () => { re.lastIndex = m!.index + 1; };
+        if (AR_LETTER.test(hit.charAt(0))) {
+            const lead = (text.slice(0, m.index).match(AR_LEAD) || [''])[0];
+            if (lead && !GLUED_BEFORE.test(lead)) { reject(); continue; }
+        }
+        if (AR_LETTER.test(hit.charAt(hit.length - 1))) {
+            const tail = (text.slice(m.index + hit.length).match(AR_TAIL) || [''])[0];
+            if (tail && !GLUED_AFTER.test(tail)) { reject(); continue; }
+        }
+        return true;
+    }
+    return false;
+}
+/** The criteria THIS brief actually asks for ظ¤ never a fixed checklist. */
+export function acceptanceFor(request: string): Criterion[] {
+    /**
+     *  ظؤ¤ HIS WORDS ONLY. THE JUDGE MUST NEVER READ JOE'S OWN PAPERWORK.
+     *
+     *  Measured on a real run, from the ledger that blocked the delivery:
+     *
+     *      { "id": "rule:1", "kind": "feature",
+     *        "en": "your condition: ┬سdo not invent beyond it) ---┬╗",
+     *        "expectedRule": { "text": "do not invent beyond it) ---",
+     *                          "kind": "forbid", "field": "invent" } }
+     *
+     *  ┬سdo not invent beyond it) ---┬╗ is not his condition. It is a fragment
+     *  of the wrapper `ProjectPipelineTool.ts:1050` appends to his sentence ظ¤
+     *  including the trailing `) ---` of the banner it was cut out of. Joe
+     *  derived the owner's requirement from Joe's own scaffolding, failed to
+     *  prove it, and refused to deliver a site it had actually built.
+     *
+     *  ظؤ¤ AND THE REPAIR ALREADY EXISTED. `hisWordsOnly` cuts exactly that
+     *  block, it handles BOTH banners ظ¤ measured in its own comment:
+     *  ┬سAUTHORITATIVE DISCOVERY EVIDENCE┬╗ and ┬سCOMPACT REQUIREMENTS EVIDENCE┬╗
+     *  ظ¤ and `entity-inference` and `app-blueprints` have both called it for
+     *  months. The acceptance judge, the one reader whose whole job is ┬سwhat
+     *  did HE ask for┬╗, never did.
+     *
+     *  That is this session's most repeated class, and its ninth appearance:
+     *  a layer exists and a second reader never asks. The guard beside the
+     *  entity reader even says it out loud ظ¤ ┬سits only caller was inside its
+     *  own file┬╗ ظ¤ and the sentence was true of this file too.
+     */
+    /**
+     *  ظؤ¤ AND THE CUT RUNS ONLY WHERE JOE'S PAPERWORK REALLY STARTS.
+     *
+     *  `hisWordsOnly` also cuts at a BLANK LINE, which is Joe's mark only
+     *  when Joe put it there. Measured on this very function while wiring it:
+     *
+     *      ┬س╪د╪╣┘à┘ ┘┘è ┘à╪ز╪ش╪▒╪د┘ï ┘╪ذ┘è╪╣ ╪د┘╪╣╪│┘.
+
+┘ê┘╪د ╪ز┘é╪ذ┘ ╪│╪╣╪▒╪د┘ï ╪╡┘╪▒╪د┘ï ╪ث┘ê ╪│╪د┘╪ذ╪د┘ï.┬╗
+     *          -> ┬س╪د╪╣┘à┘ ┘┘è ┘à╪ز╪ش╪▒╪د┘ï ┘╪ذ┘è╪╣ ╪د┘╪╣╪│┘.┬╗
+     *
+     *  His rule, in his own second paragraph, gone. A man who writes two
+     *  paragraphs must not lose the second ظ¤ and the judge losing a
+     *  CONDITION he stated is the same defect as the judge inventing one, in
+     *  the opposite direction.
+     *
+     *  So the cut is applied only when one of Joe's own banners is actually
+     *  present. When it is, `hisWordsOnly` removes it and everything after;
+     *  when it is not, his sentence is untouched, blank lines and all.
+     */
+    const raw = String(request || '');
+    const JOE_WROTE_THIS = new RegExp('(?:AUTHORITATIVE|COMPACT)[^' + String.fromCharCode(10) + ']{0,80}EVIDENCE', 'i');
+    const t = JOE_WROTE_THIS.test(raw) ? hisWordsOnly(raw) : raw;
+    //  A word is asked as a word; a phrase keeps its pattern. Entries with
+    //  `says` no longer touch a regex over Arabic at all.
+    const catalogue = mergeRequestedCapabilities(CATALOGUE.filter(c => (c.says ? saysAny(t, c.says) : requestAsksFor(c.asked, t)))
+        .map(({ asked, ...rest }) => rest)
+        .map(c => c.id === 'title'
+            ? { ...c, expectedText: titleTextFrom(t) }
+        : c), t);
+
+    //  His columns, in his words, each one its own criterion. No catalogue
+    //  is consulted: derivedColumns reads them from the sentence he wrote.
+    /**
+     *  ظؤ¤ A COLUMN BELONGS TO A TABLE, AND A WEBSITE HAS NONE.
+     *
+     *  Caught on a live run, from a sentence the owner wrote himself:
+     *
+     *      ╪ث╪ذ┘è ┘à┘ê┘é╪╣ ┘┘à╪ص┘à╪╡╪ر ┘é┘ç┘ê╪رظخ ╪ص╪╖ ┘┘è┘ç ┘é╪د╪خ┘à╪ر ┘é┘ç┘ê╪ر ╪ذ╪ث╪│╪╣╪د╪▒┘ç╪د
+     *      ┘ê╪»╪▒╪ش╪ر ╪د┘╪ز╪ص┘à┘è╪╡╪î ┘ê╪│╪د╪╣╪د╪ز ╪د┘╪╣┘à┘ ┘ê╪د┘┘à┘ê┘é╪╣ظخ
+     *
+     *          acceptance_criteria_unmet: column:text1 ظخ column:text4
+     *
+     *  Measured on the same sentence: detectAppKind returns null -- Joe
+     *  knows perfectly well it is a site -- and the judge asked for four
+     *  table columns anyway. So the website gets built and then refused,
+     *  because it has no columns, which a website never has.
+     *
+     *  ظؤ¤ That is a criterion that can NEVER BE MET, and it is the mirror
+     *  of the one this file keeps deleting: a check that cannot fail proves
+     *  nothing, and a check that cannot pass blocks everything.
+     *
+     *  The classifier was taught that a site noun means a site and the
+     *  judge was not -- two readers of one request, each correct alone and
+     *  the pair fatal. When nothing table-shaped will be built, the nouns
+     *  in his sentence are CONTENT, and the sections reader already carries
+     *  them: a coffee list with its prices becomes a listing, not four
+     *  columns nobody can point at.
+     */
+    const detectedKind = detectAppKind(t);
+    const willBuildATable = detectedKind !== null;
+    const derived = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+    const explicitSchema = /\b(?:fields?|columns?|records?|table|form)\b|(?:╪ص┘é┘ê┘?|╪ث╪╣┘à╪»╪ر|╪د╪╣┘à╪»╪ر|╪│╪ش┘╪د╪ز?|╪ش╪»┘ê┘|┘┘à┘ê╪░╪ش)/iu.test(t);
+    const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|╪╣╪»╪د╪»|╪▓╪▒|╪╣┘┘ê╪د┘|╪▒╪│╪د┘╪ر\s+╪ص╪د┘╪ر)$/iu
+        .test(String(label || '').trim());
+    // A list of visible widgets is not a record schema. Without an explicit
+    // table/form/field declaration, suppress a derived run made entirely of
+    // UI shapes that the acceptance catalogue already checks directly.
+    // A natural-language field list need not literally say "fields" or "table".
+    // Keep the separate widget-only guard below even when that list was parsed.
+    const columns = !explicitSchema && !hasExplicitRecordSchema(t) && detectedKind === 'generic'
+        ? []
+        : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
+        ? []
+        : derived;
+    const requestedFilters = willBuildATable ? requestedFilterFields(t, columns) : [];
+    const wantsProgress = /progress\s+metric|progress\s+percentage|progress|┘à┘é┘è╪د╪│\s+(?:╪ز┘é╪»┘à|╪د┘╪ز┘é╪»┘à)|┘à╪ج╪┤╪▒\s+(?:╪ز┘é╪»┘à|╪د┘╪ز┘é╪»┘à)/iu.test(t);
+
+
+    /**
+     *  THE PAGES HE NAMED ARE CRITERIA, exactly as his columns are.
+     *
+     *  Only when he named TWO or more: one named page becomes the single
+     *  page of a single-page build, and ┬سthe page exists┬╗ would then be a
+     *  criterion that cannot fail. Two is where a page becomes a thing
+     *  that can be missing.
+     */
+    const named = thePagesHeNamed(
+        t.replace(DIACRITICS_FOR_PAGES, '').replace(HAMZAS_FOR_PAGES, '╪د').replace(MAQSURA_FOR_PAGES, '┘è'),
+    );
+    /**
+     *  ONE NAMED PAGE IS A CRITERION WHEN HE IS ADDING IT.
+     *
+     *  The two-page floor exists for a real reason: a single-page build writes
+     *  index.html by definition, so ┬سthe page exists┬╗ could never fail, and a
+     *  criterion that cannot fail is the thing this file keeps deleting.
+     *
+     *  But ┬س╪ث╪╢┘ ╪╡┘╪ص╪ر ╪د┘╪ث╪│╪╣╪د╪▒┬╗ is not a single-page build ظ¤ it is an addition
+     *  to something already on disk, and `pricing.html` either arrives or it
+     *  does not. Measured across a thousand requests: forty edit requests
+     *  naming a page derived NO criterion at all, so the page he asked to be
+     *  added was never checked for.
+     *
+     *  The verb is the whole distinction and it is in his own sentence, so no
+     *  session state is consulted: ┬س╪ث╪╢┘┬╗ / ┬سadd┬╗ means the thing must be there
+     *  afterwards, and one is enough.
+     */
+    const HE_IS_ADDING = /(?:^|\s)(?:╪ث╪╢┘|╪د╪╢┘|╪╢┘è┘|╪ث╪╢┘è┘|╪د╪╢┘è┘|add)(?:\s|$)/iu;
+    const adding = HE_IS_ADDING.test(t);
+    const pages = (named.length >= 2 || (adding && named.length >= 1)) ? named : [];
+
+    //  Every rule he stated, whether or not Joe can prove it. The judge says
+    //  `unprovable` for what it cannot check, and that is declared to him ظ¤
+    //  a rule that vanishes is the one outcome with no honest reading.
+    const rules = statedRules(t);
+
+    // A feature sentence can also begin with an edit verb such as `add`.
+    // When the feature already has a dedicated criterion, keeping the raw
+    // change as `rule:n` would make one request appear twice and can create a
+    // false unmet condition. Real constraints and edits remain untouched.
+    const changeAlreadyCovered = (rule: typeof rules[number]): boolean => {
+        const text = String(rule.text || '');
+        // Delivery instructions constrain Joe's report, not the generated
+        // product. Keeping them as product rules created acceptance entries
+        // that no application source could ever prove.
+        if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:┘╪د|┘╪د╪ز)\s+(?:╪ز╪»╪╣|╪ز╪»╪╣┘è|╪ز╪╣┘┘|╪ز╪░┘â╪▒)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
+        if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:┘╪د|┘╪د╪ز)\s+(?:╪ز┘╪┤╪▒|╪ز╪▒┘╪╣\s+(?:╪ح┘┘ë|╪د┘┘ë)?\s*╪د┘╪ح┘╪ز╪د╪ش)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
+        if (rule.kind !== 'change') return false;
+        const asksForFilters = requestedFilters.length > 0
+            && /\bfilters?\b|╪ز╪╡┘(?:┘è╪ر|┘è╪د╪ز)|┘┘╪ز╪▒/iu.test(text);
+        const asksForProgress = wantsProgress
+            && /\bprogress\b|╪ز┘é╪»┘à|╪د┘╪ز┘é╪»┘à|┘à╪ج╪┤╪▒/iu.test(text);
+        const asksForTitle = catalogue.some(criterion => criterion.id === 'title')
+            && /\b(?:title|heading|headline)\b|╪╣┘┘ê╪د┘|╪╣┘┘ê╪د┘╪د┘ï|╪╣┘┘ê╪د┘┘ï╪د/iu.test(text);
+        return asksForFilters || asksForProgress || asksForTitle;
+    };
+
+    /**
+     *  A BOUND BELONGS TO ITS COLUMN, NOT TO A NUMBERED LIST.
+     *
+     *  Two readings of the same sentence grew independently ظ¤ ┬س╪┤╪▒╪╖┘â: ╪د┘╪│╪╣╪▒ ┘╪د
+     *  ┘è┘é╪ذ┘ ╪╡┘╪▒┘ï╪د┬╗ as `rule:1`, and ┬س╪د┘┘é┘è╪» ╪╣┘┘ë ╪د┘╪│╪╣╪▒┬╗ as `constraint:money1:min`
+     *  ظ¤ and they met in a merge. Keeping both would have been the seam class
+     *  itself: two records of one fact, maintained separately, with nothing
+     *  forcing them to agree.
+     *
+     *  So there is ONE derivation, `statedRules`, and two presentations of it.
+     *  A rule that IS a bound and names a column he asked for is that column's
+     *  constraint and is emitted beside it, carrying both shapes so either
+     *  reader is served from the same value. Everything else ظ¤ a forbid, a
+     *  require, a bound with no column to sit on ظ¤ stays a numbered rule,
+     *  because a rule that vanishes is the one outcome with no honest reading.
+     */
+    const boundFor = new Map<string, typeof rules[number]>();
+    const loose: typeof rules = [];
+    for (const r of rules) {
+        if (changeAlreadyCovered(r)) continue;
+        const said = String(r.field || r.text || '');
+        const owner = (r.kind === 'bound' && r.min !== undefined && said)
+            ? (columns as DerivedField[]).find(col => {
+                const label = String(col.label || '');
+                if (!label) return false;
+                //  Through the language layer, both ways: he writes ┬س╪│╪╣╪▒┘ï╪د┬╗
+                //  and the schema says ┬س╪د┘╪│╪╣╪▒┬╗. Matching raw text would read
+                //  letters, not words.
+                if (label === said || saysWord(said, label)) return true;
+                if (label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w))) return true;
+                /**
+                 *  An identifier is not a word, and the word layer cannot see
+                 *  it. `zqixdal_val` segments into three pieces, so asking the
+                 *  stemmer for it always answers no ظ¤ measured on an invented
+                 *  column name with no catalogue behind it.
+                 *
+                 *  Plain containment is the right test for exactly this shape
+                 *  and the wrong one for Arabic, where ┬س╪د┘╪╣┘┘ê╪د┘┬╗ sits inside
+                 *  ┬س╪د┘╪╣┘┘ê╪د┘┘è┘┬╗. So it is allowed only for a label carrying NO
+                 *  Arabic letter, which is where the word layer has nothing to
+                 *  offer and where the trap it guards cannot occur.
+                 */
+                if (label.length >= 3 && !/[╪-█┐]/.test(label)) return said.includes(label);
+                return false;
+            })
+            : undefined;
+        if (owner && !boundFor.has(owner.key)) boundFor.set(owner.key, r);
+        else loose.push(r);
+    }
+
+    return [
+        ...catalogue,
+        ...(requestedFilters.length > 0
+            ? requestedFilters.map(key => {
+                const field = columns.find(col => col.key === key);
+                return {
+                    id: `filter:${key}`,
+                    kind: 'feature' as CriterionKind,
+                    ar: `╪ز╪╡┘┘è╪ر ╪ص╪│╪ذ ┬س${field?.label || key}┬╗`,
+                    en: `filtering by ┬س${field?.label || key}┬╗`,
+                    expectedFilter: { field: key, label: field?.label || key },
+                };
+            })
+            : []),
+        ...(wantsProgress ? [{
+            id: 'progress_metric',
+            kind: 'feature' as CriterionKind,
+            ar: '┘à┘é┘è╪د╪│ ╪ز┘é╪»┘ّ┘à ┘à╪ص╪│┘ê╪ذ ┘à┘ ╪ص╪د┘╪د╪ز ╪د┘╪│╪ش┘╪د╪ز',
+            en: 'a progress metric computed from record states',
+            expectedProgress: true,
+        }] : []),
+        ...loose.map((r, i) => ({
+            id: `rule:${i + 1}`,
+            kind: 'feature' as CriterionKind,
+            ar: `╪┤╪▒╪╖┘â: ┬س${r.text}┬╗`,
+            en: `your condition: ┬س${r.text}┬╗`,
+            //  Everything the reader derived, carried to the judge. Dropping
+            //  three of five fields here is what made the proof unprovable.
+            expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
+        })),
+        ...pages.map((p: { slug: string; title: string }) => ({
+            id: `page:${p.slug}`,
+            kind: 'feature' as CriterionKind,
+            ar: `╪╡┘╪ص╪ر ┬س${p.title}┬╗ ┘à┘ê╪ش┘ê╪»╪ر ┘ê╪ز╪ص┘à┘ ╪د╪│┘à┘ç╪د`,
+            en: `a page ┬س${p.title}┬╗ exists and carries its name`,
+            expectedPage: { slug: p.slug, title: p.title },
+        })),
+        //  ظخand each column carries its own constraint immediately after it,
+        //  where he can read the two together.
+        ...(columns as DerivedField[]).flatMap((col: DerivedField) => {
+            const own: Criterion[] = [{
+                id: `column:${col.key}`,
+                kind: 'feature' as CriterionKind,
+                ar: `╪╣┘à┘ê╪» ┬س${col.label}┬╗ ┘à┘ê╪ش┘ê╪» ┘┘è ╪د┘╪ش╪»┘ê┘`,
+                en: `a column ┬س${col.label}┬╗ exists in the table`,
+                expectedColumn: col.label,
+            }];
+            const r = boundFor.get(col.key);
+            if (r && r.min !== undefined) {
+                own.push({
+                    id: `constraint:${col.key}:min`,
+                    kind: 'feature' as CriterionKind,
+                    ar: `╪د┘┘é┘è╪» ┬س${col.label}┬╗ ${r.minExclusive ? '╪ث┘â╪ذ╪▒ ┘à┘' : '┘╪د ┘è┘é┘ ╪╣┘'} ${r.min}`,
+                    en: `the column ┬س${col.label}┬╗ rejects values ${r.minExclusive ? 'at or below' : 'below'} ${r.min}`,
+                    expectedColumn: col.label,
+                    expectedBound: { min: r.min, minExclusive: !!r.minExclusive },
+                    //  The same value in the shape the stronger judge reads ظ¤
+                    //  derived here, never maintained twice.
+                    expectedRule: { text: r.text, kind: r.kind, field: r.field, min: r.min, minExclusive: r.minExclusive },
+                });
+            }
+            return own;
+        }),
+    ];
+}
+
+export interface Evidence {
+    /** The generated project directory, when one exists. */
+    dir?: string;
+    built?: boolean;
+    /** A preview/server url that was verified alive. */
+    liveUrl?: string;
+    /** The browser audit, or its skip reason. */
+    audit?: { skipped?: string; score?: number } | null;
+}
+
+/** Read every source file once ظ¤ the judge greps this, not the disk. */
+function sourceOf(dir: string): string {
+    const out: string[] = [];
+    const walk = (d: string, depth = 0) => {
+        if (depth > 4) return;
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+            const p = path.join(d, e.name);
+            if (e.isDirectory()) { walk(p, depth + 1); continue; }
+            if (!/\.(jsx?|tsx?|html|css)$/i.test(e.name)) continue;
+            try { out.push(fs.readFileSync(p, 'utf-8')); } catch { /* unreadable is not evidence */ }
+        }
+    };
+    walk(dir);
+    return out.join('\n');
+}
+
+interface StateBinding {
+    value: string;
+    setter: string;
+}
+
+function stateBindings(src: string): StateBinding[] {
+    const bindings: StateBinding[] = [];
+    const pattern = /\b(?:const|let)\s*\[\s*([A-Za-z_$][\w$]*)\s*,\s*(set[A-Za-z_$][\w$]*)\s*\]\s*=\s*(?:React\.)?use(?:State|Reducer)\s*\(/gi;
+    for (const match of src.matchAll(pattern)) {
+        bindings.push({ value: match[1], setter: match[2] });
+    }
+    return bindings;
+}
+
+function hasCounterEvidence(src: string): boolean {
+    return stateBindings(src).some(({ value, setter }) => {
+        const setterCall = new RegExp(`\\b${escapeRegExp(setter)}\\s*\\([\\s\\S]{0,180}?(?:\\+\\s*1|-\\s*1|\\bprev[A-Za-z_$]*\\b)`, 'i').test(src);
+        const visibleValue = new RegExp(`(?:data-(?:count|total)\\s*=\\s*\\{\\s*${escapeRegExp(value)}\\s*\\}|>\\s*\\{\\s*${escapeRegExp(value)}\\s*\\}\\s*<)`, 'i').test(src);
+        const action = new RegExp(`\\b(?:onClick|onChange|onSubmit)\\s*=\\s*[\\s\\S]{0,220}?\\b${escapeRegExp(setter)}\\s*\\(`, 'i').test(src);
+        return setterCall && visibleValue && action;
+    });
+}
+
+function hasActionBoundButtonEvidence(src: string): boolean {
+    const clickButton = /<button\b[^>]*\bonClick\s*=/i.test(src)
+        || /\brole=["']button["'][^>]*\bonClick\s*=/i.test(src);
+    const submitButton = /<form\b[^>]*\bonSubmit\s*=\s*[\s\S]*?<button\b[\s\S]*?<\/form>/i.test(src)
+        || /<button\b[^>]*\btype=["']submit["']/i.test(src);
+    const linkedButton = /<a\b[^>]*\bhref\s*=\s*["'][^"']+["'][^>]*\bclassName\s*=\s*["'][^"']*\bbtn\b[^"']*["']/i.test(src)
+        || /<a\b[^>]*\bclassName\s*=\s*["'][^"']*\bbtn\b[^"']*["'][^>]*\bhref\s*=\s*["'][^"']+["']/i.test(src);
+    return clickButton || submitButton || linkedButton;
+}
+
+function hasStatusMessageEvidence(src: string): boolean {
+    return stateBindings(src).some(({ value, setter }) => {
+        if (!/(?:status|message|notice|feedback|success|error|toast|result|alert)/i.test(value)) return false;
+        const setterCall = new RegExp(`\\b${escapeRegExp(setter)}\\s*\\([\\s\\S]{0,180}?\\)`, 'i').test(src);
+        const semanticNode = new RegExp(`<(?:(?:p|div|span|output|section))\\b[^>]*(?:role=["']status["']|aria-live=["'][^"']+["']|className=["'][^"']*(?:status|message|notice|feedback)[^"']*["'])[^>]*>[\\s\\S]*?\\{\\s*${escapeRegExp(value)}\\s*\\}[\\s\\S]*?<\\/\\w+>`, 'i').test(src);
+        return setterCall && semanticNode;
+    });
+}
+
+function escapeRegExp(value: string): string {
+    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * A TOTAL IS NOT A CLICK COUNTER, AND ARABIC SAYS BOTH WITH ONE WORD.
+ *
+ * The contract warns about exactly this pair: ┬س╪د┘╪ح╪ش┘à╪د┘┘è┬╗ and ┬س╪د┘┘à╪ش┘à┘ê╪╣┬╗ mean
+ * a computed total OR an incrementing counter, and the catalogue maps both to
+ * `counter`. Proof, until now, was `hasCounterEvidence`: a state binding whose
+ * setter adds one, wired to a click. A sum over rows has no setter and no
+ * button ظ¤ so a page that computed the total and displayed it was judged to
+ * have no total at all.
+ *
+ * Measured live on the owner's machine: he asked for a page showing the total
+ * of his expenses at the bottom, Joe built it, and delivery was BLOCKED with
+ * `acceptance_criteria_unmet`. Correct work, refused ظ¤ and the user was told
+ * only that one English error code.
+ *
+ * So a fold that reaches the screen proves it too. It is held to the same
+ * standard as the counter: TWO facts bound by ONE shared identifier ظ¤ a value
+ * accumulated with `+` inside a reduce, and that same name rendered. A bare
+ * `.reduce(` proves nothing, and neither does the word ┬سtotal┬╗ in a comment.
+ */
+function foldedTotalBindings(src: string): string[] {
+    const names: string[] = [];
+    const declared = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=[^;]{0,240}?\.reduce\s*\(/g;
+    for (const match of src.matchAll(declared)) {
+        // `reduce` plus `+` is not enough: it may concatenate labels. Require
+        // an amount/value-like operand or an explicit numeric conversion.
+        const body = src.slice(match.index || 0, (match.index || 0) + 340);
+        const numericAdd = /=>[\s\S]{0,220}?\+\s*(?:(?:Number|num)\s*\([^)]*\)|[A-Za-z_$][\w$]*\s*\.\s*(?:amount|value|total|price|cost|quantity)\b|(?:amount|value|total|price|cost|quantity)\b)/i.test(body);
+        if (numericAdd) names.push(match[1]);
+    }
+    return names;
+}
+
+function recordsMetricTotalEvidence(src: string): boolean {
+    // The general records engine computes a sum from the actual rows. Prove the
+    // configuration, the renderer's binding to those rows, and the executable
+    // numeric sum branch together; a template name or the word "total" alone
+    // never passes.
+    const configured = /\bmetrics\s*:\s*\[[\s\S]{0,900}?\bkind\s*:\s*['"]sum['"][\s\S]{0,240}?\bfield\s*:\s*['"][A-Za-z_$][\w$]*['"]/i.test(src);
+    const rendered = /\bcomputeMetric\s*\(\s*[A-Za-z_$][\w$]*\s*,\s*rows\s*\)/i.test(src);
+    const implementation = /\bcase\s*['"]sum['"]\s*:[\s\S]{0,280}?\breduce\s*\([\s\S]{0,220}?\+\s*(?:num|Number)\s*\(/i.test(src);
+    return configured && rendered && implementation;
+}
+
+export function computedTotalEvidence(src: string): boolean {
+    const BS = String.fromCharCode(92);
+    /**
+     *  ظؤ¤ THE TOTAL REACHES THE PAGE ظ¤ HOWEVER IT IS FORMATTED.
+     *
+     *  Measured on a live build the owner watched. He asked for ┬سsa cart that
+     *  computes the total┬╗; Joe's own store engine did exactly that:
+     *
+     *      const total = useMemo(() => lines.reduce(
+     *          (s, l) => s + Number(l.product.price || 0) * l.qty, 0), [lines]);
+     *      <p className="cart-total"><span>{'╪د┘╪ح╪ش┘à╪د┘┘è'}</span><b>{money(total)}</b></p>
+     *
+     *  And the judgement came back `acceptance_criteria_unmet: counter`, so the
+     *  delivery was refused. The criterion accepted `{total}` and
+     *  `{total.toLocaleString()}` ظ¤ a value shown bare, or with a method called
+     *  ON it ظ¤ and had no shape for a value passed THROUGH a formatter, which
+     *  is how every currency in this repository is printed.
+     *
+     *  ظؤ¤ SO IT WAS A CRITERION JOE'S OWN GENERATOR COULD NOT SATISFY: the
+     *  mirror of one that can never fail, and worse, because it blocked a
+     *  correct delivery and told the owner his store had no total. It is the
+     *  session's most expensive class one more time ظ¤ EVIDENCE MATCHING A
+     *  SPELLING INSTEAD OF TESTING THE CLAIM.
+     *
+     *  The claim is ┬سthe computed total reaches the page┬╗. All three ways of
+     *  doing that count, and nothing else does:
+     *      {total}              bare
+     *      {total.toFixed(2)}   a method on it
+     *      {money(total)}       passed through a formatter
+     */
+    const foldedAndShown = foldedTotalBindings(src).some(name => {
+        const n = escapeRegExp(name);
+        const IDENT = '[A-Za-z_$][' + BS + 'w$]*';
+        const bare = new RegExp('[{]' + BS + 's*' + n + BS + 's*[}]');
+        const method = new RegExp('[{]' + BS + 's*' + n + BS + '.' + IDENT + BS + 's*' + BS + '([^)]*' + BS + ')' + BS + 's*[}]');
+        //  ظخor handed to a formatter, which is how money is printed.
+        const formatted = new RegExp('[{]' + BS + 's*' + IDENT + BS + 's*' + BS + '([^)]*' + BS + 'b' + n + BS + 'b[^)]*' + BS + ')');
+        return bare.test(src) || method.test(src) || formatted.test(src);
+    });
+    // Quote calculators usually derive a subtotal from rate * quantity rather
+    // than folding table rows. Require the full executable chain and proof
+    // that the exact computed total reaches the rendered result.
+    const calculatorTotal = /data-qa-calculator/i.test(src)
+        && /\bconst\s+subtotal\s*=\s*(?:useMemo\s*\(\s*\(\)\s*=>\s*)?[^;\n]{0,180}\*/i.test(src)
+        && /\bconst\s+tax\s*=\s*subtotal\s*\*/i.test(src)
+        && /\bconst\s+total\s*=\s*subtotal\s*\+\s*tax/i.test(src)
+        && /data-calculator-total\s*=\s*\{\s*total\s*\}/i.test(src)
+        && /\{\s*[A-Za-z_$][\w$]*\s*\(\s*total\s*\)\s*\}/i.test(src);
+    return foldedAndShown || recordsMetricTotalEvidence(src) || calculatorTotal;
+}
+
+/**
+ * THE TITLE THE PAGE SHOWS, NOT THE LETTERS THE FILE HAPPENS TO CONTAIN.
+ *
+ * Measured live on the owner's machine. He asked for a page under a quoted
+ * Arabic name; Joe built exactly that, and the judge called it unmet:
+ *
+ *     <h1 className="app-name">{content.brand}</h1>   // what the page renders
+ *     brand: '<the requested name>',                    // where the value lives
+ *
+ * The heading is right on screen and wrong in a grep, because the old proof
+ * matched literal text inside the tag and a React page almost never puts it
+ * there. A judge that refuses correct work is not strict ظ¤ it is broken in the
+ * expensive direction, and it blocked that delivery outright.
+ *
+ * So the proof follows the binding ظ¤ ONE hop, and only to a string literal on
+ * one line of the same generated source. Anything computed, concatenated, or
+ * imported from elsewhere does not resolve and stays unproven: one hop is what
+ * a page needs and what a guess would exceed.
+ */
+function structuralMask(src: string): string {
+    const out = src.split('');
+    let mode: 'code' | 'single' | 'double' | 'template' | 'line' | 'block' = 'code';
+    let escaped = false;
+    for (let i = 0; i < src.length; i++) {
+        const ch = src[i];
+        const next = src[i + 1];
+        if (mode === 'code') {
+            if (ch === '/' && next === '/') { out[i] = ' '; out[i + 1] = ' '; mode = 'line'; i++; continue; }
+            if (ch === '/' && next === '*') { out[i] = ' '; out[i + 1] = ' '; mode = 'block'; i++; continue; }
+            if (ch === "'") { mode = 'single'; escaped = false; continue; }
+            if (ch === '"') { mode = 'double'; escaped = false; continue; }
+            if (ch === '`') { mode = 'template'; escaped = false; continue; }
+            continue;
+        }
+        if (mode === 'line') {
+            if (ch === '\n' || ch === '\r') { mode = 'code'; continue; }
+            out[i] = ' ';
+            continue;
+        }
+        if (mode === 'block') {
+            if (ch === '*' && next === '/') { out[i] = ' '; out[i + 1] = ' '; mode = 'code'; i++; continue; }
+            if (ch !== '\n' && ch !== '\r') out[i] = ' ';
+            continue;
+        }
+        if (escaped) { if (ch !== '\n' && ch !== '\r') out[i] = ' '; escaped = false; continue; }
+        if (ch === '\\') { out[i] = ' '; escaped = true; continue; }
+        if ((mode === 'single' && ch === "'") || (mode === 'double' && ch === '"') || (mode === 'template' && ch === '`')) {
+            mode = 'code';
+            continue;
+        }
+        if (ch !== '\n' && ch !== '\r') out[i] = ' ';
+    }
+    return out.join('');
+}
+
+function objectLiteralBody(src: string, objectName: string): { source: string; mask: string } | undefined {
+    const mask = structuralMask(src);
+    const declaration = new RegExp('\\b(?:const|let|var)\\s+' + escapeRegExp(objectName) + '\\s*=\\s*\\{', 'g');
+    const match = declaration.exec(mask);
+    if (!match) return undefined;
+    const open = mask.indexOf('{', match.index);
+    let depth = 1;
+    for (let i = open + 1; i < mask.length; i++) {
+        if (mask[i] === '{') depth++;
+        else if (mask[i] === '}') {
+            depth--;
+            if (depth === 0) return { source: src.slice(open + 1, i), mask: mask.slice(open + 1, i) };
+        }
+    }
+    return undefined;
+}
+
+function topLevelSegments(mask: string): Array<[number, number]> {
+    const segments: Array<[number, number]> = [];
+    let start = 0;
+    let depth = 0;
+    for (let i = 0; i < mask.length; i++) {
+        if (mask[i] === '{' || mask[i] === '[' || mask[i] === '(') depth++;
+        else if (mask[i] === '}' || mask[i] === ']' || mask[i] === ')') depth = Math.max(0, depth - 1);
+        else if (mask[i] === ',' && depth === 0) { segments.push([start, i]); start = i + 1; }
+    }
+    segments.push([start, mask.length]);
+    return segments;
+}
+
+function objectPropertyLiteral(src: string, objectName: string, property: string): string | undefined {
+    const body = objectLiteralBody(src, objectName);
+    if (!body) return undefined;
+    const key = escapeRegExp(property);
+    for (const [start, end] of topLevelSegments(body.mask)) {
+        const maskedSegment = body.mask.slice(start, end);
+        const keyMatch = new RegExp('^\\s*' + key + '\\s*:\\s*([\\\'"`])').exec(maskedSegment);
+        if (!keyMatch) continue;
+        const open = start + keyMatch.index + keyMatch[0].lastIndexOf(keyMatch[1]);
+        const close = body.mask.indexOf(keyMatch[1], open + 1);
+        if (close < 0) return undefined;
+        const after = body.mask.slice(close + 1, end).trim();
+        if (after) return undefined;
+        const value = body.source.slice(open + 1, close).trim();
+        if (keyMatch[1] === '`' && value.includes('${')) return undefined;
+        return value;
+    }
+    return undefined;
+}
+
+function literalVariableValue(src: string, name: string): string | undefined {
+    const mask = structuralMask(src);
+    const declaration = new RegExp('\\b(?:const|let|var)\\s+' + escapeRegExp(name) + '\\s*=\\s*([\\\'"`])', 'g');
+    const match = declaration.exec(mask);
+    if (!match) return undefined;
+    const close = mask.indexOf(match[1], match.index + match[0].length);
+    if (close < 0 || mask.slice(close + 1, close + 120).trim()) return undefined;
+    const value = src.slice(match.index + match[0].length, close).trim();
+    if (match[1] === '`' && value.includes('${')) return undefined;
+    return value;
+}
+
+function resolvedTitleText(src: string, expression: string): string | undefined {
+    const path = expression.match(/^([A-Za-z_$][\w$]*)\.([A-Za-z_$][\w$]*)$/);
+    if (path) return objectPropertyLiteral(src, path[1], path[2]);
+    if (/^[A-Za-z_$][\w$]*$/.test(expression)) return literalVariableValue(src, expression);
+    return undefined;
+}
+
+export function titleEvidence(src: string, expected: string): boolean {
+    const literal = escapeRegExp(expected);
+    //  Built from an explicit backslash: this file has been mangled once by an
+    //  escaping layer between an editor and disk, and a regex that silently
+    //  degrades to matching a backspace character is exactly the kind of guard
+    //  that passes review and proves nothing.
+    const BS = String.fromCharCode(92);
+    const heading = new RegExp('<h[1-6]' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</h[1-6]>', 'iu');
+    const docTitle = new RegExp('<title' + BS + 'b[^>]*>' + BS + 's*' + literal + BS + 's*</title>', 'iu');
+    if (heading.test(src) || docTitle.test(src)) return true;
+    const bound = /<(?:h[1-6]|title)\b[^>]*>\s*\{\s*([A-Za-z_$][\w$.]*)\s*\}\s*<\/(?:h[1-6]|title)>/giu;
+    for (const match of src.matchAll(bound)) {
+        if (resolvedTitleText(src, match[1]) === expected) return true;
+    }
+    return false;
+}
+
+/**
+ * Judge what was asked against what exists.
+ *
+ * Every ┬سmet┬╗ points at something real: a file, a flag that came from a
+ * process, or a marker in the generated source. Nothing is met by default.
+ */
+export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true): Acceptance {
+    const dir = String(ev.dir || '');
+    const src = dir && fs.existsSync(dir) ? sourceOf(dir) : '';
+
+    const judged: JudgedCriterion[] = criteria.map(c => {
+        const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });
+
+        //  A verdict established by READING the source outranks every pattern
+        //  below it, because the patterns can only speak about the handful of
+        //  features the catalogue knows. Nothing here re-derives it: a settled
+        //  verdict that this function second-guessed would be two judges on one
+        //  claim, and the weaker one would win by being last.
+        if (c.preJudged) return say(c.preJudged.verdict, c.preJudged.why);
+
+        if (c.expectedFilter) {
+            const key = escapeRegExp(c.expectedFilter.field);
+            const hasContract = !!src
+                && new RegExp("\\bfilterFields\\s*:\\s*\\[[^\\]]*['\"]" + key + "['\"]", 'iu').test(src)
+                && /filterDefs|filterKeys/i.test(src)
+                && /filters\[field\.key\]|setFilters\(/i.test(src);
+            // The field label may live in content.js while this source is the
+            // view module. The field key plus filter state is the authoritative
+            // proof that the requested filter is wired to visible rows.
+            return hasContract
+                ? say('met', isAr ? `╪د┘┘┘╪ز╪▒ ┬س${c.expectedFilter.label}┬╗ ┘à╪▒╪ذ┘ê╪╖ ╪ذ╪ص┘é┘ ┘ê╪ص╪د┘╪ر ╪╣╪▒╪╢ ╪ص┘é┘è┘é┘è╪ر` : `filter ظ£${c.expectedFilter.label}ظإ is wired to a real field and visible-row state`)
+                : say('unmet', isAr ? `┘┘╪ز╪▒ ┬س${c.expectedFilter.label}┬╗ ╪║┘è╪▒ ┘à╪س╪ذ╪ز ┘┘è ╪د┘┘à╪╡╪»╪▒ ╪د┘┘à┘ê┘┘┘ّ╪»` : `filter ظ£${c.expectedFilter.label}ظإ is not wired in the generated source`);
+        }
+        if (c.expectedProgress) {
+            const has = !!src
+                && /kind:\s*'progress'/i.test(src)
+                && /case\s*'progress'/i.test(src)
+                && /m\.equals/i.test(src)
+                && /Math\.round\s*\(\s*\(complete\s*\/\s*denominator\)/i.test(src);
+            return has
+                ? say('met', isAr ? '┘╪│╪ذ╪ر ╪د┘╪ز┘é╪»┘à ┘à╪ص╪│┘ê╪ذ╪ر ┘à┘ ╪د┘╪ص╪د┘╪د╪ز ╪د┘┘╪╣┘┘è╪ر ┘┘╪│╪ش┘╪د╪ز' : 'progress is computed from the recordsظآ actual state values')
+                : say('unmet', isAr ? '┘à┘é┘è╪د╪│ ╪د┘╪ز┘é╪»┘à ╪║┘è╪▒ ┘à╪س╪ذ╪ز ┘â╪ص╪│╪د╪ذ ┘╪╣┘┘è' : 'no source evidence proves a computed progress metric');
+        }
+
+        /**
+         *  ظؤ¤ THE NARROWER CLAIM IS JUDGED FIRST.
+         *
+         *  A constraint criterion carries its column's label so the ledger can
+         *  name it, and ┬سthe column exists┬╗ is TRUE for a schema that dropped
+         *  the bound entirely. Judging by the wider claim first answers a
+         *  question nobody asked and marks the constraint met ظ¤ measured: a
+         *  mutation that deleted `minExclusive: true` still scored green.
+         *
+         *  So a criterion that carries a rule is judged by its rule, and the
+         *  column it names is context, not the test.
+         */
+        if (c.expectedColumn && !c.expectedRule) {
+            //  The label he wrote, quoted in the generated source. A column
+            //  that is not there cannot be greped into existence.
+            //  As a COLUMN, not as loose text: a label that happens to
+            //  appear in a comment or a sentence proves nothing about the
+            //  table. The generated schema writes `label: 'ظخ'`.
+            const quoted = c.expectedColumn.replace(/[-/\\^$*+?.()|[\\]{}]/g, "\\$&");
+            const has = !!src && new RegExp("label:\\s*'" + quoted + "'").test(src);
+            return has
+                ? say('met', isAr ? `╪د┘╪╣┘à┘ê╪» ┬س${c.expectedColumn}┬╗ ┘┘è ┘à╪«╪╖┘ّ╪╖ ╪د┘╪ش╪»┘ê┘` : `the column ┬س${c.expectedColumn}┬╗ is in the table schema`)
+                : say('unmet', isAr ? `╪د┘╪╣┘à┘ê╪» ┬س${c.expectedColumn}┬╗ ╪║┘è╪▒ ┘à┘ê╪ش┘ê╪»` : `the column ┬س${c.expectedColumn}┬╗ is missing`);
+        }
+        if (c.expectedRule) {
+            //  A BOUND is the one kind that becomes a real constraint, and
+            //  the generated app already ships the guard that reads it ظ¤
+            //  `if (field.type !== 'number' || field.min === undefined)`.
+            //  So the proof is the value that guard needs, in the schema.
+            if (c.expectedRule.kind === 'bound') {
+                /**
+                 *  A BOUND IS PROVEN ON A COLUMN, WITH A NUMBER, AT A
+                 *  STRICTNESS ظ¤ OR IT IS NOT PROVEN.
+                 *
+                 *  This asked `/min:\s*-?\d/` of the whole project, so any
+                 *  digit after any `min:` anywhere earned the ظ£à ظ¤ a bound on
+                 *  the wrong column, a different number, or a build missing
+                 *  `minExclusive` and therefore ACCEPTING the exact value he
+                 *  forbade, all reported as met.
+                 *
+                 *  The schema writes one line per column, and that line is the
+                 *  unit of proof:
+                 *
+                 *    { key: 'money1', label: '╪د┘╪│╪╣╪▒', type: 'number', ظخ min: 0, minExclusive: true },
+                 */
+                const want = c.expectedRule;
+                const labelOf = (line: string) => (/label:\s*'([^']*)'/.exec(line) || [])[1] || '';
+                const columnLines = String(src || '').split('\n')
+                    .filter(l => /label:\s*'/.test(l) && /\bmin:\s*-?\d/.test(l));
+                //  On HIS column when he named one. `saysWord` both ways,
+                //  because he writes ┬س╪│╪╣╪▒┘ï╪د┬╗ and the schema says ┬س╪د┘╪│╪╣╪▒┬╗.
+                //  `field` is only filled when the clause OPENS with the noun
+                //  ظ¤ ┬س╪د┘┘à╪ذ┘╪║ ╪ح╪░╪د ┘â╪د┘ ╪╡┘╪▒┘ï╪د┬╗. ┬س┘╪د ╪ز┘é╪ذ┘ ╪│╪╣╪▒┘ï╪د ╪╡┘╪▒┘ï╪د┬╗ opens with
+                //  the negation, so it arrives empty, and the column is named
+                //  in the middle of his sentence instead. So the CLAUSE is
+                //  asked about each column, through the language layer: it
+                //  says ┬س╪│╪╣╪▒┘ï╪د┬╗, the schema says ┬س╪د┘╪│╪╣╪▒┬╗, and one stemmer
+                //  settles it. It does not say ┬س┘â┘à┘è╪ر┬╗, so ┬س╪د┘┘â┘à┘è╪ر┬╗ is out.
+                const said = want.field || want.text || '';
+                const onHisColumn = columnLines.filter(l => {
+                    const label = labelOf(l);
+                    if (!label || !said) return !!label;
+                    return label === said || saysWord(said, label)
+                        || label.split(/\s+/).some(w => w.length > 2 && saysWord(said, w));
+                });
+                //  With HIS number, when the sentence carried one.
+                const withHisNumber = onHisColumn.filter(l => want.min === undefined
+                    || new RegExp('\\bmin:\\s*' + want.min + '\\b').test(l));
+                //  And at HIS strictness. ┬س┘╪د ╪ز┘é╪ذ┘ ╪│╪╣╪▒┘ï╪د ╪╡┘╪▒┘ï╪د┬╗ forbids the
+                //  value itself; a schema with `min: 0` and no `minExclusive`
+                //  accepts zero, which is the opposite of what he asked.
+                const proven = withHisNumber.filter(l => !want.minExclusive || /minExclusive:\s*true/.test(l));
+                if (proven.length) {
+                    return say('met', isAr
+                        ? `╪د┘╪┤╪▒╪╖ ┘à╪╖╪ذ┘┘ّ┘é ╪╣┘┘ë ╪د┘╪╣┘à┘ê╪» ┬س${labelOf(proven[0])}┬╗: ┬س${want.text}┬╗`
+                        : `the bound is on the column ┬س${labelOf(proven[0])}┬╗: ┬س${want.text}┬╗`);
+                }
+                //  A verdict that says WHICH of the three failed. ┬سunmet┬╗ on
+                //  its own sent an hour of searching in the wrong direction
+                //  the last time a bound went missing.
+                const why = onHisColumn.length === 0
+                    ? (isAr ? `┘┘à ┘è╪╡┘ ╪ص╪»┘î┘ّ ╪ح┘┘ë ╪د┘╪╣┘à┘ê╪» ╪د┘╪░┘è ╪│┘à┘ّ┘è╪ز┘┘ç` : `no bound reached the column you named`)
+                    : withHisNumber.length === 0
+                        ? (isAr ? `╪د┘╪ص╪»┘ّ ╪╣┘┘ë ╪د┘╪╣┘à┘ê╪» ╪ذ┘é┘è┘à╪ر ╪║┘è╪▒ ╪د┘╪ز┘è ╪░┘â╪▒╪ز┘ç╪د (${want.min})` : `the bound on that column is not the number you gave (${want.min})`)
+                        : (isAr ? `╪د┘╪ص╪»┘ّ ┘è┘é╪ذ┘ ╪د┘┘é┘è┘à╪ر ┘┘╪│┘ç╪د ظ¤ ┬س${want.min}┬╗ ┘à╪│┘à┘ê╪ص╪ر╪î ┘ê╪ث┘╪ز ┘à┘╪╣╪ز┘ç╪د` : `the bound admits the value itself ظ¤ ┬س${want.min}┬╗ is allowed, and you forbade it`);
+                return say('unmet', isAr
+                    ? `╪د╪┤╪ز╪▒╪╖╪ز┘ ┬س${want.text}┬╗ ظ¤ ${why}`
+                    : `you asked for ┬س${want.text}┬╗ ظ¤ ${why}`);
+            }
+            //  A PROHIBITION and a REQUIREMENT are about the whole build, and
+            //  Joe has no general way to check either. It says so, in his own
+            //  words, rather than dropping the condition ظ¤ `unprovable` is
+            //  declared to him and does not block the delivery.
+            return say('unprovable', isAr
+                ? `┘é╪▒╪ث╪ز┘ ╪┤╪▒╪╖┘â ┬س${c.expectedRule.text}┬╗ ┘ê┘╪د ╪ث┘à┘┘â ╪╖╪▒┘è┘é╪ر ╪ث┘╪س╪ذ╪ز┘ç ╪ذ┘ç╪د╪î ┘┘┘à ╪ث╪»┘ّ╪╣┘ ╪ث┘┘ّ┘è ┘╪ص╪╡╪ز┘ç`
+                : `I read your condition ┬س${c.expectedRule.text}┬╗ and have no way to prove it, so I did not claim to have checked it`);
+        }
+        if (c.expectedPage) {
+            //  A page is proven the way a column is: by what the build
+            //  actually wrote. Either a file of its own on disk (the page
+            //  builder) or a route carrying his title (the React router).
+            //  Nothing is greped into existence, and nothing is assumed
+            //  from the plan ظ¤ the plan is what we are checking.
+            const slug = c.expectedPage.slug;
+            const file = slug === 'index' ? 'index.html' : `${slug}.html`;
+            const onDisk = !!dir && fs.existsSync(path.join(dir, file));
+            const route = slug === 'index' ? '/' : `/${slug}`;
+            //  The generator writes the route literally: `{ path: '/contact', ظخ }`.
+            //  A plain substring is enough, and leaves no escape to get wrong.
+            const routed = !!src && src.includes(`path: '${route}'`);
+            return (onDisk || routed)
+                ? say('met', isAr
+                    ? `╪╡┘╪ص╪ر ┬س${c.expectedPage.title}┬╗ ┘à╪ذ┘┘è╪ر (${onDisk ? file : route})`
+                    : `the page ┬س${c.expectedPage.title}┬╗ was built (${onDisk ? file : route})`)
+                : say('unmet', isAr
+                    ? `╪╡┘╪ص╪ر ┬س${c.expectedPage.title}┬╗ ╪╖┘╪ذ╪ز┘ç╪د ┘ê┘┘à ╪ز┘╪ذ┘┘`
+                    : `the page ┬س${c.expectedPage.title}┬╗ was asked for and not built`);
+        }
+        if (c.id === 'readme') {
+            const has = !!dir && ['README.md', 'readme.md'].some(f => fs.existsSync(path.join(dir, f)));
+            return has
+                ? say('met', isAr ? 'README.md ┘à┘ê╪ش┘ê╪» ┘┘è ╪د┘┘à╪┤╪▒┘ê╪╣' : 'README.md is in the project')
+                : say('unmet', isAr ? '┘┘à ╪ث┘â╪ز╪ذ README' : 'no README was written');
+        }
+        if (c.id === 'production_build') {
+            return ev.built
+                ? say('met', isAr ? 'dist/index.html ┘à┘ê╪ش┘ê╪» ╪╣┘┘ë ╪د┘┘é╪▒╪╡' : 'dist/index.html exists on disk')
+                : say('unmet', isAr ? '┘┘à ╪ز┘╪ذ┘┘ ┘╪│╪«╪ر ╪ح┘╪ز╪د╪ش' : 'no production build was produced');
+        }
+        if (c.id === 'preview') {
+            return ev.liveUrl
+                ? say('met', isAr ? `╪«╪د╪»┘à ┘è╪╣┘à┘ ╪╣┘┘ë ${ev.liveUrl}` : `a server is live at ${ev.liveUrl}`)
+                : say('unmet', isAr ? '┘┘à ┘è╪ذ┘é┘ ╪«╪د╪»┘à ┘à╪╣╪د┘è┘╪ر ┘è╪╣┘à┘' : 'no preview server was left running');
+        }
+        if (c.id === 'browser_check') {
+            if (!ev.audit) return say('unmet', isAr ? '┘┘à ┘è┘╪ش╪▒┘ ╪ث┘è ┘╪ص╪╡ ┘┘è ╪د┘┘à╪ز╪╡┘╪ص' : 'no browser check ran');
+            if (ev.audit.skipped) {
+                return say('unmet', isAr
+                    ? `╪ز╪╣╪░┘ّ╪▒ ╪ز╪┤╪║┘è┘ ╪د┘┘à╪ز╪╡┘╪ص (${ev.audit.skipped})`
+                    : `the browser could not start (${ev.audit.skipped})`);
+            }
+            return say('met', isAr
+                ? `┘┘╪ص╪╡╪ز ┘┘è ┘à╪ز╪╡┘┘ّ╪ص ╪ص┘é┘è┘é┘è ظ¤ ${ev.audit.score}/100`
+                : `checked in a real browser ظ¤ ${ev.audit.score}/100`);
+        }
+
+        // A FEATURE is met when the generated source really contains it.
+        if (!src) {
+            return say('unprovable', isAr
+                ? '┘╪د ┘à╪╡╪»╪▒ ╪ث╪│╪ز╪╖┘è╪╣ ┘é╪▒╪د╪ة╪ز┘ç ┘╪ث╪س╪ذ╪ز ┘ç╪░╪د'
+                : 'no source to read, so nothing can be proven');
+        }
+        let hit: boolean;
+        let counterProvedByTotal = false;
+        if (c.evidenceCheck) {
+            hit = c.evidenceCheck(src);
+        } else if (c.id === 'counter') {
+            hit = hasCounterEvidence(src);
+            if (!hit && computedTotalEvidence(src)) { hit = true; counterProvedByTotal = true; }
+        } else if (c.id === 'button') {
+            hit = hasActionBoundButtonEvidence(src);
+        } else if (c.id === 'status_message') {
+            hit = hasStatusMessageEvidence(src);
+        } else if (c.id === 'form_validation') {
+            // The form must both identify missing required fields and expose
+            // the result through an announced error surface.
+            hit = /\.required\b|fields\s*\.filter/i.test(src)
+                && /setError\(|role\s*=\s*["']alert["']|aria-live/i.test(src);
+        } else if (c.id === 'title' && c.expectedText) {
+            hit = titleEvidence(src, c.expectedText);
+        } else {
+            hit = (c.markers || []).some(re => re.test(src));
+        }
+        if (hit) {
+            const why = counterProvedByTotal
+                ? (isAr ? '┘à╪ش┘à┘ê╪╣ ┘à╪ص╪│┘ê╪ذ ┘à┘ ╪ذ┘è╪د┘╪د╪ز┘â ┘ê┘à╪╣╪▒┘ê╪╢ ┘┘è ╪د┘╪╡┘╪ص╪ر' : 'a total computed from your rows and shown on the page')
+                : c.id === 'title' && c.expectedText
+                ? (isAr ? `╪د┘╪╣┘┘ê╪د┘ ╪د┘┘à╪╖┘┘ê╪ذ ┬س${c.expectedText}┬╗ ┘à┘ê╪ش┘ê╪» ┘┘è ┘à╪╡╪»╪▒ ╪د┘┘à╪┤╪▒┘ê╪╣` : `requested title ظ£${c.expectedText}ظإ is present in the generated source`)
+                : (isAr ? '┘à┘ê╪ش┘ê╪» ┘┘è ┘à╪╡╪»╪▒ ╪د┘┘à╪┤╪▒┘ê╪╣' : 'present in the generated source');
+            return say('met', why);
+        }
+        return say('unmet', isAr ? '┘╪د ┘è┘ê╪ش╪» ╪»┘┘è┘ ┘╪╣┘┘è ┘â╪د┘┘ ┘┘è ╪د┘┘à╪╡╪»╪▒ ╪د┘┘à┘ê┘┘┘ّ╪»' : 'no sufficient behavioral evidence in the generated source');
+    });
+
+    const met = judged.filter(c => c.verdict === 'met').length;
+    /**
+     *  ظؤ¤ THREE OUTCOMES, AND ONLY ONE OF THEM MAY BLOCK.
+     *
+     *  Merging two branches put two guards in one tree arguing opposite
+     *  sides, and both were written from real incidents:
+     *
+     *    ظت ┬سan unprovable rule does not block the delivery┬╗ ظ¤ because
+     *      blocking on what Joe cannot check makes every conditional
+     *      request undeliverable, which is how a guard becomes a wall.
+     *      Every Gate062 run states ┬سDo not modify existing projects┬╗,
+     *      so counting it against acceptance freezes acceptance forever,
+     *      and a criterion that can NEVER be met is the same defect as
+     *      one that can never fail.
+     *
+     *    ظت ┬سunmet must cover every criterion┬╗ ظ¤ because otherwise a run
+     *      scores 100% by proving only the subset the judge knew how to
+     *      inspect.
+     *
+     *  Both are right, and picking one silently would have discarded a
+     *  measured incident. So the count is three-way: `unmet` blocks,
+     *  `unprovable` does not, and NEITHER is hidden ظ¤ the ledger head
+     *  below never says ┬سall proven┬╗ while an unprovable one stands, so
+     *  no claim is made that the run cannot support.
+     */
+    const unmet = judged.filter(c => c.verdict === 'unmet').length;
+    const unprovable = judged.filter(c => c.verdict === 'unprovable').length;
+    /**
+     *  ظؤ¤ AND NOTHING PROVEN IS NEVER ACCEPTED.
+     *
+     *  `unmet === 0` alone made a run where the judge could check NOTHING
+     *  come back accepted: zero proven, zero failed, every criterion
+     *  unprovable ظ¤ and a green verdict over a ledger with no evidence in
+     *  it at all. That is the exact false success this file exists to stop,
+     *  and it walked in through the door opened for `unprovable`.
+     *
+     *  So acceptance needs something demonstrated, not merely nothing
+     *  refuted. One met criterion is the floor.
+     */
+    return {
+        criteria: judged, met, unmet, unprovable,
+        accepted: judged.length > 0 && unmet === 0 && met > 0,
+    };
+}
+
+/**
+ * The ledger, for the delivery message.
+ *
+ * Printed whenever the brief asked for anything at all ظ¤ a clean ledger is
+ * worth as much as a dirty one, because it is what makes the dirty one
+ * believable.
+ */
+export function acceptanceBlock(a: Acceptance, isAr: boolean): string {
+    /**
+     *  A LEDGER THAT DOES NOT ADD UP IS NOT PUBLISHED.
+     *
+     *  The counts and the rows are two records of one judgement, and nothing
+     *  but this line forces them to agree. A ledger printing ┬س4 proven┬╗ over
+     *  eleven rows is a report that reads as an answer, so it stops here
+     *  rather than reaching him.
+     */
+    if (a.met + a.unmet + (a.unprovable || 0) !== a.criteria.length) {
+        throw new Error('acceptance_ledger_count_mismatch');
+    }
+    if (!a.criteria.length) {
+        return isAr
+            ? 'ظأبي╕ ┘┘à ╪ث╪│╪ز╪«╪▒╪ش ┘à╪╣┘è╪د╪▒╪د┘ï ┘é╪د╪ذ┘╪د┘ï ┘┘┘╪ص╪╡ ┘à┘ ╪╖┘╪ذ┘â╪î ┘╪░┘┘â ┘┘à ╪ث╪╡╪»╪▒ ╪ص┘â┘à ┘é╪ذ┘ê┘.'
+            : 'ظأبي╕ I could not derive a checkable criterion from your request, so I did not issue an acceptance judgment.';
+    }
+    const gaps = a.unprovable || 0;
+    /**
+     *  ظؤ¤ ┬سALL PROVEN┬╗ IS A CLAIM, AND IT IS FALSE WHILE ONE IS UNCHECKED.
+     *
+     *  `unprovable` does not block delivery ظ¤ blocking on what this judge
+     *  cannot check would make every conditional request undeliverable. But
+     *  not blocking is not permission to round it away: the head said ┬سall
+     *  requested criteria were proven┬╗ over a ledger with an unchecked row
+     *  in it, which is exactly the false-success this file exists to stop.
+     *
+     *  So the gap is stated in the same sentence as the acceptance, in his
+     *  language, with its number. He decides what to do about it; Joe only
+     *  has to stop pretending it is not there.
+     */
+    /**
+     *  ظؤ¤ AND THE MARK IS THE EVIDENCE THAT REACHES HIM.
+     *
+     *  `ظ£à` sat on ┬س1 of 5 proven, 4 never checked┬╗ and on ┬س5 of 5 proven┬╗
+     *  alike ظ¤ and his eye cannot tell those apart, whatever the sentence
+     *  after the mark says. That is `accepted` carrying two meanings in one
+     *  boolean, which this repository already closed once under the name
+     *  ┬سa boolean that means two things cannot be guarded┬╗.
+     *
+     *  The two are separated where each belongs. `accepted` stays the
+     *  DELIVERY gate ظ¤ nothing he asked for was looked for and missing ظ¤
+     *  because tying delivery to ┬سeverything proven┬╗ would wall off every
+     *  request carrying a criterion this judge cannot check, and the
+     *  reference prompt itself carries one, so that gate would never open
+     *  again. The MARK answers the other question: a tick means everything
+     *  he asked for was proven, and nothing less earns one.
+     *
+     *  He decides whether a partial delivery is good enough. Joe does not
+     *  decide it for him with a green tick.
+     */
+    const head = a.accepted
+        ? (gaps
+            ? (isAr
+                ? `ظأبي╕ ╪ص┘â┘à ┘é╪ذ┘ê┘ ┘╪د┘é╪╡: ┘┘à ┘è╪│┘é╪╖ ╪┤┘è╪ة┘î ┘à┘à┘ّ╪د ┘╪ص╪╡╪ز┘┘ç (${a.met}/${a.criteria.length}) ظ¤ ┘ê${gaps} ┘à┘ ╪╖┘╪ذ┘â ┘┘à ╪ث╪╣╪▒┘ ┘â┘è┘ ╪ث┘╪ص╪╡┘ç╪î ┘ê┘┘à ╪ث╪»┘ّ┘╪╣┘ ╪ث┘┘ّ┘è ┘╪ص╪╡╪ز┘┘ç:`
+                : `ظأبي╕ Accepted with gaps: nothing I checked failed (${a.met}/${a.criteria.length}) ظ¤ and ${gaps} of your request I did not know how to check, and did not claim to have checked:`)
+            : (isAr
+                ? `ظ£à ╪ص┘â┘à ╪د┘┘é╪ذ┘ê┘: ╪ث╪س╪ذ╪ز┘┘ّ ╪ش┘à┘è╪╣ ╪د┘┘à╪╣╪د┘è┘è╪▒ ╪د┘┘à╪╖┘┘ê╪ذ╪ر (${a.met}/${a.criteria.length}).`
+                : `ظ£à Acceptance accepted: all ${a.met}/${a.criteria.length} requested criteria were proven.`))
+        : (isAr
+            ? `ظأبي╕ ╪د┘╪ز╪│┘┘è┘à ┘à╪ص╪ش┘ê╪ذ: ╪ث╪س╪ذ╪ز┘┘ّ ${a.met} ┘à┘ ╪ث╪╡┘ ${a.criteria.length} ┘à╪╣┘è╪د╪▒╪د┘ï ┘à╪┤╪ز┘é╪د┘ï ظ¤ ┘ê${a.unmet} ┘┘à ┘è┘╪س╪ذ╪ز${gaps ? `╪î ┘ê${gaps} ┘┘à ╪ث╪╣╪▒┘ ┘â┘è┘ ╪ث┘╪ص╪╡┘ç` : ''}:`
+            : `ظأبي╕ Delivery blocked: ${a.met} of ${a.criteria.length} requested criteria were proven ظ¤ ${a.unmet} were not proven${gaps ? `, and ${gaps} I did not know how to check` : ''}:`);
+    const lines = a.criteria.map(c => {
+        //  Two marks, because there are two outcomes he can act on: proven,
+        //  or not. WHICH kind of not-proven is in `why`, where it belongs.
+        const mark = c.verdict === 'met' ? 'ظ£à' : 'ظإî';
+        return `   ${mark} ${isAr ? c.ar : c.en} ظ¤ ${c.why}`;
+    });
+    return [head, ...lines].join('\n');
+}

@@ -1,84 +1,90 @@
-# JOE LIVE TEAM REPORT — Muse + NVIDIA (cycle 258, 2026-10-04 ~11:50Z)
+# JOE LIVE TEAM REPORT — Muse + NVIDIA (f40 review, 2026-10-04 ~12:05Z)
 FALLBACK_COPY: shared D:\Joe\coordination\team\LIVE-REPORT.md is not writable
-from this sandbox (SHARED_TEAM_WRITE=DENIED, probed 2026-10-04T11:45Z).
+from this sandbox (SHARED_TEAM_WRITE=DENIED, probed again 2026-10-04T12:05Z).
 External coordinator: please copy. No shared file was modified by Muse.
-UPDATED=2026-10-04T11:50Z
-OVERALL_STATUS=Consultation re-review done; verification regression green;
-audit counts with provenance; Real Joe UAT BLOCKED (both runtimes down).
+UPDATED=2026-10-04T12:05Z
+OVERALL_STATUS=Muse finished independent review of NVIDIA f40f6100:
+verification/ledger APPROVED, CLI matcher needs a bounded fix (APPROVE_WITH_CHANGES).
+Real Joe UAT still BLOCKED (both runtimes down).
 
 ## 1. ماذا نعمل الآن؟
-- Muse: أنهى إعادة مراجعة مستقلة لمراقب دورة العمال بعد تغيّر المصدر (G1)،
-  وشغّل اختبارات التحقق على رأسه، وأنتج عدّادات registry بتوثيق دقيق.
-- NVIDIA: يملك إصلاح verification/CLI (آخر commit مرصود f40f6100).
-- Codex: يملك مراقبة العمال واستعادة التشغيل.
+- Muse: أنهى مراجعة مستقلة عميقة لالتزام NVIDIA f40f6100 (إصلاح
+  verification/ledger) على البايتات الدقيقة، مع إعادة تشغيل الاختبارات بنفسه.
+- NVIDIA: يملك إصلاح verification/CLI (f40f6100 على main محليًا + عمل متسخ محفوظ).
+- Codex: يملك المراقبة واستعادة التشغيل ومراجعة الأدلة.
 
 ## 2. ماذا اكتشفنا؟
-- مصدر المراقب تغيّر بعد مراجعة 11:30Z (ملفّان من 4): التغيّر هو بالضبط
-  إصلاح G1 المطلوب (تعليق توثيق + اختبار تثبيت)، 9 أسطر مضافة فقط.
-- registry على رأس Muse: 163 أداة مسجلة، 163/163 فيها execute،
-  40 في كتالوج المخطط وكلها مسجلة، 21 افتراض صلاحيات + 2 حدّ معدل —
-  يطابق تمامًا رصد NVIDIA المستقل من التشغيل (توافق بين مصدر وتشغيل).
-- :5002 و:5000 كلاهما DOWN (لا مستمع) — ما زال تغيّرًا عن حالة :5000 السابقة.
+- جزء verification/ledger في f40 سليم ومُثبت: 19/19 + بوابة engineer-flow خضراء.
+- لكن دالة isCliRequest الجديدة تُخطئ: كلمات عامة مثل tool/script/utility
+  تُسقط 5 طلبات ويب حقيقية مثبتة من التخطيط الحتمي إلى تخطيط يعتمد المزوّد
+  (ويتوقف تمامًا عند تعطل المزوّد). لا يوجد اختبار مُثبَّت يغطي هذا الحد.
+- عطل الـ23 اختبارًا المجاور مسبق الوجود (مطابق تمامًا على الأب a10) — ليس من f40.
+- ادعاء المالك "36/36 + 10 بوابات" موجود في رسالة الالتزام فقط بلا سجلات؛
+  العدد المُعاد إنتاجه على البايتات الدقيقة هو 19 للثلاث حزم المسماة.
 
 ## 3. ماذا أنجزنا فعليًا؟
-- إعادة مراجعة المراقب على البايتات الجديدة: 63/63 + 32/32 خضراء،
-  التوصية APPROVE_WITH_CHANGES (بقي تأكيد PS7 + الاسترداد الآمن).
-- smoke-verification-rewrite: 5/5 خضراء على رأس Muse.
-- guard:architecture و guard:package-scripts: خضراء.
-- لم يُدّعَ أي PASS لواجهة Joe الحقيقية.
+- مراجعة مستقلة كاملة: APPROVE_WITH_CHANGES (آلية التحقق مقبولة، إصلاح
+  المطابق + أدلة مطلوبة قبل أي اعتماد تشغيلي). أُرسلت عبر ملف fallback.
+- 19/19 اختبارات Gap على بايتات f40 الدقيقة + engineer-flow PASS + فحص
+  tsc (أصلح خطأي TS2554، ولا أخطاء في الملفات الثلاثة).
+- لم يُكتب أي تنفيذ منافس، ولم يُمسّ عمل NVIDIA، ولم يُدَّعَ أي REAL_JOE_UI PASS.
 
 ## 4. ماذا يعمل Muse الآن؟
-CURRENT_TASK=مراجعة مستقلة + تدقيق wiring على رأس Muse (انتهت هذه الدفعة).
-LATEST_RESULT=63/63+32/32 مراقب؛ 5/5 تحقق؛ عدّادات 163/40/21/2 بتوثيق.
-BLOCKER=لا يوجد لعمله الحالي؛ UAT الحقيقي محظور بتوقف التشغيل.
+CURRENT_TASK=انتهى من مراجعة f40 (بانتظار استيراد Codex للرد).
+LATEST_RESULT=19/19 + engineer-flow PASS على f40؛ 5 انقلابات مثبتة للمطابق.
+BLOCKER=الكتابة المشتركة ممنوعة (fallback فقط)؛ UAT محظور بتوقف التشغيل.
 
 ## 5. ماذا يعمل NVIDIA الآن؟
-CURRENT_TASK=إصلاح verification/CLI المملوك (PhaseExecutor/ledger/blueprints).
-LATEST_RESULT=مصدر f40f6100 مرصود قراءةً فقط (REPORTED_BY_STATE، غير مُراجَع هنا).
-BLOCKER=غير معروف من مصدر مباشر (UNKNOWN — لا اختراع).
+CURRENT_TASK=إصلاح verification/CLI المملوك (آخر HEAD مرصود f40f6100 + عمل متسخ).
+LATEST_RESULT=التزام f40f6100 (52+/14-) — REPORTED_BY_STATE، رُوجِع هنا قراءةً فقط.
+BLOCKER=UNKNOWN من مصدر مباشر (لا اختراع).
 
 ## 6. هل تم التواصل أو المراجعة بين Muse وNVIDIA؟
-- لا مراجعة مباشرة جديدة بينهما هذه الدورة.
-- توافق غير مباشر موثّق: عدّادا 21/2 من Muse (مصدر) يطابقان رصد NVIDIA (تشغيل).
-- مراجعة Muse للمراقب أُرسلت عبر ملف fallback لجامع Codex (الكتابة المشتركة ممنوعة).
+- Muse راجع عمل NVIDIA مباشرةً (هذا الملف + رد الاستشارة) — أول مراجعة دقيقة لـf40.
+- لا رد بعد من NVIDIA على المراجعة (طبيعي — صدرت للتو).
+- التواصل عبر ملفات fallback وجامع Codex (الكتابة المشتركة ممنوعة على الطرفين).
 
 ## 7. أين اتفقا وأين اختلفا؟
-- اتفقا (بالدليل): عدّادات registry الافتراضية 21/2 من مصدرين مستقلين.
-- لا خلاف جديد موثّق هذه الدورة. خلافات WIRING-AUDIT السابقة ما زالت
-  بيد المالك (NVIDIA) للرد عليها.
+- اتفقا (بالدليل): آلية Gap-A/B والـledger سليمة؛ الإيقافات الصادقة محفوظة؛
+  البوابات النهائية لا تدخل في المراقبة.
+- اختلفا (بطلب تغيير): مطابِق CLI لدى NVIDIA واسع ويُسقط طلبات ويب —
+  يتطلب تضييقًا + اختبارات سلبية + إعادة مراجعة قبل الاعتماد.
 
-## 8. الأرقام المؤكدة حاليًا (رأس Muse 182c256e — VERIFIED بالمصدر)
-DISCOVERED_TOOLS=163 (مسجلة)
-REGISTERED_TOOLS=163
-EXECUTABLE_TOOLS=163 (وجود execute فقط — إثبات ساكن، REPORTED_BY_MUSE)
+## 8. الأرقام المؤكدة حاليًا (بايتات f40 الدقيقة — VERIFIED بإعادة تشغيل Muse)
+DISCOVERED_TOOLS=UNKNOWN (هذه الدورة مراجعة f40 لا تدقيق شامل)
+REGISTERED_TOOLS=UNKNOWN
+EXECUTABLE_TOOLS=UNKNOWN
 FULLY_WIRED=UNKNOWN
 PARTIALLY_WIRED=UNKNOWN
 ORPHANED=UNKNOWN
-DUPLICATE=0 (السجل يرفض التكرار — VERIFIED)
-UNKNOWN=123 (مسجلة لكن خارج كتالوج المخطط؛ فجوة تخطيط لا عطل ربط)
-REPAIRED=0 (تدقيق أولًا — لا إصلاح واسع)
-VERIFIED=163 (عقد التسجيل فقط)
+DUPLICATE=UNKNOWN
+UNKNOWN=UNKNOWN
+REPAIRED=0 (مراجعة فقط — الإصلاح بملكية NVIDIA)
+VERIFIED=19 (اختبارات Gap الثلاث على بايتات f40، REPORTED_BY_MUSE + EXIT=0)
 REAL_JOE_PROVEN=0
+ENGINEER_FLOW=PASS على f40 (REPORTED_BY_MUSE, EXIT=0)
+SCHEMA_FLIPS=5 مثبتة a10->f40 (REPORTED_BY_MUSE, بمسبار مزدوج الشجرتين)
+PREADJACENT_FAILS=23 مطابقة على الأب (ليست من f40 — VERIFIED بالضابط)
 
 ## 9. ما آخر اختبار ونتيجته؟
-TEST=مراقب دورة العمال (بايتات جديدة) + smoke-verification-rewrite + الحارسان
-RESULT=PASS (63/63 و32/32 و5/5، EXIT=0، PS5.1/Jest)
-WHAT_IT_PROVES=المراقب سليم على البايتات الجديدة؛ إصلاح تحقق run4b صامد
-على رأس Muse. هذا PASS داخلي/مركّز — ليس REAL_JOE_UI PASS.
+TEST=حزم Gap الثلاث + engineer-flow + tsc على شجرة f40 المستخرجة (مقارنة بالأب a10)
+RESULT=PASS (19/19 EXIT=0؛ engineer-flow PASSED؛ tsc نظيف في الملفات الثلاثة)
+WHAT_IT_PROVES=إصلاح التحقق/السجل يعمل على البايتات الدقيقة. هذا PASS
+داخلي/مركّز — ليس REAL_JOE_UI PASS (لم يُحاوَل؛ التشغيل متوقف).
 
 ## 10. ما المشاكل أو العوائق الحالية؟
-- :5002 و:5000 كلاهما DOWN — UAT الواجهة الحقيقية BLOCKED.
-  الاستعادة بملكية Codex/human (لم يتّخذ Muse أي إجراء تشغيلي).
-- PS7 غير متاح في sandbox — بقي تأكيد 63/63+32/32 على PS7 خارجها (R1).
-- تصميم الاسترداد الآمن التلقائي ما زال غير منجَز (بالتصميم).
+- :5002 و:5000 كانا DOWN في آخر حالة فريق (11:32Z) — UAT الواجهة BLOCKED.
+  الاستعادة بملكية Codex/human (لم يتخذ Muse أي إجراء تشغيلي).
+- f40: مطابِق CLI يحتاج تضييقًا + سجلات أدلة من المالك قبل الاعتماد.
+- 23 فشلًا مسبقًا في حزمتي ledger/change-aware ما زالت مفتوحة (ليست من f40).
 
 ## 11. ما الخطوة التالية؟
-1. Codex/human: استعادة :5002 بمصدر مُراجَع ثم UAT متعدد الطلبات.
-2. NVIDIA: إغلاق دفعة verification/CLI ثم مراجعة Muse المستقلة.
-3. Muse: تتبّع مسارات قدرات فردية (wiring L3+) دون تداخل مع NVIDIA.
+1. NVIDIA: تضييق isCliRequest + تثبيت الاختبارات السلبية + نشر سجلات البوابات.
+2. Muse: إعادة مراجعة البايتات المُصلحة عند توفرها (بدون تنفيذ منافس).
+3. Codex/human: استعادة :5002 بمصدر مُراجَع ثم UAT حقيقي متعدد الطلبات.
 
 ## آخر الإنجازات
-[11:45Z] REVIEW — إعادة مراجعة المراقب على بايتات جديدة (G1 مغلق) 63/63+32/32
-[11:50Z] TEST — تحقق 5/5 + حارسان خضر على رأس Muse 182c256e
-[11:50Z] DISCOVERY — عدّادات 163/40/21/2 بتوثيق مصدر، تطابق رصد NVIDIA
-[11:40Z] BLOCKER — :5002/:5000 DOWN (مؤكد، لا إجراء — الملكية Codex/human)
+[12:05Z] REVIEW — مراجعة f40 المستقلة: APPROVE_WITH_CHANGES (تحقق سليم، مطابِق يحتاج إصلاحًا)
+[12:00Z] TEST — 19/19 + engineer-flow PASS على بايتات f40 الدقيقة (إعادة مستقلة)
+[11:58Z] DISCOVERY — 5 انقلابات schema مثبتة بالضابط الأبوي a10 (سببها f40)
+[11:45Z] VERIFIED — 23 فشلًا مجاورًا مسبقة الوجود (صفر فرق من f40)
