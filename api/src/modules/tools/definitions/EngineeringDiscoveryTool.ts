@@ -5,6 +5,7 @@ import { ToolPermission } from '../types';
 import { isWithinRoot, resolveToolPath } from '../utils';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
+import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence } from '../../services/AutonomousEngineeringPolicy';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';
@@ -18,7 +19,7 @@ export interface EngineeringEvidence {
         root: string;
         projectKinds: Array<'node' | 'python' | 'go' | 'other'>;
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
-        git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
+        git: { isRepository?: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
         /** Bounded source files discovered on disk; safe inputs for read/edit planning. */
         sourceFiles?: string[];
@@ -34,7 +35,7 @@ export interface EngineeringEvidence {
         root: string;
         projectKinds: Array<'node' | 'python' | 'go' | 'other'>;
         manifests: Array<{ path: string; kind: string; scripts?: Record<string, string> }>;
-        git: { isRepository: boolean; branch?: string; remote?: string; dirty?: boolean };
+        git: { isRepository?: boolean; branch?: string; remote?: string; dirty?: boolean };
         likelyEntrypoints: string[];
         /** Bounded source files discovered on disk; safe inputs for read/edit planning. */
         sourceFiles?: string[];
@@ -49,6 +50,9 @@ export interface EngineeringEvidence {
      * tool argument for a portable engineering plan.
      */
     instructionFiles: Array<{ relativePath: string; lineCount: number }>;
+    /** Guarded inventory receipts; document content is read before planning. */
+    documentFiles?: Array<{ relativePath: string; size: number }>;
+    requiredSpecification?: { content: string; sources: Array<{ path: string; lineCount: number }> };
     constraints: {
         localOnly: boolean;
         forbidDeploy: boolean;
@@ -103,6 +107,10 @@ export class EngineeringDiscoveryTool extends BaseTool {
     rateLimitPerMinute = 30;
 
     async execute(input: any, context?: any) {
+        if (hasEngineeringToken(context)) {
+            if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+            return this.discoverScopedWorkspace(input, context);
+        }
         const request = String(input?.request || '').trim();
         const logs: string[] = [];
         let workspaceRoot: string;
@@ -528,6 +536,117 @@ export class EngineeringDiscoveryTool extends BaseTool {
         logs.push(`engineering_discovery.instruction_files=${instructionFiles.length}`);
         logs.push(`engineering_discovery.blockers=${blockers.length}`);
         return { ok: true, output: { evidence }, logs };
+    }
+
+    /** Current-run admission uses audited file leaves, never legacy recursive filesystem reads. */
+    private async discoverScopedWorkspace(input: any, context: any) {
+        // ToolService -> registry -> tool definitions is a cycle; borrow the
+        // gateway only when this read-only child is actually executed.
+        const { executeTool } = require('../../services/ToolService');
+        const scope = engineeringScope(context);
+        if (!scope || input.request !== scope.request || input.path !== scope.root) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+        const listing = await executeTool('inspect_directory', { path: scope.root, depth: 1 }, context);
+        if (!listing.ok || !Array.isArray(listing.output?.tree)) return { ok: false, error: 'engineering_discovery_failed', output: listing.output, logs: listing.logs || [] };
+        if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+        const entries = listing.output.tree.slice(0, 256);
+        const { redactSecretsFromString } = require('../../../shared/utils/redaction');
+        const safeEntry = (entry: any) => typeof entry?.name === 'string' && entry.name.length > 0
+            && entry.name !== '.' && entry.name !== '..' && !/[\\/\u0000-\u001f\u007f:]/u.test(entry.name)
+            && !/[. ]$/u.test(entry.name) && redactSecretsFromString(entry.name) === entry.name
+            && !/\b(?:nvapi-|gsk_|AIza)[A-Za-z0-9_-]{12,}/u.test(entry.name)
+            && !/^(?:\.env(?:\..*)?|\.git|\.ssh|\.joe[^/]*|node_modules|credentials?(?:\..*)?|secrets?(?:\..*)?|auth(?:\..*)?|id_(?:rsa|ed25519)|(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?)$/iu.test(entry.name)
+            && !/\.(?:pem|key|pfx|p12|kdbx)$/iu.test(entry.name)
+            && (entry.type === 'directory' || entry.type === 'file') && Number.isInteger(entry.size) && entry.size >= 0;
+        if (!entries.every(safeEntry) || new Set(entries.map((entry: any) => entry.name)).size !== entries.length)
+            return { ok: false, error: 'engineering_discovery_listing_invalid', logs: [] };
+        const facts: EngineeringEvidence['facts'] = [
+            { id: 'workspace.root', source: 'workspace', statement: `Validated selected workspace: ${scope.root}` },
+            { id: 'request.goal', source: 'request', statement: scope.request },
+            { id: 'workspace.top_level', source: 'tool', statement: JSON.stringify(entries.map((e: any) => ({ name: e.name, type: e.type }))) },
+        ];
+        const blockers: EngineeringEvidence['blockers'] = [];
+        let completeInventory = !listing.output.truncated && listing.output.tree.length <= 256;
+        const inventory: Array<{ relative: string; name: string; type: string; size: number }> = [];
+        const queue = [{ relative: '', depth: 0, entries }];
+        const skip = new Set(['dist', 'build', 'coverage', '.next', '.cache', '.turbo', 'vendor']);
+        let directories = 1, observed = entries.length;
+        while (queue.length) {
+            const current = queue.shift()!;
+            for (const entry of current.entries) {
+                const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name;
+                if (entry.type === 'file') inventory.push({ relative, name: entry.name, type: entry.type, size: entry.size });
+                else if (!skip.has(entry.name) && !entry.name.startsWith('.')) {
+                    if (current.depth >= 3 || directories >= 12 || observed >= 512) { completeInventory = false; continue; }
+                    if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+                    const child = await executeTool('inspect_directory', { path: path.join(scope.root, relative), depth: 1 }, context);
+                    if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+                    if (!child.ok || !Array.isArray(child.output?.tree)) return { ok: false, error: 'engineering_discovery_failed', logs: child.logs || [] };
+                    const childEntries = child.output.tree.slice(0, Math.min(256, 512 - observed));
+                    if (!childEntries.every(safeEntry) || new Set(childEntries.map((item: any) => item.name)).size !== childEntries.length)
+                        return { ok: false, error: 'engineering_discovery_listing_invalid', logs: [] };
+                    directories++; observed += childEntries.length;
+                    if (child.output.truncated || child.output.tree.length !== childEntries.length) completeInventory = false;
+                    queue.push({ relative, depth: current.depth + 1, entries: childEntries });
+                }
+            }
+        }
+        if (!completeInventory) blockers.push({ code: 'discovery_coverage_limited', message: 'Workspace inventory exceeded its bounded directory, depth or entry budget; project selection is withheld.' });
+        const instructionFiles: EngineeringEvidence['instructionFiles'] = [];
+        let manifest: any;
+        for (const filename of ['package.json', 'README.md']) {
+            const entry = entries.find((e: any) => e.name === filename && e.type === 'file');
+            if (!entry) continue;
+            if (!Number.isInteger(entry.size) || entry.size < 0 || entry.size > 16_384) {
+                blockers.push({ code: 'discovery_file_limit', message: `${filename} exceeds the bounded planning read limit.` }); continue;
+            }
+            if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+            const read = await executeTool('read_file', { path: path.join(scope.root, filename) }, context);
+            if (!read.ok) return { ok: false, error: 'engineering_discovery_read_failed', output: read.output, logs: read.logs || [] };
+            const content = typeof read.output === 'string' ? read.output : (read.output as any)?.content;
+            if (typeof content !== 'string' || Buffer.byteLength(content, 'utf8') > 16_384) return { ok: false, error: 'engineering_discovery_read_limit', logs: [] };
+            // Sensitive existing content never becomes a model prompt through discovery.
+            if (redactSecretsFromString(content) !== content) {
+                blockers.push({ code: 'discovery_sensitive_content', message: `${filename} was excluded from planning evidence.` }); continue;
+            }
+            instructionFiles.push({ relativePath: filename, lineCount: content.split(/\r?\n/u).length });
+            facts.push({ id: `workspace.${filename}`, source: 'tool', statement: content });
+            if (filename === 'package.json') {
+                try {
+                    const parsed = JSON.parse(content);
+                    const scripts = parsed?.scripts;
+                    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)
+                        || (scripts !== undefined && (!scripts || typeof scripts !== 'object' || Array.isArray(scripts)
+                            || Object.entries(scripts).some(([name, command]) => !/^[A-Za-z0-9][A-Za-z0-9:._-]{0,63}$/u.test(name)
+                                || typeof command !== 'string' || !command.trim() || command.length > 2048)))) throw Error('invalid_manifest');
+                    manifest = parsed;
+                } catch { blockers.push({ code: 'discovery_manifest_invalid', message: 'package.json does not contain a valid bounded object and script dictionary; project selection is withheld.' }); }
+            }
+        }
+        if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
+        let selectedProject: Candidate | undefined;
+        if (manifest && completeInventory) {
+            const scripts: Record<string, string> = Object.fromEntries(Object.entries(manifest.scripts || {})) as Record<string, string>;
+            const candidateChecks: Candidate['candidateChecks'] = [];
+            for (const name of Object.keys(scripts)) {
+                const kind = /^(?:test)(?::|$)/u.test(name) ? 'test' : /^(?:build)(?::|$)/u.test(name) ? 'build'
+                    : /^(?:lint)(?::|$)/u.test(name) ? 'lint' : /^(?:typecheck|type-check|check:types)(?::|$)/u.test(name) ? 'typecheck' : undefined;
+                if (kind) candidateChecks.push({ kind, command: `npm run ${name}`, source: 'package.json' });
+            }
+            const sourceFiles = inventory.filter(item => /\.(?:c|m)?(?:js|jsx|ts|tsx|py|go|java|rb|rs|vue|svelte|css|scss)$/iu.test(item.name)).map(item => item.relative).slice(0, 120);
+            const testFiles = inventory.filter(item => /(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)|(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/iu.test(item.relative)).map(item => item.relative).slice(0, 40);
+            if (inventory.length > sourceFiles.length && sourceFiles.length === 120 || testFiles.length === 40)
+                blockers.push({ code: 'discovery_file_inventory_limited', message: 'Source/test inventories are bounded; omitted files are not planning evidence.' });
+            const entrypoints = new Set(['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js']);
+            selectedProject = { root: scope.root, projectKinds: ['node'], manifests: [{ path: 'package.json', kind: 'package.json', scripts }],
+                git: {}, likelyEntrypoints: sourceFiles.filter(file => entrypoints.has(file)), sourceFiles, testFiles, candidateChecks };
+        }
+        const evidence: EngineeringEvidence = sealEngineeringEvidence(context, {
+            version: 1, mode: selectedProject ? 'existing_workspace' : 'ambiguous', workspaceRoot: scope.root, instructionFiles, selectedProject,
+            documentFiles: inventory.filter(item => /\.(?:txt|md)$/iu.test(item.name)).map(item => ({ relativePath: item.relative, size: item.size })),
+            constraints: { localOnly: true, forbidDeploy: true, userRequestedExistingProject: !!selectedProject, createsNewProject: false },
+            facts, blockers: [...blockers, { code: 'execution_capability_unavailable', message: 'Discovery and planning are admitted; generated-code execution isolation is not yet verified.' }],
+        });
+        return { ok: true, output: { evidence }, logs: [`engineering_discovery.entries=${entries.length} bounded=1 recursive=0`] };
     }
 
     private inspectProject(root: string, includeFileInventory = true, referenceOnly = false): Candidate {

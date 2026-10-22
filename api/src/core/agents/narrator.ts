@@ -133,15 +133,25 @@ export function extractNarration(
  */
 export async function narrate(
     c: NarrationContext,
-    call: (prompt: string) => Promise<string>,
+    call: (prompt: string, signal?: AbortSignal) => Promise<string>,
     opts: { timeoutMs?: number } = {},
 ): Promise<{ text: string; reject?: NarrationReject | 'timeout' | 'threw' }> {
     const timeoutMs = opts.timeoutMs ?? 6000;
+    const controller = new AbortController();
     let timer: NodeJS.Timeout | undefined;
     try {
+        const request = Promise.resolve().then(() => call(narrationPrompt(c), controller.signal));
+        // The provider may settle after the deadline; keep that rejection observed.
+        void request.catch(() => undefined);
         const raw = await Promise.race([
-            call(narrationPrompt(c)),
-            new Promise<never>((_, rej) => { timer = setTimeout(() => rej(new Error('narration_timeout')), timeoutMs); }),
+            request,
+            new Promise<never>((_, rej) => {
+                timer = setTimeout(() => {
+                    const error = new Error('narration_timeout');
+                    controller.abort(error);
+                    rej(error);
+                }, timeoutMs);
+            }),
         ]);
         return extractNarration(raw, c);
     } catch (e: any) {

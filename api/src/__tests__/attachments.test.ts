@@ -114,7 +114,7 @@ describe('attachments — visible in the chat, and after a reload, with real nam
 
     test('the server echo and the stored message both carry the chips (meta only)', () => {
         expect(runSrc).toContain('files: attachmentMeta()');
-        expect(runSrc).toMatch(/role: 'user', content: text, attachments: attachmentMeta\(\)/);
+        expect(runSrc).toMatch(/role: 'user', content: submittedText, attachments: attachmentMeta\(\)/);
         // Meta never includes the extracted content — history stays light.
         expect(runSrc).toMatch(/attachmentMeta = \(\) => attachments\.map\(a => \(\{ id: a\.id, name: a\.name, mimeType: a\.mimeType, size: a\.size \}\)\)/);
     });

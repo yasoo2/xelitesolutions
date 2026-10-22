@@ -53,6 +53,27 @@
 /** What a stopped run rejects with, so callers can tell it from a real error. */
 export const CANCELLED = 'run_cancelled_by_owner';
 
+/** Link the owner promise and any upstream signal to one model-call lifetime. */
+export function bindRunCancellation(cancellation?: Promise<unknown>, parentSignal?: AbortSignal): { signal: AbortSignal; dispose: () => void } {
+    if (cancellation != null && !(cancellation instanceof Promise)) throw new Error('invalid_run_cancellation_promise');
+    if (parentSignal != null && (typeof parentSignal.aborted !== 'boolean'
+        || typeof parentSignal.addEventListener !== 'function' || typeof parentSignal.removeEventListener !== 'function')) {
+        throw new Error('invalid_run_cancellation_signal');
+    }
+    const controller = new AbortController();
+    let active = true;
+    const abort = () => {
+        if (active && !controller.signal.aborted) controller.abort(new Error(CANCELLED));
+    };
+    parentSignal?.addEventListener('abort', abort, { once: true });
+    if (parentSignal?.aborted) abort();
+    if (cancellation) void cancellation.then(abort, abort);
+    return {
+        signal: controller.signal,
+        dispose: () => { if (!active) return; active = false; parentSignal?.removeEventListener('abort', abort); },
+    };
+}
+
 export interface Cancellable {
     /** True once the owner has asked for this run to stop. */
     cancelled: boolean;

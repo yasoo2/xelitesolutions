@@ -6,6 +6,7 @@ import { RepairTicketService, type RepairTicket } from './RepairTicketService';
 import { SelfFixService } from './SelfFixService';
 import { SelfFixExecutionService } from './SelfFixExecutionService';
 import { executeTool } from './ToolService';
+import { engineeringExecution, forwardEngineeringExecution } from './AutonomousEngineeringPolicy';
 import { compactApiSelectionArtifact } from '../../core/api-discovery/integration-profiles';
 import type { ApiSelectionArtifact } from '../../core/api-discovery/types';
 import {
@@ -19,6 +20,7 @@ import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { longTermMemory } from '../../core/memory/long-term-memory';
 import { uiText, languageName, messageLanguage } from '../../shared/utils/language';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
+import { resolveRequestedAnswerLanguage } from '../../core/llm/requested-answer-language';
 import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
@@ -27,10 +29,12 @@ import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
 import { composeAnswer, composeFailure } from '../../core/orchestrator/answerComposer';
+import { failureAnswerOf } from '../../core/orchestrator/failure-answer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
 import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
-import { registerRun, releaseHandle, CANCELLED, type Cancellable } from '../../core/session/attended-run';
+import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
+import { requestResourceManager } from '../../core/resources/RequestResourceManager';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -350,11 +354,78 @@ export function surfaceAcceptanceFidelity(primaryError: string, verdict: Accepta
  * 2. runPlannedPhasesIfPresent() — Canonical pipeline with self-healing (AGENTS.md)
  */
 export class AgentLoopService {
+    static async execute(goal: string, options: Parameters<typeof AgentLoopService.executeScoped>[1] = {}) {
+        const sessionId = options.sessionId || `session-${Date.now()}`;
+        const runId = options.runId || `run-${Date.now()}`;
+        const handle = options.cancellationHandle || registerRun(runId, sessionId);
+        const cancellation = bindRunCancellation(handle.whenCancelled);
+        const language = resolveRequestedAnswerLanguage(goal, replyLanguageCode(options.language, goal));
+        let resourceDetailSequence = 0;
+        const publishResourceDetail = (detail: string) => broadcast({
+            type: 'thinking_detail', runId, sessionId,
+            data: { detail, sessionId }, id: `rd_${runId}_${++resourceDetailSequence}`, ts: Date.now(),
+        } as any);
+        const resourceLifecycle = { handlerInstalled: false };
+        // Claim the authenticated caller's wire before measurements or image
+        // admission can fail. Resource failures must not produce unowned frames.
+        if (options.userId) {
+            registerRunOwner(runId, String(options.userId));
+            registerSessionOwner(sessionId, String(options.userId));
+        }
+        try {
+            return await requestResourceManager.run({
+                requestId: runId, sessionId, userId: options.userId, workspaceId: options.workspaceId,
+                signal: cancellation.signal,
+                notify: event => {
+                    // Only this run's observer receives its measurements. Resources
+                    // are scheduling facts; they never grant tool/workspace authority.
+                    void appendRunEvidenceEvent(runId, { type: 'resource_status', runId, sessionId, ts: Date.now(), data: event });
+                    console.info('[RequestResources]', JSON.stringify({ runId, ...event }));
+                    if (event.state === 'queued') {
+                        publishResourceDetail(language === 'ar'
+                            ? 'أنتظر انتهاء المهمة الثقيلة الحالية قبل بدء هذه الخطوة. يمكنك إلغاء الطلب أثناء الانتظار.'
+                            : 'Waiting for the current heavy task to finish. You can cancel while waiting.');
+                    } else if (event.lane === 'inference' && event.state === 'started') {
+                        const freeMiB = Math.floor(Number(event.availableBytes || 0) / 1048576);
+                        publishResourceDetail(language === 'ar'
+                            ? `الذاكرة المتاحة ${freeMiB} ميجابايت؛ سياق النموذج ${event.contextTokens} رمزًا لهذا الطلب.`
+                            : `Available memory: ${freeMiB} MiB; model context: ${event.contextTokens} tokens for this request.`);
+                    }
+                },
+            }, () => {
+                return AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
+                    resourceSignal: cancellation.signal, resourceLifecycle });
+            });
+        } catch (error: any) {
+            // A measurement failure can happen before the ordinary executor has
+            // installed its terminal event handler. End the same UI run honestly.
+            if (!resourceLifecycle.handlerInstalled) {
+                const text = AgentLoopService.humanizeFailure(String(error?.code || error?.message || 'RESOURCE_MEMORY_UNAVAILABLE'), language);
+                try {
+                    if (usesLocalChatStore()) {
+                        const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+                        store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId,
+                            role: 'assistant', content: text, createdAt: new Date(), runId });
+                        flushChatStores();
+                    }
+                } catch { /* An archive failure must not leave the live run spinning. */ }
+                broadcast({ type: 'text', sessionId, runId, data: { text, sessionId } } as any);
+                broadcast({ type: 'run_finished', sessionId, runId, data: { runId, ok: false, sessionId } } as any);
+                removeRunEventListener(runId);
+                unregisterRunSession(runId, sessionId);
+            }
+            throw error;
+        } finally {
+            cancellation.dispose();
+            releaseHandle(handle, runId, sessionId);
+        }
+    }
+
     /**
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    static async execute(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable } = {}) {
+    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -449,7 +520,9 @@ export class AgentLoopService {
          * The UI code is taken verbatim so a third language keeps working; the
          * message's script decides only when no interface language arrived.
          */
-        const language0 = replyLanguageCode(options.language, goal);
+        // Explicit answer-language instructions override the UI fallback through
+        // the existing reader; quoted/code/attachment text cannot choose it.
+        const language0 = resolveRequestedAnswerLanguage(goal, replyLanguageCode(options.language, goal));
 
         /**
          * [SCAFFOLD-FALLBACK-UNGUARDED] THE SUBSTITUTION IS DECLARED HERE,
@@ -490,9 +563,12 @@ export class AgentLoopService {
          */
         try {
             const { PlanningEngine } = require('../../core/orchestrator/PlanningEngine');
+            const { parseExplicitFileRequest, parseExplicitAppendFileRequest } = require('../../core/orchestrator/file-intent');
+            // These contracts run file tools, so a page-fallback notice would misstate the plan.
+            const fileOperation = parseExplicitFileRequest(goal) || parseExplicitAppendFileRequest(goal);
             announceScaffoldSubstitution({
                 request: goal,
-                building: !!PlanningEngine.looksLikeBuild(goal),
+                building: !!PlanningEngine.looksLikeBuild(goal) && !fileOperation,
                 isArabic: language0 === 'ar',
                 say: (message: string) => broadcastThinkingDetail(sessionId, message),
             });
@@ -503,11 +579,16 @@ export class AgentLoopService {
             try {
                 const mc = options.modelConfig || {};
                 const r = await describeImageAttachments(options.attachments || [], {
+                    signal: options.resourceSignal,
                     language: language0,
+                    userRequest: goal,
                     groqApiKey: String(mc.provider || '').toLowerCase() === 'groq' ? mc.apiKey : undefined,
                 });
                 if (r.described) console.log(`[AgentLoopService] Vision described ${r.described} image(s), ${r.skipped} skipped`);
-            } catch (e: any) { console.warn('[AgentLoopService] vision pass failed (continuing):', e?.message || e); }
+            } catch (e: any) {
+                if (options.resourceSignal?.aborted || /^RESOURCE_/.test(String(e?.code || ''))) throw e;
+                console.warn('[AgentLoopService] vision pass failed (continuing):', e?.message || e);
+            }
         }
         const attachBlock = formatAttachmentsBlock(options.attachments || []);
         if (attachBlock) blocks.push(attachBlock);
@@ -644,6 +725,7 @@ export class AgentLoopService {
             }
         } catch { /* non-fatal */ }
 
+        if (options.resourceLifecycle) options.resourceLifecycle.handlerInstalled = true;
         try {
             if (finishCancelledBeforeOrchestration()) {
                 return { ok: false, result: { cancelled: true } };
@@ -775,7 +857,7 @@ export class AgentLoopService {
                 ? (language === 'ar'
                     ? `⚠️ تجاوزت المهمة حدّها الزمني الكلي (${Math.round(RUN_DEADLINE_MS / 60000)} دقيقة) فأوقفتُها بصدق بدل تركها معلّقة. أعد إرسال نفس الطلب وسيستأنف البناء من نقطة الحفظ دون إعادة ما اكتمل.`
                     : `⚠️ The task exceeded its total time limit (${Math.round(RUN_DEADLINE_MS / 60000)} min) and was stopped honestly instead of hanging. Send the same request again — the build resumes from its checkpoint.`)
-                : `⚠️ ${error?.message || uiText('unexpectedError', language)}`;
+                : `⚠️ ${AgentLoopService.humanizeFailure(error?.message || uiText('unexpectedError', language), language)}`;
             // A fatal path used to broadcast the answer but omit it from the
             // offline chat archive. After a reconnect or session switch that
             // made Joe's honest failure disappear and left only the old
@@ -821,6 +903,18 @@ export class AgentLoopService {
     static humanizeFailure(text: string, language: string): string {
         const t = String(text || '').trim();
         if (!t) return t;
+        if (/RESOURCE_(?:LOW_MEMORY|MEMORY_UNAVAILABLE)/.test(t)) return language === 'ar'
+            ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي أو تعذّر قياسها. لم أوقف أي برنامج آخر.'
+            : 'The heavy step could not start because available memory is insufficient or could not be measured. No other application was stopped.';
+        if (/RESOURCE_CONTEXT_OVERFLOW|OLLAMA_OUTPUT_INPUT|LOCAL_COMPLETION_LIMIT/.test(t)) return language === 'ar'
+            ? 'لم يكتمل الطلب ضمن السياق والذاكرة المتاحين. لم أقصّ الطلب أو أغيّر النموذج؛ يلزم تقسيم العمل إلى خطوات أصغر.'
+            : 'The request did not complete within the available context and memory. The request was not truncated and the model was not changed; the work needs smaller steps.';
+        if (/RESOURCE_QUEUE_(?:FULL|TIMEOUT)/.test(t)) return language === 'ar'
+            ? 'تعذّر بدء الخطوة ضمن طابور الموارد المحدود. توقفت هذه المحاولة دون تشغيل عمل ثقيل إضافي.'
+            : 'The step could not start within the bounded resource queue. This attempt stopped without launching additional heavy work.';
+        if (/RESOURCE_CANCELLED|OLLAMA_ABORTED/.test(t)) return language === 'ar'
+            ? 'أوقفتُ الطلب بناءً على الإلغاء؛ تُحرَّر حجوزاته عند توقف العمل التابع له فعليًا.'
+            : 'The request was cancelled; its reservations are released as its owned work settles.';
         const RAW_ERROR = /ENOENT|EACCES|EPERM|ECONN|ETIMEDOUT|EADDRINUSE|is not recognized as an internal|SyntaxError:|TypeError:|ReferenceError:|Cannot read propert|no such file or directory|command not found|MODULE_NOT_FOUND/i;
         if (!RAW_ERROR.test(t)) return t;
         return language === 'ar'
@@ -829,6 +923,7 @@ export class AgentLoopService {
     }
 
     static extractAnswer(result: { ok: boolean; result: any; steps?: any[] }, language?: string): string {
+        if (result?.ok === false) return failureAnswerOf(result.result);
         // THE WHOLE RUN ANSWERS, NOT ONLY ITS LAST STEP. Measured on a real
         // two-step run of «افحص الروابط ثم اكتب تقريراً»: the findings lived in
         // the first step, the second returned {success:true}, and the walk from
@@ -890,6 +985,7 @@ export class AgentLoopService {
      * Required by AGENTS.md. Used by all permanent self-healing verification tests.
      */
     static async runPlannedPhasesIfPresent(opts: {
+        isolatedEngineeringContext?: any;
         sessionId: string;
         runId: string;
         userId: string;
@@ -924,6 +1020,7 @@ export class AgentLoopService {
     }
 
     private static async _executePhases(opts: {
+        isolatedEngineeringContext?: any;
         sessionId: string;
         runId: string;
         userId: string;
@@ -1050,11 +1147,18 @@ assertRunActive();
             voice(pick(isAr,
                 `⚙️ المرحلة ${n}/${totalPhases} — ${phase.name || 'تنفيذ'}`,
                 `⚙️ Phase ${n}/${totalPhases} — ${phase.name || 'work'}`));
-const phaseResult = await executeTool('phase_executor', { phase, projectContext }, executionContext);
+const phaseResult = await executeTool('phase_executor', { phase, projectContext }, forwardEngineeringExecution(opts.isolatedEngineeringContext, executionContext));
             // ToolService can stop the in-flight tool immediately while its
             // underlying promise unwinds. Never interpret that late return as
             // a failed phase eligible for repair or a second execution.
             assertRunActive();
+            if (opts.isolatedEngineeringContext && (phaseResult.ok !== true || phaseResult.output?.status !== 'completed')) {
+                // This lease admits only the sealed tasks. A generated self-fix
+                // must not fall back to ordinary host writers outside that lease.
+                return { ok: false, completedPhases, results: [...results, phaseResult.output],
+                    error: phaseResult.error || 'isolated_phase_failed', honestBlocker: true,
+                    selfFixDecision: 'isolated_repair_not_admitted' };
+            }
             // ToolService has already streamed the executor's logs to the panel.
             // Keep the returned copy for reports and repair diagnosis, but never
             // speak it again here: doing so replays the completed phase verbatim.
@@ -1322,6 +1426,9 @@ const phaseResult = await executeTool('phase_executor', { phase, projectContext 
             };
         }
 
+        if (engineeringExecution(opts.isolatedEngineeringContext)) {
+            return { ok: true, completedPhases, results, isolatedRuntime: true, verified: true };
+        }
         const finalPhase = phases[phases.length - 1];
         const finalVerification = finalPhase?.verificationTask;
         const explicitFinalId = String(
