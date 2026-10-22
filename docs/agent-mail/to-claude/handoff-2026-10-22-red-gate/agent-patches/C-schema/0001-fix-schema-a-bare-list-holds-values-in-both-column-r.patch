@@ -1,0 +1,129 @@
+From 9214b9cbf6e68bec678fb303ebcba9bd2a03e6c1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:10:33 +0000
+Subject: [PATCH 1/4] =?UTF-8?q?fix(schema):=20a=20bare=20=C2=ABlist=C2=BB?=
+ =?UTF-8?q?=20holds=20values=20in=20both=20column=20readers?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e:
+  a-column-called-fih            "a list of values is still refused"
+  the-schema-reader-was-blind-in-english
+                                 "a shopping list holds things, not columns"
+                                 "a list after a field noun holds that field's values"
+  derivedColumns('A shopping list with milk, bread and eggs') -> [milk, bread, eggs]
+  derivedColumns('a list of categories: coffee, tools, sweets') -> [coffee, tools, sweets]
+
+Culprits (bisected): c219da21 (shopping list), 76f66a5d (categories).
+Root cause - one rule, written once, lost twice (two readers that must
+agree, maintained separately):
+  c219da21 moved theListAnIntroducerHandedOver in FRONT of the container
+    reader ("Add amount, category, date, and note" after "tracker"), and
+    the introducer reader never learned that a bare «list» holds values.
+  76f66a5d turned RECORD_CONTAINER's capture group into a non-capturing
+    one (accusative forms, board/queue), so `holder[1]` became undefined
+    and `!/^(?:list|قائمة)$/.test('')` always answered "holds columns" -
+    the rule became dead code.
+Decision: R. One function, aBareListHoldsValues(container, names), used
+by both readers: the container reader asks it with holder[0]; the
+introducer reader asks it with the container governing the introducer
+(the last container before it in the sentence). c219da21's precedence and
+its Pocket Ledger / tracker cases are kept (a tracker is not a bare list).
+Added the negative half: a bare «قائمة» with definite Arabic names is
+still his columns (the rule is for Latin items only).
+
+Mutation evidence (mutate.py, sha256 identical after each):
+  M3 introducer path without the rule:
+    ✕ a list of values is still refused / ✕ a shopping list holds things
+    Received: [{"key": "text1", "label": "milk", ...
+  M4 container reader asks holder[1] again (the 76f66a5d state):
+    ✕ a list after a field noun holds that field's values
+    Received: [{"key": "text1", "label": "coffee", ...
+  M5 rule applied to Arabic names too:
+    ✕ a bare «قائمة» of definite names is still his columns
+    - Expected - 5 / + Received + 1  ("الاسم","الصف","الدرجة" lost)
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...schema-reader-was-blind-in-english.test.ts |  7 +++++
+ api/src/core/design/app-blueprints.ts         | 28 +++++++++++++++++--
+ 2 files changed, 33 insertions(+), 2 deletions(-)
+
+diff --git a/api/src/__tests__/the-schema-reader-was-blind-in-english.test.ts b/api/src/__tests__/the-schema-reader-was-blind-in-english.test.ts
+index 68dc9e80..50daee10 100644
+--- a/api/src/__tests__/the-schema-reader-was-blind-in-english.test.ts
++++ b/api/src/__tests__/the-schema-reader-was-blind-in-english.test.ts
+@@ -65,4 +65,11 @@ describe('Arabic is untouched — the fix did not move the other half', () => {
+     it('the Arabic list of values is still refused', () => {
+         expect(derivedColumns('متجر بفئات: قهوة، أدوات، حلويات')).toBeNull();
+     });
++
++    it('a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only', () => {
++        //  The negative half of «a list holds values»: Arabic answers that
++        //  question on the noun itself, so the container must not answer it
++        //  again and throw away a list he wrote with «ال» on every name.
++        expect(labels('قائمة الطلاب: الاسم والصف والدرجة')).toEqual(['الاسم', 'الصف', 'الدرجة']);
++    });
+ });
+diff --git a/api/src/core/design/app-blueprints.ts b/api/src/core/design/app-blueprints.ts
+index 74a91513..faecc61d 100644
+--- a/api/src/core/design/app-blueprints.ts
++++ b/api/src/core/design/app-blueprints.ts
+@@ -2679,6 +2679,30 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
+ const ENGLISH_INTRODUCES_A_LIST = /(?:^|[.!?]\s+|[\s,;:(])(?:(?:must|should)\s+(?:provide|include|have)|needs?|requires?|add|include(?:s|d)?|containing|consisting\s+of|made\s+up\s+of|with)(?=\s)/iu;
+ const OPENS_WITH_AN_ARTICLE = /^(?:a|an|the)\s+/iu;
+ 
++/**
++ *  A LIST HOLDS VALUES. A TABLE HOLDS COLUMNS — ONE RULE, BOTH READERS.
++ *
++ *  Latin items carry no definiteness of their own, so the container they
++ *  hang from decides, and a bare «list» decides no: «a shopping list with
++ *  milk, bread and eggs» names three things, not three columns.
++ *
++ *  The rule was written once, inside the container reader, and lost twice:
++ *  the introducer reader was moved IN FRONT of that reader and never learned
++ *  it, and the container pattern lost its capture group, so the copy that
++ *  asked `holder[1]` asked an empty string and always answered «columns».
++ *  One function now, so neither reader can drift from the other.
++ */
++function aBareListHoldsValues(container: string | undefined, names: string[]): boolean {
++    return /^(?:list|قائمة)$/iu.test(String(container || '').trim())
++        && names.some(name => !/[؀-ۿ]/u.test(name));
++}
++
++/** The container an introducer hands its list to: the last one before it in the sentence. */
++function containerGoverning(prefix: string): string | undefined {
++    const found = Array.from(String(prefix || '').matchAll(new RegExp(RECORD_CONTAINER.source, 'giu')));
++    return found.length ? found[found.length - 1][0] : undefined;
++}
++
+ /**
+  * A long product brief can contain several English `with` clauses. The first
+  * one may describe the page, while the list inside a form names the data the
+@@ -2748,6 +2772,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
+         if (run.length < (typedPair ? 2 : 3)) continue;
+         const named = run.filter(isAName).filter(notAContainerItself);
+         if (named.length !== run.length) continue;
++        if (aBareListHoldsValues(containerGoverning(containerPrefix), named)) continue;
+         const built = fieldsFromLabels(named);
+         if (built) return applyStatedRules(built, statedRules(request)).fields;
+     }
+@@ -2953,12 +2978,11 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
+          *  three attributes of each thing it holds. Reading the first as a
+          *  schema would give him a two-row app about milk.
+          */
+-        const holdsColumns = !/^(?:list|قائمة)$/iu.test(holder[1] || '');
+         const floor = holder ? 2 : 3;
+         if (names.length < floor || names.length > 10) return null;
+         //  Latin items carry no definiteness of their own, so the container
+         //  they hang from decides — and a bare «list» decides no.
+-        if (names.some(n => !/[؀-ۿ]/u.test(n)) && !holdsColumns) return null;
++        if (aBareListHoldsValues(holder[0], names)) return null;
+         if (!everyItemIsADefiniteName(names)) return null;
+         //  THE LINK THAT WAS NEVER JOINED.
+         //
+-- 
+2.43.0
+

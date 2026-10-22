@@ -1,0 +1,155 @@
+##### mut-batch1.log
+=== MUTATION floor-collect (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed (8 ms)
+   ● the authored interface is rolled back by the browser, not only by the bundler › ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 8 skipped, 9 total
+=== RESTORED floor-collect: sha256 identical
+=== MUTATION floor-decide (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed (10 ms)
+   ● the authored interface is rolled back by the browser, not only by the bundler › ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 8 skipped, 9 total
+=== RESTORED floor-decide: sha256 identical
+=== MUTATION notice-dropped (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ ⛔ POSITIVE — and it reaches the delivery message itself (21 ms)
+   ● a silent fallback is announced where he reads › ⛔ POSITIVE — and it reaches the delivery message itself
+   Expected pattern: /const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 4 skipped, 5 total
+=== RESTORED notice-dropped: sha256 identical
+=== MUTATION notice-en-missing (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ ⛔ POSITIVE — and it reaches the delivery message itself (5 ms)
+   ● a silent fallback is announced where he reads › ⛔ POSITIVE — and it reaches the delivery message itself
+   Expected: 2
+   Received: 1
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 4 skipped, 5 total
+=== RESTORED notice-en-missing: sha256 identical
+=== MUTATION standdown-drift (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ ⛔ NEGATIVE — the stand-down itself is untouched (5 ms)
+   ● a silent fallback is announced where he reads › ⛔ NEGATIVE — the stand-down itself is untouched
+   Expected: "!appBp && !externalIntegration && sections.length"
+   Received: "!appBp && !externalIntegration && !multiPage && sections.length"
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 4 skipped, 5 total
+=== RESTORED standdown-drift: sha256 identical
+=== MUTATION palette-danger (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✕ POSITIVE — every token the app reads is one the palette defines (26 ms)
+   ✓ POSITIVE — a token read with no fallback is one the palette guarantees (4 ms)
+   ● the palette the app is painted with is the palette Joe derived › POSITIVE — every token the app reads is one the palette defines
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 4 skipped, 1 passed, 6 total
+=== RESTORED palette-danger: sha256 identical
+=== MUTATION palette-media-warm (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✕ POSITIVE — every token the app reads is one the palette defines (27 ms)
+   ✕ POSITIVE — a token read with no fallback is one the palette guarantees (6 ms)
+   ● the palette the app is painted with is the palette Joe derived › POSITIVE — every token the app reads is one the palette defines
+   ● the palette the app is painted with is the palette Joe derived › POSITIVE — a token read with no fallback is one the palette guarantees
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 4 skipped, 6 total
+=== RESTORED palette-media-warm: sha256 identical
+
+##### mut-batch2.log
+=== MUTATION roles-repermission (api/src/core/design/roles.ts) — jest exit 1
+   ✕ the roles are COMPILED from one definition, not retyped (8 ms)
+   ● the generated server decides nothing twice › the roles are COMPILED from one definition, not retyped
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 28 skipped, 29 total
+=== RESTORED roles-repermission: sha256 identical
+=== MUTATION roles-retyped (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ the roles are COMPILED from one definition, not retyped (13 ms)
+   ● the generated server decides nothing twice › the roles are COMPILED from one definition, not retyped
+   Expected pattern: /export const ROLES = \$\{JSON\.stringify\(roles\.map/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 28 skipped, 29 total
+=== RESTORED roles-retyped: sha256 identical
+=== MUTATION roles-message-defaults (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ and the build message tells the owner the roles exist at all (10 ms)
+   ● the accounts routes, and the ways they can be abused › and the build message tells the owner the roles exist at all
+   Expected pattern: /Team — three roles, accounts made from inside the system:\n\$\{describeRoles\(false, roleSpecs\)\}/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 28 skipped, 29 total
+=== RESTORED roles-message-defaults: sha256 identical
+=== MUTATION probe-homegrown (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ the React audit borrows the probe instead of growing its own (10 ms)
+   ✕ NEGATIVE — and the audit defines no probe of its own (1 ms)
+   ● one definition of a dead control › the React audit borrows the probe instead of growing its own
+   Expected pattern: /import \{ probeControls, judgeBehaviour, FormResult, ControlResult \} from '\.\/behaviour-audit'/
+   Received string:  "/**
+   ● one definition of a dead control › NEGATIVE — and the audit defines no probe of its own
+   Expected pattern: not /(?:function|const|let|var)\s+(?:probeControls|judgeBehaviour)\b/
+   Received string:      "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 17 skipped, 19 total
+=== RESTORED probe-homegrown: sha256 identical
+=== MUTATION probe-no-shared-opts (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ the React audit borrows the probe instead of growing its own (8 ms)
+   ● one definition of a dead control › the React audit borrows the probe instead of growing its own
+   Expected pattern: /await probeControls\(page, probeOpts\([^)]*\)\)/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 18 skipped, 19 total
+=== RESTORED probe-no-shared-opts: sha256 identical
+=== MUTATION static-beside-api (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ packaging is reusable, because the repair rebuilds the interface (8 ms)
+   ● the build audits the system it just packaged › packaging is reusable, because the repair rebuilds the interface
+   Expected: false
+   Received: true
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 9 skipped, 10 total
+=== RESTORED static-beside-api: sha256 identical
+=== MUTATION static-gate-blind (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ packaging is reusable, because the repair rebuilds the interface (21 ms)
+   ● the build audits the system it just packaged › packaging is reusable, because the repair rebuilds the interface
+   Expected pattern: /canBuildDependencyFreeRecordsApp\(runBp, \{\s*hasBackend: Boolean\(apiEntry\),/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 9 skipped, 10 total
+=== RESTORED static-gate-blind: sha256 identical
+
+##### mut-batch3.log
+=== MUTATION download-exploration (api/src/core/quality/behaviour-audit.ts) — jest exit 1
+   ✕ and a click that hands over a FILE counts as an effect (6 ms)
+   ● a measurement it cannot make honestly, it does not make › and a click that hands over a FILE counts as an effect
+   Expected substring: "effect = download.succeeded() ? 'download'"
+   Received string:    "
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 62 skipped, 63 total
+=== RESTORED download-exploration: sha256 identical
+=== MUTATION download-baseline (api/src/core/quality/behaviour-audit.ts) — jest exit 1
+   ✕ and a click that hands over a FILE counts as an effect (5 ms)
+   ● a measurement it cannot make honestly, it does not make › and a click that hands over a FILE counts as an effect
+   Expected substring: "effect = download.succeeded() ? 'download'"
+   Received string:    "
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 62 skipped, 63 total
+=== RESTORED download-baseline: sha256 identical
+=== MUTATION catalogue-no-rationing (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ NEGATIVE — and the catalogue stands down with the other authors (6 ms)
+   ● the seed reaches the shelf, not just a variable › NEGATIVE — and the catalogue stands down with the other authors
+   Expected value: "!copyProvidersRationing"
+   Received array: ["!modelUnavailableDuringBuild", "!unifiedTables", "seedFields.length", "!input?.skipAuthoredCopy"]
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 36 skipped, 37 total
+=== RESTORED catalogue-no-rationing: sha256 identical
+=== MUTATION catalogue-rationing-optional (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ NEGATIVE — and the catalogue stands down with the other authors (4 ms)
+   ● the seed reaches the shelf, not just a variable › NEGATIVE — and the catalogue stands down with the other authors
+   Expected substring: not "||"
+   Received string:        "(!copyProvidersRationing || seedFields.length > 6) && !modelUnavailableDuringBuild && !unifiedTables && seedFields.length && !input?.skipAuthoredCopy"
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 36 skipped, 37 total
+=== RESTORED catalogue-rationing-optional: sha256 identical
+=== MUTATION findings-not-blocking (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ the builder collects them AFTER the self-repair, from the final audit (8 ms)
+   ● what blocks delivery is an open finding, not a flattering score › the builder collects them AFTER the self-repair, from the final audit
+   Expected value: "openQualityFindings.length > 0"
+   Received array: ["buildVerificationBlocked", "(openQualityFindings.length > 0 && visualAuditUnavailable)", "terminalQualityFindings.length > 0", "recordsPresentationFindings.length > 0", "visualAuditUnavailable", "repair
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 8 skipped, 9 total
+=== RESTORED findings-not-blocking: sha256 identical
+

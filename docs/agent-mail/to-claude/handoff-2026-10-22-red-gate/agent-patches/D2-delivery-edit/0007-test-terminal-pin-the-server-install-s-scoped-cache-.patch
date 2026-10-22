@@ -1,0 +1,59 @@
+From dafe9e5f46546d04865f40a07de99a0946af23d1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:07:25 +0000
+Subject: [PATCH 7/9] test(terminal): pin the server install's scoped cache as
+ the code chooses it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit 76f66a5d, PR #90; the assertion was BORN red there):
+  the-terminal-is-where-the-work-happens › the server build does the same, and announces its long-running process
+  Expected pattern: /const npmCache = path\.join\(proj, '\.npm-cache'\);/
+
+Root cause: the squash added this assertion for an intermediate form of the
+API install. The landed code is
+  const reusableCache = matchingLocalNpmCache(root, files['package.json'], proj);
+  const npmCache = reusableCache || path.join(proj, '.npm-cache');
+  shell.run('npm', ['install', ...(reusableCache ? ['--offline'] : []), …, '--cache', npmCache, …])
+The exact string never existed in ApiProjectTool.ts (git log -S finds no
+commit). The invariant — npm never uses the user's global cache; the cache
+is this project's own, or an exact manifest+lock match from a sibling
+generated project — holds. matchingLocalNpmCache has its positive and
+negative cases in api-project.test.ts.
+
+Decision: P. The case pins where the cache comes from, the project-scoped
+fallback, and that --offline is used only with the matched cache.
+
+Mutations (ApiProjectTool.ts, restored, sha256 identical each time):
+  term1 fallback to ~/.npm                 -> ✕ Expected pattern /const npmCache = reusableCache \|\| path\.join\(proj, '\.npm-cache'\);/
+  term2 --offline without a matched cache  -> ✕ Expected pattern /'install', \.\.\.\(reusableCache \? \['--offline'\] : \[\]\), '--no-audit'/
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../the-terminal-is-where-the-work-happens.test.ts        | 8 +++++++-
+ 1 file changed, 7 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/the-terminal-is-where-the-work-happens.test.ts b/api/src/__tests__/the-terminal-is-where-the-work-happens.test.ts
+index b87e048a..65097219 100644
+--- a/api/src/__tests__/the-terminal-is-where-the-work-happens.test.ts
++++ b/api/src/__tests__/the-terminal-is-where-the-work-happens.test.ts
+@@ -218,7 +218,13 @@ describe('THE WIRING: both builders work in the visible shell', () => {
+         expect(API).toMatch(/const shell = openTerminal\(term\);/);
+         expect(API).toMatch(/const instRun = await shell\.run\('npm', \[\s*'install'/);
+         expect(API).toMatch(/'--cache', npmCache/);
+-        expect(API).toMatch(/const npmCache = path\.join\(proj, '\.npm-cache'\);/);
++        //  The cache is never the user's global one. It is an exact match from
++        //  a sibling generated project in this workspace (manifest AND lock
++        //  checked by matchingLocalNpmCache, installed --offline), or this
++        //  project's own .npm-cache — and --offline only with the former.
++        expect(API).toMatch(/const reusableCache = matchingLocalNpmCache\(root, files\['package\.json'\], proj\);/);
++        expect(API).toMatch(/const npmCache = reusableCache \|\| path\.join\(proj, '\.npm-cache'\);/);
++        expect(API).toMatch(/'install', \.\.\.\(reusableCache \? \['--offline'\] : \[\]\), '--no-audit'/);
+         expect(API).toContain("'--fetch-retries=0', '--fetch-timeout=10000'");
+         expect(API).toContain('npm registry access is denied by this environment');
+         // `node server.js` cannot be awaited like a command, but it is still
+-- 
+2.43.0
+

@@ -1,0 +1,75 @@
+From 8951892a387d5dad4951141b5ae04681b65db60e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:24 +0000
+Subject: [PATCH 7/9] test(behaviour-audit): a download is an effect in every
+ walk that watches one
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: deep-self-qa (culprit 76f66a5d)
+  a measurement it cannot make honestly, it does not make
+  › and a click that hands over a FILE counts as an effect
+    pinned `effect = downloaded ? 'download'`
+
+Decision: P. PR #90 (squashed as 76f66a5d) pinned an intermediate
+spelling here, then moved the listener into one observeDownload(page)
+used by the baseline walk and the state-exploration walk; it updated
+app-is-used to the final spelling but not this test. In both walks a
+SUCCESSFUL download (download.failure() resolved empty) sets
+effect = 'download', a failed one ends the wait, and the wait stays inside
+`Date.now() < settleDeadline && eyeIsOpen()`.
+
+The test now reads every `const download = observeDownload(page);` call
+site up to its `download.stop();` (at least two) and requires all three
+facts in each — per call site rather than by count. The other four
+assertions are unchanged. (Compare the unmerged hint 26258aeb, which
+counts occurrences; reading by site also catches a site that loses one.)
+
+Non-vacuity:
+  download-exploration: exploration walk sets effect = changed(before, after)
+    ✕ and a click that hands over a FILE counts as an effect
+    Expected substring: "effect = download.succeeded() ? 'download'"
+    RESTORED: sha256 identical
+  download-baseline: baseline walk drops the download branch
+    ✕ and a click that hands over a FILE counts as an effect
+    Expected substring: "effect = download.succeeded() ? 'download'"
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/deep-self-qa.test.ts | 17 +++++++++++++++--
+ 1 file changed, 15 insertions(+), 2 deletions(-)
+
+diff --git a/api/src/__tests__/deep-self-qa.test.ts b/api/src/__tests__/deep-self-qa.test.ts
+index 89b1509a..d7e16733 100644
+--- a/api/src/__tests__/deep-self-qa.test.ts
++++ b/api/src/__tests__/deep-self-qa.test.ts
+@@ -622,8 +622,21 @@ describe('a measurement it cannot make honestly, it does not make', () => {
+         const b = read('core', 'quality', 'behaviour-audit.ts');
+         expect(b).toMatch(/page\.on\('download', onDownload\)/);
+         expect(b).toContain('download.failure()');
+-        expect(b).toContain("effect = downloaded ? 'download'");
+-        expect(b).toContain('Date.now() < settleDeadline && eyeIsOpen()');
++        //  76f66a5d moved the listener into ONE observer that the baseline walk
++        //  and the state-exploration walk both use. Read per call site, not by
++        //  count: every walk that observes a download takes a SUCCESSFUL one as
++        //  the effect, stops waiting on a failed one, and stays inside its
++        //  bounded settle window.
++        const sites = b.split('const download = observeDownload(page);').slice(1);
++        expect(sites.length).toBeGreaterThanOrEqual(2);
++        for (const rest of sites) {
++            const end = rest.indexOf('download.stop();');
++            expect(end).toBeGreaterThan(0);
++            const site = rest.slice(0, end);
++            expect(site).toContain("effect = download.succeeded() ? 'download'");
++            expect(site).toContain('!download.failed()');
++            expect(site).toContain('Date.now() < settleDeadline && eyeIsOpen()');
++        }
+         expect(b).toContain("page.off('download', onDownload)");
+         expect(b).not.toContain('downloadClicks > downloadClicksBefore');
+     });
+-- 
+2.43.0
+
