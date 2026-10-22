@@ -5,13 +5,13 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isBoundedTerminalDiagnosticRequest } from './buildIntent';
+import { isReadOnlyRequest, isBoundedTerminalDiagnosticRequest, isKnowledgeQuestion, looksLikeBuild } from './buildIntent';
+import { deniesExternalPublish, lifecycleOrder } from './lifecycle-order';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
-import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
@@ -272,12 +272,10 @@ export class PlanningEngine {
     ]);
 
     /** Does this request ask for something to EXIST afterwards? */
-    /** Uses structural classification (recording verbs, containers, feature lists)
-     *  instead of closed verb/noun vocabularies. Kept as a static so every
-     *  existing call site and test keeps working unchanged. */
-    static looksLikeBuild(goalRaw: string): boolean {
-        return isBuildRequest(goalRaw).isBuild;
-    }
+    /** Moved to ./buildIntent so the router can ask the same question the
+     *  planner asks. Kept as a static so every existing call site and test
+     *  keeps working unchanged. */
+    static looksLikeBuild = looksLikeBuild;
 
     /**
      * ASKING IS NOT ORDERING.
@@ -296,7 +294,7 @@ export class PlanningEngine {
      * missed it until the folding was applied instead of a longer list.
      */
     static isKnowledgeQuestion(goalRaw: string): boolean {
-        return isKnowledgeQuestionStructural(goalRaw);
+        return isKnowledgeQuestion(goalRaw);
     }
 
     /**
@@ -877,7 +875,7 @@ Rules:
         // request such as "inspect directory X and confirm README.txt exists"
         // is about opening X; README.txt is an entry to verify inside it.
         const explicitDirectory = parseExplicitDirectoryInspectionRequest(userGoal);
-        if (isReadOnlyStructural(userGoal) && explicitDirectory) {
+        if (isReadOnlyRequest(userGoal) && explicitDirectory) {
             return {
                 id: `inspect_directory_${Date.now()}`,
                 goal: intent.goal,
@@ -935,7 +933,7 @@ Rules:
         // through ToolService and let the normal result composer explain the
         // collected evidence in the chat.
         const explicitReadFiles = parseExplicitReadFilesRequest(userGoal);
-        if (isReadOnlyStructural(userGoal) && explicitReadFiles) {
+        if (isReadOnlyRequest(userGoal) && explicitReadFiles) {
             const expectedMarkers = parseExpectedReadMarkers(userGoal);
             return {
                 id: `read_files_${Date.now()}`,
@@ -957,7 +955,7 @@ Rules:
         // conditions" cannot be mistaken for an instruction to stop a server.
         // The pipeline performs discovery through ToolService, then halts before
         // planning or mutation when the evidence carries the same constraint.
-        if (isReadOnlyStructural(userGoal) && !isBoundedTerminalDiagnosticRequest(userGoal)) {
+        if (isReadOnlyRequest(userGoal) && !isBoundedTerminalDiagnosticRequest(userGoal)) {
             return {
                 id: `read_only_audit_${Date.now()}`,
                 goal: intent.goal,
@@ -1053,8 +1051,7 @@ Rules:
          * denies publishing, neither a chain nor the capability scorer may choose
          * deployment; the deterministic builder below owns the whole request.
          */
-        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
-        const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
+        const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish(userGoal);
         // A long construction brief can quote its own rollback/version-history
         // acceptance requirements. Those words are evidence about the product,
         // not an instruction to undo the currently active project. Keep the
@@ -1554,100 +1551,26 @@ Rules:
         // stops it. Deterministic so a weak model can't turn "run my system"
         // back into a chat answer. Checked before the build path so "شغّل" is
         // never mistaken for "ابنِ".
+        //
+        // The guards that decide these three orders live in lifecycle-order.ts,
+        // because the capability matcher has to ask the same question (see there).
         {
-            // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
-            // a topic; it does NOT command run/stop/deploy — those must yield to it.
-            const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
-                || /^\s*(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(?=\s|$)/.test(userGoal)
-                || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
-                || /\?\s*$/.test(userGoal.trim());
-
-            // إنشاء مشروع جديد يتغلب على التشغيل فقط إذا ورد كفعل إنشاء صريح في
-            // نص المستخدم الأصلي. لا نقرأ النسخة المطَبَّعة `probe` هنا: فهي قد
-            // تحوّل الاسم «البناء» في جملة تحقق مثل «أثبت هل البناء والتشغيل نجحا»
-            // إلى «ابن»، فتختطف أمراً واضحاً لتشغيل مشروع قائم.
-            // أما «ابنِ المشروع ثم شغّله» فيبقى إنشاءً جديداً كما ينبغي.
-            //
-            // النفي جزء من النية، لا كلمة فصل يمكن إسقاطها. كان «لا تنشئ مشروعاً
-            // جديداً؛ شغّل المشروع القائم» يطابق `انشئ` هنا، فيحجب مسار التشغيل
-            // الحتمي ثم تسقط الجملة إلى منشئ React. نزيل فعل الإنشاء فقط حين يقع
-            // مباشرة بعد نفي صريح، ونبقي أي فعل إيجابي لاحق في الجملة مرئياً.
-            const userGoalWithoutNegatedBuildVerb = userGoal
-                .replace(/(^|[\s،؛,:.!?])(?:لا|ليس|بدون)\s+(?:ت?نشئ|ت?نشيء|ت?بن(?:ي|ِ)?|ت?صمم|ت?طور|ت?عمل|ت?سوي|ت?سوّي|ت?ول[ّد]{1,2}|ت?برمج)(?=\s|$|[،,:؛.!?])/giu, '$1')
-                .replace(/(^|[\s,;:.!?])(?:do\s+not|don't|no)\s+(?:build|create|make|develop|design|generate|code|scaffold)(?=\s|$|[,;:.!?])/giu, '$1');
-            const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(userGoalWithoutNegatedBuildVerb)
-                // The imperative «ابنِ» carries a kasra after the final noon;
-                // accept optional Arabic vowel marks while still matching only a
-                // standalone explicit creation verb from the original user text.
-                || /(^|\s)(?:ابن[\u064B-\u065F]*|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)(?=\s|$|[،,:؛.!])/i.test(userGoalWithoutNegatedBuildVerb);
-            const hasProjectMutation = /\b(add|change|modify|update|edit|remove|delete|implement|repair|fix)\b/i.test(userGoal)
-                || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|حذف|إزالة|أصلح|اصلح|إصلاح|صلّح|عالج)/.test(userGoal);
-
-
-            // A concrete project/server target — NOT a browser, NOT content. Word
-            // boundaries keep "serve" out of "server" and "app" out of "happen".
-            //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
-            //
-            //  Measured through generatePlan, the real road a request takes:
-            //
-            //      شغّل الخادم   → project_run
-            //      شغّل خادم     → central_answer
-            //      أوقف الخادم   → project_stop
-            //      أوقف خادم     → central_answer
-            //
-            //  The same sentence, one article apart, and one of them does
-            //  nothing. «المشروع» already carried its bare twin «مشروع»
-            //  right beside it; the other four did not, and «ال» is a
-            //  PREFIX — a bare form matches both, a prefixed one matches
-            //  half. Writing the article into a pattern can only subtract.
-            const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
-            //  …AND THE SAME PREFIX, ONE LINE DOWN.
-            //
-            //  Measured through generatePlan on his own phrasings:
-            //
-            //      انشر الموقع   → deploy_pages
-            //      انشر موقع     → browser_launch
-            //
-            //  One article apart, and the bare one opens a BROWSER instead
-            //  of publishing anything. The deploy guard did not match, so
-            //  the request fell through to the browser router, which takes
-            //  «انشر» and a noun as something to go and look at.
-            //
-            //  The definite form was not more correct — it was accidentally
-            //  protected, and «ال» is a prefix.
-            const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
-            // Content that "انشر/publish" ALSO applies to — publishing an article is
-            // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
-            const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
-
-            const stopIntent = !isQuestion && !hasBuildVerb && projectTarget
-                && /(أوقف|اوقف|إيقاف|ايقاف|اقفل|\bstop\b|\bkill\b|shut\s*down)/i.test(probe);
-            const runIntent = !isQuestion && !hasBuildVerb && !hasProjectMutation && !stopIntent && projectTarget
-                && /(شغّ?ل|تشغيل|شغلي|\brun\b|\bstart\b|\blaunch\b|\bserve\b|\bpreview\b)/i.test(probe);
-
-            // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)
-            // fire on their own; the ambiguous ones (انشر / publish / host) need a
-            // site/project target and must not be about content.
-            const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
-            const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
-            const deployIntent = !deniesExternalPublish && !isQuestion && !hasBuildVerb && !contentNoun
-                && (strongDeploy || (softPublish && deployTarget));
-
-            if (stopIntent) {
+            const lifecycle = lifecycleOrder(userGoal);
+            if (lifecycle === 'project_stop') {
                 return {
                     id: `stop_${Date.now()}`, goal: intent.goal,
                     steps: [{ id: 'project_stop', description: 'إيقاف الخادم', tool: 'project_stop', agent: 'Dev', input: {}, dependsOn: [] }],
                     metadata: { complexity: 'low', riskLevel: 'low' },
                 };
             }
-            if (runIntent) {
+            if (lifecycle === 'project_run') {
                 return {
                     id: `run_${Date.now()}`, goal: intent.goal,
                     steps: [{ id: 'project_run', description: 'تشغيل المشروع ومعاينته حيّاً', tool: 'project_run', agent: 'Dev', input: { projectQuery: userGoal }, dependsOn: [] }],
                     metadata: { complexity: 'medium', riskLevel: 'low' },
                 };
             }
-            if (deployIntent) {
+            if (lifecycle === 'deploy_pages') {
                 return {
                     id: `deploy_${Date.now()}`, goal: intent.goal,
                     steps: [{ id: 'deploy_pages', description: 'نشر المشروع بشكل دائم على GitHub Pages', tool: 'deploy_pages', agent: 'Dev', input: {}, dependsOn: [] }],
@@ -1829,7 +1752,7 @@ Rules:
              *  last word. Ask the shared question too, so a request that is a
              *  build anywhere is a build here.
              */
-            || PlanningEngine.looksLikeBuild(String(intent.goal || '')));
+            || looksLikeBuild(String(intent.goal || '')));
         /**
          * THE ENGLISH LIST WAS NEVER BROUGHT UP TO THE ARABIC ONE.
          *

@@ -13,8 +13,7 @@
  */
 
 import { RECORD_CONTAINER } from '../design/app-blueprints';
-import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt } from './buildIntent';
-import { isBuildRequest } from '../intelligence/intent-classifier';
+import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt, looksLikeBuild } from './buildIntent';
 import { isArabicReply } from '../../shared/reply-language';
 
 interface PendingClarify { request: string; at: number }
@@ -108,7 +107,7 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
      *  «is this a build?», in the one place whose whole job is to notice a
      *  request too thin to build.
      */
-    const namesAThing = isBuildRequest(text).isBuild;
+    const namesAThing = looksLikeBuild(text);
     const namesSomethingToTrack = asksForSomething(text) && tracksSomethingOfHis(text, TRACKING);
     if (!namesAThing && !namesSomethingToTrack) return false;
     //  «Enough detail» means two different things for the two shapes.

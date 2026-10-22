@@ -24,6 +24,7 @@
  * is the property the old design could never have.
  */
 import { tools as registeredTools } from '../../modules/tools/registry';
+import { lifecycleAgrees } from './lifecycle-order';
 
 export interface Capable {
     name: string;
@@ -153,6 +154,11 @@ export function capableTools(request: string, limit = 4): Capable[] {
         // not the language bridge. The bridge intentionally expands «مستودع» to
         // Git vocabulary, but that must not manufacture an intent to commit.
         if (p.matchAnyTerms.size && ![...p.matchAnyTerms].some(w => want.includes(w))) continue;
+        // Run, stop and publish are decided by guards the planner learned in
+        // live rounds — a question is not an order, an article is not a site.
+        // Similarity may FIND those tools; only that reader may CHOOSE them,
+        // or this scorer re-claims what the guards just refused.
+        if (!lifecycleAgrees(p.name, request)) continue;
         let score = 0;
         const why: string[] = [];
         let descHits = 0;

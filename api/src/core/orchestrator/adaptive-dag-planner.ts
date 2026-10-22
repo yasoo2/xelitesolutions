@@ -14,7 +14,7 @@ import { StructuredIntent } from '../intelligence/IntentParser';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { catalogueFor } from './toolCatalog';
 import { compactHistoryForPrompt } from './history-compact';
-import { isBuildRequest } from '../intelligence/intent-classifier';
+import { looksLikeBuild } from './buildIntent';
 
 export interface ParallelGroup {
     stepIds: string[];
@@ -245,7 +245,7 @@ export function validatePlan(steps: ExecutionStep[], intent: StructuredIntent): 
     }
 
     // Check for build requests with only answer tools
-    const buildRequest = isBuildRequest(String(intent.goal || '')).isBuild;
+    const buildRequest = looksLikeBuild(String(intent.goal || ''));
     if (buildRequest) {
         const answerTools = new Set(['central_answer', 'echo', 'alert_manager', 'template_manager']);
         const allAnswerTools = steps.every(s => answerTools.has(s.tool));
