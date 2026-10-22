@@ -240,27 +240,6 @@ Return ONLY a JSON object:
         // Keep this helper safe when callers use it directly instead of parse().
         // Engineering briefs must never be returned as Browser intents.
         if (IntentParser.looksLikeEngineeringBrief(raw)) return null;
-        // The registry can already name a single, safe capability for an
-        // imperative request. Do not spend a slow model round merely to reach
-        // the same canonical capability plan later in PlanningEngine. This is
-        // deliberately only a classification hint: PlanningEngine still builds
-        // the plan and ToolService remains the sole policy/execution gateway.
-        // Questions and construction briefs stay out of this path so a noun
-        // such as "security" cannot turn an explanation into an action.
-        if (!looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
-            const [candidate] = capableTools(raw, 1);
-            if (candidate) {
-                return {
-                    goal: raw,
-                    complexity: 'low',
-                    riskLevel: 'low',
-                    suggestedAgent: 'General',
-                    requiredTools: [candidate.name],
-                    constraints: ['Deterministic capability candidate; retain normal planning and tool-policy checks.'],
-                    rawIntent: { primary: raw, capabilityCandidate: candidate.name, deterministic: true },
-                };
-            }
-        }
         const probe = `${raw}\n${normalizeIntentText(raw)}`;
         const hasUrl = /https?:\/\/|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)\b/i.test(probe);
         // A well-known site named in words (dialect/transliteration) counts as a web
@@ -278,6 +257,37 @@ Return ONLY a JSON object:
         // button") is a continuation of the open page — unmistakably a browser task.
         const interactUi = /(اضغط|انقر|اختر|اكتب|أدخل|مرّ?ر|انزل|عبّ?ئ|املأ|حدّ?د|click|press|scroll|select|type|fill)/i.test(probe)
             && /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i.test(probe);
+        const unmistakablyWeb = hasUrl || strongWebVerb || interactUi || (weakWebVerb && webNoun);
+        // The registry can already name a single, safe capability for an
+        // imperative request. Do not spend a slow model round merely to reach
+        // the same canonical capability plan later in PlanningEngine. This is
+        // deliberately only a classification hint: PlanningEngine still builds
+        // the plan and ToolService remains the sole policy/execution gateway.
+        // Questions and construction briefs stay out of this path so a noun
+        // such as "security" cannot turn an explanation into an action.
+        //
+        // …AND IT IS ASKED AFTER THE WEB, NOT BEFORE IT. Placed first, the
+        // similarity scorer answered requests the browser signals below
+        // already recognise without doubt, and answered them wrongly:
+        //     ابحث لي عن سعر الدولار اليوم   → browser_find_text (search INSIDE a page)
+        //     ادخل على جيت هاب وشوف آخر إشعارات → git_ops
+        //     تصفّح الويب ولخّص لي أول نتيجة   → browser_page_fix
+        // An unmistakable web request keeps its own route; the scorer serves
+        // the imperatives that have none («فحص أمني للموقع», «اضغط الصور»).
+        if (!unmistakablyWeb && !looksLikeBuild(raw) && !isKnowledgeQuestion(raw)) {
+            const [candidate] = capableTools(raw, 1);
+            if (candidate) {
+                return {
+                    goal: raw,
+                    complexity: 'low',
+                    riskLevel: 'low',
+                    suggestedAgent: 'General',
+                    requiredTools: [candidate.name],
+                    constraints: ['Deterministic capability candidate; retain normal planning and tool-policy checks.'],
+                    rawIntent: { primary: raw, capabilityCandidate: candidate.name, deterministic: true },
+                };
+            }
+        }
         /**
          *  A VERB HE WANTS INSIDE HIS APP IS NOT A COMMAND TO JOE.
          *
