@@ -1111,7 +1111,10 @@ export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true
             //  As a COLUMN, not as loose text: a label that happens to
             //  appear in a comment or a sentence proves nothing about the
             //  table. The generated schema writes `label: '…'`.
-            const quoted = c.expectedColumn.replace(/[-/\\^$*+?.()|[\\]{}]/g, "\\$&");
+            //  ⛔ The hand-written class here closed at `[\]` and escaped nothing:
+            //  «roles (admin and staff)» crashed every judge with «Unterminated
+            //  group» (eval P151, 2026-10-23). One escaper for the whole file.
+            const quoted = escapeRegExp(c.expectedColumn);
             const has = !!src && new RegExp("label:\\s*'" + quoted + "'").test(src);
             return has
                 ? say('met', isAr ? `العمود «${c.expectedColumn}» في مخطّط الجدول` : `the column «${c.expectedColumn}» is in the table schema`)
