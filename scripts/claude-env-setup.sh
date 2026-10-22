@@ -60,6 +60,7 @@ cat >> "$MEMORY" <<'RULES'
 <!-- claude-env-setup:begin -->
 # Tools in every session — the owner's standing order (2026-10-22), measured before adoption
 
+- **First, confirm they are here:** skills whose names start with `ponytail`, the skill `test-driven-development`, and `graphify --version` = `0.9.93`. If any is missing, say so plainly in your first reply — silence while blind looks exactly like silence while all is well.
 - **Ponytail** and **Agent Skills** are installed as plugins. Use them without being asked: Ponytail's ladder before writing any code; an Agent Skill whenever one fits the task.
 - **Graphify** (`graphify` CLI) maps code with tree-sitter — no model, no tokens.
   - Before exploring a codebase, start `graphify update .` in the background (about a minute for 1,450 files).
