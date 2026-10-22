@@ -67,3 +67,8 @@ api/uploads/
 # The channel ledger: which comments are mine. Local by nature — it is a
 # fact about THIS machine, and pushing it would make two machines disagree.
 .manus-watch/
+
+# The Graphify code graph (law 8). Rebuilt per machine from the code itself;
+# its graph.json measured 11 MB on this repository and is rewritten whole on
+# every build, so committing it would bury every real diff.
+graphify-out/
