@@ -1166,6 +1166,8 @@ const OFFLINE_LOCAL_TIMEOUT_MS = (() => {
         : 45_000;
 })();
 
+const OFFLINE_LOCAL_CEILING_MS = 300_000;
+
 /** A local call finished — remember how long this machine really takes. */
 export function noteLocalDuration(ms: number): void {
     const v = Math.max(0, Math.round(ms));
@@ -2662,7 +2664,16 @@ export async function routeToModel(
                         : Math.min(timeoutValue, measuredLeash);
                 }
                 if (offlineMode && p.name === 'Local (Auto)') {
-                    timeoutValue = Math.min(timeoutValue, OFFLINE_LOCAL_TIMEOUT_MS);
+                    // ⛔ Offline, this local model is the ONLY brain: a fixed 45 s cut
+                    // is a certain failure on a slow machine, not a fast one (eval
+                    // 2026-10-22: a two-sentence answer aborted at 45 s on a CPU that
+                    // needs ~75 s to read the prompt). A missing Ollama is refused at
+                    // connect and never waits on this; only a slow-but-alive model does.
+                    // So the cut is never shorter than this machine's measured leash.
+                    const { localWarmupMs: offlineWarmupMs } = require('./local-brain');
+                    const machineLeash = internalLeashMs(Number(offlineWarmupMs?.() || 0));
+                    // Still bounded: never past the five minutes a named local answer gets.
+                    timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(machineLeash, OFFLINE_LOCAL_CEILING_MS)));
                 }
                 // A recovery call must not restore the long first-attempt leash
                 // after the same local brain has just timed out. Give it one
@@ -3072,17 +3083,25 @@ export async function verifyProviderDirect(
             // local brain as unavailable before planning even starts. Probe the
             // configured local brain directly first, using the measured warm-up
             // time as evidence, and only then inspect fallback providers.
-            if (providerAllowedByCost('Local (Auto)') && isLocalBrainReady() && localProvider.isConfigured()) {
+            // Configured is enough: a warm-up still running on a slow CPU is not
+            // evidence of absence, and skipping here sent the probe to the mesh,
+            // whose 8 s local cap reported a live model as TIMEOUT (eval 2026-10-22).
+            if (providerAllowedByCost('Local (Auto)') && localProvider.isConfigured()) {
                 const warmup = Number(localWarmupMs?.() || 0);
                 // Boot warm-up already sent a real request to this model. A
                 // second immediate probe can queue behind a slow CPU model and
                 // make a healthy local brain look unavailable before planning.
-                if (warmup > 0) {
+                if (warmup > 0 && isLocalBrainReady()) {
                     return { ok: true, provider, detail: 'local_ready_after_warmup' };
                 }
                 // Connection checks are tiny text tasks, not coding turns. Bound their
                 // generation so background verification cannot occupy the coder model.
-                const localProbeTimeout = 15_000;
+                // Offline, local is the only brain: give it the cold-start bound a
+                // named local probe gets (15 s ended live CPU probes before the model
+                // had read the prompt). With fallbacks available, stay short so a
+                // slow local model cannot hold up a healthy free provider.
+                const offlineOnlyLocal = /^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim());
+                const localProbeTimeout = offlineOnlyLocal ? localVerificationBudgetMs() : 15_000;
                 try {
                     const localAnswer = await withTimeout(
                         localProvider.chatComplete(probe as any, pickLocalModel('simple_chat', 'small_text'), undefined, probeAbort.signal,
