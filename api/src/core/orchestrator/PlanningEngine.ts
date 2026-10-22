@@ -1087,7 +1087,20 @@ Rules:
         // reinterpreted as a local file or project audit.
         const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
             || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
-        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+        /**
+         *  A PROHIBITION IS NOT AN ORDER.
+         *
+         *  «…أنشئ commit محلياً، لكن لا تنفذ git push ولا تفتح Pull Request»
+         *  — a clone-and-commit contract that ends by FORBIDDING a PR. The
+         *  verb «فتح» sits inside «تفتح», so that clause read as an intent to
+         *  open the repository's URL, and the whole contract became one
+         *  browser_launch. Negated clauses are removed before the open intent
+         *  is read, the same way a negated build verb already is.
+         */
+        const openProbe = probe
+            .replace(/(^|[\s،؛,:.!?])و?(?:لا|ليس|بدون|دون|عدم)\s+(?:أن\s+)?ت?(?:فتح|ذهب|نتقل|زور|دخل)\S*/gu, '$1')
+            .replace(/\b(?:do\s+not|don't|never|without)\s+(?:open(?:ing)?|visit(?:ing)?|navigat\w*|go(?:ing)?\s*to)\b/gi, ' ');
+        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(openProbe);
         const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
         // Test the CANONICAL multilingual verbs too. The normalizer maps
         // «опиши», «decris», «descrivi» and similar forms to `describe`; if this
