@@ -55,10 +55,29 @@ describe('2. recovery goals bypass every fast-path', () => {
         expect(planSrc).not.toMatch(/!isRecoveryGoal &&/);
     });
 
+    /**
+     *  …ON EVERY ROAD A RECOVERY CAN TAKE.
+     *
+     *  The adaptive planner (1f94c928) moved these rules into its own prompt,
+     *  and the planner's single-attempt fallback kept its prompt WITHOUT
+     *  them — so a recovery that fell back re-planned blind. The rules now
+     *  have one text and both prompts carry it; this reads both prompts.
+     */
     test('the dynamic planner gets recovery-specific rules: diagnose before retry', () => {
-        expect(planSrc).toMatch(/FAILURE-RECOVERY plan/);
-        expect(planSrc).toMatch(/NEVER just re-run the failed step unchanged/);
-        expect(planSrc).toMatch(/diagnose -> repair -> re-run/);
+        const adaptive = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'orchestrator', 'adaptive-dag-planner.ts'), 'utf-8');
+        const { FAILURE_RECOVERY_RULES } = require('../core/orchestrator/adaptive-dag-planner');
+        expect(FAILURE_RECOVERY_RULES).toMatch(/FAILURE-RECOVERY plan/);
+        expect(FAILURE_RECOVERY_RULES).toMatch(/NEVER just re-run the failed step unchanged/);
+        expect(FAILURE_RECOVERY_RULES).toMatch(/diagnose -> repair -> re-run/);
+        // The adaptive prompt, for a recovery goal.
+        expect(adaptive).toMatch(/const recoveryRules = isRecovery \? `\s*\$\{FAILURE_RECOVERY_RULES\}/);
+        expect(adaptive).toMatch(/\$\{recoveryRules\}\n\nGoal: \$\{intent\.goal\}/);
+        // …and the fallback prompt, inside the same function that falls back.
+        const dag = planSrc.slice(planSrc.indexOf('private static async generateDynamicDag('));
+        const fallback = dag.slice(dag.indexOf('falling back to single attempt'), dag.indexOf('const response = await routeToModel('));
+        expect(fallback).toMatch(/const recoveryRules = isRecovery \? `\\n\$\{FAILURE_RECOVERY_RULES\}` : ''/);
+        expect(fallback).toMatch(/chosen\.\$\{recoveryRules\}\n\nGoal: \$\{intent\.goal\}/);
     });
 });
 
@@ -112,8 +131,21 @@ describe('4. sanitizeOutput truncates instead of deleting', () => {
 });
 
 describe('the retry ceiling still ends a hopeless loop', () => {
+    /**
+     *  The REAL error is now the measured payload of the failing node
+     *  (902b9686: a short error code had been erasing the QA report it
+     *  stood for). `lastNodeError` is set from that node's own result just
+     *  before this branch, so it is still this failure — and the generic
+     *  text stays last, reached only when nothing was measured.
+     */
     test('two retries, then the REAL error surfaces', () => {
-        expect(orchSrc).toMatch(/currentRetryCount >= 2/);
-        expect(orchSrc).toMatch(/result\.error \|\| "Fatal execution error: Max retries reached"/);
+        const at = orchSrc.indexOf('if (currentRetryCount >= 2)');
+        expect(at).toBeGreaterThan(-1);
+        const ceiling = orchSrc.slice(at, orchSrc.indexOf('if (this.recoveriesUsed', at));
+        expect(ceiling).toMatch(/return \{ ok: false, result: lastNodeError \?\? result\.error \?\? "Fatal execution error: Max retries reached"/);
+        // …and lastNodeError is this node's failure, assigned before any branch reads it.
+        const assigned = orchSrc.indexOf('lastNodeError = result.output ?? result.error ?? lastNodeError;');
+        expect(assigned).toBeGreaterThan(-1);
+        expect(assigned).toBeLessThan(at);
     });
 });
