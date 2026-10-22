@@ -9,14 +9,20 @@
  *
  * That memory is not taken from the next inference: Ollama either reuses the
  * resident model or evicts it to load another. So it is reclaimable for local
- * inference, and admission adds it back. Only a loopback server is asked; any
- * failure reads as 0, which is exactly the old behaviour.
+ * inference, and admission adds it back. Only a loopback server is asked. A
+ * missed probe reuses the last answer for up to a minute (a server busy
+ * generating answers slowly); with no recent answer it reads as 0, which is
+ * exactly the old behaviour.
  */
 import * as http from 'node:http';
 
 const CACHE_MS = 2000;
 const TIMEOUT_MS = 750;
+// A server busy generating can miss the probe deadline. Residency changes slowly,
+// so the last answer it gave is a better estimate than 0 for a short while.
+const LAST_GOOD_MS = 60_000;
 let cached: { at: number; bytes: number } | null = null;
+let lastGood: { at: number; bytes: number } | null = null;
 
 function psUrl(): URL | null {
     const base = String(process.env.LOCAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').trim();
@@ -27,11 +33,14 @@ function psUrl(): URL | null {
     } catch { return null; }
 }
 
+/** Test seam: forget cached and last-good readings. */
+export function resetResidentInferenceForTests(): void { cached = null; lastGood = null; }
+
 /** Sum of `size` over the models the loopback Ollama server reports as loaded; 0 on any doubt. */
 export async function residentInferenceBytes(): Promise<number> {
     if (cached && Date.now() - cached.at < CACHE_MS) return cached.bytes;
     const url = psUrl();
-    const bytes = !url ? 0 : await new Promise<number>(resolve => {
+    const measured = !url ? null : await new Promise<number | null>(resolve => {
         const req = http.get(url, { timeout: TIMEOUT_MS }, res => {
             let body = '';
             res.setEncoding('utf8');
@@ -42,13 +51,17 @@ export async function residentInferenceBytes(): Promise<number> {
                     const total = Array.isArray(models)
                         ? models.reduce((sum: number, m: any) => sum + (Number.isFinite(m?.size) && m.size > 0 ? m.size : 0), 0)
                         : 0;
-                    resolve(res.statusCode === 200 ? total : 0);
-                } catch { resolve(0); }
+                    resolve(res.statusCode === 200 ? total : null);
+                } catch { resolve(null); }
             });
         });
-        req.on('timeout', () => { req.destroy(); resolve(0); });
-        req.on('error', () => resolve(0));
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+        req.on('error', () => resolve(null));
     });
-    cached = { at: Date.now(), bytes };
+    const now = Date.now();
+    if (measured !== null) lastGood = { at: now, bytes: measured };
+    const bytes = measured !== null ? measured
+        : lastGood && now - lastGood.at < LAST_GOOD_MS ? lastGood.bytes : 0;
+    cached = { at: now, bytes };
     return bytes;
 }
