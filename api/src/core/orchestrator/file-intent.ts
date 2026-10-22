@@ -83,7 +83,11 @@ const NAMED_FILE_PATTERNS = [
     String.raw`(?:ملف|الملف)\s+(?:باسم\s+|اسمه\s+|بإسم\s+)?`,
     String.raw`(?:اسم\s+الملف|file\s*name)\s*[:：]?\s*`,
     String.raw`\b(?:create|write|make|generate)\s+(?:a\s+|the\s+)?`,
+    String.raw`\b(?:tool|script|program|module|utility|cli)\s+(?:named\s+|called\s+)?`,
 ].map(lead => new RegExp(lead + OPEN_QUOTE + NAMED_FILE, 'giu'));
+
+// «Node.js», «Vue.js», «Three.js» name a technology, not a file he wants written.
+const TECHNOLOGY_NAME = /^(?:node|vue|next|nuxt|react|express|three|d3|chart|angular|ember|backbone|deno|bun|solid|svelte|alpine|moment|lodash|p5|anime|pixi|babylon|socket\.io)\.js$/i;
 
 export function namedTargetFile(input: string): string | null {
     const raw = String(input || '');
@@ -91,7 +95,7 @@ export function namedTargetFile(input: string): string | null {
     for (const re of NAMED_FILE_PATTERNS) {
         for (const m of raw.matchAll(re)) names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
     }
-    const valid = [...names].filter(n => n && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
+    const valid = [...names].filter(n => n && !TECHNOLOGY_NAME.test(n) && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
         && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n));
     return valid.length === 1 ? valid[0] : null;
 }

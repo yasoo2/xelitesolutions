@@ -21,6 +21,7 @@ import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence, snapsho
 import { engineeringExecution, issueEngineeringExecution } from '../../services/AutonomousEngineeringPolicy';
 import { autonomousFileTextIsSafe } from '../../services/AutonomousFilePolicy';
 import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
+import { namedTargetFile } from '../../../core/orchestrator/file-intent';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
 
 const MAX_PIPELINE_LOGS = 192;
@@ -627,44 +628,107 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
     return plan;
 }
 
+/**
+ * ⛔ A TEMPLATE IS A SKELETON, NOT THE PROGRAM HE ASKED FOR (CLAUDE.md law 4).
+ *
+ * Eval L3-cli, 2026-10-22: «Write a Node.js command-line tool wordcount.js that
+ * takes a file path argument and prints the number of words in that file» was
+ * delivered as src/index.ts holding a JSON property=value FILTER, a test that
+ * filters Alice/Bob/Charlie, and no wordcount.js — the same program every CLI
+ * request received, whatever it asked for.
+ *
+ * So the language skeleton (manifest, config, entry file name) still comes from
+ * here, but: the file he names is the entry; the stock filter/convert body is
+ * kept only when that IS what he asked for; otherwise the entry and its test are
+ * authored from his request. His text is also flattened before it is embedded,
+ * because a quote or newline in it broke package.json and the comment lines.
+ */
+const CLI_LANGUAGE_BY_EXTENSION: Record<string, ReturnType<typeof detectLanguage>> = {
+    '.js': 'javascript', '.cjs': 'javascript', '.mjs': 'javascript', '.ts': 'typescript',
+    '.py': 'python', '.sh': 'bash', '.go': 'go', '.rs': 'rust',
+};
+const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: 'python', bash: 'bash' };
+
 function buildCliScaffold(request: string, projectName: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
 } {
-    // Detect requested language from the request
-    const lang = detectLanguage(request);
-    // Detect input format (CSV, JSON, etc.)
+    const named = namedTargetFile(request);
+    const namedExt = named ? path.extname(named).toLowerCase() : '';
+    // The file he named decides the language before any keyword guess does.
+    const lang = CLI_LANGUAGE_BY_EXTENSION[namedExt] || detectLanguage(request);
     const format = detectInputFormat(request);
-    
-    const { pkgJson, tsconfigJson, entryPoint, entryPointContent, testFile, sampleFile, testFileName } = generateCliScaffold(lang, format, request, projectName);
-    
-    const structure: Record<string, string> = {
-        'package.json': pkgJson,
-        [entryPoint]: entryPointContent,
-        [testFileName]: testFile,
-        'sample.json': sampleFile
-    };
-    
+    const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
+
+    const scaffold = generateCliScaffold(lang, format, flat, projectName);
+    const { pkgJson, tsconfigJson, testFile, sampleFile, testFileName } = scaffold;
+    let { entryPoint, entryPointContent } = scaffold;
+    let manifest = pkgJson;
+    // A named entry replaces the default one wherever the manifest runs it.
+    // Interpreted languages only: compiled targets keep their build layout.
+    const runner = CLI_RUNNER[lang];
+    if (named && runner && named !== entryPoint) {
+        try {
+            const pkg = JSON.parse(manifest);
+            pkg.main = named;
+            pkg.scripts = { ...(pkg.scripts || {}), start: `${runner} ${named}` };
+            manifest = JSON.stringify(pkg, null, 2);
+            entryPoint = named;
+        } catch { /* keep the default entry when the stock manifest is unreadable */ }
+    }
+
+    const asksForFilter = /\bfilter(?:s|ing)?\b|property\s*=\s*value|matching\s+entries|فلتر|تصفية|يصفي/i.test(request);
+    const asksForCsvToJson = format === 'csv' && /\bjson\b/i.test(request);
+    const templateServesRequest = asksForFilter || asksForCsvToJson;
+
+    const structure: Record<string, string> = { 'package.json': manifest, [entryPoint]: entryPointContent };
+    if (templateServesRequest) {
+        structure[testFileName] = testFile;
+        structure['sample.json'] = sampleFile;
+    }
     // Only include tsconfig.json for TypeScript projects
     if (tsconfigJson) {
         // For TypeScript, use tsconfig.json; for Go, it's a placeholder for go.mod
         const tsconfigName = lang === 'go' ? 'go.mod' : 'tsconfig.json';
         (structure as any)[tsconfigName] = tsconfigJson;
     }
-    
+
+    const tasks: any[] = [{
+        tool: 'scaffold_project',
+        description: `CLI tool scaffold for: ${request}`,
+        args: { request, structure },
+    }];
+    if (!templateServesRequest) {
+        const runCommand = runner ? `${runner} ${entryPoint}` : `the project's start script`;
+        tasks.push({
+            tool: 'ai_write_file',
+            description: `Write ${entryPoint} from the request`,
+            args: {
+                path: entryPoint,
+                description: `${request}\n\nWrite the complete ${lang} program in ${entryPoint}. It is run as \`${runCommand} <arguments>\`. `
+                    + 'Implement exactly the behaviour requested above, read inputs from the command-line arguments, print results to stdout, '
+                    + 'print a short usage line and exit with a non-zero code when arguments are missing or a file cannot be read.',
+            },
+        }, {
+            tool: 'ai_write_file',
+            description: `Write ${testFileName} for the requested behaviour`,
+            args: {
+                path: testFileName,
+                description: `A small self-contained test for the program in ${entryPoint} (${request}). `
+                    + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
+                    + 'Use only the standard library of the language; no placeholder assertions.',
+            },
+        });
+    }
+
     return {
         projectName,
-        reason: `a CLI/utility/script was asked for; file-level scaffolding with ${lang} structure`,
+        reason: templateServesRequest
+            ? `a CLI/utility/script was asked for; file-level scaffolding with ${lang} structure`
+            : `a CLI/utility/script was asked for; ${lang} skeleton, then ${entryPoint} authored from the request`,
         phases: [{
             phaseNumber: 1,
             name: 'CLI Scaffold',
-            tasks: [{
-                tool: 'scaffold_project',
-                description: `CLI tool scaffold for: ${request}`,
-                args: {
-                    request,
-                    structure
-                }
-            }]
+            tasks,
         }]
     };
 }

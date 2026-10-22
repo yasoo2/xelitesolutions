@@ -23,6 +23,7 @@ describe('a file he named is the target', () => {
         ['Create a file named hello.py that prints the numbers 1 to 5, one per line.', 'hello.py'],
         ['write a file called src/utils/math.ts with an add function', 'src/utils/math.ts'],
         ['Create wordcount.js that counts the words in a file', 'wordcount.js'],
+        ['Write a Node.js command-line tool wordcount.js that prints the number of words', 'wordcount.js'],
         ['أنشئ ملف notes.md فيه عنوان «ملاحظاتي» وتحته قائمة من ثلاث نقاط', 'notes.md'],
         ['اعمل ملف باسم «تقرير.txt» يلخص المشروع', 'تقرير.txt'],
     ])('%s → %s', (request, expected) => {
