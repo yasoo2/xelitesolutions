@@ -3,7 +3,11 @@ import { applyPersistenceModeDefault } from './persistence-mode';
 
 // quiet: dotenv 17 prints a banner and a rotating «tip:» on every boot. Joe's
 // startup log is read by a human looking for real information.
-dotenv.config({ quiet: true } as any);
+// ⛔ Never under Jest: the developer's api/.env (LLM_PROVIDER=local,
+// OFFLINE_MODE, LOCAL_LLM_*) changed test verdicts — scoped-planning-prompt
+// failed 4 tests on the owner's machine and passed in the gate on the SAME
+// commit (2026-10-22). Tests start from the environment setup.ts builds.
+if (process.env.NODE_ENV !== 'test') dotenv.config({ quiet: true } as any);
 
 const isProd = process.env.NODE_ENV === 'production';
 const persistenceMode = applyPersistenceModeDefault();
