@@ -313,6 +313,19 @@ export async function generatePlanAttempts(
 }
 
 /**
+ * A REPAIR IS PLANNED FROM THE ERROR — on every road a recovery can take.
+ *
+ * The adaptive planner and the planner's single-attempt fallback both write a
+ * DAG for «Fix and continue: …». When these rules moved into this file, the
+ * fallback kept its prompt and lost them, so a recovery that reached the
+ * fallback could re-run the failed step unchanged. One text, both prompts.
+ */
+export const FAILURE_RECOVERY_RULES = `This is a FAILURE-RECOVERY plan. Non-negotiable rules:
+- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
+- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
+- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.`;
+
+/**
  * Single plan generation with enhanced prompt
  */
 async function generateSinglePlan(
@@ -328,10 +341,7 @@ async function generateSinglePlan(
         : null;
 
     const recoveryRules = isRecovery ? `
-This is a FAILURE-RECOVERY plan. Non-negotiable rules:
-- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
-- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
-- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.
+${FAILURE_RECOVERY_RULES}
 ${failureDiagnosis ? `
 FAILURE DIAGNOSIS (pre-computed):
 Root Cause: ${failureDiagnosis.rootCause}

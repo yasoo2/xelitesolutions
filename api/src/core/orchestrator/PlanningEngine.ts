@@ -18,7 +18,7 @@ import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
 import { hasRequestedAction } from '../intelligence/requested-action';
-import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
+import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan, FAILURE_RECOVERY_RULES } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
 
@@ -3398,6 +3398,13 @@ Rules:
 
         // Fallback to single-attempt if adaptive planner fails
         console.warn('[PlanningEngine] Adaptive planner failed, falling back to single attempt');
+        // Compacted, never raw: one completed page-builder node used to drag an
+        // entire HTML page into this prompt and the planning call itself died on
+        // free-tier token limits — turning every recovery into the failover node.
+        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : "";
+        // A recovery that reaches this fallback is still a recovery: the same
+        // rules as the adaptive prompt, from the same text.
+        const recoveryRules = isRecovery ? `\n${FAILURE_RECOVERY_RULES}` : '';
         const fallbackEntropySeed = Math.random().toString(36).substring(7);
         const fallbackSystemPrompt = `You are a Professional Software Architecture Planner.
 Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
@@ -3413,11 +3420,11 @@ ${catalogueFor(intent.goal)}
 - Any id you write inside {{FROM:...}} MUST also appear in that step's dependsOn.
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
-- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
+- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.${recoveryRules}
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
-Risk: ${intent.riskLevel}${memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : ""}
+Risk: ${intent.riskLevel}${historyContext}
 
 Return ONLY a JSON array of steps:
 [
@@ -3453,6 +3460,26 @@ Return ONLY a JSON array of steps:
                     reasoning: step.reasoning || ''
                 })), String(intent.goal || ''), context);
 
+                /**
+                 * A REQUEST TO BUILD IS NOT ANSWERED BY TALKING ABOUT BUILDING.
+                 *
+                 * His run, verbatim, against «Build a world-class e-commerce
+                 * platform … Generate complete production-ready code»:
+                 *
+                 *     Executing node: define_project_structure   → central_answer
+                 *     Executing node: generate_auth_system       → central_answer
+                 *     Executing node: create_multi_vendor_marketplace → central_answer
+                 *     «Good evening, Younes. As we embark on building …»
+                 *
+                 * Fifteen nodes, six essays, and not one file on disk. Worse,
+                 * an essay always "succeeds", so the failed step's repair got
+                 * stamped as a PROVEN cure and replayed on the next unrelated
+                 * error («proven 2x» in his log).
+                 *
+                 * A plan that answers a BUILD with nothing but answering tools
+                 * is not a plan. It is refused here, and the deterministic
+                 * builders take the request instead.
+                 */
                 const talkOnly = steps.length > 0 && steps.every((st: any) =>
                     ANSWER_ONLY_TOOLS.has(String(st.tool || '')));
                 if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
@@ -3492,6 +3519,21 @@ Return ONLY a JSON array of steps:
             console.error('[PlanningEngine] Dynamic DAG generation failed:', err);
         }
 
+        /**
+         * A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA.
+         *
+         * From his log, in full: the DAG planner reached Groq, Groq answered
+         * «429 … tokens per day (TPD): Limit 100000, Used 100000», every
+         * keyless provider was dead (401/418/402), the local brain had timed
+         * out — and a request to BUILD A SYSTEM ended with «تعذّر الوصول إلى
+         * محرّك الذكاء». Nothing in that build needed a model: the scaffolder,
+         * the database, the CRUD, the screens and the self-QA are all
+         * deterministic. Only the ROUTE to them went through an LLM.
+         *
+         * So when planning fails and the goal is a build, the builders take it.
+         * This is the same rescue the talk-only plan already gets — it just has
+         * to survive the planner being unreachable, not merely wrong.
+         */
         if (looksLikeBuildRequest(String(intent.goal || ''))) {
             console.warn('[PlanningEngine] the planner was unreachable for a BUILD — routing systems to evidence-first planning, never an invented stack.');
             const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
@@ -3515,14 +3557,22 @@ Return ONLY a JSON array of steps:
             };
         }
 
+        // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
         const fallbackUrl = String(intent.goal || '').match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+        // A planner failure must not reinterpret an engineering build as a browser
+        // visit just because upstream intent analysis was unavailable or imprecise.
+        // URLs remain explicit browser evidence; otherwise a browser fallback is
+        // permitted only for a non-build request.
         const isBrowserFallback = !!fallbackUrl || (
             !looksLikeBuildRequest(String(intent.goal || '')) && (
                 intent.suggestedAgent === 'Browser'
                 || Boolean(intent.requiredTools && intent.requiredTools.includes('browser_run'))
             )
         );
+        // For browser intents, open the live browser deterministically instead of
+        // the generic browser_run (which needs explicit actions and otherwise dies
+        // with "actions_or_instruction_required" -> "Recovery failed").
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
