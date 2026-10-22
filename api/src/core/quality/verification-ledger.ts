@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../../modules/tools/path-containment';
 
 export type VerificationMode = 'focused' | 'affected' | 'final';
 export type VerificationResult = 'passed' | 'failed' | 'cancelled' | 'timed_out' | 'incomplete';
@@ -106,8 +107,12 @@ const MAX_RECEIPTS = 96;
 const MAX_DECISIONS = 192;
 const MAX_FILES = 4_000;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+//  Joe's own bookkeeping is not project content. `.engineering-checkpoints`
+//  is written into the project after every task (core/resume), so counting it
+//  made each check invalidate the next one: two identical final gates ran
+//  twice, because the first one's checkpoint changed the fingerprint.
 const IGNORED_DIRECTORIES = new Set([
-    '.git', '.joe', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
+    '.git', '.joe', '.engineering-checkpoints', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
 ]);
 const ALWAYS_RELEVANT_FILES = [
     'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock',
@@ -167,18 +172,21 @@ function readableContainedPath(root: string, candidate: string): boolean {
     const resolved = resolvedInside(root, candidate);
     if (!resolved) return false;
     try {
-        const realRoot = fs.realpathSync(root).toLowerCase();
-        const realCandidate = fs.realpathSync(resolved).toLowerCase();
-        if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + path.sep.toLowerCase())) return false;
+        //  Case is folded only where the filesystem folds it, and only for
+        //  the comparison — path-containment.ts answers this question for
+        //  the whole tree. Lowercasing the path itself made lstat ask Linux
+        //  about a directory that does not exist, so a workspace with one
+        //  capital letter in its name silently lost every reusable receipt.
+        if (!isWithinRoot(fs.realpathSync(resolved), fs.realpathSync(root))) return false;
         // Checking only the leaf misses a junction in an ancestor directory.
-        let current = path.resolve(root).toLowerCase();
+        let current = path.resolve(root);
         if (fs.lstatSync(current).isSymbolicLink()) return false;
         for (const part of path.relative(current, resolved).split(path.sep).filter(Boolean)) {
             current = path.join(current, part);
             if (fs.lstatSync(current).isSymbolicLink()) return false;
         }
         return true;
-} catch { return false; }
+    } catch { return false; }
 }
 
 function compactReceipt(value: unknown): VerificationReceipt | null {
@@ -364,17 +372,13 @@ function collectFiles(target: string, root: string, files: string[], budget: Fin
 
 // Process-local HMAC avoids persisting environment values or guessable secret
 // hashes. A process restart conservatively invalidates prior environment proof.
-const environmentFingerprintKey = (() => {
-    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
-        return crypto.createHash('sha256').update('test-environment-stable-fingerprint-key').digest();
-    }
-    return crypto.randomBytes(32);
-})();
+//
+// There is no test-mode branch here, on purpose. One returned a constant
+// identity whenever NODE_ENV was «test», so every environment change looked
+// unchanged to exactly the suite that exists to catch it — the code the suite
+// measured was not the code that ships.
+const environmentFingerprintKey = crypto.randomBytes(32);
 function environmentIdentity(): string {
-    // In test environments, return a stable fingerprint to ensure reproducible verification
-    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
-        return 'test-environment-stable-fingerprint';
-    }
     const digest = crypto.createHmac('sha256', environmentFingerprintKey);
     for (const key of Object.keys(process.env).sort()) {
         digest.update(JSON.stringify([key, process.env[key]]));
@@ -563,12 +567,12 @@ export function selectVerification(
     const selection = fingerprintVerification(descriptor);
     addAccounting(ledger, 'fingerprintDurationMs', selection.descriptor.fingerprintDurationMs);
     const previous = [...ledger.receipts].reverse().find(receipt => receipt.checkId === selection.descriptor.checkId);
-    
-    // Always reuse if checkId matches and previous result was passed,
-    // regardless of fingerprint differences (environment/toolchain changes)
-    if (previous && previous.result === 'passed') {
+    //  A passing receipt proves the exact inputs that produced it and nothing
+    //  else. Reusing it on the check's NAME alone — whatever changed since —
+    //  is a verification that never looks at the thing it verifies.
+    if (selection.cacheable && previous?.result === 'passed' && previous.fingerprint === selection.fingerprint) {
         selection.action = 'reuse';
-        selection.reason = 'reused: passing receipt matches checkId';
+        selection.reason = 'reused: passing receipt matches all relevant inputs';
         selection.receipt = previous;
         addAccounting(ledger, 'estimatedSavedDurationMs', previous.durationMs);
         addDecision(ledger, {
