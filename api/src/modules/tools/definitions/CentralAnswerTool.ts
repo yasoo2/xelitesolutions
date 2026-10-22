@@ -4,6 +4,7 @@ import { ToolDefinition } from '../types';
 import { analyzeTask, routeToModel, PROVIDER_FAILURE_PREFIX } from '../../../core/llm/intelligent-router';
 import { arabicShare, diagnoseAnswerScriptIssue, hasUnrequestedAnswerScript, languageDirective, languageName } from '../../../shared/utils/language';
 import { selectedLocalAnswerBudgetMs } from '../../../core/llm/selected-local-answer-budget';
+import { servedModelConfig } from '../../../core/llm/served-local-selection';
 import { conciseAnswerBasePrompt, isUnansweredExplanation, requestsExplanation } from '../../../core/llm/concise-answer-prompt';
 import { capturedResultEvidence, EMPTY_CAPTURE_ANSWER, EMPTY_CAPTURE_EVIDENCE } from '../../../core/llm/captured-result-evidence';
 import { ResourceAdmissionError } from '../../../core/resources/RequestResourceManager';
@@ -313,7 +314,8 @@ ${languageDirective(lang)}`;
             return { ok: true, output: instant, logs: ['central_answer: instant fast-path (no model call)'] };
         }
 
-        const answerBudgetMs = selectedLocalAnswerBudgetMs(context);
+        // Budget for the model that will serve, not the «Auto» label the UI sent.
+        const answerBudgetMs = selectedLocalAnswerBudgetMs(servedModelConfig(context));
         const controller = new AbortController();
         // Route by the user's question, rather than the internal caller's coding default.
         // This answer-only tool never acquires tool authority from classification.
