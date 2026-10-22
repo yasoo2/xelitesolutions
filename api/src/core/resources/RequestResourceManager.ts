@@ -1,5 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
+import { residentInferenceBytes } from './resident-inference';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
@@ -87,6 +88,8 @@ export interface RequestResourceManagerOptions {
     reserveBytes?: number;
     maxContextTokens?: number;
     sampleMemory?: () => MemoryReading;
+    /** Memory the local inference server holds for loaded models; it is reclaimable for the next inference. */
+    sampleResidentInference?: () => Promise<number>;
     now?: () => number;
 }
 
@@ -199,6 +202,7 @@ export class RequestResourceManager {
     private readonly liveHeavyLeases = new Set<HeavyLease>();
     private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens: number };
     private readonly sampleMemory: () => MemoryReading;
+    private readonly sampleResidentInference: () => Promise<number>;
     private readonly now: () => number;
     private lastMemory: MemorySnapshot | null = null;
     private activeRequests = 0;
@@ -217,6 +221,9 @@ export class RequestResourceManager {
             // constructor policy requires separate runtime acceptance before use.
             maxContextTokens: boundedInteger(options.maxContextTokens, 4096, 256, 8192) };
         this.sampleMemory = options.sampleMemory || defaultMemoryReading;
+        // An injected memory reading is a test of the floor itself: no live server is asked.
+        this.sampleResidentInference = options.sampleResidentInference
+            || (options.sampleMemory ? async () => 0 : residentInferenceBytes);
         this.now = options.now || Date.now;
     }
 
@@ -297,7 +304,7 @@ export class RequestResourceManager {
                 this.assertOpen(store);
                 if (parent && !parent.live) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                const memory = this.admitMemory();
+                const memory = this.admitMemory(await this.reclaimableBytes());
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -349,7 +356,8 @@ export class RequestResourceManager {
                     () => this.emit(store, { lane: 'inference', state: 'queued', kind }));
                 this.assertOpen(store);
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                const budget = this.budget(this.admitMemory(), options, signal.signal);
+                const reclaimable = await this.reclaimableBytes();
+                const budget = this.budget(this.admitMemory(reclaimable), options, signal.signal, reclaimable);
                 started = this.now();
                 marker = { live: true };
                 this.emit(store, { lane: 'inference', state: 'started', kind, ...this.memoryEvent(budget.memory),
@@ -422,16 +430,26 @@ export class RequestResourceManager {
         return memory;
     }
 
-    private admitMemory(): MemorySnapshot {
+    private async reclaimableBytes(): Promise<number> {
+        try { return nonnegative(await this.sampleResidentInference()) ?? 0; } catch { return 0; }
+    }
+
+    /**
+     * The floor guards against loading a model into too little memory. A model the
+     * local server already holds is reused or evicted for the next one, so its
+     * bytes count toward what this inference can use (see resident-inference.ts).
+     */
+    private admitMemory(reclaimableBytes = 0): MemorySnapshot {
         const memory = this.measure();
-        if (memory.availableBytes < this.policy.minFreeBytes || memory.availableBytes <= this.policy.reserveBytes) {
-            throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { availableBytes: memory.availableBytes,
+        const usable = memory.availableBytes + reclaimableBytes;
+        if (usable < this.policy.minFreeBytes || usable <= this.policy.reserveBytes) {
+            throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { availableBytes: memory.availableBytes, reclaimableBytes,
                 minFreeBytes: this.policy.minFreeBytes, reservedMemoryBytes: this.policy.reserveBytes });
         }
         return memory;
     }
 
-    private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal): ContextBudget {
+    private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal, reclaimableBytes = 0): ContextBudget {
         const prompt = options.promptEstimatedTokens;
         const output = options.requestedOutputTokens ?? 512;
         const requestedContext = options.requestedContextTokens ?? this.policy.maxContextTokens;
@@ -439,7 +457,8 @@ export class RequestResourceManager {
             || !Number.isSafeInteger(output) || output < 1 || !Number.isSafeInteger(requestedContext) || requestedContext < 1) {
             throw new ResourceAdmissionError('RESOURCE_INVALID_BUDGET');
         }
-        const tier = memory.availableBytes >= 4 * GiB ? 8192 : memory.availableBytes >= 2 * GiB ? 4096 : 2048;
+        const usable = memory.availableBytes + reclaimableBytes;
+        const tier = usable >= 4 * GiB ? 8192 : usable >= 2 * GiB ? 4096 : 2048;
         const contextTokens = Math.min(tier, this.policy.maxContextTokens, requestedContext);
         if (prompt + output > contextTokens) throw new ResourceAdmissionError('RESOURCE_CONTEXT_OVERFLOW',
             { promptEstimatedTokens: prompt, requestedOutputTokens: output, contextTokens });
