@@ -4,6 +4,7 @@ import { residentInferenceBytes } from './resident-inference';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
+const MIN_FITTED_OUTPUT_TOKENS = 256;
 
 export type ResourceAdmissionCode = 'RESOURCE_QUEUE_FULL' | 'RESOURCE_QUEUE_TIMEOUT'
     | 'RESOURCE_LOW_MEMORY' | 'RESOURCE_MEMORY_UNAVAILABLE' | 'RESOURCE_CONTEXT_OVERFLOW'
@@ -68,6 +69,8 @@ export interface InferenceOptions extends HeavyOptions {
     requestedOutputTokens?: number;
     /** A trusted server/provider cap only; never a user-body override. */
     requestedContextTokens?: number;
+    /** Opt-in: serve the room the prompt leaves instead of refusing an output wish that does not fit. */
+    fitOutputToContext?: boolean;
 }
 
 export interface ContextBudget {
@@ -217,9 +220,12 @@ export class RequestResourceManager {
         this.policy = { queueTimeoutMs: boundedInteger(options.queueTimeoutMs, 120000, 1, 300000),
             minFreeBytes: boundedInteger(options.minFreeBytes, GiB, GiB, Number.MAX_SAFE_INTEGER),
             reserveBytes: boundedInteger(options.reserveBytes, 768 * MiB, 768 * MiB, Number.MAX_SAFE_INTEGER),
-            // The current local profile is verified only at 4096. A larger trusted
-            // constructor policy requires separate runtime acceptance before use.
-            maxContextTokens: boundedInteger(options.maxContextTokens, 4096, 256, 8192) };
+            // ⛔ 4096 could not hold Joe's own planner: its prompt measured ~16.6k
+            // characters (~5.5k tokens) on 2026-10-22, so local planning failed with
+            // «no room for an answer» on every build. The window now follows memory
+            // (tiers below) up to 16384; qwen3.5's hybrid attention costs ~32 KiB of
+            // KV per token, ~0.5 GiB at 16384.
+            maxContextTokens: boundedInteger(options.maxContextTokens, 16384, 256, 16384) };
         this.sampleMemory = options.sampleMemory || defaultMemoryReading;
         // An injected memory reading is a test of the floor itself: no live server is asked.
         this.sampleResidentInference = options.sampleResidentInference
@@ -451,15 +457,19 @@ export class RequestResourceManager {
 
     private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal, reclaimableBytes = 0): ContextBudget {
         const prompt = options.promptEstimatedTokens;
-        const output = options.requestedOutputTokens ?? 512;
+        let output = options.requestedOutputTokens ?? 512;
         const requestedContext = options.requestedContextTokens ?? this.policy.maxContextTokens;
         if (!Number.isFinite(prompt) || prompt < 0 || !Number.isSafeInteger(prompt)
             || !Number.isSafeInteger(output) || output < 1 || !Number.isSafeInteger(requestedContext) || requestedContext < 1) {
             throw new ResourceAdmissionError('RESOURCE_INVALID_BUDGET');
         }
         const usable = memory.availableBytes + reclaimableBytes;
-        const tier = usable >= 4 * GiB ? 8192 : usable >= 2 * GiB ? 4096 : 2048;
+        const tier = usable >= 8 * GiB ? 16384 : usable >= 4 * GiB ? 8192 : usable >= 2 * GiB ? 4096 : 2048;
         const contextTokens = Math.min(tier, this.policy.maxContextTokens, requestedContext);
+        // A caller that opted in gets the room the prompt leaves, if a real answer fits.
+        if (prompt + output > contextTokens && options.fitOutputToContext && contextTokens - prompt - 1 >= MIN_FITTED_OUTPUT_TOKENS) {
+            output = contextTokens - prompt - 1;
+        }
         if (prompt + output > contextTokens) throw new ResourceAdmissionError('RESOURCE_CONTEXT_OVERFLOW',
             { promptEstimatedTokens: prompt, requestedOutputTokens: output, contextTokens });
         return { signal, contextTokens, outputTokens: output, promptEstimatedTokens: prompt,

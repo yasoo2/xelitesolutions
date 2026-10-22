@@ -3,8 +3,9 @@ import { requestResourceManager } from '../../resources/RequestResourceManager';
 
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
 // Estimates below are admission policy, not exact tokenizer or image accounting.
-const MAX_CONTEXT = 8192;
-const DEFAULT_CONTEXT = 4096;
+const MAX_CONTEXT = 16384;
+// Requested ceiling; the resource manager admits a window that fits memory.
+const DEFAULT_CONTEXT = 16384;
 const MIN_FITTED_OUTPUT_TOKENS = 256;
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_RECORD_BYTES = 256 * 1024;
@@ -406,7 +407,7 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         fail('OLLAMA_TIMEOUT_INPUT', 'Local inference timeout must be between 1 ms and 30 minutes.');
     }
     const maxContextTokens = options.maxContextTokens ?? DEFAULT_CONTEXT;
-    if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 8192 tokens.');
+    if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 16384 tokens.');
     const requestedOutputTokens = options.maxCompletionTokens ?? 512;
     if (!Number.isInteger(requestedOutputTokens) || requestedOutputTokens < 1) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be a positive integer.');
     // Fitted to the room the prompt leaves once it is measured (below).
@@ -482,7 +483,7 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 return completion;
             } finally { run.close(); }
         }, { promptEstimatedTokens: mapped.promptEstimatedTokens, requestedOutputTokens: outputTokens,
-            requestedContextTokens: maxContextTokens, signal: outer.signal,
+            requestedContextTokens: maxContextTokens, fitOutputToContext: true, signal: outer.signal,
             queueTimeoutMs: Math.min(options.timeoutMs, 300_000) });
         checkDeadline();
         return result;

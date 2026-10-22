@@ -26,7 +26,7 @@ function harness() {
 describe('an output wish larger than the context is fitted, not fatal', () => {
     it('6000 requested in a 4096 context is served with the room the prompt leaves', async () => {
         const { fetch, gate, dependencies } = harness();
-        await expect(managedOllamaChat({ ...base, maxCompletionTokens: 6000 }, dependencies)).resolves.toMatchObject({ content: 'ok' });
+        await expect(managedOllamaChat({ ...base, maxContextTokens: 4096, maxCompletionTokens: 6000 }, dependencies)).resolves.toMatchObject({ content: 'ok' });
         const requested = gate.mock.calls[0][1].requestedOutputTokens;
         const prompt = gate.mock.calls[0][1].promptEstimatedTokens;
         expect(requested).toBeLessThan(4096);
@@ -43,7 +43,7 @@ describe('an output wish larger than the context is fitted, not fatal', () => {
     it('a prompt that leaves no room for an answer is still a real overflow', async () => {
         const { fetch, dependencies } = harness();
         const huge = { ...base, messages: [{ role: 'user', content: 'x '.repeat(6000) }] };
-        await expect(managedOllamaChat({ ...huge, maxCompletionTokens: 6000 }, dependencies)).rejects.toMatchObject({ code: 'RESOURCE_CONTEXT_OVERFLOW' });
+        await expect(managedOllamaChat({ ...huge, maxContextTokens: 4096, maxCompletionTokens: 6000 }, dependencies)).rejects.toMatchObject({ code: 'RESOURCE_CONTEXT_OVERFLOW' });
         expect(fetch).not.toHaveBeenCalled();
     });
 
@@ -52,5 +52,24 @@ describe('an output wish larger than the context is fitted, not fatal', () => {
         for (const bad of [0, -5, 12.5]) {
             await expect(managedOllamaChat({ ...base, maxCompletionTokens: bad }, dependencies)).rejects.toMatchObject({ code: 'OLLAMA_OUTPUT_INPUT' });
         }
+    });
+});
+
+import { RequestResourceManager } from '../core/resources/RequestResourceManager';
+
+describe('the admitted window, not the requested ceiling, decides the room', () => {
+    const GiB = 1024 ** 3;
+    const reading = (available: number) => ({ totalBytes: 16 * GiB, freeBytes: available, availableBytes: available, rssBytes: 1 });
+    it('a 5.5k-token planner prompt gets an answer inside an 8192 window', async () => {
+        const manager = new RequestResourceManager({ sampleMemory: () => reading(5 * GiB), sampleResidentInference: async () => 0 });
+        await manager.withInference(async budget => {
+            expect(budget.contextTokens).toBe(8192);
+            expect(budget.outputTokens).toBe(8192 - 5500 - 1);
+        }, { promptEstimatedTokens: 5500, requestedOutputTokens: 6000, fitOutputToContext: true });
+    });
+    it('without the opt-in the manager still refuses rather than shrinking', async () => {
+        const manager = new RequestResourceManager({ sampleMemory: () => reading(5 * GiB), sampleResidentInference: async () => 0 });
+        await expect(manager.withInference(async () => 'x', { promptEstimatedTokens: 5500, requestedOutputTokens: 6000 }))
+            .rejects.toMatchObject({ code: 'RESOURCE_CONTEXT_OVERFLOW' });
     });
 });

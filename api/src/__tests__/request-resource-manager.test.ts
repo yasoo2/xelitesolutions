@@ -13,7 +13,9 @@ const tick = async () => { for (let i = 0; i < 12; i++) await Promise.resolve();
 describe('request resource admission and ownership', () => {
     afterEach(() => { jest.useRealTimers(); });
 
-    it.each([[GiB, 2048], [2 * GiB, 4096], [4 * GiB, 4096]])('uses measured available RAM %i for default context tier %i', async (free, expected) => {
+    // 2026-10-22: the window follows memory up to 16384 — Joe's own planner prompt
+    // measured ~5.5k tokens and could never fit the former 4096 cap.
+    it.each([[GiB, 2048], [2 * GiB, 4096], [4 * GiB, 8192], [8 * GiB, 16384]])('uses measured available RAM %i for default context tier %i', async (free, expected) => {
         const manager = new RequestResourceManager({ sampleMemory: () => reading(free) });
         const result = await manager.withInference(async budget => {
             expect(budget.memory.availableBytes).toBe(free);
@@ -26,15 +28,17 @@ describe('request resource admission and ownership', () => {
         expect(manager.status().inference).toEqual({ active: 0, queued: 0 });
     });
 
-    it('permits 8192 only as an explicit trusted constructor policy with unverified runtime estimates', async () => {
+    it('a trusted constructor cap and a requested cap still bound the window', async () => {
         const manager = new RequestResourceManager({ maxContextTokens: 8192, sampleMemory: () => reading(4 * GiB) });
         await manager.withInference(async budget => {
             expect(budget.contextTokens).toBe(8192);
             expect(budget.estimated).toBe(true);
         }, { promptEstimatedTokens: 100 });
         const defaultPolicy = new RequestResourceManager({ sampleMemory: () => reading(8 * GiB) });
-        await defaultPolicy.withInference(async budget => { expect(budget.contextTokens).toBe(4096); },
+        await defaultPolicy.withInference(async budget => { expect(budget.contextTokens).toBe(8192); },
             { promptEstimatedTokens: 100, requestedContextTokens: 8192 });
+        await defaultPolicy.withInference(async budget => { expect(budget.contextTokens).toBe(16384); },
+            { promptEstimatedTokens: 100 });
     });
 
     it('uses the smaller valid availability reading and provider cap, never total memory', async () => {

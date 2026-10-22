@@ -25,8 +25,9 @@ describe('a resident local model is not memory taken from its own inference', ()
     });
 
     it('the context tier is chosen from the same usable memory, not the 2048 floor', async () => {
+        // 0.9 GiB free + 5.7 GiB resident = 6.6 GiB usable -> the 8192 tier.
         const manager = new RequestResourceManager({ sampleMemory: owner, sampleResidentInference: resident });
-        await manager.withInference(async budget => { expect(budget.contextTokens).toBe(4096); },
+        await manager.withInference(async budget => { expect(budget.contextTokens).toBe(8192); },
             { promptEstimatedTokens: 3000, requestedOutputTokens: 512 });
     });
 

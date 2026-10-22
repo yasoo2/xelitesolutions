@@ -57,7 +57,7 @@ describe('bounded native Ollama transport', () => {
             stream: false, keep_alive: '5m', truncate: false, shift: false, think: false,
             options: { num_ctx: 2048, num_predict: 120, temperature: 0 },
         });
-        expect(test.gate.mock.calls[0][1]).toMatchObject({ requestedContextTokens: 4096, requestedOutputTokens: 120, queueTimeoutMs: 1000 });
+        expect(test.gate.mock.calls[0][1]).toMatchObject({ requestedContextTokens: 16384, requestedOutputTokens: 120, queueTimeoutMs: 1000, fitOutputToContext: true });
     });
 
     it('passes a trusted configured context ceiling and never invents no-thinking for another model', async () => {
@@ -84,13 +84,13 @@ describe('bounded native Ollama transport', () => {
         expect(larger.gate.mock.calls[0][1].queueTimeoutMs).toBe(300_000);
     });
 
-    it('allows 8192 only through an explicit trusted future policy override', async () => {
+    it('an explicit cap bounds the window and an admitted window above the cap is refused', async () => {
         const test = harness(jsonResponse(completed()), { contextTokens: 8192, outputTokens: 512 });
         await managedOllamaChat({ ...base, maxContextTokens: 8192 }, test.dependencies);
         expect(test.gate.mock.calls[0][1].requestedContextTokens).toBe(8192);
         expect(JSON.parse(test.fetch.mock.calls[0][1].body).options.num_ctx).toBe(8192);
         const defaultCap = harness(jsonResponse(completed()), { contextTokens: 8192, outputTokens: 512 });
-        await expect(managedOllamaChat(base, defaultCap.dependencies)).rejects.toMatchObject({ code: 'RESOURCE_CONTEXT_OVERFLOW' });
+        await expect(managedOllamaChat({ ...base, maxContextTokens: 4096 }, defaultCap.dependencies)).rejects.toMatchObject({ code: 'RESOURCE_CONTEXT_OVERFLOW' });
         expect(defaultCap.fetch).not.toHaveBeenCalled();
     });
 
