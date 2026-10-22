@@ -5,6 +5,7 @@ import { requestResourceManager } from '../../resources/RequestResourceManager';
 // Estimates below are admission policy, not exact tokenizer or image accounting.
 const MAX_CONTEXT = 8192;
 const DEFAULT_CONTEXT = 4096;
+const MIN_FITTED_OUTPUT_TOKENS = 256;
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_RECORD_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -406,8 +407,10 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
     }
     const maxContextTokens = options.maxContextTokens ?? DEFAULT_CONTEXT;
     if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 8192 tokens.');
-    const outputTokens = options.maxCompletionTokens ?? 512;
-    if (!Number.isInteger(outputTokens) || outputTokens < 1 || outputTokens >= maxContextTokens) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be positive and below the managed context ceiling.');
+    const requestedOutputTokens = options.maxCompletionTokens ?? 512;
+    if (!Number.isInteger(requestedOutputTokens) || requestedOutputTokens < 1) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be a positive integer.');
+    // Fitted to the room the prompt leaves once it is measured (below).
+    let outputTokens = requestedOutputTokens;
     if (options.reasoningEffort !== undefined && options.reasoningEffort !== 'none') fail('OLLAMA_UNSUPPORTED_INPUT', 'Unsupported local reasoning effort.');
     if (options.temperature !== undefined && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) fail('OLLAMA_UNSUPPORTED_INPUT', 'Temperature must be finite and between 0 and 2.');
     if (options.format !== undefined && options.format !== 'json' && !object(options.format)) fail('OLLAMA_FORMAT_INPUT', 'Native format must be json or a JSON-schema object.');
@@ -428,6 +431,16 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         const tools = mapTools(options.tools);
         if (tools?.length) mapped.promptEstimatedTokens += Math.ceil(Buffer.byteLength(json(tools), 'utf8') / 3) + 64;
         if (options.format !== undefined) mapped.promptEstimatedTokens += Math.ceil(Buffer.byteLength(json(options.format), 'utf8') / 3);
+        // ⛔ A wish for more output than the context can hold is not a reason to
+        // produce nothing. Eval 2026-10-22: ai_write_file asked 6000 output tokens
+        // of a 4096 context and EVERY non-frontend file failed before inference.
+        // The output gets the room the measured prompt leaves; only when even a
+        // minimal answer cannot fit is it a real overflow.
+        const room = maxContextTokens - mapped.promptEstimatedTokens - 1;
+        if (requestedOutputTokens > room) {
+            if (room < MIN_FITTED_OUTPUT_TOKENS) fail('RESOURCE_CONTEXT_OVERFLOW', 'The prompt leaves no room for an answer inside the managed context.');
+            outputTokens = room;
+        }
         const basePayload = {
             model: options.model, messages: mapped.messages, stream: !!options.onDelta,
             keep_alive: '5m', truncate: false, shift: false,
