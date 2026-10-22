@@ -373,13 +373,17 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         expect(router).toMatch(/providerProbeSucceeded[\s\S]*!isProviderFailure/);
-        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\)/);
+        //  97fa9f0d wrapped `usable` to mark a healthy circuit on success. The
+        //  verdict it returns must still be the probe check, unchanged.
+        expect(router).toMatch(/const usable = \(s: any\) => \{\s*const ok = providerProbeSucceeded\(s\);[^}]*\breturn ok;\s*\};/);
     });
 
     test('Auto preflight gives a measured local Ollama brain enough time before fallback', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
-        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'))");
+        //  The probe now carries the preflight's own cancellation signal
+        //  (97fa9f0d), so a timed-out local probe stops instead of queueing.
+        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'), undefined, probeAbort.signal)");
         expect(router).toContain("detail: 'local_ok'");
         expect(router).toContain('localWarmupMs');
         expect(router).toContain('warmup * 12');

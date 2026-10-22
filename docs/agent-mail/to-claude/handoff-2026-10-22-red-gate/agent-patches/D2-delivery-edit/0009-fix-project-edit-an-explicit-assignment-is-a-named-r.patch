@@ -1,0 +1,103 @@
+From 92d87f55b1c383dcbd92db232c673d46fe7feeb9 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:09:18 +0000
+Subject: [PATCH 9/9] fix(project-edit): an explicit `=` assignment is a
+ named-row edit
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e:
+  project-text-edit › an explicit value is used verbatim, and ONLY the named row changes
+  «خلي سعر الإصدار الفاخر = 99 دولار» -> "لم يتغير أي ملف", logs: "model returned 0 edit block(s)"
+
+Culprit: the bisect names 38d84ffc, but at 38d84ffc this whole suite died on
+`TypeError: requirementsFromRequestClauses is not a function` (coordinator
+probe 38d84ffc-run0) and the next probes timed out (594d871c, 76f66a5d), so
+the suite was blind when the real cause landed: f3cc0023 ("verify cost
+calculator follow-ups") put isNamedRowTextEditRequest in front of the row
+editor. It requires a verb from a list (غيّر/عدّل/بدّل/استبدل/change/edit/
+update/rename) that does not hold «خلي», so the request fell to the model
+path. Its purpose — not hijacking «أضف حاسبة … السعر» into a row price
+edit — is kept.
+
+Decision: R. A request that names a field BEFORE an `=` is a mutation,
+whatever verb carries it: the same `=` boundedChangeValue already reads the
+new value from (one reader for "is there an explicit new value"). `إلى`/`to`
+are not taken as structure (they are also prepositions), and a field only
+after the sign is a formula. f3cc0023's own cases in project-edit.test.ts
+stay green (51/51 with this suite). New POSITIVE/NEGATIVE unit cases.
+
+Mutations (ProjectEditTool.ts, restored, sha256 identical each time):
+  row1 assignment rule removed            -> ✕ POSITIVE Expected: true Received: false
+                                             ✕ Expected pattern /\{ name: 'الإصدار الفاخر',[^\n]*?price: '99 دولار'/
+  row2 field accepted after the sign too  -> ✕ NEGATIVE Expected: false Received: true
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/project-text-edit.test.ts    | 18 ++++++++++++++++++
+ .../tools/definitions/ProjectEditTool.ts       | 18 ++++++++++++++++--
+ 2 files changed, 34 insertions(+), 2 deletions(-)
+
+diff --git a/api/src/__tests__/project-text-edit.test.ts b/api/src/__tests__/project-text-edit.test.ts
+index 21958551..2e02d5af 100644
+--- a/api/src/__tests__/project-text-edit.test.ts
++++ b/api/src/__tests__/project-text-edit.test.ts
+@@ -12,6 +12,24 @@
+ import fs from 'fs';
+ import os from 'os';
+ import path from 'path';
++import { isNamedRowTextEditRequest } from '../modules/tools/definitions/ProjectEditTool';
++
++/**
++ * «خلي سعر الإصدار الفاخر = 99 دولار» went to a model after the row editor
++ * learned to require a verb from a list that does not hold «خلي». The `=`
++ * is the edit: the field before it, the value after it.
++ */
++describe('an explicit assignment is a named-row edit', () => {
++    it('⛔ POSITIVE — the field named before the sign, whatever the verb', () => {
++        expect(isNamedRowTextEditRequest('خلي سعر الإصدار الفاخر = 99 دولار')).toBe(true);
++        expect(isNamedRowTextEditRequest('price of Pro = 120')).toBe(true);
++    });
++
++    it('⛔ NEGATIVE — a formula is not an edit, and a bare «إلى» still needs a verb', () => {
++        expect(isNamedRowTextEditRequest('Add a calculator: total = price × hours')).toBe(false);
++        expect(isNamedRowTextEditRequest('أضف حاسبة تكلفة إلى الصفحة واحسب السعر مباشرة')).toBe(false);
++    });
++});
+ 
+ describe('named-row text edits — deterministic, no model', () => {
+     let root: string;
+diff --git a/api/src/modules/tools/definitions/ProjectEditTool.ts b/api/src/modules/tools/definitions/ProjectEditTool.ts
+index 30db43ed..1916a0ee 100644
+--- a/api/src/modules/tools/definitions/ProjectEditTool.ts
++++ b/api/src/modules/tools/definitions/ProjectEditTool.ts
+@@ -325,8 +325,22 @@ export default function CostCalculator({ services = [] }) {
+ export function isNamedRowTextEditRequest(request: string): boolean {
+     const text = String(request || '');
+     const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
+-    const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
+-    return mutation && namedField;
++    const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i;
++    /**
++     *  AN ASSIGNMENT IS A MUTATION, WHATEVER VERB CARRIES IT.
++     *
++     *  «خلي سعر الإصدار الفاخر = 99 دولار» names the field before the sign and
++     *  the value after it — the very `=` boundedChangeValue reads the new
++     *  value from. The verb list above does not know «خلي», so the row editor
++     *  refused the request and a model was asked to find a price that sits
++     *  in one line of content.js. The sign is structural; «إلى»/«to» are not
++     *  (they are also prepositions — «أضف حاسبة إلى الصفحة»), so they still
++     *  need a verb. A field named only AFTER the sign («total = price ×
++     *  hours») is a formula, not an edit of a row.
++     */
++    const sign = text.indexOf('=');
++    const assigned = sign > 0 && namedField.test(text.slice(0, sign));
++    return (mutation && namedField.test(text)) || assigned;
+ }
+ 
+ /** A free-form value ends at the next edit clause, never at the prompt's end. */
+-- 
+2.43.0
+

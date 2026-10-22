@@ -1,0 +1,331 @@
+##### acc.log
+=== MUTATION acc1 (api/src/core/quality/acceptance.ts) — jest exit 1
+   ✕ ⛔ NEGATIVE — a page of catalogue shapes asks for no table column (114 ms)
+   ✕ ⛔ NEGATIVE — «العداد والعنوان والزر» with the article are the same widgets (70 ms)
+   ✓ ⛔ POSITIVE — one label the catalogue does not check keeps the whole list as columns (62 ms)
+   ✓ derives explicit bounds for an invented column name without a name catalogue (173 ms)
+   ✓ an incomplete run declares the judge boundary and names every known gap (193 ms)
+   ✕ the rejected English branch also discloses the judge boundary (80 ms)
+   ✓ a complete catalogue subset declares its boundary instead of claiming the whole request (96 ms)
+   ✓ the English catalogue subset also declares its boundary (83 ms)
+   ● the criteria come from HIS brief, never from a fixed checklist › ⛔ NEGATIVE — a page of catalogue shapes asks for no table column
+   - Expected  - 0
+   + Received  + 3
+   +   "column:text1",
+   +   "column:title",
+   +   "column:text3",
+   ● the criteria come from HIS brief, never from a fixed checklist › ⛔ NEGATIVE — «العداد والعنوان والزر» with the article are the same widgets
+   - Expected  - 1
+   + Received  + 5
+   +   "column:text1",
+   +   "column:title",
+   +   "column:text3",
+   ● the ledger is published, in his language › the rejected English branch also discloses the judge boundary
+   Expected substring: "0 of 3 requested criteria were proven"
+   Received string:    "⚠️ Delivery blocked: 0 of 6 requested criteria were proven — 4 were not proven, and 2 I did not know how to check:
+   Test Suites: 1 failed, 1 total
+   Tests:       3 failed, 52 skipped, 5 passed, 60 total
+=== RESTORED acc1: sha256 identical
+=== MUTATION acc2 (api/src/core/quality/acceptance.ts) — jest exit 1
+   ✓ ⛔ NEGATIVE — a page of catalogue shapes asks for no table column (137 ms)
+   ✓ ⛔ NEGATIVE — «العداد والعنوان والزر» with the article are the same widgets (83 ms)
+   ✕ ⛔ POSITIVE — one label the catalogue does not check keeps the whole list as columns (65 ms)
+   ✓ derives explicit bounds for an invented column name without a name catalogue (206 ms)
+   ✓ an incomplete run declares the judge boundary and names every known gap (200 ms)
+   ✓ the rejected English branch also discloses the judge boundary (78 ms)
+   ✓ a complete catalogue subset declares its boundary instead of claiming the whole request (102 ms)
+   ✓ the English catalogue subset also declares its boundary (77 ms)
+   ● the criteria come from HIS brief, never from a fixed checklist › ⛔ POSITIVE — one label the catalogue does not check keeps the whole list as columns
+   - Expected  - 5
+   + Received  + 1
+   -   "title",
+   -   "author",
+   -   "rating",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 52 skipped, 7 passed, 60 total
+=== RESTORED acc2: sha256 identical
+
+##### exp.log
+=== MUTATION exp1 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ carries every row it is handed (3 ms)
+   ✓ produces a header and no data when handed nothing — which is the whole danger (1 ms)
+   ✕ reads visible.length, which is what leaves with him (2 ms)
+   ✕ no longer reads rows.length, which is what let the empty file out (1 ms)
+   ✕ hands that same visible list to toCsv (1 ms)
+   ● the export button is guarded on what the export reads › reads visible.length, which is what leaves with him
+   Expected substring: "disabled={!visible.length}"
+   Received string:    "import React from 'react';
+   ● the export button is guarded on what the export reads › no longer reads rows.length, which is what let the empty file out
+   Expected substring: not "disabled={!rows.length}"
+   Received string:        "import React from 'react';
+   ● the export button is guarded on what the export reads › hands that same visible list to toCsv
+   Expected substring: "toCsv("
+   Received string:    "
+   Test Suites: 1 failed, 1 total
+   Tests:       3 failed, 2 passed, 5 total
+=== RESTORED exp1: sha256 identical
+=== MUTATION exp2 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ carries every row it is handed (3 ms)
+   ✓ produces a header and no data when handed nothing — which is the whole danger (1 ms)
+   ✓ reads visible.length, which is what leaves with him
+   ✓ no longer reads rows.length, which is what let the empty file out (1 ms)
+   ✕ hands that same visible list to toCsv (2 ms)
+   ● the export button is guarded on what the export reads › hands that same visible list to toCsv
+   Expected pattern: /^visible\b/
+   Received string:  "rows"
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 4 passed, 5 total
+=== RESTORED exp2: sha256 identical
+=== MUTATION exp3 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ carries every row it is handed (4 ms)
+   ✓ produces a header and no data when handed nothing — which is the whole danger (1 ms)
+   ✕ reads visible.length, which is what leaves with him (1 ms)
+   ✕ no longer reads rows.length, which is what let the empty file out (1 ms)
+   ✕ hands that same visible list to toCsv
+   ● the export button is guarded on what the export reads › reads visible.length, which is what leaves with him
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   ● the export button is guarded on what the export reads › no longer reads rows.length, which is what let the empty file out
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   ● the export button is guarded on what the export reads › hands that same visible list to toCsv
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   Test Suites: 1 failed, 1 total
+   Tests:       3 failed, 2 passed, 5 total
+=== RESTORED exp3: sha256 identical
+
+##### menu.log
+=== MUTATION menu1 (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ ⛔ POSITIVE — there is a pass at 390px, after the desktop walk (3 ms)
+   ● a control that only exists on a phone is pressed too › ⛔ POSITIVE — there is a pass at 390px, after the desktop walk
+   Expected: > 62923
+   Received:   62870
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 8 skipped, 9 total
+=== RESTORED menu1: sha256 identical
+=== MUTATION menu2 (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ ⛔ POSITIVE — every writer sets `bare`, and there are two of them (8 ms)
+   ● the decorated name and the real name are both kept › ⛔ POSITIVE — every writer sets `bare`, and there are two of them
+   Expected substring: "allControls.push({ ...c, bare: c.label, context: 'جوّال:/', label: `الجوّال ${c.label}` })"
+   Received string:    "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 8 skipped, 9 total
+=== RESTORED menu2: sha256 identical
+
+##### pan.log
+=== MUTATION pan1 (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ and the build wakes it BEFORE npm install, not when the audit starts (9 ms)
+   ● the browser is awake before the audit needs it › and the build wakes it BEFORE npm install, not when the audit starts
+   Expected: < 395084
+   Received:   401289
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED pan1: sha256 identical
+=== MUTATION pan2 (api/src/modules/tools/definitions/ProjectRepairTool.ts) — jest exit 1
+   ✕ and «أصلح ما تبقّى» warms it too — it audits within seconds of starting (4 ms)
+   ● the browser is awake before the audit needs it › and «أصلح ما تبقّى» warms it too — it audits within seconds of starting
+   Expected: < 11208
+   Received:   12508
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED pan2: sha256 identical
+=== MUTATION pan3 (api/src/modules/tools/definitions/ProjectRepairTool.ts) — jest exit 1
+   ✕ and «أصلح ما تبقّى» warms it too — it audits within seconds of starting (7 ms)
+   ● the browser is awake before the audit needs it › and «أصلح ما تبقّى» warms it too — it audits within seconds of starting
+   Expected pattern: /warmBrowserSession\(watchSessionId\)/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED pan3: sha256 identical
+=== MUTATION pan4 (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie (11 ms)
+   ● and he is never invited to watch a browser he cannot see › and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie
+   Expected pattern: / && auditVisible$/
+   Received string:  "where === 'discovering'"
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED pan4: sha256 identical
+
+##### qa.log
+=== MUTATION qa1 (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ does not let an optional theme probe cancel the behavioural audit (8 ms)
+   ● the self-QA reaches the user in whatever language he asked in › does not let an optional theme probe cancel the behavioural audit
+   Expected substring: "theme toggle probe:"
+   Received string:    "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED qa1: sha256 identical
+=== MUTATION qa2 (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ does not let an optional theme probe cancel the behavioural audit (4 ms)
+   ● the self-QA reaches the user in whatever language he asked in › does not let an optional theme probe cancel the behavioural audit
+   Expected pattern: not /\bawait\b/
+   Received string:      "if (dom.hasToggle) {
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED qa2: sha256 identical
+=== MUTATION qa3 (api/src/core/quality/app-audit.ts) — jest exit 1
+   ✕ does not let an optional theme probe cancel the behavioural audit (12 ms)
+   ● the self-QA reaches the user in whatever language he asked in › does not let an optional theme probe cancel the behavioural audit
+   Expected pattern: not /\bthrow\b/
+   Received string:      "} catch (error: any) {
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 13 total
+=== RESTORED qa3: sha256 identical
+
+##### rel.log
+=== MUTATION rel1 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ content.js describes the parent so the app can render a picker (35 ms)
+   ✕ the records engine renders the picker, the filter and the parent panel (10 ms)
+   ✓ an app with no parent still renders — the picker is simply absent (2 ms)
+   ✓ and an edit now reaches the server instead of only this browser (2 ms)
+   ● the interface reaches the second table › the records engine renders the picker, the filter and the parent panel
+   Expected substring: "onSubmit={addParent}"
+   Received string:    "import React from 'react';
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 10 skipped, 3 passed, 14 total
+=== RESTORED rel1: sha256 identical
+=== MUTATION rel2 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ content.js describes the parent so the app can render a picker (44 ms)
+   ✕ the records engine renders the picker, the filter and the parent panel (10 ms)
+   ✕ an app with no parent still renders — the picker is simply absent (2 ms)
+   ✓ and an edit now reaches the server instead of only this browser (2 ms)
+   ● the interface reaches the second table › the records engine renders the picker, the filter and the parent panel
+   Expected substring: "const rel = content.relation"
+   Received string:    "import React, { useEffect, useMemo, useRef, useState } from 'react';
+   ● the interface reaches the second table › an app with no parent still renders — the picker is simply absent
+   Expected substring: "const rel = content.relation"
+   Received string:    "import React, { useEffect, useMemo, useRef, useState } from 'react';
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 10 skipped, 2 passed, 14 total
+=== RESTORED rel2: sha256 identical
+=== MUTATION rel3 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ content.js describes the parent so the app can render a picker (29 ms)
+   ✓ the records engine renders the picker, the filter and the parent panel (8 ms)
+   ✓ an app with no parent still renders — the picker is simply absent (2 ms)
+   ✕ and an edit now reaches the server instead of only this browser (2 ms)
+   ● the interface reaches the second table › and an edit now reaches the server instead of only this browser
+   Expected substring: "apiUpdate(content.api, editing, patch)"
+   Received string:    "import React, { useEffect, useMemo, useRef, useState } from 'react';
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 10 skipped, 3 passed, 14 total
+=== RESTORED rel3: sha256 identical
+=== MUTATION rel4 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ content.js describes the parent so the app can render a picker (31 ms)
+   ✕ the records engine renders the picker, the filter and the parent panel (9 ms)
+   ✕ an app with no parent still renders — the picker is simply absent (2 ms)
+   ✕ and an edit now reaches the server instead of only this browser (1 ms)
+   ● the interface reaches the second table › the records engine renders the picker, the filter and the parent panel
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   ● the interface reaches the second table › an app with no parent still renders — the picker is simply absent
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   ● the interface reaches the second table › and an edit now reaches the server instead of only this browser
+   Expected substring: "<RecordsView content={content} controller={controller} />"
+   Received string:    "import React from 'react';
+   Test Suites: 1 failed, 1 total
+   Tests:       3 failed, 10 skipped, 1 passed, 14 total
+=== RESTORED rel4: sha256 identical
+
+##### row.log
+=== MUTATION row1 (api/src/modules/tools/definitions/ProjectEditTool.ts) — jest exit 1
+   ✕ ⛔ POSITIVE — the field named before the sign, whatever the verb (5 ms)
+   ✓ ⛔ NEGATIVE — a formula is not an edit, and a bare «إلى» still needs a verb
+   ✕ an explicit value is used verbatim, and ONLY the named row changes (326 ms)
+   ● an explicit assignment is a named-row edit › ⛔ POSITIVE — the field named before the sign, whatever the verb
+   Expected: true
+   Received: false
+   ● named-row text edits — deterministic, no model › an explicit value is used verbatim, and ONLY the named row changes
+   Expected pattern: /\{ name: 'الإصدار الفاخر',[^\n]*?price: '99 دولار'/
+   Received string:  "// The words of the app, in one place — edit here, every component follows.
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 12 skipped, 1 passed, 15 total
+=== RESTORED row1: sha256 identical
+=== MUTATION row2 (api/src/modules/tools/definitions/ProjectEditTool.ts) — jest exit 1
+   ✓ ⛔ POSITIVE — the field named before the sign, whatever the verb (3 ms)
+   ✕ ⛔ NEGATIVE — a formula is not an edit, and a bare «إلى» still needs a verb (2 ms)
+   ✓ an explicit value is used verbatim, and ONLY the named row changes (157 ms)
+   ● an explicit assignment is a named-row edit › ⛔ NEGATIVE — a formula is not an edit, and a bare «إلى» still needs a verb
+   Expected: false
+   Received: true
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 skipped, 2 passed, 15 total
+=== RESTORED row2: sha256 identical
+
+##### sched.log
+=== MUTATION sched1 (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ does not spend a provider call authoring the dormant single-table component (6 ms)
+   ● multi-entity scheduling systems › does not spend a provider call authoring the dormant single-table component
+   Expected: > 0
+   Received:   -1
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 5 skipped, 6 total
+=== RESTORED sched1: sha256 identical
+=== MUTATION sched2 (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ does not spend a provider call authoring the dormant single-table component (57 ms)
+   ● multi-entity scheduling systems › does not spend a provider call authoring the dormant single-table component
+   Expected pattern: /requestDerivedEngineReady = true;\s*\n\s*workflowSemanticContractPassed = workflowContract;/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 5 skipped, 6 total
+=== RESTORED sched2: sha256 identical
+
+##### sys.log
+=== MUTATION sys1 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✕ a generated table answers «row» where the catalogue answers «item» (78 ms)
+   ✓ …and a reply with neither is no item — never the local row passed off as the server's (11 ms)
+   ✓ and it recognises its own server on a domain, not just localhost (3 ms)
+   ✓ and nothing in the generated store carries a backtick (3 ms)
+   ● the app can actually read and write that table › a generated table answers «row» where the catalogue answers «item»
+   Expected: 7
+   Received: undefined
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 10 skipped, 3 passed, 14 total
+=== RESTORED sys1: sha256 identical
+=== MUTATION sys2 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✓ a generated table answers «row» where the catalogue answers «item» (95 ms)
+   ✕ …and a reply with neither is no item — never the local row passed off as the server's (11 ms)
+   ✓ and it recognises its own server on a domain, not just localhost (3 ms)
+   ✓ and nothing in the generated store carries a backtick (3 ms)
+   ● the app can actually read and write that table › …and a reply with neither is no item — never the local row passed off as the server's
+   - Expected  - 1
+   + Received  + 4
+   -   "item": null,
+   +   "item": Object {
+   +     "id": "local-uid-1",
+   +     "name": "نبتة",
+   +   },
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 10 skipped, 3 passed, 14 total
+=== RESTORED sys2: sha256 identical
+=== MUTATION sys3 (api/src/modules/tools/definitions/react-app-templates.ts) — jest exit 1
+   ✕ a generated table answers «row» where the catalogue answers «item» (97 ms)
+   ✓ …and a reply with neither is no item — never the local row passed off as the server's (12 ms)
+   ✓ and it recognises its own server on a domain, not just localhost (3 ms)
+   ✓ and nothing in the generated store carries a backtick (3 ms)
+   ● the app can actually read and write that table › a generated table answers «row» where the catalogue answers «item»
+   Expected: 7
+   Received: undefined
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 10 skipped, 3 passed, 14 total
+=== RESTORED sys3: sha256 identical
+
+##### term.log
+=== MUTATION term1 (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ the server build does the same, and announces its long-running process (9 ms)
+   ● THE WIRING: both builders work in the visible shell › the server build does the same, and announces its long-running process
+   Expected pattern: /const npmCache = reusableCache \|\| path\.join\(proj, '\.npm-cache'\);/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 27 skipped, 28 total
+=== RESTORED term1: sha256 identical
+=== MUTATION term2 (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ the server build does the same, and announces its long-running process (17 ms)
+   ● THE WIRING: both builders work in the visible shell › the server build does the same, and announces its long-running process
+   Expected pattern: /'install', \.\.\.\(reusableCache \? \['--offline'\] : \[\]\), '--no-audit'/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 27 skipped, 28 total
+=== RESTORED term2: sha256 identical
+

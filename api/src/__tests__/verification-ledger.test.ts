@@ -271,6 +271,50 @@ describe('change-aware verification ledger', () => {
         expect(selectVerification(ledger, descriptor).selection.action).toBe('run');
     });
 
+    /**
+     *  A CAPITAL LETTER IS NOT AN ESCAPE.
+     *
+     *  Containment once lowercased the PATH it then handed to lstat. On a
+     *  case-sensitive filesystem that path does not exist, so any workspace
+     *  with a capital in its name lost every reusable receipt — and because
+     *  `mkdtemp` picks its suffix at random, this file went red or green
+     *  depending on the letters it drew. These two name the case outright.
+     */
+    it('POSITIVE — a workspace with capitals in its name keeps its receipts', () => {
+        const parent = project();
+        const root = path.join(parent, 'MyWorkspace');
+        fs.mkdirSync(path.join(root, 'src'), { recursive: true });
+        fs.writeFileSync(path.join(root, 'src', 'index.ts'), 'export const value = 1;\n');
+        const descriptor = { checkId: 'capitals', tool: 'quality_run', scopeRoot: root,
+            workspaceRoot: root, workspaceId: 'capitals-workspace' };
+        const first = selectVerification(createVerificationLedger(), descriptor);
+        expect(first.selection.cacheable).toBe(true);
+        const ledger = recordVerification(first.ledger, first.selection, 'passed', 10);
+        expect(selectVerification(ledger, descriptor).selection.action).toBe('reuse');
+    });
+
+    it('NEGATIVE — where case is meaningful, a twin that differs only in case is outside', () => {
+        //  Not `project()`: its random suffix may itself hold a capital, and
+        //  then a lowercasing reader fails to find the PARENT and refuses the
+        //  twin by accident. The parent is named here so only the twin's case
+        //  decides the verdict.
+        const parent = path.join(os.tmpdir(), `joe-ledger-case-${process.pid}-${Date.now()}`);
+        fs.mkdirSync(parent);
+        roots.push(parent);
+        const root = path.join(parent, 'CaseRoot');
+        const twin = path.join(parent, 'caseroot');
+        fs.mkdirSync(root);
+        try { fs.mkdirSync(twin); } catch { return; /* a case-folding filesystem has no twin to refuse */ }
+        fs.writeFileSync(path.join(twin, 'secret.txt'), 'not his project\n');
+        const read = jest.spyOn(fs, 'readFileSync');
+        const selection = fingerprintVerification({
+            checkId: 'twin', tool: 'quality_run', workspaceId: 'case-workspace',
+            workspaceRoot: root, scopeRoot: twin,
+        });
+        expect(selection.cacheable).toBe(false);
+        expect(read.mock.calls.some(([file]) => String(file).startsWith(twin))).toBe(false);
+    });
+
     it('never reads or reuses a scope outside the trusted workspace', () => {
         const workspaceRoot = project();
         const outsideRoot = project();

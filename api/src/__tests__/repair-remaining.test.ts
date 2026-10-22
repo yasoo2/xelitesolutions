@@ -82,10 +82,14 @@ describe('the phrase routes to it, and nothing else does', () => {
     it('the route is deterministic and comes before the surgical editor', () => {
         const src = ENGINE();
         const repair = src.indexOf('const repairRemaining =');
-        const edit = src.indexOf("id: 'project_edit',", repair);
+        //  The surgical editor is reached through its one builder since
+        //  601644e1; the repair route must still be decided before that call.
+        const edit = src.indexOf('return PlanningEngine.projectEditPlan(intent, context);', repair);
         expect(repair).toBeGreaterThan(0);
         expect(edit).toBeGreaterThan(repair);
-        expect(src).toMatch(/tool: 'project_repair'/);
+        expect(src.slice(repair, edit)).toMatch(/tool: 'project_repair'/);
+        const builder = src.slice(src.indexOf('private static projectEditPlan('));
+        expect(builder.slice(0, builder.indexOf('\n    }\n'))).toContain("tool: 'project_edit'");
     });
 
     it('and it needs a project — the phrase alone builds nothing', () => {

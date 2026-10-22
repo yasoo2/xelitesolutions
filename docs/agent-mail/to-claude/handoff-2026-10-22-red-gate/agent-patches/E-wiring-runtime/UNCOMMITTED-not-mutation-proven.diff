@@ -1,0 +1,678 @@
+diff --git a/api/src/__tests__/attachments.test.ts b/api/src/__tests__/attachments.test.ts
+index efa02413..e4ec33a4 100644
+--- a/api/src/__tests__/attachments.test.ts
++++ b/api/src/__tests__/attachments.test.ts
+@@ -114,7 +114,11 @@ describe('attachments — visible in the chat, and after a reload, with real nam
+ 
+     test('the server echo and the stored message both carry the chips (meta only)', () => {
+         expect(runSrc).toContain('files: attachmentMeta()');
+-        expect(runSrc).toMatch(/role: 'user', content: text, attachments: attachmentMeta\(\)/);
++        // Repointed (862ba27b): the stored bubble is the text the user SUBMITTED
++        // (trimmed once, up front) — a one-word «continue» may restore an older
++        // goal for execution, but the chat keeps what he actually typed.
++        expect(runSrc).toContain("const submittedText = String(text || '').trim();");
++        expect(runSrc).toMatch(/role: 'user', content: submittedText, attachments: attachmentMeta\(\)/);
+         // Meta never includes the extracted content — history stays light.
+         expect(runSrc).toMatch(/attachmentMeta = \(\) => attachments\.map\(a => \(\{ id: a\.id, name: a\.name, mimeType: a\.mimeType, size: a\.size \}\)\)/);
+     });
+diff --git a/api/src/__tests__/command-composer-browser-session.test.ts b/api/src/__tests__/command-composer-browser-session.test.ts
+index bbecbdf7..a54d7eea 100644
+--- a/api/src/__tests__/command-composer-browser-session.test.ts
++++ b/api/src/__tests__/command-composer-browser-session.test.ts
+@@ -5,11 +5,17 @@ const COMPOSER = path.join(__dirname, '..', '..', '..', 'web', 'src', 'component
+ const readComposer = () => fs.readFileSync(COMPOSER, 'utf-8');
+ 
+ describe('each Joe run carries the browser of its chat session', () => {
++    //  Repointed (c219da21): a first message now creates and adopts its chat
++    //  session at the client boundary — `runSessionId` — before any live event,
++    //  and every later step reads that one. The browser is derived from the
++    //  RUN's chat session, so a first message now carries one too.
+     it('derives the browser session before any text-specific browser detection', () => {
+         const src = readComposer();
+-        const deriveAt = src.indexOf('let effectiveBrowserSessionId = browserSessionId || (sessionId ? `browser:${sessionId}` : undefined);');
++        const runSessionAt = src.indexOf("let runSessionId = String(sessionId || '').trim();");
++        const deriveAt = src.indexOf('let effectiveBrowserSessionId = browserSessionId || (runSessionId ? `browser:${runSessionId}` : undefined);');
+         const textGateAt = src.indexOf('needsBrowserForText(inputText)');
+-        expect(deriveAt).toBeGreaterThan(0);
++        expect(runSessionAt).toBeGreaterThan(0);
++        expect(deriveAt).toBeGreaterThan(runSessionAt);
+         expect(textGateAt).toBeGreaterThan(deriveAt);
+     });
+ 
+@@ -18,12 +24,12 @@ describe('each Joe run carries the browser of its chat session', () => {
+         const payloadAt = src.indexOf('const payload: any = {');
+         expect(payloadAt).toBeGreaterThan(0);
+         const payload = src.slice(payloadAt, payloadAt + 900);
+-        expect(payload).toMatch(/sessionId,\s*\n\s*browserSessionId: effectiveBrowserSessionId \|\| undefined,/);
++        expect(payload).toMatch(/sessionId: runSessionId,\s*\n\s*browserSessionId: effectiveBrowserSessionId \|\| undefined,/);
+     });
+ 
+     it('preserves an explicitly supplied browser session over the derived fallback', () => {
+         const src = readComposer();
+-        expect(src).toContain('browserSessionId || (sessionId ? `browser:${sessionId}` : undefined)');
++        expect(src).toContain('browserSessionId || (runSessionId ? `browser:${runSessionId}` : undefined)');
+         expect(src).toContain('const b = String(browserSessionId || \'\').trim();');
+         expect(src).toContain('if (b) return { sessionId: b };');
+     });
+diff --git a/api/src/__tests__/deadline.test.ts b/api/src/__tests__/deadline.test.ts
+index dec555e8..a2a4ae72 100644
+--- a/api/src/__tests__/deadline.test.ts
++++ b/api/src/__tests__/deadline.test.ts
+@@ -39,12 +39,23 @@ describe('deadline wiring — the guards are actually in the pipeline', () => {
+     test('every node execution branch in the orchestrator runs under a deadline', () => {
+         const src = read('orchestration/AgentOrchestrator.ts');
+         expect(src).toContain("from '../shared/utils/deadline'");
+-        // All five NODE branches (`result = await …`, not the run-level
+-        // `const result = await executionFirewall…` which the RUN deadline
+-        // covers) go through the wrapper.
++        // Every NODE branch that executes something (`result = await …`, not
++        // the run-level `const result = await executionFirewall…` which the RUN
++        // deadline covers) goes through the wrapper.
+         const rawAwaits = src.match(/(?<!const )result = await (?!deadline\()/g) || [];
+         expect(rawAwaits).toHaveLength(0);
+-        expect((src.match(/result = await deadline\(/g) || []).length).toBeGreaterThanOrEqual(5);
++        // Repointed (862ba27b): there were five such branches. The fifth ran
++        // `node.tool` when NO tool and NO agent had been selected — the retired
++        // second selector's job. It now executes nothing and fails closed, so
++        // nothing is left in it to time. The four that do execute are named:
++        for (const call of [
++            "executeTool('central_answer', { question }, executionContext)",
++            "executeTool('web_page_builder', nodeInput, executionContext)",
++            'executeTool(plannedTool, nodeInput, executionContext)',
++            'agent.execute(node.task, nodeInput, executionContext)',
++        ]) expect(src).toContain(`result = await deadline(${call})`);
++        expect((src.match(/result = await deadline\(/g) || []).length).toBeGreaterThanOrEqual(4);
++        expect(src).toMatch(/\} else \{\s*result = \{\s*ok: false,\s*error: `unplanned_execution_node:\$\{node\.id\}/);
+     });
+ 
+     test('the whole run is capped in AgentLoopService, with a localized explanation', () => {
+diff --git a/api/src/__tests__/project-preview.test.ts b/api/src/__tests__/project-preview.test.ts
+index 9e140d52..e943a07a 100644
+--- a/api/src/__tests__/project-preview.test.ts
++++ b/api/src/__tests__/project-preview.test.ts
+@@ -110,7 +110,11 @@ describe('the preview loop is WIRED, end to end', () => {
+     });
+     it('the local Joe UI proxies durable previews to the API instead of serving its own SPA', () => {
+         const vite = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'vite.config.ts'), 'utf-8');
+-        expect(vite).toContain("const apiTarget = 'http://127.0.0.1:5000'");
++        // Repointed (a9b88495): an isolated worktree may point its UI at its own
++        // API through JOE_API_TARGET. The default is still Joe's API on 5000 —
++        // never the UI's own port, which would serve its own SPA back.
++        expect(vite).toContain("const apiTarget = process.env.JOE_API_TARGET || 'http://127.0.0.1:5000';");
++        expect(vite).toMatch(/\n\s*port: 5002,/);
+         for (const route of ['/project-preview', '/artifacts']) {
+             const at = vite.indexOf(`'${route}': {`);
+             expect(at).toBeGreaterThan(0);
+diff --git a/api/src/__tests__/react-project.test.ts b/api/src/__tests__/react-project.test.ts
+index b9c87b4d..82d2f854 100644
+--- a/api/src/__tests__/react-project.test.ts
++++ b/api/src/__tests__/react-project.test.ts
+@@ -244,6 +244,16 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
+         fs.rmSync(tmp, { recursive: true, force: true });
+     });
+ 
++    //  ⛔ THE PLATFORM IS AN INPUT, SO IT IS PASSED — NOT INHERITED FROM THE HOST.
++    //
++    //  These two were written on Windows and called the probe with its default
++    //  `platform = process.platform`. On the Linux gate that default is
++    //  'linux', the probe returns null before it runs anything (the Linux gate
++    //  below asserts exactly that), and both were red from the day they landed.
++    //  Measured: with process.platform reported as 'win32' on that same Linux
++    //  host, the unchanged calls returned 'rollup' and 'indeterminate'. The
++    //  Windows repair is the subject of these tests, so they name Windows —
++    //  the same way the Linux one beside them names Linux.
+     it('identifies Rollup when esbuild starts but the Rollup native binding cannot load', async () => {
+         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-'));
+         writeTree(tmp, baseManifest);
+@@ -251,7 +261,7 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
+         const broken = await findBrokenNativeBuildTool(tmp, async args => {
+             executed.push(args);
+             return args.some(part => part.includes('rollup')) ? 1 : 0;
+-        });
++        }, 'win32', 'x64');
+         expect(broken).toBe('rollup');
+         expect(executed).toEqual([
+             [path.join('node_modules', 'esbuild', 'bin', 'esbuild'), '--version'],
+@@ -263,7 +273,7 @@ describe('dependency reuse only trusts a complete Vite tree', () => {
+     it('keeps dependencies untouched when the native executable probe times out', async () => {
+         const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-native-probe-timeout-'));
+         writeTree(tmp, baseManifest);
+-        await expect(findBrokenNativeBuildTool(tmp, async () => -2)).resolves.toBe('indeterminate');
++        await expect(findBrokenNativeBuildTool(tmp, async () => -2, 'win32', 'x64')).resolves.toBe('indeterminate');
+         fs.rmSync(tmp, { recursive: true, force: true });
+     });
+ 
+diff --git a/api/src/__tests__/run-start-browser-fallback.test.ts b/api/src/__tests__/run-start-browser-fallback.test.ts
+index 2990fcb8..9d168ca4 100644
+--- a/api/src/__tests__/run-start-browser-fallback.test.ts
++++ b/api/src/__tests__/run-start-browser-fallback.test.ts
+@@ -58,7 +58,9 @@ describe('run/start preserves browser ownership on the first message', () => {
+         const resolved = RUN_ROUTE.indexOf('const runSessionId = String(sessionId || \'\').trim()');
+         const attachmentMemory = RUN_ROUTE.indexOf('rememberSessionFiles(runSessionId, fileIds)');
+         const persistedMessage = RUN_ROUTE.indexOf('sessionId: runSessionId, role: \'user\'');
+-        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, text)');
++        // Repointed (862ba27b): the trace now records the EXECUTION goal — a
++        // one-word continuation restores the interrupted request it resumes.
++        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, executionText)');
+ 
+         expect(resolved).toBeGreaterThan(-1);
+         expect(attachmentMemory).toBeGreaterThan(resolved);
+diff --git a/api/src/__tests__/terminal-wiring.test.ts b/api/src/__tests__/terminal-wiring.test.ts
+index 22347a26..c76edabd 100644
+--- a/api/src/__tests__/terminal-wiring.test.ts
++++ b/api/src/__tests__/terminal-wiring.test.ts
+@@ -64,7 +64,11 @@ describe('the stream is live, not a post-hoc flood', () => {
+ 
+     it('a tool that streamed live is not flushed a second time', () => {
+         expect(BUILDER).toContain('logsStreamedLive: true');
+-        expect(TOOLSVC).toMatch(/if \(!\(res as any\)\?\.logsStreamedLive\)/);
++        // Repointed (3917fe1d): the branch was turned the right way round —
++        // a tool that streamed live now records its returned lines as already
++        // spoken (so a parent pipeline cannot replay them), and the post-run
++        // flush lives only in the `else`, for tools that did not stream.
++        expect(TOOLSVC).toMatch(/if \(\(res as any\)\?\.logsStreamedLive\) \{[\s\S]{0,300}toolLogs\.forEach\(\(line: string\) => spokenLive\.add\(String\(line\)\)\);\s*\} else \{[\s\S]{0,900}broadcastTerminalLine\(contextSessionId, paintLine\(line\)/);
+     });
+ 
+     it('nobody claims "real-time" over a post-run flush any more', () => {
+diff --git a/api/src/__tests__/the-run-opens-the-system.test.ts b/api/src/__tests__/the-run-opens-the-system.test.ts
+index 09ccbe62..f71ce134 100644
+--- a/api/src/__tests__/the-run-opens-the-system.test.ts
++++ b/api/src/__tests__/the-run-opens-the-system.test.ts
+@@ -116,14 +116,30 @@ describe('readiness does not adopt a stranger\'s server', () => {
+     });
+ 
+     it('an unconfirmed server yields an explicit verification failure, never a dead URL', () => {
++        //  Repointed (75e32c75): when the dev server never answers, a verified
++        //  production bundle may now be served instead, and that branch pushed
++        //  the honest failure past the old fixed 2600-character window. The
++        //  window is now the block itself: from «nothing answered» to the
++        //  success path that follows it.
+         const at = RUNTOOL.indexOf('if (!livePort) {');
+-        const block = RUNTOOL.slice(at, at + 2600);
++        const end = RUNTOOL.indexOf('const url = confirmedLiveUrl;', at);
+         expect(at).toBeGreaterThan(-1);
++        expect(end).toBeGreaterThan(at);
++        const block = RUNTOOL.slice(at, end);
+         expect(block).not.toMatch(/url: `http:\/\/localhost:\$\{port\}\//);
+         expect(block).toContain('ok: false');
+         expect(block).toContain('verificationFailed: true');
+         expect(block).toContain("note: 'started_not_confirmed'");
+         expect(block).toContain('command: detected.command');
++        //  …and the block's ONE success hands over only an address that
++        //  answered: the bundle's own server must reply over HTTP first.
++        expect((block.match(/ok: true/g) || []).length).toBe(1);
++        expect(block).toMatch(/if \(fallback\.ready && fallback\.url && fallback\.pid\) \{/);
++        const helper = RUNTOOL.slice(
++            RUNTOOL.indexOf('async function startStaticBuildPreview'),
++            RUNTOOL.indexOf('function sameExistingPath'),
++        );
++        expect(helper).toMatch(/if \(await isLoopbackPortOpen\(port, 500\) && await answersHttp\(url, 1500\)\) return \{ ready: true, pid, url \};/);
+     });
+ });
+ 
+@@ -185,7 +201,16 @@ describe('an already-running system is adopted, not raced', () => {
+      */
+     it('adoption needs a real HTTP answer, not just an open port', () => {
+         expect(RUNTOOL).toMatch(/async function answersHttp\(url: string, timeoutMs = 2500\): Promise<boolean>/);
+-        expect(RUNTOOL).toContain('return res.status < 500;');
++        //  Repointed (c219da21): `fetch` became `http.get`, the same threshold
++        //  on the status the server really sent — and silence or a refused
++        //  connection is still «no», never «yes».
++        const probe = RUNTOOL.slice(
++            RUNTOOL.indexOf('async function answersHttp'),
++            RUNTOOL.indexOf('async function answeringLoopbackUrl'),
++        );
++        expect(probe).toContain('finish(Number(res.statusCode || 0) < 500);');
++        expect(probe).toMatch(/req\.setTimeout\(timeoutMs, \(\) => \{\s*req\.destroy\(\);\s*finish\(false\);/);
++        expect(probe).toContain("req.on('error', () => finish(false));");
+     });
+ 
+     it('an explicit cwd or command still starts fresh — adoption is the default only', () => {
+diff --git a/api/src/__tests__/what-orion-got-wrong.test.ts b/api/src/__tests__/what-orion-got-wrong.test.ts
+index 30af418c..d98210a5 100644
+--- a/api/src/__tests__/what-orion-got-wrong.test.ts
++++ b/api/src/__tests__/what-orion-got-wrong.test.ts
+@@ -87,7 +87,12 @@ describe('a missing interpreter is a skipped check, never a manufactured failure
+         // supply, so the literal call text changed. The guarantee is unchanged —
+         // discovery is still the first thing that runs.
+         expect(pipeline).toContain("executeTool('engineering_discovery',");
+-        expect(pipeline).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
++        // Repointed again (3d0b0be6): an explicit «last project» continuation
++        // may point discovery at the user's persisted project area. A root the
++        // caller supplied still wins, and discovery still receives it first.
++        expect(pipeline).toContain('let discoveryPath = projectPath || persistedUserRoot;');
++        expect(pipeline).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
++        expect(pipeline.search(/executeTool\(\s*'project_planner'/)).toBeGreaterThan(pipeline.indexOf("executeTool('engineering_discovery',"));
+         // 044: requestFidelityBlocked يشمل hasRequestFidelityEvidenceUnavailable ويُغذّي verificationFailed
+         expect(pipeline).toContain('const requestFidelityMismatch = hasRequestFidelityMismatch(pipeline?.results)');
+         expect(pipeline).toContain('const requestFidelityEvidenceUnavailable = hasRequestFidelityEvidenceUnavailable(pipeline?.results)');
+diff --git a/api/src/__tests__/what-you-built-and-what-you-did-not.test.ts b/api/src/__tests__/what-you-built-and-what-you-did-not.test.ts
+index a9366278..e5820cd7 100644
+--- a/api/src/__tests__/what-you-built-and-what-you-did-not.test.ts
++++ b/api/src/__tests__/what-you-built-and-what-you-did-not.test.ts
+@@ -52,19 +52,90 @@ describe('the builder\'s own words survive the phase', () => {
+         for (const block of failures) {
+             if (/message:/.test(block)) expect(block.indexOf('error:')).toBeLessThan(block.indexOf('message:'));
+         }
+-        expect(PHASE).toMatch(/task:\s*taskDesc,\s*tool:\s*toolName,\s*ok:\s*false,\s*execution:\s*['"]ran['"],\s*error:\s*(?:errMsg|currentRunError),/);
++        // Repointed (0f866ad2): one task now runs in `executeSingleTask`, shared
++        // by the sequential path and the parallel groups; the record's label
++        // goes through `formatTaskDesc` so a grouped task says it ran in
++        // parallel. The payload is unchanged: ok:false, then the error.
++        expect(PHASE).toMatch(/task:\s*formatTaskDesc\(taskDesc\),\s*tool:\s*toolName,\s*ok:\s*false,\s*execution:\s*['"]ran['"],\s*error:\s*(?:errMsg|currentRunError),/);
+         expect(PHASE).toMatch(/runId:\s*runEvidenceId/);
+         expect(PHASE).toMatch(/projectRoot:\s*runEvidenceRoot/);
+         expect(PHASE).toMatch(/evidenceStatus:\s*['"]stale_run_dropped['"]/);
+         expect(PHASE).toMatch(/evidenceStatus:\s*['"]current_run['"]/);
+     });
++
++    it('…and the failure record is the same on BOTH execution paths', async () => {
++        //  Measured, not read: the same failing tool run alone and inside a
++        //  parallel group. Each record is ok:false with the tool's OWN error
++        //  first, and the builder's words survive only beside it as `message`.
++        const ToolService = require('../modules/services/ToolService');
++        const { PhaseExecutorTool } = require('../modules/tools/definitions/PhaseExecutorTool');
++        const spy = jest.spyOn(ToolService, 'executeTool').mockImplementation(async (name: any) => (
++            name === 'echo'
++                ? { ok: true, output: { message: 'echoed' }, logs: [] }
++                : { ok: false, error: 'the brief could not be read', output: { message: 'what the builder said' }, logs: [] }));
++        try {
++            const ctx = { projectName: 'failure-probe', workspaceId: 'failure-probe-ws', sessionId: 'failure-probe-session', userId: 'failure-probe-user' };
++            const run = (tasks: any[]) => new PhaseExecutorTool().execute({
++                phase: { phaseNumber: 1, name: 'Failure probe', tasks }, projectContext: ctx,
++            }, ctx);
++            const alone: any = await run([
++                { task: 'read the brief', tool: 'read_file', args: { path: 'brief.md' } },
++            ]);
++            const grouped: any = await run([
++                { task: 'read the brief', tool: 'read_file', args: { path: 'brief.md' }, parallel: true },
++                { task: 'say hello', tool: 'echo', args: { message: 'hi' }, parallel: true },
++            ]);
++            expect(grouped.logs).toContain('[PhaseExecutor] Executing 2 tasks in parallel');
++            for (const result of [alone, grouped]) {
++                const failed = result.output.results.filter((r: any) => r.ok === false);
++                expect(failed).toHaveLength(1);
++                expect(failed[0]).toMatchObject({
++                    tool: 'read_file', ok: false, execution: 'ran',
++                    error: 'the brief could not be read', message: 'what the builder said',
++                });
++                const keys = Object.keys(failed[0]);
++                expect(keys.indexOf('error')).toBeLessThan(keys.indexOf('message'));
++            }
++        } finally {
++            spy.mockRestore();
++        }
++    });
+ });
+ 
+ describe('the delivery report relays what was measured', () => {
+     it('it collects every message the phases carried', () => {
+         expect(PIPE).toMatch(/const spoken: string\[\] = \[\];/);
+-        expect(PIPE).toMatch(/const msg = String\(t\?\.message \|\| ''\)\.trim\(\);/);
++        // Repointed (3e3ea28f, 76f66a5d): each message now passes two filters
++        // on its way — an unproven «✅ Acceptance accepted» is restated
++        // honestly, and a credential is redacted. Neither drops a message, so
++        // the relay itself is measured: every distinct message the phases
++        // carried reaches the report, exactly once; an empty one adds nothing.
++        expect(PIPE).toMatch(/const msg = redactDeliveryCredentials\(guardUnverifiedBuilderClaims\(String\(t\?\.message \|\| ''\)\.trim\(\), verified, ar\)\);/);
+         expect(PIPE).toMatch(/if \(msg && !spoken\.includes\(msg\)\) spoken\.push\(msg\);/);
++        const { ProjectPipelineTool } = require('../modules/tools/definitions/ProjectPipelineTool');
++        const report: string = (new ProjectPipelineTool() as any).buildDeliveryReport({
++            language: 'en', projectName: 'Relay', phases: [], done: 2, total: 2, verified: true,
++            pipeline: {
++                results: [
++                    {
++                        status: 'completed', phaseName: 'API', completedTasks: 2, totalTasks: 2,
++                        results: [{ message: 'The API stores bookings in SQLite.' }, { message: '' }],
++                    },
++                    {
++                        status: 'completed', phaseName: 'Interface', completedTasks: 2, totalTasks: 2,
++                        results: [
++                            { message: '⚠️ You also asked for things this step did NOT build: video calls' },
++                            { message: 'The API stores bookings in SQLite.' },
++                        ],
++                    },
++                ],
++            },
++        });
++        const heading = "### Exactly what was built — in the engines' own words";
++        expect(report).toContain(heading);
++        const relayed = report.slice(report.indexOf(heading));
++        expect(relayed).toContain('⚠️ You also asked for things this step did NOT build: video calls');
++        expect(relayed.split('The API stores bookings in SQLite.').length - 1).toBe(1);
+     });
+ 
+     it('under a heading that says whose words they are, in both languages', () => {
+diff --git a/api/src/__tests__/wiring-policy.test.ts b/api/src/__tests__/wiring-policy.test.ts
+index eeb90720..eecfc0dd 100644
+--- a/api/src/__tests__/wiring-policy.test.ts
++++ b/api/src/__tests__/wiring-policy.test.ts
+@@ -820,9 +820,17 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
+         expect(fw).toMatch(/userId\?: string; sessionId\?: string;/);
+         const ws = SRC('api', 'ws.ts');
+         expect(ws).toContain('executionFirewall.currentOwner?.()');
+-        // and the entry points declare whose run it is
+-        expect(SRC('orchestration', 'AgentOrchestrator.ts'))
+-            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: goal\.id \}\)/);
++        // and the entry points declare whose run it is.
++        // Repointed (76f66a5d): the run address is now the CANONICAL run id —
++        // a caller-issued runId, else the trace, else the goal — so two runs
++        // in one chat no longer share one address (proven per run in
++        // orchestrator-run-identity.test.ts). The owner that addresses an
++        // event with no address of its own — userId and sessionId — is
++        // declared exactly as before.
++        const orchestrator = SRC('orchestration', 'AgentOrchestrator.ts');
++        expect(orchestrator).toContain('const canonicalRunId = goal.runId || goal.traceId || goal.id;');
++        expect(orchestrator)
++            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: canonicalRunId \}\)/);
+         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
+     });
+ 
+@@ -1115,9 +1123,14 @@ describe('an application build ships a program, not a brochure', () => {
+         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+         expect(R).toMatch(/detectAppKind\(request\)/);
+         expect(R).toMatch(/buildAppFiles\(runBp/);
+-        // an app build must not emit one brochure component
+-        expect(R).toMatch(/for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
+-        expect(R).toMatch(/if \(!appBp\) files\['src\/components\/AdminPanel\.jsx'\]/);
++        // an app build must not emit one brochure component.
++        // Repointed: an external-API build skips the brochure too (46e6d5d1),
++        // and the admin panel is written only when App.jsx imports it — both
++        // generators take the same `admin` flag (38d84ffc). `appBp` still
++        // gates both, which is the whole claim.
++        expect(R).toMatch(/for \(const c of \(appBp \|\| externalIntegration\) \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
++        expect(R).toMatch(/if \(!appBp && admin\) files\['src\/components\/AdminPanel\.jsx'\]/);
++        expect(R).toMatch(/\$\{admin \? "import AdminPanel from '\.\/components\/AdminPanel\.jsx';/);
+     });
+ 
+     it('no fabricated person, dish or pricing tier can reach an application', () => {
+@@ -1403,8 +1416,18 @@ describe('a feed ships with a feed server', () => {
+         // …and a feed is no longer a feed ALONE: groups, pages, messages and
+         // ads are real tables, and the system has real accounts instead of
+         // «identity here is a name with no password».
+-        expect(t).toMatch(/'auth\.js': fileAuthJs\(\),\n\s*'seed\.js': fileSeedJs\(\[\]/);
+-        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model\) \} : \{\}\),\n\s*'auth\.js'/);
++        // Repointed (0e2ff096): the accounts carry the roles the request named
++        // (`roleSpecs`) and the entity tables read the request too. Asserted on
++        // the FEED branch of the file map itself, not anywhere in the file —
++        // the catalogue branch spells the same lines.
++        const feedBranch = t.slice(
++            t.indexOf('const files: Record<string, string> = feed ? {'),
++            t.indexOf("'README.md': filePostsReadme(brand)"),
++        );
++        expect(feedBranch).toMatch(/'server\.js': filePostsServerJs\(brand, model\)/);
++        expect(feedBranch).toMatch(/'db\.js': filePostsDbJs\(\)/);
++        expect(feedBranch).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model, requestForReading\) \} : \{\}\),\n\s*'auth\.js'/);
++        expect(feedBranch).toMatch(/'auth\.js': fileAuthJs\(roleSpecs\),\n\s*'seed\.js': fileSeedJs\(\[\], \{ email: ownerEmail/);
+         expect(t).toMatch(/'db\.js': filePostsDbJs\(\)/);
+     });
+ });
+@@ -1514,7 +1537,9 @@ describe('the full-stack claim matches the server that was built', () => {
+     it('a feed is not told it has an orders table', () => {
+         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+         expect(R).toMatch(/const feedApi = \/\\\/api\\\/posts\$\/\.test\(apiLink\)/);
+-        expect(R).toMatch(/apiLink && !feedApi \? apiLink\.replace/);
++        // Repointed (3917fe1d): a workflow application has no orders table
++        // either, so the claim is withheld for both — never granted to a feed.
++        expect(R).toMatch(/apiLink && !feedApi && !workflowApi\s*\? apiLink\.replace/);
+         expect(R).toMatch(/reads and writes the LIVE feed at/);
+     });
+ });
+@@ -1545,7 +1570,12 @@ describe('the React head is publish-ready', () => {
+     it('a console error names the resource it came from', () => {
+         const A = SRC('core', 'quality', 'app-audit.ts');
+         expect(A).toMatch(/m\.location\(\)/);
+-        expect(A).toMatch(/l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/);
++        // Repointed (862ba27b): the location is read once, because the weather
++        // fixture filter needs the bare URL too. The resource still rides on
++        // every console finding — asserted where the finding is recorded.
++        expect(A).toMatch(/try \{ return String\(m\.location\(\)\?\.url \|\| ''\); \} catch \{ return ''; \}/);
++        expect(A).toMatch(/const where = consoleLocationUrl \? ` ← \$\{consoleLocationUrl\.slice\(-60\)\}` : '';/);
++        expect(A).toMatch(/consoleErrors\.push\(\(String\(m\.text\(\)\)\.slice\(0, 120\) \+ where\)/);
+     });
+ });
+ 
+@@ -1857,8 +1887,11 @@ describe('a run keeps going while you read another conversation', () => {
+         const fatal = S.slice(S.indexOf('Fatal runtime error'));
+         expect(fatal).toContain("role: 'assistant'");
+         expect(fatal).toContain('content: failText');
+-        expect(fatal).toContain('persistChatStores()');
+-        expect(fatal.indexOf('persistChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
++        // Repointed (49af37f2): the write is now SYNCHRONOUS on both final
++        // paths — a debounced persist could still be pending when the session
++        // is switched or the process exits, which is the loss this guards.
++        expect(fatal).toContain('flushChatStores()');
++        expect(fatal.indexOf('flushChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
+     });
+ 
+     it('restores the last visible conversation after a reload', () => {
+@@ -1879,12 +1912,26 @@ describe('a run keeps going while you read another conversation', () => {
+     });
+ 
+     it('serves persisted chat history in explicit offline mode', () => {
++        // Repointed (32db3692): the copies of «is this the local store?» became
++        // ONE decision, usesLocalChatStore(), which keeps explicit offline mode
++        // and adds a Mongo that is merely disconnected. The early empty answer
++        // the old guard fenced off is gone from the history route altogether:
++        // nothing may answer `{ events: [] }` before the store has been read.
++        const store = SRC('api', 'chat-store.ts');
++        const decision = store.slice(
++            store.indexOf('export function usesLocalChatStore'),
++            store.indexOf('export function loadChatStores'),
++        );
++        expect(decision).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
+         const S = SRC('api', 'controllers', 'sessionController.ts');
+-        expect(S).toMatch(/readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/);
+-        expect(S).toContain("messages = mockMessages.filter((m: any) => m.sessionId === sessionId)");
+-        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {
+-            expect(file).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
+-        }
++        expect(S).toMatch(/function isOfflineSessionStore\(\): boolean \{\s*return usesLocalChatStore\(\);/);
++        const history = S.slice(S.indexOf('export async function listSessionMessages'));
++        const readAt = history.indexOf('messages = mockMessages.filter((m: any) => m.sessionId === sessionId)');
++        expect(readAt).toBeGreaterThan(0);
++        expect(history.slice(0, readAt)).toContain('const isOffline = isOfflineSessionStore();');
++        expect(history.slice(0, readAt)).not.toContain('res.json({ events: [] })');
++        expect(SRC('api', 'routes', 'run.ts')).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
++        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toMatch(/if \(usesLocalChatStore\(\)\) \{/);
+     });
+ 
+     it('the owner stop route broadcasts a session-scoped cancellation', () => {
+@@ -1899,7 +1946,10 @@ describe('a run keeps going while you read another conversation', () => {
+         expect(C).toContain("import { markRunning } from '../services/runningSessions';");
+         expect(C).toMatch(/payload\?\.stopped === true/);
+         expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
+-        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
++        // Repointed (c219da21): the POST moved into `requestStop`, which the
++        // recovered-run retry reuses. The session alone is still enough to ask.
++        expect(C).toMatch(/const requestStop = async \(runId: string\) => \{\s*const response = await fetch\(`\$\{API\}\/runs\/stop`[\s\S]{0,200}\.\.\.\(sid \? \{ sessionId: sid \} : \{\}\)/);
++        expect(C).toMatch(/if \(rid \|\| sid\) \{\s*reqs\.push\(\s*requestStop\(rid\)/);
+         expect(C).toContain("fetch(`${API}/runs/active`, { headers })");
+         const unconfirmed = C.indexOf('if (!serverConfirmedStop && (rid || sid))');
+         const reset = C.indexOf("setStatus('idle');", unconfirmed);
+@@ -2123,11 +2173,67 @@ describe('a plan may only name tools that exist', () => {
+     it('the executor checks again, because a phase can arrive from anywhere', () => {
+         const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
+         expect(E).toMatch(/resolvePlannedTool\(askedFor\)/);
+-        // an unrunnable name is skipped, never counted as executed completion
+-        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}continue;/);
+-        expect(E).not.toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+/);
+-        // and the verification step cannot name a ghost either
+-        expect(E).toMatch(/resolvePlannedTool\(String\(vTask\.tool[\s\S]{0,60}\|\| 'project_detect'/);
++        // an unrunnable name is skipped, never counted as executed completion.
++        // Repointed (0f866ad2): one task now runs in `executeSingleTask`, which
++        // the sequential path and the parallel groups share, so the skip leaves
++        // with `return` instead of `continue`, and completion is counted as
++        // `completedCount.value++` — the old negative could no longer match it.
++        expect(E).toMatch(/if \(!resolved\.tool\) \{[\s\S]{0,400}execution:\s*['"]skipped['"] \}\);\s*return \{[^}]*shouldBreak: false \};/);
++        expect(E).not.toMatch(/if \(!resolved\.tool\) \{[\s\S]{0,400}completedCount(?:\.value)?\s*(?:\+\+|\+=)/);
++        // and the verification step cannot name a ghost either.
++        // Repointed (76f66a5d): a ghost is no longer swapped for project_detect
++        // («detection is not acceptance evidence»); it is refused before it runs.
++        expect(E).toMatch(/const vToolName = resolvePlannedTool\(requestedVerificationTool\)\.tool \|\| requestedVerificationTool;/);
++        expect(E).toMatch(/!isVerificationTool\(requestedVerificationTool, verificationArgs\)\s*\|\| !isVerificationTool\(vToolName, verificationArgs\)\s*\? 'verification_unavailable: unsupported verification tool contract'/);
++    });
++
++    it('…and it holds on BOTH paths: a task run alone and a task in a parallel group', async () => {
++        //  Measured, not read. The rewrite that added parallel groups is the
++        //  kind of change after which a guard holds on one path and not the
++        //  other, so the same ghost goes through each: never executed, never
++        //  counted — and a ghost verification tool is refused before it runs.
++        const ToolService = require('../modules/services/ToolService');
++        const { PhaseExecutorTool } = require('../modules/tools/definitions/PhaseExecutorTool');
++        const ghost = 'quantum_teleporter';
++        const ran: string[] = [];
++        const spy = jest.spyOn(ToolService, 'executeTool').mockImplementation(async (name: any) => {
++            ran.push(String(name));
++            return { ok: true, output: { message: `ran ${name}` }, logs: [] };
++        });
++        try {
++            const ctx = { projectName: 'ghost-probe', workspaceId: 'ghost-probe-ws', sessionId: 'ghost-probe-session', userId: 'ghost-probe-user' };
++            const run = (tasks: any[], verificationTask?: any) => new PhaseExecutorTool().execute({
++                phase: { phaseNumber: 1, name: 'Ghost probe', tasks, ...(verificationTask ? { verificationTask } : {}) },
++                projectContext: ctx,
++            }, ctx);
++            const alone: any = await run([
++                { task: 'ask a ghost', tool: ghost },
++                { task: 'real work', tool: 'echo', args: { message: 'hi' } },
++            ]);
++            const grouped: any = await run([
++                { task: 'ask a ghost', tool: ghost, parallel: true },
++                { task: 'real work', tool: 'echo', args: { message: 'hi' }, parallel: true },
++            ]);
++            expect(grouped.logs).toContain('[PhaseExecutor] Executing 2 tasks in parallel');
++            for (const result of [alone, grouped]) {
++                expect(result.output.results.filter((r: any) => r.execution === 'skipped'))
++                    .toEqual([{ task: 'ask a ghost', tool: 'manual', ok: true, execution: 'skipped' }]);
++                expect(result.output.completedTasks).toBe(1);
++            }
++            // the positive control: the real tool did run, once per path
++            expect(ran).toEqual(['echo', 'echo']);
++            const verified: any = await run(
++                [{ task: 'real work', tool: 'echo', args: { message: 'hi' } }],
++                { task: 'verify with a ghost', tool: ghost, args: {} },
++            );
++            expect(ran).not.toContain(ghost);
++            expect(verified.output.results).toEqual(expect.arrayContaining([expect.objectContaining({
++                task: 'verify with a ghost', ok: false,
++                error: 'verification_unavailable: unsupported verification tool contract',
++            })]));
++        } finally {
++            spy.mockRestore();
++        }
+     });
+ 
+     it('the arguments are translated too, not just the name', () => {
+@@ -2191,7 +2297,12 @@ describe('the biggest request gets the strongest route', () => {
+         // supply, so the literal call text changed. The guarantee is unchanged —
+         // discovery is still the first thing that runs.
+         expect(P).toContain("executeTool('engineering_discovery',");
+-        expect(P).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
++        // Repointed again (3d0b0be6): an explicit «last project» continuation
++        // may point discovery at the user's persisted project area. A root the
++        // caller supplied still wins, and discovery still receives it first.
++        expect(P).toContain('let discoveryPath = projectPath || persistedUserRoot;');
++        expect(P).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
++        expect(P.search(/executeTool\(\s*'project_planner'/)).toBeGreaterThan(P.indexOf("executeTool('engineering_discovery',"));
+         // Repointed: the call now passes a prepared request and prepared
+         // evidence rather than the raw two. What is guaranteed — and what this
+         // measures — is that the pipeline plans through project_planner and
+@@ -2268,8 +2379,15 @@ describe('the server stores what the app sends', () => {
+          * from — both halves reading one answer.
+          */
+         expect(A).toMatch(/const requestColumns = apiColumnsForRequest\(request\)/);
+-        expect(A).toMatch(/const columns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
+-        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
++        // Repointed (3917fe1d, 76f66a5d): the choice is named `selectedColumns`,
++        // a status column the request asked for is carried into that same
++        // answer, and db.js is also told whether this system owns an orders
++        // table. Still one derived `columns`, read by both halves — now
++        // asserted on the interface half too, not only the database.
++        expect(A).toMatch(/const selectedColumns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
++        expect(A).toMatch(/const columns = requestedStatusColumn && !selectedColumns\.some\([\s\S]{0,120}\)\s*\? \[\.\.\.selectedColumns, requestedStatusColumn\]\s*: selectedColumns;/);
++        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation, !workflowApplication\)/);
++        expect(A).toMatch(/const primaryModel = !promoted && columns !== CATALOGUE_COLUMNS[\s\S]{0,200}fields: columns\.map\(/);
+     });
+ 
+     /**
+@@ -2293,7 +2411,11 @@ describe('the server stores what the app sends', () => {
+         // The guarantee is the same and now covers both ways of naming them.
+         expect(A).toMatch(/const relation = \(declaredForRelation \|\| designed\.length >= 3\)/);
+         expect(A).toMatch(/: apiRelationForRequest\(request\);/);
+-        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
++        // Repointed (3917fe1d): the server generator also learns whether the
++        // records are private and whether this is a workflow application.
++        // The relation still reaches it, and the database generator too.
++        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model, privateWorkflow, workflowApplication\)/);
++        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation, /);
+         // the link is checked, never trusted
+         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
+         expect(A).toMatch(/error: 'has_children'/);
+@@ -2385,10 +2507,30 @@ describe('the generated app can sign in to its own server', () => {
+  */
+ describe('the team reaches the roles', () => {
+     const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
++    /**
++     *  Repointed (0e2ff096): the screen is generated with the roles the request
++     *  named — `fileAccountsJsx(o.isArabic, roleSpecs)` — and the shell takes
++     *  more arguments. The claim was never the argument list; it is what the
++     *  generator WRITES, with a server and without one. So it is measured there.
++     */
++    const appFiles = (api: string): Record<string, string> => {
++        const { buildAppFiles } = require('../modules/tools/definitions/react-app-templates');
++        const { blueprintFor } = require('../core/design/app-blueprints');
++        return buildAppFiles(
++            blueprintFor('tasks', 'a task manager for a small team', false),
++            { isArabic: false, brand: 'Joe', storeKey: 'team-roles', sourceRequest: 'a task manager for a small team', ...(api ? { api } : {}) } as any,
++            'team-roles',
++        );
++    };
+ 
+     it('the accounts screen is written into the project whenever a server exists', () => {
+-        expect(T()).toMatch(/\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic\) \} : \{\}\)/);
+-        expect(T()).toMatch(/\+ \(o\.api \? fileAccountsCss\(\) : ''\)/);
++        const withServer = appFiles('http://localhost:4100/api/tasks');
++        const withoutServer = appFiles('');
++        expect(Object.keys(withServer)).toContain('src/components/Accounts.jsx');
++        expect(withServer['src/styles/app.css']).toContain('/* ── accounts and permissions');
++        // …and only then: no server, no accounts to manage
++        expect(Object.keys(withoutServer)).not.toContain('src/components/Accounts.jsx');
++        expect(withoutServer['src/styles/app.css']).not.toContain('/* ── accounts and permissions');
+     });
+ 
+     it('and the shell imports it and renders it', () => {
+@@ -2402,7 +2544,15 @@ describe('the team reaches the roles', () => {
+         //  render -- was never touched. A guard that fails on a difference
+         //  nobody can see is a guard somebody deletes.
+         expect(t).toMatch(/\$\{hasApi \? '\s*<Accounts api=\{content\.api\} \/>/);
+-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
++        // the generated shell itself, both ways
++        const withServer = appFiles('http://localhost:4100/api/tasks')['src/App.jsx'];
++        const withoutServer = appFiles('')['src/App.jsx'];
++        expect(withServer).toContain("import Accounts from './components/Accounts.jsx';");
++        expect(withServer).toMatch(/<Accounts api=\{content\.api\} \/>/);
++        // the import and the element — not the word, which the sign-in help
++        // sentence legitimately carries («…from Accounts and permissions»)
++        expect(withoutServer).not.toContain("import Accounts from './components/Accounts.jsx';");
++        expect(withoutServer).not.toMatch(/<Accounts\b/);
+     });
+ 
+     it('the screen refuses to render for anybody but the owner', () => {
+@@ -2440,8 +2590,15 @@ describe('the built system is ready for a domain', () => {
+     it('and the interface is packaged INTO the server when both exist', () => {
+         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+         expect(R).toMatch(/fs\.cpSync\(path\.join\(proj, 'dist'\), target, \{ recursive: true \}\)/);
+-        // only when this session really built an API — never inventing a target
+-        expect(R).toMatch(/prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/);
++        // only when this session really built an API — never inventing a target.
++        // Repointed (76f66a5d): the API entry is resolved once, as `apiEntry`:
++        // this session's own API record, or the API a resumed scaffold recorded
++        // as linked — and that one only after its real path is proven inside
++        // the workspace. The target still has to exist on disk.
++        expect(R).toMatch(/let apiEntry = prevEntry\?\.type === 'api' \? prevEntry : null;/);
++        expect(R).toMatch(/if \(!isWithinRoot\(fs\.realpathSync\(backendDir\), fs\.realpathSync\(root\)\)\) \{\s*return \{ ok: false, error: 'linked_api_outside_workspace', logs \};/);
++        expect(R).toMatch(/const apiDir = \(apiEntry\?\.dir && fs\.existsSync\(apiEntry\.dir\)\) \? String\(apiEntry\.dir\) : '';/);
++        expect(R).toMatch(/const packageIntoApi = \(announce: boolean\) => \{\s*if \(!apiDir\) return false;/);
+     });
+ });
+ 

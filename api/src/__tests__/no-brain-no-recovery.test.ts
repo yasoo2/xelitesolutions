@@ -57,9 +57,19 @@ describe('the orchestrator refuses to plan its way out of an outage', () => {
     });
 
     it('ends the run rather than injecting repair nodes', () => {
-        const block = SRC.slice(SRC.indexOf('if (saysNoBrain(result.error)'));
+        //  The block is bounded at the recovery decision that follows it.
+        //  Read to the end of the file, as this test once did, ANY later
+        //  `return { ok: false … }` satisfied it — the max-retries return
+        //  included — so deleting this branch's own return stayed green.
+        const start = SRC.indexOf('if (saysNoBrain(result.error)');
+        const end = SRC.indexOf('// [DECISION] Intelligent recovery attempt', start);
+        expect(start).toBeGreaterThan(-1);
+        expect(end).toBeGreaterThan(start);
+        const block = SRC.slice(start, end);
         // Engineering nodes may receive one bounded retry before this final return;
         // the dead brain must still end the run rather than inject repair nodes.
-        expect(block).toMatch(/return \{ ok: false, result: result\.error/);
+        // The failure it ends with is the node's measured payload (902b9686).
+        expect(block).toMatch(/return \{ ok: false, result: lastNodeError \?\? result\.error, steps: runSteps\(dag\) \};\s*\}\s*$/);
+        expect(block).not.toMatch(/attemptRecovery\(/);
     });
 });
