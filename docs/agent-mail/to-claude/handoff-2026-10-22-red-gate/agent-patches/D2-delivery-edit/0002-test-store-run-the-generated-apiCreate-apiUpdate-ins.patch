@@ -1,0 +1,96 @@
+From e351b6c9f41e88bde4525efe796b44ffa6d826e1 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:57:56 +0000
+Subject: [PATCH 2/9] test(store): run the generated apiCreate/apiUpdate
+ instead of pinning a fallback
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit 76f66a5d, PR #90):
+  the-app-is-the-system › a generated table answers «row» where the catalogue answers «item»
+
+Root cause: the test pinned the whole source line of the generated apiCreate,
+`d.item || d.row || row`, including its last fallback — the LOCAL row with its
+local uid. 76f66a5d changed that fallback to `null` on purpose: the records
+controller now refuses a create the server did not confirm with an id of its
+own, and `|| row` would have handed it the local uid dressed as the server's,
+the exact /api/plants/<local-uid> 404 this test was written for. The
+invariant (both «item» and «row» are read, in apiCreate and apiUpdate) is
+intact.
+
+Decision: P. The case now compiles the generated store with esbuild and calls
+apiCreate/apiUpdate against a server answering { ok, row }, { ok, item } and
+{ ok } — POSITIVE for both names, NEGATIVE (new case) for a reply with neither:
+no item, never the local row.
+
+Mutations (react-app-templates.ts, restored, sha256 identical each time):
+  sys1 apiCreate reads only d.item     -> ✕ Expected: 7  Received: undefined
+  sys2 apiCreate falls back to `row`   -> ✕ - "item": null / + "item": { "id": "local-uid-1", ... }
+  sys3 apiUpdate reads only d.item     -> ✕ Expected: 7  Received: undefined
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../__tests__/the-app-is-the-system.test.ts   | 43 +++++++++++++++++--
+ 1 file changed, 39 insertions(+), 4 deletions(-)
+
+diff --git a/api/src/__tests__/the-app-is-the-system.test.ts b/api/src/__tests__/the-app-is-the-system.test.ts
+index 8e3ee0f8..22958e26 100644
+--- a/api/src/__tests__/the-app-is-the-system.test.ts
++++ b/api/src/__tests__/the-app-is-the-system.test.ts
+@@ -132,12 +132,47 @@ describe('and the builder wires it without showing anything twice', () => {
+ describe('the app can actually read and write that table', () => {
+     const T = () => read('modules', 'tools', 'definitions', 'react-app-templates.ts');
+ 
+-    it('a generated table answers «row» where the catalogue answers «item»', () => {
++    /**
++     *  RUN, NOT READ. The generated store is compiled and called against a
++     *  server that answers in each of the shapes a Joe system really uses.
++     *  The old form of this case pinned the source line, including its last
++     *  fallback `|| row` — the LOCAL row with its local uid. The records
++     *  controller now refuses a create the server did not confirm with an id
++     *  of its own, so that fallback would have handed it a local uid dressed
++     *  as the server's: the exact 404 this case exists for, one step later.
++     *  What is asserted is the behaviour: both names are read, and a reply
++     *  that carries neither yields no item at all.
++     */
++    const storeAnswering = (body: unknown) => {
++        const { transformSync } = require('esbuild');
++        const { fileAppStoreJs } = require('../modules/tools/definitions/react-app-templates');
++        const code = transformSync(fileAppStoreJs(), { loader: 'js', format: 'cjs' }).code;
++        const module = { exports: {} as any };
++        const fetch = async () => ({ ok: true, status: 200, json: async () => body });
++        // eslint-disable-next-line no-new-func
++        new Function('module', 'exports', 'require', 'fetch', code)(module, module.exports, require, fetch);
++        return module.exports;
++    };
++    const API = 'http://localhost:4100/api/plants';
++    const local = { id: 'local-uid-1', name: 'نبتة' };
++
++    it('a generated table answers «row» where the catalogue answers «item»', async () => {
+         // Knowing only one meant the server's real id was never adopted, and
+         // the next edit went to /api/plants/<local-uid> and 404'd.
+-        const t = T();
+-        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| row \};/);
+-        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| null \};/);
++        //  POSITIVE — a generated table: { ok, row }.
++        expect((await storeAnswering({ ok: true, row: { id: 7, name: 'نبتة' } }).apiCreate(API, local)).item?.id).toBe(7);
++        expect((await storeAnswering({ ok: true, row: { id: 7, name: 'نبتة' } }).apiUpdate(API, 7, { name: 'x' })).item?.id).toBe(7);
++        //  POSITIVE — the catalogue route: { ok, item }.
++        expect((await storeAnswering({ ok: true, item: { id: 8 } }).apiCreate(API, local)).item?.id).toBe(8);
++        expect((await storeAnswering({ ok: true, item: { id: 8 } }).apiUpdate(API, 8, { name: 'x' })).item?.id).toBe(8);
++    });
++
++    it('…and a reply with neither is no item — never the local row passed off as the server\'s', async () => {
++        //  NEGATIVE.
++        const created = await storeAnswering({ ok: true }).apiCreate(API, local);
++        expect(created).toEqual({ ok: true, item: null });
++        const updated = await storeAnswering({ ok: true }).apiUpdate(API, 7, { name: 'x' });
++        expect(updated).toEqual({ ok: true, item: null });
+     });
+ 
+     it('and it recognises its own server on a domain, not just localhost', () => {
+-- 
+2.43.0
+

@@ -1,0 +1,46 @@
+diff --git a/api/src/modules/tools/definitions/ProjectEditTool.ts b/api/src/modules/tools/definitions/ProjectEditTool.ts
+index 1916a0ee..919e5411 100644
+--- a/api/src/modules/tools/definitions/ProjectEditTool.ts
++++ b/api/src/modules/tools/definitions/ProjectEditTool.ts
+@@ -1425,6 +1425,9 @@ export class ProjectEditTool extends BaseTool {
+         const priceIntent = /(?<![ء-ي])(سعر|السعر|بسعر|أسعار|الأسعار)(?![ء-ي])|\bprices?\b/i.test(request);
+         const descIntent = /(?<![ء-ي])(وصف|الوصف)(?![ء-ي])|\bdescription\b/i.test(request);
+         const renameIntent = /(?<![ء-ي])(اسم|الاسم)(?![ء-ي])|\brename\b/i.test(request);
++        // Set only when this editor rewrites a NAMED row; the brand path below
++        // reads it — that path owns the rowless «اسم الموقع» and nothing more.
++        let namedRowEdited = false;
+         if (!touched.length && isNamedRowTextEditRequest(request) && (priceIntent || descIntent || renameIntent) && fs.existsSync(path.join(dir, contentRel))) {
+             const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
+             const esc = (s: string) => String(s || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, ' ');
+@@ -1478,6 +1481,7 @@ export class ProjectEditTool extends BaseTool {
+                     const gate = syntaxOk(contentRel, next);
+                     if (gate.ok) {
+                         write(contentRel, next);
++                        namedRowEdited = true;
+                         notes.push(isAr
+                             ? `✏️ غيّرت ${field} «${target.name}»${priceIntent || renameIntent ? ` إلى «${(newLine.match(priceIntent ? /price: '([^']*)'/ : /name: '([^']*)'/) || [])[1]}»` : ''}.`
+                             : `✏️ Changed the ${field} of "${target.name}".`);
+@@ -1504,6 +1508,14 @@ export class ProjectEditTool extends BaseTool {
+          * The brand lives in exactly two places and every other file reads it
+          * from there: `brand:` in src/content.js, and the `<title>` of
+          * index.html. Two known bytes are not a job for a language model.
++         *
++         * ⛔ AND THE ROW EDITOR ABOVE STILL OWNS «غيّر اسم <صف>». This path ran
++         * only when nothing had been touched; that guard was dropped so a
++         * rename composes with a colour or a services edit in one request —
++         * rightly. But it was also the guard against a row rename that
++         * mentions the site: «Rename the product Gift set on the site to Royal
++         * Set» renamed the row AND the whole site to «Royal Set». What decides
++         * is the row editor's own edit, not «anything touched».
+          */
+         {
+             const siteWord = /(الموقع|موقعي|التطبيق|تطبيقي|المشروع|مشروعي|النظام|الصفحة|صفحتي|site|website|app|project|page)/i.test(request);
+@@ -1511,7 +1523,7 @@ export class ProjectEditTool extends BaseTool {
+             const brandRenameIntent = /(?:غيّ?ر|بدّ?ل|استبدل)\s+(?:اسم\s+)?(?:العلام[ةه](?:\s+التجاري[ةه])?|الموقع|المشروع|التطبيق|النظام|الصفحة)|\b(?:rename|change|replace)\b[^.\n]{0,35}\b(?:brand|site|website|project|app|application)\b/iu.test(request);
+             const val = boundedChangeValue(request);
+             const contentAbs = path.join(dir, contentRel);
+-            if (brandRenameIntent && siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
++            if (!namedRowEdited && brandRenameIntent && siteWord && nameWord && val && val.length <= 60 && fs.existsSync(contentAbs)) {
+                 deterministicIntentHandled = true;
+                 const body = fs.readFileSync(contentAbs, 'utf-8');
+                 const oldBrand = (body.match(/\n\s*brand:\s*'([^']*)'/) || [])[1] || '';

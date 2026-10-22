@@ -1,0 +1,182 @@
+From 5076e8aee49a0d9db0f4a0969c25c2fc0deff4a7 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 17:56:11 +0000
+Subject: [PATCH 1/9] test(records): read the split records engine where each
+ part now lives
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit 76f66a5d, PR #90):
+  relations › the records engine renders the picker, the filter and the parent panel
+  relations › an app with no parent still renders — the picker is simply absent
+  relations › and an edit now reaches the server instead of only this browser
+  an-export-that-exports-nothing › reads visible.length, which is what leaves with him
+  an-export-that-exports-nothing › hands that same visible list to toCsv
+
+Root cause: 76f66a5d split RecordsApp.jsx into src/app/records-controller.js
+(state, storage, server), src/components/RecordsView.jsx (rendering) and a
+RecordsApp.jsx that only mounts the view with the controller. The tests read
+the wrapper, which holds none of it. Every buildAppFiles records path emits
+all three modules; the static_records fallback refuses relation and API
+blueprints (canBuildDependencyFreeRecordsApp), so no artifact mode drops the
+picker or the server edit silently.
+
+Decision: P. Each token is now read in the module that owns it, plus the
+wiring (RecordsApp imports the controller and mounts RecordsView with it), so
+a feature in a view nobody renders cannot pass. The NEGATIVE export case
+("no longer reads rows.length") had been passing vacuously on the wrapper; it
+reads the view again. "hands that same visible list" now checks the rows
+argument of every toCsv call in the button, not "a visible within 400 chars".
+
+Mutations (production file broken, restored, sha256 identical each time):
+  rel1 drop onSubmit={addParent}      -> picker test ✕ Expected substring "onSubmit={addParent}"
+  rel2 const rel = null               -> 2 ✕ Expected substring "const rel = content.relation"
+  rel3 no apiUpdate on edit           -> ✕ Expected substring "apiUpdate(content.api, editing, patch)"
+  rel4 wrapper returns null           -> 3 ✕ Expected substring "<RecordsView content={content} controller={controller} />"
+  exp1 disabled={!rows.length}        -> 3 ✕ (visible.length / not rows.length / toCsv)
+  exp2 non-parent branch toCsv(rows)  -> ✕ Expected /^visible\b/, Received "rows" (old check passed)
+  exp3 wrapper returns null           -> 3 ✕ Expected the RecordsView mount
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../an-export-that-exports-nothing.test.ts    | 40 +++++++++++++-
+ api/src/__tests__/relations.test.ts           | 53 ++++++++++++++-----
+ 2 files changed, 80 insertions(+), 13 deletions(-)
+
+diff --git a/api/src/__tests__/an-export-that-exports-nothing.test.ts b/api/src/__tests__/an-export-that-exports-nothing.test.ts
+index 8156bfc2..f2546a25 100644
+--- a/api/src/__tests__/an-export-that-exports-nothing.test.ts
++++ b/api/src/__tests__/an-export-that-exports-nothing.test.ts
+@@ -76,11 +76,41 @@ describe('the export button is guarded on what the export reads', () => {
+      *  reformatting of the JSX around it — and it is checked in both
+      *  directions so a rename cannot leave the file passing by accident.
+      */
++    /**
++     *  THE BUTTON LIVES IN THE VIEW. The records engine was split into a
++     *  controller, a view and a RecordsApp.jsx that only mounts the view —
++     *  so the guard is read where it is rendered, and the wrapper is held to
++     *  actually mounting that view. Reading the wrapper alone made the
++     *  NEGATIVE case below pass on a file that contains no button at all.
++     */
+     const records = () => {
+-        const src = files['src/components/RecordsApp.jsx'];
++        const app = files['src/components/RecordsApp.jsx'];
++        expect(app).toContain("import RecordsView from './RecordsView.jsx';");
++        expect(app).toContain('<RecordsView content={content} controller={controller} />');
++        const src = files['src/components/RecordsView.jsx'];
+         expect(typeof src).toBe('string');
++        expect(src).toContain('تصدير CSV');   // the export button is in THIS file (an Arabic build)
+         return src;
+     };
++    /** Every `toCsv(...)` call inside one source span, as [first arg, second arg]. */
++    const toCsvCalls = (span: string): string[][] => {
++        const calls: string[][] = [];
++        for (let at = span.indexOf('toCsv('); at !== -1; at = span.indexOf('toCsv(', at + 1)) {
++            const args: string[] = [];
++            let depth = 0, start = at + 'toCsv('.length, i = start;
++            for (; i < span.length; i++) {
++                const ch = span[i];
++                if ('([{'.includes(ch)) depth++;
++                else if (')]}'.includes(ch)) {
++                    if (depth === 0) break;
++                    depth--;
++                } else if (ch === ',' && depth === 0) { args.push(span.slice(start, i).trim()); start = i + 1; }
++            }
++            args.push(span.slice(start, i).trim());
++            calls.push(args);
++        }
++        return calls;
++    };
+ 
+     it('reads visible.length, which is what leaves with him', () => {
+         expect(records()).toContain('disabled={!visible.length}');
+@@ -97,5 +127,13 @@ describe('the export button is guarded on what the export reads', () => {
+         const btn = src.slice(src.indexOf('disabled={!visible.length}'));
+         expect(btn.slice(0, 400)).toContain('toCsv(');
+         expect(btn.slice(0, 400)).toContain('visible');
++        //  …in EVERY branch of the button. The export has two (with a parent
++        //  column and without one), and a branch that wrote `rows` would let
++        //  the empty file out again while the first two lines above still
++        //  found a `visible` nearby. The rows argument of each call is read.
++        const button = btn.slice(0, btn.indexOf('</button>'));
++        const calls = toCsvCalls(button);
++        expect(calls.length).toBeGreaterThanOrEqual(1);
++        for (const [, rowsArg] of calls) expect(rowsArg).toMatch(/^visible\b/);
+     });
+ });
+diff --git a/api/src/__tests__/relations.test.ts b/api/src/__tests__/relations.test.ts
+index 53ec9d87..752e4e1c 100644
+--- a/api/src/__tests__/relations.test.ts
++++ b/api/src/__tests__/relations.test.ts
+@@ -124,25 +124,54 @@ describe('the interface reaches the second table', () => {
+         expect(content).toContain("labelKey: 'name'");
+     });
+ 
++    /**
++     *  THE ENGINE IS THREE MODULES NOW, AND EACH CHECK READS ITS OWNER.
++     *
++     *  RecordsApp.jsx used to hold the whole engine. It was split into a
++     *  controller (state, storage, the server — `src/app/records-controller.js`),
++     *  a view that renders it (`src/components/RecordsView.jsx`), and a
++     *  RecordsApp.jsx that only mounts the one into the other. Reading the
++     *  wrapper alone found none of this and failed; reading the three as one
++     *  string would pass even if nothing mounted the view. So each token is
++     *  looked for in the module that owns it, and the mounting is asserted
++     *  too: a picker in a view nobody renders is not a picker.
++     */
++    const engine = (req: string) => {
++        const f = files(req);
++        const e = {
++            controller: f['src/app/records-controller.js'],
++            view: f['src/components/RecordsView.jsx'],
++            app: f['src/components/RecordsApp.jsx'],
++            content: f['src/content.js'],
++        };
++        expect(e.app).toContain("import { useRecordsController } from '../app/records-controller.js';");
++        expect(e.app).toContain("import RecordsView from './RecordsView.jsx';");
++        expect(e.app).toContain('const controller = useRecordsController(content);');
++        expect(e.app).toContain('<RecordsView content={content} controller={controller} />');
++        return e;
++    };
++
+     it('the records engine renders the picker, the filter and the parent panel', () => {
+-        const app = files('نظام حجز مواعيد لعيادة أسنان')['src/components/RecordsApp.jsx'];
+-        expect(app).toContain('const rel = content.relation');
+-        expect(app).toContain('addParent');            // create a doctor without leaving
+-        expect(app).toContain('parentFilter');         // «كل مواعيد هذا الطبيب»
+-        expect(app).toContain('parent_label');         // …and read the name the server sent
+-        expect(app).toContain('apiListOn');
++        const e = engine('نظام حجز مواعيد لعيادة أسنان');
++        expect(e.controller).toContain('const rel = content.relation');
++        expect(e.controller).toContain('const addParent = async');   // create a doctor without leaving
++        expect(e.view).toContain('onSubmit={addParent}');
++        expect(e.controller).toContain('parentFilter');             // «كل مواعيد هذا الطبيب»
++        expect(e.view).toContain('onChange={e => setParentFilter(e.target.value)}');
++        expect(e.controller).toContain('parent_label');             // …and read the name the server sent
++        expect(e.controller).toContain('apiListOn');
+     });
+ 
+     it('an app with no parent still renders — the picker is simply absent', () => {
+-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
+-        const content = files('تطبيق ملاحظات')['src/content.js'];
+-        expect(content).toContain('relation: null');
++        const e = engine('تطبيق ملاحظات');
++        expect(e.content).toContain('relation: null');
+         // The same component serves both: the guard is `rel ? … : null`.
+-        expect(app).toContain('const rel = content.relation');
++        expect(e.controller).toContain('const rel = content.relation');
++        expect(e.view).toContain('{rel ? (');
+     });
+ 
+     it('and an edit now reaches the server instead of only this browser', () => {
+-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
+-        expect(app).toContain('apiUpdate(content.api, editing, patch)');
++        const e = engine('تطبيق ملاحظات');
++        expect(e.controller).toContain('apiUpdate(content.api, editing, patch)');
+     });
+ });
+-- 
+2.43.0
+
