@@ -32,6 +32,7 @@
  */
 import { tools } from '../../modules/tools/registry';
 import { requestedPrimitiveOptions } from './requested-primitive-options';
+import { namedTargetFile } from './file-intent';
 
 /** Arabic (and common transliteration) → the English words tools describe themselves with. */
 /**
@@ -312,6 +313,14 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
         if (/^(url|link|page|address|site|website)$/.test(k)) { if (url) input[key] = url; continue; }
         if (/^(query|question|text|request|instruction|goal|task|prompt|description|topic|content|input)$/.test(k)) {
             input[key] = goal;
+            continue;
+        }
+        // A FILE field takes the file the request names («a file named hello.py»).
+        // Schema-driven: only a field whose own description says it is a file.
+        if (/^(path|file|filename|filepath|destination|output|outputpath)$/.test(k)
+            && /\bfile\b|ملف/i.test(String(props[key]?.description || ''))) {
+            const named = namedTargetFile(goal);
+            if (named) input[key] = named;
             continue;
         }
         if (/^(projectpath|directory|folder|root|workspacepath)$/.test(k)) {

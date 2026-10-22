@@ -66,6 +66,36 @@ const SAFE_READ_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
 const SAFE_RELATIVE_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
 
+/**
+ * The one file a creation request names, or null.
+ *
+ * parseExplicitFileRequest below needs literal content («containing …»). A
+ * request that names its file and DESCRIBES it — «Create a file named hello.py
+ * that prints 1 to 5», «أنشئ ملف notes.md فيه عنوان …» — still names its target
+ * exactly, and asking «which path?» about it is a question he already answered
+ * (eval L2-file, 2026-10-22). Only one safe relative name with an extension
+ * counts; two different names, an absolute path or `..` mean null.
+ */
+const NAMED_FILE = String.raw`([A-Za-z0-9_\-.\/\\؀-ۿ]+\.[A-Za-z0-9]{1,16})`;
+const OPEN_QUOTE = String.raw`[\x60'"“”«]?`;
+const NAMED_FILE_PATTERNS = [
+    String.raw`\bfile\s+(?:named|called)\s*`,
+    String.raw`(?:ملف|الملف)\s+(?:باسم\s+|اسمه\s+|بإسم\s+)?`,
+    String.raw`(?:اسم\s+الملف|file\s*name)\s*[:：]?\s*`,
+    String.raw`\b(?:create|write|make|generate)\s+(?:a\s+|the\s+)?`,
+].map(lead => new RegExp(lead + OPEN_QUOTE + NAMED_FILE, 'giu'));
+
+export function namedTargetFile(input: string): string | null {
+    const raw = String(input || '');
+    const names = new Set<string>();
+    for (const re of NAMED_FILE_PATTERNS) {
+        for (const m of raw.matchAll(re)) names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
+    }
+    const valid = [...names].filter(n => n && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
+        && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n));
+    return valid.length === 1 ? valid[0] : null;
+}
+
 export interface ExplicitDirectoryRequest {
     path: string;
     expectedEntry?: string;
