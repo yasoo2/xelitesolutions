@@ -29,6 +29,7 @@ import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { ROLES, describeRoles, rolesForRequest, type RoleSpec } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal } from '../../../core/quality/terminal-session';
+import { NETWORK_INSTALL_TIMEOUTS } from '../../../shared/network-install-timeouts';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { backendFingerprint, durableReadCommand, issueBackendEvidence, payloadMatches, type LocalBackendEvidence } from '../../../core/quality/local-backend-evidence';
@@ -2869,7 +2870,9 @@ export class ApiProjectTool extends BaseTool {
                 // package failure. One bounded attempt is useful evidence;
                 // npm's default retry backoff only keeps Joe waiting.
                 '--fetch-retries=0', '--fetch-timeout=10000',
-            ], { cwd: proj, timeout: 30_000 });
+                // The same measured budget as every project install: 30 s cut
+                // healthy cold installs on a busy CPU (eval run500 P001).
+            ], { cwd: proj, timeout: NETWORK_INSTALL_TIMEOUTS.absoluteMs, idleTimeout: NETWORK_INSTALL_TIMEOUTS.idleMs });
             const inst = instRun.missing ? -1 : instRun.timedOut ? -2 : (instRun.exitCode as number);
             npmMissing = inst === -1;
             installed = inst === 0;

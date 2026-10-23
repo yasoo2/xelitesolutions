@@ -42,14 +42,11 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+import { NETWORK_INSTALL_TIMEOUTS } from '../../../shared/network-install-timeouts';
 import { externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../../../core/api-discovery/integration';
 
-export const REACT_NETWORK_INSTALL_TIMEOUTS = Object.freeze({
-    absoluteMs: 15 * 60_000,
-    // A measured fresh Windows install remained healthy but silent for 124s.
-    // Keep this finite while allowing one cold registry/package extraction.
-    idleMs: 5 * 60_000,
-});
+// One measured budget for every project install (see the shared module).
+export const REACT_NETWORK_INSTALL_TIMEOUTS = NETWORK_INSTALL_TIMEOUTS;
 
 /** A local records fallback is ready after a short, evidence-producing install attempt. */
 export const LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS = Object.freeze({
