@@ -534,9 +534,13 @@ export class ProjectPlannerTool implements ToolDefinition {
             // contract failure, not a reason to manufacture a document or run a
             // blind npm install. Both are recoverable once: the model must supply
             // an evidence-backed, workspace-runnable alternative.
+            // So is a task missing a required argument (tool_contract_invalid):
+            // eval round 8 (2026-10-23) lost a 45-minute build to one
+            // security_scanner task with no path. The model is shown the exact
+            // missing field once; a second miss still stops honestly.
             const blocker = clean.blocker;
             const contractRecoveryBlocker = !!blocker
-                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|missing_runnable_contract)$/.test(String(blocker.code || ''));
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|missing_runnable_contract|tool_contract_invalid)$/.test(String(blocker.code || ''));
             if (contractRecoveryBlocker) {
                 logs.push(`[plan] ${blocker.code} detected; starting one bounded contract recovery.`);
                 try {
