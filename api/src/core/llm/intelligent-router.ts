@@ -16,12 +16,12 @@ import { estimatePromptTokens, localDeadlineMs } from './local-throughput';
 import { servedModelConfig } from './served-local-selection';
 import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
 import { localReasoningOptions } from './providers/local';
-import { isManagedOllamaEndpoint, managedOllamaChat, MANAGED_MAX_CONTEXT_TOKENS } from './providers/managed-ollama-chat';
+import { isManagedOllamaEndpoint, managedOllamaChat, managedContextCeilingTokens } from './providers/managed-ollama-chat';
 
 /** What a local answer with no output cap may write: the room the managed window leaves its prompt. */
 export function uncappedLocalOutputTokens(messages: any[]): number {
     const prompt = estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' '));
-    return Math.max(1024, MANAGED_MAX_CONTEXT_TOKENS - prompt);
+    return Math.max(1024, managedContextCeilingTokens() - prompt);
 }
 import OpenAI from 'openai';
 import { createHash } from 'crypto';

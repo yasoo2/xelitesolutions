@@ -2,6 +2,7 @@ import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
 import { residentInferenceBytes } from './resident-inference';
 import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
+import { CONTEXT_HARD_MAX_TOKENS, contextTierForMemory, localContextCeilingTokens } from './context-ceiling';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
@@ -206,7 +207,7 @@ export class RequestResourceManager {
     private readonly inference: FifoLane;
     private readonly maxQueued: number;
     private readonly liveHeavyLeases = new Set<HeavyLease>();
-    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens: number };
+    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number };
     private readonly sampleMemory: () => MemoryReading;
     private readonly sampleResidentInference: () => Promise<number>;
     private readonly now: () => number;
@@ -226,9 +227,12 @@ export class RequestResourceManager {
             // ⛔ 4096 could not hold Joe's own planner: its prompt measured ~16.6k
             // characters (~5.5k tokens) on 2026-10-22, so local planning failed with
             // «no room for an answer» on every build. The window now follows memory
-            // (tiers below) up to 16384; qwen3.5's hybrid attention costs ~32 KiB of
-            // KV per token, ~0.5 GiB at 16384.
-            maxContextTokens: boundedInteger(options.maxContextTokens, 16384, 256, 16384) };
+            // (tiers below) up to the operator's ceiling (context-ceiling.ts, 16384
+            // unless LOCAL_MAX_CONTEXT raises it); qwen3.5's hybrid attention costs
+            // ~32 KiB of KV per token, ~0.5 GiB at 16384. An explicit option is fixed
+            // at construction; otherwise the ceiling is read per call.
+            maxContextTokens: options.maxContextTokens === undefined ? undefined
+                : boundedInteger(options.maxContextTokens, 16384, 256, CONTEXT_HARD_MAX_TOKENS) };
         this.sampleMemory = options.sampleMemory || defaultMemoryReading;
         // An injected memory reading is a test of the floor itself: no live server is asked.
         this.sampleResidentInference = options.sampleResidentInference
@@ -461,14 +465,15 @@ export class RequestResourceManager {
     private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal, reclaimableBytes = 0): ContextBudget {
         const prompt = options.promptEstimatedTokens;
         let output = options.requestedOutputTokens ?? 512;
-        const requestedContext = options.requestedContextTokens ?? this.policy.maxContextTokens;
+        const ceiling = this.policy.maxContextTokens ?? localContextCeilingTokens();
+        const requestedContext = options.requestedContextTokens ?? ceiling;
         if (!Number.isFinite(prompt) || prompt < 0 || !Number.isSafeInteger(prompt)
             || !Number.isSafeInteger(output) || output < 1 || !Number.isSafeInteger(requestedContext) || requestedContext < 1) {
             throw new ResourceAdmissionError('RESOURCE_INVALID_BUDGET');
         }
         const usable = memory.availableBytes + reclaimableBytes;
-        const tier = usable >= 8 * GiB ? 16384 : usable >= 4 * GiB ? 8192 : usable >= 2 * GiB ? 4096 : 2048;
-        const contextTokens = Math.min(tier, this.policy.maxContextTokens, requestedContext);
+        const tier = contextTierForMemory(usable);
+        const contextTokens = Math.min(tier, ceiling, requestedContext);
         // A caller that opted in gets the room the prompt leaves, if a real answer fits.
         if (prompt + output > contextTokens && options.fitOutputToContext && contextTokens - prompt - 1 >= MIN_FITTED_OUTPUT_TOKENS) {
             output = contextTokens - prompt - 1;

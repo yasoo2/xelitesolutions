@@ -63,9 +63,9 @@ export function plannerPromptProfile(context?: { modelConfig?: any }): 'local-co
 export function plannerBrief(fullPrompt: string, servedLocally: boolean): 'full' | 'compact' {
     if (!servedLocally) return 'full';
     const { estimatePromptTokens } = require('../../../core/llm/local-throughput');
-    const { MANAGED_MAX_CONTEXT_TOKENS } = require('../../../core/llm/providers/managed-ollama-chat');
+    const { managedContextCeilingTokens } = require('../../../core/llm/providers/managed-ollama-chat');
     const { LOCAL_PLAN_OUTPUT_TOKENS } = require('../../../core/orchestrator/planner-run-boundary');
-    return estimatePromptTokens(fullPrompt) + LOCAL_PLAN_OUTPUT_TOKENS <= MANAGED_MAX_CONTEXT_TOKENS ? 'full' : 'compact';
+    return estimatePromptTokens(fullPrompt) + LOCAL_PLAN_OUTPUT_TOKENS <= managedContextCeilingTokens() ? 'full' : 'compact';
 }
 
 export class ProjectPlannerTool implements ToolDefinition {
