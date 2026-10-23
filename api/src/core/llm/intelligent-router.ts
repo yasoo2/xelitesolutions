@@ -2732,6 +2732,11 @@ export async function routeToModel(
 
             if (circuitClaim.probe) timeoutValue = Math.min(timeoutValue, PROVIDER_RECOVERY_TIMEOUT_MS);
             lastTimeoutUsed = timeoutValue;
+            // Every local deadline says what decided it: a cut nobody can explain
+            // cost a day of guessing (eval 2026-10-23, «exactly 120 s»).
+            if (p.name === 'Local (Auto)') console.info('[LocalDeadline]', JSON.stringify({ timeoutMs: timeoutValue,
+                requestedMs: requestedTimeout ?? null, sizedMs: localSizeDeadline, internal: !!internalCall,
+                onlyBrain: !!(offlineMode || localStrict), probe: !!circuitClaim.probe }));
             const providerAbort = new AbortController();
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
             let callerAbortListener: (() => void) | undefined;
