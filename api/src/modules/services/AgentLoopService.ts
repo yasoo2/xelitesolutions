@@ -1099,6 +1099,18 @@ export class AgentLoopService {
             verificationBoundaries: compactVerificationBoundaries(plannerResult?.output?.verificationBoundaries),
             phaseExecutionIndex: -1,
             isFinalPhase: false,
+            // Every file the WHOLE plan will write. A component may import a file
+            // a later phase writes; the import gate knew only the current phase,
+            // so eval round 12 (P001) rejected App.tsx six times for importing
+            // Header/Hero/Services/Reviews/Contact/Footer that phases 3+ create.
+            plannedProjectFiles: Array.from(new Set<string>(phases.flatMap((planned: any) =>
+                (Array.isArray(planned?.tasks) ? planned.tasks : [])
+                    .filter((task: any) => /^(?:ai_write_file|write_file)$/.test(String(task?.tool || '').trim()))
+                    .map((task: any) => {
+                        const args = { ...(task?.args || {}), ...(task?.input || {}) };
+                        return String(args.path || args.filePath || args.filename || '').trim();
+                    })
+                    .filter(Boolean)))),
         };
         const executionContext = {
             runId,

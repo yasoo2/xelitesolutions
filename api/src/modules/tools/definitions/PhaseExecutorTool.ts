@@ -2094,7 +2094,12 @@ delete toolArgs.verificationMode;
                     return String(args.path || args.filePath || args.filename || '').trim();
                 })
                 .filter(Boolean);
-            plannedPhaseFiles.splice(0, plannedPhaseFiles.length, ...Array.from(new Set<string>(phaseFilePaths)));
+            // Files a later phase of the same plan writes are planned too: a component
+            // may import them (the final gate still requires them to exist).
+            const plannedProjectFiles: string[] = Array.isArray(projectContext?.plannedProjectFiles)
+                ? projectContext.plannedProjectFiles.map((file: unknown) => String(file || '').trim()).filter(Boolean)
+                : [];
+            plannedPhaseFiles.splice(0, plannedPhaseFiles.length, ...Array.from(new Set<string>([...phaseFilePaths, ...plannedProjectFiles])));
 
             if (!executionContext.sessionId) appendLog('[PhaseExecutor] Warning: missing sessionId in execution context');
             if (!executionContext.workspaceId) appendLog('[PhaseExecutor] Warning: missing workspaceId in execution context');
