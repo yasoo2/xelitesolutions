@@ -47,3 +47,19 @@ describe('a server may give the model a larger window', () => {
         expect(JSON.parse(fetch.mock.calls[0][1].body).options.num_ctx).toBe(65536);
     });
 });
+
+describe('the memory budget per token of window can follow the served model', () => {
+    const saved = process.env.LOCAL_WINDOW_BYTES_PER_TOKEN;
+    afterEach(() => { if (saved === undefined) delete process.env.LOCAL_WINDOW_BYTES_PER_TOKEN; else process.env.LOCAL_WINDOW_BYTES_PER_TOKEN = saved; });
+    // Eval round 9, P051: ~7.9 GiB usable gave 8192 tokens for a 14.6k-token prompt
+    // under the generic 512 KiB/token guess; qwen3.5 needs ~32 KiB per token.
+    it('unset, the generic budget is unchanged', () => {
+        delete process.env.LOCAL_WINDOW_BYTES_PER_TOKEN;
+        expect(contextTierForMemory(7.9 * GiB)).toBe(8192);
+    });
+    it('an operator figure for the served model admits the window it can hold', () => {
+        process.env.LOCAL_WINDOW_BYTES_PER_TOKEN = String(64 * 1024);
+        expect(contextTierForMemory(7.9 * GiB)).toBeGreaterThanOrEqual(16384);
+        expect(Math.min(contextTierForMemory(7.9 * GiB), localContextCeilingTokens())).toBe(16384);
+    });
+});
