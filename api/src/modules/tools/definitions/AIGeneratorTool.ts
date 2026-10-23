@@ -586,6 +586,26 @@ export const LLM_GENERATION_DEADLINE_MS = 120_000;
 export const ENGINEERING_ARTIFACT_PROVIDER_DEADLINE_MS = 60_000;
 export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 180_000;
 
+/**
+ * The deadline of one artifact call the LOCAL model serves: its size over this
+ * machine's measured speed, never below the engineering leash, never past the
+ * operator's local ceiling. undefined when another provider serves.
+ *
+ * Eval round 10 (2026-10-23, P001): every page component (ai_write_file, 20k
+ * characters of context, 1200 output tokens) was aborted at exactly 60 s — the
+ * provider bound exists to leave time to fail over to the next provider, and
+ * with the local model as the only brain there is no next provider. On a CPU a
+ * component takes minutes; on a GPU the same sizing is seconds.
+ */
+export function localArtifactDeadlineMs(context: any, system: string, user: string, outputTokens: number): number | undefined {
+    const { servedByLocalModel } = require('../../../core/llm/served-local-selection');
+    if (!servedByLocalModel(context)) return undefined;
+    const { estimatePromptTokens, localDeadlineMs } = require('../../../core/llm/local-throughput');
+    const { localPlannerCeilingMs } = require('../../../core/orchestrator/planner-run-boundary');
+    return Math.min(localPlannerCeilingMs(), Math.max(ENGINEERING_LLM_GENERATION_DEADLINE_MS,
+        localDeadlineMs(estimatePromptTokens(system + user), Math.max(1, Number(outputTokens) || 6000))));
+}
+
 function withGenerationDeadline<T>(
     work: Promise<T>,
     label: string,
@@ -830,6 +850,11 @@ Return the complete file content now.`;
                 })}`;
                 logs.push(requestBudgetLog);
                 console.info(requestBudgetLog);
+                const localDeadline = localArtifactDeadlineMs(context, requestSystem, requestPrompt,
+                    Number(llmContext?.maxCompletionTokens) || 6000);
+                // The provider call ends first, with its own clean error; the outer
+                // leash only backstops a transport that ignores its signal.
+                if (localDeadline !== undefined && llmContext) llmContext.providerTimeoutMs = localDeadline;
                 return withGenerationDeadline(
                     Promise.resolve().then(() => callLLM(
                         requestPrompt,
@@ -837,7 +862,9 @@ Return the complete file content now.`;
                         llmContext,
                     )),
                     `artifact ${filePath}${retryKind ? ` (${retryLabel.toLowerCase()})` : ''}`,
-                    context?.engineeringPipeline === true
+                    localDeadline !== undefined
+                        ? localDeadline + 30_000
+                        : context?.engineeringPipeline === true
                         ? ENGINEERING_LLM_GENERATION_DEADLINE_MS
                         : LLM_GENERATION_DEADLINE_MS,
                     {
