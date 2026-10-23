@@ -420,6 +420,20 @@ export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
     lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'], media: ['media', 'الوسائط'],
 };
 
+/**
+ * True when the object of the build verb is an artifact the stock catalogue
+ * has no engine for (a game, a quiz, a chatbot, a report with charts, a
+ * simulator): «Make a browser quiz game about a clinic», «اعمل لعبة أسئلة عن
+ * عيادة». Read from the build verb's own object (a few words after it), so a
+ * clinic system that merely MENTIONS a report keeps its records engine.
+ */
+export function requestedArtifactWithoutStockEngine(request: string): boolean {
+    const text = String(request || '');
+    const EN = /\b(?:build|create|make|develop|write|design|generate)\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,4}?(?:game|quiz|chatbot|chat\s?bot|bot|report|simulator|simulation|animation)\b/i;
+    const AR = /(?:اعمل|اعملي|إعمل|ابن[يِ]?|ابني|أنشئ|انشئ|اصنع|صمم|صمّم|اكتب|طور|طوّر)\s+(?:لي\s+)?(?:\S+\s+){0,3}?(?:لعبة|لعبه|مسابقة|اختبار\s+أسئلة|روبوت|بوت|تقرير|محاكي|محاكاة)(?=$|[\s،,.])/u;
+    return EN.test(text) || AR.test(text);
+}
+
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
@@ -431,6 +445,16 @@ export function detectAppKind(requestRaw: string): AppKind | null {
     //  …and the plain word for a site, when nothing in the request asks for
     //  an application. See siteNounWithoutAppRequest above for what this cost.
     if (siteNounWithoutAppRequest(intentRequest)) return null;
+    //  THE THING HE ASKED TO BUILD OUTRANKS WHAT IT IS ABOUT.
+    //
+    //  Eval run500, 2026-10-23: «a browser quiz game about a dental clinic»,
+    //  «an interactive report … three charts» and «a customer-support chatbot»
+    //  all came back as the stock BOOKINGS app — the domain words (clinic,
+    //  appointments, viewings) outscored an artifact the catalogue has no
+    //  engine for. The same rule as «صفحة هبوط لتطبيق خرائط»: the document he
+    //  named wins over its subject. An artifact with no stock engine is
+    //  authored from the request ('custom').
+    if (requestedArtifactWithoutStockEngine(intentRequest)) return 'custom';
     // Two named collections are a stronger contract than either word alone.
     // This prevents «notes and tasks» from becoming only a task table or a
     // React-Native-shaped scaffold; the builder receives both surfaces.
