@@ -343,15 +343,18 @@ function runtimeFilesystemGuidance(
     };
     walk(contract.root, 0);
 
+    // Listed relative to the project root, like the existing files above, so a
+    // plan's workspace-relative «clinic/src/x.jsx» reads as «src/x.jsx».
     const planned = [...new Set(plannedPhaseFiles
-        .map(item => String(item || '').trim().replace(/\\/g, '/').replace(/^\.\//u, ''))
-        .filter(Boolean))]
+        .flatMap(item => plannedTargetsWithinRoot(contract.root, String(item || '')))
+        .map(target => path.relative(contract.root, target).replace(/\\/g, '/'))
+        .filter(item => item && !item.startsWith('../')))]
         .filter(item => !existing.includes(item));
     if (!existing.length && !planned.length) return '';
 
     const existingText = existing.length ? existing.map(item => `- ${item}`).join('\\n') : '- (no existing project files were found)';
     const plannedText = planned.length
-        ? `\\nPLANNED FILES THAT MAY BE CREATED LATER IN THIS PHASE:\\n${planned.map(item => `- ${item}`).join('\\n')}`
+        ? `\\nPLANNED FILES THAT MAY BE CREATED LATER IN THIS PLAN:\\n${planned.map(item => `- ${item}`).join('\\n')}`
         : '';
     return `\\nVERIFIED PROJECT FILE LAYOUT (filesystem evidence):\\n${existingText}${plannedText}\\n- A relative import is allowed only when it resolves from the importing file to one of the existing or planned paths above. If no listed path proves the module, do not invent a folder, extension, or sibling module; implement the requested behavior with the current file and declared/browser APIs instead.\\n`;
 }
@@ -417,6 +420,28 @@ function runtimeArtifactMismatch(filePath: string, content: string, contract: Ru
 }
 
 /**
+ * The absolute files a planned path may name inside the artifact root.
+ *
+ * A plan writes paths relative to the WORKSPACE («clinic-landing-ar/src/App.jsx»)
+ * or to the PROJECT («src/App.jsx»). Resolving the first kind against the
+ * project root doubled the folder (…/clinic-landing-ar/clinic-landing-ar/src/…),
+ * so no planned file ever matched: eval round 13 (2026-10-23, P001) rejected
+ * App.jsx for importing Navbar and Hero planned in the SAME phase. Both readings
+ * are tried; only targets inside the artifact root count.
+ */
+function plannedTargetsWithinRoot(root: string, value: string): string[] {
+    const candidate = String(value || '').trim();
+    if (!candidate) return [];
+    const targets = path.isAbsolute(candidate)
+        ? [path.resolve(candidate)]
+        : [path.resolve(root, candidate), path.resolve(path.dirname(root), candidate)];
+    return [...new Set(targets)].filter(target => {
+        const relative = path.relative(root, target);
+        return !relative.startsWith('..') && !path.isAbsolute(relative);
+    });
+}
+
+/**
  * Resolve relative imports against the file that contains them, not against the
  * project root. A syntactically valid model completion can still point from
  * `src/components/WeatherApp.jsx` to `./styles/app.css`, although the stylesheet
@@ -448,11 +473,7 @@ function localImportResolutionError(
     const extensions = ['', '.js', '.jsx', '.ts', '.tsx', '.mjs', '.cjs', '.css', '.scss', '.sass', '.less', '.json'];
     const planned = new Set<string>();
     for (const plannedFile of plannedPhaseFiles) {
-        const candidate = String(plannedFile || '').trim();
-        if (!candidate) continue;
-        const absolute = path.resolve(contract.root, candidate);
-        const relative = path.relative(contract.root, absolute);
-        if (!relative.startsWith('..') && !path.isAbsolute(relative)) planned.add(absolute);
+        for (const target of plannedTargetsWithinRoot(contract.root, plannedFile)) planned.add(target);
     }
     const resolves = (specifier: string): boolean => {
         const clean = specifier.split(/[?#]/, 1)[0];
@@ -479,10 +500,7 @@ function localImportResolutionError(
 const LOCAL_ASSET_IMPORT = /\.(?:css|scss|sass|less|json|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|otf)$/iu;
 
 function plannedLocalFiles(contract: RuntimeContract, plannedPhaseFiles: readonly string[]): string[] {
-    return plannedPhaseFiles
-        .map(value => String(value || '').trim())
-        .filter(Boolean)
-        .map(value => path.isAbsolute(value) ? path.resolve(value) : path.resolve(contract.root, value))
+    return [...new Set(plannedPhaseFiles.flatMap(value => plannedTargetsWithinRoot(contract.root, String(value || ''))))]
         .filter(value => isWithinRoot(value, contract.root));
 }
 
