@@ -27,6 +27,18 @@ function fail(code: string, message: string): never {
     throw new ManagedOllamaError(code, message);
 }
 
+/** A closed vocabulary for a local server's error body: the text itself may hold prompt or secret fragments. */
+export function serverErrorClass(body: string): string {
+    if (!body.trim()) return 'empty';
+    if (/out of memory|insufficient memory|requires more system memory|\balloc/i.test(body)) return 'memory';
+    if (/context (?:length|window|size)|num_ctx|exceeds?|too long|truncat/i.test(body)) return 'context';
+    if (/cancel/i.test(body)) return 'cancelled';
+    if (/time(?:d)?\s*out|deadline/i.test(body)) return 'timeout';
+    if (/llama.?server|runner|exit status|terminated|unexpected EOF|connection (?:reset|refused)|EOF\b|model (?:failed|not) (?:to )?load/i.test(body)) return 'runner';
+    if (/not found|no such model|pull/i.test(body)) return 'model-missing';
+    return 'unclassified';
+}
+
 export function isManagedOllamaEndpoint(baseURL: string): boolean {
     // Check the raw spelling first: URL normalization must not admit alternate
     // IP spellings, dot segments, escaped paths, credentials or backslashes.
@@ -476,7 +488,12 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 }
                 assertActive(run.signal);
                 if (!response.ok) {
-                    try { await response.body?.cancel(); } catch { /* Do not echo server bodies or secrets. */ }
+                    // The loopback server's reason is CLASSIFIED for the operator log;
+                    // its text is never echoed anywhere. Eval round 6 (2026-10-23):
+                    // five plans failed at 311-414 s as a bare HTTP 500, no reason.
+                    let reason = '';
+                    try { reason = (await response.text()).slice(0, 4096); } catch { /* The status alone is still logged. */ }
+                    console.warn('[LocalCall] server-error', JSON.stringify({ status: response.status, reason: serverErrorClass(reason) }));
                     fail('OLLAMA_HTTP_ERROR', `Local inference returned HTTP ${response.status}.`);
                 }
                 const completion = await consume(response, !!options.onDelta, run.signal, budget, mapped.promptEstimatedTokens, options.onDelta);

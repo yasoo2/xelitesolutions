@@ -502,6 +502,10 @@ export class RequestResourceManager {
         this.emit(store, { lane, state: cancelled ? 'cancelled' : 'failed', kind,
             code: error instanceof ResourceAdmissionError ? error.code : 'RESOURCE_OPERATION_FAILED',
             ...(error instanceof ResourceAdmissionError && Object.keys(error.details).length ? { details: { ...error.details } } : {}),
+            // A failed operation names its own error code (never its message), so a
+            // bare RESOURCE_OPERATION_FAILED is traceable to the layer that failed.
+            ...(!(error instanceof ResourceAdmissionError) && /^[A-Z][A-Z0-9_]{2,63}$/.test(String((error as any)?.code ?? ''))
+                ? { details: { cause: String((error as any).code) } } : {}),
             elapsedMs: Math.max(0, this.now() - started) });
     }
 }
