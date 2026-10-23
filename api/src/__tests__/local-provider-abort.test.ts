@@ -3,7 +3,7 @@ const mockOpenAI = jest.fn();
 
 jest.mock('openai', () => ({ __esModule: true, default: mockOpenAI }));
 jest.mock('../core/resources/RequestResourceManager', () => ({ requestResourceManager: {
-    withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: admission.requestedOutputTokens }),
+    withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: Math.min(admission.requestedOutputTokens, 4096 - admission.promptEstimatedTokens - 1) }),
     withHeavy: async (work: any) => work(),
     currentSignal: () => undefined,
 } }));
@@ -42,7 +42,8 @@ describe('LocalProvider cancellation', () => {
         expect(nativeFetch).toHaveBeenCalledTimes(1);
         expect(nativeFetch.mock.calls[0][0]).toBe('http://127.0.0.1:11434/api/chat');
         expect(nativeFetch.mock.calls[0][1].signal).toBeInstanceOf(AbortSignal);
-        expect(JSON.parse(nativeFetch.mock.calls[0][1].body)).toMatchObject({ model: 'qwen2.5-coder:7b', options: { num_ctx: 4096, num_predict: 512 } });
+        expect(JSON.parse(nativeFetch.mock.calls[0][1].body)).toMatchObject({ model: 'qwen2.5-coder:7b', options: { num_ctx: 4096, num_predict: expect.any(Number) } });
+        expect(JSON.parse(nativeFetch.mock.calls[0][1].body).options.num_predict).toBeGreaterThan(512);
         expect(mockCreate).not.toHaveBeenCalled();
     });
 

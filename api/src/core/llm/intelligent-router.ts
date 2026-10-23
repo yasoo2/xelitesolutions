@@ -16,7 +16,13 @@ import { estimatePromptTokens, localDeadlineMs } from './local-throughput';
 import { servedModelConfig } from './served-local-selection';
 import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
 import { localReasoningOptions } from './providers/local';
-import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
+import { isManagedOllamaEndpoint, managedOllamaChat, MANAGED_MAX_CONTEXT_TOKENS } from './providers/managed-ollama-chat';
+
+/** What a local answer with no output cap may write: the room the managed window leaves its prompt. */
+export function uncappedLocalOutputTokens(messages: any[]): number {
+    const prompt = estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' '));
+    return Math.max(1024, MANAGED_MAX_CONTEXT_TOKENS - prompt);
+}
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
 import { parseFirstJson } from '../../shared/utils/json';
@@ -2607,7 +2613,8 @@ export async function routeToModel(
             // model is the only brain, so a fixed cut cannot end a healthy call.
             const localSizeDeadline = p.name === 'Local (Auto)'
                 ? localDeadlineMs(estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' ')),
-                    Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : 1024)
+                    // No cap set: the answer may fill the room the window leaves.
+                    Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : uncappedLocalOutputTokens(messages))
                 : 0;
             if (p.name === 'Local (Auto)') {
                 // Local CPU inference — especially the first (cold) request that loads

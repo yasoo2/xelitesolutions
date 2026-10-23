@@ -6,6 +6,8 @@ import { localInferenceFetch } from './loopback-fetch';
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
 // Estimates below are admission policy, not exact tokenizer or image accounting.
 const MAX_CONTEXT = 16384;
+/** The largest window a managed local call may ask for. */
+export const MANAGED_MAX_CONTEXT_TOKENS = MAX_CONTEXT;
 // Requested ceiling; the resource manager admits a window that fits memory.
 const DEFAULT_CONTEXT = 16384;
 const MIN_FITTED_OUTPUT_TOKENS = 256;
@@ -422,7 +424,11 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
     }
     const maxContextTokens = options.maxContextTokens ?? DEFAULT_CONTEXT;
     if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 16384 tokens.');
-    const requestedOutputTokens = options.maxCompletionTokens ?? 512;
+    // A caller that set no cap gets the room the window leaves (fitted below),
+    // not 512 tokens. Eval round 7 (2026-10-23): every page section asked for
+    // no cap, got 512, and ended after 21 min as LOCAL_COMPLETION_LIMIT — one
+    // HTML section is longer than 512 tokens on any machine.
+    const requestedOutputTokens = options.maxCompletionTokens ?? maxContextTokens;
     if (!Number.isInteger(requestedOutputTokens) || requestedOutputTokens < 1) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be a positive integer.');
     // Fitted to the room the prompt leaves once it is measured (below).
     let outputTokens = requestedOutputTokens;

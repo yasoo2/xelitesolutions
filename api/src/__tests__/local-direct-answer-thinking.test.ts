@@ -32,7 +32,7 @@ function localFixture(base = 'http://127.0.0.1:11434', configuredModel = 'qwen3.
     global.fetch = nativeFetch;
     jest.doMock('openai', () => ({ __esModule: true, default: construct }));
     jest.doMock('../core/resources/RequestResourceManager', () => ({ ...jest.requireActual('../core/resources/RequestResourceManager'), requestResourceManager: {
-        withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: admission.requestedOutputTokens }),
+        withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: Math.min(admission.requestedOutputTokens, 4096 - admission.promptEstimatedTokens - 1) }),
         withHeavy: async (work: any) => work(),
         currentSignal: () => undefined,
     } }));
@@ -133,7 +133,9 @@ describe('explicit local direct-answer reasoning request', () => {
             const body = JSON.parse(request.body);
             expect(body).not.toHaveProperty('think');
             expect(body).not.toHaveProperty('reasoning_effort');
-            expect(body.options).toMatchObject({ num_ctx: 4096, num_predict: 512 });
+            // No cap: the answer gets the room the window leaves, not 512 (eval round 7).
+            expect(body.options.num_ctx).toBe(4096);
+            expect(body.options.num_predict).toBeGreaterThan(512);
         }
         expect(f.create).not.toHaveBeenCalled();
         const compatible = localFixture('http://127.0.0.1:5000/v1');
