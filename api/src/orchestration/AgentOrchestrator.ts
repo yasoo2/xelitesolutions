@@ -593,11 +593,22 @@ export class AgentOrchestrator {
           // Keep the value on the canonical context so ProjectPipelineTool can
           // carry it through PhaseExecutor, verifiers, generators, and repairs.
           const engineeringNode = ['project_pipeline', 'react_project', 'api_project'].includes(String(node.tool || ''));
+          // ⛔ 120 s was the default for EVERY engineering node and flowed into the
+          // planner, every phase and every generator — on the owner's CPU each local
+          // call stopped at exactly 120 s ([LocalDeadline] requestedMs 120000 vs a
+          // sized 993600, eval round 5, 2026-10-23). When the LOCAL model serves, the
+          // call ceiling is the operator's local ceiling (the router sizes each call
+          // under it) and the planner deadline is left for the pipeline to size.
+          // Loaded only for engineering nodes: the orchestrator's static import surface
+          // is guarded (file-step-narration sandboxes it with an allowlist).
+          const localServed = engineeringNode && (() => {
+              try { return require('../core/llm/served-local-selection').servedByLocalModel(goalContext || {}) === true; } catch { return false; }
+          })();
           const engineeringLlmTimeoutMs = engineeringNode
-            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : 120000)
+            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : localServed ? require('../core/orchestrator/planner-run-boundary').localPlannerCeilingMs() : 120000)
             : goalContext?.providerTimeoutMs;
           const engineeringPlannerTimeoutMs = engineeringNode
-            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : 120000)
+            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : localServed ? undefined : 120000)
             : goalContext?.plannerTimeoutMs;
           const executionContext = {
               sessionId: liveSessionId,

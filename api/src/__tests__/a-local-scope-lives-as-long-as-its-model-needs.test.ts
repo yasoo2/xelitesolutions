@@ -39,3 +39,18 @@ describe('a local scope lives as long as its model needs', () => {
         expect(router).toContain('const offlineSizedLeash = (offlineMode || localStrict)');
     });
 });
+
+describe('no fixed 120 s on the way to a local engineering call', () => {
+    // [LocalDeadline] in eval round 5 (2026-10-23): requestedMs 119977 for a plan
+    // sized at 48 min, and 120000 for page sections sized at 16.5 min.
+    it('the orchestrator gives a locally served engineering node the local ceiling, not 120 s', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf8');
+        expect(src).toContain(": localServed ? require('../core/orchestrator/planner-run-boundary').localPlannerCeilingMs() : 120000)");
+        expect(src).toContain(': localServed ? undefined : 120000)');
+    });
+    it('the scoped pipeline planner is sized, not min(120 s, …)', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
+        expect(src).toContain('plannerTimeoutMs: Math.min(localPlanDeadlineMs(planningScope.request), Math.max(1, planningScope.expires - Date.now()))');
+        expect(src).not.toContain('Math.min(120_000, Math.max(1, planningScope.expires - Date.now()))');
+    });
+});

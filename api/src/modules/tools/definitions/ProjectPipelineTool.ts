@@ -1460,7 +1460,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     reason: 'specification_planner_budget_exceeded', executed: false, message: 'Complete required-source evidence exceeds the bounded planner intake.' }), logs };
             context?.onProgress?.('Planning the requested project with the selected local model.');
             const plan = await executeTool('project_planner', { projectDescription: planningScope.request, evidence: plannerEvidence }, {
-                ...context, engineeringPipeline: false, plannerTimeoutMs: Math.min(120_000, Math.max(1, planningScope.expires - Date.now())),
+                // The scope's model is local by construction: a sized local plan, not a
+                // fixed 120 s (eval round 5, 2026-10-23: [LocalDeadline] requested 119977 ms
+                // for a plan sized at 48 min), still inside the scope's lifetime.
+                ...context, engineeringPipeline: false, plannerTimeoutMs: Math.min(localPlanDeadlineMs(planningScope.request), Math.max(1, planningScope.expires - Date.now())),
             });
             if (!plan.ok || !Array.isArray(plan.output?.phases) || plan.output.phases.length === 0 || !engineeringScope(context)) return { ok: false, error: 'engineering_planning_failed', output: scopedFinal({ status: 'failed', reason: 'engineering_planning_failed', executed: false, evidence: discovery.output.evidence, plannerResult: plan.output }), logs: [...(discovery.logs || []), ...(plan.logs || [])] };
             try {
