@@ -7,7 +7,8 @@ describe('offline local provider deadline', () => {
     it('keeps one real Ollama attempt bounded instead of waiting ten minutes', () => {
         expect(ROUTER).toContain('OFFLINE_LOCAL_TIMEOUT_MS');
         expect(ROUTER).toMatch(/OFFLINE_LOCAL_TIMEOUT_MS[\s\S]{0,500}45_000/);
-        expect(ROUTER).toContain("if (offlineMode && p.name === 'Local (Auto)')");
+        // Offline OR strict local: either way the local model is the only brain (2026-10-23).
+        expect(ROUTER).toContain("if ((offlineMode || localStrict) && p.name === 'Local (Auto)')");
         // Sized to the call over the measured speed, bounded by the operator leash (2026-10-23).
         expect(ROUTER).toContain('timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(Math.max(machineLeash, localSizeDeadline), LOCAL_LEASH_MAX_MS)));');
         expect(ROUTER).toContain("const localSizeDeadline = p.name === 'Local (Auto)'");

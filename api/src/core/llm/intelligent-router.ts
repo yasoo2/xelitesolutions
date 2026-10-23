@@ -13,6 +13,8 @@ import { pickLocalModel, isLocalBrainReady, localWarmupMs } from './local-brain'
 import { classifyExplicitLocalSelection } from './explicit-local-selection';
 import { localVerificationBudgetMs, LOCAL_VERIFICATION_MAX_COMPLETION_TOKENS } from './local-verification-budget';
 import { estimatePromptTokens, localDeadlineMs } from './local-throughput';
+import { servedModelConfig } from './served-local-selection';
+import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
 import { localReasoningOptions } from './providers/local';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
 import OpenAI from 'openai';
@@ -1297,8 +1299,12 @@ export function effectiveKeylessTimeoutMs(
  * to the ordinary 18/25s keyless deadline.
  */
 export function requestedProviderTimeoutMs(context: any): number | undefined {
-    const cap = classifyExplicitLocalSelection(context?.modelConfig || {}).eligible
-        ? 300_000 : MAX_EXPLICIT_PROVIDER_TIMEOUT_MS;
+    // A deadline for the LOCAL model (named, or Auto on a server pinned to it) may
+    // reach the operator's local ceiling: a sized local plan was cut to 180 s here
+    // (eval 2026-10-23). Cloud deadlines keep their cap.
+    const local = classifyExplicitLocalSelection(context?.modelConfig || {}).eligible
+        || classifyExplicitLocalSelection(servedModelConfig(context || {})?.modelConfig || {}).eligible;
+    const cap = local ? Math.max(300_000, localPlannerCeilingMs()) : MAX_EXPLICIT_PROVIDER_TIMEOUT_MS;
     for (const raw of [context?.providerTimeoutMs, context?.plannerTimeoutMs]) {
         const value = Number(raw);
         if (Number.isFinite(value) && value > 0) {
@@ -2660,7 +2666,8 @@ export async function routeToModel(
                     // Offline there is no other brain to hand off to: the engineering
                     // cap may not end a call this machine can finish (eval 2026-10-23).
                     // Online the leash is exactly as before (offlineSizedLeash is 0).
-                    const offlineSizedLeash = offlineMode
+                    // «Only brain» = offline, or strict local (LOCAL_LLM_STRICT=1, no fallback).
+                    const offlineSizedLeash = (offlineMode || localStrict)
                         ? Math.min(LOCAL_LEASH_MAX_MS, Math.max(ENGINEERING_LOCAL_TIMEOUT_CAP_MS, localSizeDeadline))
                         : 0;
                     const autoPlanningLeash = Math.max(offlineSizedLeash, Math.min(
@@ -2675,7 +2682,7 @@ export async function routeToModel(
                         ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
                 }
-                if (offlineMode && p.name === 'Local (Auto)') {
+                if ((offlineMode || localStrict) && p.name === 'Local (Auto)') {
                     // ⛔ Offline, this local model is the ONLY brain: a fixed 45 s cut
                     // is a certain failure on a slow machine, not a fast one (eval
                     // 2026-10-22: a two-sentence answer aborted at 45 s on a CPU that

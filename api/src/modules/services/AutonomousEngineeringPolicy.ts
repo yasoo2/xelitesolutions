@@ -4,8 +4,18 @@ import { autonomousIdentity } from './AutonomousDevelopmentPolicy';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { transportRequestText } from '../../core/orchestrator/large-request-contract';
 import { normalizeLocalBaseUrlForSdk } from '../../core/llm/explicit-local-selection';
+import { localPlannerCeilingMs } from '../../core/orchestrator/planner-run-boundary';
 
 const TTL_MS = 300_000;
+/**
+ * A scope is issued only for an exact LOCAL engineering model, so it must live
+ * as long as that model needs to plan on this machine (eval 2026-10-23: a
+ * compact local plan takes ~17 min on the owner's CPU; the 5-minute scope cut
+ * every local plan at 120 s). It stays in-process, owner-bound and revoked on
+ * cancellation; only its lifetime follows the operator's local ceiling
+ * (LOCAL_BRAIN_LEASH_MAX, between 5 and 30 minutes).
+ */
+const scopeTtlMs = (): number => Math.max(TTL_MS, localPlannerCeilingMs());
 const scopes = new WeakMap<object, Scope>();
 const evidenceOwners = new WeakMap<object, object>();
 const scopeKey = Symbol('owned engineering planning run');
@@ -18,7 +28,7 @@ const executionGateways = new WeakMap<object, () => Promise<boolean>>();
 interface Scope {
     readonly userId: string; readonly sessionId: string; readonly workspaceId: string;
     readonly runId: string; readonly root: string; readonly request: string;
-    readonly model: string; readonly baseUrl: string; readonly expires: number; readonly cancelled: () => boolean;
+    readonly model: string; readonly baseUrl: string; readonly expires: number; readonly ttl: number; readonly cancelled: () => boolean;
 }
 
 function record(value: unknown, keys: readonly string[], required = keys): Record<string, unknown> {
@@ -89,7 +99,7 @@ export function issueEngineeringContext(context: any, verified: {
     scopes.set(token, Object.freeze({
         userId: d.userId as string, sessionId: d.sessionId as string, workspaceId: d.workspaceId as string,
         runId: d.runId as string, root: d.root as string, request: d.request as string,
-        model: model.model, baseUrl: model.baseUrl, expires: now + TTL_MS, cancelled,
+        model: model.model, baseUrl: model.baseUrl, expires: now + scopeTtlMs(), ttl: scopeTtlMs(), cancelled,
     }));
     return { ...context, userId: d.userId, sessionId: d.sessionId, workspaceId: d.workspaceId, runId: d.runId,
         [scopeKey]: token, modelConfig: model };
@@ -106,7 +116,7 @@ export function engineeringScope(context: any, now = Date.now()): Scope | null {
     const d = Object.getOwnPropertyDescriptors(context);
     if ([scopeKey, 'userId', 'sessionId', 'workspaceId', 'runId', 'modelConfig'].some(key => !d[key as any] || !('value' in d[key as any]))) return null;
     const token = d[scopeKey as any].value, scope = token && scopes.get(token);
-    if (!scope || !Number.isFinite(now) || now < scope.expires - TTL_MS || now >= scope.expires
+    if (!scope || !Number.isFinite(now) || now < scope.expires - scope.ttl || now >= scope.expires
         || d.userId.value !== scope.userId || d.sessionId.value !== scope.sessionId || d.workspaceId.value !== scope.workspaceId
         || d.runId.value !== scope.runId || engineeringModel(d.modelConfig.value)?.baseUrl !== scope.baseUrl
         || engineeringModel(d.modelConfig.value)?.model !== scope.model) return null;

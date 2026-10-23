@@ -26,6 +26,7 @@ import { autonomousFileTool, snapshotAutonomousFileInput, validateAutonomousFile
 import { autonomousWorkspaceTool, snapshotAutonomousWorkspaceInput, validateAutonomousWorkspaceDirectory } from './AutonomousWorkspacePolicy';
 import { exactEngineeringModel, engineeringRunId, engineeringScope, issueEngineeringContext, scopedEngineeringTool, snapshotEngineeringChild, snapshotEngineeringRequest } from './AutonomousEngineeringPolicy';
 import { engineeringExecution, engineeringExecutionTask, hasEngineeringExecutionToken, bindEngineeringExecutionGateway } from './AutonomousEngineeringPolicy';
+import { localPlanDeadlineMs } from '../../core/orchestrator/planner-run-boundary';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -442,7 +443,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const scope = engineeringScope(effectiveContext);
         if (!scope) return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: 'engineering_scope_invalid' }, logs: [] };
         (effectiveContext as any).engineeringPipeline = false;
-        effectiveContext.plannerTimeoutMs = Math.max(1, Math.min(120_000, scope.expires - Date.now()));
+        // The scope's model is local by construction: its plan is budgeted from its
+        // size and this machine's measured speed, still inside the scope's lifetime.
+        effectiveContext.plannerTimeoutMs = Math.max(1, Math.min(localPlanDeadlineMs(scope.request), scope.expires - Date.now()));
         effectiveContext.plannerMaxCompletionTokens = Number.isSafeInteger(context?.plannerMaxCompletionTokens)
             ? Math.max(1, Math.min(12000, context!.plannerMaxCompletionTokens!)) : 12000;
     }
