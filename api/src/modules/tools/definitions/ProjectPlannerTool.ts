@@ -39,13 +39,33 @@ const LOCAL_COMPACT_EVIDENCE_MAX_CHARS = 3000;
 const LOCAL_PLAN_MAX_COMPLETION_TOKENS = 3000;
 
 /**
- * Which planning brief a call gets: the compact one when the model that will
- * SERVE it is local (a named local model, or Auto on a server pinned to local),
- * the full one otherwise. Decided by the served model, not the UI label.
+ * Whether the model that will SERVE a plan is local (a named local model, or
+ * Auto on a server pinned to local). Decided by the served model, not the UI
+ * label. It sizes the plan's deadline from the measured machine; it does NOT
+ * choose a shorter brief (see plannerBrief).
  */
 export function plannerPromptProfile(context?: { modelConfig?: any }): 'local-compact' | 'full' {
     const served = servedModelConfig(context || {})?.modelConfig;
     return String(served?.provider || '').trim().toLowerCase() === 'local' ? 'local-compact' : 'full';
+}
+
+/**
+ * Which brief a plan gets: the FULL one whenever it fits the window a local
+ * model can be given; the compact one only when it does not.
+ *
+ * Owner, 2026-10-23: the laptop is for development; Joe runs on a GPU server
+ * for thousands of users, and nothing is to be shortened to suit the laptop.
+ * The compact brief had been chosen for every local plan because a CPU read the
+ * full one slowly — a laptop decision that would have followed Joe onto the
+ * server. Speed is the deadline's business (sized from measured throughput);
+ * the brief changes only for capacity: a prompt that cannot fit the window.
+ */
+export function plannerBrief(fullPrompt: string, servedLocally: boolean): 'full' | 'compact' {
+    if (!servedLocally) return 'full';
+    const { estimatePromptTokens } = require('../../../core/llm/local-throughput');
+    const { MANAGED_MAX_CONTEXT_TOKENS } = require('../../../core/llm/providers/managed-ollama-chat');
+    const { LOCAL_PLAN_OUTPUT_TOKENS } = require('../../../core/orchestrator/planner-run-boundary');
+    return estimatePromptTokens(fullPrompt) + LOCAL_PLAN_OUTPUT_TOKENS <= MANAGED_MAX_CONTEXT_TOKENS ? 'full' : 'compact';
 }
 
 export class ProjectPlannerTool implements ToolDefinition {
@@ -186,8 +206,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 : [];
             const scopedInitial = !repairMode && !scopeRepairMode && !!engineeringScope(context);
             const isolatedProfile = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
-            const compactBrief = !isolatedProfile && !scopedInitial && (localPlan || plannerPromptProfile(context) === 'local-compact');
-            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : compactBrief ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : this.createPlanningPrompt(
+            const fullPrompt = isolatedProfile || scopedInitial ? '' : this.createPlanningPrompt(
                 projectDescription,
                 analysis,
                 this.planningEvidence(evidence),
@@ -195,6 +214,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                 scopeRepairMode,
                 scopeRepairTargets,
             );
+            const compactBrief = !isolatedProfile && !scopedInitial
+                && plannerBrief(fullPrompt, localPlan || plannerPromptProfile(context) === 'local-compact') === 'compact';
+            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : compactBrief ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : fullPrompt;
             // A self-contained, greenfield browser request can be planned from
             // its explicit contract alone. Do that before contacting an
             // unavailable provider: it keeps a local-only build from waiting

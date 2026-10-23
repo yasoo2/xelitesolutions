@@ -86,6 +86,11 @@ export function localPlannerCeilingMs(): number {
 
 /** Estimated tokens of the compact local brief (fixed text + evidence cap) and of a compact plan. */
 export const LOCAL_COMPACT_BRIEF_TOKENS = Math.ceil((4500 + 3000) / 3);
+/**
+ * Estimated tokens of the FULL planning brief a local plan now gets (measured
+ * 2026-10-23: 15.6k bytes of fixed text) plus the evidence a plan may carry.
+ */
+export const LOCAL_PLAN_BRIEF_TOKENS = Math.ceil((15_600 + 3000) / 3);
 export const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
 
 /**
@@ -96,7 +101,7 @@ export const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
 export function localPlanDeadlineMs(requestText: string): number {
   const { estimatePromptTokens, localDeadlineMs } = require('../llm/local-throughput');
   return Math.min(localPlannerCeilingMs(), Math.max(180_000,
-    localDeadlineMs(estimatePromptTokens(String(requestText || '')) + LOCAL_COMPACT_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)));
+    localDeadlineMs(estimatePromptTokens(String(requestText || '')) + LOCAL_PLAN_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)));
 }
 
 

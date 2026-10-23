@@ -1,4 +1,4 @@
-import { ProjectPlannerTool, plannerPromptProfile } from '../modules/tools/definitions/ProjectPlannerTool';
+import { ProjectPlannerTool, plannerBrief, plannerPromptProfile } from '../modules/tools/definitions/ProjectPlannerTool';
 import { PLANNER_TOOL_CATALOGUE, compactPlannerToolPrompt } from '../core/orchestrator/plan-tools';
 
 /**
@@ -63,5 +63,24 @@ describe('a local planner gets a brief it can read', () => {
         process.env.LOCAL_LLM_MODEL = 'qwen3.5:9b-joe-q4_K_M';
         expect(plannerPromptProfile({ modelConfig: { provider: 'auto' } })).toBe('local-compact');
         expect(plannerPromptProfile(undefined)).toBe('local-compact');
+    });
+});
+
+/**
+ * Owner, 2026-10-23: the laptop is for development; Joe runs on a GPU server.
+ * Nothing is shortened to suit the laptop: a local plan gets the FULL brief
+ * whenever it fits the window; the compact brief is for capacity only.
+ */
+describe('a local plan gets the full brief whenever it fits', () => {
+    const tool = new ProjectPlannerTool() as any;
+    it('the full brief is used for a local model when it fits the window', () => {
+        const full = tool.createPlanningPrompt(request, undefined, { mode: 'greenfield', projects: [], facts: [] });
+        expect(plannerBrief(full, true)).toBe('full');
+        expect(plannerBrief(full, false)).toBe('full');
+    });
+    it('the compact brief only when the full one cannot fit', () => {
+        const huge = 'x'.repeat(3 * 16384);
+        expect(plannerBrief(huge, true)).toBe('compact');
+        expect(plannerBrief(huge, false)).toBe('full');
     });
 });
