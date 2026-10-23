@@ -502,7 +502,10 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
             } finally { run.close(); }
         }, { promptEstimatedTokens: mapped.promptEstimatedTokens, requestedOutputTokens: outputTokens,
             requestedContextTokens: maxContextTokens, fitOutputToContext: true, signal: outer.signal,
-            queueTimeoutMs: Math.min(options.timeoutMs, 300_000) });
+            // The caller's deadline already covers queue wait (RESOURCE_TIMEOUT below);
+            // a second, fixed 300 s queue cap failed every call queued behind one CPU
+            // plan (eval round 6: RESOURCE_QUEUE_TIMEOUT at 300 013 ms, deadline 30 min).
+            queueTimeoutMs: options.timeoutMs });
         checkDeadline();
         // Every successful receipt teaches the deadlines what this machine really does.
         noteLocalThroughput(result.metrics);

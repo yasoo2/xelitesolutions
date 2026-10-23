@@ -75,13 +75,15 @@ describe('bounded native Ollama transport', () => {
         expect(test.fetch).not.toHaveBeenCalled();
     });
 
-    it('lets a 300-second caller deadline cover a legitimate cold request ahead in the queue', async () => {
+    it('lets the caller deadline cover a legitimate request ahead in the queue', async () => {
         const test = harness();
         await managedOllamaChat({ ...base, timeoutMs: 300_000 }, test.dependencies);
         expect(test.gate.mock.calls[0][1].queueTimeoutMs).toBe(300_000);
+        // Eval round 6 (2026-10-23): one CPU plan runs ~16 min; a call queued behind
+        // it with a 30-minute deadline must not die at a fixed 300 s queue cap.
         const larger = harness();
-        await managedOllamaChat({ ...base, timeoutMs: 600_000 }, larger.dependencies);
-        expect(larger.gate.mock.calls[0][1].queueTimeoutMs).toBe(300_000);
+        await managedOllamaChat({ ...base, timeoutMs: 30 * 60_000 }, larger.dependencies);
+        expect(larger.gate.mock.calls[0][1].queueTimeoutMs).toBe(30 * 60_000);
     });
 
     it('an explicit cap bounds the window and an admitted window above the cap is refused', async () => {

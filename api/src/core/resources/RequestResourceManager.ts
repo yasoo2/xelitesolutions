@@ -484,7 +484,8 @@ export class RequestResourceManager {
     }
 
     private timeout(value: number | undefined): number {
-        return boundedInteger(value, this.policy.queueTimeoutMs, 1, 300000);
+        // An explicit per-call wait may reach the 30-minute local inference ceiling.
+        return boundedInteger(value, this.policy.queueTimeoutMs, 1, 30 * 60_000);
     }
 
     private kind(value: string): string { return value.replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 48); }
