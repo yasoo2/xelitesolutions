@@ -30,6 +30,20 @@ describe('a failed local call says which layer failed', () => {
         expect(logged).not.toContain('SECRET');
     });
 
+    it('a raw transport rejection is named by its code, never its message', async () => {
+        const events: ResourceEvent[] = [];
+        const manager = new RequestResourceManager({ sampleMemory: () => ({ totalBytes: 16 * GiB, freeBytes: 8 * GiB, availableBytes: 8 * GiB, rssBytes: 1 }), sampleResidentInference: async () => 0 });
+        const rejection = Object.assign(new TypeError('fetch failed SECRET'), { cause: Object.assign(new Error('Headers Timeout Error SECRET'), { name: 'HeadersTimeoutError', code: 'UND_ERR_HEADERS_TIMEOUT' }) });
+        const fetch = jest.fn().mockRejectedValue(rejection);
+        await expect(manager.run({ requestId: 'r2', notify: (e: ResourceEvent) => events.push(e) } as any,
+            () => managedOllamaChat(base, { fetch, resourceManager: manager }))).rejects.toMatchObject({ code: 'OLLAMA_TRANSPORT_ERROR' });
+        expect(events.find(e => e.state === 'failed' && e.code === 'RESOURCE_OPERATION_FAILED')?.details).toEqual({ cause: 'OLLAMA_TRANSPORT_ERROR' });
+        const logged = warn.mock.calls.map(c => c.join(' ')).join('\n');
+        expect(logged).toContain('"causeCode":"UND_ERR_HEADERS_TIMEOUT"');
+        expect(logged).toContain('"name":"TypeError"');
+        expect(logged).not.toContain('SECRET');
+    });
+
     it('the server reason is reduced to a closed vocabulary', () => {
         expect(serverErrorClass('')).toBe('empty');
         expect(serverErrorClass('{"error":"model requires more system memory (9.1 GiB) than is available"}')).toBe('memory');

@@ -479,10 +479,24 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 if (Buffer.byteLength(body, 'utf8') > MAX_REQUEST_BYTES) fail('OLLAMA_INPUT_LIMIT', 'Local inference request exceeded the byte limit.');
                 const endpoint = new URL(options.baseURL);
                 endpoint.pathname = '/api/chat';
-                const response = await (dependencies.fetch ?? globalThis.fetch)(endpoint.toString(), {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
-                    redirect: 'error',
-                });
+                let response: Response;
+                try {
+                    response = await (dependencies.fetch ?? globalThis.fetch)(endpoint.toString(), {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
+                        redirect: 'error',
+                    });
+                } catch (error) {
+                    assertActive(run.signal);
+                    // Eval round 6 (2026-10-23): plans failed at 311-414 s with no code at
+                    // all — the raw fetch rejection. Log its class and the transport's
+                    // own code (e.g. UND_ERR_HEADERS_TIMEOUT), never its message.
+                    const cause = (error as any)?.cause;
+                    const safe = (value: unknown) => /^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(String(value ?? '')) ? String(value) : undefined;
+                    console.warn('[LocalCall] transport-error', JSON.stringify({ name: safe((error as any)?.name),
+                        code: safe((error as any)?.code), causeName: safe(cause?.name), causeCode: safe(cause?.code),
+                        afterMs: Date.now() - (deadlineAt - options.timeoutMs) }));
+                    fail('OLLAMA_TRANSPORT_ERROR', 'Local inference transport failed; no retry was started.');
+                }
                 if (run.signal.aborted) {
                     try { await response.body?.cancel(); } catch { /* Only this aborted request's response. */ }
                 }
