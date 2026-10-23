@@ -195,8 +195,11 @@ export interface ExecutionPlan {
  *  بحسابات» — because none of those is a noun wearing a widget.
  */
 function stripPageElements(text: string): string {
-    const ELEMENT_EN = '(?:form|button|link|field|input|section|panel|widget|cta|list|page|banner|badge|icon|label)';
-    const ELEMENT_AR = '(?:نموذج|استمارة|زر|رابط|حقل|قسم|قائمة|صفحة|لوحة|بطاقة|أيقونة)';
+    //  Content sections ABOUT people are page elements too: «آراء العملاء» on a
+    //  clinic landing page is testimonials, not a customer table — it made a
+    //  brochure a SYSTEM with a database phase (eval run500 P001, 2026-10-23).
+    const ELEMENT_EN = '(?:form|button|link|field|input|section|panel|widget|cta|list|page|banner|badge|icon|label|testimonials?|reviews?|stories|quotes|logos)';
+    const ELEMENT_AR = '(?:نموذج|استمارة|زر|رابط|حقل|قسم|قائمة|صفحة|لوحة|بطاقة|أيقونة|آراء|اراء|تقييمات|شهادات|قصص|تجارب|انطباعات)';
     return String(text || '')
         //  English is head-final: «booking form», «order button».
         .replace(new RegExp('\\b[\\w-]+\\s+' + ELEMENT_EN + '\\b', 'gi'), ' ')
@@ -388,7 +391,7 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         ];
         const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
         // A single document, said outright.
-        const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
+        const pageSignals = /(صفحة\s*(هبوط|واحدة)?|موقع\s*تعريفي|تعريفي|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
         // CSV/TSV input with columns is input data, not a persistent record schema
         const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
         
