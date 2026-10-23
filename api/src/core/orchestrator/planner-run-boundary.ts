@@ -66,10 +66,22 @@ function isNativePromise(value: unknown): value is Promise<unknown> {
 }
 
 /** Bounded trusted planner budget -> one total finite deadline. Never NaN/Infinite. */
-export function clampPlannerTotalMs(raw: unknown): number {
+export function clampPlannerTotalMs(raw: unknown, maxMs: number = MAX_TOTAL_MS): number {
   const num = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : (raw as number);
   if (typeof num !== 'number' || !Number.isFinite(num) || num <= 0) return DEFAULT_TOTAL_MS;
-  return Math.max(MIN_TOTAL_MS, Math.min(MAX_TOTAL_MS, Math.floor(num)));
+  const ceiling = Number.isFinite(maxMs) && maxMs > 0 ? Math.floor(maxMs) : MAX_TOTAL_MS;
+  return Math.max(MIN_TOTAL_MS, Math.min(ceiling, Math.floor(num)));
+}
+
+/**
+ * The ceiling for a plan the LOCAL model serves: the operator's local leash
+ * (LOCAL_BRAIN_LEASH_MAX), never less than the general five minutes, never
+ * past 30 minutes. A CPU model reads ~6 tokens/s (2026-10-23); five minutes
+ * is not a plan on that hardware, and a fixed cut made every build a stock app.
+ */
+export function localPlannerCeilingMs(): number {
+  const configured = Number.parseInt(String(process.env.LOCAL_BRAIN_LEASH_MAX || '').trim(), 10);
+  return Math.min(30 * 60_000, Math.max(MAX_TOTAL_MS, Number.isFinite(configured) && configured > 0 ? configured : 0));
 }
 
 export function resolvePlannerTotalMs(context?: any): number {
@@ -103,11 +115,11 @@ export class PlannerRunBoundary {
   private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private cleaned = false;
 
-  constructor(context?: any, totalMsOverride?: number) {
+  constructor(context?: any, totalMsOverride?: number, maxMs: number = MAX_TOTAL_MS) {
     this.signal = this.controller.signal;
     this.totalMs =
       typeof totalMsOverride === 'number' && Number.isFinite(totalMsOverride)
-        ? clampPlannerTotalMs(totalMsOverride)
+        ? clampPlannerTotalMs(totalMsOverride, maxMs)
         : resolvePlannerTotalMs(context);
     this.deadlineAt = Date.now() + this.totalMs;
     this.bridge(context);
@@ -560,8 +572,8 @@ export class PlannerRunBoundary {
   }
 }
 
-export function createPlannerRunBoundary(context?: any, totalMsOverride?: number): PlannerRunBoundary {
-  return new PlannerRunBoundary(context, totalMsOverride);
+export function createPlannerRunBoundary(context?: any, totalMsOverride?: number, maxMs?: number): PlannerRunBoundary {
+  return new PlannerRunBoundary(context, totalMsOverride, maxMs);
 }
 
 export function isPlannerBoundaryError(error: unknown): boolean {

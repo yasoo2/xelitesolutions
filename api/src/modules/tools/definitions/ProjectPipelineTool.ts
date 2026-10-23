@@ -1826,6 +1826,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const plannerTimeoutMs = Number(context?.plannerTimeoutMs) > 0
             ? Number(context.plannerTimeoutMs)
             : 180_000;
+        // 180 s is this pipeline's DEFAULT, not a caller's contract: a local plan
+        // may be budgeted from its measured size instead (ProjectPlannerTool).
+        const plannerTimeoutDefaulted = !(Number(context?.plannerTimeoutMs) > 0);
         //  When his sentence settled it, the planner is not called at all.
         let plannerResult: any = hisPlan || (deterministicExistingEdit
             ? {
@@ -1840,6 +1843,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 requireRunnableContract: true,
                 engineeringPipeline: true,
                 plannerTimeoutMs,
+                plannerTimeoutDefaulted,
             },
         ));
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {

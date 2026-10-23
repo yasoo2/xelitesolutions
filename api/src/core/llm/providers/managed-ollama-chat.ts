@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
+import { noteLocalThroughput } from '../local-throughput';
 
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
 // Estimates below are admission policy, not exact tokenizer or image accounting.
@@ -486,6 +487,8 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
             requestedContextTokens: maxContextTokens, fitOutputToContext: true, signal: outer.signal,
             queueTimeoutMs: Math.min(options.timeoutMs, 300_000) });
         checkDeadline();
+        // Every successful receipt teaches the deadlines what this machine really does.
+        noteLocalThroughput(result.metrics);
         return result;
     } catch (error) {
         if (timedOut) fail('RESOURCE_TIMEOUT', 'Local inference exceeded its request deadline, including queue wait.');

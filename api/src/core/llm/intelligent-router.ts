@@ -12,6 +12,7 @@ import { OpenRouterProvider } from './providers/openrouter';
 import { pickLocalModel, isLocalBrainReady, localWarmupMs } from './local-brain';
 import { classifyExplicitLocalSelection } from './explicit-local-selection';
 import { localVerificationBudgetMs, LOCAL_VERIFICATION_MAX_COMPLETION_TOKENS } from './local-verification-budget';
+import { estimatePromptTokens, localDeadlineMs } from './local-throughput';
 import { localReasoningOptions } from './providers/local';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
 import OpenAI from 'openai';
@@ -1165,8 +1166,6 @@ const OFFLINE_LOCAL_TIMEOUT_MS = (() => {
         ? Math.min(120_000, Math.max(10_000, configured))
         : 45_000;
 })();
-
-const OFFLINE_LOCAL_CEILING_MS = 300_000;
 
 /** A local call finished — remember how long this machine really takes. */
 export function noteLocalDuration(ms: number): void {
@@ -2597,6 +2596,13 @@ export async function routeToModel(
             if ((p.name === 'OpenAI (Direct)' || p.name === 'LLM7 (Keyless)') && requestedTimeout) {
                 timeoutValue = requestedTimeout;
             }
+            // What THIS call needs on this machine: its size over the measured
+            // local read/write speed (local-throughput.ts). Used where the local
+            // model is the only brain, so a fixed cut cannot end a healthy call.
+            const localSizeDeadline = p.name === 'Local (Auto)'
+                ? localDeadlineMs(estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' ')),
+                    Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : 1024)
+                : 0;
             if (p.name === 'Local (Auto)') {
                 // Local CPU inference — especially the first (cold) request that loads
                 // the model into RAM — can take far longer than a network call. Give it
@@ -2651,11 +2657,17 @@ export async function routeToModel(
                     // Auto to abandon Ollama after a healthy preflight and then
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
-                    const autoPlanningLeash = Math.min(
+                    // Offline there is no other brain to hand off to: the engineering
+                    // cap may not end a call this machine can finish (eval 2026-10-23).
+                    // Online the leash is exactly as before (offlineSizedLeash is 0).
+                    const offlineSizedLeash = offlineMode
+                        ? Math.min(LOCAL_LEASH_MAX_MS, Math.max(ENGINEERING_LOCAL_TIMEOUT_CAP_MS, localSizeDeadline))
+                        : 0;
+                    const autoPlanningLeash = Math.max(offlineSizedLeash, Math.min(
                         LOCAL_LEASH_MAX_MS,
                         ENGINEERING_LOCAL_TIMEOUT_CAP_MS,
                         Math.max(measuredLeash, autoPlanningFloor),
-                    );
+                    ));
                     // A caller-provided deadline is a real contract, not a hint.
                     // Keep Ollama first, but let the planner reach its deterministic
                     // fallback when the selected local brain cannot answer in time.
@@ -2672,8 +2684,9 @@ export async function routeToModel(
                     // So the cut is never shorter than this machine's measured leash.
                     const { localWarmupMs: offlineWarmupMs } = require('./local-brain');
                     const machineLeash = internalLeashMs(Number(offlineWarmupMs?.() || 0));
-                    // Still bounded: never past the five minutes a named local answer gets.
-                    timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(machineLeash, OFFLINE_LOCAL_CEILING_MS)));
+                    // Sized to this call (its prompt and output over the measured speed),
+                    // still bounded by the operator's local leash.
+                    timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(Math.max(machineLeash, localSizeDeadline), LOCAL_LEASH_MAX_MS)));
                 }
                 // A recovery call must not restore the long first-attempt leash
                 // after the same local brain has just timed out. Give it one

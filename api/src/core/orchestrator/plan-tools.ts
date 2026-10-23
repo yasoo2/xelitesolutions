@@ -1659,6 +1659,47 @@ export function findBinary(name: string): string | null {
     return null;
 }
 
+/**
+ * The same vocabulary for a model that must read every character on a CPU.
+ *
+ * Measured 2026-10-23: the full planning prompt is ~16.6k characters, ~93% of
+ * it fixed text, and the owner's laptop reads ~6 tokens/s — ~15 minutes before
+ * the first planned word, far past every planning deadline, so the local model
+ * never planned and builds fell back to stock apps. Same catalogue (it cannot
+ * drift from the real tool list), each purpose cut to its first clause, no
+ * few-shot block; the argument shapes a weak model gets wrong stay explicit.
+ */
+/**
+ * The business arguments a tool requires, read from its registered schema, so
+ * the compact brief can never disagree with the tool (eval 2026-10-23: a local
+ * plan gave scaffold_full_stack, npm_manager and api_project empty args).
+ * Runtime identity fields are injected by the executor and never planned.
+ */
+function requiredBusinessArgs(name: string): string[] {
+    try {
+        const { tools } = require('../../modules/tools/registry');
+        const tool = (tools as any[]).find(t => t?.name === name);
+        const required: unknown[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
+        return required.map(String).filter(k => !/^(?:sessionId|userId|workspaceId|context|__\w+)$/.test(k));
+    } catch { return []; }
+}
+
+export function compactPlannerToolPrompt(maxPurposeChars = 90): string {
+    const firstClause = (purpose: string) => {
+        const clause = purpose.split(/;\s|\.\s|\s—\s|\s\(/)[0].trim();
+        return clause.length <= maxPurposeChars ? clause : clause.slice(0, maxPurposeChars).replace(/\s+\S*$/, '') + '…';
+    };
+    return [
+        'TOOLS (exact names only; "manual" if a step needs no tool):',
+        ...PLANNER_TOOL_CATALOGUE.map(t => {
+            const required = requiredBusinessArgs(t.tool);
+            return `- ${t.tool}${required.length ? ` {${required.join(', ')}}` : ''}: ${firstClause(t.purpose)}`;
+        }),
+        'ai_write_file args: {"path":"<relative path>","description":"<what this one file must contain>"} — one task per file; the file is written later from this description.',
+        'NEVER put file contents in the plan (no code, no JSON files inside args): each file is an ai_write_file task, or one builder tool creates the whole project.',
+    ].join('\n');
+}
+
 /** The vocabulary block the planner prompt carries. */
 export function plannerToolPrompt(): string {
     const lines = PLANNER_TOOL_CATALOGUE.map(t => `- ${t.tool}: ${t.purpose}`).join('\n');

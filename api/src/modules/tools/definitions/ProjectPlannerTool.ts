@@ -1,4 +1,5 @@
-import { createPlannerRunBoundary, isPlannerBoundaryError } from '../../../core/orchestrator/planner-run-boundary';
+import { createPlannerRunBoundary, isPlannerBoundaryError, localPlannerCeilingMs, resolvePlannerTotalMs } from '../../../core/orchestrator/planner-run-boundary';
+import { estimatePromptTokens, localDeadlineMs } from '../../../core/llm/local-throughput';
 import { ToolDefinition, ToolPermission } from '../types';
 import { engineeringScope, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
 import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/quality/plan-verification';
@@ -6,7 +7,8 @@ import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/q
 import path from 'path';
 import { callLLM } from '../../../core/llm';
 import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intelligent-router';
-import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
+import { compactPlannerToolPrompt, plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
+import { servedModelConfig } from '../../../core/llm/served-local-selection';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
 import { requestTextForPrompt, transportRequestText, truncateAuxiliaryText, truncateEvidenceJsonText, DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
@@ -32,6 +34,25 @@ function extractRuntimeImportLedger(projectDescription: unknown): string[] {
  * the orchestrator / phase executor layer, where userId, workspaceId,
  * approvals, and quality gates can be enforced consistently.
  */
+const LOCAL_COMPACT_EVIDENCE_MAX_CHARS = 3000;
+// Fixed part of the compact brief plus its evidence cap, in estimated tokens,
+// and the size of a typical complete compact plan.
+const LOCAL_COMPACT_BRIEF_TOKENS = Math.ceil((4500 + LOCAL_COMPACT_EVIDENCE_MAX_CHARS) / 3);
+// Measured 2026-10-23: a plan that inlined file contents ran 2048 tokens at
+// ~1.2 tokens/s (30 min) and was cut mid-JSON. A compact plan is small.
+const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
+const LOCAL_PLAN_MAX_COMPLETION_TOKENS = 3000;
+
+/**
+ * Which planning brief a call gets: the compact one when the model that will
+ * SERVE it is local (a named local model, or Auto on a server pinned to local),
+ * the full one otherwise. Decided by the served model, not the UI label.
+ */
+export function plannerPromptProfile(context?: { modelConfig?: any }): 'local-compact' | 'full' {
+    const served = servedModelConfig(context || {})?.modelConfig;
+    return String(served?.provider || '').trim().toLowerCase() === 'local' ? 'local-compact' : 'full';
+}
+
 export class ProjectPlannerTool implements ToolDefinition {
     name = 'project_planner';
     version = '1.1.0';
@@ -117,7 +138,18 @@ export class ProjectPlannerTool implements ToolDefinition {
                     autoExecuted: false, executionPolicy: 'planner_only', executionStatus: 'not_started', verificationStatus: 'not_run',
                     blocker: { code: 'specification_planner_budget_exceeded', message: 'Complete required-source evidence exceeds the bounded planner intake; no truncated plan was requested.' } }, logs };
             }
-            const plannerBoundary = createPlannerRunBoundary(context);
+            // A plan the LOCAL model serves is budgeted from its size and this
+            // machine's measured speed, not from a cut sized for a cloud model.
+            // Only a DEFAULT deadline is replaced; a deadline the caller set is a
+            // contract (planner-run-boundary tests pin 20 ms and 1 s ones).
+            const callerSetDeadline = Number(context?.plannerTimeoutMs) > 0 && context?.plannerTimeoutDefaulted !== true;
+            const localPlanBudgetMs = !callerSetDeadline && plannerPromptProfile(context) === 'local-compact'
+                ? Math.min(localPlannerCeilingMs(), Math.max(resolvePlannerTotalMs(context),
+                    localDeadlineMs(estimatePromptTokens(String(projectDescription || '')) + LOCAL_COMPACT_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)))
+                : undefined;
+            const plannerBoundary = localPlanBudgetMs !== undefined
+                ? createPlannerRunBoundary(context, localPlanBudgetMs, localPlannerCeilingMs())
+                : createPlannerRunBoundary(context);
             boundary = plannerBoundary;
             plannerBoundary.throwIfCancelled();
             // The canonical LLM entry remains unchanged; every recovery shares
@@ -155,7 +187,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 : [];
             const scopedInitial = !repairMode && !scopeRepairMode && !!engineeringScope(context);
             const isolatedProfile = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
-            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : this.createPlanningPrompt(
+            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : plannerPromptProfile(context) === 'local-compact' ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : this.createPlanningPrompt(
                 projectDescription,
                 analysis,
                 this.planningEvidence(evidence),
@@ -195,8 +227,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // specification has already been read and compressed, but a
                 // multi-domain JSON plan can legitimately take longer than a
                 // normal conversational turn. Keep the cap finite and explicit.
-                providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                 reasoningEffort: context?.plannerReasoningEffort || 'low',
                     purpose: 'internal',
                 });
@@ -310,8 +342,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -435,8 +467,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -498,8 +530,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -700,8 +732,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                             { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
                         ], {
                             modelConfig: context?.modelConfig,
-                            providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                            maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                            providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                            maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                             reasoningEffort: context?.plannerReasoningEffort || 'low',
                             purpose: 'internal',
                         });
@@ -963,6 +995,40 @@ read_file args: {"path":"one observed relative path"}. file_edit args: {"path":"
 Each phase must end with exactly one shell_execute task running the declared Node tests as its LAST task. No earlier shell tasks. verificationTask repeats this same final task object {"task":"Run declared tests","tool":"shell_execute","args":{"command":"${profile.command}"}} and grants no extra action. Prefer one repair phase: read, literal edit, final test. If tests already fail, do not add a preliminary read-only phase whose test would stop before the repair. At most 3 phases and 12 tasks total. Cover every R-ID across requirementsCovered; never hide an unmet request in a generic scaffold or claim execution. No dependencies list entries.
 Return ONLY a compact JSON object: projectName, projectVibe, totalPhases, estimatedDuration, dependencies:[], phases. Each phase: phaseNumber,name,description,tasks,verificationTask,deliverables,estimatedTime,requirementsCovered. Each task: task,tool,args,priority,realisticMinutes. Deliverables are observed files actually repaired or read, not invented artifacts.`;
     }
+    /**
+     * The planning brief for a model that reads every character on a CPU.
+     *
+     * The full brief (createPlanningPrompt) carries ~15.4k characters of fixed
+     * text; on the owner's laptop that is ~15 minutes of prompt reading before
+     * the first planned word (measured 2026-10-23), so the local model never
+     * planned and builds fell back to stock apps. This brief keeps every
+     * contract the plan validator enforces — tool names, safe relative paths,
+     * evidence-bound writes, requirement IDs, the output fields — and drops the
+     * execution-time rules (retries, dependency repair) the planner cannot act on.
+     */
+    private createLocalCompactPlanningPrompt(
+        projectDescription: string,
+        evidence?: EngineeringEvidence,
+        repairMode = false,
+        scopeRepairMode = false,
+        scopeRepairTargets: string[] = [],
+    ) {
+        const evidenceText = evidence
+            ? `EVIDENCE (facts, not suggestions):\n${truncateEvidenceJsonText(JSON.stringify(evidence), LOCAL_COMPACT_EVIDENCE_MAX_CHARS)}\n`
+            : '';
+        return `Plan this software project for an automated builder. Return ONLY JSON.
+
+${compactPlannerToolPrompt()}
+
+RULES: Build exactly what PROJECT asks; every phase advances a stated requirement. If EVIDENCE shows a selected existing project, change it instead of scaffolding a new one. Every write must trace to an evidence fact or a requirement. File paths are safe workspace-relative paths (no drive, absolute, or ".." paths). Plan only software work; never claim anything already ran.
+
+PROJECT:
+${projectDescription}
+
+${evidenceText}${this.scopePlanningInstructions(projectDescription, repairMode, scopeRepairMode, scopeRepairTargets)}
+OUTPUT: {"projectName","projectVibe","totalPhases","estimatedDuration","dependencies":[],"phases":[{"phaseNumber","name","description","tasks":[{"task","tool","args","priority","realisticMinutes"}],"verificationTask","deliverables","estimatedTime","requirementsCovered":["R1"]}]}. At most 5 phases and 4 tasks per phase; one short sentence per text field; no file contents anywhere; the whole JSON under 2500 characters.`;
+    }
+
     private createPlanningPrompt(
         projectDescription: string,
         analysis?: any,

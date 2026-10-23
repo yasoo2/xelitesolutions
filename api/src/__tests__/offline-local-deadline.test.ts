@@ -8,8 +8,9 @@ describe('offline local provider deadline', () => {
         expect(ROUTER).toContain('OFFLINE_LOCAL_TIMEOUT_MS');
         expect(ROUTER).toMatch(/OFFLINE_LOCAL_TIMEOUT_MS[\s\S]{0,500}45_000/);
         expect(ROUTER).toContain("if (offlineMode && p.name === 'Local (Auto)')");
-        expect(ROUTER).toContain('timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(machineLeash, OFFLINE_LOCAL_CEILING_MS)));');
-        expect(ROUTER).toContain('const OFFLINE_LOCAL_CEILING_MS = 300_000;');
+        // Sized to the call over the measured speed, bounded by the operator leash (2026-10-23).
+        expect(ROUTER).toContain('timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(Math.max(machineLeash, localSizeDeadline), LOCAL_LEASH_MAX_MS)));');
+        expect(ROUTER).toContain("const localSizeDeadline = p.name === 'Local (Auto)'");
     });
 
     // Eval 2026-10-22: offline, the local model is the only brain; a fixed 45 s cut
