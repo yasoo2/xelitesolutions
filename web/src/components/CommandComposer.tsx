@@ -1325,6 +1325,30 @@ export default function CommandComposer({
     localStorage.setItem('ai_providers', JSON.stringify(providers));
   }, [providers]);
 
+  //  THE LOCAL MODEL IS THE ONE THE SERVER HAS, NOT A GUESS IN THE BUNDLE.
+  //  The Local provider defaulted to «qwen2.5:1.5b», which the owner's machine
+  //  does not have: its dot went red while /api/status reported the server's own
+  //  model installed and answering (owner, 2026-10-23). A model the user chose
+  //  and the server has installed is kept; anything else follows the server.
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`${API}/status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((s: any) => {
+        const ai = s?.ai;
+        if (cancelled || ai?.mode !== 'local' || !ai?.modelInstalled || typeof ai?.model !== 'string') return;
+        const installed: string[] = Array.isArray(ai.installedModels) ? ai.installedModels : [];
+        setProviders(prev => {
+          const local = prev.local;
+          if (!local || installed.includes(String(local.model || ''))) return prev;
+          return { ...prev, local: { ...local, model: ai.model, ...(ai.endpoint ? { baseUrl: ai.endpoint } : {}), isConnected: false, verified: false, lastError: undefined } };
+        });
+      })
+      .catch(() => { /* offline: keep what the user has */ });
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     localStorage.setItem('active_provider', activeProvider);
   }, [activeProvider]);

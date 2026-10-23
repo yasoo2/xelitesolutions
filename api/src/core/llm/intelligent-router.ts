@@ -3033,6 +3033,23 @@ Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_
  * borrowing another provider's success (which is what the old mesh-routed verify
  * did, making every free provider look connected even when it wasn't).
  */
+/** Whether this exact model is installed on a local Ollama endpoint; null when it cannot be read. */
+export async function localModelInstalled(baseUrl: string, model: string): Promise<boolean | null> {
+    try {
+        const origin = new URL(String(baseUrl || 'http://127.0.0.1:11434')).origin;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        try {
+            const r = await fetch(`${origin}/api/tags`, { signal: ctrl.signal });
+            if (!r.ok) return null;
+            const j: any = await r.json();
+            const norm = (s: string) => String(s || '').trim().toLowerCase().replace(/:latest$/, '');
+            const names: string[] = Array.isArray(j?.models) ? j.models.map((m: any) => norm(m?.name || m?.model || '')) : [];
+            return names.includes(norm(model));
+        } finally { clearTimeout(timer); }
+    } catch { return null; }
+}
+
 export async function verifyProviderDirect(
     provider: string,
     cfg: { apiKey?: string; baseUrl?: string; model?: string } = {}
@@ -3048,6 +3065,17 @@ export async function verifyProviderDirect(
         }
         if (!providerAllowedByCost(p, explicitLocal.model, explicitLocal.normalizedBaseUrl)) {
             return { ok: false, provider, detail: 'free_only: selected local model or endpoint is unavailable under the cost policy' };
+        }
+        // ⛔ A BUSY MODEL IS NOT A DEAD ONE. The probe below is a real generation,
+        // and local inference is one lane: while a 40-minute plan runs, the probe
+        // waited behind it, timed out, and painted a working model red (owner,
+        // 2026-10-23). While the lane is busy, the honest check is the server's
+        // own word: reachable, and this exact model installed.
+        const lanes = (() => { try { return require('../resources/RequestResourceManager').requestResourceManager.status(); } catch { return null; } })();
+        if (lanes && (Number(lanes.inference?.active) > 0 || Number(lanes.heavy?.active) > 0)) {
+            const installed = await localModelInstalled(String(explicitLocal.normalizedBaseUrl || ""), String(explicitLocal.model || ""));
+            if (installed === true) return { ok: true, provider, detail: 'local_ok_busy: the model is installed and serving another request' };
+            if (installed === false) return { ok: false, provider, detail: `local_model_not_installed: ${explicitLocal.model}` };
         }
         // A named local probe owns one bounded cold-start request. Key placeholders
         // cannot erase its model, and metadata or a different provider cannot verify it.
