@@ -76,12 +76,12 @@ export function clampPlannerTotalMs(raw: unknown, maxMs: number = MAX_TOTAL_MS):
 /**
  * The ceiling for a plan the LOCAL model serves: the operator's local leash
  * (LOCAL_BRAIN_LEASH_MAX), never less than the general five minutes, never
- * past 30 minutes. A CPU model reads ~6 tokens/s (2026-10-23); five minutes
+ * past the local inference hard maximum. A CPU model reads ~6 tokens/s (2026-10-23); five minutes
  * is not a plan on that hardware, and a fixed cut made every build a stock app.
  */
 export function localPlannerCeilingMs(): number {
   const configured = Number.parseInt(String(process.env.LOCAL_BRAIN_LEASH_MAX || '').trim(), 10);
-  return Math.min(30 * 60_000, Math.max(MAX_TOTAL_MS, Number.isFinite(configured) && configured > 0 ? configured : 0));
+  return Math.min(require('../llm/local-throughput').LOCAL_INFERENCE_HARD_MAX_MS, Math.max(MAX_TOTAL_MS, Number.isFinite(configured) && configured > 0 ? configured : 0));
 }
 
 /** Estimated tokens of the compact local brief (fixed text + evidence cap) and of a compact plan. */

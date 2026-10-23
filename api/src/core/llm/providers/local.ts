@@ -95,7 +95,7 @@ export class LocalProvider {
      */
     private timeoutMs(): number {
         const timeout = Number.parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
-        if (Number.isFinite(timeout) && timeout > 0) return Math.min(timeout, 30 * 60_000);
+        if (Number.isFinite(timeout) && timeout > 0) return Math.min(timeout, require('../local-throughput').LOCAL_INFERENCE_HARD_MAX_MS);
         return Math.max(180_000, require('../../orchestrator/planner-run-boundary').localPlannerCeilingMs());
     }
 

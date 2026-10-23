@@ -18,9 +18,9 @@ describe('the transport backstop is never shorter than the call', () => {
         process.env.LOCAL_LLM_TIMEOUT = String(30 * 60_000);
         expect(backstop()).toBe(30 * 60_000);
     });
-    it('it stays within the managed transport limit', () => {
-        process.env.LOCAL_LLM_TIMEOUT = String(5 * 60 * 60_000);
-        expect(backstop()).toBe(30 * 60_000);
+    it('it stays within the local inference hard maximum', () => {
+        process.env.LOCAL_LLM_TIMEOUT = String(99 * 60 * 60_000);
+        expect(backstop()).toBe(require('../core/llm/local-throughput').LOCAL_INFERENCE_HARD_MAX_MS);
     });
     it('unset, it is at least the operator\'s local ceiling', () => {
         process.env.LOCAL_BRAIN_LEASH_MAX = String(20 * 60_000);

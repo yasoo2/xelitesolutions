@@ -51,7 +51,7 @@ describe('a deadline is sized to the call and to the machine', () => {
         expect(localPlannerCeilingMs()).toBe(25 * 60_000);
         expect(clampPlannerTotalMs(20 * 60_000, localPlannerCeilingMs())).toBe(20 * 60_000);
         process.env.LOCAL_BRAIN_LEASH_MAX = String(99 * 60 * 60_000);
-        expect(localPlannerCeilingMs()).toBe(30 * 60_000);
+        expect(localPlannerCeilingMs()).toBe(require('../core/llm/local-throughput').LOCAL_INFERENCE_HARD_MAX_MS);
         delete process.env.LOCAL_BRAIN_LEASH_MAX;
         expect(localPlannerCeilingMs()).toBe(300_000);
     });

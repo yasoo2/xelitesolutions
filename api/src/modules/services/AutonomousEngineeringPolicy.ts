@@ -13,7 +13,7 @@ const TTL_MS = 300_000;
  * compact local plan takes ~17 min on the owner's CPU; the 5-minute scope cut
  * every local plan at 120 s). It stays in-process, owner-bound and revoked on
  * cancellation; only its lifetime follows the operator's local ceiling
- * (LOCAL_BRAIN_LEASH_MAX, between 5 and 30 minutes).
+ * (LOCAL_BRAIN_LEASH_MAX, from 5 minutes up to the local inference hard maximum).
  */
 const scopeTtlMs = (): number => Math.max(TTL_MS, localPlannerCeilingMs());
 const scopes = new WeakMap<object, Scope>();

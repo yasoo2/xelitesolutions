@@ -1,6 +1,7 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
 import { residentInferenceBytes } from './resident-inference';
+import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
@@ -484,8 +485,8 @@ export class RequestResourceManager {
     }
 
     private timeout(value: number | undefined): number {
-        // An explicit per-call wait may reach the 30-minute local inference ceiling.
-        return boundedInteger(value, this.policy.queueTimeoutMs, 1, 30 * 60_000);
+        // An explicit per-call wait may reach the local inference hard maximum.
+        return boundedInteger(value, this.policy.queueTimeoutMs, 1, LOCAL_INFERENCE_HARD_MAX_MS);
     }
 
     private kind(value: string): string { return value.replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 48); }

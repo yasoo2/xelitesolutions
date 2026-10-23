@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
-import { noteLocalThroughput } from '../local-throughput';
+import { LOCAL_INFERENCE_HARD_MAX_MS, noteLocalThroughput } from '../local-throughput';
 import { localInferenceFetch } from './loopback-fetch';
 
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
@@ -417,8 +417,8 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
     if (typeof options.model !== 'string' || options.model.length > 128
         || !/^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)?(?::[a-z0-9][a-z0-9._-]*)?$/i.test(options.model)
         || /(?:^|[/:._-])(?:cloud|auto)(?:$|[/:._-])/i.test(options.model)) fail('OLLAMA_MODEL', 'Managed inference requires an explicit local model name.');
-    if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 30 * 60 * 1000) {
-        fail('OLLAMA_TIMEOUT_INPUT', 'Local inference timeout must be between 1 ms and 30 minutes.');
+    if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > LOCAL_INFERENCE_HARD_MAX_MS) {
+        fail('OLLAMA_TIMEOUT_INPUT', 'Local inference timeout must be between 1 ms and the local inference hard maximum.');
     }
     const maxContextTokens = options.maxContextTokens ?? DEFAULT_CONTEXT;
     if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 16384 tokens.');
