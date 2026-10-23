@@ -142,7 +142,10 @@ describe('project planner structured recovery', () => {
         expect(result.output.fallback).not.toBe(true);
         const tasks = result.output.phases[0].tasks;
         expect(tasks.map((task: any) => task.tool)).toEqual(['read_file', 'file_edit']);
-        expect(result.output.phases[0].verificationTask.tool).toBe('read_file');
+        // Eval round 9 (2026-10-23): a structured read_file verification is refused
+        // by the real phase gate (unsupported verification tool contract — probed
+        // end to end), so the sanitizer no longer hands it on.
+        expect(result.output.phases[0].verificationTask).toBeUndefined();
     });
 
     it('propagates selected-project evidence into contract recovery', async () => {

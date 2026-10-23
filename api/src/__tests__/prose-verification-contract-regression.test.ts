@@ -89,13 +89,15 @@ describe('prose verificationTask normalization (regression for CRITICAL-REAL-JOE
 
         const result = sanitisePlanPhases(rawPlan.phases, '', { mode: 'greenfield' });
 
-        expect(result.phases[0].verificationTask).toBeDefined();
-        expect(result.phases[0].verificationTask.tool).toBe('read_file');
-        expect(result.phases[0].verificationTask.args.path).toBe('src/test.ts');
+        // Eval round 9 (2026-10-23): probed end to end, a structured read_file
+        // verification with no prose origin fails the real phase gate with
+        // «unsupported verification tool contract». It is removed, not preserved.
+        expect(result.phases[0].verificationTask).toBeUndefined();
         expect(result.phases[0].verificationNote).toBeUndefined();
+        expect(result.notes.join('\n')).toMatch(/أزلتُ تحقق «read_file»/);
     });
 
-    it('rejects invalid structured verificationTask and falls back to read_file of observed output', () => {
+    it('rejects invalid structured verificationTask rather than handing the gate one it refuses', () => {
         const rawPlan = {
             projectName: 'test',
             projectVibe: 'test',
@@ -119,9 +121,8 @@ describe('prose verificationTask normalization (regression for CRITICAL-REAL-JOE
 
         const result = sanitisePlanPhases(rawPlan.phases, '', { mode: 'greenfield' });
 
-        expect(result.phases[0].verificationTask).toBeDefined();
-        expect(result.phases[0].verificationTask.tool).toBe('read_file');
-        expect(result.phases[0].verificationTask.args.path).toBe('src/test.ts');
+        // Formerly rewritten into a structured read_file, which the real gate refuses.
+        expect(result.phases[0].verificationTask).toBeUndefined();
         expect(result.phases[0].verificationNote).toBeUndefined();
     });
 

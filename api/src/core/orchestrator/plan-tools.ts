@@ -110,7 +110,7 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'doc_generator', purpose: 'write project documentation' },
     { tool: 'browser_run', purpose: 'open the built app in a real browser and check it' },
     { tool: 'browser_ui_audit', purpose: 'audit the built UI for visual and accessibility defects' },
-    { tool: 'project_detect', purpose: 'verify what was actually created on disk' },
+    { tool: 'project_detect', purpose: 'list which projects exist on disk (an inspection, not a checker: never a verificationTask)' },
     { tool: 'project_run', purpose: 'start the built project and get a live URL' },
     { tool: 'deploy_project', purpose: 'build, start, or package the project locally for verification; use action build_static, start_server, or package by default. Never use expose_port or publish externally unless the user explicitly requests and approves an external deployment.' },
     { tool: 'mobile_builder', purpose: 'build the mobile application' },
@@ -1014,7 +1014,35 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             verification = undefined;
         }
 
-        return { ...phase, tasks: kept, verificationTask: verification, verificationNote: typeof v === 'string' && v.trim() ? v : undefined };
+        /**
+         * ⛔ THE SANITIZER AND THE GATE MUST AGREE — END TO END, NOT IN PRINCIPLE.
+         *
+         * Eval round 9 (2026-10-23, P001): the planner named project_detect as a
+         * phase verification; the catalogue had advertised it as one ("verify what
+         * was actually created on disk") and this sanitizer substitutes it itself.
+         * The phase gate (isVerificationTool) never accepts it — it succeeds on any
+         * existing directory and proves nothing — so the phase failed with
+         * verification_unavailable after 45 minutes of correct work. The same held
+         * for every read_file observation written here for an OBJECT verification
+         * (the run-4b rewrite's tests stopped at the sanitizer): the gate admits a
+         * read only for a prose-origin verification, and even then an observation
+         * leaves the phase partial by design (Gap A/B).
+         *
+         * So an object verification leaves here only as a checker the gate
+         * accepts, or as the named browser verifier (kept for an honest
+         * verification_unavailable). Anything else is removed and said so — the
+         * same standing as a phase planned without a verification: its own task
+         * receipts and the final quality gate still decide delivery.
+         */
+        // Prose-origin verifications keep their observation contract (Gap A/B);
+        // an OBJECT verification must be a checker the gate accepts.
+        const observationNote: string | undefined = typeof v === 'string' && v.trim() ? v : undefined;
+        if (verification && !observationNote && String(verification.tool || '') !== 'browser_run'
+            && !isVerificationTool(String(verification.tool || ''), verification.args || {}, false, false)) {
+            notes.push(`[plan] أزلتُ تحقق «${String(verification.tool)}» من المرحلة «${String(phase?.name || '')}»: ليس فاحصاً تقبله بوابة التحقق، فكان سيُفشل مرحلة صحيحة دون أن يثبت شيئاً؛ إيصالات مهامها والتحقق النهائي للمشروع هي التي تحكم.`);
+            verification = undefined;
+        }
+        return { ...phase, tasks: kept, verificationTask: verification, verificationNote: observationNote };
     });
 
     const sanitisedTasks = out.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);

@@ -86,8 +86,9 @@ describe('his phase 1, run through the sanitiser', () => {
 
     it('the verification step reads the concrete evidence artefact, not an invented source', () => {
         const { phases } = sanitisePlanPhases([phase1], 'E-commerce Platform');
-        expect(phases[0].verificationTask.tool).toBe('read_file');
-        expect(phases[0].verificationTask.args.path).toMatch(/docs\/01-project_setup\.md$/);
+        // Eval round 9: an object verification the phase gate refuses (a read is
+        // admitted only for prose-origin observations) is removed, not rewritten.
+        expect(phases[0].verificationTask).toBeUndefined();
     });
 
     it('and the phase that used to score 0/2 now has real work in it', () => {
@@ -403,12 +404,11 @@ describe('model-written tool arguments are checked before execution', () => {
             verificationTask: { task: 'Generate architecture document', tool: 'doc_generator', args: { filePath: 'architecture_plan.md' } },
         };
         const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
-        expect(phases[0].verificationTask).toMatchObject({
-            tool: 'read_file',
-            args: { path: 'docs/architecture-evidence.md' },
-        });
-        expect(phases[0].verificationTask.args.filePath).toBeUndefined();
+        // Eval round 9: an object verification the phase gate refuses (a read is
+        // admitted only for prose-origin observations) is removed, not rewritten.
+        expect(phases[0].verificationTask).toBeUndefined();
         expect(notes.join('\n')).toMatch(/تحققاً مولّداً/);
+        expect(notes.join('\n')).toMatch(/أزلتُ تحقق «read_file»/);
     });
 
     it('replaces a read of an invented verification file with a read of the phase output', () => {
@@ -424,10 +424,8 @@ describe('model-written tool arguments are checked before execution', () => {
             verificationTask: { task: 'Read the architecture', tool: 'read_file', args: { path: 'architecture.md' } },
         };
         const { phases, notes } = sanitisePlanPhases([phase], 'evidence-workspace');
-        expect(phases[0].verificationTask).toMatchObject({
-            tool: 'read_file',
-            args: { path: 'docs/architecture-evidence.md' },
-        });
+        // Eval round 9: removed rather than rewritten into a read the gate refuses.
+        expect(phases[0].verificationTask).toBeUndefined();
         expect(notes.join('\n')).toMatch(/ملفاً غير مثبت/);
     });
 
@@ -441,10 +439,8 @@ describe('model-written tool arguments are checked before execution', () => {
             verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
         };
         const { phases, notes } = sanitisePlanPhases([phase], 'NEXUS');
-        expect(phases[0].verificationTask).toMatchObject({
-            tool: 'read_file',
-            args: { path: 'NEXUS/backend/src/index.js' },
-        });
+        // Eval round 9: removed rather than rewritten into a read the gate refuses.
+        expect(phases[0].verificationTask).toBeUndefined();
         expect(notes.join('\\n')).toMatch(/تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل/);
     });
 
@@ -905,7 +901,10 @@ describe('manifest-backed local verification commands', () => {
         });
         expect(phases[0].tasks.some((task: any) => task.tool === 'shell_execute')).toBe(false);
         expect(notes.join('\n')).toMatch(/ليس فحصاً معلناً/);
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        // Neither the observed doc read nor project_detect is a checker the phase
+        // gate accepts for an object verification (eval round 9): removed, said so.
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(notes.join('\n')).toMatch(/أزلتُ تحقق «(?:read_file|project_detect)»/);
     });
 
     it('keeps an exact check declared by inspected package metadata', () => {
@@ -987,7 +986,8 @@ describe('runnable evidence is earned, not inferred from a generated manifest', 
             verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
         };
         const { phases, notes } = sanitisePlanPhases([phase], 'NEXUS');
-        expect(phases[0].verificationTask.tool).toBe('read_file');
+        // Eval round 9: removed rather than rewritten into a read the gate refuses.
+        expect(phases[0].verificationTask).toBeUndefined();
         expect(notes.join('\n')).toMatch(/تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل/);
     });
 
@@ -1009,8 +1009,13 @@ describe('runnable evidence is earned, not inferred from a generated manifest', 
             ],
             verificationTask: { task: 'Start the live project', tool: 'project_run', args: {} },
         };
-        const { phases } = sanitisePlanPhases([phase], 'NEXUS');
-        expect(phases[0].verificationTask.tool).toBe('project_run');
+        const { phases, notes } = sanitisePlanPhases([phase], 'NEXUS');
+        // Not rewritten for running too early (the launch evidence is explicit), but
+        // project_run is not a checker the phase gate accepts (eval round 9: the gate
+        // failed such phases with verification_unavailable), so it is removed and
+        // said so; the phase's own receipts and the final quality gate decide.
+        expect(phases[0].verificationTask).toBeUndefined();
+        expect(notes.join('\n')).toMatch(/أزلتُ تحقق «project_run»/);
     });
 });
 
