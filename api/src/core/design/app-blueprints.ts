@@ -3329,22 +3329,22 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
  */
 export interface ColumnEdit { add: string[]; remove: string[]; rename?: { from: string; to: string } }
 
-const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
-const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
+const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
 /**
  *  The connector is the closed class, not the verb. «إلى / الى /
  *  ليصبح / ليصير / to» is the same set ProjectEditTool already uses
  *  to rename an app, and a second copy would drift the first time one
  *  of them learned a word the other did not.
  */
-const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
+const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
 //  ARABIC PUTS THE NAME AFTER THE CONTAINER, ENGLISH BEFORE IT.
 //
 //  «عمود المبلغ» and «the amount column» are the same phrase in two
 //  orders, and a pattern that reads one reads half his messages. The
 //  same fact is already written down beside subjectAfterContainer; it
 //  is a fact about the two languages, not about renaming.
-const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
+const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:(?:an|a|the)\s+)?([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
 
 /** The one-column changes a follow-up message asks for, in his own words. */
 /**
@@ -3737,7 +3737,7 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         }
         return keys;
     }
-    const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
+    const stop = clause.split(/\s+(?:plus|with|and\s+(?:(?:an|a|the)\s+)?(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
     for (const field of fields) {
         const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
