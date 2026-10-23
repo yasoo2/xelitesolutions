@@ -120,9 +120,24 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
   try { knownMode = localStorage.getItem(SINGLE_USER_KEY); } catch { }
   let storedToken: string | null = null;
   try { storedToken = localStorage.getItem('token'); } catch { }
-  const mustAsk = !storedToken && knownMode === null && !asked;
+  //  And a single-user install signs the developer in with a REAL token from the
+  //  server (/auth/dev) before the page mounts: the unsigned stand-in minted
+  //  below is refused by the API («Invalid token»), which sent the page back to
+  //  /login on its first request.
+  const mustAsk = !storedToken && (knownMode === null || knownMode === '1') && !asked;
   React.useEffect(() => {
-    if (mustAsk) void singleUserAnswer.finally(() => setAsked(true));
+    if (!mustAsk) return;
+    void singleUserAnswer
+      .then(async () => {
+        let single = false;
+        try { single = localStorage.getItem(SINGLE_USER_KEY) === '1'; } catch { }
+        if (!single) return;
+        const r = await fetch(API_URL + '/auth/dev', { method: 'POST' });
+        const j = r.ok ? await r.json().catch(() => ({})) : {};
+        if (typeof j?.token === 'string' && j.token) localStorage.setItem('token', j.token);
+      })
+      .catch(() => { /* fall through to the existing paths below */ })
+      .finally(() => setAsked(true));
   }, [mustAsk]);
   if (mustAsk) return <div className="route-loading">Loading…</div>;
 
