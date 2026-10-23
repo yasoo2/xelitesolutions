@@ -88,10 +88,9 @@ window.addEventListener(
  *  bundle; none of them asks the server. He runs a PRODUCTION web build
  *  against a DEVELOPMENT server, so the side that could not know won.
  *
- *  The answer is cached because the guard below is synchronous and a redirect
- *  cannot wait for a fetch. First paint after a fresh install may still show
- *  the login page once; every one after it knows. That is a stated limit, not
- *  a silent one.
+ *  The answer is cached for every later visit; on a fresh browser with no
+ *  token and no cached answer, the guard waits for the server once instead of
+ *  showing the login page.
  */
 const SINGLE_USER_KEY = 'joe:singleUser';
 async function askServerIfSingleUser(): Promise<void> {
@@ -109,9 +108,24 @@ async function askServerIfSingleUser(): Promise<void> {
     localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
   } catch { /* offline: leave whatever was last known, never invent one */ }
 }
-void askServerIfSingleUser();
+const singleUserAnswer = askServerIfSingleUser();
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
+  //  A FRESH BROWSER ASKS BEFORE IT DECIDES. The guard used to read the cached
+  //  answer synchronously, so the first visit to a single-user install always
+  //  landed on /login (owner, 2026-10-23: «remove the login screen during
+  //  development»). With no token and no answer yet, wait for the server once.
+  const [asked, setAsked] = React.useState(false);
+  let knownMode: string | null = null;
+  try { knownMode = localStorage.getItem(SINGLE_USER_KEY); } catch { }
+  let storedToken: string | null = null;
+  try { storedToken = localStorage.getItem('token'); } catch { }
+  const mustAsk = !storedToken && knownMode === null && !asked;
+  React.useEffect(() => {
+    if (mustAsk) void singleUserAnswer.finally(() => setAsked(true));
+  }, [mustAsk]);
+  if (mustAsk) return <div className="route-loading">Loading…</div>;
+
   const getDevBypassToken = () => {
     //  The server's own word first, then the three client-side guesses that
     //  were here before — kept because a dev running `vite` has no server to
