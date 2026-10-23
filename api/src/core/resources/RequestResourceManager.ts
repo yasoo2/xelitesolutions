@@ -47,6 +47,8 @@ export interface ResourceEvent {
     queueWaitMs?: number;
     elapsedMs?: number;
     code?: string;
+    /** The numbers behind a refusal (prompt/context tokens, memory), so a failure explains itself. */
+    details?: Record<string, number | string>;
 }
 
 export interface ResourceRequestScope {
@@ -499,6 +501,7 @@ export class RequestResourceManager {
         const cancelled = (error instanceof ResourceAdmissionError && error.code === 'RESOURCE_CANCELLED') || store.signal.aborted;
         this.emit(store, { lane, state: cancelled ? 'cancelled' : 'failed', kind,
             code: error instanceof ResourceAdmissionError ? error.code : 'RESOURCE_OPERATION_FAILED',
+            ...(error instanceof ResourceAdmissionError && Object.keys(error.details).length ? { details: { ...error.details } } : {}),
             elapsedMs: Math.max(0, this.now() - started) });
     }
 }
