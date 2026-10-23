@@ -44,3 +44,12 @@ describe('a local artifact is not cut at sixty seconds', () => {
         expect(src).toContain('? localDeadline + 30_000');
     });
 });
+
+describe('a local frontend component gets the room of any source file', () => {
+    // Eval round 12 (P001): an App component ended LOCAL_COMPLETION_LIMIT at 1200
+    // tokens after 17.7 min; qwen3.5 thinks before it writes and both count.
+    it('the frontend cap applies to other providers only', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AIGeneratorTool.ts'), 'utf8');
+        expect(src).toMatch(/artifact\.kind === 'frontend_asset'\s*&& !require\('\.\.\/\.\.\/\.\.\/core\/llm\/served-local-selection'\)\.servedByLocalModel\(context\)\s*\? \(complexFrontendArtifact \? 2400 : 1200\)\s*: 6000/);
+    });
+});

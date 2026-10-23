@@ -800,7 +800,14 @@ Return the complete file content now.`;
                     // before the validator can even inspect its JSX. Keep the
                     // contract bounded, but give one component enough room to
                     // finish its state, handlers, and accessible markup.
+                    // A LOCAL model gets the room of any source file. Eval round 12
+                    // (2026-10-23, P001): «Create main App component with navigation»
+                    // ran 17.7 min and ended LOCAL_COMPLETION_LIMIT at 1200 tokens —
+                    // qwen3.5 thinks before it writes and both count — then the
+                    // retry asked for the same 1200. The owner's rule: nothing is cut
+                    // to suit a machine; the deadline is sized for the room instead.
                     maxCompletionTokens: artifact.kind === 'frontend_asset'
+                        && !require('../../../core/llm/served-local-selection').servedByLocalModel(context)
                         ? (complexFrontendArtifact ? 2400 : 1200)
                         : 6000,
                 }
