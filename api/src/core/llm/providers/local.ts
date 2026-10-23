@@ -85,9 +85,18 @@ export class LocalProvider {
         );
     }
 
+    /**
+     * The transport's own backstop. The router arms the real, call-sized deadline
+     * through the signal; this must never be SHORTER than it. Eval round 6,
+     * 2026-10-23: a compact local plan armed for 30 min ended at exactly 300 s
+     * (aborted: false) — LOCAL_LLM_TIMEOUT=1800000 was clamped to 300 000 here.
+     * Now: the configured value up to 30 min (the managed transport's limit);
+     * unset, at least the operator's local ceiling.
+     */
     private timeoutMs(): number {
         const timeout = Number.parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
-        return Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 300_000) : 180_000;
+        if (Number.isFinite(timeout) && timeout > 0) return Math.min(timeout, 30 * 60_000);
+        return Math.max(180_000, require('../../orchestrator/planner-run-boundary').localPlannerCeilingMs());
     }
 
     private async chatCompleteCompatible(
