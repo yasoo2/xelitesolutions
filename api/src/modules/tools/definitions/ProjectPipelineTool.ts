@@ -22,6 +22,8 @@ import { engineeringExecution, issueEngineeringExecution } from '../../services/
 import { autonomousFileTextIsSafe } from '../../services/AutonomousFilePolicy';
 import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { namedTargetFile } from '../../../core/orchestrator/file-intent';
+import { servedByLocalModel } from '../../../core/llm/served-local-selection';
+import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
 
 const MAX_PIPELINE_LOGS = 192;
@@ -1725,17 +1727,45 @@ export class ProjectPipelineTool implements ToolDefinition {
         // CLI/CSV requests are file-level projects, not web apps. They should
         // use the deterministic scaffold path even without an explicit schema.
         const isCliOrCsv = isCliRequestFn(productRequest);
-        const hisOwnSchema = isGreenfield
+        const stockPhases = isGreenfield
             && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv)
             ? deterministicPhasesFor(productRequest)
             : null;
+        /**
+         * ⛔ A STOCK ENGINE ONLY WHEN IT COVERS WHAT HE ASKED (law 4).
+         *
+         * Eval run500, 2026-10-23: «an admin dashboard … with a summary page
+         * showing totals and a chart» took the stock records engine, and the
+         * gap surfaced only after the build as requested_features_not_proven.
+         * When the request names something the stock engine cannot build and a
+         * model can plan, plan from the request; with no healthy model the stock
+         * engine still builds and the delivery report names the gaps honestly.
+         */
+        const stockGaps: string[] = stockPhases && !isCliOrCsv && !deterministicWorkflow && context?.skipProviderPreflight !== true
+            ? (() => { try {
+                // When the stock path builds its own API, what a backend covers is covered.
+                const withBackend = stockPhases.phases.some((ph: any) => (ph.tasks || []).some((t: any) => t?.tool === 'api_project'));
+                return require('../../../core/design/app-blueprints').stockEngineGaps(productRequest, withBackend);
+            } catch { return []; } })()
+            : [];
+        const gapPlannerHealth = stockGaps.length
+            ? await verifyProviderDirect(String(context?.modelConfig?.provider || 'auto'), {
+                apiKey: context?.modelConfig?.apiKey, baseUrl: context?.modelConfig?.baseUrl, model: context?.modelConfig?.model,
+            })
+            : null;
+        if (stockGaps.length) {
+            appendBoundedPipelineLog(logs, `[pipeline] stock engine does not cover: ${stockGaps.slice(0, 6).join(' · ')} → ${gapPlannerHealth?.ok ? 'planning from the request' : 'model unavailable, stock engine with honest gaps'}`);
+        }
+        const hisOwnSchema = stockGaps.length && gapPlannerHealth?.ok ? null : stockPhases;
         // The provider is a prerequisite for model planning, not for an
         // evidence-backed plan the request has already made deterministic.
         // Otherwise a clear form request waits behind a weak Ollama even though
         // neither its schema nor its phase graph needs an LLM decision.
         const requiresModelPlanning = !hisOwnSchema && !deterministicExistingEdit;
         const modelConfig = context?.modelConfig || {};
-        const providerHealth = context?.skipProviderPreflight === true
+        const providerHealth = gapPlannerHealth && hisOwnSchema === null
+            ? gapPlannerHealth
+            : context?.skipProviderPreflight === true
             ? { ok: true, provider: String(modelConfig.provider || 'auto'), detail: 'skipped_by_test_harness' }
             : !requiresModelPlanning
                 ? { ok: true, provider: 'deterministic', detail: 'request_contract_complete' }
@@ -1823,11 +1853,13 @@ export class ProjectPipelineTool implements ToolDefinition {
         // deadline and mark the call as an engineering pipeline so the planner's
         // one recovery pass is available after a transient gateway failure. The
         // normal chat route keeps its shorter deadline.
+        // 180 s is this pipeline's DEFAULT for a cloud plan. A plan the LOCAL model
+        // serves gets a default sized to it and to this machine's measured speed
+        // (eval run500 P101, 2026-10-23: a compact local plan was cut at 180 s);
+        // the number then reaches every downstream planner call as-is.
         const plannerTimeoutMs = Number(context?.plannerTimeoutMs) > 0
             ? Number(context.plannerTimeoutMs)
-            : 180_000;
-        // 180 s is this pipeline's DEFAULT, not a caller's contract: a local plan
-        // may be budgeted from its measured size instead (ProjectPlannerTool).
+            : servedByLocalModel(context) ? localPlanDeadlineMs(productRequest) : 180_000;
         const plannerTimeoutDefaulted = !(Number(context?.plannerTimeoutMs) > 0);
         //  When his sentence settled it, the planner is not called at all.
         let plannerResult: any = hisPlan || (deterministicExistingEdit

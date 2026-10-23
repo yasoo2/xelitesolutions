@@ -3625,6 +3625,25 @@ export function requestedFeatures(requestRaw: string): string[] {
                 push(part);
             }
         }
+        /**
+         *  …AND THE SAME LIST WRITTEN IN ARABIC.
+         *
+         *  Measured over the 500-prompt eval (2026-10-23): this reader found
+         *  features in 25 of 250 English requests and in 0 of 250 Arabic ones.
+         *  «فيه قسم رئيسي، والخدمات، وآراء العملاء» is the same one-line list as
+         *  «with a hero, services and testimonials»; unread, an Arabic request
+         *  could never be told what was not built. Items split on «،» and on a
+         *  conjunction before a definite noun («والخدمات»); a word that merely
+         *  starts with و («وصف», «وقت») is not split.
+         */
+        if (!m) {
+            const ar = request.match(/(?:^|\s)(?:فيه|فيها|مع|يحتوي\s+على|تحتوي\s+على|يشمل|تشمل)\s+([^.\n]{10,300})/u);
+            if (ar) {
+                for (const part of ar[1].split(/[،,]|\s+و(?=ال)/u)) {
+                    push(part.trim().replace(/^و(?=\S{3,})/u, ''));
+                }
+            }
+        }
     }
     return out.slice(0, 30);
 }
@@ -3647,14 +3666,14 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     // The shop covers the catalogue, the cart and the order — and deliberately
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
     // «Shopify-like» request still gets an honest list of what was not built.
-    shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر/i,
+    shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|remov|total|quantit|valid|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر|حذف|إزالة|ازالة|مجموع|إجمالي|اجمالي|كمية|تحقق|التحقق/i,
     // Custom engines are authored from the request; no stock capability is
     // assumed here, so named requirements remain visible to the quality gate.
     custom: /(?!)/i,
 };
 
 /** Cross-cutting things the BACKEND covers when one was built alongside. */
-const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
+const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|endpoint|نقاط\s*وصول|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
 
 /**
  * A compound weather capability is covered only by independent source evidence.
@@ -3936,6 +3955,32 @@ function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[
  * the React delivery path passes the generated source so compound features are
  * judged by implementation evidence rather than by a stock engine keyword.
  */
+/**
+ * What a request asks for that the stock engine it maps to cannot build —
+ * computed BEFORE the build, from the request alone.
+ *
+ * Eval run500, 2026-10-23: an admin dashboard «with a summary page showing
+ * totals and a chart» was built from the stock records engine and then
+ * blocked as requested_features_not_proven, the gap reported only AFTER the
+ * build. Law 4: the request is the reference, so a stock engine is used only
+ * when it covers what was asked. A «gap» that names a field the blueprint
+ * already has (its name or label) is not a gap: «their name», «phone» on a
+ * booking app were false alarms of the feature reader.
+ */
+export function stockEngineGaps(request: string, hasBackend = false): string[] {
+    const kind = detectAppKind(request);
+    if (!kind || kind === 'custom') return [];
+    const isAr = /[؀-ۿ]/.test(request);
+    const bp = blueprintFor(kind, request, isAr);
+    const fieldWords = (bp.fields || []).flatMap(field => [field.key, field.label])
+        .map(word => String(word || '').toLowerCase().trim()).filter(word => word.length > 1);
+    const namesAField = (gap: string) => {
+        const g = gap.toLowerCase();
+        return fieldWords.some(word => g.includes(word) || word.includes(g.replace(/^(?:their|his|her|the|a|an)\s+/, '').trim()));
+    };
+    return uncoveredFeatures(request, bp.engine, hasBackend, '').filter(gap => !namesAField(gap));
+}
+
 export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean, evidence = ''): string[] {
     const extracted = requestedFeatures(request);
     // If extraction found no explicit list, inspect the full prose request via
