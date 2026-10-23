@@ -79,3 +79,18 @@ describe('the pipeline default for a local plan is sized, and reaches every plan
         expect(src).toContain('servedByLocalModel(context) ? localPlanDeadlineMs(productRequest) : 180_000');
     });
 });
+
+describe('a local plan deadline covers everything the plan may write', () => {
+    const saved = process.env.LOCAL_BRAIN_LEASH_MAX;
+    afterEach(() => { if (saved === undefined) delete process.env.LOCAL_BRAIN_LEASH_MAX; else process.env.LOCAL_BRAIN_LEASH_MAX = saved; resetLocalThroughputForTests(); });
+    // Round 8, 2026-10-23: armed for 51 min on a 1500-token guess while 12000 were allowed.
+    it('is sized for the room the window leaves the brief, not a typical plan', () => {
+        process.env.LOCAL_BRAIN_LEASH_MAX = String(6 * 60 * 60_000);
+        noteLocalThroughput({ prompt_eval_count: 1030, prompt_eval_duration: 233 * s, eval_count: 929, eval_duration: 746 * s });
+        const { localDeadlineMs, estimatePromptTokens } = require('../core/llm/local-throughput');
+        const { LOCAL_PLAN_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS } = require('../core/orchestrator/planner-run-boundary');
+        const req = 'Build an admin dashboard for a dental clinic.';
+        const typical = localDeadlineMs(estimatePromptTokens(req) + LOCAL_PLAN_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS);
+        expect(localPlanDeadlineMs(req)).toBeGreaterThan(typical * 2);
+    });
+});

@@ -97,11 +97,19 @@ export const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
  * The DEFAULT deadline for a plan the local model serves: its size over this
  * machine's measured speed, never below the general 180 s default, never past
  * the local ceiling. A deadline a caller set explicitly is not replaced.
+ *
+ * The output it is sized for is everything the plan may write — the room the
+ * window leaves the brief — not a typical plan. Round 8 (2026-10-23): the full
+ * brief was armed for 51 min on a 1500-token guess while the call allowed
+ * 12000; a longer plan would have been cut mid-JSON. A deadline is a ceiling:
+ * a plan that finishes early returns early, on a GPU in seconds.
  */
 export function localPlanDeadlineMs(requestText: string): number {
   const { estimatePromptTokens, localDeadlineMs } = require('../llm/local-throughput');
-  return Math.min(localPlannerCeilingMs(), Math.max(180_000,
-    localDeadlineMs(estimatePromptTokens(String(requestText || '')) + LOCAL_PLAN_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)));
+  const { managedContextCeilingTokens } = require('../llm/providers/managed-ollama-chat');
+  const promptTokens = estimatePromptTokens(String(requestText || '')) + LOCAL_PLAN_BRIEF_TOKENS;
+  const outputTokens = Math.max(LOCAL_PLAN_OUTPUT_TOKENS, managedContextCeilingTokens() - promptTokens);
+  return Math.min(localPlannerCeilingMs(), Math.max(180_000, localDeadlineMs(promptTokens, outputTokens)));
 }
 
 
