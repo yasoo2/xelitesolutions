@@ -84,6 +84,22 @@ export function localPlannerCeilingMs(): number {
   return Math.min(30 * 60_000, Math.max(MAX_TOTAL_MS, Number.isFinite(configured) && configured > 0 ? configured : 0));
 }
 
+/** Estimated tokens of the compact local brief (fixed text + evidence cap) and of a compact plan. */
+export const LOCAL_COMPACT_BRIEF_TOKENS = Math.ceil((4500 + 3000) / 3);
+export const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
+
+/**
+ * The DEFAULT deadline for a plan the local model serves: its size over this
+ * machine's measured speed, never below the general 180 s default, never past
+ * the local ceiling. A deadline a caller set explicitly is not replaced.
+ */
+export function localPlanDeadlineMs(requestText: string): number {
+  const { estimatePromptTokens, localDeadlineMs } = require('../llm/local-throughput');
+  return Math.min(localPlannerCeilingMs(), Math.max(180_000,
+    localDeadlineMs(estimatePromptTokens(String(requestText || '')) + LOCAL_COMPACT_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)));
+}
+
+
 export function resolvePlannerTotalMs(context?: any): number {
   if (!context || typeof context !== 'object') return DEFAULT_TOTAL_MS;
   const candidates = [context?.plannerTimeoutMs, context?.plannerBudgetMs, context?.plannerDeadlineMs];

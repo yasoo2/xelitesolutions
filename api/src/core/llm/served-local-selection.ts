@@ -21,3 +21,8 @@ export function servedModelConfig<T extends { modelConfig?: any }>(context: T | 
     const baseUrl = String(process.env.LOCAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').trim();
     return { ...(context || {}), modelConfig: { ...(context?.modelConfig || {}), provider: 'local', model, baseUrl } } as T;
 }
+
+/** True when the model that will serve this context is the local one. */
+export function servedByLocalModel(context?: { modelConfig?: any }): boolean {
+    return String(servedModelConfig(context || {})?.modelConfig?.provider || '').trim().toLowerCase() === 'local';
+}

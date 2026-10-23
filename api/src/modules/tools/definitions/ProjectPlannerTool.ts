@@ -1,5 +1,4 @@
-import { createPlannerRunBoundary, isPlannerBoundaryError, localPlannerCeilingMs, resolvePlannerTotalMs } from '../../../core/orchestrator/planner-run-boundary';
-import { estimatePromptTokens, localDeadlineMs } from '../../../core/llm/local-throughput';
+import { createPlannerRunBoundary, isPlannerBoundaryError, localPlanDeadlineMs, localPlannerCeilingMs, resolvePlannerTotalMs } from '../../../core/orchestrator/planner-run-boundary';
 import { ToolDefinition, ToolPermission } from '../types';
 import { engineeringScope, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
 import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/quality/plan-verification';
@@ -35,12 +34,8 @@ function extractRuntimeImportLedger(projectDescription: unknown): string[] {
  * approvals, and quality gates can be enforced consistently.
  */
 const LOCAL_COMPACT_EVIDENCE_MAX_CHARS = 3000;
-// Fixed part of the compact brief plus its evidence cap, in estimated tokens,
-// and the size of a typical complete compact plan.
-const LOCAL_COMPACT_BRIEF_TOKENS = Math.ceil((4500 + LOCAL_COMPACT_EVIDENCE_MAX_CHARS) / 3);
 // Measured 2026-10-23: a plan that inlined file contents ran 2048 tokens at
 // ~1.2 tokens/s (30 min) and was cut mid-JSON. A compact plan is small.
-const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
 const LOCAL_PLAN_MAX_COMPLETION_TOKENS = 3000;
 
 /**
@@ -142,11 +137,15 @@ export class ProjectPlannerTool implements ToolDefinition {
             // machine's measured speed, not from a cut sized for a cloud model.
             // Only a DEFAULT deadline is replaced; a deadline the caller set is a
             // contract (planner-run-boundary tests pin 20 ms and 1 s ones).
-            const callerSetDeadline = Number(context?.plannerTimeoutMs) > 0 && context?.plannerTimeoutDefaulted !== true;
-            const localPlanBudgetMs = !callerSetDeadline && plannerPromptProfile(context) === 'local-compact'
-                ? Math.min(localPlannerCeilingMs(), Math.max(resolvePlannerTotalMs(context),
-                    localDeadlineMs(estimatePromptTokens(String(projectDescription || '')) + LOCAL_COMPACT_BRIEF_TOKENS, LOCAL_PLAN_OUTPUT_TOKENS)))
-                : undefined;
+            // A caller's long local deadline (the pipeline sizes one) is honoured up
+            // to the local ceiling instead of being clamped at five minutes.
+            const callerMs = Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 0;
+            const callerSetDeadline = callerMs > 0 && context?.plannerTimeoutDefaulted !== true;
+            // Read the profile only when it can change the budget.
+            const localPlan = (!callerSetDeadline || callerMs > 300_000) && plannerPromptProfile(context) === 'local-compact';
+            const localPlanBudgetMs = !localPlan ? undefined
+                : callerSetDeadline ? Math.min(localPlannerCeilingMs(), callerMs)
+                : Math.max(resolvePlannerTotalMs(context), localPlanDeadlineMs(String(projectDescription || '')));
             const plannerBoundary = localPlanBudgetMs !== undefined
                 ? createPlannerRunBoundary(context, localPlanBudgetMs, localPlannerCeilingMs())
                 : createPlannerRunBoundary(context);
@@ -187,7 +186,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 : [];
             const scopedInitial = !repairMode && !scopeRepairMode && !!engineeringScope(context);
             const isolatedProfile = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
-            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : plannerPromptProfile(context) === 'local-compact' ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : this.createPlanningPrompt(
+            const compactBrief = !isolatedProfile && !scopedInitial && (localPlan || plannerPromptProfile(context) === 'local-compact');
+            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : compactBrief ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : this.createPlanningPrompt(
                 projectDescription,
                 analysis,
                 this.planningEvidence(evidence),
@@ -228,7 +228,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // multi-domain JSON plan can legitimately take longer than a
                 // normal conversational turn. Keep the cap finite and explicit.
                 providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
-                maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
+                maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                 reasoningEffort: context?.plannerReasoningEffort || 'low',
                     purpose: 'internal',
                 });
@@ -343,7 +343,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     ], {
                         modelConfig: context?.modelConfig,
                         providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
-                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -468,7 +468,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     ], {
                         modelConfig: context?.modelConfig,
                         providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
-                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -531,7 +531,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     ], {
                         modelConfig: context?.modelConfig,
                         providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
-                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -733,7 +733,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         ], {
                             modelConfig: context?.modelConfig,
                             providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
-                            maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, localPlanBudgetMs !== undefined ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
+                            maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                             reasoningEffort: context?.plannerReasoningEffort || 'low',
                             purpose: 'internal',
                         });

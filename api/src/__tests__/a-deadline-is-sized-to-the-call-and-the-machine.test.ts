@@ -56,3 +56,26 @@ describe('a deadline is sized to the call and to the machine', () => {
         expect(localPlannerCeilingMs()).toBe(300_000);
     });
 });
+
+import fs from 'fs';
+import path from 'path';
+import { localPlanDeadlineMs } from '../core/orchestrator/planner-run-boundary';
+
+describe('the pipeline default for a local plan is sized, and reaches every planner call', () => {
+    const saved = process.env.LOCAL_BRAIN_LEASH_MAX;
+    afterEach(() => { if (saved === undefined) delete process.env.LOCAL_BRAIN_LEASH_MAX; else process.env.LOCAL_BRAIN_LEASH_MAX = saved; resetLocalThroughputForTests(); });
+
+    // Eval run500 P101, 2026-10-23: the compact local plan was cut at exactly 180 s.
+    it('a CPU-speed local plan gets more than the 180 s cloud default, within the ceiling', () => {
+        process.env.LOCAL_BRAIN_LEASH_MAX = String(30 * 60_000);
+        noteLocalThroughput({ prompt_eval_count: 1030, prompt_eval_duration: 233 * s, eval_count: 929, eval_duration: 746 * s });
+        const ms = localPlanDeadlineMs('Build an admin dashboard for a dental clinic with a summary page and a chart.');
+        expect(ms).toBeGreaterThan(180_000);
+        expect(ms).toBeLessThanOrEqual(30 * 60_000);
+    });
+
+    it('the pipeline uses it as its default when the local model serves', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
+        expect(src).toContain('servedByLocalModel(context) ? localPlanDeadlineMs(productRequest) : 180_000');
+    });
+});
