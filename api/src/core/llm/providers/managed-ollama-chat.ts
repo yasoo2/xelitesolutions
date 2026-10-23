@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
 import { noteLocalThroughput } from '../local-throughput';
+import { localInferenceFetch } from './loopback-fetch';
 
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
 // Estimates below are admission policy, not exact tokenizer or image accounting.
@@ -481,7 +482,7 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 endpoint.pathname = '/api/chat';
                 let response: Response;
                 try {
-                    response = await (dependencies.fetch ?? globalThis.fetch)(endpoint.toString(), {
+                    response = await (dependencies.fetch ?? localInferenceFetch())(endpoint.toString(), {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
                         redirect: 'error',
                     });

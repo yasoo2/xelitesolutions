@@ -24,6 +24,7 @@
  */
 import { parseFirstJson } from '../../shared/utils/json';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
+import { localInferenceFetch } from './providers/loopback-fetch';
 
 export interface StructuredAsk {
     /** What to ask for, in the user's own words where possible. */
@@ -77,7 +78,7 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
-        const res = await fetch(`${host}/api/generate`, {
+        const res = await localInferenceFetch()(`${host}/api/generate`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             signal: ctrl.signal,
