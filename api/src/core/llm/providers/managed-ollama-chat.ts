@@ -533,6 +533,9 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         checkDeadline();
         // Every successful receipt teaches the deadlines what this machine really does.
         noteLocalThroughput(result.metrics);
+        // The numbers behind every sized deadline, for calibrating long calls.
+        console.info('[LocalThroughput]', JSON.stringify({ promptTokens: result.metrics?.prompt_eval_count, promptMs: Math.round((result.metrics?.prompt_eval_duration || 0) / 1e6),
+            outputTokens: result.metrics?.eval_count, outputMs: Math.round((result.metrics?.eval_duration || 0) / 1e6), contextTokens: result.metrics?.contextTokens }));
         return result;
     } catch (error) {
         if (timedOut) fail('RESOURCE_TIMEOUT', 'Local inference exceeded its request deadline, including queue wait.');
