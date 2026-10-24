@@ -83,38 +83,75 @@ export function failingIds(audit: TerminalAudit): string[] {
  * an array, so a path with a space in it — `C:\Users\home\Documents\…` — is
  * not four arguments.
  */
-async function run(
+/**
+ * A TEST SUITE THAT IS STILL TALKING IS STILL WORKING.
+ *
+ * app_tests ran under a 45 s wall clock: a real suite on a CPU laptop that
+ * kept printing progress was killed mid-run while the same suite passed on a
+ * GPU server — the code judged by the machine, not by the project (round 15
+ * review, C8). With `idle`, the bound is SILENCE: the timer resets on every
+ * output line, and the allowed silence learns from passing runs (three times
+ * the longest quiet gap a passing suite showed), never below the old bound —
+ * so nothing that used to finish is cut, and a hung, silent process still ends.
+ */
+let longestPassingQuietMs = 0;
+export function testQuietBoundMs(floorMs: number): number {
+    return Math.max(floorMs, 3 * longestPassingQuietMs);
+}
+export function noteTestQuietGap(ms: number): void {
+    if (Number.isFinite(ms) && ms > longestPassingQuietMs) longestPassingQuietMs = ms;
+}
+export function resetTestQuietForTests(): void { longestPassingQuietMs = 0; }
+
+export async function run(
     file: string,
     args: string[],
     cwd: string,
     timeoutMs: number,
     onLine?: (line: string) => void,
-): Promise<{ ok: boolean; out: string; code: number | null }> {
+    idle = false,
+): Promise<{ ok: boolean; out: string; code: number | null; longestQuietMs: number }> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { executionEngine } = require('../../kernel/ExecutionEngine');
     const lines: string[] = [];
     let child: any = null;
+    let timer: any = null;
+    let fire: (() => void) | null = null;
+    let lastLineAt = Date.now();
+    let longestQuietMs = 0;
+    const arm = () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => fire?.(), timeoutMs);
+    };
     try {
         child = executionEngine.runArgvStreaming(file, args, {
             cwd,
             env: { ...process.env, NODE_NO_WARNINGS: '1', CI: '1' },
             onLine: (l: string) => {
+                const now = Date.now();
+                longestQuietMs = Math.max(longestQuietMs, now - lastLineAt);
+                lastLineAt = now;
+                if (idle) arm();
                 if (lines.length < 200) lines.push(l);
                 // Indented, so his eye separates the command from its answer.
                 try { onLine?.(`    ${l.slice(0, 200)}`); } catch { /* logging is optional */ }
             },
         });
     } catch (e: any) {
-        return { ok: false, out: String(e?.message || e), code: null };
+        return { ok: false, out: String(e?.message || e), code: null, longestQuietMs: 0 };
     }
-    let timer: any = null;
     const timeout = new Promise<{ ok: boolean; exitCode: number | null; error?: string }>(r => {
-        timer = setTimeout(() => r({ ok: false, exitCode: null, error: 'timeout' }), timeoutMs);
+        fire = () => r({ ok: false, exitCode: null, error: idle ? 'silent' : 'timeout' });
+        arm();
     });
     const res = await Promise.race([child.done, timeout]);
     clearTimeout(timer);
-    if (res.error === 'timeout') { try { child.kill(); } catch { /* already gone */ } }
-    return { ok: !!res.ok && res.exitCode === 0, out: lines.join('\n'), code: res.exitCode ?? null };
+    if (res.error === 'timeout' || res.error === 'silent') { try { child.kill(); } catch { /* already gone */ } }
+    longestQuietMs = Math.max(longestQuietMs, Date.now() - lastLineAt);
+    const out = res.error === 'silent'
+        ? [...lines, `(no output for ${Math.round(timeoutMs / 1000)} s — stopped as hung)`].join('\n')
+        : lines.join('\n');
+    return { ok: !!res.ok && res.exitCode === 0, out, code: res.exitCode ?? null, longestQuietMs };
 }
 
 /**
@@ -357,7 +394,8 @@ export async function auditInTerminal(
         if (appManifest?.scripts?.test) {
             await add('app_tests', 'npm test', async () => {
                 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-                const r = await run(npm, ['test'], appDir, Math.max(per, 45_000), say);
+                const r = await run(npm, ['test'], appDir, testQuietBoundMs(Math.max(per, 45_000)), say, true);
+                if (r.ok) noteTestQuietGap(r.longestQuietMs);
                 const last = String(r.out).trim().split('\n').filter(Boolean).pop() || '';
                 return r.ok
                     ? { ok: true, detail: 'the generated application test suite passed' }
