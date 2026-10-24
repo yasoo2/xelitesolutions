@@ -374,6 +374,32 @@ export function acceptanceBlocksDelivery(a: {
         && (!a.accepted || (a.named > 0 && (a.judgeWasBlind || a.unprovable > 0)));
 }
 
+/**
+ *  ⛔ ONE REQUIREMENT, TWO READERS, ONE VERDICT.
+ *
+ *  The catalogue's rule reader and the request reader can lift the same
+ *  sentence — «يجب أن يحتوي على رأس تنقل بروابط الرئيسية» became both the
+ *  catalogue's `rule:1` (which has no way to prove a navigation) and the
+ *  named clause «رأس تنقل بروابط الرئيسية، الخدمات، الأعمال، تواصل», judged
+ *  met from the source (photography fidelity, eval round 15). A judged named
+ *  clause that contains the rule's own words already carries its verdict, so
+ *  the unprovable duplicate does not get a second, contradicting vote — the
+ *  same rule the ledger applies to a named page.
+ */
+export function namedClauseCoversRule(named: { text: string }, ruleText: string): boolean {
+    const fold = (value: string) => String(value || '')
+        .replace(/[\u064B-\u0652\u0640]/g, '')
+        .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    const rule = fold(ruleText)
+        .replace(/^(?:يجب|ينبغي|لازم|لا ?بد)(?: ان)?(?: (?:يحتوي|تحتوي|يكون|تكون|يتضمن|تتضمن|يوجد|توجد|يشمل|تشمل))?(?: علي)? /u, '')
+        .replace(/^(?:it |the (?:site|page|app) )?(?:must|should|needs? to|has to)(?: (?:have|include|contain|show))? /u, '')
+        .trim();
+    const clause = fold(named.text);
+    return rule.length >= 6 && clause.length >= 6 && (clause.includes(rule) || rule.includes(clause));
+}
+
 /** The delivery error when the request itself could not be read. */
 export function deliveryErrorForUnreadRequest(why: string): string {
     const reason = String(why || '').trim();
@@ -2150,12 +2176,24 @@ import { sectionNameFor } from '../../../core/design/section-name';
 import { journal } from '../../../core/quality/run-journal';
 export { sectionNameFor };
 
+/** The navigation he wrote, if he wrote one: «رأس تنقل بروابط …», «navigation with links …». */
+export function explicitNavOf(request: string): string {
+    return String(request || '').match(/(?:رأس\s+تنقل\s+بروابط|قائمة\s+تنقل\s+بروابط|navigation\s+(?:menu\s+)?(?:with|containing)\s+links?)\s*([^؛;.\n]+)/i)?.[1] || '';
+}
+
+/** A works / portfolio destination named in that navigation. */
+export const WORKS_NAMED = /(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i;
+
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
     const r = String(request || '');
     const { saysAny } = require('../../../core/language/arabic');
     const asked = new Set<string>();
     //  Shape first: it holds for a sentence whose nouns mean nothing to us.
     for (const entry of SHAPE_ASKS) if (entry.re.test(r)) asked.add(entry.section);
+    //  A destination he put in his own navigation is a section he asked for:
+    //  «الأعمال» in the menu of a design agency is its works section, whether
+    //  or not the kind's template carries one (eval round 15).
+    if (WORKS_NAMED.test(explicitNavOf(r))) asked.add('Gallery');
     for (const entry of SECTION_ASKS) {
         let hit = false;
         try { hit = saysAny(r, entry.says); } catch { hit = false; }
@@ -2934,6 +2972,10 @@ ${c.team.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', img: ${t.
   gallery: [
 ${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('\n')}
   ],
+  // A section he NAMED renders even with no photographs — from his words,
+  // with an honest note, never with stock pictures (see Gallery.jsx).
+  galleryRequested: ${(c as any).galleryRequested ? 'true' : 'false'},
+  galleryNote: '${js((c as any).galleryNote || '')}',
   // '' on a single page, '/' when the hash router owns the address bar —
   // the product URLs follow whichever this build uses.
   routeBase: '${js((c as any).routeBase || '')}',
@@ -3113,13 +3155,27 @@ export default function Hero({ content }) {
 
 /** A real photo mosaic — the first cell twice the size, the rest a grid.
  *  With no photographs it renders NOTHING: an empty gallery is worse than
- *  no gallery, and this build refuses to ship a section made of holes. */
+ *  no gallery, and this build refuses to ship a section made of holes —
+ *  UNLESS he named the section («الأعمال» in his navigation). Then it renders
+ *  as itself — its title and an honest note that photographs were not
+ *  available in this run: no stock pictures, no invented clients, no
+ *  catalogue of work nobody did (eval round 15). */
 function fileGalleryJsx(): string {
     return `import React from 'react';
 
 export default function Gallery({ content }) {
   const shots = content.gallery || [];
-  if (!shots.length) return null;
+  if (!shots.length) {
+    if (!content.galleryRequested) return null;
+    return (
+      <section className="section" id="gallery">
+        <div className="wrap">
+          <h2>{content.galleryTitle}</h2>
+          <p className="work-note">{content.galleryNote}</p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="section" id="gallery">
       <div className="wrap">
@@ -4271,6 +4327,7 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .perk{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--text)}
 .perk svg{width:18px;height:18px;color:var(--brand);flex:none}
 .gallery-mosaic{display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+.work-note{margin:16px 0 0;opacity:.75}
 @media(min-width:900px){.gallery-mosaic{grid-template-columns:repeat(4,1fr)}
 .gallery-mosaic .shot-lead{grid-column:span 2;grid-row:span 2}}
 .shot{margin:0;overflow:hidden;border-radius:var(--f-radius);background:color-mix(in srgb,var(--tint) 40%,transparent)}
@@ -5015,12 +5072,24 @@ export class ReactProjectTool extends BaseTool {
             Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'],
             Location: ['الموقع', 'Find us'], Contact: [content.contactTitle, content.contactTitle],
         };
+        // The navigation he wrote, read once: it names sections as well as links.
+        const explicitNav = explicitNavOf(request);
+        /**
+         *  A SECTION HE NAMED IS NEVER DROPPED BECAUSE A PHOTO DID NOT ARRIVE.
+         *
+         *  Eval round 15 (photography fidelity): «رأس تنقل بروابط الرئيسية،
+         *  الخدمات، الأعمال، تواصل» — with no photographs the gallery rendered
+         *  nothing, so «الأعمال» vanished from the navigation and from the page,
+         *  silently. A section he named renders from his own words instead
+         *  (filled in once the photographs have answered, below).
+         */
+        const galleryNamed = sections.includes('Gallery') && WORKS_NAMED.test(explicitNav);
         // A section that renders NOTHING must never appear in the navigation:
         // the gallery with no photographs, the location with no saved address,
         // the comparison with a single tier. Called after the photo step so
         // the answers are facts, not guesses.
         const willRender = (sec: string): boolean => {
-            if (sec === 'Gallery') return content.gallery.length > 0;
+            if (sec === 'Gallery') return content.gallery.length > 0 || galleryNamed;
             if (sec === 'Location') return !!(content as any).contact?.address;
             if (sec === 'Compare') return content.tiers.length >= 2;
             return true;
@@ -5031,23 +5100,27 @@ export class ReactProjectTool extends BaseTool {
             let sectionLinks = sections
                 .filter(s => s !== 'Hero' && SECTION_ANCHOR[s] && willRender(s))
                 .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s]?.[artifactIsAr ? 0 : 1] || s }));
-            const explicitNav = request.match(/(?:رأس\s+تنقل\s+بروابط|قائمة\s+تنقل\s+بروابط|navigation\s+(?:menu\s+)?(?:with|containing)\s+links?)\s*([^؛;.\n]+)/i)?.[1] || '';
             const requestedHome = /(?:^|[،,;:\s])(?:الرئيسية|الرئيسيه)(?:$|[،,;:\s])|\bhome\b/i.test(explicitNav);
             if (requestedHome && !sectionLinks.some(link => link.href === '#top')) {
                 sectionLinks.unshift({ href: '#top', label: artifactIsAr ? 'الرئيسية' : 'Home' });
             }
             for (const link of sectionLinks) {
                 if (link.href === '#products' && /خدمات|\bservices?\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الخدمات' : 'Services';
-                if (link.href === '#gallery' && /(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الأعمال' : 'Work';
+                if (link.href === '#gallery' && WORKS_NAMED.test(explicitNav || request)) link.label = artifactIsAr ? 'الأعمال' : 'Work';
                 if (link.href === '#contact' && /تواصل|اتصال|\bcontact\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'تواصل' : 'Contact';
             }
             if (explicitNav) {
                 const wanted = new Set<string>();
                 if (requestedHome) wanted.add('#top');
                 if (/خدمات|\bservices?\b/i.test(explicitNav)) wanted.add('#products');
-                if (/(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav)) wanted.add('#gallery');
+                if (WORKS_NAMED.test(explicitNav)) wanted.add('#gallery');
                 if (/تواصل|اتصال|\bcontact\b/i.test(explicitNav)) wanted.add('#contact');
                 if (wanted.size) sectionLinks = sectionLinks.filter(link => wanted.has(link.href));
+                // …in the order he wrote them, not the template's section order.
+                const at = (label: string) => { const i = explicitNav.indexOf(label); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+                sectionLinks = sectionLinks.map((link, i) => ({ link, i }))
+                    .sort((a, z) => at(a.link.label) - at(z.link.label) || a.i - z.i)
+                    .map(entry => entry.link);
             }
             (content as any).navLinks = multiPage
                 ? pages.map(p => ({ href: `#${p.path}`, label: artifactIsAr ? p.title : p.titleEn }))
@@ -5326,8 +5399,16 @@ export class ReactProjectTool extends BaseTool {
             term('photography images: bundled offline fallback used because the licensed image service was unavailable');
         }
 
-        // The photographs have answered — the navigation is recomputed so a
-        // gallery that stayed empty never gets advertised in the menu.
+        // The photographs have answered. A gallery he named that stayed empty
+        // renders from his words with an honest note; one he did not name is
+        // simply not advertised — the navigation is recomputed either way.
+        if (galleryNamed && !content.gallery.length) {
+            (content as any).galleryRequested = true;
+            (content as any).galleryNote = artifactIsAr
+                ? 'صور الأعمال غير متاحة في هذا التشغيل.'
+                : 'Photos of the work were not available in this run.';
+            term('gallery: named in the navigation, no photographs in this run — rendered with its title and an honest note');
+        }
         buildNavLinks();
 
         /**
@@ -8269,8 +8350,22 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 backendRoot: String(apiEntry.dir || ''), resource: String(apiEntry.resource || ''),
             },
         } : null;
-        const namedVerdicts = namedByHim.length && !noBrainToAsk
-            ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel, externalApiEvidence, localBackendAcceptance)
+        /**
+         *  ⛔ WITH NO MODEL, WHAT HE NAMED IS STILL JUDGED — BY EVIDENCE.
+         *
+         *  Eval round 15 (photography fidelity): without a provider this step
+         *  was skipped, so the clauses read from his request were never judged
+         *  and the gate fell back to a catalogue rule nobody asked about. The
+         *  deterministic readers inside verifyNamed (source contracts, page
+         *  clauses, backend and external-API evidence) need no model: they run,
+         *  and whatever they cannot prove stays unprovable and blocks. Nothing
+         *  he named passes unjudged, and nothing blocks merely for being named.
+         */
+        const judgeNamedWith = noBrainToAsk
+            ? async (): Promise<string> => { throw new Error('no model in this environment; deterministic evidence only'); }
+            : askTheModel;
+        const namedVerdicts = namedByHim.length
+            ? await verifyNamed(namedByHim, projectEvidence, isAr, judgeNamedWith, externalApiEvidence, localBackendAcceptance)
             : [];
         term(`acceptance decision trace: ${JSON.stringify(namedDecisionTrace(namedVerdicts))}`);
         /**
@@ -8327,6 +8422,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const isStructural = c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
                 || c.expectedFilter || c.expectedProgress;
             if (!isStructural) return false;
+            if (c.expectedRule && namedJudged.some(j => namedClauseCoversRule(j, String(c.expectedRule.text || '')))) return false;
             if (!c.expectedPage || !namedJudged.length) return true;
             return !namedJudged.some(j => requirementNamesPage(j, c.expectedPage.title));
         });
@@ -8845,7 +8941,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              *  named that went unproven. A number that cannot be mistaken for a
              *  verdict on his request.
              */
-            const fromHisWords = acceptance.criteria.some((c: any) => /^req-/.test(String(c?.id || '')));
+            // Read by the model (req-…) or from his explicit clauses (request-clause-…).
+            const fromHisWords = acceptance.criteria.some((c: any) => /^(?:req-|request-clause-)/.test(String(c?.id || '')));
             const notProven = acceptance.unmet
                 ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}`
                 : '';

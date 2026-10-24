@@ -34,6 +34,13 @@ describe('a photography brief stays a photography site', () => {
                 skipProfile: true,
             }, { sessionId, language: 'en' });
             expect(result.ok).toBe(true);
+            // …for the right reason: with no model in the run, every clause he
+            // named was judged from the generated source (eval round 15).
+            const logs = (result.logs || []).join('\n');
+            expect(logs).toMatch(/acceptance: 4\/4 \(from your request\)/);
+            for (const clause of ['رأس تنقل بروابط', 'قسم افتتاحي بصورة واضحة', 'ثلاثة أقسام فعلية', 'نموذج تواصل بالاسم']) {
+                expect(logs).toContain(`OK ${clause}`);
+            }
             const project = result.output.path;
             const content = fs.readFileSync(path.join(project, 'src', 'content.js'), 'utf8');
             const app = fs.readFileSync(path.join(project, 'src', 'App.jsx'), 'utf8');

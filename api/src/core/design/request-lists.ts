@@ -37,10 +37,16 @@ const AR_LETTER = '[\\u0621-\\u064A]';
  * «وصف», «وقت», «وزن», «وحدات»… Splitting them gives «صول», «صف», «قت».
  * A short list of the language's own words — it does not grow with domains.
  */
-const RADICAL_WAW = `(?:صول|صف|صفات?|صف[ةه]|قت|قات|زن|حد[ةه]|حدات|ثائق|ثيق[ةه]|ظائف|ظيف[ةه]|رش[ةه]?|كلاء|كيل|سائل|سيل[ةه]|جه[ةه]|جهات|كال[ةه]|زار[ةه]|لاي[ةه]|جبات|جب[ةه])(?!${AR_LETTER})`;
+const RADICAL_WAW = `(?:صول|صف|صفات?|صف[ةه]|قت|قات|زن|حد[ةه]|حدات|ثائق|ثيق[ةه]|ظائف|ظيف[ةه]|رش[ةه]?|كلاء|كيل|سائل|سيل[ةه]|جه[ةه]|جهات|كال[ةه]|زار[ةه]|لاي[ةه]|جبات|جب[ةه]|اجه[ةه]|اجهات|احد[ةه]?)(?!${AR_LETTER})`;
 
 /** The conjunction «و» glued to the next item: space + waw + an Arabic letter, unless the waw is the word's own. */
 export const CONJUNCTION_WAW_SOURCE = `\\s+و(?=${AR_LETTER})(?!${RADICAL_WAW})`;
+
+/** «ونموذج تواصل» → «نموذج تواصل»: the last item of a list keeps its «و»; «واجهة» keeps its own. */
+export function stripLeadingConjunction(item: string): string {
+    const t = String(item || '').trim();
+    return new RegExp(`^و(?=${AR_LETTER})(?!${RADICAL_WAW})`, 'u').test(t) ? t.slice(1) : t;
+}
 
 /** Every list separator a request uses: punctuation, «and», and the glued «و». */
 export const LIST_SEPARATOR = new RegExp(`(?:\\s*(?:،|,|؛|;|\\/|\\+)\\s*)|(?:\\s+and\\s+)|(?:${CONJUNCTION_WAW_SOURCE})`, 'iu');
@@ -109,9 +115,14 @@ export function cleanListItem(raw: string): string {
     let item = String(raw || '').trim()
         .replace(/^(?:and|or|then|with|مع)\s+/iu, '')
         .replace(/^(?:a|an|the)\s+/i, '')
-        .replace(/[.،؛!?؟"'()«»:]+$/gu, '')
-        .replace(/^[.،؛!?؟"'()«»:]+/gu, '')
+        .replace(/[.،؛!?؟"'():]+$/gu, '')
+        .replace(/^[.،؛!?؟"'():]+/gu, '')
         .trim();
+    // A quote closes only what it opened: «زر «احجز جلسة»» keeps its own «».
+    if (!item.includes('«')) item = item.replace(/»+$/u, '');
+    if (!item.includes('»')) item = item.replace(/^«+/u, '');
+    if (item.includes('«') && !item.includes('»')) item = `${item}»`;
+    item = stripLeadingConjunction(item);
     const words = item.split(/\s+/);
     if (words.length) words[0] = stripAttachedPreposition(words[0]);
     item = words.join(' ').trim();

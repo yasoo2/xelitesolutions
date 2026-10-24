@@ -37,7 +37,7 @@
 
 import { createHash } from 'node:crypto';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
-import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion } from '../design/request-lists';
+import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion, splitListItems, stripLeadingConjunction } from '../design/request-lists';
 
 export interface NamedRequirement {
     /** Stable id derived from the quote, so the same request yields the same ids. */
@@ -825,7 +825,12 @@ function listedRequirementItems(request: string): Array<{ text: string; quote: s
         const nounList = found.marker === 'head';
         const glue = /^(?:[لب]ـ|لل|ل(?=ال))/u.test(found.region) ? ' لـ' : ' ';
         const items: string[] = [];
-        for (const segment of found.region.replace(/\s+(?:مع|with)\s+/giu, '، ').split(/\s*[,،;؛]\s*/u)) {
+        //  «رأس تنقل بروابط الرئيسية، الخدمات، الأعمال، تواصل؛ قسم افتتاحي …؛
+        //  ونموذج تواصل …» — when he separates his items with «؛», the commas
+        //  belong INSIDE an item (the links of one navigation), not between items.
+        const semicolons = !nounList && /[؛;]/u.test(found.region);
+        const separator = semicolons ? /\s*[؛;]\s*/u : /\s*[,،;؛]\s*/u;
+        for (const segment of found.region.replace(/\s+(?:مع|with)\s+/giu, semicolons ? '؛ ' : '، ').split(separator)) {
             const pieces = segment.split(conjunction);
             const split = nounList || pieces.every(piece => piece.trim().split(/\s+/).length <= 2);
             items.push(...(split ? pieces : [segment]));
@@ -894,6 +899,130 @@ import { capabilityEvidence, requestedCapabilities } from './scope-audit';
 import { externalApiSourceVerdict, type ExternalApiAcceptanceEvidence } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
 import { ownedExpressSource, validateBackendEvidence, type LocalBackendAcceptance } from './local-backend-evidence';
+
+/**
+ *  ⛔ A PAGE CLAUSE HAS EVIDENCE A MACHINE CAN READ — SO IT IS READ.
+ *
+ *  Eval round 15 (photography fidelity): with no model in the run, «رأس تنقل
+ *  بروابط الرئيسية، الخدمات، الأعمال، تواصل», «قسم افتتاحي بصورة واضحة وزر
+ *  «احجز جلسة»», «ثلاثة أقسام فعلية» and «نموذج تواصل بالاسم والبريد
+ *  والرسالة» were read from his request and then never judged at all, so
+ *  the gate either ignored them (before the Arabic reader worked) or blocked
+ *  on a catalogue rule nobody asked about. Each of these shapes leaves a
+ *  literal trace in the generated source: a navigation label, a quoted
+ *  string, a hero with an image, a count of rendered sections, the inputs of
+ *  a form. A clause is judged only when EVERY part of it is one of those
+ *  shapes — anything left over means a part no reader here can see, and the
+ *  clause stays for a model to judge (or unprovable without one).
+ */
+const NAV_HEAD = /(?:رأس\s+(?:ال)?تنقل|شريط\s+(?:ال)?تنقل|قائمة\s+(?:ال)?تنقل|navigation(?:\s+(?:bar|menu))?|nav\s*bar|top\s+menu)\s*(?:ب?روابط|with\s+links?(?:\s+(?:to|for))?|containing\s+links?(?:\s+(?:to|for))?|links?(?:\s+(?:to|for))?)?\s*[:：]?\s*/iu;
+
+const NUMBER_WORDS: Array<[RegExp, number]> = [
+    [/^(?:اثنان|اثنين|اثنتان|اثنتين|two|2|٢)$/iu, 2],
+    [/^(?:ثلاث|ثلاثة|three|3|٣)$/iu, 3],
+    [/^(?:أربع|اربع|أربعة|اربعة|four|4|٤)$/iu, 4],
+    [/^(?:خمس|خمسة|five|5|٥)$/iu, 5],
+    [/^(?:ست|ستة|six|6|٦)$/iu, 6],
+    [/^(?:سبع|سبعة|seven|7|٧)$/iu, 7],
+    [/^(?:ثماني|ثمانية|eight|8|٨)$/iu, 8],
+    [/^(?:تسع|تسعة|nine|9|٩)$/iu, 9],
+    [/^(?:عشر|عشرة|ten|10|١٠)$/iu, 10],
+];
+
+/** Form fields a contact or booking form names, and the input that proves each. */
+const FORM_FIELDS: Array<{ says: RegExp; proof: RegExp }> = [
+    { says: /^(?:ال)?اسم$|^(?:full\s+)?name$/iu, proof: /\b(?:form|values?|data|state)\.(?:full_?)?name\b|name=["'](?:full_?)?name["']|aria-label=\{t\.name\}|autoComplete=["']name["']/i },
+    { says: /^(?:ال)?(?:بريد(?:\s+(?:ال)?إلكتروني)?|إيميل|ايميل)$|^e-?mail(?:\s+address)?$/iu, proof: /type=["']email["']|name=["']email["']/i },
+    { says: /^(?:ال)?(?:هاتف|جوال|رقم(?:\s+(?:ال)?هاتف)?)$|^(?:phone|mobile|telephone)(?:\s+number)?$/iu, proof: /type=["']tel["']|name=["'](?:phone|tel|mobile)["']/i },
+    { says: /^(?:ال)?(?:رسالة|ملاحظات)$|^(?:message|notes?)$/iu, proof: /<textarea\b|name=["']message["']/i },
+    { says: /^(?:ال)?موضوع$|^subject$/iu, proof: /name=["']subject["']/i },
+    { says: /^(?:ال)?تاريخ$|^date$/iu, proof: /type=["']date["']/i },
+    { says: /^(?:ال)?وقت$|^time$/iu, proof: /type=["']time["']/i },
+];
+
+/** The hero's own words, an image, a button, and the qualities nobody can measure. */
+const HERO_WORD = /(?<![\p{L}\p{N}])(?:قسم\s+(?:ال)?افتتاحي|(?:ال)?قسم\s+(?:ال)?ترحيبي|(?:ال)?افتتاحي|hero(?:\s+section)?|banner)(?![\p{L}\p{N}])/giu;
+const IMAGE_WORD = /(?<![\p{L}\p{N}])(?:ب?(?:ال)?صور(?:ة|ه)?|(?:an?\s+)?(?:image|photo(?:graph)?|picture))(?![\p{L}\p{N}])/giu;
+const BUTTON_WORD = /(?<![\p{L}\p{N}])(?:و?(?:ال)?زر|(?:an?\s+)?(?:button|cta|call[- ]to[- ]action))(?![\p{L}\p{N}])/giu;
+const QUALITY_WORD = /(?<![\p{L}\p{N}])(?:واضح(?:ة|ه)?|جذاب(?:ة|ه)?|كبير(?:ة|ه)?|بارز(?:ة|ه)?|جميل(?:ة|ه)?|حديث(?:ة|ه)?|clear|large|big|prominent|bold|beautiful|striking|modern)(?![\p{L}\p{N}])/giu;
+const CONNECTOR = /(?:^|\s)(?:و|ب|مع|with|and|a|an|the|that|says?|labelled|labeled)(?=\s|$)/giu;
+
+function literalIn(src: string, value: string): boolean {
+    const esc = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`['"\`>]\\s*${esc}\\s*['"\`<]`, 'u').test(src);
+}
+
+function navLabelIn(src: string, label: string): boolean {
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`label\\s*:\\s*['"\`]${esc}['"\`]|<a\\b[^>]*>\\s*${esc}\\s*</a>`, 'u').test(src);
+}
+
+function residue(text: string, ...patterns: RegExp[]): string {
+    let rest = ` ${text} `;
+    for (const re of patterns) rest = rest.replace(re, ' ');
+    return rest.replace(CONNECTOR, ' ').replace(/[«»"“”'،,.:;؛()]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
+    const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
+    const src = String(source || '');
+    if (!text || !src) return null;
+
+    //  1. A navigation and the destinations he listed.
+    const nav = text.match(NAV_HEAD);
+    if (nav && nav.index === 0) {
+        const labels = splitListItems(text.slice(nav[0].length)).filter(label => label.split(/\s+/).length <= 3);
+        if (labels.length >= 2) {
+            const missing = labels.filter(label => !navLabelIn(src, label));
+            if (!missing.length) return { ...r, verdict: 'met', why: `the generated navigation links to every destination named: ${labels.join(' · ')}` };
+            if (missing.length < labels.length) return { ...r, verdict: 'unmet', why: `the generated navigation has no link for: ${missing.join(' · ')}` };
+        }
+        return null;
+    }
+
+    //  2. «N sections».
+    const count = text.match(/^(\S+)\s+(?:أقسام|اقسام|sections?)(?:\s+(?:فعلية|فعليه|حقيقية|حقيقيه|real|actual|distinct|separate))?$/iu);
+    if (count) {
+        const n = NUMBER_WORDS.find(([re]) => re.test(count[1]))?.[1];
+        if (!n) return null;
+        const ids = new Set([...src.matchAll(/<section\b[^>]*\bid=["']([^"']+)["']/giu)].map(m => m[1]).filter(id => id !== 'top'));
+        //  Sections without an id are not counted, so too few is not proof.
+        return ids.size >= n
+            ? { ...r, verdict: 'met', why: `the generated page renders ${ids.size} sections beyond the hero (${[...ids].join(', ')})` }
+            : null;
+    }
+
+    //  3. A form and the fields he listed.
+    const form = text.match(/^(?:(?:ال)?نموذج|(?:ال)?استمارة|(?:an?\s+)?(?:contact\s+|booking\s+|enquiry\s+|inquiry\s+)?form)\s*(?:(?:ال)?(?:تواصل|اتصال|حجز|استفسار))?\s*(?:with|containing|for|including|ب)?\s*(.*)$/iu);
+    if (form && /<form\b/i.test(src)) {
+        const said = splitListItems(form[1] || '');
+        if (said.length < 2) return null;
+        const fields = said.map(field => FORM_FIELDS.find(f => f.says.test(field)));
+        if (fields.some(f => !f)) return null;
+        //  Inputs are written many ways; a field not found is left for a judge
+        //  (and stays unprovable without one) rather than declared missing.
+        if (said.some((_field, i) => !fields[i]!.proof.test(src))) return null;
+        return { ...r, verdict: 'met', why: `the generated form carries every field named: ${said.join(' · ')}` };
+    }
+
+    //  4. A hero, its image, its button and the words on the button.
+    if (new RegExp(HERO_WORD.source, 'iu').test(text)) {
+        const quoted = [...text.matchAll(/[«"“]([^«»"“”]{2,60})[»"”]?/gu)].map(m => m[1].trim()).filter(Boolean);
+        const rest = residue(text.replace(/[«"“][^«»"“”]{2,60}[»"”]?/gu, ' '), HERO_WORD, IMAGE_WORD, BUTTON_WORD, QUALITY_WORD);
+        if (rest) return null;   // a part of the clause none of these shapes covers
+        if (!/className=["'][^"']*\bhero\b|heroTitle\s*:/i.test(src)) return null;
+        const wantsImage = new RegExp(IMAGE_WORD.source, 'iu').test(text);
+        if (wantsImage && /heroImage\s*:\s*null/.test(src)) {
+            return { ...r, verdict: 'unmet', why: 'the generated hero renders no image (heroImage is null)' };
+        }
+        if (wantsImage && !/heroImage\s*:\s*(?:\{|['"`])/.test(src)) return null;
+        const absent = quoted.filter(value => !literalIn(src, value));
+        if (absent.length) return { ...r, verdict: 'unmet', why: `the generated hero does not carry: ${absent.map(v => `«${v}»`).join(' · ')}` };
+        if (new RegExp(BUTTON_WORD.source, 'iu').test(text) && !quoted.length && !/className=["'][^"']*\bbtn\b|<button\b/i.test(src)) return null;
+        return { ...r, verdict: 'met', why: `the generated hero renders${wantsImage ? ' its image' : ''}${quoted.length ? ` and ${quoted.map(v => `«${v}»`).join(' · ')}` : ''}` };
+    }
+    return null;
+}
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -1241,6 +1370,8 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     if (/export/iu.test(text) && /toCsv|download\s*\(/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view exports the visible rows' };
     }
+    const pageClause = pageClauseVerdict(r, src);
+    if (pageClause) return pageClause;
     const knownCapabilities = requestedCapabilities(text);
     if (knownCapabilities.length && knownCapabilities.every(capability => capabilityEvidence(capability, src))) {
         return { ...r, verdict: 'met', why: `the generated source proves: ${knownCapabilities.map(item => item.en).join(', ')}` };
