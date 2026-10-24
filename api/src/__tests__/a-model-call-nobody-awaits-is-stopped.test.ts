@@ -133,11 +133,12 @@ describe('the wiring in react_project', () => {
     });
     it('reading and judging go through the contract asker', () => {
         expect(source).toMatch(/const askTheModel = async \(prompt: string\): Promise<string> => \{\s*const \{ routeToModel \} = require\([^)]*\);\s*return askForTheContract\(/);
-        expect(source).toContain('await namedRequirements(request, isAr, askTheModel)');
+        expect(source).toContain('await readRequestRequirements(request, isAr, askTheModel, term)');
         expect(source).toContain('await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel,');
     });
     it('the reader\'s outcome reaches the gate', () => {
-        expect(source).toContain('requestUnread = !readerAnswered && !namedByHim.length;');
+        expect(source).toContain('requestUnread = reading.requestUnread;');
+        expect(source).toContain('return { named, whyNotRead, requestUnread: !readerAnswered && !named.length, modelUnavailable };');
         expect(source).toMatch(/const acceptanceBlocked = acceptanceBlocksDelivery\(\{[\s\S]{0,260}requestUnread,\s*\}\);/);
         expect(source).toMatch(/requestUnread\s*\?\s*deliveryErrorForUnreadRequest\(whyNotRead\)/);
     });

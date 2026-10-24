@@ -126,6 +126,27 @@ function extractAcceptanceEvidence(ticket: RepairTicket) {
     : null;
 }
 
+/**
+ * A capability the delivery gate could not prove, in a file the builder itself
+ * generated (eval round 15, P051/P151). react_project names the unproven
+ * capabilities in its error («requested_features_not_proven: a chart, …» or
+ * «capability_gap_unresolved: …») and the generated engine as `repairFile`;
+ * without both there is nothing evidence-bound to repair.
+ */
+function extractCapabilityGapEvidence(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task =>
+    /^(?:requested_features_not_proven|capability_gap_unresolved):\s*\S/i.test(String(task.error || '').trim())
+    && typeof task.repairFile === 'string'
+    && task.repairFile.trim().length > 0,
+  );
+  if (!failed) return null;
+  const error = String(failed.error).trim();
+  const capabilities = error.slice(error.indexOf(':') + 1).trim();
+  return capabilities
+    ? { file: failed.repairFile!.trim(), cwd: failed.cwd, capabilities, request: failed.description }
+    : null;
+}
+
 function extractArtifactValidationFailure(ticket: RepairTicket) {
   const failed = ticket.failedTasks.find(task => {
     if (!task.file) return false;
@@ -889,6 +910,13 @@ export class SelfFixService {
       };
     }
 
+    // ⛔ AN UNREAD REQUEST HAS NO FILE TO FIX. react_project stopped because
+    // the request itself could not be read, so nothing it built was judged;
+    // rewriting a source file would be a guess dressed as a repair.
+    if (ticket.failedTasks.some(task => /acceptance_unverified:\s*request_not_read/i.test(String(task.error || '')))) {
+      return this.stop(ticket, 'The request itself could not be read, so acceptance is unverified and there is no evidence-bound file to repair. Re-run once a provider can read the request.', 'manual_review');
+    }
+
     const acceptanceEvidence = extractAcceptanceEvidence(ticket);
     if (acceptanceEvidence) {
       return {
@@ -924,6 +952,32 @@ export class SelfFixService {
     const cureNote = remembered
       ? `A cure proven ${remembered.wins}x on this same error class: ${remembered.repair}`
       : '';
+
+    const capabilityGap = extractCapabilityGapEvidence(ticket);
+    if (capabilityGap) {
+      const repairTarget = { path: capabilityGap.file, cwd: capabilityGap.cwd };
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The delivery gate could not prove requested capabilities in the generated file ${capabilityGap.file}: ${capabilityGap.capabilities}. Repair only that file, then rerun the failed phase and judge it again.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        repairFile: capabilityGap.file,
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: capabilityGap.file,
+          description: `Repair only the generated file ${capabilityGap.file}; do not redirect the fix to another file.\n`
+            + `Unproven capabilities, exactly as the delivery gate named them: ${capabilityGap.capabilities}\n`
+            + 'Add each one as a concrete state, interaction and visible result in this file. Preserve every working behaviour, import and the default export; return the complete corrected file.'
+            + (capabilityGap.request ? `\nOriginal request:\n${capabilityGap.request}` : '')
+            + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
+          context: JSON.stringify({ repairTarget, repairTicket: ticket }),
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
 
     const launcher = extractMissingLauncher(ticket);
     if (launcher) {

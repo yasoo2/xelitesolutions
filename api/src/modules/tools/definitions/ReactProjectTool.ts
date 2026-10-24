@@ -380,6 +380,75 @@ export function deliveryErrorForUnreadRequest(why: string): string {
     return `acceptance_unverified: request_not_read${reason ? ` — ${reason.slice(0, 160)}` : ''}`;
 }
 
+/**
+ *  The delivery error for capabilities the gate could not prove — carrying
+ *  their names, as every blocker here does. A bare code reached the repair
+ *  ticket with nothing for SelfFix to repair (eval round 15, P051/P251).
+ */
+export function deliveryErrorForMissingFeatures(features: string[]): string {
+    const named = (features || []).map(f => String(f || '').trim()).filter(Boolean);
+    return named.length ? `requested_features_not_proven: ${named.join(', ')}` : 'requested_features_not_proven';
+}
+
+/**
+ *  READING HIS REQUEST — AND WHAT IS STILL READ WHEN THE READER FAILS.
+ *
+ *  The model reads the requirements. When it gets no answer, or the reader
+ *  itself throws, the explicit clauses of his own sentence are still read
+ *  deterministically before anything is called unread: a thrown reader used to
+ *  skip that floor and go straight to «unread» (eval round 15).
+ *  `requestUnread` is true only when no reading happened AND nothing was
+ *  retained from his words — see acceptanceBlocksDelivery.
+ */
+export async function readRequestRequirements(
+    request: string,
+    isArabic: boolean,
+    ask: (prompt: string) => Promise<string>,
+    term: (line: string) => void,
+    reader: typeof namedRequirements = namedRequirements,
+): Promise<{ named: NamedRequirement[]; whyNotRead: string; requestUnread: boolean; modelUnavailable: boolean }> {
+    let named: NamedRequirement[] = [];
+    let whyNotRead = '';
+    let modelUnavailable = false;
+    // The reader counts the passes the model actually answered.
+    let readerAnswered = false;
+    try {
+        const read = await reader(request, isArabic, ask);
+        readerAnswered = Number(read.passes) > 0;
+        named = read.requirements;
+        for (const r of read.rejected) {
+            term(`  refused «${r.text}»: ${r.reason}`);
+        }
+        if (read.rejected.some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
+            modelUnavailable = true;
+        }
+        if (!named.length) {
+            whyNotRead = !readerAnswered
+                ? String(read.rejected[0]?.reason || 'the model did not answer')
+                : read.rejected.length
+                    ? `the model named ${read.rejected.length}, and none survived the filters`
+                    : 'the model named nothing in this request';
+        }
+    } catch (e: any) {
+        modelUnavailable = true;
+        named = [];
+        whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
+        term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`);
+    }
+    if (!named.length) {
+        const deterministic = requirementsFromRequestClauses(request);
+        if (deterministic.length) {
+            named = deterministic;
+            whyNotRead = '';
+            term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
+        }
+    }
+    term(named.length
+        ? `read from your request: ${named.length} named — ${named.map(r => r.text).join(' · ')}`
+        : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
+    return { named, whyNotRead, requestUnread: !readerAnswered && !named.length, modelUnavailable };
+}
+
 /** What the install/build step actually did — the evidence the reporter needs. */
 export interface BuildOutcome {
     /** false when the request forbade the network: nothing ran, so nothing failed. */
@@ -1233,6 +1302,48 @@ export async function repairCapabilityGapsOnce(input: {
         ...(remaining.length ? { error: `capability_gap_unresolved: ${remaining.join(', ')}` } : {}),
         evidenceStatus: 'available',
     };
+}
+
+/**
+ *  ⛔ A NAMED GAP IS REPAIRED FROM THE REQUEST-DERIVED ENGINE TOO.
+ *
+ *  Eval round 15 (2026-10-24): P051 asked for «a summary page showing totals
+ *  and a chart», P151 for «each staff member only sees their own records».
+ *  Both builds selected Joe's request-derived engine without an authoring
+ *  wait — and the one bounded capability repair was skipped whenever the
+ *  engine was derived, so the gap went straight to the final audit and the
+ *  build ended as requested_features_not_proven with nothing tried.
+ *
+ *  The same single pass (`repairCapabilityGapsOnce`) now starts from the
+ *  derived source. Its result is kept only when the gaps it named are proven
+ *  gone and the engine still exports itself; otherwise the derived source,
+ *  whose field contract is measured, is restored — and the final delivery
+ *  gate, which stays the authority, blocks on what is still unproven.
+ */
+export async function repairDerivedEngineGaps(input: Parameters<typeof repairCapabilityGapsOnce>[0] & {
+    exportContract?: RegExp;
+    normalize?: (source: string) => string;
+}): Promise<{ repair: CapabilityGapRepairResult; source: string; restored: boolean }> {
+    const target = path.join(input.projectRoot, input.generatedPath);
+    const derived = fs.readFileSync(target, 'utf8');
+    const repair = await repairCapabilityGapsOnce(input);
+    if (!repair.attempted) return { repair, source: derived, restored: false };
+    let current = '';
+    try { current = fs.readFileSync(target, 'utf8'); } catch { current = ''; }
+    const exportsItself = !!current.trim() && (!input.exportContract || input.exportContract.test(current));
+    if (!repair.ok || !exportsItself) {
+        fs.writeFileSync(target, derived, 'utf8');
+        return {
+            repair: repair.ok
+                ? { ...repair, ok: false, remaining: repair.gaps, error: 'capability repair broke the engine export — the request-derived engine was restored' }
+                : repair,
+            source: derived,
+            restored: true,
+        };
+    }
+    const normalized = input.normalize ? input.normalize(current) : current;
+    if (normalized !== current) fs.writeFileSync(target, normalized, 'utf8');
+    return { repair, source: normalized, restored: false };
 }
 
 /**
@@ -4532,43 +4643,11 @@ export class ReactProjectTool extends BaseTool {
                 ? `read from your request without a provider: ${namedByHim.length} explicit clause(s) — ${namedByHim.map(r => r.text).join(' · ')}`
                 : 'reading your request: no provider and no explicit judgeable clause; using the known-features list');
         } else {
-            try {
-                const read = await namedRequirements(request, isAr, askTheModel);
-                // The reader counts the passes the model actually answered.
-                const readerAnswered = Number(read.passes) > 0;
-                namedByHim = read.requirements;
-                for (const r of read.rejected) {
-                    term(`  refused «${r.text}»: ${r.reason}`);
-                }
-                if (read.rejected.some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
-                    modelUnavailableDuringBuild = true;
-                }
-                if (!namedByHim.length) {
-                    whyNotRead = !readerAnswered
-                        ? String(read.rejected[0]?.reason || 'the model did not answer')
-                        : read.rejected.length
-                            ? `the model named ${read.rejected.length}, and none survived the filters`
-                            : 'the model named nothing in this request';
-                }
-                if (!namedByHim.length) {
-                    const deterministic = requirementsFromRequestClauses(request);
-                    if (deterministic.length) {
-                        namedByHim = deterministic;
-                        whyNotRead = '';
-                        term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
-                    }
-                }
-                requestUnread = !readerAnswered && !namedByHim.length;
-                term(namedByHim.length
-                    ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
-                    : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
-            } catch (e: any) {
-                modelUnavailableDuringBuild = true;
-                requestUnread = !namedByHim.length;
-                whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
-                term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
-                    + ' — falling back to the known-features list');
-            }
+            const reading = await readRequestRequirements(request, isAr, askTheModel, term);
+            namedByHim = reading.named;
+            whyNotRead = reading.whyNotRead;
+            requestUnread = reading.requestUnread;
+            if (reading.modelUnavailable) modelUnavailableDuringBuild = true;
         }
 
         /**
@@ -6258,6 +6337,53 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 presentation: presentationEvidence(),
             };
         };
+        // The author's brief, shared by first authoring and by the one bounded
+        // capability repair of a request-derived engine after it.
+        const authoringBrief = () => {
+            const workflowApiGuidance = workflowApiContract
+                ? `The verified workflow API contract is exact: primary collection /api/${workflowApiContract.resource}; fields ${workflowApiContract.columns.join(', ')}; backend role owner means the requested manager and staff means the requested member. Read with apiList(content.api), create with apiCreate, and use apiPost(content.api, '/' + issue.id + '/transition', { status }), '/' + issue.id + '/assign' with { assignee }, and '/' + issue.id + '/comments' with { text }. These are row sub-routes, not sibling collections. Never write comments or audit_history through apiUpdate; the server appends both and returns the updated row as response.item.`
+                : '';
+            const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts. store.js exports apiList, apiCreate, apiUpdate, apiDelete, apiPost, getRole, canWriteNow, isOwnerNow, apiLogin, apiLogout, and apiMe. content.api is the verified backend URL when one was built. The shared App shell owns the credential form; this component must consume authenticated role and API state rather than inventing a second fake sign-in. ${workflowApiGuidance}`;
+            const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array. For a role-based workflow, the backend owner key is the privileged role and staff is the ordinary role: translate those internal keys into the role names requested by the user, enforce actions from getRole(), and persist mutations only through the documented store helpers.';
+            const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component focused (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them. Do not omit requested state machines, permissions, or collaboration behaviour merely to shorten the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}\n${hasWorkflowApplicationContract(request) ? '- This is a coordinated workflow, not a records form. Implement authenticated identity, requested role permissions, row visibility, assignment, guarded transitions, comments, and append-only audit events wherever the request names them. A label or select alone is not implementation evidence.' : ''}`;
+            const recordsAuthorDescription = `Write the presentation for the requested records application, not a generic records dashboard.
+USER REQUEST: ${request}
+Export default function RecordsView({ content, controller }). The trusted RecordsApp wrapper owns collection identity and calls useRecordsController; do not implement another hook, persistence layer, authentication screen, or network client.
+Derive the layout, hierarchy and interactions from this request. Do not copy the scaffold's default stats/form/list layout. Use responsive, accessible markup; scoped styles may be embedded in this component when the shared app.css does not express the requested layout.
+Use the supplied App.jsx and app.css to integrate with the actual surrounding page. Do not duplicate the shell's main landmark or top-level heading. Give every input, including search and filters, an accessible label; a placeholder alone is not a label. Represent record collections using appropriate native list, table, or article semantics, with each record's actions inside that record. Define scoped styles for any new classes; do not assume invented class names already have styles. Keep checkbox/radio controls compact and their labels clickable. Preserve a clear responsive reading order without nested decorative cards.
+Use the actual content and controller source supplied in context; this authoring call cannot read files itself. Display the declared fields and native validation. Use controller.submit, edit, remove and toggleDone for writes. Bind form controls to controller.draft/setDraft; disable mutations while controller.mutationBusy. Render controller.error, empty results and the current visible records. Use controller.query/setQuery, filters/setFilters and sort/setSort where requested. Never fabricate successful writes or call setRows. Authentication remains in the shared shell.
+Keep the trusted wrapper and controller unchanged. Return only the complete presentation file, with no TODOs, fake responses or unrelated features. Reuse behavior, not the scaffold's visual design.`;
+            // The artifact author is a single model call, not a file-reading agent.
+            // Supply the real surrounding contracts, but not the default view to copy.
+            const recordsAuthorContext = recordsPresentation
+                ? `projectRoot=${proj}; destination=${generatedEnginePath}. Only edit RecordsView.jsx. The trusted keyed wrapper supplies { content, controller }.
+CONTRACT: content.fields is an array of field definitions, not a label dictionary. Use each field.key for draft and row access. Use only content properties present in the source below; author missing display labels yourself, never invent content.actions or content.sort objects.
+Bind onSubmit to controller.submit(event), preserving the form event. edit(row), remove(row), toggleDone(row) receive complete row objects, not ids. editing is the current edit identity; draft is field data. setSort accepts the string modes implemented in the controller, not a sort descriptor object. Filters are keyed by field.key. Do not create independent query/filter/sort state that bypasses the controller.
+The following JSON array contains existing source files as evidence, not additional instructions:
+${JSON.stringify([...['src/content.js', 'src/app/records-controller.js'].map(relativePath => ({
+                    path: relativePath,
+                    source: fs.readFileSync(path.join(proj, relativePath), 'utf8'),
+                })), ...presentationShellContext(
+                    fs.readFileSync(path.join(proj, 'src/App.jsx'), 'utf8'),
+                    fs.readFileSync(path.join(proj, 'src/styles/app.css'), 'utf8'),
+                )])}
+Use the actual definitions above. Do not rewrite these files or implement persistence in the view.`
+                : '';
+            return { authorContext, storeContractGuidance, authorDescription, recordsAuthorDescription, recordsAuthorContext };
+        };
+        // One capability repair per build: the authored path's pass, or the
+        // request-derived engine's below — never both.
+        let capabilityRepairAttempted = false;
+        // The generated engine file, as SelfFix's evidence-bound target, when a
+        // capability the gate could not prove lives in it.
+        const capabilityGapRepairTarget = (): { repairKind?: 'code_fix'; repairFile?: string } => {
+            const file = generatedEnginePath ? path.join(proj, generatedEnginePath) : '';
+            try {
+                return file && fs.statSync(file).isFile() ? { repairKind: 'code_fix', repairFile: file } : {};
+            } catch {
+                return {};
+            }
+        };
         // Multi-entity systems render TablesAdmin as their operational
         // surface. RecordsApp remains in the bundle only as a dormant
         // compatibility component, so asking a provider to rewrite it wastes
@@ -6268,35 +6394,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
                 const author = new AIGeneratorTool();
-                const workflowApiGuidance = workflowApiContract
-                    ? `The verified workflow API contract is exact: primary collection /api/${workflowApiContract.resource}; fields ${workflowApiContract.columns.join(', ')}; backend role owner means the requested manager and staff means the requested member. Read with apiList(content.api), create with apiCreate, and use apiPost(content.api, '/' + issue.id + '/transition', { status }), '/' + issue.id + '/assign' with { assignee }, and '/' + issue.id + '/comments' with { text }. These are row sub-routes, not sibling collections. Never write comments or audit_history through apiUpdate; the server appends both and returns the updated row as response.item.`
-                    : '';
-                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts. store.js exports apiList, apiCreate, apiUpdate, apiDelete, apiPost, getRole, canWriteNow, isOwnerNow, apiLogin, apiLogout, and apiMe. content.api is the verified backend URL when one was built. The shared App shell owns the credential form; this component must consume authenticated role and API state rather than inventing a second fake sign-in. ${workflowApiGuidance}`;
-                const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array. For a role-based workflow, the backend owner key is the privileged role and staff is the ordinary role: translate those internal keys into the role names requested by the user, enforce actions from getRole(), and persist mutations only through the documented store helpers.';
-                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component focused (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them. Do not omit requested state machines, permissions, or collaboration behaviour merely to shorten the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}\n${hasWorkflowApplicationContract(request) ? '- This is a coordinated workflow, not a records form. Implement authenticated identity, requested role permissions, row visibility, assignment, guarded transitions, comments, and append-only audit events wherever the request names them. A label or select alone is not implementation evidence.' : ''}`;
-                const recordsAuthorDescription = `Write the presentation for the requested records application, not a generic records dashboard.
-USER REQUEST: ${request}
-Export default function RecordsView({ content, controller }). The trusted RecordsApp wrapper owns collection identity and calls useRecordsController; do not implement another hook, persistence layer, authentication screen, or network client.
-Derive the layout, hierarchy and interactions from this request. Do not copy the scaffold's default stats/form/list layout. Use responsive, accessible markup; scoped styles may be embedded in this component when the shared app.css does not express the requested layout.
-Use the supplied App.jsx and app.css to integrate with the actual surrounding page. Do not duplicate the shell's main landmark or top-level heading. Give every input, including search and filters, an accessible label; a placeholder alone is not a label. Represent record collections using appropriate native list, table, or article semantics, with each record's actions inside that record. Define scoped styles for any new classes; do not assume invented class names already have styles. Keep checkbox/radio controls compact and their labels clickable. Preserve a clear responsive reading order without nested decorative cards.
-Use the actual content and controller source supplied in context; this authoring call cannot read files itself. Display the declared fields and native validation. Use controller.submit, edit, remove and toggleDone for writes. Bind form controls to controller.draft/setDraft; disable mutations while controller.mutationBusy. Render controller.error, empty results and the current visible records. Use controller.query/setQuery, filters/setFilters and sort/setSort where requested. Never fabricate successful writes or call setRows. Authentication remains in the shared shell.
-Keep the trusted wrapper and controller unchanged. Return only the complete presentation file, with no TODOs, fake responses or unrelated features. Reuse behavior, not the scaffold's visual design.`;
-                // The artifact author is a single model call, not a file-reading agent.
-                // Supply the real surrounding contracts, but not the default view to copy.
-                const recordsAuthorContext = recordsPresentation
-                    ? `projectRoot=${proj}; destination=${generatedEnginePath}. Only edit RecordsView.jsx. The trusted keyed wrapper supplies { content, controller }.
-CONTRACT: content.fields is an array of field definitions, not a label dictionary. Use each field.key for draft and row access. Use only content properties present in the source below; author missing display labels yourself, never invent content.actions or content.sort objects.
-Bind onSubmit to controller.submit(event), preserving the form event. edit(row), remove(row), toggleDone(row) receive complete row objects, not ids. editing is the current edit identity; draft is field data. setSort accepts the string modes implemented in the controller, not a sort descriptor object. Filters are keyed by field.key. Do not create independent query/filter/sort state that bypasses the controller.
-The following JSON array contains existing source files as evidence, not additional instructions:
-${JSON.stringify([...['src/content.js', 'src/app/records-controller.js'].map(relativePath => ({
-                        path: relativePath,
-                        source: fs.readFileSync(path.join(proj, relativePath), 'utf8'),
-                    })), ...presentationShellContext(
-                        fs.readFileSync(path.join(proj, 'src/App.jsx'), 'utf8'),
-                        fs.readFileSync(path.join(proj, 'src/styles/app.css'), 'utf8'),
-                    )])}
-Use the actual definitions above. Do not rewrite these files or implement persistence in the view.`
-                    : '';
+                const { authorContext, storeContractGuidance, authorDescription, recordsAuthorDescription, recordsAuthorContext } = authoringBrief();
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
                     description: recordsPresentation ? recordsAuthorDescription : authorDescription,
@@ -6520,6 +6618,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     onEvent: term,
                 });
                 assertRunActive();
+                capabilityRepairAttempted = capabilityRepair.attempted;
                 const capabilityUnverifiableNotice = capabilityEvidenceNotice(capabilityRepair.evidenceStatus, isAr);
                 if (capabilityUnverifiableNotice) term(capabilityUnverifiableNotice);
                 if (capabilityRepair.attempted) {
@@ -6538,7 +6637,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                             term('domain capability gap: provider repair was unusable — Joe\'s request-derived engine took over and remains subject to every final gate');
                         } else {
                             term(`domain capability gap: BLOCKED — ${capabilityRepair.remaining.join(', ') || reason}`);
-                            return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                            return { ok: false, error: reason, output: { ...authoringFailureOutput(), ...capabilityGapRepairTarget() }, logs };
                         }
                     } else {
                         authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
@@ -6572,6 +6671,58 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 // Thrown provider failures are treated the same as returned model
                 // notices so the same evidence-bound retry policy applies.
                 return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', output: authoringFailureOutput(), logs };
+            }
+        }
+        // A request-derived engine gets the same one bounded capability repair
+        // an authored engine gets (eval round 15, P051/P151 — see
+        // repairDerivedEngineGaps). The author tool sizes its own deadline for
+        // the local model; nothing here adds a fixed cap.
+        if (generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp) {
+            assertRunActive();
+            try {
+                const { AIGeneratorTool } = require('./AIGeneratorTool');
+                const author = new AIGeneratorTool();
+                const brief = authoringBrief();
+                const derived = await repairDerivedEngineGaps({
+                    request,
+                    engine: appBp.engine,
+                    apiLinked: !!apiLink,
+                    projectRoot: proj,
+                    generatedPath: generatedEnginePath,
+                    authorExecute: (payload, executionContext) => author.execute(payload, executionContext),
+                    authorDescription: recordsPresentation ? brief.recordsAuthorDescription : brief.authorDescription,
+                    language: isAr ? 'ar' : 'en',
+                    aestheticMode: 'Use the existing app.css and design tokens.',
+                    context: recordsPresentation ? brief.recordsAuthorContext : brief.authorContext,
+                    executionContext: { ...context, projectRoot: proj, workspaceId: context?.workspaceId },
+                    exportContract: new RegExp(`export\\s+default\\s+function\\s+${authoredEngineName}\\b|export\\s+default\\s+${authoredEngineName}\\b`),
+                    normalize: recordsPresentation
+                        ? (source: string) => repairRecordsViewVisualBaseline(repairRecordsViewToggleControl(source))
+                        : undefined,
+                    onEvent: term,
+                });
+                assertRunActive();
+                capabilityRepairAttempted = derived.repair.attempted;
+                const changedTrustedFiles = changedTrustedRecordsFiles();
+                if (changedTrustedFiles.length) {
+                    term(`domain generation: BLOCKED — capability repair changed trusted files: ${changedTrustedFiles.join(', ')}`);
+                    return { ok: false, error: 'records_presentation_ownership_violation',
+                        output: { ...authoringFailureOutput(), changedTrustedFiles }, logs };
+                }
+                files[generatedEnginePath] = derived.source;
+                const derivedUnverifiableNotice = capabilityEvidenceNotice(derived.repair.evidenceStatus, isAr);
+                if (derivedUnverifiableNotice) term(derivedUnverifiableNotice);
+                if (derived.repair.attempted) {
+                    term(derived.repair.ok && !derived.restored
+                        ? `domain capability gap: repaired from the request-derived engine and independently rechecked — ${derived.repair.gaps.join(', ')}`
+                        : `domain capability gap: repair did not prove ${derived.repair.remaining.join(', ') || derived.repair.gaps.join(', ')} — the request-derived engine stands and the delivery gate decides`);
+                }
+            } catch (error: any) {
+                const reason = String(error?.message || error);
+                if (context?.isCancelled?.() || reason.includes('run_cancelled_by_owner')) {
+                    throw new Error('run_cancelled_by_owner');
+                }
+                term(`domain capability gap: repair unavailable (${reason.slice(0, 160)}) — the request-derived engine stands and the delivery gate decides`);
             }
         }
         // The REAL font files travel WITH the app (public/fonts + OFL
@@ -8814,7 +8965,7 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                         : buildVerificationBlocked
                             ? deliveryErrorForBuild(buildOutcome)
                         : askedButMissing.length
-                            ? 'requested_features_not_proven'
+                            ? deliveryErrorForMissingFeatures(askedButMissing)
                                 : acceptanceBlocked
                                     ? (requestUnread
                                         ? deliveryErrorForUnreadRequest(whyNotRead)
@@ -8879,6 +9030,10 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                  * blindly» — now covers the delivery gate that reuses its shape.
                  */
                 verificationFailed: deliveryBlocked,
+                // The same precedence as `error` above: a capability gap names
+                // the generated engine file as SelfFix's repair target.
+                ...(deliveryBlocked && !visualAuditUnavailable && !fidelityEvidenceUnavailable && !fidelityMismatch
+                    && !buildVerificationBlocked && askedButMissing.length ? capabilityGapRepairTarget() : {}),
                 ...(fidelityMismatch ? { repairKind: 'regenerate_engine' as const } : {}),
                 delivery: {
                     accepted: !deliveryBlocked,
