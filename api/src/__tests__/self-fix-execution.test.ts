@@ -501,7 +501,7 @@ describe('SelfFixExecutionService phase resumption', () => {
         }
     });
 
-    it('uses the rebound source path to skip react_project after a relative WeatherGo import repair', async () => {
+    it('uses the rebound source path to verify react_project in place after a relative WeatherGo import repair', async () => {
         const artifactRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-weathergo-relative-repair-'));
         fs.mkdirSync(path.join(artifactRoot, 'src', 'components'), { recursive: true });
         fs.writeFileSync(path.join(artifactRoot, 'package.json'), '{"private":true}\n');
@@ -540,7 +540,9 @@ describe('SelfFixExecutionService phase resumption', () => {
             expect(result.ok).toBe(true);
             expect(executeToolSpy.mock.calls.map(call => call[0])).toEqual(['ai_write_file', 'phase_executor']);
             expect(executeToolSpy.mock.calls[0][1].path).toBe(path.join(artifactRoot, 'src', 'components', 'WeatherApp.jsx'));
-            expect(executeToolSpy.mock.calls[1][1].phase.tasks.map((task: any) => task.tool)).toEqual(['project_run']);
+            // The gates that refused the build run again on the repaired project (eval round 15).
+            expect(executeToolSpy.mock.calls[1][1].phase.tasks.map((task: any) => task.tool)).toEqual(['react_project', 'project_run']);
+            expect(executeToolSpy.mock.calls[1][1].phase.tasks[0].args).toEqual({ verifyExisting: true, projectDir: artifactRoot });
             expect(executeToolSpy.mock.calls[1][1].projectContext.projectRoot).toBe(artifactRoot);
         } finally {
             fs.rmSync(artifactRoot, { recursive: true, force: true });
@@ -559,15 +561,12 @@ describe('SelfFixExecutionService phase resumption', () => {
                 tasks: [{ task: 'Generate the WeatherGo React project', tool: 'react_project', args: {} }],
             }, repairedFile);
 
-            expect(result.phase.tasks.map((task: any) => task.tool)).toEqual(['shell_execute', 'project_run']);
-            expect(result.phase.tasks[0].args).toMatchObject({
-                command: 'npm run build',
-                cwd: artifactRoot,
-                projectPath: artifactRoot,
-            });
-            expect(result.phase.tasks[1].args).toEqual({ cwd: artifactRoot });
-            expect(result.phase.tasks[0].command).toBeUndefined();
-            expect(result.phase.tasks[1].cwd).toBeUndefined();
+            // react_project re-proves the repaired project itself; a build +
+            // start proof alone could not see a capability gap (eval round 15).
+            expect(result.phase.tasks.map((task: any) => task.tool)).toEqual(['react_project']);
+            expect(result.phase.tasks[0].args).toEqual({ verifyExisting: true, projectDir: artifactRoot });
+            expect(result.phase.tasks[0].verifyExisting).toBeUndefined();
+            expect(result.phase.tasks[0].projectDir).toBeUndefined();
         } finally {
             fs.rmSync(artifactRoot, { recursive: true, force: true });
         }

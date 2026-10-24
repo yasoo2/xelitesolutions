@@ -179,7 +179,7 @@ describe('the wiring in react_project', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
 
     it('a derived engine gets the one repair an authored engine did not already spend', () => {
-        expect(source).toMatch(/if \(generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp\) \{[\s\S]{0,400}await repairDerivedEngineGaps\(\{/);
+        expect(source).toMatch(/if \(!verifyExisting && generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp\) \{[\s\S]{0,400}await repairDerivedEngineGaps\(\{/);
         expect(source).toContain('capabilityRepairAttempted = capabilityRepair.attempted;');
     });
     it('the delivery gate names the capabilities and the generated file', () => {

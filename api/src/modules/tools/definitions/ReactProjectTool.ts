@@ -4395,6 +4395,8 @@ export class ReactProjectTool extends BaseTool {
             projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
             resumeExisting: { type: 'boolean', description: 'Resume an existing project after a bounded repair while preserving its manifest and generated files' },
+            verifyExisting: { type: 'boolean', description: 'Re-prove an existing project after a source repair: build, capability audit, acceptance and QA run on the files as they are; nothing is authored, regenerated or repaired' },
+            projectDir: { type: 'string', description: 'With verifyExisting: the absolute directory of the existing project to verify (inside the workspace)' },
             scaffoldDir: { type: 'string', description: 'Explicit session-owned React scaffold directory for a same-pipeline handoff' },
             apiSelection: { type: 'object', description: 'Trusted API selection supplied by PhaseExecutor after search_public_apis' },
         },
@@ -4680,11 +4682,28 @@ export class ReactProjectTool extends BaseTool {
         const { saysNoInstall, asksFor } = require('../../../core/design/subject-phrase');
         const noInstall = !!input?.skipInstall || saysNoInstall(request);
         const resumeExisting = input?.resumeExisting === true;
+        /**
+         *  ⛔ A REPAIR IS PROVEN BY THE GATE THAT REFUSED IT.
+         *
+         *  Eval round 15: after SelfFix repaired the generated engine, the
+         *  phase rerun skipped react_project so the repair would not be
+         *  overwritten — and the capability and acceptance gates that had
+         *  blocked delivery live in here, so nothing re-proved the repair: a
+         *  phase reduced to «npm run build» completed whether or not the chart
+         *  had been added. verifyExisting runs this tool on the project as it
+         *  is: no file is authored, regenerated or repaired; the build, the
+         *  capability audit, the acceptance judges and QA run, and the same
+         *  delivery verdict comes back.
+         */
+        const verifyExisting = input?.verifyExisting === true;
         if (noInstall && !input?.skipInstall) {
             term('policy: the request says not to install packages — skipping npm install and the build that needs it');
         }
         if (resumeExisting) {
             term('recovery: resuming the existing project and preserving its installed manifest before regeneration');
+        }
+        if (verifyExisting) {
+            term('verification: re-proving the existing project after a repair — nothing is authored, regenerated or repaired');
         }
 
         const cancellation = context?.cancellation as Promise<void> | undefined;
@@ -4733,7 +4752,7 @@ export class ReactProjectTool extends BaseTool {
         // explicit scaffoldDir, and a handoff stamped by THIS pipeline remain
         // valid contracts; an unqualified entry is stale state, not ownership
         // evidence for this build.
-        const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff)
+        const scaffoldEntry = (input?.resumeExisting === true || verifyExisting || explicitScaffoldDir || samePipelineHandoff)
             ? prevEntry
             : null;
         let apiEntry = prevEntry?.type === 'api' ? prevEntry : null;
@@ -4765,7 +4784,7 @@ export class ReactProjectTool extends BaseTool {
         // belongs to this request. A new chat can share a session registry key
         // with an older run; only an explicit continuation may inherit its
         // app kind, otherwise a stale Weather/Shop/etc. engine leaks in.
-        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir || !!apiEntry;
+        const mayInheritAppKind = input?.resumeExisting === true || verifyExisting || explicitScaffoldDir || !!apiEntry;
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = apiEntry?.runtimeAuth?.email && apiEntry?.runtimeAuth?.password
@@ -4873,7 +4892,7 @@ export class ReactProjectTool extends BaseTool {
                 } catch { return false; }
             })());
         // Application engines author their own visible content; marketing copy is unused.
-        if (!appBp && !input?.skipAuthoredCopy && !copyProvidersRationing
+        if (!verifyExisting && !appBp && !input?.skipAuthoredCopy && !copyProvidersRationing
             && !modelUnavailableDuringBuild && !inheritedUnifiedTables) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
@@ -5137,15 +5156,26 @@ export class ReactProjectTool extends BaseTool {
             // the stricter structural guard above.
             || (resumeExisting && fs.existsSync(path.join(activeDir, 'package.json')))
         ) ? activeDir : '';
-        let proj = reusableScaffold || path.join(root, dirName);
-        if (reusableScaffold) {
+        // Verification names its project explicitly and never builds another
+        // one in its place.
+        const verifyDir = verifyExisting && typeof input?.projectDir === 'string' && input.projectDir.trim()
+            ? path.resolve(input.projectDir.trim()) : '';
+        if (verifyExisting && !(verifyDir && isWithinRoot(verifyDir, workspaceRoot) && fs.existsSync(path.join(verifyDir, 'package.json')))) {
+            term(`verification: no existing project to verify (${verifyDir || 'no projectDir given'}) — nothing is built in its place`);
+            return { ok: false, error: 'verify_existing_project_missing',
+                output: { path: verifyDir, projectRoot: workspaceRoot, verifiedExisting: true }, logs };
+        }
+        let proj = verifyDir || reusableScaffold || path.join(root, dirName);
+        if (verifyDir) {
+            term(`project identity: verifying the existing project at ${proj}`);
+        } else if (reusableScaffold) {
             term(`project identity: reusing this session's React scaffold at ${proj}`);
         }
         // Two sessions with generic brands must NEVER share a directory —
         // the second build silently overwrote the first app (caught by the
         // families wire proof: two different stores landed in react-react).
         // The session that OWNS the directory may rebuild in place.
-        if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
+        if (!verifyDir && fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
             const suffix = projectDisambiguator(currentPipelineRunId, sessionKey);
             const boundedFolderName = (extra: string): string => {
                 const available = Math.max(8, PROJECT_DIR_NAME_MAX_LENGTH - dirName.length - 1);
@@ -5177,8 +5207,10 @@ export class ReactProjectTool extends BaseTool {
         }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = publicUrlFor(`/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`);
-        fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
-        fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
+        if (!verifyExisting) {
+            fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
+            fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
+        }
 
         if (sessionId) broadcastThinkingDetail(sessionId, isAr
             ? `⚛️ أبني مشروع React حقيقي (Vite): ${content.brand}`
@@ -5191,7 +5223,7 @@ export class ReactProjectTool extends BaseTool {
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
         const photographyBrief = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
-        if (!appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
+        if (!verifyExisting && !appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const imageBrief = buildImageBrief(request);
             const imageSubjects = photographyBrief
@@ -5290,7 +5322,7 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
-        if (photographyBrief && applyBundledPhotographyFallback(proj, content)) {
+        if (!verifyExisting && photographyBrief && applyBundledPhotographyFallback(proj, content)) {
             term('photography images: bundled offline fallback used because the licensed image service was unavailable');
         }
 
@@ -5654,7 +5686,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             let seedRows: Array<Record<string, any>> = [];
             const seedFields = ((runBp as any).fields || []) as Array<any>;
-            if (!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
+            if (!verifyExisting && !copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
                 && seedFields.length && !input?.skipAuthoredCopy) {
                 try {
                     const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
@@ -5776,7 +5808,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n`
                 + appDesign + String.fromCharCode(10)
                 + (appFiles['src/styles/app.css'] || fileAppCss());
-            fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
+            if (!verifyExisting) fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
         } else if (!externalIntegration) {
             // Generic projects have no runBp; the declaration still follows
@@ -5922,7 +5954,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 : 'interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
             authoringStoodDown = true;
         }
-        if (!appBp && !externalIntegration && sections.length && !providersAreRationing) {
+        if (!verifyExisting && !appBp && !externalIntegration && sections.length && !providersAreRationing) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -6133,7 +6165,15 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // event the page builder emits. Without it the panel opened on a
         // React build and showed nothing being built at all.
         assertRunActive();
+        if (verifyExisting) {
+            // The project on disk — repair included — is the artifact under
+            // test: every later reader sees its files, and none is written.
+            for (const rel of Object.keys(files)) {
+                try { files[rel] = fs.readFileSync(path.join(proj, rel), 'utf-8'); } catch { delete files[rel]; }
+            }
+        }
         for (const [rel, body] of Object.entries(files)) {
+            if (verifyExisting) break;
             assertRunActive();
             fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
@@ -6198,7 +6238,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // use that measured surface directly rather than waiting on a second
         // provider to redraw it; it still proceeds through the normal build and
         // browser QA gates. Tests can opt into model authoring explicitly.
-        if (recordsPresentation && context?.engineeringPipeline === true && context?.allowModelAuthoringInTest !== true) {
+        if (!verifyExisting && recordsPresentation && context?.engineeringPipeline === true && context?.allowModelAuthoringInTest !== true) {
             const derivedRecordsView = requestDerivedRecordsPresentation(recordsDefaultSource);
             if (derivedRecordsView.trim() && derivedRecordsView !== recordsDefaultSource) {
                 const authoredPath = path.join(proj, generatedEnginePath);
@@ -6211,7 +6251,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term('domain generation: selected Joe\'s request-derived records presentation without an authoring wait; build and browser QA remain required');
             }
         }
-        if (generatedEnginePath && appBp && !recordsPresentation) {
+        if (!verifyExisting && generatedEnginePath && appBp && !recordsPresentation) {
             try {
                 const fallbackFiles = buildAppFiles(runBp, {
                     isArabic: artifactIsAr,
@@ -6388,7 +6428,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // surface. RecordsApp remains in the bundle only as a dormant
         // compatibility component, so asking a provider to rewrite it wastes
         // minutes and can never improve the visible application.
-        if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
+        if (!verifyExisting && generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
             assertRunActive();
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
@@ -6677,7 +6717,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // an authored engine gets (eval round 15, P051/P151 — see
         // repairDerivedEngineGaps). The author tool sizes its own deadline for
         // the local model; nothing here adds a fixed cap.
-        if (generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp) {
+        if (!verifyExisting && generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp) {
             assertRunActive();
             try {
                 const { AIGeneratorTool } = require('./AIGeneratorTool');
@@ -6728,7 +6768,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // The REAL font files travel WITH the app (public/fonts + OFL
         // notice) — a declared family that ships no file is a costume, not
         // typography (the Amiri/Georgia discovery).
-        {
+        if (!verifyExisting) {
             assertRunActive();
             const fontCandidates = [
                 path.resolve(__dirname, '..', '..', '..', '..', 'assets', 'fonts'),
@@ -6758,6 +6798,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // absent local resources lose only their declaration, not the whole app.
         const removedFontResources: string[] = [];
         for (const [rel, body] of Object.entries(files)) {
+            if (verifyExisting) break;
             if (!/\.(?:css|scss|sass)$/iu.test(rel) || typeof body !== 'string') continue;
             const cssPath = path.join(proj, rel);
             const reconciled = pruneMissingFontResources(body, cssPath, proj);
@@ -7052,7 +7093,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                  *  would chase a symptom, and the remedy would install
                  *  something the project never needed.
                  */
-                if (!built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
+                if (!verifyExisting && !built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
                     assertRunActive();
                     for (const [rel, body] of Object.entries(authoredFallback)) {
                         assertRunActive();
@@ -7087,7 +7128,9 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         if (sessionId) broadcastThinkingDetail(sessionId, `🩺 ${d.ar}`);
                         buildDiagnosis = d;
                     }
-                    if (d?.fixable) {
+                    if (d?.fixable && verifyExisting) {
+                        term('build remedy: not applied — verification measures the repaired project, it does not change it');
+                    } else if (d?.fixable) {
                         const remedy = await applyRemedy(d, proj, async (c: string, a: string[], t: number) => ({
                             exitCode: await run(c, a, t),
                         }));
@@ -7108,7 +7151,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
 
         if (built) {
             artifactMode = 'react';
-        } else if (!noInstall && installExit !== null && dependencyFreeRecordsFallback) {
+        } else if (!verifyExisting && !noInstall && installExit !== null && dependencyFreeRecordsFallback) {
             try {
                 const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr);
                 built = fs.existsSync(artifact);
@@ -7485,7 +7528,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const runtimeBlockers = ((audit?.findings || []) as any[]).filter(f =>
                 (f.severity === 'high' || f.severity === 'critical')
                 && AUTHORED_RENDER_FAULTS.has(String(f.id || f.code || '')));
-            const canRestoreDeterministic = runtimeBlockers.length && !audit?.skipped
+            const canRestoreDeterministic = !verifyExisting && runtimeBlockers.length && !audit?.skipped
                 && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback);
             if (canRestoreDeterministic) {
                 assertRunActive();
@@ -7646,7 +7689,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const sourceBehaviourFindings = !audit.skipped && supportsSourceRepair
                 ? require('../../../core/quality/model-round').handlerRepairable(audit.findings || [])
                 : [];
-            if (!audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
+            // Verification measures and never repairs: the door's terminal
+            // reading is the verdict, and the repair rounds do not open.
+            if (verifyExisting && doorTerminal) terminalAudit = doorTerminal;
+            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -9005,6 +9051,7 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                 : undefined,
             output: { message, acceptance,
                 acceptanceTrace: namedDecisionTrace(namedVerdicts),
+                ...(verifyExisting ? { verifiedExisting: true } : {}),
                 path: proj,
                 dir: dirName,
                 authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
