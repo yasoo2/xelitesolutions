@@ -138,7 +138,10 @@ async function findFreePort(start = 4300): Promise<number> {
  * is listening; an HTTP answer proves it is a web server, and that is the
  * least we should know before calling it «your system».
  */
-async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
+/** The bound for one HTTP answer from a local project server; delivery probes reuse it. */
+export const HTTP_ANSWER_TIMEOUT_MS = 2500;
+
+async function answersHttp(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
         const finish = (value: boolean) => {
@@ -1286,6 +1289,7 @@ export class ProjectRunTool implements ToolDefinition {
             command: { type: 'string' as const, description: 'Override the start command (auto-detected otherwise).' },
             port: { type: 'number' as const, description: 'Preferred port (a free one is chosen otherwise).' },
             projectQuery: { type: 'string' as const, description: 'Original user request, used only to select a named project within a workspace.' },
+            restart: { type: 'boolean' as const, description: 'Stop the recorded server for this project and start it again instead of adopting it — after a repair the running process still holds the old code.' },
         },
     };
     outputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, port: { type: 'number' as const }, ready: { type: 'boolean' as const } } };
@@ -1424,7 +1428,7 @@ export class ProjectRunTool implements ToolDefinition {
         // It must not disable adoption when the recorded server belongs to that
         // exact cwd; doing so starts a second server and can collide with an
         // older listener on the other loopback address family.
-        if (!input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
+        if (adoptionAllowed(input) && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
             rememberLiveProject(context, cwd, {
                 url: liveUrl, port: Number(live.port), pid: Number(live.pid),
             });
@@ -1447,7 +1451,9 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        if (!input?.command && liveUrl) {
+        if (input?.restart === true && liveUrl) {
+            logs.push(`project_run: restart requested — the recorded server is stopped and started again, never adopted (${liveUrl})`);
+        } else if (!input?.command && liveUrl) {
             logs.push(`project_run: ignored stale or unowned live record (${liveUrl})`);
         }
 
@@ -1904,6 +1910,16 @@ export function theServerThisSessionLeftRunning(record: any, workspaceRoot: stri
     if (!inside) return false;
     try { process.kill(pid, 0); } catch { return false; }
     return true;
+}
+
+/**
+ * May project_run adopt a recorded live server instead of starting one?
+ * Not for an explicit start command, and never on a restart: after a repair
+ * the running process still holds the pre-repair code, and adopting it made
+ * the post-repair probe measure the old server (round 15 review).
+ */
+export function adoptionAllowed(input: any): boolean {
+    return !input?.command && input?.restart !== true;
 }
 
 async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {

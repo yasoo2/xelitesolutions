@@ -394,6 +394,8 @@ export interface RequestCoverageReport {
     /** Resources the server already serves statically — the pattern a repair follows. */
     patternResources: string[];
     prefixes: string[];
+    /** The project's own test files — where a tests repair goes. */
+    testFiles: string[];
 }
 
 const wordIn = (text: string, id: string) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}([^A-Za-z0-9]|$)`, 'iu').test(text);
@@ -442,6 +444,7 @@ export function judgeRequestCoverage(input: {
         serverFile,
         patternResources,
         prefixes: evidence.prefixes,
+        testFiles: evidence.testFiles,
     };
 }
 
@@ -475,4 +478,66 @@ export function coverageError(report: RequestCoverageReport): string {
         return `${label} (${what})`;
     });
     return `requested_entities_not_delivered: ${items.join('; ')}`.slice(0, 900);
+}
+
+export interface RequestCoverageRepairTask {
+    dimension: 'served' | 'tested';
+    task: string;
+    error: string;
+    /** Absolute; the server file that already serves resources, or the project's test file. */
+    repairFile: string;
+    description: string;
+    /** JSON: the records as structured data — never text appended to his request. */
+    artifactContext: string;
+}
+
+/**
+ * The single evidence-bound repair for a coverage gap: serving first (the
+ * server file that already registers routes, following the resources it
+ * serves), then tests (the project's own test file, or a new one beside the
+ * server). No server file means no evidence-bound target: null, never a
+ * guessed file.
+ */
+export function requestCoverageRepairTask(
+    report: RequestCoverageReport,
+    opts: { request: string; serverRoot: string; testFiles: string[] },
+): RequestCoverageRepairTask | null {
+    const notServed = report.missing.filter(r => r.served === false || r.present === false);
+    const untested = report.missing.filter(r => r.tested === false && r.served !== false && r.present !== false);
+    const label = (r: RecordCoverage) => (r.ar && r.ar !== r.key ? `${r.key} (${r.ar})` : r.key);
+    const context = (records: RecordCoverage[]) => JSON.stringify({
+        entities: records.map(r => ({ key: r.key, ar: r.ar, en: r.en })),
+        patternResources: report.patternResources,
+        prefixes: report.prefixes,
+        deliverables: report.testsRequested ? [report.testsRequested] : [],
+    });
+    if (notServed.length) {
+        if (!report.serverFile) return null;
+        const names = notServed.map(label).join(', ');
+        const pattern = report.patternResources.length ? report.patternResources.join(', ') : 'the resources it already serves';
+        return {
+            dimension: 'served',
+            task: `Serve the records the request named in this server: ${names}. Follow exactly how it already serves ${pattern}`
+                + `${report.prefixes.length ? ` under ${report.prefixes.join(', ')}` : ''}: list, read one, create, update and delete each, with its own storage. `
+                + 'Keep every existing route and behaviour working.',
+            error: `requested_entities_not_served: ${names}`.slice(0, 900),
+            repairFile: report.serverFile,
+            description: String(opts.request || '').slice(0, 4000),
+            artifactContext: context(notServed),
+        };
+    }
+    if (untested.length) {
+        const names = untested.map(label).join(', ');
+        const target = opts.testFiles[0] || path.join(opts.serverRoot || path.dirname(report.serverFile || '.'), 'tests', 'requested-records.test.js');
+        return {
+            dimension: 'tested',
+            task: `Add automated tests, run by the project's own test script, that exercise the routes of: ${names} — `
+                + 'a successful request, invalid input refused, and an unknown id answered as not found.',
+            error: `requested_entity_tests_missing: ${names}`.slice(0, 900),
+            repairFile: target,
+            description: String(opts.request || '').slice(0, 4000),
+            artifactContext: context(untested),
+        };
+    }
+    return null;
 }

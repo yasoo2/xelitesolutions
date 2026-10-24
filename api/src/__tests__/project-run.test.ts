@@ -546,11 +546,15 @@ describe('named project discovery never falls back to the workspace repository',
     test('an explicit matching cwd keeps the verified server handoff adoptable', () => {
         // The end marker is searched AFTER the start: other functions may use
         // the same statement earlier in the file (startStaticSitePreview does).
-        const start = runSrc.indexOf('if (!input?.command && liveUrl && canAdoptRecordedLive');
+        const start = runSrc.indexOf('if (adoptionAllowed(input) && liveUrl && canAdoptRecordedLive');
         const adoption = runSrc.slice(start, runSrc.indexOf('const key = runKey(context)', start));
         expect(start).toBeGreaterThan(-1);
         expect(adoption).toContain('canAdoptRecordedLive(live, cwd)');
         expect(adoption).not.toContain('!input?.cwd');
+        // The guard itself refuses only an explicit command or a restart — never an explicit cwd.
+        const guard = runSrc.slice(runSrc.indexOf('export function adoptionAllowed'), runSrc.indexOf('async function retireRecordedServer'));
+        expect(guard).toContain('return !input?.command && input?.restart !== true;');
+        expect(guard).not.toContain('input?.cwd');
         expect(runSrc).toContain('const url = confirmedLiveUrl;');
     });
 

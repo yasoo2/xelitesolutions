@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
-import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { RepairTicketService } from '../../services/RepairTicketService';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
@@ -1427,6 +1428,24 @@ export function applyLiveRunOutcome(
     };
 }
 
+/**
+ * After a repair, an ADOPTED server is not proof: project_run answers
+ * «already running» for the recorded process, which still holds the
+ * pre-repair code (round 15 review). Post-repair runs ask for a restart; an
+ * answer that adopted anyway is a live-run failure, never a pass.
+ */
+export function postRepairRunOutcome(runResult: any): any {
+    const output = runResult?.output || {};
+    if (runResult?.ok === true && (output.adopted === true || output.kind === 'already-running')) {
+        return {
+            ...runResult,
+            ok: false,
+            error: 'the post-repair run adopted the pre-repair server instead of restarting it, so the repair was never measured',
+        };
+    }
+    return runResult;
+}
+
 export interface ScopeGateOutcome {
     verified: boolean;
     liveUrl: string;
@@ -2499,6 +2518,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         let browserQaInfrastructureRetryAttempted = false;
         let browserQaInfrastructureRetryStatus = 'not_attempted';
         let scopeRepairAttempted = false;
+        let requestCoverageRepairStatus = 'not_attempted';
+        let requestCoverageRepairAttempted = false;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
         let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
@@ -2584,7 +2605,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} tests=${requestCoverage.testsRequested ? 'requested' : 'not requested'}`);
         };
         /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
+        let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
         const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
+            lastAcceptanceRoots = { qualityRoot, auditRoots };
             const live = applyLiveRunOutcome(true, runRes);
             ledger.record({ instrument: 'live', ok: live.verified, url: live.liveUrl, error: live.error });
             liveUrl = live.verified ? live.liveUrl : '';
@@ -2781,13 +2804,13 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
                 const scopeRetryResult = await executeTool(
                     'project_run',
-                    { cwd: apiSiblingOf(artifactRoot) || artifactRoot },
+                    { cwd: apiSiblingOf(artifactRoot) || artifactRoot, restart: true },
                     { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 liveRunResult = scopeRetryResult;
                 const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
                 const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
-                await recordLiveAcceptance(scopeRetryResult, artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
+                await recordLiveAcceptance(postRepairRunOutcome(scopeRetryResult), artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
                 scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
                 say(pick(isAr,
                     finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
@@ -2996,7 +3019,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     if (boundedRepairReady) {
                         const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
                         const repairProjectRoot = String(repairPlanner?.output?.projectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
-                        const retryInput: Record<string, string> = {};
+                        const retryInput: Record<string, any> = { restart: true };
                         if (repairProjectRoot) retryInput.cwd = apiSiblingOf(repairProjectRoot) || repairProjectRoot;
                         else if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
                         const retryRunResult = await executeTool(
@@ -3010,7 +3033,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         ).trim();
                         const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
                         const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
-                        await recordLiveAcceptance(retryRunResult, retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
+                        await recordLiveAcceptance(postRepairRunOutcome(retryRunResult), retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -3033,6 +3056,99 @@ export class ProjectPipelineTool implements ToolDefinition {
 
         if (scopeRepairDue() && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
             await attemptScopeRepair();
+        }
+
+        /**
+         * A MISSING RECORD IS REPAIRED, NOT ONLY FAILED.
+         *
+         * One evidence-bound pass per dimension — served first, then tested —
+         * through the same SelfFix contract phases use: a repair ticket whose
+         * target is the server file that already serves resources (or the
+         * project's test file), the records he named as structured context,
+         * then a RESTART (never adoption) and the same gates again. A server
+         * that no longer starts after the edit gets the file back byte for byte.
+         */
+        const attemptRequestCoverageRepair = async (): Promise<void> => {
+            if (requestCoverageRepairAttempted || context?.requestCoverageRepairAttempted === true) return;
+            requestCoverageRepairAttempted = true;
+            for (const dimension of ['served', 'tested'] as const) {
+                if (!requestCoverageFailed || !requestCoverage?.missing.length) return;
+                if (!measured('live', true) || measured('live', false)) return;
+                const serverRoot = String(liveRunResult?.output?.cwd || '').trim();
+                const task = requestCoverageRepairTask(requestCoverage, {
+                    request: productRequest,
+                    serverRoot,
+                    testFiles: requestCoverage.testFiles || [],
+                });
+                if (!task || task.dimension !== dimension) continue;
+                const trustedRoots = Array.from(new Set([serverRoot, ...lastAcceptanceRoots.auditRoots].filter(Boolean)));
+                if (!serverRoot || !trustedRoots.some(root => isWithinRoot(task.repairFile, root))) {
+                    requestCoverageRepairStatus = 'request_coverage_repair_no_trusted_target';
+                    return;
+                }
+                const ticket = RepairTicketService.build({
+                    phase: { phaseNumber: total + 1, name: isAr ? 'السجلات المطلوبة' : 'Requested records' },
+                    phaseStatus: 'failed',
+                    phaseResult: { ok: false, output: { status: 'failed', results: [{
+                        task: task.task, tool: 'request_coverage', ok: false, error: task.error,
+                        repairKind: 'code_fix', repairFile: task.repairFile, cwd: serverRoot,
+                        description: task.description, artifactContext: task.artifactContext,
+                    }] } },
+                    projectName: plannerResult?.output?.projectName,
+                    sessionId: context?.sessionId,
+                    workspaceId: context?.workspaceId || context?.sessionId,
+                    projectRoot: serverRoot,
+                    runId: context?.runId,
+                } as any);
+                const { SelfFixService } = require('../../services/SelfFixService');
+                const plan = SelfFixService.plan(ticket);
+                if (!plan?.allowed || !plan?.suggestedTool || plan?.strategy === 'manual_review') {
+                    requestCoverageRepairStatus = `request_coverage_repair_unplanned:${String(plan?.strategy || plan?.reason || 'none').slice(0, 80)}`;
+                    return;
+                }
+                const existed = fs.existsSync(task.repairFile);
+                const snapshot = existed ? fs.readFileSync(task.repairFile) : null;
+                say(pick(isAr,
+                    `🔧 ${dimension === 'served' ? 'سجلات طلبتها غير مخدومة' : 'سجلات طلبتها بلا اختبار'}: ${requestCoverage.missing.map(r => r.ar || r.key).join('، ')} — أصلحها مرة واحدة في ${path.basename(task.repairFile)} ثم أعيد التشغيل والفحص.`,
+                    `🔧 ${dimension === 'served' ? 'Requested records are not served' : 'Requested records are untested'}: ${requestCoverage.missing.map(r => r.key).join(', ')} — repairing once in ${path.basename(task.repairFile)}, then restarting and re-checking.`));
+                try {
+                    const repairResult = await executeTool(plan.suggestedTool, {
+                        ...(plan.suggestedInput || {}),
+                        sessionId: context?.sessionId,
+                        workspaceId: context?.workspaceId || context?.sessionId,
+                    }, { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
+                    appendBoundedPipelineLogs(logs, repairResult?.logs);
+                    if (repairResult?.ok !== true) {
+                        requestCoverageRepairStatus = `request_coverage_repair_tool_failed:${dimension}`;
+                        noteLiveRunError(`request-coverage repair (${dimension}): ${String(repairResult?.error || 'repair tool failed').slice(0, 300)}`);
+                        return;
+                    }
+                    const coverageRerun = await executeTool('project_run', { cwd: serverRoot, restart: true },
+                        { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
+                    liveRunResult = coverageRerun;
+                    await recordLiveAcceptance(postRepairRunOutcome(coverageRerun), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots);
+                    if (measured('live', false)) {
+                        // The edit broke the server: put the file back exactly and start it again.
+                        if (snapshot) fs.writeFileSync(task.repairFile, snapshot);
+                        else fs.rmSync(task.repairFile, { force: true });
+                        const restoredRun = await executeTool('project_run', { cwd: serverRoot, restart: true },
+                            { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
+                        liveRunResult = restoredRun;
+                        await recordLiveAcceptance(postRepairRunOutcome(restoredRun), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots);
+                        requestCoverageRepairStatus = 'request_coverage_repair_restored';
+                        noteLiveRunError(`request-coverage repair (${dimension}) broke the server; ${path.basename(task.repairFile)} was restored`);
+                        return;
+                    }
+                    requestCoverageRepairStatus = requestCoverageFailed ? `repair_completed_records_still_missing:${dimension}` : 'repaired_and_served';
+                } catch (coverageRepairError: any) {
+                    requestCoverageRepairStatus = 'request_coverage_repair_error';
+                    noteLiveRunError(`request-coverage repair: ${String(coverageRepairError?.message || coverageRepairError).slice(0, 300)}`);
+                    return;
+                }
+            }
+        };
+        if (requestCoverageFailed && measured('live', true) && !measured('live', false)) {
+            await attemptRequestCoverageRepair();
         }
 
         /**
@@ -3448,6 +3564,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(scopeAudit ? { scopeAudit } : {}),
                 ...(requestCoverage ? { requestCoverage } : {}),
                 ...(requestCoverageFailed ? { requestCoverageFailed: true } : {}),
+                ...(requestCoverageRepairAttempted ? { requestCoverageRepairAttempted: true, requestCoverageRepairStatus } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the
