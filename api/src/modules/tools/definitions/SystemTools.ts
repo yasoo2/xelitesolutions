@@ -1713,6 +1713,12 @@ export class ShellExecuteTool extends BaseTool {
 
             echoCommand();
             const r = await handleShellCommand(command, [], workDir, timeoutVal, false, context?.sessionId);
+            // A bare shell sentence («The system cannot find the path specified.»)
+            // names no path: carry the command and cwd so the phase error, the
+            // repair ticket and the model can act on it (eval round 15, P201).
+            // Machine codes stay codes.
+            const failure = String(r.error || 'command_failed');
+            const located = /^[A-Za-z0-9_.:-]+$/.test(failure) ? failure : `${failure.trim()} — command «${redactCmd(command).slice(0, 300)}» in ${workDir}`;
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
@@ -1720,7 +1726,7 @@ export class ShellExecuteTool extends BaseTool {
 
             return {
                 ok: r.ok,
-                error: r.ok ? undefined : String(r.error || 'command_failed'),
+                error: r.ok ? undefined : located,
                 output: {
                     status: r.ok ? 'success' : 'failed',
                     stdout: String(r.output || ''),

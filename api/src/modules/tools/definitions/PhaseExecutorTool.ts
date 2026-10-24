@@ -9,7 +9,7 @@ import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { engineeringExecution, issueEngineeringTask } from '../../services/AutonomousEngineeringPolicy';
-import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
+import { normalizeConceptualArtifactPath, rebaseLeadingCd } from '../runtime-artifact-path';
 import { compactApiSelectionArtifact } from '../../../core/api-discovery/integration-profiles';
 import type { ApiSelectionArtifact } from '../../../core/api-discovery/types';
 import { capabilityProfilesFor } from '../../../core/capabilities/decision-profiles';
@@ -463,6 +463,18 @@ export function inheritRuntimeProjectArguments(
                 delete planned.projectPath;
                 logs?.push(`[PhaseExecutor] ${toolName}: replaced stale or missing cwd with runtime-bound project root (${runtimeProjectRoot.slice(0, 240)})`);
             }
+        }
+    }
+
+    // A command that opens by entering the project («cd <project> && …») while
+    // its cwd already IS the project: drop the prefix and run there (P201).
+    if ((toolName === 'shell_execute' || toolName === 'terminal_manager') && typeof planned.command === 'string') {
+        const rebased = rebaseLeadingCd(planned.command, String(planned.cwd || runtimeProjectRoot), String(projectContext?.projectName || ''), runtimeProjectRoot);
+        if (rebased) {
+            logs?.push(`[PhaseExecutor] ${toolName}: rebased leading cd onto runtime-bound root (${rebased.cwd.slice(0, 240)})`);
+            planned.command = rebased.command;
+            planned.cwd = rebased.cwd;
+            delete planned.projectPath;
         }
     }
 
