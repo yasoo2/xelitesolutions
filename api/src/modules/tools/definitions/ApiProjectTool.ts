@@ -219,6 +219,11 @@ export interface ApiPrimarySelection {
     labelAr: string;
     /** Keys backed by a declaration, named-entity list, or exact user token. */
     explicitKeys: string[];
+    /**
+     * The tables the request itself listed or declared, in its order — every
+     * one of them must be built, as the primary table or beside it.
+     */
+    requestedEntities: any[];
 }
 
 /**
@@ -281,30 +286,86 @@ export function selectApiPrimary(
             declaredKey = String(reading.entities[0]?.key || '').toLowerCase();
         }
     } catch { declaredKey = ''; }
-    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic';
+    /**
+     *  THE KIND'S TABLE IS A GUESS; HIS LIST IS NOT.
+     *
+     *  Eval round 15 (2026-10-24, P101): «… لـعيادة أسنان فيها نقاط وصول
+     *  لـالمرضى والمواعيد والعلاجات» read as a BOOKING app, so the kind's own
+     *  table won — `bookings` — and the six designed tables were dropped
+     *  without a word. The delivered API had no patient, no appointment and
+     *  no treatment, and passed every gate.
+     *
+     *  The kind's table is the primary when he named it (in either script,
+     *  or as a table the system already serves), when he named no table, or
+     *  when none of his tables plays its part — a booking system listing
+     *  «الغرف والعملاء» still stores bookings, beside those two. When one of
+     *  his own tables plays that part («المواعيد» for a booking kind), his
+     *  list wins: its first table is the primary and the rest are built
+     *  beside it.
+     */
+    const { listedReservedKeys } = require('../../../core/design/named-entities');
+    const { inferKind } = require('../../../core/design/entity-inference');
+    const pickedKey = String(picked.resource || '').toLowerCase();
+    const requestedKeys = Array.from(new Set([...listedKeys, ...(declaredKey ? [declaredKey] : [])]));
+    const servedKeys: string[] = declared.length ? [] : listedReservedKeys(String(request || ''));
+    const stem = (value: string) => String(value || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/^ال/, '').trim();
+    const labelStem = stem(picked.labelAr);
+    const labelNamed = labelStem.length >= 3 && stem(String(request || '')).includes(labelStem);
+    const kindShape = pickedKey ? inferKind(pickedKey) : '';
+    //  Judged on his words for each table, never on a transliterated key:
+    //  «tawlats» reads as nothing, «الطاولات» reads as a container.
+    const sameRoleListed = listed.some(entity => [entity?.en, entity?.ar]
+        .some(label => String(label || '').trim() && inferKind(String(label)) === kindShape));
+    const kindTableWasAsked = !requestedKeys.length || requestedKeys.includes(pickedKey) || servedKeys.includes(pickedKey)
+        || keyWasNamed(pickedKey) || labelNamed || !sameRoleListed;
+    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic' && kindTableWasAsked;
     const explicitKeys = Array.from(new Set([
-        ...listedKeys,
-        ...(declaredKey ? [declaredKey] : []),
+        ...requestedKeys,
         ...(!knownPrimary ? (designed || []).map(entity => String(entity?.key || '').toLowerCase())
             .filter(key => key && keyWasNamed(key)) : []),
     ]));
+    const requestedEntities = declared.length
+        ? declared
+        : listed.filter(entity => String(entity?.key || '').trim());
     if (knownPrimary) {
-        return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+        return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys, requestedEntities };
     }
 
     // A generic app may promote only a table the user actually named. Inferred
     // count is deliberately not evidence: `calleds` came from `called`, not a
     // table anyone typed, and therefore cannot become a route or a screen.
-    const candidate = (designed || []).find(entity => {
+    const named = (entity: any) => {
         const key = String(entity?.key || '').toLowerCase();
-        if (!key || key === String(picked.resource || '').toLowerCase()) return false;
+        if (!key || key === pickedKey) return false;
         //  His declaration counts as naming it, because it is where the
         //  interface's own endpoint came from.
         return listedKeys.includes(key) || key === declaredKey;
-    });
+    };
+    //  His order decides which of his tables leads: the first one he wrote
+    //  that the design also carries, else the first one he wrote at all.
+    const designedByKey = new Map((designed || []).map(entity => [String(entity?.key || '').toLowerCase(), entity]));
+    const firstRequested = requestedEntities.find(entity => named(entity) && designedByKey.has(String(entity.key).toLowerCase()));
+    const candidate = (firstRequested ? designedByKey.get(String(firstRequested.key).toLowerCase()) : null)
+        || (designed || []).find(named)
+        || (kindTableWasAsked ? null : requestedEntities.find(named))
+        || null;
     return candidate
-        ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys }
-        : { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+        ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys, requestedEntities }
+        : { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys, requestedEntities };
+}
+
+/**
+ * The tables he listed that this build would not create — neither the primary
+ * table, nor one of the model's, nor a table every API already serves
+ * (`orders`, `items`…). Empty when every named table is built.
+ */
+export function unbuiltRequestedEntities(requested: any[], resource: string, model: any[]): string[] {
+    const { RESERVED_TABLES } = require('../../../core/design/schema-designer');
+    const built = new Set([String(resource || '').toLowerCase(), ...(model || []).map(entity => String(entity?.key || '').toLowerCase())]);
+    return (requested || [])
+        .filter(entity => !built.has(String(entity?.key || '').toLowerCase()) && !RESERVED_TABLES.has(String(entity?.key || '').toLowerCase()))
+        .map(entity => String(entity?.ar || entity?.en || entity?.key || ''))
+        .filter(Boolean);
 }
 
 /**
@@ -2677,14 +2738,53 @@ export class ApiProjectTool extends BaseTool {
         // dates/persistences. For every other domain the general designer stays
         // the source of truth exactly as before.
         const explicitKeys = new Set(primarySelection.explicitKeys);
+        /**
+         * A table he listed that the design did not carry is still his: the
+         * list reader gave it a key and columns, so it is built from those
+         * rather than dropped (eval round 15, P101 — «العلاجات»).
+         */
+        const { RESERVED_TABLES } = require('../../../core/design/schema-designer');
+        const designedKeys = new Set(designed.map((e: any) => String(e?.key || '').toLowerCase()));
+        const listedOnly = (primarySelection.requestedEntities || []).filter((e: any) => {
+            const key = String(e?.key || '').toLowerCase();
+            return key && key !== String(resource || '').toLowerCase() && !designedKeys.has(key)
+                && !RESERVED_TABLES.has(key) && Array.isArray(e?.fields) && e.fields.length > 0;
+        });
         const model = isProductivity
             ? productivityModel
             : appKind === 'finance'
                 ? designed.filter((e: any) => e.key !== resource)
-                : designed.filter((e: any) => {
+                : [...designed.filter((e: any) => {
                     const key = String(e?.key || '').toLowerCase();
                     return key !== String(resource || '').toLowerCase() && explicitKeys.has(key);
-                });
+                }), ...listedOnly];
+        /**
+         * AND A TABLE HE NAMED IS NEVER DROPPED IN SILENCE.
+         *
+         * If a table from his own list is neither the primary nor in the model,
+         * the API he asked for is not the one being built: stop and say which
+         * tables, instead of shipping a different system that passes its own
+         * proof. Productivity and finance keep their fixed contracts.
+         */
+        const unbuilt = (isProductivity || appKind === 'finance')
+            ? []
+            : unbuiltRequestedEntities(primarySelection.requestedEntities || [], resource, model);
+        if (unbuilt.length) {
+            term(`data model: requested tables not built — ${unbuilt.join(', ')}`);
+            return {
+                ok: false,
+                error: 'requested_entities_not_built',
+                output: {
+                    reason: 'requested_entities_not_built',
+                    missing: unbuilt,
+                    resource,
+                    message: isAr
+                        ? `لم أبنِ الواجهة: طلبتَ الجداول ${unbuilt.join('، ')} ولن يحملها المخطط المختار.`
+                        : `The API was not built: you asked for ${unbuilt.join(', ')} and the chosen schema would not hold them.`,
+                },
+                logs,
+            };
+        }
         if (collided.length) {
             term(`data model: ${collided.join(', ')} — already the system's own table, not regenerated`);
             if (sessionId) {

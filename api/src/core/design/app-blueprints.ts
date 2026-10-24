@@ -31,6 +31,7 @@ import { saysWord, words, normalise } from '../language/arabic';
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
+import { isPossessivePhrase } from './request-lists';
 
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
@@ -302,7 +303,9 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
 ];
 
 /** The request asks for something to be MANAGED — a records app, not a poster. */
-const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل\b|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
+// «سجل» ends where the Arabic word ends — `\b` is ASCII-only, so «سجل\b»
+// could match only before a Latin letter, i.e. never (eval round 15 sweep).
+const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
 /** …and it is an application, not a document about one. */
 const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|لوحة\s*تحكم|\bapp\b|application|system|platform|tool|dashboard/i;
 /**
@@ -3625,10 +3628,27 @@ export function requestedFeatures(requestRaw: string): string[] {
     // prose paragraph after "with" is not a feature list.
     const sentenceCount = (request.match(/[.!?؟]/g) || []).length;
     if (out.length < 3 && sentenceCount <= 2) {
-        const m = request.match(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/i);
+        /**
+         *  «… book with their name and phone …» IS NOT A FEATURE LIST.
+         *
+         *  Eval round 15 (P251): the first «with» in the sentence modified the
+         *  verb «book», and its items are the fields of that action. The build
+         *  stopped on «requested capabilities not proven: their name». A list
+         *  whose first item is owned by someone (isPossessivePhrase) describes
+         *  what that person enters; the next «with / including» may still be
+         *  the app's own feature list, so the search moves on to it.
+         */
+        let m: RegExpMatchArray | null = null;
+        for (const candidate of request.matchAll(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/gi)) {
+            const first = candidate[1].split(/,| and | و /i)[0] || '';
+            if (isPossessivePhrase(first)) continue;
+            m = candidate;
+            break;
+        }
         if (m) {
             for (const part of m[1].split(/,| and | و /i)) {
                 if (/^(?:requiring|using|including|from|without|ensuring|plus)\b/i.test(part.trim())) continue;
+                if (isPossessivePhrase(part)) continue;
                 push(part);
             }
         }
@@ -3644,10 +3664,14 @@ export function requestedFeatures(requestRaw: string): string[] {
          *  starts with و («وصف», «وقت») is not split.
          */
         if (!m) {
-            const ar = request.match(/(?:^|\s)(?:فيه|فيها|مع|يحتوي\s+على|تحتوي\s+على|يشمل|تشمل)\s+([^.\n]{10,300})/u);
+            //  «ويحجز مع اسمه ورقم هاتفه» — the same fields, in Arabic.
+            const ar = [...request.matchAll(/(?:^|\s)(?:فيه|فيها|مع|يحتوي\s+على|تحتوي\s+على|يشمل|تشمل)\s+([^.\n]{10,300})/gu)]
+                .find(candidate => !isPossessivePhrase(candidate[1].split(/[،,]|\s+و(?=ال)/u)[0] || ''));
             if (ar) {
                 for (const part of ar[1].split(/[،,]|\s+و(?=ال)/u)) {
-                    push(part.trim().replace(/^و(?=\S{3,})/u, ''));
+                    const item = part.trim().replace(/^و(?=\S{3,})/u, '');
+                    if (isPossessivePhrase(item)) continue;
+                    push(item);
                 }
             }
         }
@@ -3787,7 +3811,7 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         }
         return keys;
     }
-    const stop = clause.split(/\s+(?:plus|with|and\s+(?:(?:an|a|the)\s+)?(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
+    const stop = clause.split(/\s+(?:plus|with|and\s+(?:(?:an|a|the)\s+)?(?:progress|metric)|ومقياس|وإضافة|واضافة)(?![\p{L}\p{N}])/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
     for (const field of fields) {
         const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');

@@ -37,6 +37,7 @@
 
 import { createHash } from 'node:crypto';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
+import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion } from '../design/request-lists';
 
 export interface NamedRequirement {
     /** Stable id derived from the quote, so the same request yields the same ids. */
@@ -90,7 +91,7 @@ const NOT_A_FEATURE = /^(?:build|make|create|website|site|app|page|responsive|de
 //  defect in a new place: a pattern that reads letters instead of words.
 //  The guard caught it only because it was written from HIS logs, in both
 //  languages. A lookahead asks the question directly.
-const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|انشئ|أنشئ|صمم|اصنع|اكتب|بدي|اريد|أريد)(?=\s|$)/iu;
+const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|[اأإآ]نشئ|صمم|اصنع|اكتب|بدي|[اأإآ]ريد)(?=\s|$)/iu;
 
 /**
  *  ⛔ AN INSTRUCTION TO JOE IS NOT A REQUIREMENT OF THE PROJECT.
@@ -783,13 +784,71 @@ function declaredRequirementItems(sentence: string): string[] {
     return items.length >= 2 ? items : [];
 }
 
+/**
+ *  ⛔ JAVASCRIPT'S \b DOES NOT KNOW ARABIC.
+ *
+ *  Eval round 15 (2026-10-24, P101): every Arabic verb below sat behind `\b`,
+ *  which is defined by the ASCII word class even with the /u flag. «تحقق من
+ *  المدخلات» could never match, the Arabic request produced ZERO acceptance
+ *  criteria, and a delivery with zero criteria counted as accepted — so a
+ *  stock booking API passed for a clinic API with patients, appointments
+ *  and treatments. The boundary is now «no letter or digit of any script
+ *  follows», and an alef is any of its hamza forms.
+ */
+const ACTION_VERB = `(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|${ALEF}ضف|${ALEF}نشئ|عدّل|عدل|${ALEF}حذف|تحقق|${ALEF}عرض|${ALEF}حفظ)${WORD_END}`;
+const ACTION_SPLIT = new RegExp(`(?:[.;!?؟]+|\\s*[,،]\\s*(?=${ACTION_VERB}))`, 'iu');
+const OPENS_WITH_ACTION = new RegExp(`^${ACTION_VERB}`, 'iu');
+
+/**
+ *  ⛔ A LIST HE WROTE IS A LIST OF REQUIREMENTS — IN ARABIC TOO.
+ *
+ *  «فيها نقاط وصول لـالمرضى والمواعيد والعلاجات، مع التحقق من المدخلات ورموز
+ *  أخطاء صحيحة واختبارات آلية لكل نقطة» names six things the API must have and
+ *  starts with no imperative, so the action reader above never saw any of
+ *  them. A list behind an interface head is a list of nouns, split on every
+ *  «و»; a feature list after a colon or «فيها / with» splits on commas, and
+ *  on «و» only between short items — «عرض المنتجات بالصور والأسعار» is one
+ *  feature. «مع / with» opens the qualities that come with the list. An item
+ *  owned by someone («their name», «باسمه ورقم هاتفه» — isPossessivePhrase)
+ *  is a field of the action it follows, never a requirement of its own.
+ *  English feature lists after «with» or a colon stay with the English
+ *  readers above; only a list behind an interface head is read here in both
+ *  languages.
+ */
+function listedRequirementItems(request: string): Array<{ text: string; quote: string }> {
+    const out: Array<{ text: string; quote: string }> = [];
+    const conjunction = new RegExp(CONJUNCTION_WAW_SOURCE, 'u');
+    for (const sentence of request.split(/[.!?؟;]+/u)) {
+        const found = listRegion(sentence);
+        if (!found || found.marker === 'colon' && !/[,،]/u.test(found.region)) continue;
+        if (found.marker !== 'head' && !/[ء-ي]/u.test(found.region)) continue;
+        const nounList = found.marker === 'head';
+        const glue = /^(?:[لب]ـ|لل|ل(?=ال))/u.test(found.region) ? ' لـ' : ' ';
+        const items: string[] = [];
+        for (const segment of found.region.replace(/\s+(?:مع|with)\s+/giu, '، ').split(/\s*[,،;؛]\s*/u)) {
+            const pieces = segment.split(conjunction);
+            const split = nounList || pieces.every(piece => piece.trim().split(/\s+/).length <= 2);
+            items.push(...(split ? pieces : [segment]));
+        }
+        const cleaned = items
+            .map(item => cleanListItem(item).replace(/^و(?=ال|[أإآ])/u, '').trim())
+            .filter(item => item && !isPossessivePhrase(item) && isJudgeable(item));
+        if (cleaned.length < 2) continue;
+        for (const item of cleaned) {
+            const headed = nounList && found.head && !isDeliverable(item);
+            out.push({ text: headed ? `${found.head}${glue}${item}`.replace(/\s+/g, ' ').trim() : item, quote: item });
+        }
+    }
+    return out;
+}
+
 export function requirementsFromRequestClauses(requestRaw: string): NamedRequirement[] {
     const request = String(requestRaw || '').replace(/\s+/g, ' ').trim();
     if (!request) return [];
     const actionClauses = request
-        .split(/(?:[.;!?؟]+|\s*,\s*(?=(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b))/iu)
+        .split(ACTION_SPLIT)
         .map(value => value.trim().replace(/^(?:and|then|و)\s+/iu, '').replace(/[,:;]+$/u, '').trim())
-        .filter(value => /^(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b/iu.test(value))
+        .filter(value => OPENS_WITH_ACTION.test(value))
         // A behavior list may continue after the first imperative: "add and
         // delete records, a live total, and persistence after refresh".
         // Preserve field lists such as "add name, date and note" while
@@ -807,12 +866,13 @@ export function requirementsFromRequestClauses(requestRaw: string): NamedRequire
         const items = declaredRequirementItems(sentence).filter(isJudgeable);
         if (items.length >= 2) declaredFields.push(...items);
     }
-    const clauses = [...declaredFields, ...actionClauses];
-    const unique = clauses.filter((value, index) => clauses.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
-    return unique.slice(0, 20).map((text, index) => ({
+    const clauses = [...declaredFields, ...actionClauses].map(text => ({ text, quote: text }));
+    for (const item of listedRequirementItems(request)) clauses.push(item);
+    const unique = clauses.filter((value, index) => clauses.findIndex(other => other.text.toLowerCase() === value.text.toLowerCase()) === index);
+    return unique.slice(0, 20).map(({ text, quote }, index) => ({
         id: `request-clause-${index + 1}-${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 36)}`,
         text,
-        quote: text,
+        quote,
     }));
 }
 

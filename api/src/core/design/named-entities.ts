@@ -24,8 +24,9 @@
  * nouns or it declines and lets the model try. It never invents a table.
  */
 import type { ModelEntity, ModelField } from './data-model';
-import { MAX_MODEL_ENTITIES } from './entity-inference';
+import { MAX_MODEL_ENTITIES, NEVER, englishFor, fieldsForKind, inferKind, isCapability, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
+import { isDeliverable, isInterfaceNoun, listRegion, splitListItems, type ListMarker } from './request-lists';
 
 const T = (key: string, ar: string, en: string, required = false): ModelField =>
     ({ key, type: 'TEXT', required, ar, en });
@@ -95,6 +96,13 @@ const NOUNS: Noun[] = [
     { key: 'reports', ar: 'التقارير', en: 'reports', kind: 'plain', re: /^(ال)?تقارير$|^reports?$/i },
 ];
 
+/** The table key of a noun on the curated list, or '' — so every reader keys «المرضى» as `patients`. */
+export function curatedNounKey(word: string): string {
+    const w = String(word || '').trim();
+    if (!w) return '';
+    return NOUNS.find(x => x.re.test(w))?.key || '';
+}
+
 /** The columns a table of this kind actually needs to be usable. */
 function fieldsFor(n: Noun): ModelField[] {
     switch (n.kind) {
@@ -123,18 +131,18 @@ function fieldsFor(n: Noun): ModelField[] {
 }
 
 /**
- * The listed part of the sentence.
+ * The listed part of the sentence, and what introduced it.
  *
  * A colon is the strongest signal a person can give — «نظاماً لمشتل نباتات:
  * النباتات والموردون والطلبيات» — and after it comes a list, not prose. The
- * openers are the other way people write the same thing.
+ * openers are the other way people write the same thing. And a software
+ * request names its resources behind an interface head — «نقاط وصول لـالمرضى
+ * والمواعيد والعلاجات», «endpoints for students, classes, grades» — which the
+ * shared reader takes off first (request-lists.ts).
  */
-function listedPart(request: string): string {
-    const req = String(request || '').replace(/\s+/g, ' ').trim();
-    const colon = req.match(/[:：]\s*(.+)$/);
-    if (colon) return colon[1];
-    const opener = req.match(/(?:يشمل|تشمل|يحتوي(?: على)?|تحتوي(?: على)?|فيه|فيها|به|بها|مكوّ?ن من|يتكوّ?ن من|including|includes?|containing|contains?|with)\s+(.+)$/i);
-    return opener ? opener[1] : '';
+function listedPart(request: string): { part: string; marker: ListMarker } | null {
+    const found = listRegion(request);
+    return found ? { part: found.region, marker: found.marker } : null;
 }
 
 /** Everything after the list that is clearly not a table («مع صور … وثيم …»). */
@@ -144,42 +152,86 @@ function trimTail(part: string): string {
     return part.split(/\s+(?:مع|وبتصميم|بتصميم|بثيم|وثيم|and with|with a)\s+/i)[0];
 }
 
-/**
- * The separators, including the one that matters most here.
+/*
+ * The separators live in request-lists.ts (LIST_SEPARATOR), shared with the
+ * shape reader and the requirement reader.
  *
  * Arabic joins a list with a waw glued to the front of the next word —
  * «النباتات والموردون والطلبيات» is three items, not one. The first version of
- * this used `\bو`, and `\b` is a WORD boundary defined by `\w`, which contains
- * no Arabic letter at all: the pattern never matched, every Arabic list came
- * back as a single token, and the reader silently declined on exactly the
- * sentence it was written for. It is «space + waw + an Arabic letter», and the
- * waw is consumed because it is a prefix, not part of the noun.
+ * this used a word boundary before the waw, and that boundary is defined by
+ * the ASCII word class, which contains no Arabic letter at all: the pattern
+ * never matched, every Arabic list came back as a single token, and the
+ * reader silently declined on exactly the sentence it was written for. It is
+ * «space + waw + an Arabic letter» — unless the waw is the word's own first
+ * letter («وصول», «وصف»), which P101 split into «صول».
  */
-const SPLIT = /(?:\s*(?:،|,|؛|;|\/|\+)\s*)|(?:\s+and\s+)|(?:\s+و(?=[ء-ي]))/i;
+
+const KIND_OF_SHAPE: Record<EntityKind, Kind> = { person: 'person', money: 'deal', when: 'event', grouping: 'plain', thing: 'thing' };
+
+interface Read { key: string; ar: string; en: string; kind: Kind; fields: ModelField[] }
+
+/**
+ * A LISTED NOUN NOBODY WROTE DOWN IS STILL A TABLE HE NAMED.
+ *
+ * «نقاط وصول لـالمرضى والمواعيد والعلاجات» — «العلاجات» is on no curated list,
+ * and dropping it built a clinic API with two of its three tables. Inside a
+ * list the grammar already proved (an interface head, or two recognised nouns
+ * beside it) an unrecognised item gets the key and the columns the shape
+ * reader would give it. Outside such a list it is a coincidence, not a table.
+ */
+function unlistedNoun(item: string, marker: ListMarker, sells: boolean): Read | null {
+    const words = item.split(/\s+/).filter(Boolean);
+    if (!words.length || words.length > 2) return null;
+    const arabic = /[ء-ي]/u.test(item);
+    if (marker !== 'head') {
+        if (words.length > 1) return null;
+        // An Arabic item beside recognised nouns is a definite noun («الحيوانات»).
+        if (arabic && !/^ال/u.test(item)) return null;
+    }
+    if (isCapability(item) || isInterfaceNoun(item)) return null;
+    const key = keyForPhrase(item);
+    if (!key || key.length < 3 || key.length > 40 || NEVER.has(key) || RESERVED_TABLES.has(key)) return null;
+    const shape = inferKind(item);
+    return {
+        key,
+        ar: item,
+        en: arabic ? (englishFor(item) || item) : item,
+        kind: KIND_OF_SHAPE[shape],
+        fields: fieldsForKind(shape, { sells }),
+    };
+}
 
 /**
  * Read the tables the user named. Empty when it is not sure — a wrong table is
  * worse than no table, because the whole system is generated from it.
  */
 export function namedEntities(request: string): ModelEntity[] {
-    const part = trimTail(listedPart(request));
-    if (!part) return [];
-    const words = part.split(SPLIT).map(w => w.replace(/[.،؛!?"'()]+$/g, '').trim()).filter(Boolean);
+    const listed = listedPart(request);
+    if (!listed) return [];
+    const words = splitListItems(trimTail(listed.part));
     if (words.length < 2) return [];
 
-    const picked: Noun[] = [];
-    const skipped: Noun[] = [];
+    const read: Read[] = [];
+    let recognised = 0;
+    // A listed noun the system already serves («الطلبات» → orders) is still
+    // one of his items: it counts toward proving the list, it is just not
+    // generated again.
+    let alreadyServed = 0;
+    const sells = requestSells(request);
     for (const w of words) {
         // THE FIFTH CEILING. Four constants in four other files were lifted
         // before this one was found — by running an eleven-domain request and
         // counting what came out, not by reading. This reader sits ahead of
         // every other path, so its cap silently capped them all: the request
         // named ten domains and delivered four.
-        if (picked.length >= MAX_MODEL_ENTITIES) break;
+        if (read.length >= MAX_MODEL_ENTITIES) break;
         // A phrase like «صور نباتات» must not match on its last word alone:
         // only a single noun, or a noun with its definite article, is a table.
         const token = w.split(/\s+/);
         if (token.length > 2) continue;
+        // «التحقق من المدخلات», «input validation», «automated tests» are
+        // qualities the software must have — requirements, never tables.
+        if (isDeliverable(w)) continue;
         const n = NOUNS.find(x => token.some(t => x.re.test(t)));
         /**
          * …and never a name the system already serves.
@@ -190,14 +242,23 @@ export function namedEntities(request: string): ModelEntity[] {
          * did not own. The system already HAS an orders table; naming a second
          * one after it produces a table nobody can reach.
          */
-        if (n && RESERVED_TABLES.has(n.key)) { skipped.push(n); continue; }
-        if (n && !picked.some(p => p.key === n.key)) picked.push(n);
+        if (n && RESERVED_TABLES.has(n.key)) { alreadyServed++; continue; }
+        if (n) {
+            if (!read.some(p => p.key === n.key)) {
+                read.push({ key: n.key, ar: n.ar, en: n.en, kind: n.kind, fields: fieldsFor(n) });
+                recognised++;
+            }
+            continue;
+        }
+        const other = unlistedNoun(w, listed.marker, sells);
+        if (other && !read.some(p => p.key === other.key)) read.push(other);
     }
     // Two is the floor: one recognised word in a sentence is a coincidence,
-    // not a list — and the model deserves its turn on a coincidence.
-    if (picked.length < 2) return [];
+    // not a list — and the model deserves its turn on a coincidence. Behind
+    // an interface head the list is already proven, so two items of it are.
+    if (!read.length || (listed.marker === 'head' ? read.length + alreadyServed < 2 : recognised < 2)) return [];
 
-    const out: ModelEntity[] = picked.map(n => ({ key: n.key, ar: n.ar, en: n.en, fields: fieldsFor(n) }));
+    const out: ModelEntity[] = read.map(r => ({ key: r.key, ar: r.ar, en: r.en, fields: r.fields }));
 
     /**
      * And ONE real relation, when the list obviously contains one.
@@ -206,10 +267,10 @@ export function namedEntities(request: string): ModelEntity[] {
      * thing being ordered, an appointment to the person it is with. A link that
      * can dangle is not a relation, so only the clearest pairing is made.
      */
-    const dealIdx = out.findIndex((_, i) => picked[i].kind === 'deal' || picked[i].kind === 'event');
+    const dealIdx = out.findIndex((_, i) => read[i].kind === 'deal' || read[i].kind === 'event');
     if (dealIdx >= 0) {
         const parentIdx = out.findIndex((_, i) =>
-            i !== dealIdx && (picked[i].kind === 'thing' || picked[i].kind === 'person'));
+            i !== dealIdx && (read[i].kind === 'thing' || read[i].kind === 'person'));
         if (parentIdx >= 0) {
             const parent = out[parentIdx];
             const fk = `${parent.key.replace(/ies$/, 'y').replace(/s$/, '')}_id`;
@@ -223,21 +284,30 @@ export function namedEntities(request: string): ModelEntity[] {
     return out;
 }
 
+function listedReserved(request: string): Noun[] {
+    const listed = listedPart(request);
+    if (!listed) return [];
+    const out: Noun[] = [];
+    for (const w of splitListItems(trimTail(listed.part))) {
+        const token = w.split(/\s+/);
+        if (token.length > 2) continue;
+        const n = NOUNS.find(x => token.some(t => x.re.test(t)));
+        if (n && RESERVED_TABLES.has(n.key) && !out.includes(n)) out.push(n);
+    }
+    return out;
+}
+
 /**
  * The tables he named that the system ALREADY owns — so the delivery message
  * can say «الطلبيات موجودة أصلاً» instead of silently dropping the word.
  */
 export function alreadyOwned(request: string): string[] {
-    const part = trimTail(listedPart(request));
-    if (!part) return [];
-    const out: string[] = [];
-    for (const w of part.split(SPLIT).map(x => x.trim()).filter(Boolean)) {
-        const token = w.split(/\s+/);
-        if (token.length > 2) continue;
-        const n = NOUNS.find(x => token.some(t => x.re.test(t)));
-        if (n && RESERVED_TABLES.has(n.key) && !out.includes(n.ar)) out.push(n.ar);
-    }
-    return out;
+    return listedReserved(request).map(n => n.ar);
+}
+
+/** The keys of those tables («الأصناف» → items): his words, served by a built-in table. */
+export function listedReservedKeys(request: string): string[] {
+    return listedReserved(request).map(n => n.key);
 }
 
 /** For the log line: what was read, and from which words. */

@@ -30,6 +30,7 @@ import { ModelEntity, ModelField } from './data-model';
 //  thing. Reading the same sentence a third way is how they drift.
 import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
 import { hisWordsOnly } from './page-head';
+import { CONJUNCTION_WAW_SOURCE, isDeliverable, isInterfaceNoun, listRegion, stripAttachedPreposition } from './request-lists';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
 
@@ -174,6 +175,20 @@ function keyOf(phrase: string): string {
  */
 function keyFromArabic(phrase: string): string {
     const bare = String(phrase || '').replace(/^ال/, '').trim();
+    /**
+     * A NOUN THE LIST READER KNOWS GETS THE SAME KEY HERE.
+     *
+     * Eval round 15 (P101): the list reader keyed «المرضى» as `patients`
+     * and this reader, asking a dictionary without the word, as `mrdas` —
+     * two names for one table, so the design and the request's own list no
+     * longer agreed on what had been asked for.
+     */
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { curatedNounKey } = require('./named-entities');
+        const known = curatedNounKey(String(phrase || '').trim().split(/\s+/).pop() || '');
+        if (known) return known;
+    } catch { /* the list reader is optional here */ }
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { englishSubject } = require('./subject-translation');
@@ -209,8 +224,27 @@ function keyFromArabic(phrase: string): string {
 
 /* ───────────────────────────── kind → columns ──────────────────────────── */
 
+/**
+ * A REQUEST THAT SELLS SOMETHING — the only kind whose unnamed things get a
+ * price, a quantity and a picture.
+ *
+ * Eval round 15 (P101): «العلاجات» of a dental clinic came out as a product
+ * with an image, a price and a stock quantity. A thing you grow, stock or
+ * sell has those; a treatment, a grade or a loan does not. The test is the
+ * request's own words about selling, never the domain.
+ */
+const SELLS = /\b(?:shop|store|stores|sell|sells|selling|sale|sales|price|prices|pricing|cart|checkout|catalog|catalogue|stock|inventory|products?|orders?|purchases?|buy|buying|e-?commerce)\b|متجر|متاجر|بيع|يبيع|تبيع|مبيعات|سعر|أسعار|اسعار|سلة|مخزون|مخزن|منتج|بضائع|بضاعة|شراء|كتالوج|طلبيات|الطلبات/iu;
+
+export function requestSells(request: string): boolean {
+    return SELLS.test(String(request || ''));
+}
+
 /** The columns a table of this SHAPE needs to be usable. */
-export function fieldsForKind(kind: EntityKind): ModelField[] {
+export function fieldsForKind(kind: EntityKind, opts: { sells?: boolean } = {}): ModelField[] {
+    if (kind === 'thing' && opts.sells === false) {
+        return [T('name', 'الاسم', 'name', true), T('description', 'الوصف', 'description'),
+            T('notes', 'ملاحظات', 'notes')];
+    }
     switch (kind) {
         case 'person':
             return [T('name', 'الاسم', 'name', true), T('phone', 'الهاتف', 'phone'),
@@ -243,12 +277,46 @@ export function featurePhrases(request: string): string[] {
     const body = String(request || '')
         .replace(/^[\s\S]*?\bfeatures?\s*:/i, '')
         .replace(/^[\s\S]*?(الميزات|المميزات|المطلوب)\s*:/, '');
-    const chunks = body
-        // The colon is a separator too — «ابنِ نظاماً لعيادة بيطرية: الحيوانات»
-        // kept the ask and the first real noun in one chunk, and dropping
-        // the ask took «الحيوانات» with it.
-        .split(/[\n\r•·،,;؛:：\/|]+|\s+and\s+|\s+و(?=[ء-ي])/i)
+    /**
+     * AND THE SENTENCE'S OWN STEM IS NOT A TABLE.
+     *
+     * «ابنِ نظاماً لعيادة بيطرية: الحيوانات…» produced a `clinics` table beside
+     * the animals — the request describing itself. A phrase carrying a build
+     * verb is the ASK, not one of the things asked for.
+     */
+    const STEM = /\b(build|make|create|develop|design|i want|need)\b|^(ابن|ابنِ|اعمل|صمّ?م|[اأإآ]نشئ|طوّ?ر|[أا]ريد|نظام|منصّ?ة|تطبيق|موقع)/i;
+    const conjunction = new RegExp(`\\s+and\\s+|${CONJUNCTION_WAW_SOURCE}`, 'iu');
+    const pieces: string[] = [];
+    // The colon is a separator too — «ابنِ نظاماً لعيادة بيطرية: الحيوانات»
+    // kept the ask and the first real noun in one chunk, and dropping
+    // the ask took «الحيوانات» with it.
+    for (const chunk of body.split(/[\n\r•·،,;؛:：\/|]+/)) {
+        let text = chunk;
+        /**
+         * …AND SO IS THE NOUN PHRASE THAT INTRODUCES THE RESOURCES.
+         *
+         * Eval round 15 (P101): «… فيها نقاط وصول لـالمرضى والمواعيد» kept the
+         * ask, the head «نقاط وصول» and «المرضى» in one chunk; the stem rule
+         * dropped all three, and the glued-waw split cut «وصول» into «صول».
+         * The head says where the list starts; an Arabic opener («فيها»,
+         * «يشمل») does the same for a chunk that also carries the ask.
+         */
+        const head = listRegion(text);
+        if (head?.marker === 'head') text = head.region;
+        else if (STEM.test(text.replace(/^[\s\-*\d.)]+/, '').trim())) {
+            const opener = text.match(/(?:^|\s)(?:يشمل|تشمل|يحتوي(?: على)?|تحتوي(?: على)?|فيه|فيها|مكوّ?ن من|يتكوّ?ن من)\s+(.+)$/u);
+            if (opener) text = opener[1];
+        }
+        pieces.push(...text.split(conjunction));
+    }
+    const chunks = pieces
         .map(p => p.replace(/^[\s\-*\d.)]+/, '').trim())
+        .map(p => {
+            // «لـالمرضى» → «المرضى»: the preposition is glued to the noun.
+            const words = p.split(/\s+/);
+            words[0] = stripAttachedPreposition(words[0] || '');
+            return words.join(' ').trim();
+        })
         .filter(p => p.length > 1);
     /**
      * A FEATURE LIST IS NOT ALWAYS PUNCTUATED.
@@ -264,14 +332,6 @@ export function featurePhrases(request: string): string[] {
         if (c.length > 24 && caps.length >= 3) out.push(...caps);
         else out.push(c);
     }
-    /**
-     * AND THE SENTENCE'S OWN STEM IS NOT A TABLE.
-     *
-     * «ابنِ نظاماً لعيادة بيطرية: الحيوانات…» produced a `clinics` table beside
-     * the animals — the request describing itself. A phrase carrying a build
-     * verb is the ASK, not one of the things asked for.
-     */
-    const STEM = /\b(build|make|create|develop|design|i want|need)\b|^(ابن|ابنِ|اعمل|صمّ?م|أنشئ|طوّ?ر|أريد|اريد|نظام|منصّ?ة|تطبيق|موقع)/i;
     return out.map(p => p.trim())
         .filter(p => p.length > 1 && p.length < 60 && !STEM.test(p));
 }
@@ -541,6 +601,7 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
     const entities: ModelEntity[] = [];
     const capabilities: string[] = [];
     const seen = new Set<string>();
+    const sells = requestSells(request);
     const structured = structuredEntityPhrases(request);
     const phrases = structured.length >= 2 ? structured : featurePhrases(request);
     const structuredKeys = new Set(structured.map(keyForPhrase));
@@ -553,6 +614,15 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
             if (capabilities.length < 12 && !capabilities.includes(phrase)) capabilities.push(phrase);
             continue;
         }
+        /**
+         * A DELIVERABLE IS NOT A TABLE EITHER.
+         *
+         * «رموز أخطاء صحيحة», «اختبارات آلية لكل نقطة», «automated tests for
+         * every endpoint» became `shyhas`, `testings` and `endpoints` in P101
+         * (eval round 15). They are qualities the software must have; the
+         * requirement reader carries them, and no CRUD table can hold one.
+         */
+        if (!structuredKeys.has(keyCandidate) && (isDeliverable(phrase) || isInterfaceNoun(phrase))) continue;
         const key = /[A-Za-z]/.test(phrase) ? keyOf(phrase) : keyFromArabic(phrase);
         if (!key || key.length < 3 || key.length > 40 || NEVER.has(key) || seen.has(key)) continue;
         seen.add(key);
@@ -577,7 +647,7 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
         const english = englishFor(phrase);
         entities.push({
             key, ar: normalizedPhrase.replace(/^ال/, 'ال'), en: englishFor(normalizedPhrase) || normalizedPhrase,
-            fields: fieldsForKind(kind),
+            fields: fieldsForKind(kind, { sells }),
         } as ModelEntity);
     }
     const multiLink = /\blinked\s+to\s+both\b|\bassociated\s+with\s+both\b|مرتبط(?:ة|ه)?\s+بكليهما/iu.test(request);
