@@ -39,16 +39,20 @@ export function resolvePreviewFile(key: string, rel: string): string | null {
     const entry = ((global as any).joeProjects || {})[clean];
     if (!clean || !entry?.dir) return null;
     const decodedRel = decodeURIComponent(String(rel || ''));
-    if (decodedRel.split(/[\\/]+/).some(segment => segment.startsWith('.'))) return null;
+    // «~» too: on Windows «ENV~1» is the 8.3 short name of «.env», so a
+    // dot-segment rule alone lets a hidden file through (2026-10-24 review).
+    if (decodedRel.split(/[\\/]+/).some(segment => segment.startsWith('.') || segment.includes('~'))) return null;
     const dist = path.normalize(path.join(String(entry.dir), 'dist'));
     if (!fs.existsSync(dist)) return null;
-    const file = path.normalize(path.join(dist, decodedRel || 'index.html'));
+    let file = path.normalize(path.join(dist, decodedRel || 'index.html'));
     if (!isWithinRoot(file, dist)) return null;   // no path escapes
     if (!fs.existsSync(file)) return null;
     if (fs.statSync(file).isDirectory()) {
-        const idx = path.join(file, 'index.html');
-        return fs.existsSync(idx) ? idx : null;
+        file = path.join(file, 'index.html');
+        if (!fs.existsSync(file)) return null;
     }
+    // A junction or symlink inside dist must not lead out of it.
+    if (!isWithinRoot(fs.realpathSync(file), fs.realpathSync(dist))) return null;
     return file;
 }
 

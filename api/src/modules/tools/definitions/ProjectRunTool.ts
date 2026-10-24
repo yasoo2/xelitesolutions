@@ -1,5 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot } from '../path-containment';
+import { staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { NpmManagerTool } from './SystemTools';
 import { workspaceService } from '../../services/WorkspaceService';
@@ -61,22 +62,33 @@ const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
  * can still be inspected in the browser without depending on `serve`, npx, or
  * another package that may be unavailable in an offline workspace.
  */
-const STATIC_PREVIEW_SERVER_SOURCE = [
+export const STATIC_PREVIEW_SERVER_SOURCE = [
     "const fs=require('fs'),http=require('http'),path=require('path');",
     `const isWithinRoot=${isWithinRoot.toString()};`,
     "const root=process.cwd(),port=Number(process.env.PORT);",
-    "const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'};",
+    // Strict mode serves a build-free site's SOURCE folder: no dot segments and
+    // an honest 404 for a missing file (a fallback page would hide a broken
+    // asset from browser QA). A build output keeps its SPA fallback.
+    "const strict=process.env.JOE_STATIC_STRICT==='1';",
+    "const types={'.html':'text/html; charset=utf-8','.htm':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.webmanifest':'application/manifest+json','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.txt':'text/plain; charset=utf-8','.pdf':'application/pdf'};",
+    // A loopback server can still be reached from a hostile page through DNS
+    // rebinding; strict mode answers only requests addressed to loopback.
+    "const loopbackHost=(h)=>/^(?:127\\.0\\.0\\.1|localhost|\\[::1\\])(?::\\d+)?$/i.test(String(h||''));",
     "const index=path.join(root,'index.html');",
     "const safe=(pathname)=>{try{return decodeURIComponent(pathname)}catch{return null}};",
     "http.createServer((req,res)=>{",
     "  const pathname=safe(String(req.url||'/').split('?')[0]);",
     "  if(!pathname){res.statusCode=400;return res.end('bad request')}",
+    "  if(strict&&!loopbackHost(req.headers.host)){res.statusCode=421;return res.end('misdirected request')}",
+    "  if(strict&&pathname.split(/[\\\\/]+/).some(s=>s.startsWith('.')||s.includes('~'))){res.statusCode=404;return res.end('not found')}",
     "  const candidate=path.resolve(root,'.'+pathname);",
     "  if(!isWithinRoot(candidate,root)){res.statusCode=403;return res.end('forbidden')}",
     "  let file=candidate;",
     "  try{if(fs.statSync(file).isDirectory())file=path.join(file,'index.html')}catch{}",
-    "  if(!fs.existsSync(file)||!fs.statSync(file).isFile())file=index;",
+    "  if(!fs.existsSync(file)||!fs.statSync(file).isFile()){if(strict){res.statusCode=404;return res.end('not found')}file=index}",
     "  if(!fs.existsSync(file)){res.statusCode=404;return res.end('not found')}",
+    "  if(strict&&!types[path.extname(file).toLowerCase()]){res.statusCode=404;return res.end('not found')}",
+    "  if(strict){try{if(!isWithinRoot(fs.realpathSync(file),fs.realpathSync(root))){res.statusCode=404;return res.end('not found')}}catch{res.statusCode=404;return res.end('not found')}}",
     "  res.setHeader('Content-Type',types[path.extname(file).toLowerCase()]||'application/octet-stream');",
     "  fs.createReadStream(file).on('error',()=>{if(!res.headersSent)res.statusCode=500;res.end('read error')}).pipe(res);",
     "}).listen(port,'127.0.0.1');",
@@ -184,10 +196,10 @@ export function dependencyFreeRecordsBundleRoot(cwd: string): string | null {
     }
 }
 
-async function startStaticBuildPreview(root: string, port: number): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
+async function startStaticBuildPreview(root: string, port: number, strict = false): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
     const result = await ExecutionGateway.execute(process.execPath, ['-e', STATIC_PREVIEW_SERVER_SOURCE], {
         cwd: root,
-        env: { ...process.env, PORT: String(port) },
+        env: { ...process.env, PORT: String(port), JOE_STATIC_STRICT: strict ? '1' : '' },
         background: true,
         shell: false,
         stdio: 'ignore',
@@ -204,6 +216,38 @@ async function startStaticBuildPreview(root: string, port: number): Promise<{ re
         await new Promise(resolve => setTimeout(resolve, 250));
     }
     return { ready: false, pid, error: 'static production preview did not answer within 10s' };
+}
+
+/**
+ * Serve a build-free static site on loopback: the fallback when the project's
+ * own start command cannot run or never answers (eval round 14, P001: «node
+ * src/index.js» named a file that never existed, so the site Joe had just
+ * written had no address). Strict mode — 127.0.0.1 only, loopback Host header
+ * only, no dot or short-name segments, an extension allowlist, realpath
+ * containment, honest 404s. Records the live URL for every later reader.
+ * Returns the URL, or '' when the project is not such a site or would not start.
+ */
+export async function startStaticSitePreview(context: any, projectDir: string, logs: string[] = []): Promise<string> {
+    const root = staticSiteRoot(projectDir, { servedAtRoot: true });
+    if (!root) return '';
+    const key = runKey(context);
+    await stopServer(key, logs).catch(() => {});
+    await retireRecordedServer(context, projectDir, logs);
+    const port = await findFreePort();
+    const served = await startStaticBuildPreview(root, port, true);
+    if (!(served.ready && served.url && served.pid)) {
+        if (served.pid) await killTree(Number(served.pid)).catch(() => {});
+        logs.push(`project_run: the static site did not start: ${served.error || 'no answer'}`);
+        return '';
+    }
+    RUNNING.set(key, { pid: served.pid, port, cwd: root, command: 'node static-preview', startedAt: Date.now() });
+    rememberLiveProject(context, root, { url: served.url, port, pid: served.pid }, projectDir);
+    try {
+        const { broadcast } = require('../../../api/ws');
+        broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url: served.url, previewUrl: served.url, port, live: true, mode: 'static-site' } });
+    } catch { /* panel optional */ }
+    logs.push(`project_run: serving the build-free static site (${root}) at ${served.url}`);
+    return served.url;
 }
 
 function sameExistingPath(a: string, b: string): boolean {
@@ -1412,6 +1456,25 @@ export class ProjectRunTool implements ToolDefinition {
         await stopServer(key, logs).catch(() => {});
 
         const port = Number(input?.port) || await findFreePort();
+        // When the project's own start cannot run or never answers, a build-free
+        // static site is still served — on loopback, never instead of a server.
+        const staticSiteFallback = async (why: string) => {
+            const url = await startStaticSitePreview(context, cwd, logs);
+            if (!url) return null;
+            say(pick(isAr,
+                `✅ لم يبدأ أمر التشغيل (${why.slice(0, 80)})، لكن الموقع ثابت فعرضته محلياً — المعاينة: ${url}`,
+                `✅ The start command could not run (${why.slice(0, 80)}), but this is a static site, so it is served locally — preview: ${url}`));
+            let livePortNumber = 0;
+            try { livePortNumber = Number(new URL(url).port) || 0; } catch { /* keep 0 */ }
+            return {
+                ok: true,
+                output: {
+                    url, previewUrl: url, port: livePortNumber, ready: true, cwd, command: 'node static-preview', kind: 'static-site',
+                    devServerConfirmed: false, productionBundleConfirmed: false, fallbackFrom: why.slice(0, 200),
+                },
+                logs,
+            };
+        };
         const dependencyFreeBundle = !input?.command ? dependencyFreeRecordsBundleRoot(cwd) : null;
         if (dependencyFreeBundle) {
             logs.push(`project_run: serving dependency-free records bundle (${dependencyFreeBundle})`);
@@ -1465,6 +1528,8 @@ export class ProjectRunTool implements ToolDefinition {
             }
         }
         if (launchability) {
+            const servedStatically = await staticSiteFallback(launchability);
+            if (servedStatically) return servedStatically;
             const launchabilityMessage = pick(isAr,
                 `تعذّر تشغيل المشروع بأمان: ${launchability}. أصلح target الخادم أو manifest أولاً؛ لم أنتظر على منفذ غير قابل للتشغيل.`,
                 `Cannot start the project safely: ${launchability}. Fix the server target or manifest first; I will not wait on a project that cannot be launched.`,
@@ -1701,6 +1766,8 @@ export class ProjectRunTool implements ToolDefinition {
                 logs.push(`project_run: static bundle fallback failed (${fallback.error || 'unconfirmed'})`);
                 if (fallback.pid) await killTree(Number(fallback.pid)).catch(() => {});
             }
+            const servedStatically = await staticSiteFallback('the start command answered on no port');
+            if (servedStatically) return servedStatically;
             /**
              * AND WHEN NOTHING ANSWERED, SAY SO — DO NOT HAND OVER AN ADDRESS.
              *
