@@ -1673,7 +1673,9 @@ export function requestedDeliveryRoles(request: string): { service: boolean; int
     const webWord = requestNamesAnInterface(text) || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
     const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
     const apiWithApp = /\bwith\s+(?:an?\s+)?(?:[\w./+-]+\s+){0,2}api\b|(?:مع|و)\s*واجهة\s+(?:برمجية|برمجة|خلفية)/iu.test(text);
-    const service = API_OBJECT_EN.test(text) || API_OBJECT_AR.test(text) || requestDeclaresOwnBackend(text) || apiWithApp;
+    // The API object comes from the one artifact reader the router also uses
+    // (requestedArtifact): roles and routing can never disagree on it.
+    const service = requestedArtifact(text).kind === 'api' || requestDeclaresOwnBackend(text) || apiWithApp;
     let cli = false;
     try { cli = require('../../../core/design/app-blueprints').isCliRequest(text) === true; } catch { cli = false; }
     const iface = !(negatedInterface && !webWord) && !buildObjectIsAnApi(text) && !(cli && !webWord);
