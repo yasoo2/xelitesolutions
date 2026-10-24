@@ -82,7 +82,7 @@ const KNOWLEDGE_QUESTION_END = `(?:[??]\\s*$)`;
 const KNOWLEDGE_QUESTION_PATTERN = new RegExp(`${KNOWLEDGE_QUESTION_START}|${KNOWLEDGE_QUESTION_EN}|${KNOWLEDGE_QUESTION_END}`, 'i');
 
 // Negative constraints on builds
-const NEGATIVE_CONSTRAINTS_PATTERN = /\b(?:do\s+not|don't|never|without|no|لا|دون|بدون)\b.*\b(?:database|login|auth|db|قاعدة\s+بيانات|تسجيل\s+دخول|مصادقة)\b/i;
+const NEGATIVE_CONSTRAINTS_PATTERN = /(?:\b(?:do\s+not|don't|never|without|no)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(?:لا|دون|بدون)(?![\p{L}\p{N}_])).*(?:\b(?:database|login|auth|db)\b|(?<=(?:^|[^\p{L}\p{N}_])(?:ال)?)(?:قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول|مصادق[ةه])(?![\p{L}\p{N}_]))/iu;
 
 export interface RequestedActionResult {
     hasAffirmativeAction: boolean;

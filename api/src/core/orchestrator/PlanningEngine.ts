@@ -21,6 +21,7 @@ import { hasRequestedAction } from '../intelligence/requested-action';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan, FAILURE_RECOVERY_RULES } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
+import { isCliRequest as readsAsCli, isCsvInputRequest as readsAsCsvInput } from '../design/request-classifiers';
 
 export interface ExecutionStep {
     id: string;
@@ -369,8 +370,6 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
          * with nowhere to put a supplier.
          */
         const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp\b)/i;
-        // Explicit CLI/utility/script recognition — these are NOT web systems
-        const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
         // Consuming a public or third-party API is not the same as asking Joe
         // to own a backend.  Keep explicit API-building requests as systems,
         // while allowing browser apps to call services such as Open-Meteo.
@@ -387,13 +386,12 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
             /\bfields?\b|\bcolumns?\b|\binputs?\b|حقول|أعمدة|سجلات/i,
             /\bsearch\b|\bfilter(?:ing)?\b|\bsort(?:ing)?\b|بحث|فلترة|تصفية|فرز/i,
             /\bvalidation\b|\bempty\b|\brequired\b|تحقّ?ق|تحقق|فارغ|إلزامي/i,
-            /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة/i,
+            // «create» is counted in English, so «أنشئ / إنشاء» is counted in Arabic.
+            /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة|[أا]نشئ|[إا]نشاء/i,
         ];
         const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|موقع\s*تعريفي|تعريفي|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
         
         // A browser application may deliberately consume a public or third-party API and
         // explicitly forbid an owned backend. A conditional "if authentication
@@ -405,10 +403,11 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const conditionalDemoAuth = /\bif\s+authentication\s+is\s+needed\b[^.!?\n]{0,160}\b(?:local|demo)\b[^.!?\n]{0,80}\bpersistence\b/i.test(g);
         const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
         const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
-        // CLI/utility/script requests are NOT web systems
-        const cli = cliSignals.test(g);
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInput = csvInputSignals.test(g);
+        // CLI/utility/script requests are NOT web systems; CSV/TSV input with
+        // columns is input data, not a persistent record schema. Both read in
+        // Arabic and English from one source (request-classifiers).
+        const cli = readsAsCli(g);
+        const csvInput = readsAsCsvInput(g);
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
         const publicApi = publicApiWithoutBackend && conditionalDemoAuth;
@@ -1867,7 +1866,7 @@ Rules:
         // (pipeline or react) — this serves the backend-alone ask.
         {
             const apiNoun = /\b(api|backend|rest)\b|باك\s?[إا]ند|واجهة برمجية|قاعدة بيانات|خادم بيانات/i.test(probe);
-            const frontendNoun = /\b(react|vite|spa|landing|site|website|page)\b|ريأكت|رياكت|موقع|صفحة|فيت\b/i.test(probe);
+            const frontendNoun = /\b(react|vite|spa|landing|site|website|page)\b|ريأكت|رياكت|موقع|صفح[ةه]|فيت(?![\p{L}\p{N}_])/iu.test(probe);
             const fullish = /(متكامل|كامل|full[-\s]?stack|complete)/i.test(probe);
             const apiBuildVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
@@ -2017,7 +2016,7 @@ Rules:
             || /(^|\s)بنِ?\s/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
-            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe)
+            || /(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(بناء|تصميم|[إا]نشاء)\s+(?:ال)?(موقع|صفح[ةه]|تطبيق|متجر|واجه[ةه]|لوح[ةه])/u.test(probe)
             /**
              *  …AND A THIRD COPY OF THE SAME QUESTION.
              *
@@ -2190,7 +2189,7 @@ Rules:
         // verified build, not a static page. Explicit only: a plain «ابن لي
         // موقع» keeps the page builder that serves it best.
         {
-            const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت\b|سبا\b/i.test(probe);
+            const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت(?![\p{L}\p{N}_])|سبا(?![\p{L}\p{N}_])/iu.test(probe);
             if (buildVerb && reactNoun) {
                 return {
                     id: `engineering_react_${Date.now()}`,
@@ -3041,13 +3040,13 @@ Rules:
                 // pull the search term: quoted text, or the words after "find"/"ابحث عن"
                 const qm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
                     || goalRaw.match(/(?:ابحث\s*عن|جد|find|search\s*for)\s+([^\s].{0,60})/i);
-                if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفحة|in|on)\b.*$/i, '').trim();
+                if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفح[ةه]|in|on)(?![\p{L}\p{N}_]).*$/iu, '').trim();
             }
             if (tool === 'browser_click') {
                 // pull the button/link label: quoted text, or the words after "click"/"انقر"
                 const cm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
                     || goalRaw.match(/(?:انقر\s*(?:على)?|اضغط\s*(?:على)?|click|press)\s+([^\s].{0,50})/i);
-                if (cm) smartInput.text = String(cm[1]).replace(/\s+(في|على\s*الصفحة|زر|in|on|the\s*button)\b.*$/i, '').trim();
+                if (cm) smartInput.text = String(cm[1]).replace(/\s+(في|على\s*الصفح[ةه]|زر|in|on|the\s*button)(?![\p{L}\p{N}_]).*$/iu, '').trim();
             }
             return {
                 id: `browser_${Date.now()}`,
@@ -3118,8 +3117,8 @@ Rules:
         // to browser_open, which navigates the LIVE-streamed session so the user
         // actually watches the page load.
         const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب|استخدم|جرّ?ب|شوف|اعرض)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|use\s*(the\s*)?browser|شغّ?ل\s*المتصفح/i.test(probe);
-        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة|الموقع)?|زر\s+(الموقع|الرابط)|ادخل\s+(موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع|go\s*to|navigate\s*(to)?|visit|browse|open)\b/i.test(probe);
-        const browserWord = /(متصفح|براوزر|browser|الويب\b|صفحة\s*الويب|الموقع|website|web\s*page)/i.test(probe);
+        const navigateIntent = /(?:(?:اذهب|روح)\s*(?:(?:إلى|الى)(?![\p{L}\p{N}_])|ل(?=\p{L}))|(?:افتح(?:\s+(?:موقع|رابط|صفح[ةه]|الموقع))?|زر\s+(?:الموقع|الرابط)|ادخل\s+(?:موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع)(?![\p{L}\p{N}_])|(?:go\s*to|navigate\s*(?:to)?|visit|browse|open)\b)/iu.test(probe);
+        const browserWord = /(متصفح|براوزر|browser|الويب(?![\p{L}\p{N}_])|صفح[ةه]\s*الويب|الموقع|website|web\s*page)/iu.test(probe);
         // Route to the live browser when: an explicit open/use-browser phrasing is
         // present; OR a URL is mentioned with any navigate/browser cue; OR the
         // intent analyser already decided this is a Browser task. Deterministic so
@@ -4389,14 +4388,12 @@ Return ONLY a JSON array of steps:
  * Uses the same signals as classifyBuildScope for consistency.
  */
 export function isCliRequest(goalRaw: string): boolean {
-    const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
-    return cliSignals.test(goalRaw || '');
+    return readsAsCli(goalRaw);
 }
 
 /**
  * Detects if the request is a CSV/TSV input with columns (input data, not a persistent record schema).
  */
 export function isCsvInputRequest(goalRaw: string): boolean {
-    const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
-    return csvInputSignals.test(goalRaw || '');
+    return readsAsCsvInput(goalRaw);
 }

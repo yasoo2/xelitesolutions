@@ -334,7 +334,7 @@ export function boundedChangeValue(request: string): string {
     const tail = ((String(request || '').match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/iu) || [])[1] || '').trim();
     const quoted = tail.match(/^[«"']([^»"'\n]{1,220})[»"']/u);
     if (quoted) return quoted[1].trim();
-    return tail.split(/[،.;]\s*(?=(?:ثم\s+)?(?:و?\s*)?(?:أضف|اضف|ضع|حط|غيّ?ر|غير|بدّ?ل|بدل|احذف|اختبر|ابن|add|change|replace|remove|test|build)\b)/iu)[0]
+    return tail.split(/[،.;]\s*(?=(?:ثم\s+)?(?:و?\s*)?(?:[أا]ضف|ضع|حط|غيّ?ر|غير|بدّ?ل|بدل|[اأ]حذف|[اأ]ختبر|ابن[يِى]?|add|change|replace|remove|test|build)(?![\p{L}\p{N}_]))/iu)[0]
         .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
 }
 

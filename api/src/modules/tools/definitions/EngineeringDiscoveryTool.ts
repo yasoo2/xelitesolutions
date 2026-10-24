@@ -281,7 +281,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
             // «ابنِ على المشروع الحالي» / «أضف صفحة إلى الموقع» point AT
             // something that already exists — the noun is a target, not a
             // thing to be created.
-            && !/(?:على|إلى|الى|in|into|to)\s+(?:هذا\s+)?(?:المشروع|المجلد|الموقع|التطبيق|النظام)\b/i.test(request);
+            && !/(?:على|إلى|الى|in|into|to)\s+(?:هذا\s+)?(?:المشروع|المجلد|الموقع|التطبيق|النظام)(?![\p{L}\p{N}_])/iu.test(request);
         if (continuesKnownArtifact) {
             facts.push({
                 id: 'request.continues_known_artifact',

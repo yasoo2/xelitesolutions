@@ -58,8 +58,8 @@ function maskResultativeMakeForBuild(raw: string): string {
     return String(raw || '').replace(RESULTATIVE_MAKE_STATE_PATTERN, '$1 $2');
 }
 
-const ENGINEERING_VERB_PATTERN = /\b(build|create|develop|implement|refactor|repair|debug|test|deploy|code|modify|build\s+out|بناء|ابن(?:ِ|ي|ى)|انش(?:ئ|ء|ي)|تطوير|طو[ّ]?ر|برمج|اختبر|اختبار|اصلح|إصلح|عد[ّ]?ل|نف[ّ]?ذ|تنفيذ)\b/i;
-const ENGINEERING_NOUN_PATTERN = /\b(repository|repo|codebase|project|system|platform|application|app|api|backend|frontend|database|software|code|tests?|نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعدة\s+بيانات|واجهة|اختبارات?)\b/i;
+const ENGINEERING_VERB_PATTERN = /\b(?:build|create|develop|implement|refactor|repair|debug|test|deploy|code|modify|build\s+out)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(?:بناء|ابن(?:ِ|ي|ى)|[اأإ]نش(?:ئ|ء|ي)|تطوير|طو[ّ]?ر|برمج|[اأ]ختبر|اختبار|[اأإ]صلح|عد[ّ]?ل|نف[ّ]?ذ|تنفيذ)(?![\p{L}\p{N}_])/iu;
+const ENGINEERING_NOUN_PATTERN = /\b(?:repository|repo|codebase|project|system|platform|application|app|api|backend|frontend|database|software|code|tests?)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?(?:ال)?)(?:نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعد[ةه]\s+(?:ال)?بيانات|واجه[ةه]|اختبار(?:ات)?)(?![\p{L}\p{N}_])/iu;
 
 function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: number; reason: string } {
     const classificationGoal = maskResultativeMakeForBuild(String(goalRaw || ''));
