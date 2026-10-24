@@ -13,6 +13,7 @@ import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget,
 import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
+import { requestedArtifact } from '../../../core/design/requested-artifact';
 import { guardUnverifiedBuilderClaims } from '../../../core/api-discovery/reporting';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { integrationProfile } from '../../../core/api-discovery/integration-profiles';
@@ -930,12 +931,16 @@ export function deterministicPhasesFor(request: string): {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
     const classifiedScope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    const artifact = requestedArtifact(request);
     // A declared record schema is an interaction contract, even when its
     // wording does not happen to include one of the broad "application"
     // keywords.  Treating it as a page discarded the form, storage, and record
     // actions that the same schema reader later builds in React.  Do not
     // downgrade a real system: its explicit service boundary remains stronger.
-    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request)
+    // A presentation page (landing, portfolio, «هبوط», «تعريفي») is a document:
+    // its feature list is not a schema (eval round 15: 25/25 English landings
+    // went to react_project, 25/25 Arabic ones to the page builder).
+    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request) && !artifact.evidence.presentation
         ? 'app'
         : classifiedScope;
 
@@ -954,7 +959,16 @@ export function deterministicPhasesFor(request: string): {
      * interface for people gets no interface phase.
      */
     const apiOnly = buildObjectIsAnApi(request);
-    const effectiveScope: 'page' | 'app' | 'system' = scope === 'app' && requestDeclaresOwnBackend(request) ? 'system' : scope;
+    const effectiveScope: 'page' | 'app' | 'system' = scope === 'app' && artifact.needsServer ? 'system' : scope;
+
+    // A command-line tool is a file-level project whatever data it reads or
+    // server it talks to — decided BEFORE the system branch, from the object of
+    // the verb (eval round 15: P333/P337, Arabic CLIs over «الزبائن» and
+    // «الحجوزات», became api_project + react_project). An object the lexicon
+    // does not know keeps the old command-line / CSV-input fallback for a page.
+    if (artifact.kind === 'cli' || (!artifact.kind && scope === 'page' && isCliRequestFn(request))) {
+        return buildCliScaffold(request, projectName);
+    }
 
     if (effectiveScope === 'system') {
         // The interface depends on the service that holds the rows — declared
@@ -978,19 +992,6 @@ export function deterministicPhasesFor(request: string): {
                 { phaseNumber: 2, name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
             ],
         };
-    }
-
-    // CLI/utility/script requests are file-level projects, not web pages.
-    // They should use scaffold_project with a CLI-appropriate structure. The
-    // canonical reader decides — eval round 15 (P301): a private English-only
-    // copy here read «اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV…» as a page
-    // and Joe spent 76 minutes writing a landing page for a Python CLI.
-    const isCliOrCsv = isCliRequestFn(request);
-
-if (isCliOrCsv && scope === 'page') {
-        // CLI/utility/script requests are file-level projects, not web pages.
-        // Route to scaffold_project with CLI-appropriate structure.
-        return buildCliScaffold(request, projectName);
     }
 
     return {
@@ -1226,26 +1227,24 @@ export function requestNamesAnInterface(request: string): boolean {
     return INTERFACE_FOR_PEOPLE.test(String(request || '').replace(NEGATED_INTERFACE, ' '));
 }
 
-const API_OBJECT_EN = /\b(?:build|create|make|develop|write|design|implement|generate|expose|scaffold)\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:(?!(?:app|apps|application|site|website|page|system|platform|tool|game|bot|dashboard|that|which|using|with|for|from|of|to|on|in|by)\b)[\w.+-]+\s+){0,3}?(?:api|web\s+service|backend(?:\s+service)?)\b/i;
-const API_OBJECT_AR = /(?:اعمل|اعملي|إعمل|ابن[يِ]?|ابني|أنشئ|انشئ|اصنع|صمم|صمّم|اكتب|طور|طوّر)\s+(?:لي\s+)?(?:(?!(?:تطبيق|موقع|نظام|منص|لعب|برنامج|لوحة|يستخدم|تستخدم|باستخدام|عبر|مع|من)\S*)\S+\s+)?(?:واجهة\s+(?:برمجية|برمجة|خلفية)|api|باك\s*اند)(?=$|[\s،,.])/iu;
-
 /**
- * The object of the build verb is an API — read from the verb's own object,
- * like requestedArtifactWithoutStockEngine, so «build an app that uses an
- * API» stays an app — and nothing in the request is an interface for people.
+ * The object of the build verb is an API — and nothing in the request is an
+ * interface for people. The API head is authoritative: «a GitHub API
+ * dashboard», «a REST API client app» and «an API testing tool» are things
+ * ABOUT an API, and get their interface (eval round 15 review).
  */
 export function buildObjectIsAnApi(request: string): boolean {
     const text = String(request || '');
-    return (API_OBJECT_EN.test(text) || API_OBJECT_AR.test(text)) && !requestNamesAnInterface(text);
+    return requestedArtifact(text).kind === 'api' && !requestNamesAnInterface(text);
 }
 
-const NEGATED_BACKEND = /\b(?:no|without|not|(?:do\s+not|don'?t|never)\s+(?:build|create|implement|need|add|use|write))\s+(?:(?:a|an|any)\s+)?(?:(?:project[- ]owned|own|separate|custom)\s+)?(?:back[- ]?end|server|api\s+server)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:خادم|سيرفر|واجهة\s+خلفية|باك\s*اند)/giu;
-const OWN_BACKEND = /\bfull[- ]?stack\b|\bback[- ]?end\b|\bserver[- ]side\b|\b(?:api|web|http|rest)\s+server\b|واجهة\s+(?:ال)?خلفية|الواجهة\s+الخلفية|(?:ال)?خادم|سيرفر|باك\s*اند/iu;
-
-/** The request names its own backend (and does not forbid one). */
+/**
+ * The request claims something only a server keeps: a declared backend, sign-in,
+ * accounts, roles, a database, data one party writes and another reads, or an
+ * owned API — read by requestedArtifact, negations masked.
+ */
 export function requestDeclaresOwnBackend(request: string): boolean {
-    const text = String(request || '').replace(NEGATED_BACKEND, ' ');
-    return OWN_BACKEND.test(text) || buildObjectIsAnApi(request);
+    return requestedArtifact(String(request || '')).needsServer;
 }
 
 const PLANNED_SOURCE_WRITERS = new Set(['ai_write_file', 'write_file', 'file_write', 'create_file']);

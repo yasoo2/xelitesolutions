@@ -28,6 +28,7 @@
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { saysWord, words, normalise } from '../language/arabic';
+import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact, stripDeclaredOptions } from './requested-artifact';
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
@@ -126,18 +127,8 @@ export function readDeclaredOptions(requestRaw: string): string[] | null {
  * as a billing SYSTEM. The categories belong to the category field alone;
  * everyone else reads the sentence without them.
  */
-export function stripDeclaredOptions(requestRaw: string): string {
-    const r = String(requestRaw || '');
-    return r
-        .replace(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*[^.\n؟?!]{2,160}/gi, ' ')
-        .replace(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+[^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?/gi, ' ')
-        // Preserve newlines: block schema declarations use them as boundaries.
-        // Tidy within lines only. Collapsing every run of whitespace would
-        // flatten structured schema declarations; line structure is data.
-        .replace(/[ \t]{2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
+// Moved to requested-artifact, which reads claims without option lists; re-exported here.
+export { stripDeclaredOptions };
 
 /**
  * A SECOND TABLE, AND THE LINE BETWEEN THEM — «علاقات بين أكثر من جدول
@@ -357,15 +348,8 @@ export function siteNounWithoutAppRequest(request: string): boolean {
     return SITE_NOUN.test(t) && !APP_SIGNAL.test(t);
 }
 
-export function maskNegatedSpans(text: string): string {
-    return String(text || '').replace(
-        // JS `\\b` is ASCII-oriented and therefore unsafe for Arabic. Require
-        // the marker to be outside every Unicode letter/number/identifier word
-        // on the left, and followed by whitespace/end-of-input on the right.
-        /(?<![\p{L}\p{N}_-])(?:not|no|never|without|ليس|ليست|لا|بدون|غير)(?=\s|$)(?:(?:\s+)[\p{L}\p{N}_-]+){0,8}/giu,
-        span => span.replace(/[^\r\n]/gu, ' '),
-    );
-}
+// Moved to requested-artifact, which every kind reader shares; re-exported here.
+export { maskNegatedSpans };
 
 /**
  * A release/task-board contract names concrete program surfaces, rather than
@@ -431,10 +415,11 @@ export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
  * clinic system that merely MENTIONS a report keeps its records engine.
  */
 export function requestedArtifactWithoutStockEngine(request: string): boolean {
-    const text = String(request || '');
-    const EN = /\b(?:build|create|make|develop|write|design|generate)\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:[\w-]+\s+){0,4}?(?:game|quiz|chatbot|chat\s?bot|bot|report|simulator|simulation|animation)\b/i;
-    const AR = /(?:اعمل|اعملي|إعمل|ابن[يِ]?|ابني|أنشئ|انشئ|اصنع|صمم|صمّم|اكتب|طور|طوّر)\s+(?:لي\s+)?(?:\S+\s+){0,3}?(?:لعبة|لعبه|مسابقة|اختبار\s+أسئلة|روبوت|بوت|تقرير|محاكي|محاكاة)(?=$|[\s،,.])/u;
-    return EN.test(text) || AR.test(text);
+    const artifact = requestedArtifact(String(request || ''));
+    if (artifact.kind === 'game' || artifact.kind === 'bot' || artifact.kind === 'report') return true;
+    // A simulator or an animation is authored from the request as well; the
+    // deliverable lexicon does not list them, so they are read from the object.
+    return /\b(?:simulator|simulation|animation)\b|محاكي|محاكاه/u.test(artifact.evidence.object);
 }
 
 export function detectAppKind(requestRaw: string): AppKind | null {
@@ -442,6 +427,9 @@ export function detectAppKind(requestRaw: string): AppKind | null {
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
     const intentRequest = maskNegatedSpans(request);
+    // A command-line tool has no web engine, so no stock app kind applies
+    // (eval round 15: CLIs came back 'custom', 'booking' or 'lms').
+    if (requestedArtifact(request).kind === 'cli') return null;
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(intentRequest)) return null;
@@ -3255,20 +3243,18 @@ function canonicalFieldKey(label: string): string | null {
  * Callers must not grow their own field-name catalogues: those duplicate paths
  * drift and eventually mistake capability lists for record schemas.
  */
+/**
+ * Is the deliverable a command-line program? The object of the build verb
+ * decides (eval round 15, P301: «اكتب أداة سطر أوامر … ملف CSV فيه الزبائن»).
+ * When the object names any other kind, the answer is no — «a web app that
+ * imports a CSV file» is an app. Only an object the lexicon does not know
+ * falls back to a command-line or CSV-input mention anywhere in the request.
+ */
 export function isCliRequest(requestRaw: string): boolean {
     const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
-    if (cliSignals.test(request)) return true;
-    const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
-    if (csvInputSignals.test(request)) return true;
-    // The same two readings in Arabic. Eval round 15 (2026-10-24, P301): «اكتب
-    // أداة سطر أوامر بلغة Python تقرأ ملف CSV …» matched neither English list,
-    // so the deterministic chain read it as a page and built a landing page for
-    // a Python CLI. `\b` cannot bound an Arabic word in JS, so none is used.
-    const arabicCliSignals = /سطر\s+(?:ال)?[أا]وامر|(?:ال)?طرفية|تيرمينال|كونسول|سكر[يِ]?بت|(?:نص|برنامج)\s+(?:برمجي|نصي)/u;
-    if (arabicCliSignals.test(request)) return true;
-    const arabicCsvInputSignals = /ملف\s*(?:ال)?(?:csv|tsv)\b|\b(?:csv|tsv)\b[^.؟!\n]{0,80}(?:عمود|أعمدة|اعمدة|حقل|حقول|سطر|أسطر|اسطر)/iu;
-    return arabicCsvInputSignals.test(request);
+    const kind = requestedArtifact(request).kind;
+    if (kind) return kind === 'cli';
+    return mentionsCommandLine(request) || readsCsvInput(request);
 }
 
 export function hasExplicitRecordSchema(requestRaw: string): boolean {

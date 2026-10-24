@@ -3,8 +3,9 @@ import os from 'os';
 import path from 'path';
 import { AR_START_NOUN, wordsRegex } from '../shared/arabic-word-boundary';
 import { analyzeContextualIntent, extractEntities } from '../core/llm/context-engine';
-import { PlanningEngine, isCliRequest } from '../core/orchestrator/PlanningEngine';
-import { isCsvInputRequest } from '../core/design/request-classifiers';
+import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { isCliRequest } from '../core/design/app-blueprints';
+import { readsCsvInput as isCsvInputRequest } from '../core/design/requested-artifact';
 import { hasRequestedAction } from '../core/intelligence/requested-action';
 import { classifyIntent } from '../core/intelligence/intent-classifier';
 import { isBoundedTerminalDiagnosticRequest } from '../core/orchestrator/buildIntent';
@@ -149,11 +150,7 @@ describe('the build-scope classifiers read the Arabic twin of every prompt kind'
         expect(isCsvInputRequest(ar)).toBe(isCsvInputRequest(en));
     });
 
-    // `report` is left out of the scope comparison on purpose: its English twin
-    // is promoted to 'app' because the build verb «Create» counts as a CRUD
-    // capability and «report» is a data word, while the Arabic twin says
-    // «اعمل صفحة …». That is a scope-semantics question, not a word boundary.
-    it.each(TWINS.filter(t => t.kind !== 'report'))('$kind: the build scope agrees', ({ ar, en }) => {
+    it.each(TWINS)('$kind: the build scope agrees', ({ ar, en }) => {
         expect(PlanningEngine.classifyBuildScope(ar)).toBe(PlanningEngine.classifyBuildScope(en));
     });
 

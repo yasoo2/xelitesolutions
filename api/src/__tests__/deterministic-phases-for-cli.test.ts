@@ -60,26 +60,31 @@ describe('deterministicPhasesFor CLI routing', () => {
         expect(phases?.phases[0]?.tasks[0]?.tool).toBe('web_page_builder');
     });
 
-    it.each(webAppRequests)('routes web app to react_project: %s', async (request) => {
+    // A login and a database are declared server claims: a sign-in or a
+    // «database» kept in the browser would be fake (CLAUDE.md law 2). These two
+    // were pinned to a front end alone by snapshot b906f3bc.
+    it.each(webAppRequests)('routes a web app with a login to its own service first: %s', async (request) => {
         const scope = PlanningEngine.classifyBuildScope(request);
         const hasSchema = hasExplicitRecordSchema(request);
         const phases = deterministicPhasesFor(request);
-        
-        expect(scope).toBe('app');
+
+        expect(scope).toBe('system');
         expect(hasSchema).toBe(false);
         expect(phases).not.toBeNull();
-        expect(phases?.phases[0]?.tasks[0]?.tool).toBe('react_project');
+        expect(phases?.phases[0]?.tasks[0]?.tool).toBe('api_project');
+        expect(phases?.phases[1]?.tasks[0]?.tool).toBe('react_project');
     });
 
-    it.each(storedWebRequests)('routes stored-web request to react_project: %s', async (request) => {
+    it.each(storedWebRequests)('routes a request that persists to a database to its own service first: %s', async (request) => {
         const scope = PlanningEngine.classifyBuildScope(request);
         const hasSchema = hasExplicitRecordSchema(request);
         const phases = deterministicPhasesFor(request);
-        
-        expect(scope).toBe('app');
+
+        expect(scope).toBe('system');
         expect(hasSchema).toBe(true);
         expect(phases).not.toBeNull();
-        expect(phases?.phases[0]?.tasks[0]?.tool).toBe('react_project');
+        expect(phases?.phases[0]?.tasks[0]?.tool).toBe('api_project');
+        expect(phases?.phases[1]?.tasks[0]?.tool).toBe('react_project');
     });
 
     it.each(posRequests)('routes POS request to system: %s', async (request) => {

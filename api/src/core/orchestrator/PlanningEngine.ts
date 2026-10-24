@@ -21,7 +21,7 @@ import { hasRequestedAction } from '../intelligence/requested-action';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan, FAILURE_RECOVERY_RULES } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
-import { isCliRequest as readsAsCli, isCsvInputRequest as readsAsCsvInput } from '../design/request-classifiers';
+import { mentionsCommandLine, readsCsvInput, requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 
 export interface ExecutionStep {
     id: string;
@@ -375,7 +375,7 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         // while allowing browser apps to call services such as Open-Meteo.
         const ownedApiSignals = /(?:\b(?:build|create|make|develop|implement|design|provide|expose)\s+(?:an?\s+)?(?:rest\s+|graphql\s+)?api\b|\b(?:build|create|make|develop|implement|design|provide|expose|own|internal|private)\s+(?:an?\s+)?backend\b|\b(?:api|backend)\s+(?:server|service|endpoint)\b|(?:ابنِ|ابني|أنشئ|انشئ|طوّر|طور|اصنع|أنشئ)\s+(?:لي\s+)?(?:واجهة\s+)?(?:برمجية|api|backend))/i;
         // Screens and behaviour rather than a single scroll.
-        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
+        const appSignals = /(تطبيق|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
         // A functional request can describe its shape without saying "app".
         // "Create a customer directory with fields, search and filtering" is
         // an interactive application, while a brochure with one contact form
@@ -390,6 +390,35 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
             /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة|[أا]نشئ|[إا]نشاء/i,
         ];
         const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
+        /**
+         * ⛔ THE OBJECT OF THE VERB DECIDES THE KIND; WHAT IT CLAIMS DECIDES THE SERVER.
+         *
+         * Eval round 15: this function matched data nouns, domain words and the
+         * build verb anywhere in the sentence, with word lists whose English and
+         * Arabic halves had drifted. «اكتب أداة سطر أوامر … فيه الزبائن» was a
+         * SYSTEM and its English twin a CLI; every English API an 'app', every
+         * Arabic one a 'system'. requestedArtifact reads the deliverable from the
+         * build verb's object and the server need from declared claims, in both
+         * scripts. A CLI keeps the legacy 'page' encoding (file-level, no web
+         * server). A page head is promoted by BEHAVIOUR — records he adds, edits,
+         * deletes or searches, «لإدارة …», «to manage …» — never skipped by an
+         * early return. The body below is the fallback for an object the lexicon
+         * does not know («a repair-shop customer directory», «بدي جدول …»).
+         */
+        const artifact = requestedArtifact(String(goalRaw || ''));
+        if (artifact.kind === 'cli') return 'page';
+        if (artifact.kind) {
+            if (artifact.needsServer) return 'system';
+            if (artifact.kind !== 'page') return 'app';
+            // A presentation page is a document about its subject: «موقع تعريفي
+            // لـإدارة المصاريف الشخصية» presents the service, it does not run it.
+            if (artifact.evidence.presentation) return 'page';
+            // The build verb itself is not a capability: «Create a page …» adds nothing.
+            const capabilities = g.replace(/^\s*(?:please\s+)?(?:create|build|make|develop|design|write|generate)\b/i, ' ')
+                .replace(/^\s*(?:من\s+فضلك\s+)?(?:[أا]نشئ|اعمل|ابن[يِى]?|اصنع|صمم|صمّم|طور|طوّر|اكتب)(?![\p{L}\p{N}_])/u, ' ');
+            const behaviour = structuredSignals.filter(signal => signal.test(capabilities)).length >= 2 || statesManagingPurpose(goalRaw);
+            return behaviour ? 'app' : 'page';
+        }
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|موقع\s*تعريفي|تعريفي|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
         
@@ -404,10 +433,10 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
         const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
         // CLI/utility/script requests are NOT web systems; CSV/TSV input with
-        // columns is input data, not a persistent record schema. Both read in
-        // Arabic and English from one source (request-classifiers).
-        const cli = readsAsCli(g);
-        const csvInput = readsAsCsvInput(g);
+        // columns is input data, not a persistent record schema. The fallback
+        // readers of requested-artifact, in both scripts.
+        const cli = mentionsCommandLine(g);
+        const csvInput = readsCsvInput(g);
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
         const publicApi = publicApiWithoutBackend && conditionalDemoAuth;
@@ -2391,7 +2420,7 @@ Rules:
             //   system → app + its own data: a backend, and the app wired to it
             const externalDataCapability = buildVerb ? capabilityFromRequest(intent.goal) : null;
             const scope = PlanningEngine.classifyBuildScope(probe);
-            if ((scope !== 'page' || externalDataCapability) && !(hasActivePage && editIntent)) {
+            if ((scope !== 'page' || externalDataCapability || requestedArtifact(probe).kind === 'cli') && !(hasActivePage && editIntent)) {
                 console.log(`[PlanningEngine] build scope = ${scope} -> evidence-first project_pipeline`);
                 return {
                     id: `engineering_${scope}_${Date.now()}`,
@@ -2603,7 +2632,7 @@ Rules:
         // inspected its workspace and planned from evidence.
         {
             const scope = PlanningEngine.classifyBuildScope(probe);
-            if (buildVerb && scope !== 'page') {
+            if (buildVerb && (scope !== 'page' || requestedArtifact(probe).kind === 'cli')) {
                 console.log(`[PlanningEngine] engineering scope = ${scope} -> evidence-first project_pipeline before browser routing`);
                 return {
                     id: `engineering_${scope}_${Date.now()}`,
@@ -3174,7 +3203,7 @@ Rules:
                     // keyword paths missed it.
                     if (routed.intent === 'build_page') {
                         const scope = PlanningEngine.classifyBuildScope(probe);
-                        if (scope !== 'page') {
+                        if (scope !== 'page' || requestedArtifact(probe).kind === 'cli') {
                             // A semantic classification can identify that this is
                             // more than a page, but it cannot prescribe a stack.
                             // The evidence-first pipeline chooses and proves the
@@ -3487,7 +3516,7 @@ Return ONLY a JSON array of steps:
                 if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
                     console.warn(`[PlanningEngine] the model planned ${steps.length} talking step(s) for a BUILD — refusing invented construction.`);
                     const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-                    if (scope === 'page') {
+                    if (scope === 'page' && requestedArtifact(String(intent.goal || '')).kind !== 'cli') {
                         return {
                             id: `build_page_rescue_${Date.now()}`,
                             goal: intent.goal,
@@ -3539,7 +3568,7 @@ Return ONLY a JSON array of steps:
         if (looksLikeBuildRequest(String(intent.goal || ''))) {
             console.warn('[PlanningEngine] the planner was unreachable for a BUILD — routing systems to evidence-first planning, never an invented stack.');
             const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-            if (scope === 'page') {
+            if (scope === 'page' && requestedArtifact(String(intent.goal || '')).kind !== 'cli') {
                 return {
                     id: `build_page_offline_${Date.now()}`,
                     goal: intent.goal,
@@ -4383,17 +4412,3 @@ Return ONLY a JSON array of steps:
     }
 }
 
-/**
- * Detects if the request is a CLI/utility/script request (not a web system).
- * Uses the same signals as classifyBuildScope for consistency.
- */
-export function isCliRequest(goalRaw: string): boolean {
-    return readsAsCli(goalRaw);
-}
-
-/**
- * Detects if the request is a CSV/TSV input with columns (input data, not a persistent record schema).
- */
-export function isCsvInputRequest(goalRaw: string): boolean {
-    return readsAsCsvInput(goalRaw);
-}
