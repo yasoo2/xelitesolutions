@@ -715,9 +715,7 @@ function buildCliScaffold(request: string, projectName: string): {
             description: `Write ${testFileName} for the requested behaviour`,
             args: {
                 path: testFileName,
-                description: `A small self-contained test for the program in ${entryPoint} (${request}). `
-                    + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
-                    + 'Use only the standard library of the language; no placeholder assertions.',
+                description: cliTestBrief(entryPoint, runCommand, request),
             },
         });
     }
@@ -944,25 +942,50 @@ export function deterministicPhasesFor(request: string): {
     let projectName = 'project';
     try { projectName = resolveProjectIdentity(request, require('../../../core/design/subject-phrase').subjectPhrase(request, 48)); } catch { /* naming is cosmetic */ }
 
-    if (scope === 'system') {
+    /**
+     * ⛔ WHAT HE SAID THE SYSTEM IS MADE OF IS PART OF THE REQUEST (law 4).
+     *
+     * Eval round 15 (2026-10-24): «React frontend, Node backend … each staff
+     * member only sees their own records» (P151) scored as an app and was
+     * rescued into ONE frontend phase — the declared backend, and the
+     * per-user ownership that needs it, silently dropped. «أنشئ واجهة برمجية
+     * REST …» (P101) asked for an API and got an unrequested React interface
+     * beside it. A declared backend makes it a system; an API with no
+     * interface for people gets no interface phase.
+     */
+    const apiOnly = buildObjectIsAnApi(request);
+    const effectiveScope: 'page' | 'app' | 'system' = scope === 'app' && requestDeclaresOwnBackend(request) ? 'system' : scope;
+
+    if (effectiveScope === 'system') {
         // The interface depends on the service that holds the rows — declared
         // as an ordered pair of phases, so the dependency is enforced by the
         // plan rather than left to whoever executes it.
+        const service = { phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] };
+        if (apiOnly) {
+            return {
+                projectName,
+                reason: 'an API was asked for and no interface for people, so none is built',
+                phases: [service],
+            };
+        }
         return {
             projectName,
-            reason: 'declared entities require their own data service, and the interface depends on it',
+            reason: scope === 'system'
+                ? 'declared entities require their own data service, and the interface depends on it'
+                : 'the request declares its own backend, and the interface depends on it',
             phases: [
-                { phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },
+                service,
                 { phaseNumber: 2, name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
             ],
         };
     }
 
-// CLI/utility/script requests are file-level projects, not web pages.
-    // They should use scaffold_project with a CLI-appropriate structure.
-    const isCli = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i.test(request);
-    const isCsvInput = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i.test(request);
-    const isCliOrCsv = isCli || isCsvInput;
+    // CLI/utility/script requests are file-level projects, not web pages.
+    // They should use scaffold_project with a CLI-appropriate structure. The
+    // canonical reader decides — eval round 15 (P301): a private English-only
+    // copy here read «اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV…» as a page
+    // and Joe spent 76 minutes writing a landing page for a Python CLI.
+    const isCliOrCsv = isCliRequestFn(request);
 
 if (isCliOrCsv && scope === 'page') {
         // CLI/utility/script requests are file-level projects, not web pages.
@@ -1184,6 +1207,8 @@ export function planContainsTool(phases: any[], toolName: string): boolean {
  */
 export function planContainsUnrequestedApiBuilder(request: string, phases: any[]): boolean {
     if (!interactiveAppNeedsReactBuilder(request)) return false;
+    // «React frontend, Node backend» asked for that backend (eval round 15, P151).
+    if (requestDeclaresOwnBackend(request)) return false;
     try {
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         return PlanningEngine.classifyBuildScope(String(request || '')) === 'app'
@@ -1191,6 +1216,184 @@ export function planContainsUnrequestedApiBuilder(request: string, phases: any[]
     } catch {
         return false;
     }
+}
+
+const NEGATED_INTERFACE = /\b(?:no|without|not)\s+(?:(?:a|an|any)\s+)?(?:(?:web|user|graphical)\s+)?(?:front[- ]?end|ui|gui|user\s+interface|interface|pages?|screens?|dashboard)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:واجهة(?:\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية))?|صفحات|شاشات)/giu;
+const INTERFACE_FOR_PEOPLE = /\b(?:front[- ]?end|ui|gui|user\s+interface|web\s+(?:app|application|page|site|interface)|website|pages?|screens?|dashboard|admin\s+panel)\b|واجهة\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية)|صفحة|صفحات|شاشة|شاشات|لوحة\s+(?:تحكم|إدارة|ادارة)|موقع|تطبيق\s+ويب/iu;
+
+/** Does the request ask for something people look at — an interface, pages, a dashboard? */
+export function requestNamesAnInterface(request: string): boolean {
+    return INTERFACE_FOR_PEOPLE.test(String(request || '').replace(NEGATED_INTERFACE, ' '));
+}
+
+const API_OBJECT_EN = /\b(?:build|create|make|develop|write|design|implement|generate|expose|scaffold)\s+(?:me\s+)?(?:(?:a|an|the)\s+)?(?:(?!(?:app|apps|application|site|website|page|system|platform|tool|game|bot|dashboard|that|which|using|with|for|from|of|to|on|in|by)\b)[\w.+-]+\s+){0,3}?(?:api|web\s+service|backend(?:\s+service)?)\b/i;
+const API_OBJECT_AR = /(?:اعمل|اعملي|إعمل|ابن[يِ]?|ابني|أنشئ|انشئ|اصنع|صمم|صمّم|اكتب|طور|طوّر)\s+(?:لي\s+)?(?:(?!(?:تطبيق|موقع|نظام|منص|لعب|برنامج|لوحة|يستخدم|تستخدم|باستخدام|عبر|مع|من)\S*)\S+\s+)?(?:واجهة\s+(?:برمجية|برمجة|خلفية)|api|باك\s*اند)(?=$|[\s،,.])/iu;
+
+/**
+ * The object of the build verb is an API — read from the verb's own object,
+ * like requestedArtifactWithoutStockEngine, so «build an app that uses an
+ * API» stays an app — and nothing in the request is an interface for people.
+ */
+export function buildObjectIsAnApi(request: string): boolean {
+    const text = String(request || '');
+    return (API_OBJECT_EN.test(text) || API_OBJECT_AR.test(text)) && !requestNamesAnInterface(text);
+}
+
+const NEGATED_BACKEND = /\b(?:no|without|not|(?:do\s+not|don'?t|never)\s+(?:build|create|implement|need|add|use|write))\s+(?:(?:a|an|any)\s+)?(?:(?:project[- ]owned|own|separate|custom)\s+)?(?:back[- ]?end|server|api\s+server)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:خادم|سيرفر|واجهة\s+خلفية|باك\s*اند)/giu;
+const OWN_BACKEND = /\bfull[- ]?stack\b|\bback[- ]?end\b|\bserver[- ]side\b|\b(?:api|web|http|rest)\s+server\b|واجهة\s+(?:ال)?خلفية|الواجهة\s+الخلفية|(?:ال)?خادم|سيرفر|باك\s*اند/iu;
+
+/** The request names its own backend (and does not forbid one). */
+export function requestDeclaresOwnBackend(request: string): boolean {
+    const text = String(request || '').replace(NEGATED_BACKEND, ' ');
+    return OWN_BACKEND.test(text) || buildObjectIsAnApi(request);
+}
+
+const PLANNED_SOURCE_WRITERS = new Set(['ai_write_file', 'write_file', 'file_write', 'create_file']);
+const PLANNED_TEST_FILE = /(?:^|\/)(?:__tests__|tests?|spec)\/|(?:^|\/)test_[^/]+\.py$|(?:^|\/)[^/]+_test\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+const WEB_ARTIFACT_FILE = /\.(?:html?|jsx|tsx|vue|svelte|css|scss|sass|less)$/i;
+const RUNNABLE_SOURCE: Array<{ ext: RegExp; lang: keyof typeof CLI_RUNNER }> = [
+    { ext: /\.py$/i, lang: 'python' },
+    { ext: /\.(?:mjs|cjs|js)$/i, lang: 'javascript' },
+    { ext: /\.sh$/i, lang: 'bash' },
+];
+
+function plannedFilePaths(phases: any[]): string[] {
+    return (Array.isArray(phases) ? phases : [])
+        .flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : [])
+        .filter((task: any) => PLANNED_SOURCE_WRITERS.has(String(task?.tool || '').toLowerCase()))
+        .map((task: any) => String(task?.args?.path || task?.args?.filePath || task?.input?.path || '').replace(/\\/g, '/').replace(/^\.\//, '').trim())
+        .filter(Boolean);
+}
+
+function commonDirectory(files: string[]): string {
+    const dirs = files.map(file => path.posix.dirname(file).split('/').filter(segment => segment && segment !== '.'));
+    const first = dirs[0] || [];
+    let depth = 0;
+    while (depth < first.length && dirs.every(segments => segments[depth] === first[depth])) depth++;
+    return first.slice(0, depth).join('/') || '.';
+}
+
+/** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
+function cliTestBrief(entry: string, runCommand: string, request: string): string {
+    return `A small self-contained test for the program in ${entry} (${request}). `
+        + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
+        + 'Use only the standard library of the language; no placeholder assertions.';
+}
+
+/**
+ * The phase that makes a paper plan runnable with the plan's own files, or
+ * null when the plan has nothing that can run: a package manifest (install,
+ * then its own tests), or a program in a language the CLI path already runs
+ * (an entry, a test authored with its own fixture when the plan wrote none,
+ * and the same runner manifest the CLI scaffold ships).
+ */
+function paperPlanRunPhase(request: string, files: string[], tests: string[]): { phase: any; projectDir: string } | null {
+    const manifest = files.filter(file => /(?:^|\/)package\.json$/i.test(file)).sort((a, b) => a.length - b.length)[0];
+    if (manifest) {
+        const projectDir = path.posix.dirname(manifest);
+        return {
+            projectDir,
+            phase: {
+                name: 'Install, test and run',
+                description: 'Install what the plan\'s own package.json declares and run its own tests; the pipeline then starts it live.',
+                tasks: [{ task: 'Install the declared dependencies', tool: 'npm_manager', args: { command: 'install', cwd: projectDir } }],
+                ...(tests.length ? { verificationTask: { task: 'Run the project\'s own tests', tool: 'quality_run', args: { path: projectDir, tasks: ['test'] } } } : {}),
+            },
+        };
+    }
+    const sources = files.filter(file => !PLANNED_TEST_FILE.test(file));
+    const lang = RUNNABLE_SOURCE.find(kind => sources.some(file => kind.ext.test(file)))?.lang;
+    if (!lang) return null;
+    const runner = CLI_RUNNER[lang];
+    const ext = RUNNABLE_SOURCE.find(kind => kind.lang === lang)!.ext;
+    const programs = sources.filter(file => ext.test(file));
+    const named = programs
+        .filter(file => /^(?:main|cli|__main__|app|index|run)\.[a-z]+$/i.test(path.posix.basename(file)))
+        .sort((a, b) => a.split('/').length - b.split('/').length)[0];
+    const entryFile = named || (programs.length === 1 ? programs[0] : '');
+    if (!entryFile) return null;
+    const projectDir = commonDirectory(files);
+    const within = (file: string) => projectDir === '.' ? file : path.posix.relative(projectDir, file);
+    const entry = within(entryFile);
+    const runCommand = `${runner} ${entry}`;
+    const tasks: any[] = [];
+    let testFiles = tests.filter(file => ext.test(file)).map(within);
+    if (!testFiles.length) {
+        const authored = lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
+        testFiles = [authored];
+        tasks.push({
+            task: `Write ${authored} for the requested behaviour`,
+            tool: 'ai_write_file',
+            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, request) },
+        });
+    }
+    const testCommand = lang === 'python' ? `python -m pytest ${testFiles.join(' ')} -v`
+        : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
+            : `node --test ${testFiles.join(' ')}`;
+    const name = (projectDir === '.' ? 'program' : path.posix.basename(projectDir)).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'program';
+    tasks.push({
+        task: 'Declare how the program starts and how its tests run',
+        tool: 'write_file',
+        args: {
+            path: projectDir === '.' ? 'package.json' : `${projectDir}/package.json`,
+            content: JSON.stringify({ name, version: '1.0.0', private: true, description: request.replace(/\s+/g, ' ').trim().slice(0, 300), main: entry, scripts: { start: runCommand, test: testCommand } }, null, 2),
+        },
+    });
+    return {
+        projectDir,
+        phase: {
+            name: 'Run and verify the program',
+            description: `Run the program the plan wrote (${runCommand}) through its own tests.`,
+            tasks,
+            verificationTask: { task: 'Run the program\'s tests', tool: 'quality_run', args: { path: projectDir, tasks: ['test'] } },
+        },
+    };
+}
+
+/**
+ * ⛔ A PLAN THAT READ THE REQUEST IS COMPLETED, NOT REPLACED (law 4).
+ *
+ * The paper-plan rescue swapped a model plan for the deterministic chain
+ * whenever the plan wrote files but ran nothing. Eval round 15 measured what
+ * that costs when the chain does not build what was asked:
+ *   - P101 «واجهة برمجية REST … المرضى والمواعيد والعلاجات … واختبارات آلية»:
+ *     the model planned patients/appointments/treatments routes and their
+ *     tests; the rescue built the stock bookings API — no requested entity,
+ *     no test — and it was scored a pass;
+ *   - P301 «أداة سطر أوامر بلغة Python»: the model planned the Python files;
+ *     the rescue built a ten-section landing page.
+ * So before a substitution: when the plan's artifact is a program and the
+ * rescue would build a web page, when the stock engine does not cover what
+ * the request names, or when the plan writes its own tests, the plan is kept
+ * and completed with the steps that make it run. Null means the substitution
+ * stands (the chain covers the request, or the plan has nothing to run).
+ */
+export function completePaperPlan(request: string, phases: any[], rescue: { phases: any[] } | null): { phases: any[]; reasons: string[]; projectDir: string } | null {
+    const files = plannedFilePaths(phases);
+    if (!files.length) return null;
+    const rescueTools = (rescue?.phases || []).flatMap((phase: any) => (phase?.tasks || []).map((task: any) => String(task?.tool || '')));
+    const tests = files.filter(file => PLANNED_TEST_FILE.test(file));
+    const reasons: string[] = [];
+    const webRescue = rescueTools.some(tool => tool === 'web_page_builder' || tool === 'react_project');
+    if (!files.some(file => WEB_ARTIFACT_FILE.test(file)) && !requestNamesAnInterface(request)) {
+        reasons.push(webRescue || !rescue
+            ? 'the plan builds a program, and the deterministic chain would build a different kind of artifact'
+            : 'the plan already holds the program\'s own files, which the deterministic chain would re-author from nothing');
+    }
+    if (rescueTools.some(tool => tool === 'api_project' || tool === 'react_project' || tool === 'web_page_builder')) {
+        let gaps: string[] = [];
+        try { gaps = require('../../../core/design/app-blueprints').stockEngineGaps(request, rescueTools.includes('api_project')); } catch { gaps = []; }
+        if (gaps.length) reasons.push(`the stock engine does not cover: ${gaps.slice(0, 6).join(' · ')}`);
+    }
+    if (tests.length) reasons.push(`the plan writes its own tests (${tests.slice(0, 3).join(', ')})`);
+    if (!reasons.length) return null;
+    const run = paperPlanRunPhase(request, files, tests);
+    if (!run) return null;
+    return {
+        reasons,
+        projectDir: run.projectDir,
+        phases: [...phases, { phaseNumber: phases.length + 1, ...run.phase }],
+    };
 }
 
 /**
@@ -1906,9 +2109,17 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ? deterministicPhasesFor(productRequest)
                 : null;
             if (deterministic) {
-                say(pick(isAr,
-                    `[pipeline] لا مخطِّط متاح — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
-                    `[pipeline] no planner available — planning deterministically from what the request declares: ${deterministic.reason}`));
+                // A planner that ANSWERED with a blocked plan is not «no planner»
+                // (eval round 15, P151: the log said so after a 44-minute plan).
+                const plannerBlocker = plannerResult?.output?.blocker;
+                const blockedCode = String(plannerBlocker?.code || '').trim();
+                say(blockedCode
+                    ? pick(isAr,
+                        `[pipeline] خطة المخطِّط حُجبت (${blockedCode}: ${String(plannerBlocker?.message || '').slice(0, 200)}) — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
+                        `[pipeline] the planner's plan was blocked (${blockedCode}: ${String(plannerBlocker?.message || '').slice(0, 200)}) — planning deterministically from what the request declares: ${deterministic.reason}`)
+                    : pick(isAr,
+                        `[pipeline] لا مخطِّط متاح — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
+                        `[pipeline] no planner available — planning deterministically from what the request declares: ${deterministic.reason}`));
                 plannerResult = {
                     ok: true,
                     output: { projectName: deterministic.projectName, phases: deterministic.phases, deterministic: true, plannedWithoutModel: true },
@@ -1992,7 +2203,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                 && plannerResult?.output?.deterministic !== true
                 && (deterministicRescueAllowed(productRequest) || requiresConcreteUiBuilder)) {
                 const rescue = deterministicPhasesFor(productRequest);
-                if (rescue) {
+                const paperOnly = !touchesRunnable && !missingConcreteUiBuilder && !unrequestedApiBuilder;
+                const completed = paperOnly ? completePaperPlan(productRequest, planPhases, rescue) : null;
+                if (completed) {
+                    say(pick(isAr,
+                        `[pipeline] الخطة كتبت ملفات ولم تشغّل شيئاً — أكملتُها بخطوات تشغيلها بدلاً من استبدالها، لأن ${completed.reasons.join('؛ ')}`,
+                        `[pipeline] the plan writes files but runs nothing — completing it with the steps that run it instead of replacing it, because ${completed.reasons.join('; ')}`));
+                    plannerResult.output.phases = completed.phases;
+                    plannerResult.output.totalPhases = completed.phases.length;
+                } else if (rescue) {
                     const reason = missingConcreteUiBuilder
                         ? 'the interactive application plan omitted the concrete React UI builder'
                         : unrequestedApiBuilder

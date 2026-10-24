@@ -3258,7 +3258,14 @@ export function isCliRequest(requestRaw: string): boolean {
     if (cliSignals.test(request)) return true;
     const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
     if (csvInputSignals.test(request)) return true;
-    return false;
+    // The same two readings in Arabic. Eval round 15 (2026-10-24, P301): «اكتب
+    // أداة سطر أوامر بلغة Python تقرأ ملف CSV …» matched neither English list,
+    // so the deterministic chain read it as a page and built a landing page for
+    // a Python CLI. `\b` cannot bound an Arabic word in JS, so none is used.
+    const arabicCliSignals = /سطر\s+(?:ال)?[أا]وامر|(?:ال)?طرفية|تيرمينال|كونسول|سكر[يِ]?بت|(?:نص|برنامج)\s+(?:برمجي|نصي)/u;
+    if (arabicCliSignals.test(request)) return true;
+    const arabicCsvInputSignals = /ملف\s*(?:ال)?(?:csv|tsv)\b|\b(?:csv|tsv)\b[^.؟!\n]{0,80}(?:عمود|أعمدة|اعمدة|حقل|حقول|سطر|أسطر|اسطر)/iu;
+    return arabicCsvInputSignals.test(request);
 }
 
 export function hasExplicitRecordSchema(requestRaw: string): boolean {

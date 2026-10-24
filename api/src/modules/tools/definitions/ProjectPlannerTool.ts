@@ -499,6 +499,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     if (!this.hasPlanningShape(recoveredPlan)) {
                         throw new Error('Contract recovery returned valid JSON without a non-empty phases/tasks plan');
                     }
+                    const recoveredRaw = JSON.parse(JSON.stringify(recoveredPlan));
                     const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
                         mode: evidence?.mode,
@@ -519,7 +520,10 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     plan = this.validatePlan(recoveredPlan, projectDescription);
                     plan.phases = recoveredClean.phases;
-                    rawPlanForPortableRewrite = JSON.parse(JSON.stringify(plan));
+                    // The rewrite reads the model's own tasks, as for the first
+                    // plan — not the sanitised phases, which have already dropped
+                    // or blocked the very tasks it would make portable.
+                    rawPlanForPortableRewrite = recoveredRaw;
                     clean = recoveredClean;
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner contract recovery completed with non-document implementation artifacts');
@@ -611,8 +615,16 @@ export class ProjectPlannerTool implements ToolDefinition {
                     if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
                         // The model supplied a newer architecture but repeated the
                         // native choice. Preserve that newer plan for the bounded
-                        // dependency-only rewrite below.
+                        // dependency-only rewrite below — and make it the current
+                        // state, because that rewrite is gated on `clean`. Eval
+                        // round 15 (2026-10-24, P151): the first plan's own blocker
+                        // was tool_contract_invalid, so `clean` kept it, the gate
+                        // stayed shut, and a 21-minute recovered plan whose only
+                        // defect was sqlite3 was thrown away. The rewrite
+                        // re-sanitises: any other defect still stops honestly.
                         rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
+                        plan = this.validatePlan(recoveredPlan, projectDescription);
+                        clean = recoveredClean;
                     }
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
@@ -636,8 +648,8 @@ export class ProjectPlannerTool implements ToolDefinition {
             // architecture and task scope; it merely applies the already stated
             // contract (node:sqlite/JSON, node:crypto, sass, or a portable fallback)
             // before the same sanitiser and artifact gates run again.
-            if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
-                const portablePlan = this.rewriteUnportableNativePlan(rawPlanForPortableRewrite);
+            const normalisePortablePlan = (rawPlan: any) => {
+                const portablePlan = this.rewriteUnportableNativePlan(rawPlan);
                 const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
                     mode: evidence?.mode,
                     disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
@@ -650,7 +662,11 @@ export class ProjectPlannerTool implements ToolDefinition {
                     preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                     reactRequest: projectDescription,
                 });
-                if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
+                return { portablePlan, portableClean, usable: !portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0 };
+            };
+            if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
+                const { portablePlan, portableClean, usable } = normalisePortablePlan(rawPlanForPortableRewrite);
+                if (usable) {
                     plan = this.validatePlan(portablePlan, projectDescription);
                     plan.phases = portableClean.phases;
                     clean = portableClean;
@@ -770,7 +786,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         }
                         const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                         logs.push(`[plan] scope recovery stack decision=${recoveredHasPlannerStackDecision}`);
-                        const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        let recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
                             disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !recoveredHasPlannerStackDecision,
                             evidencedPaths,
                             testFiles: evidence?.selectedProject?.testFiles || [],
@@ -783,13 +799,25 @@ export class ProjectPlannerTool implements ToolDefinition {
                              preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                              reactRequest: projectDescription,
                          });
+                        // The same class as the contract recovery above: a newer
+                        // plan whose only defect is a native dependency is made
+                        // portable, not discarded; any other defect still throws.
+                        let recoveredSource: any = recoveredPlan;
+                        if (recoveredClean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
+                            const portable = normalisePortablePlan(recoveredPlan);
+                            if (portable.usable) {
+                                recoveredClean = portable.portableClean;
+                                recoveredSource = portable.portablePlan;
+                                logs.push('Planner scope recovery: portability normalization applied to the recovered plan.');
+                            }
+                        }
                         if (recoveredClean.blocker) {
                             throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
                         }
                         if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
                             throw new Error('Scope recovery retained no non-document implementation artifact');
                         }
-                        const recoveredValidatedPlan = this.validatePlan(recoveredPlan, projectDescription);
+                        const recoveredValidatedPlan = this.validatePlan(recoveredSource, projectDescription);
                         recoveredValidatedPlan.phases = recoveredClean.phases;
                         const recoveredAssessment = this.assessPlanScope(
                             recoveredValidatedPlan,
@@ -1733,6 +1761,22 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             .replace(/\b(?:ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate)\b/gi, 'portable runtime fallback')
             .replace(/\b(?:node-gyp|prebuild-install|binding\.gyp)\b/gi, 'native toolchain')
             .replace(/C\+\+\s+compiler/gi, 'host compiler');
+        // A shell command keeps its executable: «cd api && npm install express
+        // sqlite3» must stay an install of express, not become «… npm install
+        // express node:sqlite or JSON file fallback» (five bogus packages), nor
+        // lose its «npm» (only npm_manager takes the bare subcommand).
+        const PACKAGE_INSTALL = /^(\s*)(npm\s+(?:install|i|ci)|yarn\s+add|pnpm\s+(?:add|install|i))(?=\s|$)(.*)$/i;
+        const rewriteShellCommand = (value: string): string => value
+            .split(/(\s*(?:&&|\|\||;)\s*)/)
+            .map(segment => {
+                if (/^\s*(?:&&|\|\||;)\s*$/.test(segment)) return segment;
+                const install = segment.match(PACKAGE_INSTALL);
+                if (!install) return rewriteText(segment);
+                const kept = String(install[3] || '').trim().split(/\s+/).filter(Boolean).filter(token => !nativePackageSpec(token));
+                return [`${install[1]}${install[2]}`, ...kept].join(' ');
+            })
+            .join('');
+        const SOURCE_WRITERS = new Set(['write_file', 'file_write', 'create_file']);
         const rewritePackageContent = (raw: string): string => {
             try {
                 const parsed = JSON.parse(raw);
@@ -1747,25 +1791,54 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 return rewriteText(raw);
             }
         };
-        const visit = (value: any, key = ''): any => {
+        /**
+         * Source code that imports a native addon cannot be made portable by
+         * renaming the module: «require('sqlite3')» became «require('node:sqlite
+         * or JSON file fallback')», a file that cannot load. The task is handed to
+         * the file author with the portable contract and the planned source as
+         * its reference, so the plan keeps that file and its responsibility.
+         */
+        const portableSourceTask = (task: any): any | null => {
+            const args = task?.args && typeof task.args === 'object' ? task.args : {};
+            const target = String(args.path || args.filePath || '').trim();
+            const content = typeof args.content === 'string' ? args.content : '';
+            if (!SOURCE_WRITERS.has(String(task?.tool || '').toLowerCase()) || !target || !content
+                || /(?:^|[\\/])package\.json$/i.test(target) || !nativeNames.test(content)) return null;
+            const purpose = rewriteText(String(task?.task || task?.description || `Write ${target}`));
+            const rest = visit(Object.fromEntries(Object.entries(task).filter(([k]) => k !== 'args' && k !== 'tool')));
+            return {
+                ...rest,
+                tool: 'ai_write_file',
+                args: {
+                    path: target,
+                    description: `${purpose} Write ${target} with the same responsibility as the planned source below, using no native addon: storage through node:sqlite (DatabaseSync, Node >= 22.5) with a JSON file fallback behind the same interface when node:sqlite is unavailable; password hashing through node:crypto scrypt; sass instead of node-sass. Planned source, native module names replaced:\n${rewriteText(content).slice(0, 6000)}`,
+                },
+            };
+        };
+        const visit = (value: any, key = '', tool = ''): any => {
             if (typeof value === 'string') {
                 return key === 'content' && /(?:^|[\\/])package\.json$/i.test(String((plan as any)?.path || ''))
                     ? rewritePackageContent(value)
                     : rewriteText(value);
             }
-            if (Array.isArray(value)) return value.map(item => visit(item, key));
+            if (Array.isArray(value)) return value.map(item => visit(item, key, tool));
             if (!value || typeof value !== 'object') return value;
+            const portableTask = portableSourceTask(value);
+            if (portableTask) return portableTask;
+            const ownTool = typeof value.tool === 'string' ? String(value.tool).toLowerCase() : tool;
             const out: any = {};
             for (const [childKey, childValue] of Object.entries(value)) {
                 if (childKey === 'tool') out[childKey] = childValue;
                 else if (childKey === 'content' && typeof childValue === 'string' && /package\.json$/i.test(String(value.path || value.filePath || ''))) {
                     out[childKey] = rewritePackageContent(childValue);
-                } else if (childKey === 'command' && typeof childValue === 'string' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
+                } else if (childKey === 'command' && typeof childValue === 'string' && ownTool === 'npm_manager' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
                     out[childKey] = rewriteNpmInstallCommand(childValue);
+                } else if (childKey === 'command' && typeof childValue === 'string') {
+                    out[childKey] = rewriteShellCommand(childValue);
                 } else if (childKey === 'packages' && Array.isArray(childValue)) {
                     out[childKey] = childValue.filter(packageSpec => !nativePackageSpec(packageSpec));
                 } else {
-                    out[childKey] = visit(childValue, childKey);
+                    out[childKey] = visit(childValue, childKey, ownTool);
                 }
             }
             return out;
