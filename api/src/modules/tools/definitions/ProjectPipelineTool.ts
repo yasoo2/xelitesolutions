@@ -1,5 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
+import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
@@ -121,6 +123,8 @@ export function buildPipelineDecisionEvidence(input: {
     phaseResults?: any[];
     specVerificationFailed?: boolean;
     specVerificationCoverage?: number;
+    requestCoverageFailed?: boolean;
+    requestCoverageMissing?: string[];
 }): PipelineDecisionEvidence {
     const results = Array.isArray(input.phaseResults) ? input.phaseResults : [];
     const verificationUnavailable = input.verificationUnavailable === true || results.some((result: any) => (
@@ -136,7 +140,10 @@ export function buildPipelineDecisionEvidence(input: {
     const phaseName = String(failedPhase?.phaseName || failedPhase?.name || failedPhase?.phaseNumber || '').trim();
     const phaseError = String(failedPhase?.primaryError || failedPhase?.error || '').trim();
     let honestBlocker: string | null = null;
-    if (input.liveRunError) {
+    if (input.requestCoverageFailed && input.requestCoverageMissing?.length) {
+        // Missing requested records are named before any other blocker.
+        honestBlocker = `requested_records_missing: ${input.requestCoverageMissing.slice(0, 12).join(', ')}`;
+    } else if (input.liveRunError) {
         honestBlocker = `live_run: ${String(input.liveRunError).slice(0, 420)}`;
     } else if (input.browserQaFailed) {
         honestBlocker = 'browser_qa_failed';
@@ -1479,7 +1486,24 @@ const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|availa
  * This reducer is intentionally manifest/domain neutral and only rejects
  * explicit placeholders or missing checks when the request asks for them.
  */
-export function inspectProjectQualityContract(projectRoot: string, request = ''): ProjectQualityContract {
+/** A build step this part really has: a bundler/framework config, or TypeScript it compiles. */
+function rootHasBuildStep(root: string, manifest: any): boolean {
+    const configs = /^(?:vite|webpack|next|nuxt|svelte|astro|rollup|remix|vue)\.config\.[cm]?[jt]s$|^angular\.json$/iu;
+    let names: string[] = [];
+    try { names = fs.readdirSync(root); } catch { return false; }
+    if (names.some(name => configs.test(name))) return true;
+    const deps = { ...(manifest?.dependencies || {}), ...(manifest?.devDependencies || {}) };
+    return names.includes('tsconfig.json') && Object.prototype.hasOwnProperty.call(deps, 'typescript');
+}
+
+/** The request names a build as a step to run — never the imperative «Build …» or the noun in «بناء نظام». */
+const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
+
+export function inspectProjectQualityContract(
+    projectRoot: string,
+    request = '',
+    opts: { additionalRoot?: boolean; testsRequested?: boolean } = {},
+): ProjectQualityContract {
     const root = String(projectRoot || '').trim();
     const manifestPath = root ? path.join(root, 'package.json') : '';
     if (!manifestPath || !fs.existsSync(manifestPath)) return { ok: true, failures: [] };
@@ -1495,6 +1519,27 @@ export function inspectProjectQualityContract(projectRoot: string, request = '')
         if (typeof scripts[name] === 'string' && PLACEHOLDER_SCRIPT.test(scripts[name].trim())) {
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
+    }
+    if (opts.additionalRoot) {
+        /**
+         * ANOTHER DELIVERED PART ANSWERS ONLY FOR WHAT THE REQUEST ASKS OF IT.
+         *
+         * The primary root keeps its contract below. asksForChecks matches every
+         * imperative «Build …» and every «بناء», so applying it to the API root
+         * of a full-stack pair demanded a build script from a plain Node server
+         * that has no build step (round 15 review: all 25 English full-stack
+         * prompts). A test script is required when the request asks for tests;
+         * a build script when this part has a build step or the request names
+         * the command.
+         */
+        const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
+        if (opts.testsRequested === true && !has('test')) {
+            failures.push('package.json has no truthful test script although the request asks for tests');
+        }
+        if ((rootHasBuildStep(root, manifest) || BUILD_COMMAND_NAMED.test(String(request || ''))) && !has('build')) {
+            failures.push('package.json has no truthful build script although this part has a build step');
+        }
+        return { ok: failures.length === 0, failures };
     }
     const asksForChecks = /(?:\b(?:npm\s+)?(?:run\s+)?(?:build|test|tests)\b|بناء|اختبار)/iu.test(String(request || ''));
     if (asksForChecks) {
@@ -2466,6 +2511,8 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         const ledger = new DeliveryLedger();
         const liveRunNotes: string[] = [];
+        let requestCoverage: RequestCoverageReport | undefined;
+        let requestCoverageFailed = false;
         let deliveryRequired: DeliveryInstrument[] = [];
         const syncFromLedger = (final = false) => {
             const verdict = deliveryVerdict({
@@ -2476,6 +2523,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             });
             finalVerified = verdict.verified;
             scopeCoverageFailed = verdict.failures.some(m => m.instrument === 'scope');
+            requestCoverageFailed = verdict.coverageFailed;
             // In flight every failure blocks; only the final verdict may call a
             // scope-only shape partial.
             const blocking = verdict.failures.length > 0 && !(final && verdict.partial);
@@ -2494,23 +2542,82 @@ export class ProjectPipelineTool implements ToolDefinition {
         };
         const measured = (instrument: DeliveryInstrument, ok: boolean) =>
             ledger.all().some(m => m.instrument === instrument && m.ok === ok);
-        /** live, quality and scope for one project_run result — measured separately, never folded into one flag. */
-        const recordLiveAcceptance = (runRes: any, qualityRoot: string, auditRoots: string[]) => {
+        /**
+         * The records the request named, measured on the delivered tree and the
+         * live server: served (a backend was asked for or the tree has one),
+         * tested (tests were asked for), present (a static build). Judged
+         * whenever project_run confirmed a live URL — even when the quality or
+         * scope gate already failed — so missing records are always named.
+         */
+        const measureRequestedRecords = async (runRes: any, roots: string[]) => {
+            ledger.forget('coverage');
+            const backendRequested = requestDeclaresOwnBackend(productRequest);
+            const records = requestedRecords(productRequest, { backendRequested });
+            if (!records.entities.length && !records.unread.length) {
+                requestCoverage = undefined;
+                return;
+            }
+            const deliveredRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), ...roots].filter(Boolean)));
+            const evidence = collectServerEvidence(deliveredRoots, records.entities);
+            const servedApplies = backendRequested || evidence.routes.length > 0;
+            let probe: Record<string, 'served' | 'absent' | 'inconclusive'> | undefined;
+            const base = verifiedLiveUrl(ledger.all());
+            if (servedApplies && base && records.entities.length) {
+                const bound = bindRunCancellation(context?.cancellation, context?.signal);
+                try {
+                    // project_run's own bound for one HTTP answer — no new constant.
+                    const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
+                    probe = await probeServedResources(base, evidence.prefixes,
+                        records.entities.map(record => ({ key: record.key, ids: identifiersFor(record, evidence.labelKeys[record.key] || []) })),
+                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500 });
+                } finally {
+                    bound.dispose();
+                }
+            }
+            requestCoverage = judgeRequestCoverage({ records, evidence, probe, backendRequested });
+            ledger.record({
+                instrument: 'coverage',
+                ok: requestCoverage.missing.length === 0,
+                error: requestCoverage.missing.length ? coverageError(requestCoverage) : undefined,
+                unread: requestCoverage.unread,
+            });
+            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} tests=${requestCoverage.testsRequested ? 'requested' : 'not requested'}`);
+        };
+        /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
+        const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
             const live = applyLiveRunOutcome(true, runRes);
             ledger.record({ instrument: 'live', ok: live.verified, url: live.liveUrl, error: live.error });
             liveUrl = live.verified ? live.liveUrl : '';
             if (!live.verified) {
                 ledger.forget('quality');
                 ledger.forget('scope');
+                ledger.forget('coverage');
                 scopeAudit = { requested: 0, built: 0, coverage: 0, missing: [] };
                 return syncFromLedger();
             }
+            ledger.forget('quality');
             const quality = inspectProjectQualityContract(qualityRoot, productRequest);
             ledger.record({
                 instrument: 'quality',
                 ok: quality.ok,
                 error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
             });
+            // Every other delivered part with a manifest answers for what the
+            // request asks of it — never the primary root's broad contract.
+            const testsAsked = !!testsRequestedIn(productRequest);
+            const primary = path.resolve(String(qualityRoot || '.'));
+            const otherRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), ...auditRoots]
+                .filter(Boolean).map(root => path.resolve(root))))
+                .filter(root => root !== primary && fs.existsSync(path.join(root, 'package.json')));
+            for (const root of otherRoots) {
+                const part = inspectProjectQualityContract(root, productRequest, { additionalRoot: true, testsRequested: testsAsked });
+                ledger.record({
+                    instrument: 'quality',
+                    target: root,
+                    ok: part.ok,
+                    error: part.ok ? undefined : `project quality contract failed in ${path.basename(root)} — ${part.failures.slice(0, 4).join('; ')}`,
+                });
+            }
             const scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
             scopeAudit = scoped.scopeAudit;
             if (scoped.verified || scoped.scopeCoverageFailed === true) {
@@ -2520,6 +2627,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ledger.forget('scope');
                 ledger.record({ instrument: 'live', ok: false, url: live.liveUrl, error: scoped.error });
             }
+            await measureRequestedRecords(runRes, auditRoots);
             return syncFromLedger();
         };
         const liveRepairDue = () => measured('live', false) || measured('quality', false);
@@ -2563,7 +2671,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     plannedProjectRoot || discoveredProjectRoot || liveRuntimeRoot || ''
                 ).trim();
                 const liveAuditRoots = projectAuditRoots(liveSourceRoot, liveRuntimeRoot);
-                recordLiveAcceptance(runRes, liveSourceRoot || liveRuntimeRoot, liveAuditRoots);
+                await recordLiveAcceptance(runRes, liveSourceRoot || liveRuntimeRoot, liveAuditRoots);
                 if (liveRunVerificationFailed) {
                     say(pick(isAr,
                         `⛔ لم أعتبر النظام مسلّماً: فشل قبول التشغيل الحي أو مطابقة نطاق الطلب. ${liveRunError}`,
@@ -2679,7 +2787,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 liveRunResult = scopeRetryResult;
                 const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
                 const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
-                recordLiveAcceptance(scopeRetryResult, artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
+                await recordLiveAcceptance(scopeRetryResult, artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
                 scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
                 say(pick(isAr,
                     finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
@@ -2902,7 +3010,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         ).trim();
                         const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
                         const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
-                        recordLiveAcceptance(retryRunResult, retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
+                        await recordLiveAcceptance(retryRunResult, retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -3267,11 +3375,15 @@ export class ProjectPipelineTool implements ToolDefinition {
         const finalVerificationStatus = requestFidelityBlocked
             ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
             : verificationUnavailable ? 'not_verified'
-                : finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
+                : finalVerified ? 'passed'
+                    : requestCoverageFailed ? 'requested_records_missing'
+                        : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = requestFidelityBlocked
             ? 'blocked'
             : verificationUnavailable ? 'not_verified'
                 : finalVerified ? 'delivered'
+                    // A requested record measured missing blocks — it is never a partial delivery.
+                    : finalDeliveryVerdict.coverageFailed ? 'blocked'
                     : (finalDeliveryVerdict.unread.length && !finalDeliveryVerdict.failures.length) ? 'not_verified'
                         : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
@@ -3290,12 +3402,14 @@ export class ProjectPipelineTool implements ToolDefinition {
             phaseResults: pipeline?.results,
             specVerificationFailed,
             specVerificationCoverage,
+            requestCoverageFailed,
+            requestCoverageMissing: (requestCoverage?.missing || []).map(record => record.key),
         });
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, requestCoverage,
             externalApi: runtimeProjectHandoff?.externalApi,
             decisionEvidence, verificationUnavailable,
         });
@@ -3332,6 +3446,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(partialDelivery ? { partialDelivery: true } : {}),
                 ...(scopeAudit ? { scopeAudit } : {}),
+                ...(requestCoverage ? { requestCoverage } : {}),
+                ...(requestCoverageFailed ? { requestCoverageFailed: true } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the
@@ -3609,11 +3725,12 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
+        requestCoverage?: RequestCoverageReport;
         externalApi?: TrustedRuntimeProjectHandoff['externalApi'];
         decisionEvidence?: PipelineDecisionEvidence;
         verificationUnavailable?: boolean;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable, requestCoverage } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -3671,6 +3788,29 @@ export class ProjectPipelineTool implements ToolDefinition {
             techDetails.push(ar
                 ? `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`؛ done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`؛ honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``
                 : `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`; done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`; honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``);
+        }
+
+        if (requestCoverage) {
+            // What he named, record by record. «0 checked» is said as such —
+            // never as «all built».
+            const mark = (value: boolean | null, yes: string, no: string) => value === null ? '' : value ? yes : no;
+            lines.push('');
+            lines.push(ar
+                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} مثبتة`
+                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} proven`);
+            for (const record of requestCoverage.records.slice(0, 24)) {
+                const facts = [
+                    mark(record.served, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
+                    mark(record.tested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
+                    mark(record.present, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
+                ].filter(Boolean).join(ar ? '، ' : ', ');
+                lines.push(`- ${record.ar && record.ar !== record.key ? `${record.ar} (${record.key})` : record.key}: ${facts}`);
+            }
+            if (requestCoverage.unread.length) {
+                lines.push(ar
+                    ? `- لم أستطع قراءتها كسجلات، فلم أتحقق من تسليمها: ${requestCoverage.unread.join('، ')}`
+                    : `- Could not read these as records, so their delivery is not verified: ${requestCoverage.unread.join(', ')}`);
+            }
         }
 
         if (browserQa) {
