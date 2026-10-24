@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { recordDeliveryPart } from '../../../core/quality/delivery-parts';
 import fs from 'fs';
 import path from 'path';
 import { isWithinRoot } from '../path-containment';
@@ -764,6 +765,8 @@ function bindRuntimeProjectFromEvidence(
     try { persistJoeProjects(); } catch { /* binding remains useful for this run */ }
     projectContext.projectRoot = candidate;
     projectContext.projectRootRuntimeBound = true;
+    // Every bound root is a delivered part; the project slot keeps only the last.
+    projectContext.deliveryParts = recordDeliveryPart(key, pipelineRunId, { root: candidate, tool: toolName });
     logs.push(`[PhaseExecutor] runtime project evidence bound ${key} -> ${candidate}`);
 }
 

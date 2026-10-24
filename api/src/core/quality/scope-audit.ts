@@ -100,20 +100,68 @@ export function hasFormValidationEvidence(source: string): boolean {
  */
 export function hasSearchEvidence(source: string): boolean {
     return /setQuery|searchTerm|onSearch|\[query,/i.test(source)
-        || (SEARCH_INTERACTION.test(source) && SEARCH_STATE_OR_IO.test(source));
+        || (SEARCH_INTERACTION.test(source) && SEARCH_STATE_OR_IO.test(source))
+        || hasServiceSearchEvidence(source);
+}
+
+/**
+ * SCOPE EVIDENCE BY ROLE (round 15 review, C4).
+ *
+ * Search, filtering and sorting were proven only by UI state (setQuery,
+ * xFilter, sortBy). An API that really searches — a route reading
+ * `req.query.q` and narrowing its rows — was reported «missing: search»,
+ * so an API-only request asking for search could never be delivered. A
+ * service proves these by the query parameters its routes read AND an
+ * operation that uses them; a bare `app.get('/api/items')` proves nothing.
+ */
+const SEARCH_PARAMS = new Set(['q', 'query', 'search', 'term', 'keyword', 'keywords', 's']);
+const SORT_PARAMS = new Set(['sort', 'sortby', 'sort_by', 'order', 'orderby', 'order_by', 'dir', 'direction']);
+const PAGE_PARAMS = new Set(['page', 'limit', 'offset', 'per_page', 'perpage', 'pagesize', 'page_size', 'cursor', 'skip', 'take']);
+
+/** The query parameters a server route reads: req.query.x, req.query['x'], const { x } = req.query, request.args.get('x'). */
+export function serviceQueryParams(source: string): string[] {
+    const src = String(source || '');
+    const names = new Set<string>();
+    for (const m of src.matchAll(/\breq(?:uest)?\.query\.([A-Za-z_][\w]*)/gu)) names.add(m[1].toLowerCase());
+    for (const m of src.matchAll(/\breq(?:uest)?\.query\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]/gu)) names.add(m[1].toLowerCase());
+    for (const m of src.matchAll(/\{\s*([^}]{1,200})\}\s*=\s*req(?:uest)?\.query\b/gu)) {
+        for (const part of m[1].split(',')) {
+            const name = part.split(/[:=]/)[0].trim();
+            if (/^[A-Za-z_]\w*$/u.test(name)) names.add(name.toLowerCase());
+        }
+    }
+    for (const m of src.matchAll(/\brequest\.args\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu)) names.add(m[1].toLowerCase());
+    for (const m of src.matchAll(/\bsearchParams\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu)) names.add(m[1].toLowerCase());
+    return Array.from(names);
+}
+
+const NARROWS_ROWS = /\.filter\s*\(|\bWHERE\b|\bI?LIKE\b|\.includes\s*\(|\$regex|\.find\s*\(\s*\{|\.where\s*\(/u;
+
+export function hasServiceSearchEvidence(source: string): boolean {
+    return serviceQueryParams(source).some(name => SEARCH_PARAMS.has(name)) && NARROWS_ROWS.test(String(source || ''));
+}
+
+export function hasServiceFilterEvidence(source: string): boolean {
+    const fieldParams = serviceQueryParams(source).filter(name => !SEARCH_PARAMS.has(name) && !SORT_PARAMS.has(name) && !PAGE_PARAMS.has(name));
+    return fieldParams.length > 0 && /\.filter\s*\(|\bWHERE\b|\.where\s*\(/u.test(String(source || ''));
+}
+
+export function hasServiceSortingEvidence(source: string): boolean {
+    return serviceQueryParams(source).some(name => SORT_PARAMS.has(name)) && /\bORDER\s+BY\b|\.sort\s*\(|\.orderBy\s*\(/iu.test(String(source || ''));
 }
 
 /** Filtering must change the rendered collection from one or more controls. */
 export function hasFilterEvidence(source: string): boolean {
     const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source);
     const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source);
-    return hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source);
+    return (hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source)) || hasServiceFilterEvidence(source);
 }
 
 /** Sorting is separate from search and filtering and needs an executable order change. */
 export function hasSortingEvidence(source: string): boolean {
-    return /\.sort\s*\(/i.test(source)
-        && /\bsort(?:By|Order|Direction|Key)?\b|\bsetSort[A-Za-z0-9_]*\b/i.test(source);
+    return (/\.sort\s*\(/i.test(source)
+        && /\bsort(?:By|Order|Direction|Key)?\b|\bsetSort[A-Za-z0-9_]*\b/i.test(source))
+        || hasServiceSortingEvidence(source);
 }
 
 export const CAPABILITIES: Capability[] = [

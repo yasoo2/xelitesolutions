@@ -111,7 +111,7 @@ describe('the pipeline is wired to the ledger', () => {
         expect(src).toMatch(/finalVerified = verdict\.verified;/);
     });
     it('Browser QA is gated by the ledger and a durable preview only stands in for a confirmed live URL', () => {
-        expect(src).toMatch(/const browserQaTarget = mayRunBrowserQa\(ledger\.all\(\)\)\s*\?\s*browserQaTargetUrl\(verifiedLiveUrl\(ledger\.all\(\)\), runtimeProjectHandoff\?\.durablePreviewUrl\)/);
+        expect(src).toMatch(/const browserQaTarget = interfaceDelivered && mayRunBrowserQa\(ledger\.all\(\)\)\s*\?\s*browserQaTargetUrl\(verifiedLiveUrl\(ledger\.all\(\)\), runtimeProjectHandoff\?\.durablePreviewUrl\)/);
         expect(src).not.toMatch(/liveUrl = finalBrowserQaUrl\(liveUrl/);
     });
     it('partial delivery and ok come from the final verdict', () => {

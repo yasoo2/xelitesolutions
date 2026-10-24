@@ -2,6 +2,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
 import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
 import { RepairTicketService } from '../../services/RepairTicketService';
+import { deliveryPartsForRun } from '../../../core/quality/delivery-parts';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
@@ -1655,6 +1656,30 @@ export function applyScopeAuditOutcome(
 export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
     'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit', 'quality_run']);
 
+/**
+ * WHICH PARTS THE REQUEST ASKED FOR (round 15 review, C2).
+ *
+ * service: the request names an API as something to build or use as its
+ * backend, its own backend/server, or an API «with» the app. interface:
+ * asked for unless explicitly negated («without a UI») or the build's object
+ * is an API and nothing for people is named — a CLI word never un-requests an
+ * interface when a web word is present. program: a CLI/script with no web
+ * word and no service. Roles decide which instruments must prove delivery;
+ * they never relax a measured failure.
+ */
+export function requestedDeliveryRoles(request: string): { service: boolean; interface: boolean; program: boolean } {
+    const text = String(request || '');
+    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
+    const webWord = requestNamesAnInterface(text) || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
+    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    const apiWithApp = /\bwith\s+(?:an?\s+)?(?:[\w./+-]+\s+){0,2}api\b|(?:مع|و)\s*واجهة\s+(?:برمجية|برمجة|خلفية)/iu.test(text);
+    const service = API_OBJECT_EN.test(text) || API_OBJECT_AR.test(text) || requestDeclaresOwnBackend(text) || apiWithApp;
+    let cli = false;
+    try { cli = require('../../../core/design/app-blueprints').isCliRequest(text) === true; } catch { cli = false; }
+    const iface = !(negatedInterface && !webWord) && !buildObjectIsAnApi(text) && !(cli && !webWord);
+    return { service, interface: iface, program: cli && !webWord && !service };
+}
+
 export function planTouchesRunnable(phases: unknown): boolean {
     return (Array.isArray(phases) ? phases : []).some((phase: any) =>
         [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
@@ -2532,6 +2557,16 @@ export class ProjectPipelineTool implements ToolDefinition {
          */
         const ledger = new DeliveryLedger();
         const liveRunNotes: string[] = [];
+        const deliveryRoles = requestedDeliveryRoles(productRequest);
+        // A program asked for on its own (a CLI, a script) has no URL: its own
+        // passing test run proves it runs, not project_run.
+        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service;
+        const sessionPartsKey = String(context?.sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
+        /** Every root a phase bound in this run, plus the roots of the last live run. */
+        const deliveredRoots = (extra: string[] = []) => Array.from(new Set([
+            ...deliveryPartsForRun(sessionPartsKey, context?.runId).map(part => part.root),
+            ...extra,
+        ].map(root => String(root || '').trim()).filter(root => root && fs.existsSync(root)).map(root => path.resolve(root))));
         let requestCoverage: RequestCoverageReport | undefined;
         let requestCoverageFailed = false;
         let deliveryRequired: DeliveryInstrument[] = [];
@@ -2541,6 +2576,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 requestFidelityBlocked,
                 measurements: ledger.all(),
                 required: final ? deliveryRequired : [],
+                primary: programOnly ? 'program' : 'live',
             });
             finalVerified = verdict.verified;
             scopeCoverageFailed = verdict.failures.some(m => m.instrument === 'scope');
@@ -2629,8 +2665,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             // request asks of it — never the primary root's broad contract.
             const testsAsked = !!testsRequestedIn(productRequest);
             const primary = path.resolve(String(qualityRoot || '.'));
-            const otherRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), ...auditRoots]
-                .filter(Boolean).map(root => path.resolve(root))))
+            const otherRoots = deliveredRoots([String(runRes?.output?.cwd || '').trim(), ...auditRoots])
                 .filter(root => root !== primary && fs.existsSync(path.join(root, 'package.json')));
             for (const root of otherRoots) {
                 const part = inspectProjectQualityContract(root, productRequest, { additionalRoot: true, testsRequested: testsAsked });
@@ -2650,12 +2685,37 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ledger.forget('scope');
                 ledger.record({ instrument: 'live', ok: false, url: live.liveUrl, error: scoped.error });
             }
-            await measureRequestedRecords(runRes, auditRoots);
+            await measureRequestedRecords(runRes, deliveredRoots(auditRoots));
+            return syncFromLedger();
+        };
+        /** A program's proof: its own tests, run through quality_run on the project root. */
+        const recordProgramProof = async () => {
+            const programRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+            if (!programRoot || !fs.existsSync(programRoot)) {
+                ledger.record({ instrument: 'program', ok: false, error: 'no program root was bound, so its own tests could not be run' });
+                return syncFromLedger();
+            }
+            say(pick(isAr, '▶️ أشغّل اختبارات البرنامج نفسه لأثبت أنه يعمل…', '▶️ Running the program\'s own tests to prove it works…'));
+            try {
+                const run = await executeTool('quality_run', { path: programRoot, tasks: ['test'] }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
+                const executed = Array.isArray(run?.output?.results) ? run.output.results.filter((r: any) => r?.skipped === false) : [];
+                const passed = run?.ok === true && executed.length > 0;
+                ledger.record({
+                    instrument: 'program',
+                    ok: passed,
+                    target: programRoot,
+                    error: passed ? undefined : `the program's own tests did not pass: ${String(run?.error || (executed.length ? 'tests failed' : 'no test script to run')).slice(0, 400)}`,
+                });
+            } catch (programError: any) {
+                ledger.record({ instrument: 'program', ok: false, target: programRoot, error: `the program's own tests could not run: ${String(programError?.message || programError).slice(0, 300)}` });
+            }
             return syncFromLedger();
         };
         const liveRepairDue = () => measured('live', false) || measured('quality', false);
         const scopeRepairDue = () => measured('scope', false) && !liveRepairDue();
-        if (verified) {
+        if (verified && programOnly) {
+            await recordProgramProof();
+        } else if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
                 // …and it speaks the run's language, not the interface default.
@@ -3161,10 +3221,24 @@ export class ProjectPipelineTool implements ToolDefinition {
          * A skipped audit is an honest verification failure: Joe must not call
          * an unmeasured application delivered.
          */
+        /**
+         * An interface is judged in a browser — when one was delivered. An API
+         * or a program with no page has nothing for Browser QA to open, and its
+         * «no index.html to audit» used to block every API-only delivery
+         * (round 15, P101). A requested interface that no part serves is a
+         * failure of its own, named.
+         */
+        const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
+        const interfaceDelivered = interfaceRoots.some(root => ['index.html', path.join('dist', 'index.html'), path.join('public', 'index.html')]
+            .some(rel => fs.existsSync(path.join(root, rel))));
+        if (!interfaceDelivered && verifiedLiveUrl(ledger.all()) && deliveryRoles.interface) {
+            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no index.html)' });
+            syncFromLedger();
+        }
         // Browser QA never runs to "rescue" an outcome already measured as
         // failed, and a durable preview stands in only for a CONFIRMED live
         // URL — a failed or never-run pipeline is not judged on a preview.
-        const browserQaTarget = mayRunBrowserQa(ledger.all())
+        const browserQaTarget = interfaceDelivered && mayRunBrowserQa(ledger.all())
             ? browserQaTargetUrl(verifiedLiveUrl(ledger.all()), runtimeProjectHandoff?.durablePreviewUrl)
             : '';
         if (!browserQaTarget && (liveUrl || runtimeProjectHandoff?.durablePreviewUrl)) {
@@ -3184,7 +3258,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ''
                 ).trim();
                 const auditRoots = projectAuditRoots(artifactRoot, runtimeRoot);
-                const auditDir = projectAuditDirectory(auditRoots);
+                // The delivered interface may be any part this run built.
+                const auditDir = projectAuditDirectory(Array.from(new Set([...auditRoots, ...interfaceRoots])));
                 const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                 const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
                 const { broadcast } = require('../../../api/ws');

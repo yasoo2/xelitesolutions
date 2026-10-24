@@ -16,7 +16,7 @@
  * is a pure function of the ledger.
  */
 
-export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'browser' | 'spec';
+export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'browser' | 'spec' | 'program';
 
 export interface DeliveryMeasurement {
     instrument: DeliveryInstrument;
@@ -63,6 +63,12 @@ export interface DeliveryVerdictInput {
     measurements: DeliveryMeasurement[];
     /** Instruments that must have a passing measurement (e.g. 'browser' when an interface is delivered). */
     required?: DeliveryInstrument[];
+    /**
+     * What proves the delivery runs: a confirmed live URL ('live'), or — for a
+     * program the request asked for (a CLI, a script) — its own passing test
+     * run ('program'). A program has no URL to confirm.
+     */
+    primary?: 'live' | 'program';
 }
 
 export interface DeliveryVerdict {
@@ -81,14 +87,14 @@ export interface DeliveryVerdict {
     firstError: string;
 }
 
-const PRIORITY: DeliveryInstrument[] = ['live', 'quality', 'coverage', 'scope', 'browser', 'spec'];
+const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'quality', 'coverage', 'scope', 'browser', 'spec'];
 
 export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const measurements = Array.isArray(input.measurements) ? input.measurements : [];
     const failures = measurements.filter(m => m.ok !== true);
     const has = (instrument: DeliveryInstrument) => measurements.some(m => m.instrument === instrument);
     const passed = (instrument: DeliveryInstrument) => has(instrument) && measurements.filter(m => m.instrument === instrument).every(m => m.ok === true);
-    const required = Array.from(new Set<DeliveryInstrument>(['live', ...(input.required || [])]));
+    const required = Array.from(new Set<DeliveryInstrument>([input.primary === 'program' ? 'program' : 'live', ...(input.required || [])]));
     const unmeasured = required.filter(instrument => !has(instrument));
     const unread = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unread || []) : [])));
     const coverageFailed = failures.some(m => m.instrument === 'coverage');

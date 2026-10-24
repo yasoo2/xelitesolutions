@@ -184,7 +184,7 @@ describe('missing records block delivery and are named first', () => {
     it('the pipeline maps missing records to «blocked» and measures them on every live run', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
         expect(src).toMatch(/: finalDeliveryVerdict\.coverageFailed \? 'blocked'/);
-        expect(src).toMatch(/await measureRequestedRecords\(runRes, auditRoots\);/);
+        expect(src).toMatch(/await measureRequestedRecords\(runRes, deliveredRoots\(auditRoots\)\);/);
         expect((src.match(/await recordLiveAcceptance\(/g) || []).length).toBeGreaterThanOrEqual(3);
     });
 });
