@@ -142,7 +142,8 @@ describe('visible browser QA is part of page delivery', () => {
         // Visible QA runs whenever nothing unrepairable failed before it — a
         // scope-only gap included — on the confirmed live URL (round 15).
         expect(pipeline).toContain("if (browserQaTarget) {");
-        expect(pipeline).toContain('const browserQaTarget = mayRunBrowserQa(ledger.all())');
+        // …for a delivered interface (round 15: an API or a program has no page to open).
+        expect(pipeline).toContain('const browserQaTarget = interfaceDelivered && mayRunBrowserQa(ledger.all())');
         expect(pipeline).not.toContain("if (finalVerified && liveUrl) {");
         expect(pipeline).toContain("reason: 'pipeline_qa'");
         expect(pipeline).toContain('warmBrowserSession(panelSid)');

@@ -508,7 +508,7 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/const scopeRepairDue = \(\) => measured\('scope', false\) && !liveRepairDue\(\);/);
         expect(src).toMatch(/if \(scopeRepairDue\(\) && context\?\.scopeRepairAttempted !== true\)/);
         expect(src).toMatch(/scopeRepairAttempted/);
-            expect(src).toMatch(/recordLiveAcceptance\(scopeRetryResult, artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
+            expect(src).toMatch(/recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult\), artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {

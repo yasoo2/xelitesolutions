@@ -465,7 +465,7 @@ describe('planner provider and requirements-boundary contracts', () => {
         // Quality and scope are measured against the product request, on the
         // roots of each live run — the first run and the scope-repair retry.
         expect(pipeline).toMatch(/recordLiveAcceptance\(runRes, liveSourceRoot \|\| liveRuntimeRoot, liveAuditRoots/);
-        expect(pipeline).toMatch(/recordLiveAcceptance\(scopeRetryResult, artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
+        expect(pipeline).toMatch(/recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult\), artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
         expect(pipeline).toMatch(/inspectProjectQualityContract\(qualityRoot, productRequest/);
         expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, auditRoots, ');
         expect(pipeline).toContain('`Original build request: ${productRequest.slice(0, 1200)}`,');
