@@ -32,6 +32,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { readRequestRequirements } from '../modules/tools/definitions/ReactProjectTool';
 
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8',
@@ -39,6 +40,17 @@ const REACT = fs.readFileSync(
 
 /** Code only — a guard must never match the comment that explains it. */
 const CODE = REACT.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+
+/**
+ * The model reading lives in one function since eval round 15 (a thrown reader
+ * must still fall back to his clauses); the guards below read it there.
+ */
+const READER = (() => {
+    const at = CODE.indexOf('export async function readRequestRequirements(');
+    if (at < 0) return '';
+    const end = CODE.slice(at).search(/\n\}\r?\n/);
+    return end < 0 ? '' : CODE.slice(at, at + end);
+})();
 
 describe('the reason travels with the effect', () => {
     it('⛔ POSITIVE — each of the three failures records its own reason', () => {
@@ -48,7 +60,12 @@ describe('the reason travels with the effect', () => {
         //  version did exactly that and went red on correct code.
         const assignments = CODE.split('\n').filter(l => l.includes('whyNotRead ='));
         expect(assignments.length).toBeGreaterThanOrEqual(3);
-        const all = assignments.join('\n') + CODE.slice(CODE.indexOf('if (!namedByHim.length) {'), CODE.indexOf('if (!namedByHim.length) {') + 400);
+        expect(READER.length).toBeGreaterThan(0);
+        const all = assignments.join('\n') + READER.slice(READER.indexOf('if (!named.length) {'), READER.indexOf('if (!named.length) {') + 400);
+        //  …and what the reader decided is what the build reports.
+        expect(CODE).toContain('const reading = await readRequestRequirements(request, isAr, askTheModel, term);');
+        expect(CODE).toContain('whyNotRead = reading.whyNotRead;');
+        expect(READER).toContain("String(read.rejected[0]?.reason || 'the model did not answer')");
         for (const reason of [
             'no model in this environment',
             'the model named nothing in this request',
@@ -94,11 +111,25 @@ describe('the reason travels with the effect', () => {
         //  the first says the filters are too strict or the request is odd,
         //  the second says the sentence has nothing testable in it. Collapsing
         //  them would rebuild the defect this file closes.
-        const at = CODE.indexOf('if (!namedByHim.length) {');
+        const at = READER.indexOf('if (!named.length) {');
         expect(at).toBeGreaterThan(0);
-        const branch = CODE.slice(at, at + 400);
+        const branch = READER.slice(at, at + 400);
         expect(branch).toContain('read.rejected.length');
         expect(branch).toContain('none survived the filters');
         expect(branch).toContain('named nothing in this request');
+    });
+
+    it('⛔ POSITIVE — run, not read: each outcome of the reader comes back with its own reason', async () => {
+        const say = () => undefined;
+        const ask = async () => '';
+        const reasonFor = async (reader: any) => (await readRequestRequirements('Build me something nice.', false, ask, say, reader)).whyNotRead;
+        expect(await reasonFor(async () => ({ requirements: [], rejected: [{ text: '*', reason: 'the model could not be reached: TIMEOUT' }] })))
+            .toBe('the model could not be reached: TIMEOUT');
+        expect(await reasonFor(async () => ({ requirements: [], rejected: [{ text: 'a', reason: 'x' }, { text: 'b', reason: 'y' }], passes: 2 })))
+            .toBe('the model named 2, and none survived the filters');
+        expect(await reasonFor(async () => ({ requirements: [], rejected: [], passes: 2 })))
+            .toBe('the model named nothing in this request');
+        expect(await reasonFor(async () => { throw new Error('parser exploded'); }))
+            .toBe('the reader failed: parser exploded');
     });
 });

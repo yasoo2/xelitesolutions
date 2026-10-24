@@ -23,7 +23,7 @@
  * تعريفية» stay outside.
  */
 import { detectAppKind } from '../core/design/app-blueprints';
-import { heroSecondaryDestination, sectionsForRequest } from '../modules/tools/definitions/ReactProjectTool';
+import { heroSecondaryDestination, sectionsForRequest, acceptanceBlocksDelivery } from '../modules/tools/definitions/ReactProjectTool';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -85,7 +85,15 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
     test('blocks catalogue acceptance when the request judge is blind', () => {
         const source = fs.readFileSync(REACT_TOOL, 'utf8');
         expect(source).toContain('judgeWasBlind && namedByHim.length > 0');
-        expect(source).toContain('acceptance.unprovable > 0');
+        //  The gate is one function since eval round 15: the ledger's own
+        //  unprovable count reaches it, and an unprovable line or a blind judge
+        //  over named requirements still blocks the catalogue's verdict.
+        expect(source).toContain('unprovable: acceptance.unprovable,');
+        expect(source).toMatch(/return a\.criteria > 0\s*&& \(!a\.accepted \|\| \(a\.named > 0 && \(a\.judgeWasBlind \|\| a\.unprovable > 0\)\)\);/);
+        const catalogue = { criteria: 3, accepted: true, unprovable: 0, named: 2, judgeWasBlind: false, requestUnread: false };
+        expect(acceptanceBlocksDelivery({ ...catalogue, judgeWasBlind: true })).toBe(true);
+        expect(acceptanceBlocksDelivery({ ...catalogue, unprovable: 1 })).toBe(true);
+        expect(acceptanceBlocksDelivery(catalogue)).toBe(false);
         expect(source).toContain('catalogue fallback is diagnostic only');
         expect(source).toContain('acceptance judge could not verify');
     });

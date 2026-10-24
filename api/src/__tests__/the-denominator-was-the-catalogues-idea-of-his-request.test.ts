@@ -111,11 +111,15 @@ describe('what he named is what gets counted', () => {
     it('⛔ POSITIVE — his request is read BEFORE anything is chosen', () => {
         //  «Early» is the whole point: a reading that happens after the kind is
         //  detected and the template picked is a report, not a decision.
-        const read = REACT.indexOf('await namedRequirements(request, isAr, askTheModel)');
+        //  The reading is one function since eval round 15; its call site is
+        //  what must come first, and the function must be the model reader.
+        const read = REACT.indexOf('await readRequestRequirements(request, isAr, askTheModel, term)');
         const declared = REACT.indexOf('earlyProjectDeclaration({');
         const judged = REACT.indexOf('const acceptance = judgeAcceptance(');
-        expect({ read: read > 0, beforeTheAnnouncement: read < declared, beforeTheJudgement: read < judged })
-            .toEqual({ read: true, beforeTheAnnouncement: true, beforeTheJudgement: true });
+        const chosen = REACT.indexOf('const appBp: AppBlueprint | null = appKind ? blueprintFor(');
+        expect({ read: read > 0, beforeTheAnnouncement: read < declared, beforeTheJudgement: read < judged, beforeTheChoice: chosen < 0 || read < chosen })
+            .toEqual({ read: true, beforeTheAnnouncement: true, beforeTheJudgement: true, beforeTheChoice: true });
+        expect(REACT).toMatch(/reader: typeof namedRequirements = namedRequirements,[\s\S]{0,600}const read = await reader\(request, isArabic, ask\);/);
     });
 
     it('⛔ NEGATIVE — a fall back to the catalogue is ANNOUNCED, never silent', () => {

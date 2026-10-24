@@ -4752,7 +4752,7 @@ export class ReactProjectTool extends BaseTool {
         // explicit scaffoldDir, and a handoff stamped by THIS pipeline remain
         // valid contracts; an unqualified entry is stale state, not ownership
         // evidence for this build.
-        const scaffoldEntry = (input?.resumeExisting === true || verifyExisting || explicitScaffoldDir || samePipelineHandoff)
+        const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff || verifyExisting)
             ? prevEntry
             : null;
         let apiEntry = prevEntry?.type === 'api' ? prevEntry : null;
@@ -4784,7 +4784,7 @@ export class ReactProjectTool extends BaseTool {
         // belongs to this request. A new chat can share a session registry key
         // with an older run; only an explicit continuation may inherit its
         // app kind, otherwise a stale Weather/Shop/etc. engine leaks in.
-        const mayInheritAppKind = input?.resumeExisting === true || verifyExisting || explicitScaffoldDir || !!apiEntry;
+        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir || !!apiEntry || verifyExisting;
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = apiEntry?.runtimeAuth?.email && apiEntry?.runtimeAuth?.password
@@ -5223,7 +5223,7 @@ export class ReactProjectTool extends BaseTool {
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
         const photographyBrief = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
-        if (!verifyExisting && !appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
+        if (!appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off' && !verifyExisting) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const imageBrief = buildImageBrief(request);
             const imageSubjects = photographyBrief
@@ -5954,7 +5954,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 : 'interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
             authoringStoodDown = true;
         }
-        if (!verifyExisting && !appBp && !externalIntegration && sections.length && !providersAreRationing) {
+        if (!appBp && !externalIntegration && sections.length && !providersAreRationing && !verifyExisting) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -6164,7 +6164,6 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a
         // React build and showed nothing being built at all.
-        assertRunActive();
         if (verifyExisting) {
             // The project on disk — repair included — is the artifact under
             // test: every later reader sees its files, and none is written.
@@ -6172,6 +6171,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 try { files[rel] = fs.readFileSync(path.join(proj, rel), 'utf-8'); } catch { delete files[rel]; }
             }
         }
+        assertRunActive();
         for (const [rel, body] of Object.entries(files)) {
             if (verifyExisting) break;
             assertRunActive();
@@ -6428,7 +6428,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // surface. RecordsApp remains in the bundle only as a dormant
         // compatibility component, so asking a provider to rewrite it wastes
         // minutes and can never improve the visible application.
-        if (!verifyExisting && generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
+        if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables && !verifyExisting) {
             assertRunActive();
             term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
             try {
