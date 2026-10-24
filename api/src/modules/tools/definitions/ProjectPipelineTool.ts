@@ -1575,6 +1575,28 @@ export function applyScopeAuditOutcome(
     return { ...liveOutcome, scopeAudit };
 }
 
+/**
+ * The steps that BUILD or RUN the artifact a plan is for. A plan with none of
+ * them is «all paper» and gets the deterministic rescue.
+ *
+ * Not the registry's sideEffects 'execute': that set also holds browser_run,
+ * dead_code_detector and specification_verification, which execute something
+ * without building or running the project, so a paper plan verified by a
+ * browser step would escape the rescue. quality_run belongs here: it runs the
+ * project's own build/test scripts, and the plan-recovery repair now emits it
+ * for «npm test» / «npm run build» (round 15) — leaving it out judged a plan
+ * that runs its own tests as paper and replaced it.
+ */
+export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
+    'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit', 'quality_run']);
+
+export function planTouchesRunnable(phases: unknown): boolean {
+    return (Array.isArray(phases) ? phases : []).some((phase: any) =>
+        [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
+         ...(phase?.verificationTask ? [phase.verificationTask] : [])]
+            .some((t: any) => PLAN_STEPS_THAT_BUILD_OR_RUN.has(String(t?.tool || ''))));
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -2186,13 +2208,8 @@ export class ProjectPipelineTool implements ToolDefinition {
          * it is the same rescue both earlier shapes already use.
          */
         {
-            const CAN_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
-                'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);
             const planPhases = Array.isArray(plannerResult?.output?.phases) ? plannerResult.output.phases : [];
-            const touchesRunnable = planPhases.some((phase: any) =>
-                [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
-                 ...(phase?.verificationTask ? [phase.verificationTask] : [])]
-                    .some((t: any) => CAN_BUILD_OR_RUN.has(String(t?.tool || ''))));
+            const touchesRunnable = planTouchesRunnable(planPhases);
             const requiresConcreteUiBuilder = interactiveAppNeedsReactBuilder(productRequest);
             const missingConcreteUiBuilder = requiresConcreteUiBuilder && !planContainsReactBuilder(planPhases);
             const unrequestedApiBuilder = planContainsUnrequestedApiBuilder(productRequest, planPhases);
