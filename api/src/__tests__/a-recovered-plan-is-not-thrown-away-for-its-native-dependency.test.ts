@@ -163,7 +163,7 @@ describe("the no-artifact recovery hands the rewrite the model's own tasks", () 
         const logs = result.logs.join('\n');
 
         expect(logs).toMatch(/retained no non-document implementation artifact after contract sanitisation/);
-        expect(logs).toContain('Planner portability normalization completed after bounded model recovery failed.');
+        expect(logs).toContain('Planner portability normalization completed before model recovery.');
         expect(result.ok).toBe(true);
         expect(JSON.stringify(result.output.phases)).not.toMatch(/\bsqlite3\b/);
         // The server is a TASK of the kept plan, not only a deliverable label

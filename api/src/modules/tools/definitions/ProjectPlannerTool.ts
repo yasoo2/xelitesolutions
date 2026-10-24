@@ -6,7 +6,7 @@ import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/q
 import path from 'path';
 import { callLLM } from '../../../core/llm';
 import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intelligent-router';
-import { compactPlannerToolPrompt, plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
+import { compactPlannerToolPrompt, plannerToolPrompt, sanitisePlanPhases, toolExecutes } from '../../../core/orchestrator/plan-tools';
 import { servedModelConfig } from '../../../core/llm/served-local-selection';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
@@ -542,15 +542,75 @@ export class ProjectPlannerTool implements ToolDefinition {
             // eval round 8 (2026-10-23) lost a 45-minute build to one
             // security_scanner task with no path. The model is shown the exact
             // missing field once; a second miss still stops honestly.
+            const PORTABILITY_BLOCKERS = new Set(['unportable_native_dependency', 'native_dependency_requires_npm_manager']);
+            // The deterministic dependency-only rewrite. It preserves the model's
+            // architecture and task scope; it merely applies the already stated
+            // contract (node:sqlite/JSON, node:crypto, sass, or a portable
+            // fallback) before the same sanitiser and artifact gates run again.
+            const normalisePortablePlan = (rawPlan: any) => {
+                const portablePlan = this.rewriteUnportableNativePlan(rawPlan);
+                const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
+                    mode: evidence?.mode,
+                    disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
+                    evidencedPaths,
+                    testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
+                    candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    disallowUnportableNativeDependencies: true,
+                    requireRunnableContract: context?.requireRunnableContract === true,
+                    repairMode,
+                    preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                    reactRequest: projectDescription,
+                });
+                return { portablePlan, portableClean, usable: !portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0 };
+            };
+            let rewrittenRaw: any = null;
+            const adoptPortablePlan = (rawPlan: any, stage: 'before' | 'after'): boolean => {
+                if (!rawPlan || rawPlan === rewrittenRaw) return false;   // one rewrite per plan
+                rewrittenRaw = rawPlan;
+                const { portablePlan, portableClean, usable } = normalisePortablePlan(rawPlan);
+                if (!usable) {
+                    logs.push(`Planner portability normalization failed: ${portableClean.blocker?.message || 'no implementation artifact survived'}`);
+                    return false;
+                }
+                plan = this.validatePlan(portablePlan, projectDescription);
+                plan.phases = portableClean.phases;
+                clean = portableClean;
+                clean.notes.forEach(n => logs.push(n));
+                logs.push(stage === 'before'
+                    ? 'Planner portability normalization completed before model recovery.'
+                    : 'Planner portability normalization completed after bounded model recovery failed.');
+                return true;
+            };
+            /**
+             * ⛔ THE DETERMINISTIC REPAIR COMES BEFORE THE MODEL.
+             *
+             * Eval round 15 (P101): a plan whose defect was sqlite3 went to a
+             * model recovery first — 69 minutes of planning on this CPU — and a
+             * clean recovery REPLACED the plan, file writes only, so the build was
+             * «all paper». Swapping a native addon for node:sqlite is a rewrite,
+             * not a judgement: it runs first, and the model is asked only when
+             * the rewritten plan still cannot run.
+             */
+            if (PORTABILITY_BLOCKERS.has(String(clean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
+                adoptPortablePlan(rawPlanForPortableRewrite, 'before');
+            }
+            // The rejected plan's runnable steps, named so the recovery keeps them.
+            const runnableStepsOf = (rawPlan: any): string[] => (Array.isArray(rawPlan?.phases) ? rawPlan.phases : [])
+                .flatMap((phase: any) => [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask && typeof phase.verificationTask === 'object' ? [phase.verificationTask] : [])])
+                .filter((task: any) => toolExecutes(String(task?.tool || '')))
+                .map((task: any) => `«${String(task?.task || task?.description || task?.tool).slice(0, 80)}» (${String(task?.tool)})`)
+                .slice(0, 12);
+
             const blocker = clean.blocker;
             const contractRecoveryBlocker = !!blocker
-                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|missing_runnable_contract|tool_contract_invalid)$/.test(String(blocker.code || ''));
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|native_dependency_requires_npm_manager|missing_runnable_contract|tool_contract_invalid)$/.test(String(blocker.code || ''));
             if (contractRecoveryBlocker) {
                 logs.push(`[plan] ${blocker.code} detected; starting one bounded contract recovery.`);
                 try {
+                    const rejectedSteps = runnableStepsOf(rawPlanForPortableRewrite);
                     const recoveryPrompt = this.createCompactRecoveryPlanningPrompt(
                         projectDescription,
-                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a stack scaffold with an inspectable runnable structure) before any live-run. Do not use scaffold_project or native npm addons in this repair. Prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface; use file-level implementation tasks instead. Re-plan from the original request and evidence; do not invent a fixed template locally.`,
+                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a scaffold_project with a concrete, runnable structure) before any live-run. Never use a native npm addon: prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface. Keep every install, test and run step of the rejected plan, made portable; never remove them.${rejectedSteps.length ? ` Steps of the rejected plan to keep: ${rejectedSteps.join(', ')}.` : ''} Re-plan from the original request and evidence; do not invent a fixed template locally.`,
                         undefined,
                         repairMode,
                         scopeRepairMode,
@@ -612,19 +672,25 @@ export class ProjectPlannerTool implements ToolDefinition {
                         preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
                     });
-                    if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
-                        // The model supplied a newer architecture but repeated the
-                        // native choice. Preserve that newer plan for the bounded
-                        // dependency-only rewrite below — and make it the current
-                        // state, because that rewrite is gated on `clean`. Eval
-                        // round 15 (2026-10-24, P151): the first plan's own blocker
-                        // was tool_contract_invalid, so `clean` kept it, the gate
-                        // stayed shut, and a 21-minute recovered plan whose only
-                        // defect was sqlite3 was thrown away. The rewrite
-                        // re-sanitises: any other defect still stops honestly.
-                        rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
-                        plan = this.validatePlan(recoveredPlan, projectDescription);
-                        clean = recoveredClean;
+                    if (PORTABILITY_BLOCKERS.has(String(recoveredClean.blocker?.code || ''))) {
+                        if (PORTABILITY_BLOCKERS.has(String(blocker.code || ''))) {
+                            // Asked to repair a native dependency, it repeated one:
+                            // the original plan stays the source of the rewrite.
+                            logs.push('[plan] the recovery repeated the native dependency; the original plan stays the source of the portability rewrite.');
+                        } else {
+                            // The model supplied a newer architecture but repeated the
+                            // native choice. Preserve that newer plan for the bounded
+                            // dependency-only rewrite below — and make it the current
+                            // state, because that rewrite is gated on `clean`. Eval
+                            // round 15 (2026-10-24, P151): the first plan's own blocker
+                            // was tool_contract_invalid, so `clean` kept it, the gate
+                            // stayed shut, and a 21-minute recovered plan whose only
+                            // defect was sqlite3 was thrown away. The rewrite
+                            // re-sanitises: any other defect still stops honestly.
+                            rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
+                            plan = this.validatePlan(recoveredPlan, projectDescription);
+                            clean = recoveredClean;
+                        }
                     }
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
@@ -643,38 +709,10 @@ export class ProjectPlannerTool implements ToolDefinition {
                 }
             }
 
-            // If the model ignored both portability-recovery prompts, perform one
-            // deterministic dependency-only rewrite. This preserves the model's
-            // architecture and task scope; it merely applies the already stated
-            // contract (node:sqlite/JSON, node:crypto, sass, or a portable fallback)
-            // before the same sanitiser and artifact gates run again.
-            const normalisePortablePlan = (rawPlan: any) => {
-                const portablePlan = this.rewriteUnportableNativePlan(rawPlan);
-                const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
-                    mode: evidence?.mode,
-                    disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
-                    evidencedPaths,
-                    testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
-                    candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
-                    disallowUnportableNativeDependencies: true,
-                    requireRunnableContract: context?.requireRunnableContract === true,
-                    repairMode,
-                    preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
-                    reactRequest: projectDescription,
-                });
-                return { portablePlan, portableClean, usable: !portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0 };
-            };
-            if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
-                const { portablePlan, portableClean, usable } = normalisePortablePlan(rawPlanForPortableRewrite);
-                if (usable) {
-                    plan = this.validatePlan(portablePlan, projectDescription);
-                    plan.phases = portableClean.phases;
-                    clean = portableClean;
-                    clean.notes.forEach(n => logs.push(n));
-                    logs.push('Planner portability normalization completed after bounded model recovery failed.');
-                } else {
-                    logs.push(`Planner portability normalization failed: ${portableClean.blocker?.message || 'no implementation artifact survived'}`);
-                }
+            // A recovery that is still blocked by a native dependency gets the
+            // same deterministic rewrite, on the newest plan (never twice on one).
+            if (PORTABILITY_BLOCKERS.has(String(clean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
+                adoptPortablePlan(rawPlanForPortableRewrite, 'after');
             }
 
             // Preserve any remaining blocker so the pipeline stops honestly and
@@ -803,7 +841,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         // plan whose only defect is a native dependency is made
                         // portable, not discarded; any other defect still throws.
                         let recoveredSource: any = recoveredPlan;
-                        if (recoveredClean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
+                        if (PORTABILITY_BLOCKERS.has(String(recoveredClean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
                             const portable = normalisePortablePlan(recoveredPlan);
                             if (portable.usable) {
                                 recoveredClean = portable.portableClean;
@@ -1273,12 +1311,16 @@ COVERAGE LEDGER (use every listed ID in at least one requirementsCovered array):
 
 Return ONLY one valid JSON object. No Markdown, prose, source code, HTML, logs, catalogue text, or explanations. Do not return an empty phases array.
 
-SCAFFOLD RECOVERY CONTRACT: if the failure evidence mentions a scaffold contract, args.structure must be concrete and non-empty with at least one executable source/config file, and every path must be safe workspace-relative. Otherwise do not use scaffold_project in this compact recovery.
+SCAFFOLD RECOVERY CONTRACT: scaffold_project is allowed only with a concrete, non-empty args.structure holding at least one executable source/config file, every path safe and workspace-relative.
 PORTABILITY RECOVERY CONTRACT: if the failure evidence mentions an unportable native dependency, do not choose better-sqlite3, sqlite3, bcrypt, sharp, canvas, node-sass, ffi-napi, or another native addon. Choose node:sqlite when the runtime supports it, or a JSON/file implementation with the same interface, and record the choice in the plan.
 
 The plan must contain between ${scope.minPhases} and 8 phases, with up to 4 short implementation tasks per phase. Keep every phase name, description, verificationTask, deliverable, task name, and args.description to one short sentence. Use requirementsCovered with the complete R-number register above; collectively cover every listed R number, including every missing area named by the validator. Before returning JSON, audit that every ID from R1 through R${scope.targets.length} appears in requirementsCovered; do not stop at a partial subset.
 
-Make an explicit technical stack/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework). Do not infer a stack from the product name. Do not use scaffold_project in this recovery. Every task must be an executable file-level implementation task using the registered tool ai_write_file, with args.path and args.description. Each phase must create two non-document source, configuration, or test artifacts under a safe workspace-relative path; never put code in JSON. Use paths such as src/, server/, client/, tests/, or config/ and let the controlled executor generate the contents from the descriptions.
+Make an explicit technical stack/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework). Do not infer a stack from the product name. Use only the registered tools listed below, each with its exact argument contract. Source, configuration and test files use ai_write_file with args.path and args.description (the controlled executor generates the contents), or write_file with args.path and args.content; never put code in JSON. Every phase must produce at least one non-document artifact under a safe workspace-relative path such as src/, server/, client/, tests/, or config/.
+
+RUNNABLE STEPS ARE PART OF THE PLAN: keep every install, test and run step of the rejected plan, made portable, and never remove them. Install the dependencies the manifest declares with npm_manager {"command": "install"} once package.json exists, run the project's own tests through a verificationTask object {"task": "...", "tool": "quality_run", "args": {"tasks": ["test"]}}, and start the project with project_run in the last phase. A verificationTask is always an object naming a checker the gate runs (quality_run, auto_tester, browser_run), never a prose note.
+
+${compactPlannerToolPrompt()}
 
 Use this exact compact schema:
 {
@@ -1293,17 +1335,19 @@ Use this exact compact schema:
       "description": "short sentence",
       "requirementsCovered": ["R1"],
       "tasks": [
+        {"task": "short manifest task", "tool": "ai_write_file", "args": {"path": "package.json", "description": "manifest with the portable dependencies and real start and test scripts"}, "priority": "high", "realisticMinutes": 5},
         {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "src/file.ts", "description": "short technical file description"}, "priority": "high", "realisticMinutes": 15},
-        {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "tests/file.test.ts", "description": "short technical test description"}, "priority": "high", "realisticMinutes": 15}
+        {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "tests/file.test.ts", "description": "short technical test description"}, "priority": "high", "realisticMinutes": 15},
+        {"task": "install the declared dependencies", "tool": "npm_manager", "args": {"command": "install"}, "priority": "high", "realisticMinutes": 5}
       ],
-      "verificationTask": "short verification note",
-      "deliverables": ["src/file.ts", "tests/file.test.ts"],
+      "verificationTask": {"task": "run the project's own tests", "tool": "quality_run", "args": {"tasks": ["test"]}},
+      "deliverables": ["package.json", "src/file.ts", "tests/file.test.ts"],
       "estimatedTime": "30 minutes"
     }
   ],
   "dependencies": []
 }
-Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage according to the coverage ledger. Each R-ID must advance a concrete file-level implementation task; verification tasks may be included but must not replace implementation coverage. Do not output anything before or after the JSON object.`;
+Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage according to the coverage ledger; write the manifest and install once, and start the project with project_run in the last phase. Each R-ID must advance a concrete file-level implementation task; verification tasks may be included but must not replace implementation coverage. Do not output anything before or after the JSON object.`;
     }
 
     /**
@@ -1815,13 +1859,35 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 },
             };
         };
+        /**
+         * A scaffold carries files as structure entries. A manifest there is
+         * rewritten as a manifest; a source file that imports a native addon
+         * leaves the structure and is handed to the author, like a write_file.
+         */
+        const portableScaffoldTasks = (task: any): any[] | null => {
+            if (String(task?.tool || '').toLowerCase() !== 'scaffold_project') return null;
+            const structure = task?.args?.structure;
+            if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return null;
+            const nativeSources = Object.entries(structure).filter(([file, content]) => typeof content === 'string'
+                && !/(?:^|[\\/])package\.json$/i.test(file) && nativeNames.test(content as string));
+            if (!nativeSources.length) return null;
+            const base = String(task?.args?.baseDir || task?.args?.projectName || task?.args?.name || '.').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
+            const kept = Object.fromEntries(Object.entries(structure).filter(([file]) => !nativeSources.some(([nativeFile]) => nativeFile === file)));
+            const authored = nativeSources.map(([file, content]) => portableSourceTask({
+                task: `Write ${file}`,
+                tool: 'write_file',
+                args: { path: base && base !== '.' && !file.startsWith(`${base}/`) ? `${base}/${file}` : file, content },
+            }));
+            const scaffold = Object.keys(kept).length ? [visit({ ...task, args: { ...task.args, structure: kept } })] : [];
+            return [...scaffold, ...authored];
+        };
         const visit = (value: any, key = '', tool = ''): any => {
             if (typeof value === 'string') {
                 return key === 'content' && /(?:^|[\\/])package\.json$/i.test(String((plan as any)?.path || ''))
                     ? rewritePackageContent(value)
                     : rewriteText(value);
             }
-            if (Array.isArray(value)) return value.map(item => visit(item, key, tool));
+            if (Array.isArray(value)) return value.flatMap(item => (key === 'tasks' ? portableScaffoldTasks(item) : null) || [visit(item, key, tool)]);
             if (!value || typeof value !== 'object') return value;
             const portableTask = portableSourceTask(value);
             if (portableTask) return portableTask;
@@ -1830,6 +1896,8 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             for (const [childKey, childValue] of Object.entries(value)) {
                 if (childKey === 'tool') out[childKey] = childValue;
                 else if (childKey === 'content' && typeof childValue === 'string' && /package\.json$/i.test(String(value.path || value.filePath || ''))) {
+                    out[childKey] = rewritePackageContent(childValue);
+                } else if (typeof childValue === 'string' && /(?:^|[\\/])package\.json$/i.test(childKey)) {
                     out[childKey] = rewritePackageContent(childValue);
                 } else if (childKey === 'command' && typeof childValue === 'string' && ownTool === 'npm_manager' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
                     out[childKey] = rewriteNpmInstallCommand(childValue);

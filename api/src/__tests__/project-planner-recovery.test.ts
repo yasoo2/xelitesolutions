@@ -631,38 +631,47 @@ Build the complete system with locally verifiable implementation artifacts.
     });
 
     it('retries portability recovery once after a provider rate limit and accepts only the portable plan', async () => {
+        const nativePhase = {
+            phaseNumber: 1,
+            name: 'Create persistence layer',
+            description: 'Implement the requested persistence layer with sqlite3.',
+            tasks: [{
+                task: 'Create the sqlite3 persistence adapter',
+                tool: 'ai_write_file',
+                args: { path: 'src/db.ts', description: 'Use the sqlite3 native package for persistence.' },
+                priority: 'high',
+                realisticMinutes: 1,
+            }],
+            verificationTask: { task: 'Verify the adapter', tool: 'read_file', args: { path: 'src/db.ts' } },
+            deliverables: ['src/db.ts'],
+            estimatedTime: '5 minutes',
+            requirementsCovered: ['the requested persistence layer'],
+        };
+        // The deterministic rewrite runs first now; a second phase that still
+        // lacks a required field keeps it unusable, so the model is asked.
         const nativePlan = {
             projectName: 'Native storage plan',
             projectVibe: 'Greenfield implementation',
-            totalPhases: 1,
+            totalPhases: 2,
             estimatedDuration: '5 minutes',
             dependencies: {},
-            phases: [{
-                phaseNumber: 1,
-                name: 'Create persistence layer',
-                description: 'Implement the requested persistence layer with sqlite3.',
-                tasks: [{
-                    task: 'Create the sqlite3 persistence adapter',
-                    tool: 'ai_write_file',
-                    args: { path: 'src/db.ts', description: 'Use the sqlite3 native package for persistence.' },
-                    priority: 'high',
-                    realisticMinutes: 1,
-                }],
-                verificationTask: { task: 'Verify the adapter', tool: 'read_file', args: { path: 'src/db.ts' } },
-                deliverables: ['src/db.ts'],
-                estimatedTime: '5 minutes',
-                requirementsCovered: ['the requested persistence layer'],
+            phases: [nativePhase, {
+                phaseNumber: 2,
+                name: 'Skeleton',
+                description: 'Create the skeleton.',
+                tasks: [{ task: 'Create the skeleton', tool: 'scaffold_full_stack', args: {} }],
             }],
         };
         const portablePlan = {
             ...nativePlan,
+            totalPhases: 1,
             projectName: 'Portable storage plan',
             phases: [{
-                ...nativePlan.phases[0],
+                ...nativePhase,
                 name: 'Create portable persistence layer',
                 description: 'Implement persistence with node:sqlite or a JSON fallback.',
                 tasks: [{
-                    ...nativePlan.phases[0].tasks[0],
+                    ...nativePhase.tasks[0],
                     task: 'Create the portable persistence adapter',
                     args: { path: 'src/db.ts', description: 'Use node:sqlite when available and a JSON file fallback with the same interface.' },
                 }],
@@ -688,7 +697,7 @@ Build the complete system with locally verifiable implementation artifacts.
         expect(result.logs.join('\\n')).toMatch(/contract recovery completed/i);
     });
 
-    it('normalizes a native dependency after bounded recovery is still unusable', async () => {
+    it('normalizes a native dependency deterministically, before any model recovery', async () => {
         const nativePlan = {
             projectName: 'Native storage plan',
             projectVibe: 'Greenfield implementation',
@@ -721,11 +730,13 @@ Build the complete system with locally verifiable implementation artifacts.
             evidence: { mode: 'greenfield', referenceProjects: [], facts: [], blockers: [] } as any,
         });
 
-        expect(mockCallLLM).toHaveBeenCalledTimes(2);
+        // Eval round 15: swapping an addon is a rewrite, not a judgement — the
+        // model is not consulted when the rewritten plan can run.
+        expect(mockCallLLM).toHaveBeenCalledTimes(1);
         expect(result.ok).toBe(true);
         expect(result.output.fallback).not.toBe(true);
         expect(result.output.phases[0].tasks[0].args.description).toMatch(/node:sqlite|JSON/i);
-        expect(result.logs.join('\\n')).toMatch(/portability normalization completed/i);
+        expect(result.logs.join('\\n')).toMatch(/portability normalization completed before model recovery/i);
     });
 
     it('treats live-repair and fix requests as implementation work and blocks docs-only recovery', async () => {
