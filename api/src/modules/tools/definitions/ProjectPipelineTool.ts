@@ -1,4 +1,5 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
@@ -2456,6 +2457,73 @@ export class ProjectPipelineTool implements ToolDefinition {
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
         let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
+        /**
+         * Every instrument records its own measurement; the verdict is a pure
+         * function of all of them (core/quality/delivery-verdict). Before
+         * round 15 the last instrument to run decided: a passing Browser QA
+         * re-derived the verdict from the scope flag alone, over a failed
+         * quality contract measured a moment earlier.
+         */
+        const ledger = new DeliveryLedger();
+        const liveRunNotes: string[] = [];
+        let deliveryRequired: DeliveryInstrument[] = [];
+        const syncFromLedger = (final = false) => {
+            const verdict = deliveryVerdict({
+                phaseVerified: verified,
+                requestFidelityBlocked,
+                measurements: ledger.all(),
+                required: final ? deliveryRequired : [],
+            });
+            finalVerified = verdict.verified;
+            scopeCoverageFailed = verdict.failures.some(m => m.instrument === 'scope');
+            // In flight every failure blocks; only the final verdict may call a
+            // scope-only shape partial.
+            const blocking = verdict.failures.length > 0 && !(final && verdict.partial);
+            liveRunVerificationFailed = blocking;
+            finalHonestBlocker = honestBlocker || blocking;
+            liveRunError = blocking
+                ? [verdict.firstError, ...liveRunNotes].filter(Boolean).join('; ').slice(0, 900)
+                : (final && verdict.unread.length && !verdict.verified)
+                    ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}`.slice(0, 900)
+                    : '';
+            return verdict;
+        };
+        const noteLiveRunError = (note: string) => {
+            liveRunNotes.push(String(note || '').slice(0, 420));
+            syncFromLedger();
+        };
+        const measured = (instrument: DeliveryInstrument, ok: boolean) =>
+            ledger.all().some(m => m.instrument === instrument && m.ok === ok);
+        /** live, quality and scope for one project_run result — measured separately, never folded into one flag. */
+        const recordLiveAcceptance = (runRes: any, qualityRoot: string, auditRoots: string[]) => {
+            const live = applyLiveRunOutcome(true, runRes);
+            ledger.record({ instrument: 'live', ok: live.verified, url: live.liveUrl, error: live.error });
+            liveUrl = live.verified ? live.liveUrl : '';
+            if (!live.verified) {
+                ledger.forget('quality');
+                ledger.forget('scope');
+                scopeAudit = { requested: 0, built: 0, coverage: 0, missing: [] };
+                return syncFromLedger();
+            }
+            const quality = inspectProjectQualityContract(qualityRoot, productRequest);
+            ledger.record({
+                instrument: 'quality',
+                ok: quality.ok,
+                error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
+            });
+            const scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
+            scopeAudit = scoped.scopeAudit;
+            if (scoped.verified || scoped.scopeCoverageFailed === true) {
+                ledger.record({ instrument: 'scope', ok: scoped.verified, error: scoped.error });
+            } else {
+                // No artifact root to audit is a live-acceptance gap, not missing scope.
+                ledger.forget('scope');
+                ledger.record({ instrument: 'live', ok: false, url: live.liveUrl, error: scoped.error });
+            }
+            return syncFromLedger();
+        };
+        const liveRepairDue = () => measured('live', false) || measured('quality', false);
+        const scopeRepairDue = () => measured('scope', false) && !liveRepairDue();
         if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
@@ -2488,7 +2556,6 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
                 const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
                 liveRunResult = runRes;
-                const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
                 const liveRuntimeRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
@@ -2496,23 +2563,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     plannedProjectRoot || discoveredProjectRoot || liveRuntimeRoot || ''
                 ).trim();
                 const liveAuditRoots = projectAuditRoots(liveSourceRoot, liveRuntimeRoot);
-                const qualityCheckedLiveOutcome = applyProjectQualityContractOutcome(liveSourceRoot || liveRuntimeRoot, productRequest, liveOutcome);
-                const scopedLiveOutcome = applyScopeAuditOutcome(productRequest, liveAuditRoots, qualityCheckedLiveOutcome);
-                scopeAudit = scopedLiveOutcome.scopeAudit;
-                scopeCoverageFailed = scopedLiveOutcome.scopeCoverageFailed === true;
-                finalVerified = scopedLiveOutcome.verified;
-                liveUrl = scopedLiveOutcome.liveUrl;
-                if (scopedLiveOutcome.verificationFailed) {
-                    liveRunError = scopedLiveOutcome.error || 'project_run did not pass live acceptance';
-                    liveRunVerificationFailed = true;
+                recordLiveAcceptance(runRes, liveSourceRoot || liveRuntimeRoot, liveAuditRoots);
+                if (liveRunVerificationFailed) {
                     say(pick(isAr,
                         `⛔ لم أعتبر النظام مسلّماً: فشل قبول التشغيل الحي أو مطابقة نطاق الطلب. ${liveRunError}`,
                         `⛔ I did not mark the system delivered: live acceptance or requested-scope verification failed. ${liveRunError}`));
                 }
             } catch (e: any) {
-                liveRunError = String(e?.message || e);
-                finalVerified = false;
-                liveRunVerificationFailed = true;
+                ledger.record({ instrument: 'live', ok: false, error: String(e?.message || e) });
+                syncFromLedger();
                 say(pick(isAr,
                     `⛔ لم أعتبر النظام مسلّماً: تعذّر تأكيد التشغيل الحي. ${liveRunError}`,
                     `⛔ I did not mark the system delivered: live execution could not be confirmed. ${liveRunError}`));
@@ -2618,17 +2677,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                     { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 liveRunResult = scopeRetryResult;
-                const scopeRetryLive = applyLiveRunOutcome(true, scopeRetryResult);
                 const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
                 const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
-                const qualityCheckedScopeRetry = applyProjectQualityContractOutcome(artifactRoot || scopeRetryRuntimeRoot, productRequest, scopeRetryLive);
-                const scopeRetryOutcome = applyScopeAuditOutcome(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry);
-                scopeAudit = scopeRetryOutcome.scopeAudit;
-                scopeCoverageFailed = scopeRetryOutcome.scopeCoverageFailed === true;
-                finalVerified = scopeRetryOutcome.verified;
-                liveUrl = scopeRetryOutcome.liveUrl;
-                liveRunVerificationFailed = scopeRetryOutcome.verificationFailed;
-                liveRunError = scopeRetryOutcome.error || '';
+                recordLiveAcceptance(scopeRetryResult, artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
                 scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
                 say(pick(isAr,
                     finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
@@ -2636,12 +2687,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             } catch (scopeRepairError: any) {
                 scopeRepairStatus = 'scope_repair_error';
                 const message = String(scopeRepairError?.message || scopeRepairError).slice(0, 420);
-                liveRunError = `${liveRunError}; scope repair: ${message}`.slice(0, 900);
+                noteLiveRunError(`scope repair: ${message}`);
                 appendBoundedPipelineLog(logs, `[pipeline] scope repair error: ${message}`);
             }
         };
 
-        if (scopeCoverageFailed && !finalVerified && context?.scopeRepairAttempted !== true) {
+        if (scopeRepairDue() && context?.scopeRepairAttempted !== true) {
             await attemptScopeRepair();
         }
 
@@ -2651,7 +2702,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // then plan only the missing runnable contract. This is intentionally
         // inside project_pipeline (not a generic recovery loop): one attempt,
         // same project identity, same workspace, and no product-specific template.
-        if (!finalVerified && liveRunVerificationFailed && !scopeCoverageFailed && context?.liveRepairAttempted !== true) {
+        if (liveRepairDue() && context?.liveRepairAttempted !== true) {
             liveRepairAttempted = true;
             try {
                 const failureText = String(
@@ -2829,7 +2880,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             boundedRepairReady = bootstrapResult?.ok === true;
                             if (!boundedRepairReady) {
                                 const bootstrapError = String(bootstrapResult?.error || bootstrapResult?.output?.message || 'npm install failed').slice(0, 420);
-                                liveRunError = `${liveRunError}; bounded dependency bootstrap: ${bootstrapError}`.slice(0, 900);
+                                noteLiveRunError(`bounded dependency bootstrap: ${bootstrapError}`);
                                 appendBoundedPipelineLog(logs, `[pipeline] bounded dependency bootstrap failed: ${bootstrapError}`);
                             }
                         }
@@ -2846,20 +2897,12 @@ export class ProjectPipelineTool implements ToolDefinition {
                             { ...(context || {}), language: isAr ? 'ar' : 'en', liveRepairAttempted: true },
                         );
                         liveRunResult = retryRunResult;
-                        const retryOutcome = applyLiveRunOutcome(true, retryRunResult);
                         const retryRuntimeRoot = String(
                             retryRunResult?.output?.cwd || retryInput.cwd || repairProjectRoot || discoveredProjectRoot || ''
                         ).trim();
                         const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
                         const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
-                        const qualityCheckedRetryOutcome = applyProjectQualityContractOutcome(retrySourceRoot || retryRuntimeRoot, productRequest, retryOutcome);
-                        const scopedRetryOutcome = applyScopeAuditOutcome(productRequest, retryAuditRoots, qualityCheckedRetryOutcome);
-                        scopeAudit = scopedRetryOutcome.scopeAudit;
-                        scopeCoverageFailed = scopedRetryOutcome.scopeCoverageFailed === true;
-                        finalVerified = scopedRetryOutcome.verified;
-                        liveUrl = scopedRetryOutcome.liveUrl;
-                        liveRunVerificationFailed = scopedRetryOutcome.verificationFailed;
-                        liveRunError = scopedRetryOutcome.error || '';
+                        recordLiveAcceptance(retryRunResult, retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -2875,12 +2918,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             } catch (repairError: any) {
                 liveRepairStatus = 'repair_error';
                 const repairMessage = String(repairError?.message || repairError).slice(0, 420);
-                liveRunError = `${liveRunError}; repair: ${repairMessage}`.slice(0, 900);
+                noteLiveRunError(`repair: ${repairMessage}`);
                 say(pick(isAr, `⛔ تعذرت محاولة إصلاح التشغيل المحدودة: ${repairMessage}`, `⛔ Bounded live-run repair failed: ${repairMessage}`));
             }
         }
 
-        if (scopeCoverageFailed && !finalVerified && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
+        if (scopeRepairDue() && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
             await attemptScopeRepair();
         }
 
@@ -2894,11 +2937,20 @@ export class ProjectPipelineTool implements ToolDefinition {
          * A skipped audit is an honest verification failure: Joe must not call
          * an unmeasured application delivered.
          */
-        liveUrl = finalBrowserQaUrl(liveUrl, runtimeProjectHandoff?.durablePreviewUrl);
-        if (runtimeProjectHandoff?.durablePreviewUrl) {
-            appendBoundedPipelineLog(logs, `[pipeline] browser QA target=durable_project_preview url=${liveUrl}`);
+        // Browser QA never runs to "rescue" an outcome already measured as
+        // failed, and a durable preview stands in only for a CONFIRMED live
+        // URL — a failed or never-run pipeline is not judged on a preview.
+        const browserQaTarget = mayRunBrowserQa(ledger.all())
+            ? browserQaTargetUrl(verifiedLiveUrl(ledger.all()), runtimeProjectHandoff?.durablePreviewUrl)
+            : '';
+        if (!browserQaTarget && (liveUrl || runtimeProjectHandoff?.durablePreviewUrl)) {
+            appendBoundedPipelineLog(logs, `[pipeline] browser QA not run: an earlier measurement already failed (${liveRunError || 'no confirmed live run'})`);
         }
-        if (liveUrl) {
+        if (browserQaTarget) {
+            liveUrl = browserQaTarget;
+            if (runtimeProjectHandoff?.durablePreviewUrl) {
+                appendBoundedPipelineLog(logs, `[pipeline] browser QA target=durable_project_preview url=${liveUrl}`);
+            }
             try {
                 const runtimeRoot = String(liveRunResult?.output?.cwd || '').trim();
                 const artifactRoot = String(
@@ -2957,10 +3009,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 });
                 if (browserQa.skipped) {
                     browserQaFailed = true;
-                    finalVerified = false;
-                    finalHonestBlocker = true;
-                    liveRunVerificationFailed = true;
-                    liveRunError = `browser QA skipped: ${browserQa.skipped}`;
+                    ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${browserQa.skipped}` });
+                    syncFromLedger();
                     say(pick(isAr,
                         `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
                         `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
@@ -3099,21 +3149,17 @@ export class ProjectPipelineTool implements ToolDefinition {
                     blocking = browserQa.findings.slice();
                     if (blocking.length > 0) {
                         browserQaFailed = true;
-                        finalVerified = false;
-                        finalHonestBlocker = true;
-                        liveRunVerificationFailed = true;
-                        liveRunError = `browser QA found ${blocking.length} blocking finding(s)`;
+                        ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${blocking.length} blocking finding(s)` });
+                        syncFromLedger();
                         say(pick(isAr,
                             `⛔ كشف Browser QA المرئي ${blocking.length} مشكلة حرجة بعد محاولة إصلاح bounded؛ لم أعتبر التطبيق مسلّماً.`,
                             `⛔ Visible Browser QA still found ${blocking.length} blocking issue(s) after the bounded repair attempt; the application is not delivered.`));
                     } else {
                         browserQaFailed = false;
-                        // Browser QA proves usability, but it must not erase a
-                        // deterministic scope failure measured earlier.
-                        finalVerified = !scopeCoverageFailed;
-                        finalHonestBlocker = false;
-                        liveRunVerificationFailed = false;
-                        liveRunError = '';
+                        // Browser QA records its own pass and clears nothing
+                        // another instrument measured (round 15).
+                        ledger.record({ instrument: 'browser', ok: true });
+                        syncFromLedger();
                         say(pick(isAr,
                             `✅ اجتاز التطبيق Browser QA بعد الإصلاح (score: ${browserQa.score}).`,
                             `✅ The application passed Browser QA after repair (score: ${browserQa.score}).`));
@@ -3121,11 +3167,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
             } catch (qaError: any) {
                 browserQaFailed = true;
-                finalVerified = false;
-                finalHonestBlocker = true;
-                liveRunVerificationFailed = true;
                 const message = String(qaError?.message || qaError).slice(0, 420);
-                liveRunError = `browser QA error: ${message}`;
+                ledger.record({ instrument: 'browser', ok: false, error: `browser QA error: ${message}` });
+                syncFromLedger();
                 appendBoundedPipelineLog(logs, `[pipeline] browser QA error: ${message}`);
                 say(pick(isAr, `⛔ تعذّر إكمال Browser QA: ${message}`, `⛔ Browser QA could not complete: ${message}`));
             }
@@ -3155,25 +3199,23 @@ export class ProjectPipelineTool implements ToolDefinition {
                     specVerificationCoverage = specVerifyResult.output.coverage || 0;
                     if (!specVerifyResult.output.verified) {
                         specVerificationFailed = true;
-                        finalVerified = false;
-                        finalHonestBlocker = true;
-                        liveRunVerificationFailed = true;
-                        liveRunError = `specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ') || 'requirements not met'}`;
+                        ledger.record({ instrument: 'spec', ok: false, error: `specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ') || 'requirements not met'}` });
+                        syncFromLedger();
                         say(pick(isAr,
                             `⛔ التحقق من المواصفة فشل: ${specVerifyResult.output.missingRequirements?.join(', ')}`,
                             `⛔ Specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ')}`));
                     } else {
+                        ledger.record({ instrument: 'spec', ok: true });
+                        syncFromLedger();
                         say(pick(isAr,
                             `✅ التحقق من المواصفة نجح (${Math.round(specVerificationCoverage * 100)}% تغطية)`,
                             `✅ Specification verification passed (${Math.round(specVerificationCoverage * 100)}% coverage)`));
                     }
                 } else {
                     specVerificationFailed = true;
-                    finalVerified = false;
-                    finalHonestBlocker = true;
-                    liveRunVerificationFailed = true;
                     const msg = specVerifyResult?.error || 'specification verification tool failed';
-                    liveRunError = `specification verification error: ${msg}`;
+                    ledger.record({ instrument: 'spec', ok: false, error: `specification verification error: ${msg}` });
+                    syncFromLedger();
                     appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${msg}`);
                     say(pick(isAr,
                         `⛔ تعذّر التحقق من المواصفة: ${msg}`,
@@ -3181,11 +3223,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
             } catch (specVerifyError: any) {
                 specVerificationFailed = true;
-                finalVerified = false;
-                finalHonestBlocker = true;
-                liveRunVerificationFailed = true;
                 const message = String(specVerifyError?.message || specVerifyError).slice(0, 420);
-                liveRunError = `specification verification error: ${message}`;
+                ledger.record({ instrument: 'spec', ok: false, error: `specification verification error: ${message}` });
+                syncFromLedger();
                 appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${message}`);
                 say(pick(isAr,
                     `⛔ تعذّر التحقق من المواصفة: ${message}`,
@@ -3211,7 +3251,12 @@ export class ProjectPipelineTool implements ToolDefinition {
          * finding, and the ONLY failure is named scope coverage. `verified`
          * stays false — the missing list is the headline, never a footnote.
          */
-        const partialDelivery = !requestFidelityBlocked && !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
+        // Browser QA is a required instrument whenever it was able to run.
+        if (browserQaTarget) deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, 'browser']));
+        const finalDeliveryVerdict = verified
+            ? syncFromLedger(true)
+            : deliveryVerdict({ phaseVerified: false, requestFidelityBlocked, measurements: ledger.all() });
+        const partialDelivery = finalDeliveryVerdict.partial;
         if (partialDelivery) {
             const missingText = (scopeAudit?.missing || []).slice(0, 8).join(', ');
             say(pick(isAr,
@@ -3226,7 +3271,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const finalDeliveryStatus = requestFidelityBlocked
             ? 'blocked'
             : verificationUnavailable ? 'not_verified'
-                : finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
+                : finalVerified ? 'delivered'
+                    : (finalDeliveryVerdict.unread.length && !finalDeliveryVerdict.failures.length) ? 'not_verified'
+                        : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
             finalVerified,
             browserQaFailed,

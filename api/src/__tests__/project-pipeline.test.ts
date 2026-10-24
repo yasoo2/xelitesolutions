@@ -455,8 +455,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             expect(result.scopeCoverageFailed).toBe(true);
             expect(result.error).toMatch(/artifact coverage 0%/);
             expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveSourceRoot \|\| liveRuntimeRoot, productRequest, liveOutcome\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, liveAuditRoots, qualityCheckedLiveOutcome\)/);
+            // The live run's scope is measured on its own artifact roots and recorded
+            // as its own instrument, so a later Browser QA pass cannot clear it.
+            expect(src).toMatch(/recordLiveAcceptance\(runRes, liveSourceRoot \|\| liveRuntimeRoot, liveAuditRoots/);
+            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, auditRoots, \{ verified: true/);
+            expect(src).toMatch(/ledger\.record\(\{ instrument: 'scope', ok: scoped\.verified/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
@@ -501,10 +504,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/scopeRepairMode:\s*true/);
         expect(src).toMatch(/scopeRepairTargets/);
         expect(src).toMatch(/scope_repair_pipeline_failed/);
-        expect(src).toMatch(/if \(scopeCoverageFailed && !finalVerified/);
+        // Scope repair is due when scope failed and the live run and quality passed.
+        expect(src).toMatch(/const scopeRepairDue = \(\) => measured\('scope', false\) && !liveRepairDue\(\);/);
+        expect(src).toMatch(/if \(scopeRepairDue\(\) && context\?\.scopeRepairAttempted !== true\)/);
         expect(src).toMatch(/scopeRepairAttempted/);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot \|\| scopeRetryRuntimeRoot, productRequest, scopeRetryLive\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry\)/);
+            expect(src).toMatch(/recordLiveAcceptance\(scopeRetryResult, artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {
