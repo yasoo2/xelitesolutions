@@ -29,6 +29,7 @@ import { acceptanceFor as acceptanceCriteriaFor, type JudgedCriterion } from '..
 import { CAPABILITIES } from '../../../core/quality/scope-audit';
 import { namedRequirements, requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
+import { askWithin, askForTheContract } from '../model-call-race';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
@@ -343,6 +344,40 @@ export function deliveryErrorForAcceptance(
     const shown = unmet.slice(0, max).join(', ');
     const rest = unmet.length - Math.min(unmet.length, max);
     return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+}
+
+/**
+ *  ⛔ NOTHING READ IS NOT NOTHING ASKED.
+ *
+ *  Eval round 15 (2026-10-24, P101): the request reader timed out, no clause
+ *  survived, the catalogue knew no feature of «a REST API for a dental clinic
+ *  with patients, appointments and treatments», and the ledger came back with
+ *  ZERO criteria — which this gate read as nothing to block. A stock bookings
+ *  API was delivered green for a request no one had read.
+ *
+ *  The two empty ledgers are told apart by the READER's own outcome, never by
+ *  the text: the model answered and his sentence named nothing judgeable
+ *  (today's behaviour), or no reading happened at all (`requestUnread`). The
+ *  second is unverified, whatever the catalogue says — a known-features count
+ *  over an unread request is diagnostic, not his contract.
+ */
+export function acceptanceBlocksDelivery(a: {
+    criteria: number;
+    accepted: boolean;
+    unprovable: number;
+    named: number;
+    judgeWasBlind: boolean;
+    requestUnread: boolean;
+}): boolean {
+    if (a.requestUnread) return true;
+    return a.criteria > 0
+        && (!a.accepted || (a.named > 0 && (a.judgeWasBlind || a.unprovable > 0)));
+}
+
+/** The delivery error when the request itself could not be read. */
+export function deliveryErrorForUnreadRequest(why: string): string {
+    const reason = String(why || '').trim();
+    return `acceptance_unverified: request_not_read${reason ? ` — ${reason.slice(0, 160)}` : ''}`;
 }
 
 /** What the install/build step actually did — the evidence the reporter needs. */
@@ -4404,12 +4439,16 @@ export class ReactProjectTool extends BaseTool {
             const requested = Number.isFinite(configured) && configured > 0 ? configured : 12_000;
             return Math.min(20_000, Math.max(6_000, requested));
         })();
+        // Reading his request and judging the build against it are the
+        // delivery CONTRACT, not decoration: served by the local model they wait
+        // for the router's own deadline, sized for the call and started when the
+        // model starts on it. Eval round 15 (P051/P251): this 12 s leash, counted
+        // from the queue, made every named requirement «unprovable» on a CPU
+        // model that needs minutes per call. The run's signal still cancels; on
+        // other providers the leash stays, and the call it abandons is stopped.
         const askTheModel = async (prompt: string): Promise<string> => {
             const { routeToModel } = require('../../../core/llm/intelligent-router');
-            let timer: any;
-            try {
-                return await Promise.race([
-                    routeToModel([{ role: 'user', content: prompt }],
+            return askForTheContract((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -4417,12 +4456,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                    new Promise<string>((_, rej) => {
-                        timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                    }),
-                ]);
-            } finally { clearTimeout(timer); }
+                                context), context, optionalModelTimeoutMs);
         };
 
         /**
@@ -4488,6 +4522,9 @@ export class ReactProjectTool extends BaseTool {
          *  between a report and a shrug.
          */
         let whyNotRead = '';
+        // True only when no reading of his request happened at all and nothing
+        // was retained from his own words — see acceptanceBlocksDelivery.
+        let requestUnread = false;
         if (noBrainToAsk) {
             whyNotRead = 'no model in this environment';
             namedByHim = requirementsFromRequestClauses(request);
@@ -4497,6 +4534,8 @@ export class ReactProjectTool extends BaseTool {
         } else {
             try {
                 const read = await namedRequirements(request, isAr, askTheModel);
+                // The reader counts the passes the model actually answered.
+                const readerAnswered = Number(read.passes) > 0;
                 namedByHim = read.requirements;
                 for (const r of read.rejected) {
                     term(`  refused «${r.text}»: ${r.reason}`);
@@ -4505,9 +4544,11 @@ export class ReactProjectTool extends BaseTool {
                     modelUnavailableDuringBuild = true;
                 }
                 if (!namedByHim.length) {
-                    whyNotRead = read.rejected.length
-                        ? `the model named ${read.rejected.length}, and none survived the filters`
-                        : 'the model named nothing in this request';
+                    whyNotRead = !readerAnswered
+                        ? String(read.rejected[0]?.reason || 'the model did not answer')
+                        : read.rejected.length
+                            ? `the model named ${read.rejected.length}, and none survived the filters`
+                            : 'the model named nothing in this request';
                 }
                 if (!namedByHim.length) {
                     const deterministic = requirementsFromRequestClauses(request);
@@ -4517,11 +4558,13 @@ export class ReactProjectTool extends BaseTool {
                         term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
                     }
                 }
+                requestUnread = !readerAnswered && !namedByHim.length;
                 term(namedByHim.length
                     ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
                     : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
             } catch (e: any) {
                 modelUnavailableDuringBuild = true;
+                requestUnread = !namedByHim.length;
                 whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
                 term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
                     + ' — falling back to the known-features list');
@@ -4763,11 +4806,7 @@ export class ReactProjectTool extends BaseTool {
                     isArabic: artifactIsAr,
                     current: content,
                     fields: wanted,
-                }, async (prompt: string) => {
-                    let timer: any;
-                    try {
-                        return await Promise.race([
-                            routeToModel([{ role: 'user', content: prompt }],
+                }, async (prompt: string) => askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -4775,13 +4814,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                            new Promise<string>((_, rej) => {
-                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                            }),
-                        ]);
-                    } finally { clearTimeout(timer); }
-                });
+                                context), context, optionalModelTimeoutMs));
                 for (const [field, value] of Object.entries(written.fields)) (content as any)[field] = value;
                 term(Object.keys(written.fields).length
                     ? `copy written for his business: ${Object.keys(written.fields).join(', ')}`
@@ -5555,11 +5588,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         fields: seedFields,
                         wanted: countHeAskedFor(request),
                         minNumeric: minimumHeStated(request),
-                    }, async (prompt: string) => {
-                        let timer: any;
-                        try {
-                            return await Promise.race([
-                                routeToModel([{ role: 'user', content: prompt }],
+                    }, async (prompt: string) => askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -5567,13 +5596,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                                new Promise<string>((_, rej) => {
-                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                                }),
-                            ]);
-                        } finally { clearTimeout(timer); }
-                    });
+                                context), context, optionalModelTimeoutMs));
                     seedRows = written.rows;
                     term(seedRows.length
                         ? `catalogue written from his request: ${seedRows.length} × ${String((runBp as any).entityOne || 'item')}`
@@ -5908,10 +5931,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 // Bound the full enhancement, not every component in it. The
                 // first batch gets a useful response window; any remaining
                 // batch shares what is left rather than restarting the clock.
-                let timer: any;
-                try {
-                    return await Promise.race([
-                        routeToModel([{ role: 'user', content: prompt }],
+                return askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -5919,15 +5939,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                        new Promise<string>((_, rej) => {
-                            timer = setTimeout(
-                                () => rej(new Error('the interface authoring time budget was used')),
-                                Math.min(20_000, remaining),
-                            );
-                        }),
-                    ]);
-                } finally { clearTimeout(timer); }
+                                context), context, Math.min(20_000, remaining), 'the interface authoring time budget was used');
             });
             for (const [name, code] of Object.entries(authored.files) as Array<[string, string]>) {
                 const rel = `src/components/${name}.jsx`;
@@ -8661,9 +8673,14 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     + 'assembled from ready-made templates rather than written from your request. '
                     + 'Retry, or pick another provider from the providers button.\n')
             : '';
-        const acceptanceBlocked = acceptance.criteria.length > 0
-            && (!acceptance.accepted
-                || (namedByHim.length > 0 && (judgeWasBlind || acceptance.unprovable > 0)));
+        const acceptanceBlocked = acceptanceBlocksDelivery({
+            criteria: acceptance.criteria.length,
+            accepted: acceptance.accepted,
+            unprovable: acceptance.unprovable,
+            named: namedByHim.length,
+            judgeWasBlind,
+            requestUnread,
+        });
         const acceptBlock = `${standDownNotice}${acceptanceBlock(
             acceptanceBlocked ? { ...acceptance, accepted: false } : acceptance, isAr)}\n`;
         /**
@@ -8683,7 +8700,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         if (askedButMissing.length) {
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
-        if (acceptanceBlocked) {
+        if (acceptanceBlocked && requestUnread) {
+            term(`delivery: BLOCKED — your request could not be read (${whyNotRead || 'no reading'}); `
+                + `acceptance is unverified, and the known-features list (${acceptance.criteria.length} criteria) is diagnostic only`);
+        } else if (acceptanceBlocked) {
             term(judgeWasBlind && namedByHim.length > 0
                 ? `delivery: BLOCKED — acceptance judge could not verify ${namedByHim.length} request requirement(s); catalogue fallback is diagnostic only`
                 : `delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet + acceptance.unprovable} requested criteria not proven: ${acceptance.criteria.filter((c: JudgedCriterion) => c.verdict !== 'met').map((c: JudgedCriterion) => `${c.id} [${c.verdict}]`).join(', ')})`);
@@ -8796,7 +8816,9 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                         : askedButMissing.length
                             ? 'requested_features_not_proven'
                                 : acceptanceBlocked
-                                    ? deliveryErrorForAcceptance(acceptance.criteria as any)
+                                    ? (requestUnread
+                                        ? deliveryErrorForUnreadRequest(whyNotRead)
+                                        : deliveryErrorForAcceptance(acceptance.criteria as any))
                                     : repairRollbackNeedsVerification
                                         ? 'quality_repair_rolled_back_source_but_post_restore_build_unverified'
                                 //  EVERY BLOCKER CARRIES ITS OWN NAME.

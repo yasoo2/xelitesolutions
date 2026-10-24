@@ -882,7 +882,10 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         //  those apart is a spelling test.
         expect(/const acceptBlock = `[^`]*\$\{acceptanceBlock\(\s*acceptanceBlocked \? \{ \.\.\.acceptance, accepted: false \} : acceptance, isAr\)/.test(REACT)).toBe(true);
         expect(REACT.includes('acceptance.unmet + acceptance.unprovable')).toBe(true);
-        expect(REACT).toMatch(/const acceptanceBlocked = acceptance\.criteria\.length > 0[\s\S]{0,220}!acceptance\.accepted/);
+        //  The rule moved into acceptanceBlocksDelivery (eval round 15: an
+        //  unread request blocks too); an unaccepted ledger still blocks.
+        expect(REACT).toMatch(/const acceptanceBlocked = acceptanceBlocksDelivery\(\{\s*criteria: acceptance\.criteria\.length,\s*accepted: acceptance\.accepted,/);
+        expect(REACT).toMatch(/export function acceptanceBlocksDelivery[\s\S]{0,400}return a\.criteria > 0\s*&& \(!a\.accepted/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });
 
