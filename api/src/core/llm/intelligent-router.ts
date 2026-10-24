@@ -2073,7 +2073,7 @@ export async function routeToModel(
     //   9. DeepSeek / Pollinations (keyless proxy — last resort)
     // ============================================================================
 
-    const meshProviders: Array<{ name: string; run: (signal?: AbortSignal) => Promise<string> }> = [];
+    const meshProviders: Array<{ name: string; run: (signal?: AbortSignal, hooks?: { onAdmitted?: () => void }) => Promise<string> }> = [];
     const preferredProvider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();
 
     // 0. [PRIORITY] Forced provider via env
@@ -2096,7 +2096,7 @@ export async function routeToModel(
     if (hasLocal) {
         meshProviders.push({
             name: 'Local (Auto)',
-            run: async (signal?: AbortSignal) => {
+            run: async (signal?: AbortSignal, hooks?: { onAdmitted?: () => void }) => {
                 // Task-based model routing: build/code tasks get the strongest
                 // installed coder model; chat gets the fast small model. Falls back
                 // to LOCAL_LLM_MODEL when detection hasn't run.
@@ -2126,6 +2126,7 @@ export async function routeToModel(
                 try {
                     const res = await localProvider.chatComplete(flatMessages, localModel, localOnPartial, signal, {
                         maxCompletionTokens: localMaxCompletionTokens,
+                        onAdmitted: hooks?.onAdmitted,
                         ...(context?.localReasoningEffort === 'none' ? { reasoningEffort: 'none' as const } : {}),
                     });
                     if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
@@ -2747,12 +2748,31 @@ export async function routeToModel(
             const providerAbort = new AbortController();
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
             let callerAbortListener: (() => void) | undefined;
-            const timeoutPromise = new Promise<never>((_, reject) => {
+            /**
+             * ⛔ A LOCAL CALL'S CLOCK STARTS WHEN THE MODEL STARTS ON IT.
+             *
+             * Local inference is one lane. Eval round 14 (2026-10-24, P051): one
+             * React build queued seven local calls at once; each deadline was
+             * sized for its own work (57 min for a 41k-character prompt) but
+             * counted from the moment it entered the queue, so the later calls
+             * expired while still waiting behind the others (RESOURCE_CANCELLED
+             * after 3 424 s queued). The sized deadline now starts at admission;
+             * the queue wait stays bounded by the transport's own queue limit,
+             * the caller's signal and the run deadline. Other providers start now.
+             */
+            const deferUntilAdmitted = p.name === 'Local (Auto)';
+            let admittedAt = 0;
+            let rejectTimeout: ((error: Error) => void) | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => { rejectTimeout = reject; });
+            const startDeadline = () => {
+                if (timeoutHandle) return;
+                admittedAt = Date.now();
                 timeoutHandle = setTimeout(() => {
                     providerAbort.abort(new Error(`Provider deadline exceeded after ${timeoutValue}ms`));
-                    reject(new Error('TIMEOUT'));
+                    rejectTimeout?.(new Error('TIMEOUT'));
                 }, timeoutValue);
-            });
+            };
+            if (!deferUntilAdmitted) startDeadline();
             const attemptStartedAt = Date.now();
             let rawAns: string;
             try {
@@ -2768,7 +2788,7 @@ export async function routeToModel(
                     })
                     : null;
                 rawAns = await Promise.race([
-                    Promise.resolve().then(() => p.run(providerAbort.signal)).finally(() => releaseProviderCircuitProbe(circuitKey, circuitClaim.lease)),
+                    Promise.resolve().then(() => p.run(providerAbort.signal, { onAdmitted: startDeadline })).finally(() => releaseProviderCircuitProbe(circuitKey, circuitClaim.lease)),
                     timeoutPromise,
                     ...(callerAbortPromise ? [callerAbortPromise] : []),
                 ]) as string;
@@ -2780,7 +2800,7 @@ export async function routeToModel(
             }
             // How long this machine really takes is the only honest input to
             // how long we should be willing to wait for it next time.
-            if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - attemptStartedAt);
+            if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - (admittedAt || attemptStartedAt));
 
             const ans = cleanOutput(rawAns);
 

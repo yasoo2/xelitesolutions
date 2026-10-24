@@ -64,13 +64,13 @@ export class LocalProvider {
         model?: string,
         onDelta?: (delta: string) => void,
         signal?: AbortSignal,
-        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none' },
+        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none'; onAdmitted?: () => void },
     ): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
         if (isManagedOllamaEndpoint(baseURL)) {
             const result = await managedOllamaChat({
-                baseURL, model: model || this.model(), messages, onDelta, signal,
+                baseURL, model: model || this.model(), messages, onDelta, signal, onAdmitted: options?.onAdmitted,
                 timeoutMs: this.timeoutMs(), maxCompletionTokens: options?.maxCompletionTokens,
                 reasoningEffort: options?.reasoningEffort === 'none'
                     || (options?.reasoningEffort === undefined && String(process.env.LOCAL_LLM_REASONING_EFFORT || '').trim() === 'none') ? 'none' : undefined,
@@ -80,7 +80,10 @@ export class LocalProvider {
         // Generic compatible servers have no portable context-size parameter.
         // Admission serializes their work without pretending to resize the model.
         return requestResourceManager.withHeavy(
-            () => this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options),
+            () => {
+                try { options?.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
+                return this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options);
+            },
             { kind: 'compatible-local-inference', signal },
         );
     }

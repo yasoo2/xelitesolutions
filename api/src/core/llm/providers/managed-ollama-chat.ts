@@ -62,6 +62,8 @@ export interface ManagedOllamaChatOptions {
     tools?: readonly unknown[];
     onDelta?: (delta: string) => void;
     signal?: AbortSignal;
+    /** Called once, when the resource lane admits this call and the model starts on it. */
+    onAdmitted?: () => void;
     timeoutMs: number;
     maxCompletionTokens?: number;
     // Trusted server policy; never derive this from a user's prompt or tool args.
@@ -473,6 +475,7 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         const manager = dependencies.resourceManager ?? requestResourceManager;
         const result = await manager.withInference(async budget => {
             checkDeadline();
+            try { options.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
             if (!Number.isInteger(budget.contextTokens) || budget.contextTokens < 1 || budget.contextTokens > maxContextTokens
                 || !Number.isInteger(budget.outputTokens) || budget.outputTokens < 1 || budget.outputTokens > outputTokens
                 || mapped.promptEstimatedTokens + budget.outputTokens > budget.contextTokens) {
