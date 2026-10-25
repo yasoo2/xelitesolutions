@@ -9,21 +9,35 @@
  *
  *   - requestedRecords(): the records the request names (the same readers the
  *     builders use: declaredTables, namedEntities, the served tables he
- *     listed), whether tests were asked for, and — per item — every listed
- *     item that produced no record (UNREAD: the delivery is then not verified,
- *     never «all built»).
+ *     listed), whether tests were asked for, every listed item that produced
+ *     no record (UNREAD), and every rule he stated that only a live
+ *     multi-account probe could measure (CAPABILITIES) — both make the
+ *     delivery «not verified», never «all built».
  *   - collectServerEvidence(): route registrations harvested from the
  *     delivered source by language syntax (Express/Koa/Fastify chains, Flask/
- *     FastAPI decorators and prefixes, Django path(), Go handlers). Test files
- *     and HTTP-client calls are skipped; a route counts only with a handler.
- *     Keys bound to his label in the same object («key: 'alajats'» beside
- *     «العلاجات») are identifiers of that record.
- *   - probeServedResources(): GET-only runtime probe of the live server, with a
- *     negative control per prefix (a catch-all is inconclusive, not proof).
- *   - judgeRequestCoverage(): served (when a backend was asked for or the tree
- *     has one), tested (when tests were asked for), present (a static build).
- *     A probed 404 refutes static text, except for write-only or nested
- *     parameterised routes.
+ *     FastAPI decorators and prefixes, Django path(), Go handlers), and the
+ *     page source (.html/.vue/.svelte) for a static build's «present» check.
+ *     A route counts only on a receiver that serves (an application or a
+ *     router), never on an HTTP client; test files are test evidence only.
+ *   - probeServedResources(): GET-only runtime probe of the live server, on
+ *     the exact path each record's route registers, with a negative control
+ *     per parent path (a catch-all is inconclusive, never proof).
+ *   - judgeRequestCoverage(): served / tested / present per record. A
+ *     registered GET route the probe finds absent is NOT served; a record the
+ *     probe could not see is reported unverified, never silently passed.
+ *   - runRequestedTests(): «tested» means his tests RAN and passed — a word
+ *     in a skipped test was never evidence.
+ *
+ * Round 20 (adversarial review of round 19) — what this version fixes:
+ * Arabic admin lists led by «إضافة وتعديل وحذف وبحث في …» were never read
+ * (18/50 admin prompts silently skipped); a trailing rule «and each staff
+ * member only sees their own records» counted as an unread record, so 49/50
+ * full-stack prompts could never be verified; a landing page's sections
+ * («الخدمات، وآراء العملاء») were demanded as records while .html was never
+ * read; a POST route outvoted a GET route the probe found absent; versioned,
+ * nested and FastAPI trailing-slash routes were refuted by a probe of the
+ * wrong prefix; frontend API-client calls counted as server routes; «tested»
+ * was a word search; «tests» in a records list was read as a deliverable.
  */
 import fs from 'fs';
 import http from 'http';
@@ -32,7 +46,8 @@ import path from 'path';
 import { declaredTables } from '../design/declared-tables';
 import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities } from '../design/named-entities';
 import { keyForPhrase } from '../design/entity-inference';
-import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems } from '../design/request-lists';
+import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
+import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -46,6 +61,18 @@ export interface RequestedRecords {
     entities: RequestedRecord[];
     /** Listed items that produced no record — never silently dropped. */
     unread: string[];
+    /**
+     * Rules he stated that only a live multi-account probe can measure
+     * («each staff member only sees their own records»). Named, never
+     * dropped; until such a probe exists the delivery stays «not verified».
+     */
+    capabilities?: string[];
+    /**
+     * Behaviour clauses found inside the list («customers pick a date and time
+     * slot») — measured by the scope audit and the acceptance ledger, not by
+     * record coverage. Kept for the report and the log.
+     */
+    clauses?: string[];
     /** The clause that asks for tests, verbatim, or null. */
     testsRequested: string | null;
 }
@@ -59,38 +86,204 @@ const norm = (value: unknown) => String(value || '')
     .replace(/\s+/g, ' ')
     .trim();
 const singularWord = (word: string) => word.replace(/ies$/u, 'y').replace(/(ch|sh|ss|x)es$/u, '$1').replace(/s$/u, '');
+const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
 /** Everything after the list that is clearly not one of its items («… مع صور … وثيم …»). */
 const LIST_TAIL = /\s+(?:مع|وبتصميم|بتصميم|بثيم|وثيم|and with|with a)\s+/iu;
 
-const EN_TESTS = /\b(?:(?:unit|integration|automated|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance)\s+)?tests\b|\btest\s+(?:suites?|cases?|coverage|files?)\b|\b(?:unit|integration|automated|end[- ]to[- ]end|e2e)\s+test\b|\b(?:unit|integration|automated)\s+testing\b|\bspecs\b/iu;
-const AR_TESTS = /اختبارات|(?:ال)?اختبار\s+(?:ال)?(?:آلي|آلية|الي|الية|وحدة|الوحدة|تكامل|التكامل)/u;
+// ─── what the list names, after the actions and the rules are taken off ─────
 
-/** The clause that asks for tests as a deliverable (a noun: «tests», «unit tests», «اختبارات آلية»), or null. */
+/**
+ * The actions a person lists BEFORE the records they act on: «إضافة وتعديل
+ * وحذف وبحث في الطلاب والصفوف», «add, edit, delete and search each one».
+ * Verbs and verbal nouns of record work — a closed class of the language,
+ * not a domain list.
+ */
+const AR_ACTION = '(?:إضافة|اضافة|إضافه|اضافه|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|انشاء|تصفح|فلترة|فلتره|تصفية|تصفيه|فرز|ترتيب|متابعة|متابعه|إدارة|ادارة|إداره|اداره)';
+const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|delete(?:s)?|deleting|remove(?:s)?|removing|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
+const AR_ACTION_HEAD = new RegExp(`^و?${AR_ACTION}(?:\\s+(?:في|عن|على|ضمن|بين))?(?=\\s|[،,]|$)`, 'u');
+const EN_ACTION_HEAD = new RegExp(`^(?:and\\s+|or\\s+|then\\s+)?${EN_ACTION}(?:\\s+(?:for|in|through|by))?(?=\\s|,|$)`, 'iu');
+/** What an action-only clause ends with: «each one», «them», «كل منها». */
+const ACTION_FILLER = /^(?:(?:each|every|all)(?:\s+(?:one|of\s+them|item|record|entry))?|them|it|those|these|كل\s+(?:منها|واحد[ةه]?|منهم)|عليها|فيها|منها)?$/iu;
+
+/** Is this item nothing but an action word («إضافة», «وتعديل», «delete», «adds»)? */
+export function isActionWord(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t) return false;
+    return new RegExp(`^و?${AR_ACTION}$`, 'u').test(t) || new RegExp(`^${EN_ACTION}$`, 'iu').test(t);
+}
+
+/** Take a leading run of actions off a list: «إضافة وتعديل وحذف وبحث في الطلاب…» → «الطلاب…». */
+export function stripLeadingActions(region: string): { rest: string; removed: boolean; consumed: number; actions: number } {
+    const original = String(region || '');
+    let at = original.length - original.trimStart().length;
+    let actions = 0;
+    for (let guard = 0; guard < 12; guard++) {
+        const tail = original.slice(at);
+        const m = tail.match(AR_ACTION_HEAD) || tail.match(EN_ACTION_HEAD);
+        if (!m) break;
+        at += m[0].length;
+        const sep = original.slice(at).match(/^(?:[\s،,]+|(?:and|or)\s+)*/iu);
+        at += sep ? sep[0].length : 0;
+        actions++;
+    }
+    return { rest: original.slice(at).trim(), removed: actions > 0, consumed: at, actions };
+}
+
+/**
+ * A rule clause that ends the records list: «, and each staff member only
+ * sees their own records», «، وكل موظف يرى سجلاته فقط», «where …», «حيث …».
+ * What follows is behaviour, never a record.
+ */
+const RULE_OPENER = /(?:,\s*|\s+)(?:and\s+)?(?:each|every|where|whereas|while|so\s+that|such\s+that|but)\s+|(?:،\s*|\s+)و?(?:كل|حيث|بحيث|لكن)\s+/iu;
+
+/**
+ * UI or feature words that head a section, not a record: «زر إعادة»,
+ * «شاشة نتيجة», «حساب النقاط», «آراء العملاء», «a summary page», «a timer».
+ * A closed class of interface nouns; «حسابات» (accounts) is plural and stays.
+ */
+const FEATURE_HEAD_AR = /^و?(?:ال)?(?:زر|زرّ|أزرار|ازرار|شاشة|شاشه|صفحة|صفحه|قسم|نموذج|آراء|اراء|مؤقت|رسم|رسوم|رسماً|رسما|حساب|عرض|تقويم|لوحة|لوحه|خريطة|خريطه|ملخص|إحصائيات|احصائيات|واجهة|واجهه|خادم|سيرفر|تسجيل|باك|فرونت|سلة|سله)(?=\s|$)/u;
+/** Interface, stack and feature heads: «React frontend», «Node backend», «user login», «a summary page». */
+const FEATURE_HEADS_EN = new Set(['button', 'buttons', 'screen', 'screens', 'page', 'section', 'form', 'timer', 'chart', 'graph', 'calculation',
+    'score', 'scoring', 'view', 'calendar', 'dashboard', 'map', 'summary', 'statistics', 'stats', 'frontend', 'front-end', 'backend', 'back-end',
+    'server', 'login', 'logins', 'signin', 'sign-in', 'interface', 'ui', 'gui', 'api', 'cart']);
+
+export function isFeaturePhrase(item: string): boolean {
+    const t = String(item || '').trim();
+    if (FEATURE_HEAD_AR.test(t)) return true;
+    const words = t.toLowerCase().replace(/^(?:a|an|the)\s+/u, '').replace(/\b(front|back|sign|log)\s+(end|in)\b/gu, '$1-$2').split(/\s+/).filter(Boolean);
+    return !!words.length && (FEATURE_HEADS_EN.has(words[0]) || FEATURE_HEADS_EN.has(words[words.length - 1]));
+}
+
+/** «بحث في الأعمال» → «الأعمال», «manage orders» → «orders»: the record an item's action works on. */
+function withoutLeadingAction(item: string): string {
+    const stripped = stripLeadingActions(item);
+    return stripped.removed ? stripped.rest : String(item || '').trim();
+}
+
+interface NormalisedRequest {
+    /** The request with action-only colon clauses removed and the list's leading actions and trailing rules taken off. */
+    text: string;
+    region: string | null;
+    marker: ListMarker | null;
+    /** The list opened with actions on its records («إضافة وتعديل … في X»): a records list by construction. */
+    actionLed: boolean;
+    /** Rule clauses cut off the end of the list. */
+    rules: string[];
+}
+
+/** The request as its records list reads once the actions and the rules are off it. */
+export function normaliseListedRequest(request: string): NormalisedRequest {
+    let text = String(request || '').replace(/\s+/g, ' ').trim();
+    // «…, tables: add, edit, delete and search each one, with a summary…» —
+    // an action-only clause after a colon declares no table.
+    for (let guard = 0; guard < 6; guard++) {
+        let changed = false;
+        for (const colon of Array.from(text.matchAll(/[:：]/gu))) {
+            const at = colon.index || 0;
+            const after = text.slice(at + 1);
+            const stripped = stripLeadingActions(after);
+            if (!stripped.removed) continue;
+            const remainder = after.slice(stripped.consumed);
+            const end = remainder.search(/[,،.;؛!?؟]|\s+(?:with|مع)\s+/iu);
+            const filler = (end < 0 ? remainder : remainder.slice(0, end)).trim();
+            if (!ACTION_FILLER.test(filler)) continue;
+            const removeLen = stripped.consumed + (end < 0 ? remainder.length : end);
+            text = `${text.slice(0, at)}${text.slice(at + 1 + removeLen)}`.replace(/\s+/g, ' ').trim();
+            changed = true;
+            break;
+        }
+        if (!changed) break;
+    }
+    const found = listRegion(text);
+    if (!found) return { text, region: null, marker: null, actionLed: false, rules: [] };
+    const stripped = stripLeadingActions(found.region);
+    // «تسجيل دخول بصلاحيات (مدير وموظف)» — the parenthesis names roles, not records.
+    let region = stripped.rest.replace(/\s*\([^)]*\)/gu, ' ').replace(/\s+/g, ' ').trim();
+    const rules: string[] = [];
+    const rule = region.match(RULE_OPENER);
+    if (rule && rule.index !== undefined && rule.index > 0) {
+        rules.push(region.slice(rule.index).replace(/^[\s,،]+/u, '').replace(/[.!?؟]+$/u, '').trim());
+        region = region.slice(0, rule.index).trim();
+    }
+    const rebuilt = text.replace(found.region, rules.length ? `${region}. ${rules.join('. ')}` : region);
+    // One «عرض المنتجات بالصور» is a feature; a run «إضافة وتعديل وحذف وبحث في …» acts on records.
+    return { text: rebuilt, region, marker: found.marker, actionLed: stripped.actions >= 2, rules };
+}
+
+/** The rule «each X only sees their own records» — the per-user isolation only a multi-account probe can measure. */
+function perUserRule(clause: string): boolean {
+    try { return requestedArtifact(clause).evidence.serverClaims.includes('per-user records'); } catch { return false; }
+}
+
+const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — «${clause.slice(0, 140)}»`;
+
+// ─── which requests ask for tests, and which owe records ────────────────────
+
+/**
+ * Tests as a DELIVERABLE: a qualified noun («unit tests», «اختبارات آلية»), a
+ * test artifact («test suite»), or a frame that asks for them («write tests»,
+ * «with tests», «مع اختبارات»). A bare «tests» inside a records list («students,
+ * teachers and tests») is a table of exams, and «a quiz app that tests kids» is
+ * a verb — neither asks for automated tests.
+ */
+const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
+const AR_TESTS = /اختبار(?:ات)?\s+(?:ال)?(?:آلي|آلية|آليه|الي|الية|اليه|تلقائي|تلقائية|وحدة|الوحدة|وحدات|تكامل|التكامل|شاملة|شامله|لكل)|(?:مع|اكتب|أضف|اضف|بإضافة|باضافة)\s+(?:ال)?اختبارات|اختبارات\s+(?:ل|لـ)?كل\s/u;
+
+/** The clause that asks for tests as a deliverable, or null. */
 export function testsRequestedIn(request: string): string | null {
-    const clauses = String(request || '').split(/[.!?؟\n;؛،,]+/u).map(c => c.trim()).filter(Boolean);
+    const clauses = String(request || '').split(/[.!?؟\n;؛]+/u).map(c => c.trim()).filter(Boolean);
     const hit = clauses.find(clause => EN_TESTS.test(clause) || AR_TESTS.test(clause));
     return hit ? hit.slice(0, 240) : null;
 }
 
 /**
+ * The fact the coverage gate was written for: the request asks for a server
+ * of its own — a declared backend, a database, sign-in, accounts or roles, or
+ * an API as the thing to build. Not every claim the router reads as needing a
+ * server (an invoice in a list of records is a record, not a backend).
+ */
+export function backendRequestedFor(request: string): boolean {
+    try {
+        const a = requestedArtifact(String(request || ''));
+        return a.kind === 'api' || a.evidence.serverClaims.some(c => /^(?:backend|database|sign-in|accounts|roles):/u.test(c));
+    } catch {
+        return false;
+    }
+}
+
+/**
  * The records the request names, and every listed item it could not read.
  * Item accounting applies to a records list: one behind an interface head
- * («endpoints for», «نقاط وصول لـ», «manage», «إدارة الـ»), or any list of a
- * request that asks for its own backend. A landing page's «with a hero,
- * services, testimonials» is a list of sections, not records.
+ * («endpoints for», «نقاط وصول لـ», «manage», «إدارة الـ»), one led by actions
+ * on records («إضافة وتعديل … في X»), a colon list of a request whose purpose
+ * is managing records, or any list of a request that asks for its own
+ * backend. A presentation page's «hero, services, testimonials» are sections
+ * the scope audit checks — never record obligations.
  */
 export function requestedRecords(request: string, opts: { backendRequested?: boolean } = {}): RequestedRecords {
     const text = String(request || '');
-    const declared = declaredTables(text, Number.MAX_SAFE_INTEGER);
-    const named = declared.length ? declared : namedEntities(text);
+    const testsRequested = testsRequestedIn(text);
+    const none: RequestedRecords = { entities: [], unread: [], capabilities: [], clauses: [], testsRequested };
+    const backend = opts.backendRequested === true;
+    let artifact: ReturnType<typeof requestedArtifact> | null = null;
+    try { artifact = requestedArtifact(text); } catch { artifact = null; }
+    if (artifact?.evidence.presentation) return none;
+    if ((artifact?.kind === 'page' || artifact?.kind === 'game') && !backend && !statesManagingPurpose(text)) return none;
+
+    const shaped = normaliseListedRequest(text);
+    const isRecordLike = (label: string) => !isActionWord(label) && !isFeaturePhrase(label);
+    const declared = declaredTables(shaped.text, Number.MAX_SAFE_INTEGER)
+        .filter(entity => isRecordLike(String(entity?.key || '')) && isRecordLike(String(entity?.ar || '')));
+    const named = declared.length ? declared : namedEntities(shaped.text);
     const entities: RequestedRecord[] = named
         .filter(entity => String(entity?.key || '').trim())
+        .filter(entity => isRecordLike(String(entity.ar || entity.en || entity.key)) && isRecordLike(String(entity.key)))
         .map(entity => ({ item: String(entity.ar || entity.en || entity.key), key: String(entity.key), ar: String(entity.ar || ''), en: String(entity.en || '') }));
     // A listed table the system already serves («الطلبات» → orders) is still
     // one of his records: it must be served too.
-    const reservedKeys = listedReservedKeys(text);
-    const reservedLabels = alreadyOwned(text);
+    const reservedKeys = listedReservedKeys(shaped.text);
+    const reservedLabels = alreadyOwned(shaped.text);
     reservedKeys.forEach((key, i) => {
         if (!entities.some(entity => entity.key === key)) {
             const label = reservedLabels[i] || key;
@@ -99,15 +292,51 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
     });
 
     const unread: string[] = [];
-    const region = listRegion(text);
-    const accountable = !!region && (region.marker === 'head' || (opts.backendRequested === true && entities.length > 0));
-    if (region && accountable) {
-        for (const item of splitListItems(region.region.split(LIST_TAIL)[0])) {
-            if (isDeliverable(item) || isInterfaceNoun(item) || isPossessivePhrase(item)) continue;
-            if (!entities.some(entity => itemNamesRecord(item, entity))) unread.push(item);
+    const capabilities: string[] = [];
+    const clauses: string[] = [];
+    for (const rule of shaped.rules) {
+        if (perUserRule(rule)) capabilities.push(PER_USER_CAPABILITY(rule));
+        else clauses.push(rule);
+    }
+    const accountable = !!shaped.region && (
+        shaped.marker === 'head'
+        || shaped.actionLed
+        // «لإدارة مشتل: النباتات والموردون والطلبيات» — a records list once its
+        // nouns are read as records; «لإدارة …: عرض المنتجات بالصور…» lists features.
+        || (shaped.marker === 'colon' && statesManagingPurpose(text) && entities.length >= 2)
+        || (backend && entities.length > 0));
+    if (shaped.region && accountable) {
+        for (const raw of splitListItems(shaped.region.split(LIST_TAIL)[0])) {
+            if (isActionWord(raw) || isFeaturePhrase(raw)) continue;
+            const item = withoutLeadingAction(raw);
+            if (!item || isDeliverable(item) || isInterfaceNoun(item) || isPossessivePhrase(item) || isActionWord(item) || isFeaturePhrase(item)) continue;
+            if (perUserRule(item)) { capabilities.push(PER_USER_CAPABILITY(item)); continue; }
+            // A record is named by a noun phrase; four words and more is a clause.
+            if (item.split(/\s+/).length > 4) { clauses.push(item); continue; }
+            if (entities.some(entity => itemNamesRecord(item, entity))) continue;
+            // A dictionary noun in a proven records list is one of his records,
+            // even where namedEntities' two-noun floor declined the list.
+            const tokens = item.split(/\s+/);
+            const key = curatedNounKey(item) || (tokens.length <= 2 ? tokens.map(t => curatedNounKey(t)).find(Boolean) || '' : '');
+            if (key && !entities.some(entity => entity.key === key)) {
+                entities.push({ item, key, ar: /[؀-ۿ]/u.test(item) ? item : '', en: /[؀-ۿ]/u.test(item) ? key : item });
+                continue;
+            }
+            unread.push(item);
         }
     }
-    return { entities, unread: Array.from(new Set(unread)), testsRequested: testsRequestedIn(text) };
+    // The rule may sit outside the list («…، وكل موظف يرى سجلاته فقط»): still named.
+    if (!capabilities.length && artifact?.evidence.serverClaims.includes('per-user records')) {
+        const clause = text.split(/[.!?؟\n;؛،,]+/u).map(c => c.trim()).find(c => c && perUserRule(c));
+        capabilities.push(PER_USER_CAPABILITY(clause || 'per-user records'));
+    }
+    return {
+        entities,
+        unread: Array.from(new Set(unread)),
+        capabilities: Array.from(new Set(capabilities)),
+        clauses: Array.from(new Set(clauses)),
+        testsRequested,
+    };
 }
 
 function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
@@ -115,7 +344,11 @@ function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
     if (!i) return false;
     const labels = [entity.ar, entity.en, entity.key, entity.item].map(norm).filter(Boolean);
     if (labels.includes(i) || labels.map(singularWord).includes(singularWord(i))) return true;
-    return curatedNounKey(item) === entity.key || keyForPhrase(item) === entity.key;
+    if (curatedNounKey(item) === entity.key || keyForPhrase(item) === entity.key) return true;
+    // The builders read a two-word item by its words («menu items» → items):
+    // the same reading here, so an item they built is never «unread».
+    const tokens = String(item || '').trim().split(/\s+/);
+    return tokens.length <= 2 && tokens.some(token => curatedNounKey(token) === entity.key);
 }
 
 // ─── evidence in the delivered tree ─────────────────────────────────────────
@@ -123,10 +356,13 @@ function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
 const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'public', 'coverage', '.cache', '.git', '.npm-cache',
     '.engineering-checkpoints', '__pycache__', 'venv', '.venv', '.next', '.joe', '.pytest_cache']);
 const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go)$/iu;
-const TEST_FILE = /(?:^|[\\/])(?:__tests__|tests?|spec)[\\/]|\.(?:test|spec)\.[cm]?[jt]sx?$|(?:^|[\\/])test_[^\\/]+\.py$|_test\.(?:py|go)$/iu;
+/** Page source: read for a static build's «present» check, never harvested for routes. */
+const MARKUP_EXT = /\.(?:html?|vue|svelte)$/iu;
+const TEST_FILE = /(?:^|[\\/])(?:__tests__|tests?|spec)[\\/]|\.(?:test|spec)\.[cm]?[jt]sx?$|(?:^|[\\/])test_[^\\/]+\.py$|_test\.(?:py|go)$|(?:^|[\\/])tests?\.(?:py|[cm]?[jt]s)$/iu;
 const CLIENT_FILE = /from\s+['"](?:react|react-dom|vue|svelte)(?:\/[^'"]*)?['"]|require\(\s*['"](?:react|vue|svelte)['"]\s*\)|\bdocument\.|\bwindow\./u;
 /** Receivers that are HTTP clients, not routers: their .get('/x', …) calls a route, it does not serve one. */
-const CLIENT_RECEIVERS = new Set(['axios', 'ky', 'got', 'fetch', 'superagent', 'supertest', 'agent', 'request', 'http', 'https', 'client', '$http', 'httpclient', 'apiclient', 'instance']);
+const CLIENT_RECEIVERS = new Set(['axios', 'ky', 'got', 'fetch', 'superagent', 'supertest', 'agent', 'request', 'http', 'https', 'client', '$http', 'httpclient', 'apiclient', 'instance', 'api', 'service', 'services']);
+const BUNDLER_DEP = /^(?:vite|webpack|parcel|react-scripts|next|nuxt|@angular\/cli|@sveltejs\/kit|astro|esbuild|rollup|gatsby|@vue\/cli-service)$/iu;
 
 export function isTestFile(file: string): boolean {
     return TEST_FILE.test(String(file || ''));
@@ -141,15 +377,28 @@ export function stripComments(text: string, file = ''): string {
         .replace(/(^|[^:'"`\\])\/\/.*$/gmu, '$1');
 }
 
-export interface HarvestedRoute { path: string; method: string; file: string; dynamic: boolean }
+export interface HarvestedRoute {
+    path: string;
+    method: string;
+    file: string;
+    dynamic: boolean;
+    /**
+     * The path as written IS the served path: registered on an application
+     * object (express(), Flask(), FastAPI(), a Go mux). A router's or a
+     * blueprint's paths depend on where it is mounted, which the probe may not
+     * know — they can prove a record, never refute it.
+     */
+    known: boolean;
+}
 
 export interface CoverageEvidence {
     routes: HarvestedRoute[];
-    /** Mount prefixes read from the source, plus the first segment of each route («/api/»). */
+    /** Mount prefixes read from the source, plus the parent path of each served resource («/api/v1/»). */
     prefixes: string[];
+    /** Files that register routes, the one with the most routes first. */
     serverFiles: string[];
     testFiles: string[];
-    /** Non-test source text (comments removed), for a static build's «present» check. */
+    /** Non-test source and page text (comments removed), for a static build's «present» check. */
     sourceText: string;
     testText: string;
     /** Keys bound to his label in the same object or JSON entry, per record key. */
@@ -159,28 +408,46 @@ export interface CoverageEvidence {
 const JS_ROUTE = /([A-Za-z_$][\w$]*)\s*\.\s*(get|post|put|patch|delete|all|use|route)\s*\(\s*(['"`])((?:\/|\$\{)[^'"`]*)\3\s*([,)])/giu;
 const HANDLER_AFTER = /^\s*(?:async\s*)?(?:\(|function\b|\[|[A-Za-z_$][\w$.]*\s*(?:[,)]|\())/u;
 const PY_DECORATOR = /@\s*([\w.]+)\.(get|post|put|patch|delete|route|api_route)\(\s*[rf]?['"]([^'"]*)['"]/gu;
-const PY_PREFIX = /(?:APIRouter|Blueprint)\([^)]*?(?:prefix|url_prefix)\s*=\s*[rf]?['"]([^'"]+)['"]/gu;
+const PY_APP = /^\s*(\w+)\s*=\s*(?:Flask|FastAPI|Sanic|Quart)\s*\(/gmu;
+const PY_ROUTER = /^\s*(\w+)\s*=\s*(?:APIRouter|Blueprint)\s*\(([^)]*)\)/gmu;
+const PY_PREFIX_ARG = /(?:prefix|url_prefix)\s*=\s*[rf]?['"]([^'"]+)['"]/u;
+const PY_INCLUDE_PREFIX = /\.(?:include_router|register_blueprint)\([^)]*?(?:prefix|url_prefix)\s*=\s*[rf]?['"]([^'"]+)['"]/gu;
 const DJANGO_PATH = /\b(?:re_)?path\(\s*r?['"]\^?([^'"]*)['"]\s*,/gu;
 const GO_HANDLE = /\b(?:HandleFunc|Handle)\(\s*"([^"]+)"/gu;
-const LABEL_KEY = /\b(?:key|table|tableName|resource|collection|slug|path|route|endpoint|plural|name|id)\s*["']?\s*:\s*["'`]\/?(?:api\/)?([A-Za-z][\w-]{1,40})["'`]/gu;
+const LABEL_KEY = /\b(?:key|table|tableName|resource|collection|slug|path|route|endpoint|plural|name|id|en|english|labelEn|label_en)\s*["']?\s*:\s*["'`]\/?(?:api\/)?([A-Za-z][\w-]{1,40})["'`]/gu;
 const GENERIC_VALUES = new Set(['name', 'title', 'description', 'notes', 'phone', 'email', 'image', 'photo', 'price', 'quantity', 'amount',
     'reference', 'status', 'date', 'time', 'text', 'int', 'real', 'integer', 'string', 'number', 'boolean', 'id', 'key', 'value', 'label']);
 
-function walk(root: string, out: string[], depth = 0): void {
+function rootHasBundler(root: string): boolean {
+    try {
+        const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'));
+        const deps = { ...(manifest?.dependencies || {}), ...(manifest?.devDependencies || {}) };
+        if (Object.keys(deps).some(name => BUNDLER_DEP.test(name))) return true;
+    } catch { /* no manifest */ }
+    try { return fs.readdirSync(root).some(name => /^(?:vite|webpack|rollup|next|nuxt|svelte|astro)\.config\./iu.test(name)); } catch { return false; }
+}
+
+function walk(root: string, out: string[], depth = 0, includePublic = false): void {
     if (depth > 8 || out.length > 4000) return;
     let entries: fs.Dirent[] = [];
     try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
     for (const entry of entries) {
         if (entry.name.startsWith('.') && entry.name !== '.') { if (SKIP_DIRS.has(entry.name) || entry.isDirectory()) continue; }
         const full = path.join(root, entry.name);
-        if (entry.isDirectory()) { if (!SKIP_DIRS.has(entry.name)) walk(full, out, depth + 1); continue; }
-        if (entry.isFile() && SOURCE_EXT.test(entry.name) && !/\.d\.ts$/iu.test(entry.name)) out.push(full);
+        if (entry.isDirectory()) {
+            // A build-free site keeps its pages in public/; a bundled one's public/ is copied output.
+            const skip = SKIP_DIRS.has(entry.name) && !(includePublic && entry.name === 'public');
+            if (!skip) walk(full, out, depth + 1, includePublic);
+            continue;
+        }
+        if (entry.isFile() && (SOURCE_EXT.test(entry.name) || MARKUP_EXT.test(entry.name)) && !/\.d\.ts$/iu.test(entry.name)) out.push(full);
     }
 }
 
 const isParamSegment = (segment: string) => /^(?::|\{|<|\*|\$\{)/u.test(segment) || segment.includes('${');
+const joinPath = (...parts: string[]) => `/${parts.map(p => String(p || '').replace(/^\/+|\/+$/gu, '')).filter(Boolean).join('/')}`;
 
-/** Route registrations, test files and label-bound keys in the delivered roots. */
+/** Route registrations, test files, page text and label-bound keys in the delivered roots. */
 export function collectServerEvidence(roots: string[], records: RequestedRecord[]): CoverageEvidence {
     const seen = new Set<string>();
     const files: string[] = [];
@@ -189,11 +456,11 @@ export function collectServerEvidence(roots: string[], records: RequestedRecord[
         try { real = fs.realpathSync(root); } catch { continue; }
         if (seen.has(real)) continue;
         seen.add(real);
-        walk(real, files);
+        walk(real, files, 0, !rootHasBundler(real));
     }
     const routes: HarvestedRoute[] = [];
     const prefixes = new Set<string>();
-    const serverFiles: string[] = [];
+    const routeCount = new Map<string, number>();
     const testFiles: string[] = [];
     const source: string[] = [];
     const tests: string[] = [];
@@ -208,19 +475,22 @@ export function collectServerEvidence(roots: string[], records: RequestedRecord[
         if (isTestFile(file)) { testFiles.push(file); tests.push(text); continue; }
         source.push(text);
         harvestLabelKeys(text, records, labelKeys);
-        if (CLIENT_FILE.test(text)) continue;
+        if (MARKUP_EXT.test(file) || CLIENT_FILE.test(text)) continue;
         const before = routes.length;
         harvestRoutes(text, file, routes, prefixes);
-        if (routes.length > before) serverFiles.push(file);
+        if (routes.length > before) routeCount.set(file, routes.length - before);
     }
     for (const route of routes) {
-        const first = route.path.split('/').filter(Boolean)[0];
-        if (first && !isParamSegment(first) && route.path.split('/').filter(Boolean).length > 1) prefixes.add(`/${first}/`);
+        if (!route.known || route.method === 'use' || route.dynamic) continue;
+        const segments = route.path.split('/').filter(Boolean);
+        let last = -1;
+        segments.forEach((s, i) => { if (!isParamSegment(s)) last = i; });
+        if (last >= 0) prefixes.add(`${joinPath(...segments.slice(0, last))}/`.replace(/^\/\/$/u, '/'));
     }
     return {
         routes,
         prefixes: Array.from(prefixes),
-        serverFiles,
+        serverFiles: Array.from(routeCount.entries()).sort((a, b) => b[1] - a[1]).map(([file]) => file),
         testFiles,
         sourceText: source.join('\n'),
         testText: tests.join('\n'),
@@ -228,10 +498,52 @@ export function collectServerEvidence(roots: string[], records: RequestedRecord[
     };
 }
 
+type ReceiverKind = 'app' | 'router' | null;
+
+/** Is this receiver something that SERVES routes in this file — and is its path the served path? */
+function jsReceivers(text: string): (name: string) => ReceiverKind {
+    const apps = new Set<string>();
+    const routers = new Set<string>();
+    const clients = new Set<string>();
+    const params = new Set<string>();
+    const imported = new Set<string>();
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?(?:require\(\s*['"](?:express|fastify|koa|hono)['"]\s*\)\s*\(|express\s*\(|[Ff]astify\s*\(|new\s+Koa\s*\(|new\s+Hono\s*\(|(?:https?\.)?createServer\s*\()/gu)) apps.add(m[1]);
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:express\s*\.\s*Router|Router|require\(\s*['"]express['"]\s*\)\s*\.\s*Router|new\s+(?:Koa)?Router)\s*\(/gu)) routers.add(m[1]);
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:axios|ky|got|superagent)\s*\.\s*(?:create|extend|defaults)\b/gu)) clients.add(m[1]);
+    for (const m of text.matchAll(/function\s*[\w$]*\s*\(([^)]*)\)|\(([^()]*)\)\s*=>|(?<![\w$.])([A-Za-z_$][\w$]*)\s*=>/gu)) {
+        for (const name of String(m[1] || m[2] || m[3] || '').split(',')) {
+            const clean = name.replace(/[:=].*$/u, '').replace(/[{}\s.]/gu, '').trim();
+            if (clean) params.add(clean);
+        }
+    }
+    for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]([^'"]+)['"]|(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]([^'"]+)['"]\s*\)/gu)) {
+        const name = m[1] || m[3];
+        if (name) imported.add(name);
+    }
+    const SERVER_NAME = /^(?:app|application|server|fastify)$/iu;
+    const ROUTER_NAME = /^(?:router|routes|[\w$]*Router|[\w$]*Routes)$/u;
+    return (name: string) => {
+        const lower = name.toLowerCase();
+        // What this file binds the name to decides first: «const api = express()» serves.
+        if (apps.has(name)) return 'app';
+        if (routers.has(name)) return 'router';
+        if (clients.has(name) || CLIENT_RECEIVERS.has(lower)) return null;
+        if (params.has(name) || imported.has(name)) {
+            if (SERVER_NAME.test(name)) return 'app';
+            if (ROUTER_NAME.test(name) || /^router$/iu.test(name)) return 'router';
+            return null;
+        }
+        if (SERVER_NAME.test(name)) return 'app';
+        if (ROUTER_NAME.test(name) || lower === 'router') return 'router';
+        return null;
+    };
+}
+
 function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>): void {
+    const receiverKind = jsReceivers(text);
     for (const m of text.matchAll(JS_ROUTE)) {
-        const receiver = String(m[1] || '').toLowerCase();
-        if (CLIENT_RECEIVERS.has(receiver)) continue;
+        const kind = receiverKind(String(m[1] || ''));
+        if (!kind) continue;
         const method = String(m[2] || '').toLowerCase();
         const routePath = String(m[4] || '');
         const closer = m[5];
@@ -242,23 +554,39 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         } else if (!HANDLER_AFTER.test(rest)) {
             continue;
         }
-        routes.push({ path: routePath, method, file, dynamic: routePath.includes('${') });
+        routes.push({ path: routePath, method, file, dynamic: routePath.includes('${'), known: kind === 'app' && !routePath.includes('${') });
         if (method === 'use') prefixes.add(routePath.endsWith('/') ? routePath : `${routePath}/`);
     }
-    for (const m of text.matchAll(PY_DECORATOR)) routes.push({ path: String(m[3] || ''), method: String(m[2] || '').toLowerCase(), file, dynamic: false });
-    for (const m of text.matchAll(PY_PREFIX)) {
+    // Python: an application's decorator path is the served path; a router's or
+    // blueprint's joins its own prefix, and may be mounted under another.
+    const pyApps = new Set(Array.from(text.matchAll(PY_APP)).map(m => m[1]));
+    const pyRouters = new Map<string, string>();
+    for (const m of text.matchAll(PY_ROUTER)) pyRouters.set(m[1], String(m[2] || '').match(PY_PREFIX_ARG)?.[1] || '');
+    for (const m of text.matchAll(PY_INCLUDE_PREFIX)) {
         const prefix = String(m[1] || '');
         if (prefix.startsWith('/')) prefixes.add(prefix.endsWith('/') ? prefix : `${prefix}/`);
     }
-    for (const m of text.matchAll(DJANGO_PATH)) routes.push({ path: `/${String(m[1] || '').replace(/^\//u, '')}`, method: 'route', file, dynamic: false });
-    for (const m of text.matchAll(GO_HANDLE)) routes.push({ path: String(m[1] || ''), method: 'route', file, dynamic: false });
+    for (const m of text.matchAll(PY_DECORATOR)) {
+        const receiver = String(m[1] || '');
+        const method = String(m[2] || '').toLowerCase();
+        const decorated = String(m[3] || '');
+        if (pyRouters.has(receiver)) {
+            const prefix = pyRouters.get(receiver) || '';
+            if (prefix.startsWith('/')) prefixes.add(prefix.endsWith('/') ? prefix : `${prefix}/`);
+            routes.push({ path: prefix ? `${joinPath(prefix, decorated)}${decorated.endsWith('/') ? '/' : ''}` : decorated, method, file, dynamic: false, known: false });
+        } else {
+            routes.push({ path: decorated, method, file, dynamic: false, known: pyApps.has(receiver) || receiver === 'app' });
+        }
+    }
+    for (const m of text.matchAll(DJANGO_PATH)) routes.push({ path: `/${String(m[1] || '').replace(/^\//u, '')}`, method: 'route', file, dynamic: false, known: false });
+    for (const m of text.matchAll(GO_HANDLE)) routes.push({ path: String(m[1] || ''), method: 'route', file, dynamic: false, known: true });
 }
 
 function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<string, Set<string>>): void {
     for (const record of records) {
         const labels = Array.from(new Set([record.ar, record.item, /[a-z]/iu.test(record.en) ? record.en : ''].map(s => String(s || '').trim()).filter(s => s.length >= 2)));
         for (const label of labels) {
-            const quoted = new RegExp(`["'\`]${label.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}["'\`]`, 'gu');
+            const quoted = new RegExp(`["'\`]${escapeRe(label)}["'\`]`, 'gu');
             for (const hit of text.matchAll(quoted)) {
                 const at = hit.index || 0;
                 const open = text.lastIndexOf('{', at);
@@ -294,8 +622,20 @@ function forms(phrase: string): string[] {
 
 /** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, and keys bound to his label. */
 export function identifiersFor(record: RequestedRecord, labelKeys: string[] = []): string[] {
-    const latin = [record.key, /[a-z]/iu.test(record.en) && !/[\u0600-\u06FF]/u.test(record.en) ? record.en : '', ...labelKeys];
+    const latin = [record.key, /[a-z]/iu.test(record.en) && !/[؀-ۿ]/u.test(record.en) ? record.en : '', ...labelKeys];
     return Array.from(new Set(latin.flatMap(forms)));
+}
+
+/**
+ * A record whose only Latin name is a transliteration of his Arabic word
+ * («العلاجات» → alajats, no dictionary English, no key bound to his label in
+ * the source): a build that serves it under its real English name cannot be
+ * matched — so a non-match is «not measured», never «not served».
+ */
+export function transliteratedOnly(record: RequestedRecord, labelKeys: string[] = []): boolean {
+    const arabicLabel = /[؀-ۿ]/u.test(record.ar || record.item);
+    const latinEn = /[a-z]/iu.test(record.en) && !/[؀-ۿ]/u.test(record.en);
+    return arabicLabel && !latinEn && !curatedNounKey(record.ar || record.item) && !labelKeys.length;
 }
 
 export type ProbeResult = 'served' | 'absent' | 'inconclusive';
@@ -303,26 +643,42 @@ export type ProbeResult = 'served' | 'absent' | 'inconclusive';
 const routeLike = (status: number, contentType: string) =>
     ((status >= 200 && status < 300) || status === 401 || status === 403 || status === 405) && !/text\/html/iu.test(contentType);
 
+/** One path the probe should GET for a record; `refutable` when a 404 there means «not served». */
+export interface ProbePath { path: string; refutable: boolean }
+
 /**
- * GET-only runtime probe. Each prefix first answers a negative control
- * (an absent nonce path): a prefix that «serves» the absent path is a
- * catch-all and proves nothing. Never writes user data.
+ * GET-only runtime probe. Never writes user data, never follows a redirect
+ * off the base origin.
+ *
+ *   - A record with registered routes is probed on the EXACT path its route
+ *     serves (with and without a trailing slash; a redirect to the same path
+ *     plus «/» is followed once — FastAPI's 307). Its parent path answers a
+ *     negative control first: a parent that «serves» an absent nonce is a
+ *     catch-all and proves nothing either way.
+ *   - Only a refutable path (registered on an application object) can make
+ *     the record «absent»; a router's path may be mounted elsewhere.
+ *   - A record with no registered route is probed under the prefixes the
+ *     tree's own routes use; «absent» only from such a prefix. With no
+ *     routes at all the probe can prove a record, never refute it.
  */
 export async function probeServedResources(
     baseUrl: string,
     prefixes: string[],
-    records: Array<{ key: string; ids: string[] }>,
-    opts: { signal?: AbortSignal; timeoutMs: number },
+    records: Array<{ key: string; ids: string[]; paths?: ProbePath[] }>,
+    opts: { signal?: AbortSignal; timeoutMs: number; details?: Record<string, string[]> },
 ): Promise<Record<string, ProbeResult>> {
     const base = String(baseUrl || '').replace(/\/+$/u, '');
     const result: Record<string, ProbeResult> = Object.fromEntries(records.map(r => [r.key, 'inconclusive' as ProbeResult]));
     if (!base) return result;
+    let origin = '';
+    try { origin = new URL(base).origin; } catch { return result; }
+    const note = (key: string, line: string) => { if (opts.details) (opts.details[key] ||= []).push(line); };
     // node:http, not fetch: the same transport in the API process and in tests,
-    // no redirect following, and a hard per-answer bound.
-    const get = (url: string): Promise<{ status: number; type: string } | null> => new Promise(resolve => {
+    // no automatic redirect following, and a hard per-answer bound.
+    const get = (url: string): Promise<{ status: number; type: string; location: string } | null> => new Promise(resolve => {
         if (opts.signal?.aborted) return resolve(null);
         let settled = false;
-        const finish = (value: { status: number; type: string } | null) => {
+        const finish = (value: { status: number; type: string; location: string } | null) => {
             if (settled) return;
             settled = true;
             opts.signal?.removeEventListener('abort', onAbort);
@@ -332,12 +688,14 @@ export async function probeServedResources(
         const onAbort = () => { req?.destroy(); finish(null); };
         try {
             const target = new URL(url);
+            if (target.origin !== origin) return finish(null);
             const client = target.protocol === 'https:' ? https : http;
             req = client.request(target, { method: 'GET', timeout: Math.max(1, opts.timeoutMs) }, res => {
                 const type = String(res.headers['content-type'] || '');
+                const location = String(res.headers.location || '');
                 res.resume();
-                res.on('end', () => finish({ status: res.statusCode || 0, type }));
-                res.on('error', () => finish({ status: res.statusCode || 0, type }));
+                res.on('end', () => finish({ status: res.statusCode || 0, type, location }));
+                res.on('error', () => finish({ status: res.statusCode || 0, type, location }));
             });
         } catch {
             return finish(null);
@@ -347,26 +705,177 @@ export async function probeServedResources(
         opts.signal?.addEventListener('abort', onAbort, { once: true });
         req.end();
     });
-    const candidates = Array.from(new Set(['/api/', '/', ...prefixes].map(p => {
+    const nonce = `__joe_absent_${Date.now().toString(36)}`;
+    const controls = new Map<string, boolean>();
+    /** Does this parent answer an absent path as absent (true), or is it a catch-all / silent (false)? */
+    const conclusiveParent = async (parent: string): Promise<boolean> => {
+        if (!controls.has(parent)) {
+            const control = await get(`${base}${parent}${nonce}`);
+            controls.set(parent, !!control && !routeLike(control.status, control.type));
+        }
+        return controls.get(parent) === true;
+    };
+    const answers = async (pathname: string): Promise<boolean> => {
+        const first = await get(`${base}${pathname}`);
+        if (!first) return false;
+        if (routeLike(first.status, first.type)) return true;
+        if (first.status >= 300 && first.status < 400 && first.location) {
+            let next = '';
+            try { next = new URL(first.location, `${base}${pathname}`).pathname; } catch { next = ''; }
+            if (next === `${pathname}/` || `${next}/` === pathname) {
+                const second = await get(`${base}${next}`);
+                return !!second && routeLike(second.status, second.type);
+            }
+        }
+        return false;
+    };
+    const parentOf = (pathname: string) => {
+        const segments = pathname.split('/').filter(Boolean);
+        return `${joinPath(...segments.slice(0, -1))}/`.replace(/^\/\/$/u, '/');
+    };
+    const used = Array.from(new Set(prefixes.map(p => {
         const withLead = p.startsWith('/') ? p : `/${p}`;
         return withLead.endsWith('/') ? withLead : `${withLead}/`;
     })));
-    const nonce = `__joe_absent_${Date.now().toString(36)}`;
-    let conclusive = 0;
-    for (const prefix of candidates) {
-        const control = await get(`${base}${prefix}${nonce}`);
-        if (!control || routeLike(control.status, control.type)) continue;
-        conclusive++;
-        for (const record of records) {
-            if (result[record.key] === 'served') continue;
-            for (const id of record.ids.slice(0, 8)) {
-                const answer = await get(`${base}${prefix}${id}`);
-                if (answer && routeLike(answer.status, answer.type)) { result[record.key] = 'served'; break; }
+    const servedUnder = new Set<string>();
+    const unprovenUnder = new Map<string, string[]>();
+    for (const record of records) {
+        if (opts.signal?.aborted) break;
+        const paths = (record.paths || []).filter(p => p.path && !isParamSegment(p.path.split('/').filter(Boolean).pop() || ''));
+        if (paths.length) {
+            let refuted = false;
+            for (const candidate of paths) {
+                const pathname = joinPath(candidate.path);
+                if (await answers(pathname) || await answers(`${pathname}/`)) {
+                    result[record.key] = 'served';
+                    note(record.key, `probe: GET ${pathname} answered`);
+                    break;
+                }
+                if (candidate.refutable && await conclusiveParent(parentOf(pathname))) {
+                    refuted = true;
+                    note(record.key, `probe: GET ${pathname} is registered but does not answer`);
+                }
             }
+            if (result[record.key] !== 'served' && refuted) result[record.key] = 'absent';
+            continue;
+        }
+        for (const prefix of used.length ? used : ['/api/', '/']) {
+            if (!(await conclusiveParent(prefix))) continue;
+            for (const id of record.ids.slice(0, 8)) {
+                if (await answers(`${prefix}${id}`)) {
+                    result[record.key] = 'served';
+                    servedUnder.add(prefix);
+                    note(record.key, `probe: GET ${prefix}${id} answered`);
+                    break;
+                }
+            }
+            if (result[record.key] === 'served') break;
+            unprovenUnder.set(record.key, [...(unprovenUnder.get(record.key) || []), prefix]);
         }
     }
-    if (conclusive > 0) for (const record of records) if (result[record.key] !== 'served') result[record.key] = 'absent';
+    // A prefix the tree's routes use, or where another of his records answered,
+    // is where his records live: nothing answering there is absent. Elsewhere a
+    // silence proves nothing.
+    for (const [key, prefixesTried] of unprovenUnder) {
+        if (result[key] === 'served') continue;
+        const proving = prefixesTried.filter(prefix => used.includes(prefix) || servedUnder.has(prefix));
+        if (proving.length) {
+            result[key] = 'absent';
+            note(key, `probe: nothing answers under ${proving.join(', ')}`);
+        }
+    }
     return result;
+}
+
+// ─── running the tests he asked for ─────────────────────────────────────────
+
+export interface RequestedTestsRun {
+    root: string;
+    /** The project's own tests executed (a runner existed and ran). */
+    ran: boolean;
+    passed: boolean;
+    /** No runner Joe knows for this stack: «tested» is then not measured, never assumed. */
+    noRunner?: boolean;
+    runner?: string;
+    error?: string;
+}
+
+const PLACEHOLDER_TEST = /no test specified|^\s*(?:exit\s+0|true|echo\b[^&|;]*)\s*$/iu;
+
+/** The root whose own test runner proves the tests: the manifest nearest the server file, or the run root. */
+export function requestedTestsRoot(evidence: CoverageEvidence, runRoot: string, roots: string[]): string {
+    const isProject = (dir: string) => ['package.json', 'pyproject.toml', 'requirements.txt', 'setup.py', 'go.mod'].some(f => fs.existsSync(path.join(dir, f)));
+    const nearest = (file: string, within: string[]): string => {
+        let dir = path.dirname(file);
+        for (let i = 0; i < 12; i++) {
+            if (isProject(dir) && within.some(r => isWithin(dir, r))) return dir;
+            const up = path.dirname(dir);
+            if (up === dir) break;
+            dir = up;
+        }
+        return '';
+    };
+    const scope = Array.from(new Set([runRoot, ...roots].map(r => String(r || '').trim()).filter(Boolean).map(r => path.resolve(r))));
+    for (const file of evidence.serverFiles) {
+        const found = nearest(file, scope);
+        if (found) return found;
+    }
+    return runRoot ? path.resolve(runRoot) : (scope[0] || '');
+}
+
+function isWithin(file: string, root: string): boolean {
+    const rel = path.relative(path.resolve(root), path.resolve(file));
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+}
+
+/**
+ * Run his project's own tests once: npm's test script through quality_run, or
+ * Python's own runner (pytest when the project uses it, else unittest — the
+ * standard library, present wherever Python is). The caller supplies the tool
+ * executor, so the run goes through the same execution path as every tool.
+ */
+export async function runRequestedTests(root: string, exec: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
+    const dir = String(root || '').trim();
+    if (!dir || !fs.existsSync(dir)) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
+    let scripts: Record<string, string> = {};
+    const hasManifest = fs.existsSync(path.join(dir, 'package.json'));
+    if (hasManifest) {
+        try { scripts = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'))?.scripts || {}; } catch { scripts = {}; }
+    }
+    if (hasManifest && String(scripts.test || '').trim() && !PLACEHOLDER_TEST.test(String(scripts.test))) {
+        try {
+            const run = await exec('quality_run', { path: dir, tasks: ['test'] });
+            const executed = Array.isArray(run?.output?.results) ? run.output.results.filter((r: any) => r?.skipped === false) : [];
+            const passed = run?.ok === true && executed.length > 0;
+            return { root: dir, ran: executed.length > 0, passed, runner: 'npm test', error: passed ? undefined : String(run?.error || executed[0]?.error || 'the test script did not pass').slice(0, 400) };
+        } catch (error: any) {
+            return { root: dir, ran: false, passed: false, runner: 'npm test', error: String(error?.message || error).slice(0, 300) };
+        }
+    }
+    const pythonProject = ['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].some(f => fs.existsSync(path.join(dir, f)))
+        || (() => { try { return fs.readdirSync(dir).some(name => /\.py$/iu.test(name)); } catch { return false; } })();
+    if (pythonProject) {
+        let usesPytest = false;
+        for (const f of ['requirements.txt', 'pyproject.toml', 'setup.cfg', 'pytest.ini']) {
+            try { if (/\bpytest\b/iu.test(fs.readFileSync(path.join(dir, f), 'utf8'))) usesPytest = true; } catch { /* absent */ }
+        }
+        const command = usesPytest ? 'python -m pytest -q' : 'python -m unittest discover -v';
+        try {
+            const run = await exec('shell_execute', { command, cwd: dir });
+            const passed = run?.ok === true;
+            return { root: dir, ran: true, passed, runner: command, error: passed ? undefined : String(run?.error || run?.output?.stderr || 'the tests did not pass').slice(0, 400) };
+        } catch (error: any) {
+            return { root: dir, ran: false, passed: false, runner: command, error: String(error?.message || error).slice(0, 300) };
+        }
+    }
+    if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script, so the requested tests cannot run' };
+    return { root: dir, ran: false, passed: false, noRunner: true, error: 'no test runner Joe knows for this project' };
+}
+
+/** A fingerprint of the files a test run depends on — an unchanged tree is not re-run. */
+export function testTreeFingerprint(root: string, evidence: CoverageEvidence): string {
+    const files = [...evidence.serverFiles, ...evidence.testFiles, path.join(root, 'package.json')];
+    return files.map(f => { try { const s = fs.statSync(f); return `${f}:${s.size}:${s.mtimeMs}`; } catch { return `${f}:-`; } }).sort().join('|');
 }
 
 // ─── the verdict ────────────────────────────────────────────────────────────
@@ -376,6 +885,7 @@ export interface RecordCoverage {
     ar: string;
     en: string;
     item: string;
+    /** null: not measured (the probe and the source could not tell). */
     served: boolean | null;
     tested: boolean | null;
     present: boolean | null;
@@ -386,11 +896,19 @@ export interface RequestCoverageReport {
     checked: number;
     records: RecordCoverage[];
     missing: RecordCoverage[];
+    /** Records whose delivery could not be measured — the delivery is not verified, never «all built». */
+    unverified?: RecordCoverage[];
     unread: string[];
+    /** Rules only a live multi-account probe can measure — named, not yet measured. */
+    capabilities?: string[];
+    clauses?: string[];
     testsRequested: string | null;
+    /** The executed run of his tests, when tests were asked for. */
+    testsRun?: RequestedTestsRun;
     servedApplies: boolean;
     /** The server file that registers most routes — the repair target. */
     serverFile: string;
+    serverFiles?: string[];
     /** Resources the server already serves statically — the pattern a repair follows. */
     patternResources: string[];
     prefixes: string[];
@@ -398,72 +916,157 @@ export interface RequestCoverageReport {
     testFiles: string[];
 }
 
-const wordIn = (text: string, id: string) => new RegExp(`(^|[^A-Za-z0-9])${id.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}([^A-Za-z0-9]|$)`, 'iu').test(text);
+const wordIn = (text: string, id: string) => new RegExp(`(^|[^A-Za-z0-9])${escapeRe(id)}([^A-Za-z0-9]|$)`, 'iu').test(text);
+
+/** Test text with skipped and todo tests taken out: a skipped test is not evidence. */
+export function liveTestText(testText: string): string {
+    let text = String(testText || '');
+    const opener = /(?:\b(?:it|test|describe|context)\s*\.\s*(?:skip|todo)|\bx(?:it|test|describe|context))\s*\(/gu;
+    for (let guard = 0; guard < 200; guard++) {
+        opener.lastIndex = 0;
+        const m = opener.exec(text);
+        if (!m) break;
+        let depth = 0;
+        let end = m.index + m[0].length - 1;
+        let quote = '';
+        for (let i = end; i < text.length; i++) {
+            const c = text[i];
+            if (quote) { if (c === '\\') { i++; continue; } if (c === quote) quote = ''; continue; }
+            if (c === '"' || c === "'" || c === '`') { quote = c; continue; }
+            if (c === '(') depth++;
+            else if (c === ')') { depth--; if (depth === 0) { end = i; break; } }
+            end = i;
+        }
+        text = `${text.slice(0, m.index)}${text.slice(end + 1)}`;
+    }
+    // Python: a decorated skip drops the test that follows it.
+    text = text.replace(/^([ \t]*)@(?:unittest\.skip\w*|pytest\.mark\.(?:skip\w*|xfail))[^\n]*\n(?:\1@[^\n]*\n)*\1(?:async\s+)?def\b[^\n]*\n(?:(?:\1[ \t]+[^\n]*|[ \t]*)\n)*/gmu, '');
+    return text;
+}
+
+function staticRouteMatches(routes: HarvestedRoute[], ids: string[]): Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean; readable: boolean; mount: boolean; exact: string }> {
+    const wanted = new Set(ids.map(id => id.toLowerCase()));
+    const matches: Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean; readable: boolean; mount: boolean; exact: string }> = [];
+    for (const route of routes) {
+        const segments = route.path.split('/').filter(Boolean);
+        for (let i = 0; i < segments.length; i++) {
+            if (isParamSegment(segments[i]) || !wanted.has(segments[i].toLowerCase())) continue;
+            const nested = segments.slice(0, i).some(isParamSegment);
+            const mount = route.method === 'use';
+            matches.push({
+                route,
+                writeOnly: ['post', 'put', 'patch', 'delete'].includes(route.method),
+                nested,
+                readable: !mount && !nested && ['get', 'all', 'route', 'api_route'].includes(route.method),
+                mount,
+                exact: nested ? '' : joinPath(...segments.slice(0, i + 1)),
+            });
+        }
+    }
+    return matches;
+}
+
+/** The exact paths the probe should GET for one record, from its registered routes. */
+export function probePathsFor(evidence: CoverageEvidence, ids: string[]): ProbePath[] {
+    const out: ProbePath[] = [];
+    const mounts = evidence.routes.filter(r => r.method === 'use' && r.known && !r.dynamic).map(r => r.path);
+    for (const match of staticRouteMatches(evidence.routes, ids)) {
+        if (!match.exact || !(match.readable || match.mount)) continue;
+        if (match.route.known && match.readable) out.push({ path: match.exact, refutable: true });
+        else {
+            out.push({ path: match.exact, refutable: false });
+            for (const mount of mounts) if (!match.exact.startsWith(joinPath(mount))) out.push({ path: joinPath(mount, match.exact), refutable: false });
+        }
+    }
+    const seen = new Set<string>();
+    return out.filter(p => { const k = `${p.path}|${p.refutable}`; if (seen.has(k)) return false; seen.add(k); return true; });
+}
 
 export function judgeRequestCoverage(input: {
     records: RequestedRecords;
     evidence: CoverageEvidence;
     probe?: Record<string, ProbeResult>;
+    probeDetails?: Record<string, string[]>;
     backendRequested: boolean;
+    /** The executed run of his tests; «tested» needs it to have passed. */
+    testsRun?: RequestedTestsRun;
 }): RequestCoverageReport {
     const { records, evidence } = input;
     const servedApplies = input.backendRequested === true || evidence.routes.length > 0;
+    const liveTests = liveTestText(evidence.testText);
     const out: RecordCoverage[] = records.entities.map(record => {
-        const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
+        const labelKeys = evidence.labelKeys[record.key] || [];
+        const ids = identifiersFor(record, labelKeys);
+        const onlyTransliterated = transliteratedOnly(record, labelKeys);
         const why: string[] = [];
         let served: boolean | null = null;
         let present: boolean | null = null;
         if (servedApplies) {
-            const match = staticRouteMatch(evidence.routes, ids);
+            const matches = staticRouteMatches(evidence.routes, ids);
+            const readable = matches.filter(m => m.readable);
+            const unseen = matches.filter(m => m.writeOnly || m.nested);
+            const mounts = matches.filter(m => m.mount);
             const probed = input.probe?.[record.key];
-            if (match) why.push(`route ${match.route.method.toUpperCase()} ${match.route.path} (${path.basename(match.route.file)})`);
-            if (probed) why.push(`probe: ${probed}`);
-            served = probed === 'served'
-                || (!!match && (probed !== 'absent' || match.writeOnly || match.nested));
+            const shown = readable[0] || unseen[0] || mounts[0];
+            if (shown) why.push(`route ${shown.route.method.toUpperCase()} ${shown.route.path} (${path.basename(shown.route.file)})`);
+            for (const line of input.probeDetails?.[record.key] || []) why.push(line);
+            if (probed && !(input.probeDetails?.[record.key] || []).length) why.push(`probe: ${probed}`);
+            if (probed === 'served') served = true;
+            else if (probed === 'absent') {
+                // A registered GET route that does not answer is not served; a
+                // write-only or nested route is what the GET probe cannot see.
+                served = readable.length ? false : unseen.length ? true : mounts.length ? null : false;
+            } else {
+                served = (readable.length || unseen.length) ? true : mounts.length ? null : evidence.routes.length ? false : null;
+            }
+            if (served === false && onlyTransliterated && !readable.length) served = null;
+            if (served === null) why.push(onlyTransliterated ? 'its only Latin name is a transliteration — not measured' : 'the source and the probe could not tell — not measured');
         } else {
+            const quotedLabel = (label: string) => !!label && new RegExp(`["'\`][^"'\`]*${escapeRe(label)}[^"'\`]*["'\`]`, 'u').test(evidence.sourceText);
+            const markupLabel = (label: string) => !!label && /[؀-ۿ]/u.test(label) && new RegExp(`>[^<]*${escapeRe(label)}`, 'u').test(evidence.sourceText);
             present = ids.some(id => wordIn(evidence.sourceText, id))
-                || [record.ar, record.item].some(label => label && new RegExp(`["'\`][^"'\`]*${label.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&')}[^"'\`]*["'\`]`, 'u').test(evidence.sourceText));
+                || [record.ar, record.item].some(label => quotedLabel(label) || markupLabel(label));
+            if (!present && onlyTransliterated) { present = null; why.push('its only Latin name is a transliteration — not measured'); }
         }
-        const tested = records.testsRequested ? ids.some(id => wordIn(evidence.testText, id)) : null;
+        let tested: boolean | null = null;
+        if (records.testsRequested) {
+            const mentioned = servedApplies
+                ? ids.some(id => new RegExp(`/${escapeRe(id)}(?![A-Za-z0-9_])`, 'iu').test(liveTests))
+                : ids.some(id => wordIn(liveTests, id));
+            const run = input.testsRun;
+            if (!run) tested = mentioned ? null : false;
+            else if (!run.ran) tested = run.noRunner ? null : false;
+            else tested = mentioned && run.passed;
+            if (records.testsRequested && !mentioned) why.push('no test exercises its route');
+            if (run && run.ran && !run.passed) why.push(`its project's tests failed (${run.runner || 'tests'})`);
+            if (tested === null) why.push(run?.noRunner ? 'no runner for this project\'s tests — tests not measured' : 'its tests were not run — not measured');
+            if (tested === false && onlyTransliterated && !mentioned) tested = null;
+        }
         return { key: record.key, ar: record.ar, en: record.en, item: record.item, served, tested, present, evidence: why };
     });
-    const counts = new Map<string, number>();
-    for (const route of evidence.routes) counts.set(route.file, (counts.get(route.file) || 0) + 1);
-    const serverFile = Array.from(counts.entries()).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+    const serverFiles = evidence.serverFiles || [];
     const patternResources = Array.from(new Set(evidence.routes
         .filter(route => !route.dynamic)
         .map(route => route.path.split('/').filter(Boolean).filter(s => !isParamSegment(s)).pop() || '')
         .filter(s => s && !/^(?:api|health|auth|login|logout|me)$/iu.test(s))));
+    const missing = out.filter(r => r.served === false || r.tested === false || r.present === false);
     return {
         checked: out.length,
         records: out,
-        missing: out.filter(r => r.served === false || r.tested === false || r.present === false),
+        missing,
+        unverified: out.filter(r => !missing.includes(r) && ((servedApplies && r.served === null) || (!servedApplies && r.present === null) || (records.testsRequested && r.tested === null))),
         unread: records.unread,
+        capabilities: records.capabilities || [],
+        clauses: records.clauses || [],
         testsRequested: records.testsRequested,
+        ...(input.testsRun ? { testsRun: input.testsRun } : {}),
         servedApplies,
-        serverFile,
+        serverFile: serverFiles[0] || '',
+        serverFiles,
         patternResources,
         prefixes: evidence.prefixes,
         testFiles: evidence.testFiles,
     };
-}
-
-function staticRouteMatch(routes: HarvestedRoute[], ids: string[]): { route: HarvestedRoute; writeOnly: boolean; nested: boolean } | null {
-    const wanted = new Set(ids.map(id => id.toLowerCase()));
-    const matches: Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean }> = [];
-    for (const route of routes) {
-        const segments = route.path.split('/').filter(Boolean);
-        for (let i = 0; i < segments.length; i++) {
-            if (isParamSegment(segments[i]) || !wanted.has(segments[i].toLowerCase())) continue;
-            matches.push({
-                route,
-                writeOnly: ['post', 'put', 'patch', 'delete'].includes(route.method),
-                nested: i > 0 && isParamSegment(segments[i - 1]),
-            });
-        }
-    }
-    // Prefer a match the probe cannot refute (write-only or nested under a parameter).
-    return matches.find(m => m.writeOnly || m.nested) || matches[0] || null;
 }
 
 /** The delivery error for missing records, naming each and what is missing. */
@@ -480,6 +1083,16 @@ export function coverageError(report: RequestCoverageReport): string {
     return `requested_entities_not_delivered: ${items.join('; ')}`.slice(0, 900);
 }
 
+/** What could not be measured, named: records the probe could not see, and stated rules no instrument measures yet. */
+export function coverageUnverified(report: RequestCoverageReport): string[] {
+    const records = (report.unverified || []).map(record => {
+        const label = record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key;
+        const what = [record.served === null && report.servedApplies ? 'serving not measured' : '', record.present === null && !report.servedApplies ? 'presence not measured' : '', record.tested === null && report.testsRequested ? 'tests not measured' : ''].filter(Boolean).join(', ');
+        return `${label} (${what || 'not measured'})`;
+    });
+    return [...records, ...(report.capabilities || []).map(c => `${c} (not measured)`)];
+}
+
 export interface RequestCoverageRepairTask {
     dimension: 'served' | 'tested';
     task: string;
@@ -489,19 +1102,60 @@ export interface RequestCoverageRepairTask {
     description: string;
     /** JSON: the records as structured data — never text appended to his request. */
     artifactContext: string;
+    /**
+     * A deterministic manifest edit the tests repair needs: his package.json
+     * has no test script, so tests written into `repairFile` would never run.
+     * The caller applies it (with the same snapshot and restore as the file).
+     */
+    manifestPatch?: { file: string; script: string };
+}
+
+/** Is this a Python project (its own runner is unittest/pytest, never node:test)? */
+function pythonRoot(root: string, serverFile: string): boolean {
+    if (/\.py$/iu.test(serverFile)) return true;
+    return ['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].some(f => fs.existsSync(path.join(root, f)));
+}
+
+/** The test script a node project needs to run tests written in tests/, or null when it already has a real one. */
+export function testScriptPatchFor(root: string): { file: string; script: string } | null {
+    const file = path.join(root, 'package.json');
+    if (!fs.existsSync(file)) return null;
+    try {
+        const scripts = JSON.parse(fs.readFileSync(file, 'utf8'))?.scripts || {};
+        if (String(scripts.test || '').trim() && !PLACEHOLDER_TEST.test(String(scripts.test))) return null;
+    } catch { return null; }
+    return { file, script: 'node --test tests/' };
+}
+
+/** Apply a manifest patch; returns the bytes before, for the caller's restore. */
+export function applyTestScriptPatch(patch: { file: string; script: string }): Buffer | null {
+    try {
+        const before = fs.readFileSync(patch.file);
+        const manifest = JSON.parse(before.toString('utf8'));
+        manifest.scripts = { ...(manifest.scripts || {}), test: patch.script };
+        const eol = before.toString('utf8').includes('\r\n') ? '\r\n' : '\n';
+        fs.writeFileSync(patch.file, `${JSON.stringify(manifest, null, 2).replace(/\n/gu, eol)}${eol}`);
+        return before;
+    } catch {
+        return null;
+    }
 }
 
 /**
  * The single evidence-bound repair for a coverage gap: serving first (the
  * server file that already registers routes, following the resources it
  * serves), then tests (the project's own test file, or a new one beside the
- * server). No server file means no evidence-bound target: null, never a
+ * server, in the project's own language and runner). Every target lies inside
+ * the server root — a repair never rewrites the interface's API client or its
+ * UI test. No server file there means no evidence-bound target: null, never a
  * guessed file.
  */
 export function requestCoverageRepairTask(
     report: RequestCoverageReport,
     opts: { request: string; serverRoot: string; testFiles: string[] },
 ): RequestCoverageRepairTask | null {
+    const root = String(opts.serverRoot || '').trim();
+    if (!root) return null;
     const notServed = report.missing.filter(r => r.served === false || r.present === false);
     const untested = report.missing.filter(r => r.tested === false && r.served !== false && r.present !== false);
     const label = (r: RecordCoverage) => (r.ar && r.ar !== r.key ? `${r.key} (${r.ar})` : r.key);
@@ -511,8 +1165,9 @@ export function requestCoverageRepairTask(
         prefixes: report.prefixes,
         deliverables: report.testsRequested ? [report.testsRequested] : [],
     });
+    const serverFile = [report.serverFile, ...(report.serverFiles || [])].find(file => file && isWithin(file, root)) || '';
     if (notServed.length) {
-        if (!report.serverFile) return null;
+        if (!serverFile) return null;
         const names = notServed.map(label).join(', ');
         const pattern = report.patternResources.length ? report.patternResources.join(', ') : 'the resources it already serves';
         return {
@@ -521,22 +1176,26 @@ export function requestCoverageRepairTask(
                 + `${report.prefixes.length ? ` under ${report.prefixes.join(', ')}` : ''}: list, read one, create, update and delete each, with its own storage. `
                 + 'Keep every existing route and behaviour working.',
             error: `requested_entities_not_served: ${names}`.slice(0, 900),
-            repairFile: report.serverFile,
+            repairFile: serverFile,
             description: String(opts.request || '').slice(0, 4000),
             artifactContext: context(notServed),
         };
     }
     if (untested.length) {
         const names = untested.map(label).join(', ');
-        const target = opts.testFiles[0] || path.join(opts.serverRoot || path.dirname(report.serverFile || '.'), 'tests', 'requested-records.test.js');
+        const python = pythonRoot(root, serverFile);
+        const own = (opts.testFiles || []).filter(file => isWithin(file, root) && (python ? /\.py$/iu.test(file) : /\.[cm]?[jt]sx?$/iu.test(file)));
+        const target = own[0] || path.join(root, 'tests', python ? 'test_requested_records.py' : 'requested-records.test.js');
+        const manifestPatch = python ? null : testScriptPatchFor(root);
         return {
             dimension: 'tested',
-            task: `Add automated tests, run by the project's own test script, that exercise the routes of: ${names} — `
+            task: `Add automated tests, run by the project's own test runner (${python ? 'unittest or pytest' : 'node:test via the test script'}), that exercise the routes of: ${names} — `
                 + 'a successful request, invalid input refused, and an unknown id answered as not found.',
             error: `requested_entity_tests_missing: ${names}`.slice(0, 900),
             repairFile: target,
             description: String(opts.request || '').slice(0, 4000),
             artifactContext: context(untested),
+            ...(manifestPatch ? { manifestPatch } : {}),
         };
     }
     return null;

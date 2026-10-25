@@ -1,6 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
-import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage, probePathsFor, probeServedResources, requestCoverageRepairTask, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun } from '../../../core/quality/request-coverage';
 import { RepairTicketService } from '../../services/RepairTicketService';
 import { deliveryPartsForRun } from '../../../core/quality/delivery-parts';
 import { staticSiteRoot } from '../preview-site';
@@ -2826,8 +2826,13 @@ export class ProjectPipelineTool implements ToolDefinition {
             finalHonestBlocker = honestBlocker || blocking;
             liveRunError = blocking
                 ? [verdict.firstError, ...liveRunNotes].filter(Boolean).join('; ').slice(0, 900)
-                : (final && verdict.unread.length && !verdict.verified)
-                    ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}`.slice(0, 900)
+                : (final && (verdict.unread.length || verdict.unverified.length) && !verdict.verified)
+                    // Unread: his words produced no record. Unverified: read, but no
+                    // instrument could measure it — never told as «could not be read».
+                    ? [
+                        verdict.unread.length ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}` : '',
+                        verdict.unverified.length ? `not measured, so their delivery is not verified: ${verdict.unverified.join('; ')}` : '',
+                    ].filter(Boolean).join('; ').slice(0, 900)
                     : '';
             return verdict;
         };
@@ -2844,18 +2849,27 @@ export class ProjectPipelineTool implements ToolDefinition {
          * whenever project_run confirmed a live URL — even when the quality or
          * scope gate already failed — so missing records are always named.
          */
+        /** One executed run of his tests per unchanged tree: a re-measurement after an edit re-runs them, an idle one does not. */
+        const requestedTestRuns = new Map<string, RequestedTestsRun>();
         const measureRequestedRecords = async (runRes: any, roots: string[]) => {
             ledger.forget('coverage');
-            const backendRequested = requestDeclaresOwnBackend(productRequest);
+            ledger.forget('tests');
+            // The gate's own fact — a server the request asks for (a backend, a
+            // database, sign-in, accounts, roles, an API) — not every claim the
+            // router reads as needing a server (round 20: an invoice in a list of
+            // records made P080's actions «unread records»).
+            const backendRequested = backendRequestedFor(productRequest);
             const records = requestedRecords(productRequest, { backendRequested });
-            if (!records.entities.length && !records.unread.length) {
+            if (!records.entities.length && !records.unread.length && !(records.capabilities || []).length && !records.testsRequested) {
                 requestCoverage = undefined;
                 return;
             }
-            const deliveredRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), ...roots].filter(Boolean)));
+            const runRoot = String(runRes?.output?.cwd || '').trim();
+            const deliveredRoots = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
             const evidence = collectServerEvidence(deliveredRoots, records.entities);
             const servedApplies = backendRequested || evidence.routes.length > 0;
-            let probe: Record<string, 'served' | 'absent' | 'inconclusive'> | undefined;
+            let probe: Record<string, ProbeResult> | undefined;
+            const probeDetails: Record<string, string[]> = {};
             const base = verifiedLiveUrl(ledger.all());
             if (servedApplies && base && records.entities.length) {
                 const bound = bindRunCancellation(context?.cancellation, context?.signal);
@@ -2863,20 +2877,51 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // project_run's own bound for one HTTP answer — no new constant.
                     const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
                     probe = await probeServedResources(base, evidence.prefixes,
-                        records.entities.map(record => ({ key: record.key, ids: identifiersFor(record, evidence.labelKeys[record.key] || []) })),
-                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500 });
+                        records.entities.map(record => {
+                            const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
+                            // The exact path each record's own route registers — never a guessed prefix.
+                            return { key: record.key, ids, paths: probePathsFor(evidence, ids) };
+                        }),
+                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
                 } finally {
                     bound.dispose();
                 }
             }
-            requestCoverage = judgeRequestCoverage({ records, evidence, probe, backendRequested });
+            // «Tested» means his tests RAN and passed (round 20: a word in a
+            // skipped test, or a file no test script collects, counted as tested).
+            let testsRun: RequestedTestsRun | undefined;
+            if (records.testsRequested) {
+                const testsRoot = requestedTestsRoot(evidence, runRoot, deliveredRoots);
+                const fingerprint = `${testsRoot}|${testTreeFingerprint(testsRoot, evidence)}`;
+                testsRun = requestedTestRuns.get(fingerprint);
+                if (!testsRun) {
+                    say(pick(isAr, '▶️ أشغّل الاختبارات التي طلبتها لأثبت أنها تنجح…', '▶️ Running the tests you asked for, to prove they pass…'));
+                    testsRun = await runRequestedTests(testsRoot, (tool, input) =>
+                        executeTool(tool, input, { ...(context || {}), language: isAr ? 'ar' : 'en' }));
+                    requestedTestRuns.set(fingerprint, testsRun);
+                }
+                deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, 'tests']));
+                // No runner Joe knows: 'tests' stays required and unmeasured — not verified, never passed.
+                if (!testsRun.noRunner) {
+                    ledger.record({
+                        instrument: 'tests',
+                        target: testsRun.root,
+                        ok: testsRun.passed,
+                        error: testsRun.passed ? undefined
+                            : `the requested tests ${testsRun.ran ? 'did not pass' : 'could not run'} in ${path.basename(testsRun.root || '.')}: ${String(testsRun.error || '').slice(0, 400)}`,
+                    });
+                }
+            }
+            requestCoverage = judgeRequestCoverage({ records, evidence, probe, probeDetails, backendRequested, testsRun });
+            const unverified = coverageUnverified(requestCoverage);
             ledger.record({
                 instrument: 'coverage',
                 ok: requestCoverage.missing.length === 0,
                 error: requestCoverage.missing.length ? coverageError(requestCoverage) : undefined,
                 unread: requestCoverage.unread,
+                unverified,
             });
-            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} tests=${requestCoverage.testsRequested ? 'requested' : 'not requested'}`);
+            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} unverified=${unverified.length} capabilities=${(requestCoverage.capabilities || []).length} tests=${testsRun ? (testsRun.passed ? 'passed' : testsRun.ran ? 'failed' : testsRun.noRunner ? 'no runner' : 'not run') : 'not requested'}`);
         };
         /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
         let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
@@ -3830,7 +3875,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 : finalVerified ? 'delivered'
                     // A requested record measured missing blocks — it is never a partial delivery.
                     : finalDeliveryVerdict.coverageFailed ? 'blocked'
-                    : (finalDeliveryVerdict.unread.length && !finalDeliveryVerdict.failures.length) ? 'not_verified'
+                    : ((finalDeliveryVerdict.unread.length || finalDeliveryVerdict.unverified.length) && !finalDeliveryVerdict.failures.length) ? 'not_verified'
                         : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
             finalVerified,
@@ -4240,23 +4285,38 @@ export class ProjectPipelineTool implements ToolDefinition {
         if (requestCoverage) {
             // What he named, record by record. «0 checked» is said as such —
             // never as «all built».
-            const mark = (value: boolean | null, yes: string, no: string) => value === null ? '' : value ? yes : no;
+            // «not measured» is said as such — a record the probe could not see is never counted as proven.
+            const applies = (value: boolean | null, measuredHere: boolean) => measuredHere || value !== null;
+            const mark = (value: boolean | null, measuredHere: boolean, yes: string, no: string) => !applies(value, measuredHere) ? ''
+                : value === null ? (ar ? `${yes}: لم يُقَس` : `${yes}: not measured`) : value ? yes : no;
+            const unverifiedCount = (requestCoverage.unverified || []).length;
             lines.push('');
             lines.push(ar
-                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} مثبتة`
-                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} proven`);
+                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} مثبتة`
+                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} proven`);
             for (const record of requestCoverage.records.slice(0, 24)) {
                 const facts = [
-                    mark(record.served, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
-                    mark(record.tested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
-                    mark(record.present, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
+                    mark(record.served, requestCoverage.servedApplies, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
+                    mark(record.tested, !!requestCoverage.testsRequested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
+                    mark(record.present, !requestCoverage.servedApplies, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
                 ].filter(Boolean).join(ar ? '، ' : ', ');
                 lines.push(`- ${record.ar && record.ar !== record.key ? `${record.ar} (${record.key})` : record.key}: ${facts}`);
+            }
+            if (requestCoverage.testsRun) {
+                const run = requestCoverage.testsRun;
+                lines.push(ar
+                    ? `- اختباراتك (${run.runner || 'tests'}): ${run.passed ? 'شُغّلت ونجحت' : run.ran ? 'شُغّلت وفشلت' : 'لم تُشغَّل'}`
+                    : `- Your tests (${run.runner || 'tests'}): ${run.passed ? 'ran and passed' : run.ran ? 'ran and failed' : 'did not run'}`);
             }
             if (requestCoverage.unread.length) {
                 lines.push(ar
                     ? `- لم أستطع قراءتها كسجلات، فلم أتحقق من تسليمها: ${requestCoverage.unread.join('، ')}`
                     : `- Could not read these as records, so their delivery is not verified: ${requestCoverage.unread.join(', ')}`);
+            }
+            if ((requestCoverage.capabilities || []).length) {
+                lines.push(ar
+                    ? `- قاعدة طلبتها ولم يقِسها فحص حي بعد، فلم أتحقق منها: ${(requestCoverage.capabilities || []).join('، ')}`
+                    : `- A rule you stated that no live check measures yet, so it is not verified: ${(requestCoverage.capabilities || []).join(', ')}`);
             }
         }
 

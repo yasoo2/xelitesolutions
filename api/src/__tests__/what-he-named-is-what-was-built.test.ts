@@ -56,7 +56,8 @@ describe('the records he named, and every item that could not be read', () => {
         expect(testsRequestedIn('Build a booking page and test it in the browser.')).toBeNull();
     });
     it('a landing page\'s sections are not records', () => {
-        expect(requestedRecords(LANDING, { backendRequested: false })).toEqual({ entities: [], unread: [], testsRequested: null });
+        // Round 20: the reading also names stated rules and behaviour clauses — none here.
+        expect(requestedRecords(LANDING, { backendRequested: false })).toEqual({ entities: [], unread: [], capabilities: [], clauses: [], testsRequested: null });
     });
 });
 

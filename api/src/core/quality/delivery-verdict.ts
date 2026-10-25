@@ -16,8 +16,13 @@
  * is a pure function of the ledger.
  */
 
-/** service: a request that needs a server got a delivered part that serves one (round 20). */
-export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'browser' | 'spec' | 'program' | 'service';
+/**
+ * service: a request that needs a server got a delivered part that serves one.
+ * tests: the project's own tests, RUN — required when the request asks for
+ * tests («tested» used to be a word found in a test file, even in a skipped
+ * one, and nothing ever executed the suite). Both round 20.
+ */
+export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'tests' | 'browser' | 'spec' | 'program' | 'service';
 
 export interface DeliveryMeasurement {
     instrument: DeliveryInstrument;
@@ -28,6 +33,13 @@ export interface DeliveryMeasurement {
     target?: string;
     /** coverage: requested items that could not be read — the delivery is then not verified, never delivered. */
     unread?: string[];
+    /**
+     * coverage: what he named that no instrument could measure — a record the
+     * probe could not see, a rule only a multi-account probe could check
+     * («each staff member only sees their own records»). Not verified, never
+     * delivered — and never reported as «could not be read»: it was read.
+     */
+    unverified?: string[];
     /** live: the URL project_run confirmed. */
     url?: string;
 }
@@ -84,11 +96,13 @@ export interface DeliveryVerdict {
     coverageFailed: boolean;
     /** Requested items that could not be read — not verified, never delivered. */
     unread: string[];
+    /** What he named that no instrument could measure — not verified, never delivered. */
+    unverified: string[];
     /** The first failure's error, by instrument priority. */
     firstError: string;
 }
 
-const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'service', 'quality', 'coverage', 'scope', 'browser', 'spec'];
+const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'service', 'quality', 'coverage', 'tests', 'scope', 'browser', 'spec'];
 
 export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const measurements = Array.isArray(input.measurements) ? input.measurements : [];
@@ -98,15 +112,16 @@ export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const required = Array.from(new Set<DeliveryInstrument>([input.primary === 'program' ? 'program' : 'live', ...(input.required || [])]));
     const unmeasured = required.filter(instrument => !has(instrument));
     const unread = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unread || []) : [])));
+    const unverified = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unverified || []) : [])));
     const coverageFailed = failures.some(m => m.instrument === 'coverage');
     const base = input.phaseVerified === true && input.requestFidelityBlocked !== true;
-    const verified = base && failures.length === 0 && unmeasured.length === 0 && unread.length === 0;
+    const verified = base && failures.length === 0 && unmeasured.length === 0 && unread.length === 0 && unverified.length === 0;
     // Partial rides only on the TaskFlow shape: everything measured passed except
     // named capability scope, and every required instrument — Browser QA among
-    // them — measured clean. Missing records or unread items never ride it.
+    // them — measured clean. Missing records, unread or unmeasured items never ride it.
     const partial = !verified && base
         && failures.length > 0 && failures.every(m => m.instrument === 'scope')
-        && unmeasured.length === 0 && unread.length === 0
+        && unmeasured.length === 0 && unread.length === 0 && unverified.length === 0
         && required.every(instrument => instrument === 'scope' || passed(instrument));
     const firstFailure = PRIORITY.map(instrument => failures.find(m => m.instrument === instrument)).find(Boolean);
     return {
@@ -116,6 +131,7 @@ export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
         unmeasured,
         coverageFailed,
         unread,
+        unverified,
         firstError: String(firstFailure?.error || (unmeasured.length ? `${unmeasured.join(', ')} not measured` : '')).trim(),
     };
 }
