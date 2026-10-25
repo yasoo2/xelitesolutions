@@ -63,17 +63,20 @@ describe('a program is proven by its own tests, not by a URL', () => {
     });
 });
 
-describe('a service\'s own code is scope evidence (C4)', () => {
+describe('a service\'s own code is scope evidence (C4) — inside one route handler, for an API-only delivery (round 20)', () => {
+    const api = { serviceOnly: true };
     it('search: a route that reads the query and narrows its rows', () => {
-        expect(hasSearchEvidence("app.get('/api/items', (req, res) => { const q = req.query.q; res.json(rows.filter(r => r.name.includes(q))); });")).toBe(true);
-        expect(hasSearchEvidence("app.get('/api/items', (req, res) => res.json(rows));")).toBe(false);
-        expect(hasSearchEvidence("const { search } = req.query; db.prepare('SELECT * FROM books WHERE title LIKE ?').all(`%${search}%`);")).toBe(true);
+        expect(hasSearchEvidence("app.get('/api/items', (req, res) => { const q = req.query.q; res.json(rows.filter(r => r.name.includes(q))); });", api)).toBe(true);
+        expect(hasSearchEvidence("app.get('/api/items', (req, res) => res.json(rows));", api)).toBe(false);
+        expect(hasSearchEvidence("app.get('/api/books', (req, res) => { const { search } = req.query; res.json(db.prepare('SELECT * FROM books WHERE title LIKE ?').all(`%${search}%`)); });", api)).toBe(true);
+        // With an interface delivered, the interface must offer search itself.
+        expect(hasSearchEvidence("app.get('/api/items', (req, res) => { const q = req.query.q; res.json(rows.filter(r => r.name.includes(q))); });")).toBe(false);
     });
     it('filtering and sorting: field parameters that narrow, sort parameters that order', () => {
-        expect(hasFilterEvidence("const status = req.query.status; db.prepare('SELECT * FROM t WHERE status = ?').all(status);")).toBe(true);
-        expect(hasFilterEvidence("const page = req.query.page; res.json(rows.slice(0, 10));")).toBe(false);
-        expect(hasSortingEvidence("const { sort } = req.query; db.prepare(`SELECT * FROM t ORDER BY ${col(sort)}`).all();")).toBe(true);
-        expect(hasSortingEvidence("app.get('/api/t', (q, s) => s.json(rows));")).toBe(false);
+        expect(hasFilterEvidence("app.get('/api/t', (req, res) => { const status = req.query.status; res.json(db.prepare('SELECT * FROM t WHERE status = ?').all(status)); });", api)).toBe(true);
+        expect(hasFilterEvidence("app.get('/api/t', (req, res) => { const page = req.query.page; res.json(rows.slice(0, 10)); });", api)).toBe(false);
+        expect(hasSortingEvidence("app.get('/api/t', (req, res) => { const { sort } = req.query; res.json(db.prepare(`SELECT * FROM t ORDER BY ${col(sort)}`).all()); });", api)).toBe(true);
+        expect(hasSortingEvidence("app.get('/api/t', (q, s) => s.json(rows));", api)).toBe(false);
     });
 });
 
@@ -83,7 +86,7 @@ describe('the pipeline is wired to the parts and roles', () => {
     it('Browser QA runs only for a delivered interface; a requested but absent one is a named failure', () => {
         expect(src).toMatch(/const browserQaTarget = interfaceDelivered && mayRunBrowserQa\(ledger\.all\(\)\)/);
         expect(src).toMatch(/if \(!interfaceDelivered && verifiedLiveUrl\(ledger\.all\(\)\) && deliveryRoles\.interface\)/);
-        expect(src).toMatch(/no delivered part serves one \(no index\.html\)/);
+        expect(src).toMatch(/no delivered part serves one \(no page is served at the live address\)/);
     });
     it('a program-only request runs the program\'s own tests instead of project_run', () => {
         expect(src).toMatch(/if \(verified && programOnly\) \{\s*await recordProgramProof\(\);\s*\} else if \(verified\) \{/);

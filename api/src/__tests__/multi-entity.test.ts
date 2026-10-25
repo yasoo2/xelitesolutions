@@ -77,7 +77,9 @@ describe('and the builder turns it into real tables', () => {
     it('the model is derived at build time and logged', () => {
         // The derivation moved behind the designer: a known domain still wins,
         // and anything outside the six is designed by a constrained model.
-        expect(A()).toMatch(/await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\)/);
+        // Round 20: the designer reads the request's list the way the delivery gate does.
+        expect(A()).toMatch(/const listedRequest = normaliseListedRequest\(request\)\.text;/);
+        expect(A()).toMatch(/await designDataModel\(listedRequest, \{ onNote: \(n: string\) => term\(n\) \}\)/);
         const d = fs.readFileSync(path.join(SRC, 'core', 'design', 'schema-designer.ts'), 'utf-8');
         expect(d).toMatch(/const known = deriveDataModel\(request\);/);
         expect(d).toMatch(/data model: a known domain matched/);

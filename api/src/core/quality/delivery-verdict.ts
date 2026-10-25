@@ -16,7 +16,8 @@
  * is a pure function of the ledger.
  */
 
-export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'browser' | 'spec' | 'program';
+/** service: a request that needs a server got a delivered part that serves one (round 20). */
+export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'browser' | 'spec' | 'program' | 'service';
 
 export interface DeliveryMeasurement {
     instrument: DeliveryInstrument;
@@ -87,7 +88,7 @@ export interface DeliveryVerdict {
     firstError: string;
 }
 
-const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'quality', 'coverage', 'scope', 'browser', 'spec'];
+const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'service', 'quality', 'coverage', 'scope', 'browser', 'spec'];
 
 export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const measurements = Array.isArray(input.measurements) ? input.measurements : [];

@@ -3,6 +3,7 @@ import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, brow
 import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
 import { RepairTicketService } from '../../services/RepairTicketService';
 import { deliveryPartsForRun } from '../../../core/quality/delivery-parts';
+import { staticSiteRoot } from '../preview-site';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
@@ -1622,11 +1623,29 @@ export function projectAuditRoots(sourceRoot: string, runtimeRoot: string): stri
     return roots;
 }
 
+/**
+ * THE FOLDER A PART SERVES TO PEOPLE, or ''.
+ *
+ * Round 20 review: only index.html, dist/ and public/ counted, so a build-free
+ * site Joe writes into src/ (P001: src/index.html, served by project_run's
+ * strict loopback server from src/) was «no interface» — and blocked while it
+ * was live on screen. src/index.html and the static-site classifier the
+ * loopback server itself uses now count too.
+ */
+export function servedInterfaceDirectory(root: string): string {
+    const dir = String(root || '').trim();
+    if (!dir) return '';
+    if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+    if (fs.existsSync(path.join(dir, 'dist', 'index.html'))) return path.join(dir, 'dist');
+    if (fs.existsSync(path.join(dir, 'public', 'index.html'))) return path.join(dir, 'public');
+    if (fs.existsSync(path.join(dir, 'src', 'index.html'))) return path.join(dir, 'src');
+    try { return staticSiteRoot(dir, { servedAtRoot: true }) || ''; } catch { return ''; }
+}
+
 export function projectAuditDirectory(roots: string[]): string {
     for (const root of roots.map(value => String(value || '').trim()).filter(Boolean)) {
-        if (fs.existsSync(path.join(root, 'index.html'))) return root;
-        if (fs.existsSync(path.join(root, 'dist', 'index.html'))) return path.join(root, 'dist');
-        if (fs.existsSync(path.join(root, 'public', 'index.html'))) return path.join(root, 'public');
+        const served = servedInterfaceDirectory(root);
+        if (served) return served;
     }
     return roots.map(value => String(value || '').trim()).find(Boolean) || '';
 }
@@ -1653,6 +1672,21 @@ function rootHasBuildStep(root: string, manifest: any): boolean {
 /** The request names a build as a step to run — never the imperative «Build …» or the noun in «بناء نظام». */
 const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
 
+/**
+ * ONE CONTRACT FOR EVERY DELIVERED ROOT — THE PRIMARY ONE INCLUDED.
+ *
+ * Round 20 review: the primary root kept a reader (asksForChecks) that matched
+ * every imperative «Build …», every «بناء» and every «tests», and then demanded
+ * BOTH a build and a test script. With one verdict that no later instrument can
+ * clear, that blocked every English «Build …» app whose manifest has no test
+ * script, and every API-only delivery (a plain Node server has no build step) —
+ * pushing a repair toward a fake «build» script. The rule now reads what the
+ * request asks of the part: a test script when the request asks for tests
+ * (testsRequestedIn — the same reader the record gate uses), a build script when
+ * the part really has a build step or the request names the build command.
+ * Placeholder scripts («exit 0», «true», «echo no tests») are refused on every
+ * root, always. `additionalRoot` only changes the wording.
+ */
 export function inspectProjectQualityContract(
     projectRoot: string,
     request = '',
@@ -1674,34 +1708,17 @@ export function inspectProjectQualityContract(
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
     }
-    if (opts.additionalRoot) {
-        /**
-         * ANOTHER DELIVERED PART ANSWERS ONLY FOR WHAT THE REQUEST ASKS OF IT.
-         *
-         * The primary root keeps its contract below. asksForChecks matches every
-         * imperative «Build …» and every «بناء», so applying it to the API root
-         * of a full-stack pair demanded a build script from a plain Node server
-         * that has no build step (round 15 review: all 25 English full-stack
-         * prompts). A test script is required when the request asks for tests;
-         * a build script when this part has a build step or the request names
-         * the command.
-         */
-        const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
-        if (opts.testsRequested === true && !has('test')) {
-            failures.push('package.json has no truthful test script although the request asks for tests');
-        }
-        if ((rootHasBuildStep(root, manifest) || BUILD_COMMAND_NAMED.test(String(request || ''))) && !has('build')) {
-            failures.push('package.json has no truthful build script although this part has a build step');
-        }
-        return { ok: failures.length === 0, failures };
+    const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
+    const testsAsked = typeof opts.testsRequested === 'boolean' ? opts.testsRequested : !!testsRequestedIn(String(request || ''));
+    const where = opts.additionalRoot ? 'this part' : 'the project';
+    if (testsAsked && !has('test')) {
+        failures.push(`package.json has no truthful test script although the request asks for tests (${where})`);
     }
-    const asksForChecks = /(?:\b(?:npm\s+)?(?:run\s+)?(?:build|test|tests)\b|بناء|اختبار)/iu.test(String(request || ''));
-    if (asksForChecks) {
-        for (const name of ['build', 'test']) {
-            if (typeof scripts[name] !== 'string' || !scripts[name].trim()) {
-                failures.push(`package.json has no truthful ${name} script although the request requires it`);
-            }
-        }
+    const buildNamed = BUILD_COMMAND_NAMED.test(String(request || ''));
+    if ((rootHasBuildStep(root, manifest) || buildNamed) && !has('build')) {
+        failures.push(buildNamed
+            ? `package.json has no truthful build script although the request names the build (${where})`
+            : `package.json has no truthful build script although ${where} has a build step`);
     }
     return { ok: failures.length === 0, failures };
 }
@@ -1818,6 +1835,52 @@ export function requestedDeliveryRoles(request: string): { service: boolean; int
     const webWord = artifact.interfaceNamed || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
     const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
     return { service, interface: !(negatedInterface && !webWord), program: false };
+}
+
+/**
+ * Does the confirmed live address serve a page at «/»? A server-rendered or
+ * framework interface (Next.js, SvelteKit, Flask templates) has no index.html
+ * on disk; the page it answers is the evidence. Loopback only (project_run's
+ * own address), GET only, bounded by project_run's own answer timeout.
+ */
+export async function servesHtmlAtRoot(liveUrl: unknown): Promise<boolean> {
+    const raw = String(liveUrl || '').trim();
+    if (!raw) return false;
+    let url: URL;
+    try { url = new URL('/', raw); } catch { return false; }
+    if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)) return false;
+    let timeoutMs = 2500;
+    try { timeoutMs = Number(require('./ProjectRunTool').HTTP_ANSWER_TIMEOUT_MS) || 2500; } catch { /* default */ }
+    const http = require('http');
+    return await new Promise<boolean>(resolve => {
+        const req = http.get(url, { timeout: timeoutMs, headers: { Accept: 'text/html' } }, (res: any) => {
+            const ok = Number(res.statusCode) >= 200 && Number(res.statusCode) < 300 && /text\/html/i.test(String(res.headers?.['content-type'] || ''));
+            res.resume();
+            resolve(ok);
+        });
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', () => resolve(false));
+    });
+}
+
+/**
+ * A REQUEST THAT NEEDS A SERVER IS NOT DELIVERED BY A BROWSER-ONLY BUILD.
+ *
+ * Round 20 review (P251): «customers … book …, and the owner sees all bookings»
+ * claims data one party writes and another reads — only a server keeps it. A
+ * React-only plan built it in the browser: each customer's booking lived in
+ * that customer's browser, the owner could never see one, and nothing at
+ * delivery measured the missing server. Returns the failure naming the server
+ * claims, or '' when no server was asked for, an api_project part was bound,
+ * or a delivered root registers server routes.
+ */
+export function missingRequestedServer(request: string, roots: string[], parts: Array<{ tool?: string }>): string {
+    if (!requestedDeliveryRoles(request).service) return '';
+    if ((Array.isArray(parts) ? parts : []).some(part => String(part?.tool || '') === 'api_project')) return '';
+    if (collectServerEvidence(roots, []).routes.length > 0) return '';
+    let claims: string[] = [];
+    try { claims = requestedArtifact(String(request || '')).evidence.serverClaims || []; } catch { claims = []; }
+    return `the request needs a server (${claims.join(', ') || 'an API it serves'}), but no delivered part registers server routes`;
 }
 
 export function planTouchesRunnable(phases: unknown): boolean {
@@ -2725,16 +2788,26 @@ export class ProjectPipelineTool implements ToolDefinition {
         const deliveryRoles = requestedDeliveryRoles(productRequest);
         // A program asked for on its own (a CLI, a script) has no URL: its own
         // passing test run proves it runs, not project_run.
-        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service;
         const sessionPartsKey = String(context?.sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
         /** Every root a phase bound in this run, plus the roots of the last live run. */
         const deliveredRoots = (extra: string[] = []) => Array.from(new Set([
             ...deliveryPartsForRun(sessionPartsKey, context?.runId).map(part => part.root),
             ...extra,
         ].map(root => String(root || '').trim()).filter(root => root && fs.existsSync(root)).map(root => path.resolve(root))));
+        const programRootCandidate = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+        // Round 20 review: a «tool» the router read as a CLI but that came out
+        // with a page is judged like any interface — live run, quality, scope,
+        // records and Browser QA — never by its own test run alone.
+        const programServesAPage = deliveredRoots([programRootCandidate]).some(root => !!servedInterfaceDirectory(root));
+        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && !programServesAPage;
+        if (deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && programServesAPage) {
+            appendBoundedPipelineLog(logs, '[pipeline] the program serves a page, so it is proven live like an interface, not by its own tests alone');
+        }
         let requestCoverage: RequestCoverageReport | undefined;
         let requestCoverageFailed = false;
-        let deliveryRequired: DeliveryInstrument[] = [];
+        // A program's own test run proves it runs; its manifest must still pass
+        // the same contract as any delivery (a «test»: «exit 0» proves nothing).
+        let deliveryRequired: DeliveryInstrument[] = programOnly ? ['quality'] : [];
         const syncFromLedger = (final = false) => {
             const verdict = deliveryVerdict({
                 phaseVerified: verified,
@@ -2855,11 +2928,19 @@ export class ProjectPipelineTool implements ToolDefinition {
         };
         /** A program's proof: its own tests, run through quality_run on the project root. */
         const recordProgramProof = async () => {
-            const programRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+            const programRoot = programRootCandidate;
             if (!programRoot || !fs.existsSync(programRoot)) {
                 ledger.record({ instrument: 'program', ok: false, error: 'no program root was bound, so its own tests could not be run' });
                 return syncFromLedger();
             }
+            // The same contract the live path applies — placeholders refused,
+            // the scripts the request asks for present — measured before the run.
+            const quality = inspectProjectQualityContract(programRoot, productRequest);
+            ledger.record({
+                instrument: 'quality',
+                ok: quality.ok,
+                error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
+            });
             say(pick(isAr, '▶️ أشغّل اختبارات البرنامج نفسه لأثبت أنه يعمل…', '▶️ Running the program\'s own tests to prove it works…'));
             try {
                 const run = await executeTool('quality_run', { path: programRoot, tasks: ['test'] }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
@@ -3394,10 +3475,19 @@ export class ProjectPipelineTool implements ToolDefinition {
          * failure of its own, named.
          */
         const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
-        const interfaceDelivered = interfaceRoots.some(root => ['index.html', path.join('dist', 'index.html'), path.join('public', 'index.html')]
-            .some(rel => fs.existsSync(path.join(root, rel))));
+        // A request that needs a server is never delivered by a browser-only build.
+        if (verified && !programOnly) {
+            const serverGap = missingRequestedServer(productRequest, interfaceRoots, deliveryPartsForRun(sessionPartsKey, context?.runId));
+            if (serverGap) {
+                ledger.record({ instrument: 'service', ok: false, error: serverGap });
+                syncFromLedger();
+            }
+        }
+        const interfaceDelivered = interfaceRoots.some(root => !!servedInterfaceDirectory(root))
+            || String(liveRunResult?.output?.kind || '') === 'static-site'
+            || await servesHtmlAtRoot(verifiedLiveUrl(ledger.all()));
         if (!interfaceDelivered && verifiedLiveUrl(ledger.all()) && deliveryRoles.interface) {
-            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no index.html)' });
+            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no page is served at the live address)' });
             syncFromLedger();
         }
         // Browser QA never runs to "rescue" an outcome already measured as
