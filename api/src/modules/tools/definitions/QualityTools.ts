@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { resolveToolPath } from '../utils';
+import { checkJavaScriptSyntax } from '../../../core/quality/js-syntax-check';
 
 function getWorkspaceRoot() {
     return resolveToolPath('.');
@@ -103,6 +104,22 @@ export class DependencyAuditTool extends BaseTool {
     }
 }
 
+const QUALITY_TASKS = ['lint', 'typecheck', 'test', 'build'];
+
+/**
+ * Plans name the one check they mean as {action: 'lint'} (P001: «Lint and
+ * syntax check codebase»). Reading only `tasks` turned that into all four
+ * checks. A named check is the request; nothing named means all four.
+ */
+export function requestedQualityTasks(input: any): string[] {
+    if (Array.isArray(input?.tasks) && input.tasks.length) return input.tasks;
+    for (const key of ['task', 'action', 'check']) {
+        const named = String(input?.[key] ?? '').toLowerCase().split(/[\s,]+/u).filter(word => QUALITY_TASKS.includes(word));
+        if (named.length) return [...new Set(named)];
+    }
+    return [...QUALITY_TASKS];
+}
+
 export class QualityRunTool extends BaseTool {
     name = 'quality_run';
     description = 'Run project quality tasks: lint, typecheck, test, build.';
@@ -138,7 +155,7 @@ export class QualityRunTool extends BaseTool {
 
     async execute(input: any) {
         const projectDir = resolveToolPath(String(input?.path || '').trim());
-        const tasks: string[] = Array.isArray(input?.tasks) && input.tasks.length ? input.tasks : ['lint', 'typecheck', 'test', 'build'];
+        const tasks: string[] = requestedQualityTasks(input);
         const scripts = this.readPackageScripts(projectDir);
         const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim()
             ? input.sessionId.trim()
@@ -157,7 +174,14 @@ export class QualityRunTool extends BaseTool {
 
             if (task === 'lint') {
                 if (!scripts.lint) {
-                    results.push({ task, ok: true, skipped: true });
+                    // No lint script: Node's own parser still reads every
+                    // JavaScript source — when the source runs as written. A
+                    // build script may compile another grammar (JSX in .js),
+                    // so there the build is the check. Nothing to parse stays skipped.
+                    const syntax = scripts.build ? { files: [], failure: null } : await checkJavaScriptSyntax(projectDir);
+                    if (!syntax.files.length) results.push({ task, ok: true, skipped: true });
+                    else if (syntax.failure) results.push({ task, ok: false, skipped: false, method: 'node --check', error: `${syntax.failure.file}: ${syntax.failure.error}` });
+                    else results.push({ task, ok: true, skipped: false, method: 'node --check', output: `No lint script; Node parsed ${syntax.files.length} JavaScript file(s): ${syntax.files.join(', ').slice(0, 3000)}` });
                     continue;
                 }
                 const r = await runNpmScript('lint', [], 10 * 60_000);
