@@ -49,17 +49,41 @@ export function firstJsonSpan(text: string): string {
 }
 
 /**
+ * Every place a model's JSON answer can sit, best first.
+ *
+ * From his own run (P001, a 31-minute plan thrown away):
+ *
+ *   [ProjectPlanner] initial-parse-failed SyntaxError: Unexpected token 'b',
+ *   "bash\ncd c"... is not valid JSON   (response 7800 chars, `{` … `}`)
+ *
+ * The reply WAS the plan. One of its strings — the README it planned — held
+ * a ```bash block, and the reader took the first fence anywhere in the text
+ * as the answer. A fence inside a string is the answer's content, not its
+ * wrapper. So: when the reply opens with JSON, that whole value comes first
+ * (strings are skipped, so nothing inside them can cut it); then the bodies
+ * of ```json or bare fences; then the first balanced value in the prose.
+ */
+export function jsonReplyCandidates(text: string): string[] {
+    const raw = String(text ?? '').trim();
+    if (!raw) return [];
+    const out: string[] = [];
+    const add = (candidate: string) => { if (candidate && !out.includes(candidate)) out.push(candidate); };
+    if (raw[0] === '{' || raw[0] === '[') add(firstJsonSpan(raw));
+    for (const fence of raw.matchAll(/```([A-Za-z0-9_+-]*)[^\S\n]*\n?([\s\S]*?)```/g)) {
+        if (fence[1] && !/^json5?c?$/i.test(fence[1])) continue;   // ```bash is code he asked for
+        add(firstJsonSpan(fence[2]));
+    }
+    add(firstJsonSpan(raw));
+    return out;
+}
+
+/**
  * Parse the first JSON value in a model's reply, tolerating the prose around it
  * and a ```json fence. Returns null rather than throwing — a router that dies
  * on a stray sentence is worse than one that falls back.
  */
 export function parseFirstJson<T = any>(text: string): T | null {
-    const raw = String(text ?? '').trim();
-    if (!raw) return null;
-    const fenced = raw.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    for (const candidate of [fenced?.[1], raw]) {
-        const span = firstJsonSpan(String(candidate || ''));
-        if (!span) continue;
+    for (const span of jsonReplyCandidates(text)) {
         try { return JSON.parse(span) as T; } catch { /* try the next candidate */ }
     }
     return null;

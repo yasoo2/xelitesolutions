@@ -12,6 +12,7 @@ import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
 import { requestTextForPrompt, transportRequestText, truncateAuxiliaryText, truncateEvidenceJsonText, DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { brandFrom } from '../../../core/design/page-head';
+import { jsonReplyCandidates } from '../../../shared/utils/json';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
 
@@ -1737,16 +1738,22 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
     }
 
     private parsePlan(response: string) {
-        const markdownMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        let jsonStr = markdownMatch ? markdownMatch[1] : response;
-        if (!markdownMatch) {
-            const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
-            if (braceMatch) jsonStr = braceMatch[0];
+        // A fence inside the plan's strings (a README's ```bash) is content, not
+        // the answer's wrapper: read the reply's own JSON first. The trailing-comma
+        // repair is a second try only, so a valid plan's strings are never edited.
+        let firstError: unknown = null;
+        for (const candidate of jsonReplyCandidates(String(response ?? ''))) {
+            for (const jsonStr of [candidate, candidate.replace(/,\s*([}\]])/g, '$1')]) {
+                try {
+                    const plan = JSON.parse(jsonStr);
+                    if (plan && Array.isArray(plan.phases)) return plan;
+                    firstError ??= new Error('Missing phases array in JSON');
+                } catch (error) {
+                    firstError ??= error;
+                }
+            }
         }
-        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-        const plan = JSON.parse(jsonStr);
-        if (!Array.isArray(plan.phases)) throw new Error('Missing phases array in JSON');
-        return plan;
+        throw firstError ?? new SyntaxError('The planner response holds no JSON object');
     }
 
     private responseDiagnostic(response: any): { type: string; length: number; prefix: string; suffix: string } {
