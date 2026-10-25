@@ -154,7 +154,14 @@ export class QualityRunTool extends BaseTool {
     }
 
     async execute(input: any) {
-        const projectDir = resolveToolPath(String(input?.path || '').trim());
+        // No path names no project: the implied root is the whole workspace,
+        // and the parse fallback below would read every source in it.
+        const requestedPath = String(input?.path || '').trim();
+        if (!requestedPath) {
+            const error = 'quality_run needs the path of the project to check.';
+            return { ok: false, error, output: { results: [], status: 'incomplete', error }, logs: [] };
+        }
+        const projectDir = resolveToolPath(requestedPath);
         const tasks: string[] = requestedQualityTasks(input);
         const scripts = this.readPackageScripts(projectDir);
         const sessionId = typeof input?.sessionId === 'string' && input.sessionId.trim()

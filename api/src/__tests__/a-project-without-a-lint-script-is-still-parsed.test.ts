@@ -11,11 +11,16 @@ import path from 'path';
 import { QualityRunTool, requestedQualityTasks } from '../modules/tools/definitions/QualityTools';
 import { checkJavaScriptSyntax } from '../core/quality/js-syntax-check';
 import { handleShellCommand } from '../modules/tools/handlers';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 jest.mock('../modules/tools/handlers', () => ({ handleShellCommand: jest.fn() }));
 jest.mock('../modules/tools/utils', () => ({ resolveToolPath: (value: string) => value }));
 
 jest.setTimeout(60_000);
+
+// At runtime quality_run runs inside the orchestrator; the parse goes through
+// the ExecutionGateway, which refuses any call outside that context.
+const quality = (input: any) => executionFirewall.runAsSystem(() => new QualityRunTool().execute(input));
 
 describe('a project without a lint script is still parsed', () => {
     let root: string;
@@ -43,7 +48,7 @@ describe('a project without a lint script is still parsed', () => {
         write('src/components/hero.js', 'export function hero() { return `<section>مرحبا</section>`; }\n');
         write('node_modules/broken/index.js', 'const = ;\n');
 
-        const result = await new QualityRunTool().execute({ path: root, action: 'lint' });
+        const result = await quality({ path: root, action: 'lint' });
 
         expect(result).toMatchObject({ ok: true, output: { status: 'completed' } });
         expect(result.output.results).toEqual([expect.objectContaining({ task: 'lint', ok: true, skipped: false, method: 'node --check' })]);
@@ -58,17 +63,24 @@ describe('a project without a lint script is still parsed', () => {
         // exits 0 on this (Node 24.18); the forced module goal catches it.
         write('src/components/contact.js', 'import x from "./x.js";\nconst = 1;\n');
 
-        const result = await new QualityRunTool().execute({ path: root, action: 'lint' });
+        const result = await quality({ path: root, action: 'lint' });
 
         expect(result.ok).toBe(false);
         expect(result.output.status).toBe('failed');
         expect(result.error).toMatch(/lint: src\/components\/contact\.js:2: SyntaxError/u);
     });
 
+    it('does no work without a project path', async () => {
+        const result = await quality({ action: 'lint' });
+        expect(result).toMatchObject({ ok: false, output: { status: 'incomplete', results: [] } });
+        expect(result.error).toMatch(/needs the path/u);
+        expect(handleShellCommand).not.toHaveBeenCalled();
+    });
+
     it('leaves a project with nothing to parse incomplete', async () => {
         write('package.json', JSON.stringify({ scripts: { start: 'serve .' } }));
         write('index.html', '<!doctype html><title>x</title>');
-        const result = await new QualityRunTool().execute({ path: root, action: 'lint' });
+        const result = await quality({ path: root, action: 'lint' });
         expect(result).toMatchObject({ ok: false, output: { status: 'incomplete' } });
     });
 
@@ -76,7 +88,7 @@ describe('a project without a lint script is still parsed', () => {
         write('package.json', JSON.stringify({ scripts: { build: 'react-scripts build' } }));
         write('src/App.js', 'export default function App() { return <div />; }\n');
         (handleShellCommand as jest.Mock).mockResolvedValue({ ok: true, output: 'built' });
-        const result = await new QualityRunTool().execute({ path: root });
+        const result = await quality({ path: root });
         expect(result.output.results.find((r: any) => r.task === 'lint')).toEqual({ task: 'lint', ok: true, skipped: true });
         expect(result).toMatchObject({ ok: true, output: { status: 'completed' } });
     });
@@ -85,7 +97,7 @@ describe('a project without a lint script is still parsed', () => {
         write('a.cjs', 'module.exports = 1;\n');
         write('b.mjs', 'export default 1;\n');
         write('dist/bundle.js', 'const = ;\n');
-        const syntax = await checkJavaScriptSyntax(root);
+        const syntax = await executionFirewall.runAsSystem(() => checkJavaScriptSyntax(root));
         expect(syntax).toEqual({ files: ['a.cjs', 'b.mjs'], failure: null });
     });
 });

@@ -18,10 +18,10 @@
  * goal is forced, as terminal-audit does: each source is copied to a temp
  * file whose extension states its goal, and that copy is what is checked.
  */
-import { execFile } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 
 const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.turbo', '.cache', 'out']);
 const PARSEABLE = /\.(?:js|mjs|cjs)$/iu;
@@ -57,12 +57,21 @@ function moduleGoal(file: string, text: string, packageType: string): boolean {
     return packageType === 'module' || /^\s*(?:import|export)[\s{*]/mu.test(text);
 }
 
-function nodeCheck(probe: string, timeoutMs: number): Promise<{ ok: boolean; out: string }> {
-    return new Promise(resolve => {
-        execFile(process.execPath, ['--check', probe], { timeout: timeoutMs, windowsHide: true }, (error, stdout, stderr) => {
-            resolve({ ok: !error, out: `${stderr || ''}${stdout || ''}${error && !stderr ? error.message : ''}` });
-        });
+// Through the sanctioned gateway, as ProjectRunTool's entry check runs.
+async function nodeCheck(probe: string, timeoutMs: number): Promise<{ ok: boolean; out: string }> {
+    const result = await ExecutionGateway.execute({
+        id: `js-syntax-${Date.now()}`,
+        type: 'shell',
+        payload: {
+            command: process.execPath,
+            args: ['--check', probe],
+            options: { cwd: path.dirname(probe), timeout: timeoutMs, shell: false, stdio: 'pipe' },
+        },
+        priority: 'high',
     });
+    const data: any = result.data || {};
+    const ok = Boolean(result.success) && data.ok !== false && data.exitCode === 0;
+    return { ok, out: [data.error, data.output, result.error].filter(Boolean).join('\n') };
 }
 
 export async function checkJavaScriptSyntax(projectDir: string, timeoutMs = 15_000): Promise<JsSyntaxResult> {
