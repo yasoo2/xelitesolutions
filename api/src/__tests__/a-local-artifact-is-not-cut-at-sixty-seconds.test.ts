@@ -48,8 +48,12 @@ describe('a local artifact is not cut at sixty seconds', () => {
 describe('a local frontend component gets the room of any source file', () => {
     // Eval round 12 (P001): an App component ended LOCAL_COMPLETION_LIMIT at 1200
     // tokens after 17.7 min; qwen3.5 thinks before it writes and both count.
+    // Updated 2026-10-25 (run500 P351): the local branch used to be a fixed 6000,
+    // which still cut a large App.jsx below the window's room. A local file now
+    // sets no cap (a-local-source-file-gets-the-whole-room.test.ts drives it);
+    // the bounded frontend caps still apply to other providers only.
     it('the frontend cap applies to other providers only', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AIGeneratorTool.ts'), 'utf8');
-        expect(src).toMatch(/artifact\.kind === 'frontend_asset'\s*&& !require\('\.\.\/\.\.\/\.\.\/core\/llm\/served-local-selection'\)\.servedByLocalModel\(context\)\s*\? \(complexFrontendArtifact \? 2400 : 1200\)\s*: 6000/);
+        expect(src).toMatch(/servedByLocalModel\(context\)\s*\? undefined\s*: artifact\.kind === 'frontend_asset'\s*\? \(complexFrontendArtifact \? 2400 : 1200\)\s*: 6000/);
     });
 });

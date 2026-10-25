@@ -615,13 +615,16 @@ export const ENGINEERING_LLM_GENERATION_DEADLINE_MS = 180_000;
  * with the local model as the only brain there is no next provider. On a CPU a
  * component takes minutes; on a GPU the same sizing is seconds.
  */
-export function localArtifactDeadlineMs(context: any, system: string, user: string, outputTokens: number): number | undefined {
+export function localArtifactDeadlineMs(context: any, system: string, user: string, outputTokens?: number): number | undefined {
     const { servedByLocalModel } = require('../../../core/llm/served-local-selection');
     if (!servedByLocalModel(context)) return undefined;
     const { estimatePromptTokens, localDeadlineMs } = require('../../../core/llm/local-throughput');
     const { localPlannerCeilingMs } = require('../../../core/orchestrator/planner-run-boundary');
+    const promptTokens = estimatePromptTokens(system + user);
+    // No cap: the answer may fill the room the window leaves, and the deadline is sized for it.
+    const room = Math.max(1024, require('../../../core/resources/context-ceiling').localContextCeilingTokens() - promptTokens);
     return Math.min(localPlannerCeilingMs(), Math.max(ENGINEERING_LLM_GENERATION_DEADLINE_MS,
-        localDeadlineMs(estimatePromptTokens(system + user), Math.max(1, Number(outputTokens) || 6000))));
+        localDeadlineMs(promptTokens, Math.max(1, Number(outputTokens) || room))));
 }
 
 function withGenerationDeadline<T>(
@@ -824,8 +827,14 @@ Return the complete file content now.`;
                     // qwen3.5 thinks before it writes and both count — then the
                     // retry asked for the same 1200. The owner's rule: nothing is cut
                     // to suit a machine; the deadline is sized for the room instead.
-                    maxCompletionTokens: artifact.kind === 'frontend_asset'
-                        && !require('../../../core/llm/served-local-selection').servedByLocalModel(context)
+                    // Eval run500 (2026-10-25, P351): a fixed 6000 was still a cut — one
+                    // App.jsx (24.5k chars of brief, ~8.1k tokens of room) ended
+                    // LOCAL_COMPLETION_LIMIT after 95 min, then the rerun asked the same
+                    // 6000. A local file sets no cap: the transport fits the answer to
+                    // the room the measured prompt leaves in the operator's window.
+                    maxCompletionTokens: require('../../../core/llm/served-local-selection').servedByLocalModel(context)
+                        ? undefined
+                        : artifact.kind === 'frontend_asset'
                         ? (complexFrontendArtifact ? 2400 : 1200)
                         : 6000,
                 }
@@ -876,7 +885,7 @@ Return the complete file content now.`;
                 logs.push(requestBudgetLog);
                 console.info(requestBudgetLog);
                 const localDeadline = localArtifactDeadlineMs(context, requestSystem, requestPrompt,
-                    Number(llmContext?.maxCompletionTokens) || 6000);
+                    Number(llmContext?.maxCompletionTokens) || undefined);
                 // The provider call ends first, with its own clean error; the outer
                 // leash only backstops a transport that ignores its signal.
                 if (localDeadline !== undefined && llmContext) llmContext.providerTimeoutMs = localDeadline;
@@ -934,7 +943,8 @@ Return the complete file content now.`;
                 logs.push(`format retry requested for ${filePath}: ${prepared.error}`);
                 // Repeating a visibly incomplete frontend artifact at the same
                 // small output cap cannot recover a response cut off by that cap.
-                if (llmContext && artifact.kind === 'frontend_asset'
+                // A call with no cap already had the whole room; there is nothing to double.
+                if (llmContext && artifact.kind === 'frontend_asset' && Number(llmContext.maxCompletionTokens) > 0
                     && /incomplete Markdown fence/i.test(prepared.error || '')) {
                     const previousBudget = llmContext.maxCompletionTokens;
                     llmContext.maxCompletionTokens = Math.min(4800, previousBudget * 2);
