@@ -319,7 +319,11 @@ Return exactly this JSON structure:
                 undefined,
                 {
                     modelConfig: { provider: 'auto', apiKey: 'auto-mode' },
-                    internalCall: true,
+                    // The router reads `purpose`, never `internalCall`: with the
+                    // old key this analysis counted as a user answer, so a fast
+                    // cloud key put Local behind the cloud and the keyless mesh
+                    // and every long request's analysis spent the answer's quota.
+                    purpose: 'internal',
                     engineeringPipeline: true
                 }
             )

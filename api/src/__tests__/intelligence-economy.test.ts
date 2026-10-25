@@ -62,7 +62,10 @@ describe('the router understands internal vs answer', () => {
         const src = router();
         expect(src).toContain("const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim()");
         expect(src).toContain('if (!hasGroq && !localFirst)');
-        expect(src).toContain('internalCall: true');
+        //  2026-10-25: this pinned `internalCall: true`, a key routeToModel never
+        //  reads (it decides on `purpose`), so the analysis ran as a user answer.
+        //  The claim is unchanged: the analysis call is marked internal.
+        expect(src).toMatch(/purpose: 'internal',\s*engineeringPipeline: true/);
         expect(src).toMatch(/\? await routeToModel\([\s\S]*?\)\s*:\s*await callGroq\(analyst/);
     });
 
