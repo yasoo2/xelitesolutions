@@ -667,8 +667,15 @@ function buildCliScaffold(request: string, projectName: string): {
 } {
     const named = namedTargetFile(request);
     const namedExt = named ? path.extname(named).toLowerCase() : '';
-    // The file he named decides the language before any keyword guess does.
-    const lang = CLI_LANGUAGE_BY_EXTENSION[namedExt] || detectLanguage(request);
+    // The file he named is the program only when it is source code. Eval P301
+    // (2026-10-25): «… وتكتب الأسطر الخاطئة في ملف errors.csv» names the file
+    // the program WRITES; taking it as the entry ran `python errors.csv`, and
+    // the Python program was authored into a .csv file. A data file stays the
+    // program's input or output, as his request says; the entry keeps the
+    // language's own name.
+    const namedEntry = named && CLI_LANGUAGE_BY_EXTENSION[namedExt] ? named : null;
+    // The program he named decides the language before any keyword guess does.
+    const lang = (namedEntry && CLI_LANGUAGE_BY_EXTENSION[namedExt]) || detectLanguage(request);
     const format = detectInputFormat(request);
     const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
 
@@ -679,13 +686,13 @@ function buildCliScaffold(request: string, projectName: string): {
     // A named entry replaces the default one wherever the manifest runs it.
     // Interpreted languages only: compiled targets keep their build layout.
     const runner = CLI_RUNNER[lang];
-    if (named && runner && named !== entryPoint) {
+    if (namedEntry && runner && namedEntry !== entryPoint) {
         try {
             const pkg = JSON.parse(manifest);
-            pkg.main = named;
-            pkg.scripts = { ...(pkg.scripts || {}), start: `${runner} ${named}` };
+            pkg.main = namedEntry;
+            pkg.scripts = { ...(pkg.scripts || {}), start: `${runner} ${namedEntry}` };
             manifest = JSON.stringify(pkg, null, 2);
-            entryPoint = named;
+            entryPoint = namedEntry;
         } catch { /* keep the default entry when the stock manifest is unreadable */ }
     }
 
@@ -712,6 +719,8 @@ function buildCliScaffold(request: string, projectName: string): {
     }];
     if (!templateServesRequest) {
         const runCommand = runner ? `${runner} ${entryPoint}` : `the project's start script`;
+        let testCommand = '';
+        try { testCommand = String(JSON.parse(manifest)?.scripts?.test || ''); } catch { /* the brief then names no command */ }
         tasks.push({
             tool: 'ai_write_file',
             description: `Write ${entryPoint} from the request`,
@@ -726,7 +735,7 @@ function buildCliScaffold(request: string, projectName: string): {
             description: `Write ${testFileName} for the requested behaviour`,
             args: {
                 path: testFileName,
-                description: cliTestBrief(entryPoint, runCommand, request),
+                description: cliTestBrief(entryPoint, runCommand, testCommand, request),
             },
         });
     }
@@ -816,7 +825,10 @@ function generateTypeScriptScaffold(request: string, projectName: string, isCsv:
 }
 
 function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python -m pytest test.py -v"\n  },\n  "dependencies": {\n    ${isCsv ? '"pandas": "^2.0.0"' : ''}\n  }\n}`;
+    // The test runs with Python alone: the test brief asks for the standard
+    // library only, and pytest is a package nobody installs (eval P301: «No
+    // module named pytest» failed a finished program at delivery).
+    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python test.py"\n  },\n  "dependencies": {\n    ${isCsv ? '"pandas": "^2.0.0"' : ''}\n  }\n}`;
     const entryPoint = 'main.py';
     const entryPointContent = generatePythonEntry(request, isCsv);
     const testFile = generatePythonTest();
@@ -1283,10 +1295,11 @@ function commonDirectory(files: string[]): string {
 }
 
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
-function cliTestBrief(entry: string, runCommand: string, request: string): string {
+function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string): string {
     return `A small self-contained test for the program in ${entry} (${request}). `
         + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
-        + 'Use only the standard library of the language; no placeholder assertions.';
+        + 'Use only the standard library of the language; no placeholder assertions.'
+        + (testCommand ? ` The test is run as \`${testCommand}\`: it must itself run every check it defines and exit with a non-zero code when any fails.` : '');
 }
 
 /**
@@ -1327,18 +1340,20 @@ function paperPlanRunPhase(request: string, files: string[], tests: string[]): {
     const runCommand = `${runner} ${entry}`;
     const tasks: any[] = [];
     let testFiles = tests.filter(file => ext.test(file)).map(within);
-    if (!testFiles.length) {
-        const authored = lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
-        testFiles = [authored];
+    const authored = testFiles.length ? ''
+        : lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
+    if (authored) testFiles = [authored];
+    // Each test runs with the language alone, as generatePythonScaffold explains.
+    const testCommand = lang === 'python' ? testFiles.map(file => `python ${file}`).join(' && ')
+        : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
+            : `node --test ${testFiles.join(' ')}`;
+    if (authored) {
         tasks.push({
             task: `Write ${authored} for the requested behaviour`,
             tool: 'ai_write_file',
-            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, request) },
+            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, testCommand, request) },
         });
     }
-    const testCommand = lang === 'python' ? `python -m pytest ${testFiles.join(' ')} -v`
-        : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
-            : `node --test ${testFiles.join(' ')}`;
     const name = (projectDir === '.' ? 'program' : path.posix.basename(projectDir)).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'program';
     tasks.push({
         task: 'Declare how the program starts and how its tests run',
