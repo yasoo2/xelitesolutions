@@ -705,12 +705,9 @@ function buildCliScaffold(request: string, projectName: string): {
         structure[testFileName] = testFile;
         structure['sample.json'] = sampleFile;
     }
-    // Only include tsconfig.json for TypeScript projects
-    if (tsconfigJson) {
-        // For TypeScript, use tsconfig.json; for Go, it's a placeholder for go.mod
-        const tsconfigName = lang === 'go' ? 'go.mod' : 'tsconfig.json';
-        (structure as any)[tsconfigName] = tsconfigJson;
-    }
+    if (tsconfigJson) structure['tsconfig.json'] = tsconfigJson;
+    // go.mod / Cargo.toml: the manifest the language's own toolchain reads.
+    Object.assign(structure, scaffold.toolchainFiles);
 
     const tasks: any[] = [{
         tool: 'scaffold_project',
@@ -793,6 +790,7 @@ function generateCliScaffold(lang: string, format: string, request: string, proj
     testFile: string;
     sampleFile: string;
     testFileName: string;
+    toolchainFiles: Record<string, string>;
 } {
     const isCsv = format === 'csv';
     
@@ -813,66 +811,89 @@ function generateCliScaffold(lang: string, format: string, request: string, proj
     }
 }
 
+/**
+ * package.json is written as data, never pasted together: a dependency list
+ * that ended in a comma (the JavaScript CSV skeleton) was not JSON at all.
+ * npm reads it, so it names npm packages only; a Python, Go or Rust library
+ * belongs in that language's own manifest (eval P301, 2026-10-25: a Python
+ * tool's package.json asked npm for `"pandas": "^2.0.0"`).
+ */
+function npmManifest(projectName: string, request: string, main: string, scripts: Record<string, string>, devDependencies?: Record<string, string>): string {
+    return JSON.stringify({
+        name: projectName, version: '1.0.0', description: request, main, scripts,
+        ...(devDependencies ? { devDependencies } : {}),
+    }, null, 2);
+}
+
+/** A name both Go modules and Cargo packages accept. */
+function toolchainPackageName(projectName: string): string {
+    return projectName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '') || 'cli-tool';
+}
+
 function generateTypeScriptScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = `"typescript": "^5.0.0",\n    "@types/node": "^20.0.0"${isCsv ? ',\n    "csv-parse": "^5.5.0"' : ''}`;
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "dist/index.js",\n  "scripts": {\n    "build": "tsc",\n    "start": "node dist/index.js",\n    "test": "node --test test.js"\n  },\n  "devDependencies": {\n    ${deps}\n  }\n}`;
+    const pkgJson = npmManifest(projectName, request, 'dist/index.js',
+        { build: 'tsc', start: 'node dist/index.js', test: 'node --test test.js' },
+        { typescript: '^5.0.0', '@types/node': '^20.0.0', ...(isCsv ? { 'csv-parse': '^5.5.0' } : {}) });
     const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`;
     const entryPoint = 'src/index.ts';
     const entryPointContent = generateTypeScriptEntry(request);
     const testFile = generateTypeScriptTest();
     const sampleFile = generateSampleData();
-    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, sampleFile, testFileName: 'test.js' };
+    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, sampleFile, testFileName: 'test.js', toolchainFiles: {} };
 }
 
 function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
     // The test runs with Python alone: the test brief asks for the standard
     // library only, and pytest is a package nobody installs (eval P301: «No
     // module named pytest» failed a finished program at delivery).
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python test.py"\n  },\n  "dependencies": {\n    ${isCsv ? '"pandas": "^2.0.0"' : ''}\n  }\n}`;
+    const pkgJson = npmManifest(projectName, request, 'main.py', { start: 'python main.py', test: 'python test.py' });
     const entryPoint = 'main.py';
     const entryPointContent = generatePythonEntry(request, isCsv);
     const testFile = generatePythonTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test.py' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test.py', toolchainFiles: {} };
 }
 
 function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.sh",\n  "scripts": {\n    "start": "bash main.sh",\n    "test": "bash test.sh"\n  }\n}`;
+    const pkgJson = npmManifest(projectName, request, 'main.sh', { start: 'bash main.sh', test: 'bash test.sh' });
     const entryPoint = 'main.sh';
     const entryPointContent = generateBashEntry(request, isCsv);
     const testFile = generateBashTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, sampleFile, testFileName: 'test.sh' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, sampleFile, testFileName: 'test.sh', toolchainFiles: {} };
 }
 
 function generateGoScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = isCsv ? '"github.com/gocarina/gocsv": "^0.0.0"' : '';
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.go",\n  "scripts": {\n    "build": "go build -o dist/main .",\n    "start": "./dist/main",\n    "test": "go test ./..."\n  },\n  "dependencies": {\n    ${deps}\n  }\n}`;
-    const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`; // placeholder for go.mod
+    // The CSV entry reads with encoding/csv, so the module requires nothing.
+    const pkgJson = npmManifest(projectName, request, 'main.go', { build: 'go build -o dist/main .', start: './dist/main', test: 'go test ./...' });
+    const goMod = `module ${toolchainPackageName(projectName)}\n\ngo 1.21\n`;
     const entryPoint = 'main.go';
     const entryPointContent = generateGoEntry(request, isCsv);
     const testFile = generateGoTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: tsconfigJson, entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'test.go' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'test.go', toolchainFiles: { 'go.mod': goMod } };
 }
 
 function generateRustScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = isCsv ? '"csv": "1.3"' : '';
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "src/main.rs",\n  "scripts": {\n    "build": "cargo build --release",\n    "start": "./target/release/${projectName}",\n    "test": "cargo test"\n  },\n  "dependencies": {\n    ${deps}\n  }\n}`;
+    const crate = toolchainPackageName(projectName);
+    const pkgJson = npmManifest(projectName, request, 'src/main.rs', { build: 'cargo build --release', start: `./target/release/${crate}`, test: 'cargo test' });
+    // Both stock entries use serde_json; the CSV one also reads with the csv crate.
+    const cargoToml = `[package]\nname = "${crate}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${isCsv ? 'csv = "1.3"\n' : ''}serde_json = "1.0"\n`;
     const entryPoint = 'src/main.rs';
     const entryPointContent = generateRustEntry(request, isCsv);
     const testFile = generateRustTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'src/test.rs' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'src/test.rs', toolchainFiles: { 'Cargo.toml': cargoToml } };
 }
 
 function generateJavaScriptScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js",\n    "test": "node --test test.js"\n  },\n  "devDependencies": {\n    ${isCsv ? '"csv-parse": "^5.5.0",' : ''}\n  }\n}`;
+    const pkgJson = npmManifest(projectName, request, 'index.js', { start: 'node index.js', test: 'node --test test.js' },
+        isCsv ? { 'csv-parse': '^5.5.0' } : undefined);
     const entryPoint = 'index.js';
     const entryPointContent = generateJavaScriptEntry(request);
     const testFile = generateJavaScriptTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, sampleFile, testFileName: 'test.js' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, sampleFile, testFileName: 'test.js', toolchainFiles: {} };
 }
 
 function generateTypeScriptEntry(request: string): string {
@@ -885,7 +906,8 @@ function generateTypeScriptEntry(request: string): string {
 
 function generatePythonEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        return `# ${request}\nimport pandas as pd\nimport sys\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    \n    try:\n        df = pd.read_csv(file_path)\n        print(df.to_json(orient='records', indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
+        // The standard library reads CSV; pandas is a package nothing installs.
+        return `# ${request}\nimport csv\nimport json\nimport sys\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    \n    try:\n        with open(file_path, newline='', encoding='utf-8') as f:\n            rows = list(csv.DictReader(f))\n        print(json.dumps(rows, indent=2, ensure_ascii=False))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
     }
     return `# ${request}\nimport json\nimport sys\n\ndef filter_json(data, filter_str):\n    prop, value = filter_str.split('=')\n    if not prop or not value:\n        raise ValueError("Filter must be in format: property=value")\n    return [item for item in data if str(item.get(prop, '')) == value]\n\ndef main():\n    if len(sys.argv) < 3:\n        print("Usage: python main.py <json-file> <property=value>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    filter_str = sys.argv[2]\n    \n    try:\n        with open(file_path, 'r') as f:\n            data = json.load(f)\n        if not isinstance(data, list):\n            raise ValueError("JSON file must contain an array")\n        filtered = filter_json(data, filter_str)\n        print(json.dumps(filtered, indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
 }
