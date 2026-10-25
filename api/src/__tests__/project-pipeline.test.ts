@@ -627,7 +627,10 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         // The check runs in the PROJECT dir derived from the plan's own
         // package.json path — never blindly at the workspace root — and skips
         // honestly when the phase wrote no package.json.
-        expect(phaseExec).toMatch(/pkgPath\.replace/);
+        // P001 (2026-10-25): the manifest now comes from autoBuildManifest, already
+        // '/'-normalised, so the dir is split from it rather than replace()d first.
+        expect(phaseExec).toMatch(/autoBuildManifest\(writtenPaths, plannedProjectFiles/);
+        expect(phaseExec).toMatch(/pkgPath\.split\('\/'\)\.slice\(0, -1\)/);
         expect(phaseExec).toMatch(/skipped honestly/);
         expect(phaseExec).toMatch(/timeout: 300000/);
     });

@@ -7,6 +7,7 @@ import { persistJoeProjects, samePipelineRun, writeJoeProject } from '../../../a
 import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
+import { autoBuildManifest, buildFailureEvidence, manifestAwaitsInstall, plannedFilesNotYetWritten } from '../auto-build-readiness';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { engineeringExecution, issueEngineeringTask } from '../../services/AutonomousEngineeringPolicy';
@@ -2518,11 +2519,21 @@ let verificationFailed = false;
                 const writtenPaths = tasks
                     .map((t: any) => String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || ''))
                     .filter(Boolean);
-                const pkgPath = writtenPaths.find((p: string) => /(^|\/)package\.json$/i.test(p.replace(/\\/g, '/')));
+                // The manifest this phase wrote, else the plan's once an earlier
+                // phase put it on disk: the check follows the project, not the
+                // one phase that happened to write package.json (P001).
+                const pkgPath = autoBuildManifest(writtenPaths, plannedProjectFiles, executionContext.workspaceId);
+                const projectDir = pkgPath ? pkgPath.split('/').slice(0, -1).join('/') : '';
+                const awaitedFiles = pkgPath && projectContext?.isFinalPhase !== true
+                    ? plannedFilesNotYetWritten(projectDir, plannedProjectFiles, executionContext.workspaceId)
+                    : [];
                 if (!pkgPath) {
                     appendLog('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote no package.json, so there is no build to run.');
+                } else if (awaitedFiles.length) {
+                    // Not a pass: no receipt is recorded. The phase that writes the
+                    // last planned file runs it; the final phase never waits.
+                    appendLog(`[PhaseExecutor] ⏳ Auto-build check waits for the phase that completes this project: ${awaitedFiles.length} planned file(s) not written yet (${awaitedFiles.slice(0, 4).join(', ')}${awaitedFiles.length > 4 ? ', …' : ''}).`);
                 } else {
-                    const projectDir = pkgPath.replace(/\\/g, '/').split('/').slice(0, -1).join('/');
                     appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
                     let buildSelection: VerificationSelection | undefined;
                     let buildSelectedAt = 0;
@@ -2533,8 +2544,10 @@ let verificationFailed = false;
                             ...(projectDir ? { cwd: projectDir } : {}),
                             timeout: 300000,
                         };
+                        // Inside the workspace, where the shell runs — path.resolve
+                        // anchored it at the API's own folder (api\dental-clinic-site).
                         const buildRoot = projectDir
-                            ? path.resolve(String(projectDir))
+                            ? resolveToolPath(projectDir, { workspaceId: executionContext.workspaceId })
                             : String(projectContext?.projectRoot || workspaceService.getActiveRoot(executionContext.workspaceId) || '').trim();
                         const selected = buildRoot
                             ? selectVerification(verificationLedger, {
@@ -2557,10 +2570,26 @@ let verificationFailed = false;
                         } else {
                             buildSelectedAt = Date.now();
                             buildStartedAt = Date.now();
+                            // A manifest nobody installed cannot build: its tools are
+                            // not there yet ('vite' is not recognized). Install what it
+                            // declares, as a developer would, before judging the code.
+                            if (buildRoot && manifestAwaitsInstall(buildRoot)) {
+                                appendLog(`[PhaseExecutor] 📦 ${pkgPath} declares packages that were never installed here; installing them before the build check...`);
+                                const installResult = await executeTool('npm_manager', {
+                                    command: 'install --ignore-scripts --no-audit --no-fund',
+                                    ...(projectDir ? { cwd: projectDir } : {}),
+                                }, executionContext);
+                                if (!installResult?.ok) {
+                                    throw new Error(`Auto-build check could not install the declared dependencies: ${String(installResult?.error || (installResult as any)?.output?.message || 'npm install failed').slice(0, 700)}`);
+                                }
+                            }
                             const buildResult = await executeTool('shell_execute', buildArgs, executionContext);
                             const buildOutput = String((buildResult as any)?.output?.stdout || (buildResult as any)?.output || '');
                             if (buildOutput.includes('BUILD_CHECK_FAILED') || !buildResult.ok) {
-                                const buildError = String((buildResult as any)?.error || 'Auto-build check failed');
+                                // The build's own words are the repair evidence; a bare
+                                // label left self-fix with nothing to act on.
+                                const buildSaid = buildFailureEvidence(buildOutput);
+                                const buildError = String((buildResult as any)?.error || (buildSaid ? `Auto-build check failed:\n${buildSaid}` : 'Auto-build check failed'));
                                 if (selected) verificationLedger = recordVerification(
                                     verificationLedger,
                                     selected.selection,
