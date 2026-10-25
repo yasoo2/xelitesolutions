@@ -673,13 +673,19 @@ function buildCliScaffold(request: string, projectName: string): {
     const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
 
     const scaffold = generateCliScaffold(lang, format, flat, projectName);
-    const { pkgJson, tsconfigJson, testFile, sampleFile, testFileName } = scaffold;
-    let { entryPoint, entryPointContent } = scaffold;
+    const { pkgJson, tsconfigJson, sampleFile } = scaffold;
+    let { entryPoint, entryPointContent, testFile, testFileName } = scaffold;
     let manifest = pkgJson;
     // A named entry replaces the default one wherever the manifest runs it.
     // Interpreted languages only: compiled targets keep their build layout.
+    // Only a SOURCE file in the program's language is an entry: «تكتب الأسطر
+    // الخاطئة في ملف errors.csv» names what the program writes, and taking it
+    // as the entry wrote the Python program into errors.csv, which the program
+    // then overwrote with its own output (eval round 19, P301). A named data
+    // file reaches the program through the request text, never the structure.
     const runner = CLI_RUNNER[lang];
-    if (named && runner && named !== entryPoint) {
+    const namedIsSource = CLI_LANGUAGE_BY_EXTENSION[namedExt] === lang;
+    if (named && namedIsSource && runner && named !== entryPoint) {
         try {
             const pkg = JSON.parse(manifest);
             pkg.main = named;
@@ -687,6 +693,18 @@ function buildCliScaffold(request: string, projectName: string): {
             manifest = JSON.stringify(pkg, null, 2);
             entryPoint = named;
         } catch { /* keep the default entry when the stock manifest is unreadable */ }
+    }
+    // A Python program's tests are named after it and run by the standard
+    // library: a test script that needs pytest made the verdict depend on the
+    // machine (this laptop has no pytest), not on the program (eval round 19).
+    if (lang === 'python') {
+        testFileName = `test_${path.basename(entryPoint, '.py').replace(/[^A-Za-z0-9_]/g, '_')}.py`;
+        testFile = generatePythonTest(entryPoint, format === 'csv');
+        try {
+            const pkg = JSON.parse(manifest);
+            pkg.scripts = { ...(pkg.scripts || {}), test: pythonTestCommand([testFileName], true) };
+            manifest = JSON.stringify(pkg, null, 2);
+        } catch { /* keep the stock manifest */ }
     }
 
     const asksForFilter = /\bfilter(?:s|ing)?\b|property\s*=\s*value|matching\s+entries|فلتر|تصفية|يصفي/i.test(request);
@@ -726,7 +744,7 @@ function buildCliScaffold(request: string, projectName: string): {
             description: `Write ${testFileName} for the requested behaviour`,
             args: {
                 path: testFileName,
-                description: cliTestBrief(entryPoint, runCommand, request),
+                description: cliTestBrief(entryPoint, runCommand, request, lang),
             },
         });
     }
@@ -816,12 +834,14 @@ function generateTypeScriptScaffold(request: string, projectName: string, isCsv:
 }
 
 function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python -m pytest test.py -v"\n  },\n  "dependencies": {\n    ${isCsv ? '"pandas": "^2.0.0"' : ''}\n  }\n}`;
+    // A Python program's dependencies are not npm packages: the manifest only
+    // says how it starts and how its standard-library tests run.
+    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python -m unittest -v test_main.py"\n  }\n}`;
     const entryPoint = 'main.py';
     const entryPointContent = generatePythonEntry(request, isCsv);
-    const testFile = generatePythonTest();
+    const testFile = generatePythonTest('main.py', isCsv);
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test.py' };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test_main.py' };
 }
 
 function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -873,7 +893,7 @@ function generateTypeScriptEntry(request: string): string {
 
 function generatePythonEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        return `# ${request}\nimport pandas as pd\nimport sys\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    \n    try:\n        df = pd.read_csv(file_path)\n        print(df.to_json(orient='records', indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
+        return `# ${request}\nimport csv\nimport json\nimport sys\n\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>", file=sys.stderr)\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], newline='', encoding='utf-8') as f:\n            rows = list(csv.DictReader(f))\n    except OSError as e:\n        print(f"Error: {e}", file=sys.stderr)\n        sys.exit(1)\n    print(json.dumps(rows, indent=2, ensure_ascii=False))\n\n\nif __name__ == "__main__":\n    main()`;
     }
     return `# ${request}\nimport json\nimport sys\n\ndef filter_json(data, filter_str):\n    prop, value = filter_str.split('=')\n    if not prop or not value:\n        raise ValueError("Filter must be in format: property=value")\n    return [item for item in data if str(item.get(prop, '')) == value]\n\ndef main():\n    if len(sys.argv) < 3:\n        print("Usage: python main.py <json-file> <property=value>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    filter_str = sys.argv[2]\n    \n    try:\n        with open(file_path, 'r') as f:\n            data = json.load(f)\n        if not isinstance(data, list):\n            raise ValueError("JSON file must contain an array")\n        filtered = filter_json(data, filter_str)\n        print(json.dumps(filtered, indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
 }
@@ -909,8 +929,26 @@ function generateTypeScriptTest(): string {
     return `// Test for CLI filter tool\nconst { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node dist/index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
 }
 
-function generatePythonTest(): string {
-    return `# Test for CLI filter tool\nimport json\nimport subprocess\nimport os\n\ntest_file = os.path.join(os.path.dirname(__file__), 'sample.json')\ntest_data = [\n    {"name": "Alice", "age": 30, "city": "NYC"},\n    {"name": "Bob", "age": 25, "city": "LA"},\n    {"name": "Charlie", "age": 35, "city": "NYC"}\n]\nwith open(test_file, 'w') as f:\n    json.dump(test_data, f, indent=2)\n\nresult = subprocess.run(['python', 'main.py', 'sample.json', 'city=NYC'], capture_output=True, text=True)\nresult_data = json.loads(result.stdout.strip())\nassert len(result_data) == 2, f"Expected 2 results, got {len(result_data)}"\nassert result_data[0]['name'] == 'Alice', f"Expected Alice, got {result_data[0]['name']}"\nassert result_data[1]['name'] == 'Charlie', f"Expected Charlie, got {result_data[1]['name']}"\nprint("Test passed!")`;
+/** The stock program's own test, as a standard-library unittest case run against its entry. */
+function generatePythonTest(entry = 'main.py', isCsv = false): string {
+    const head = `import json\nimport os\nimport subprocess\nimport sys\nimport unittest\n\nHERE = os.path.dirname(os.path.abspath(__file__))\nENTRY = os.path.join(HERE, ${JSON.stringify(entry)})\n\n\n`;
+    const body = isCsv
+        ? `class CsvToJsonTest(unittest.TestCase):\n    def test_converts_every_row(self):\n        sample = os.path.join(HERE, 'sample.csv')\n        with open(sample, 'w', encoding='utf-8', newline='') as f:\n            f.write('name,city\\nAlice,NYC\\nBob,LA\\n')\n        result = subprocess.run([sys.executable, ENTRY, sample], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual(json.loads(result.stdout), [{'name': 'Alice', 'city': 'NYC'}, {'name': 'Bob', 'city': 'LA'}])\n`
+        : `class FilterToolTest(unittest.TestCase):\n    def test_filters_by_property(self):\n        sample = os.path.join(HERE, 'sample.json')\n        with open(sample, 'w', encoding='utf-8') as f:\n            json.dump([{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}], f, indent=2)\n        result = subprocess.run([sys.executable, ENTRY, sample, 'city=NYC'], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual([item['name'] for item in json.loads(result.stdout)], ['Alice', 'Charlie'])\n`;
+    return `${head}${body}\n\nif __name__ == '__main__':\n    unittest.main()\n`;
+}
+
+/**
+ * How a Python program's tests run. Tests Joe authors are standard-library
+ * unittest cases, run by the standard library on every machine. Tests the
+ * model planned may be pytest-style: pytest runs them where it is installed,
+ * and unittest is the fallback — so the command never needs a package the
+ * machine may not have, and an empty run still fails (Python ≥ 3.12 exits 5).
+ */
+export function pythonTestCommand(files: string[], authoredByJoe: boolean): string {
+    const list = files.join(' ');
+    if (authoredByJoe) return `python -m unittest -v ${list}`;
+    return `python -c "import importlib.util,subprocess,sys;m=['pytest','-v'] if importlib.util.find_spec('pytest') else ['unittest','-v'];sys.exit(subprocess.call([sys.executable,'-m',*m,*sys.argv[1:]]))" ${list}`;
 }
 
 function generateBashTest(): string {
@@ -933,6 +971,25 @@ function generateJavaScriptTest(): string {
 
 function generateSampleData(): string {
     return `[\n  { "name": "Alice", "age": 30, "city": "NYC" },\n  { "name": "Bob", "age": 25, "city": "LA" },\n  { "name": "Charlie", "age": 35, "city": "NYC" }\n]`;
+}
+
+/**
+ * ⛔ ONE ANSWER TO «IS THIS A COMMAND-LINE PROGRAM?» — for the router and for
+ * the delivery gate alike.
+ *
+ * Eval round 19: deterministicPhasesFor built a CLI scaffold for «a Python CLI
+ * that reads invoices», «a bash script that backs up my PostgreSQL database»
+ * and P347 «… لـموقع أخبار», while requestedDeliveryRoles judged the same
+ * requests as a server (a claim noun) or an interface (a domain noun) — so a
+ * correct CLI could never be delivered. Both now ask this predicate: the
+ * object of the verb when the lexicon knows it, otherwise the command-line /
+ * CSV-input fallback for a request classified as file-level.
+ */
+export function routesToCliScaffold(request: string, artifact = requestedArtifact(request)): boolean {
+    if (artifact.kind === 'cli') return true;
+    if (artifact.kind) return false;
+    const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+    return PlanningEngine.classifyBuildScope(request) === 'page' && isCliRequestFn(request);
 }
 
 export function deterministicPhasesFor(request: string): {
@@ -976,7 +1033,7 @@ export function deterministicPhasesFor(request: string): {
     // the verb (eval round 15: P333/P337, Arabic CLIs over «الزبائن» and
     // «الحجوزات», became api_project + react_project). An object the lexicon
     // does not know keeps the old command-line / CSV-input fallback for a page.
-    if (artifact.kind === 'cli' || (!artifact.kind && scope === 'page' && isCliRequestFn(request))) {
+    if (routesToCliScaffold(request, artifact)) {
         return buildCliScaffold(request, projectName);
     }
 
@@ -1187,7 +1244,12 @@ export function interactiveAppNeedsReactBuilder(request: string): boolean {
         // with the planner and its honest gates.
         const kind = detectAppKind(stripDeclaredOptions(text));
         if (!kind || (scope !== 'app' && scope !== 'system')) return false;
-        return /\b(?:web|browser|frontend|front[ -]?end|responsive|mobile|ui|interface|application|app|dashboard|portal|calculator|notes?|tracker|weather|shop|form|button|crud|tasks?)\b/i.test(text)
+        // Read from the artifact reader in both languages: an English-only
+        // word list sent «ابني متجر إلكتروني …» (P201) past this rescue while
+        // its English twin was caught (eval round 19).
+        const artifact = requestedArtifact(text);
+        return artifact.interfaceNamed
+            || ['app', 'store', 'booking', 'game'].includes(String(artifact.kind))
             || kind === 'productivity';
     } catch {
         return false;
@@ -1230,11 +1292,15 @@ export function planContainsUnrequestedApiBuilder(request: string, phases: any[]
 }
 
 const NEGATED_INTERFACE = /\b(?:no|without|not)\s+(?:(?:a|an|any)\s+)?(?:(?:web|user|graphical)\s+)?(?:front[- ]?end|ui|gui|user\s+interface|interface|pages?|screens?|dashboard)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:واجهة(?:\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية))?|صفحات|شاشات)/giu;
-const INTERFACE_FOR_PEOPLE = /\b(?:front[- ]?end|ui|gui|user\s+interface|web\s+(?:app|application|page|site|interface)|website|pages?|screens?|dashboard|admin\s+panel)\b|واجهة\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية)|صفحة|صفحات|شاشة|شاشات|لوحة\s+(?:تحكم|إدارة|ادارة)|موقع|تطبيق\s+ويب/iu;
-
-/** Does the request ask for something people look at — an interface, pages, a dashboard? */
+/**
+ * Does the request ask for something people look at — an interface, pages, a
+ * dashboard? Read by the artifact reader: the deliverable itself, or an
+ * interface named beside it. A keyword anywhere made «… لـموقع أخبار» (P147)
+ * an API WITH an unrequested React interface, and «… pages from a website» a
+ * CLI with an interface (eval round 19).
+ */
 export function requestNamesAnInterface(request: string): boolean {
-    return INTERFACE_FOR_PEOPLE.test(String(request || '').replace(NEGATED_INTERFACE, ' '));
+    return requestedArtifact(String(request || '')).interfaceNamed;
 }
 
 /**
@@ -1244,8 +1310,8 @@ export function requestNamesAnInterface(request: string): boolean {
  * ABOUT an API, and get their interface (eval round 15 review).
  */
 export function buildObjectIsAnApi(request: string): boolean {
-    const text = String(request || '');
-    return requestedArtifact(text).kind === 'api' && !requestNamesAnInterface(text);
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.kind === 'api' && !artifact.interfaceNamed;
 }
 
 /**
@@ -1283,9 +1349,17 @@ function commonDirectory(files: string[]): string {
 }
 
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
-function cliTestBrief(entry: string, runCommand: string, request: string): string {
+function cliTestBrief(entry: string, runCommand: string, request: string, lang = ''): string {
+    const runner = lang === 'python'
+        ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
+        : lang === 'javascript' || lang === 'typescript'
+            ? 'Write it with node:test and node:assert, runnable by `node --test`. '
+            : lang === 'bash'
+                ? 'Write it as a bash script that exits non-zero on the first failed check. '
+                : '';
     return `A small self-contained test for the program in ${entry} (${request}). `
         + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
+        + runner
         + 'Use only the standard library of the language; no placeholder assertions.';
 }
 
@@ -1327,16 +1401,17 @@ function paperPlanRunPhase(request: string, files: string[], tests: string[]): {
     const runCommand = `${runner} ${entry}`;
     const tasks: any[] = [];
     let testFiles = tests.filter(file => ext.test(file)).map(within);
-    if (!testFiles.length) {
+    const authoredByJoe = !testFiles.length;
+    if (authoredByJoe) {
         const authored = lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
         testFiles = [authored];
         tasks.push({
             task: `Write ${authored} for the requested behaviour`,
             tool: 'ai_write_file',
-            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, request) },
+            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, request, lang) },
         });
     }
-    const testCommand = lang === 'python' ? `python -m pytest ${testFiles.join(' ')} -v`
+    const testCommand = lang === 'python' ? pythonTestCommand(testFiles, authoredByJoe)
         : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
             : `node --test ${testFiles.join(' ')}`;
     const name = (projectDir === '.' ? 'program' : path.posix.basename(projectDir)).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'program';
@@ -1669,17 +1744,21 @@ export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set(['api_project', 'react_proje
  */
 export function requestedDeliveryRoles(request: string): { service: boolean; interface: boolean; program: boolean } {
     const text = String(request || '');
-    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
-    const webWord = requestNamesAnInterface(text) || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
-    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    const artifact = requestedArtifact(text);
+    // What the router builds as a command-line program is proven as one, by
+    // its own tests — whatever data it reads («invoices», «a PostgreSQL
+    // database») or site it reads from (eval round 19). Only an interface
+    // named beside it adds a second instrument.
+    if (routesToCliScaffold(text, artifact)) return { service: false, interface: artifact.interfaceNamed, program: true };
     const apiWithApp = /\bwith\s+(?:an?\s+)?(?:[\w./+-]+\s+){0,2}api\b|(?:مع|و)\s*واجهة\s+(?:برمجية|برمجة|خلفية)/iu.test(text);
-    // The API object comes from the one artifact reader the router also uses
-    // (requestedArtifact): roles and routing can never disagree on it.
-    const service = requestedArtifact(text).kind === 'api' || requestDeclaresOwnBackend(text) || apiWithApp;
-    let cli = false;
-    try { cli = require('../../../core/design/app-blueprints').isCliRequest(text) === true; } catch { cli = false; }
-    const iface = !(negatedInterface && !webWord) && !buildObjectIsAnApi(text) && !(cli && !webWord);
-    return { service, interface: iface, program: cli && !webWord && !service };
+    // The API object and the server claims come from the one artifact reader
+    // the router also uses: roles and routing can never disagree on them.
+    const service = artifact.kind === 'api' || artifact.needsServer || apiWithApp;
+    if (artifact.kind === 'api') return { service, interface: artifact.interfaceNamed, program: false };
+    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
+    const webWord = artifact.interfaceNamed || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
+    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    return { service, interface: !(negatedInterface && !webWord), program: false };
 }
 
 export function planTouchesRunnable(phases: unknown): boolean {

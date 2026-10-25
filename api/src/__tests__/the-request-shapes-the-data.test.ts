@@ -107,8 +107,9 @@ describe('the declaration reaches ONLY the field it belongs to', () => {
         // «مشروع الات،».
         const { PlanningEngine } = require('../core/orchestrator/PlanningEngine');
         expect(PlanningEngine.classifyBuildScope('ابنِ تطبيق مصاريف يومية بفئات: طعام، مواصلات، فواتير، ترفيه')).toBe('app');
-        // …and a REAL billing system still classifies as one.
-        expect(PlanningEngine.classifyBuildScope('نظام فواتير للمحل مع تقارير')).toBe('system');
+        // …and a billing system that claims a server still classifies as one
+        // (eval round 19: invoices are records; staff accounts are a claim).
+        expect(PlanningEngine.classifyBuildScope('نظام فواتير للمحل مع حسابات للموظفين')).toBe('system');
     });
     it('the brand reader never ships a mangled tail of the declaration', () => {
         const { brandFrom } = require('../core/design/page-head');

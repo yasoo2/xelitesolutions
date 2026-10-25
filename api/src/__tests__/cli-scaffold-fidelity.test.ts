@@ -23,8 +23,9 @@ describe('CLI scaffold fidelity - language/format specific artifacts', () => {
             request: 'Build a Python CLI tool that reads a CSV file with columns task_name,estimated_minutes,actual_minutes and outputs JSON',
             expectedEntryPoint: 'main.py',
             expectedLanguage: 'python',
-            shouldContain: ['def main', 'import pandas', 'read_csv', 'sys.argv'],
-            shouldNotContain: ['import fs', ': string', 'const ', 'export {', 'csv-parse'],
+            // Standard-library csv, not pandas: the program must run where pandas is not installed (eval round 19).
+            shouldContain: ['def main', 'import csv', 'csv.DictReader', 'sys.argv'],
+            shouldNotContain: ['import fs', ': string', 'const ', 'export {', 'csv-parse', 'import pandas'],
         },
         {
             name: 'Bash JSON CLI',

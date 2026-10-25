@@ -34,7 +34,9 @@ describe('a CLI is the program he asked for, not the stock filter', () => {
     it('a request that IS the stock filter keeps the stock program and its test', () => {
         const tasks = tasksOf('Build a Python command-line tool that reads a local JSON file and prints matching entries to stdout. No website or browser interface.');
         expect(tasks.map((t: any) => t.tool)).toEqual(['scaffold_project']);
-        expect(Object.keys(tasks[0].args.structure)).toEqual(expect.arrayContaining(['main.py', 'test.py', 'sample.json']));
+        // Its test is a standard-library unittest named after the program (eval round 19).
+        expect(Object.keys(tasks[0].args.structure)).toEqual(expect.arrayContaining(['main.py', 'test_main.py', 'sample.json']));
+        expect(tasks[0].args.structure['test_main.py']).toMatch(/import unittest/);
     });
 
     it('his quotes and newlines cannot break the manifest', () => {

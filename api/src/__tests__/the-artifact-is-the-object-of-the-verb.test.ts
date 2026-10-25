@@ -218,12 +218,16 @@ describe('R2 — the API head is authoritative', () => {
 
 describe('R3 — a head noun never decides the server', () => {
     it.each([
-        ['ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات', 'ابنِ تطبيقاً لمشتل نباتات: النباتات والموردون والطلبيات', 'system'],
-        ['build a system with suppliers and vendors', 'build an app with suppliers and vendors', 'system'],
+        // Eval round 19: suppliers, vendors and invoices are records, not
+        // claims — the twins agree on 'app'; a claimed database makes both a system.
+        ['ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات', 'ابنِ تطبيقاً لمشتل نباتات: النباتات والموردون والطلبيات', 'app'],
+        ['ابنِ نظاماً لمشتل نباتات مع قاعدة بيانات للموردين', 'ابنِ تطبيقاً لمشتل نباتات مع قاعدة بيانات للموردين', 'system'],
+        ['build a system with suppliers and vendors', 'build an app with suppliers and vendors', 'app'],
         ['Build a habit tracking system for myself', 'Build a habit tracking app for myself', 'app'],
         ['ابني نظام لإدارة مهامي الشخصية', 'ابني تطبيق لإدارة مهامي الشخصية', 'app'],
-        // An invoice is a document the business issues to a customer.
-        ['نظام فواتير للمحل مع تقارير', 'تطبيق فواتير للمحل مع تقارير', 'system'],
+        // One shop issuing invoices owns no server; staff accounts do.
+        ['نظام فواتير للمحل مع تقارير', 'تطبيق فواتير للمحل مع تقارير', 'app'],
+        ['نظام فواتير للمحل مع حسابات للموظفين', 'تطبيق فواتير للمحل مع حسابات للموظفين', 'system'],
     ])('%s ≡ %s → %s', (a, b, expected) => {
         expect(scope(a)).toBe(expected);
         expect(scope(b)).toBe(expected);
@@ -332,9 +336,17 @@ describe('T7 — every lexicon entry is a bilingual pair', () => {
         expect(pair.en.length).toBeGreaterThan(0);
         expect(pair.ar.length).toBeGreaterThan(0);
     });
-    it.each(ARTIFACT_LEXICON.filter(p => !['neutral', 'web'].includes(p.kind)).map(p => [p.concept, p] as const))('%s reads as its kind from either side', (_concept, pair) => {
+    // Modifier families («web», «a FastAPI …») and heads that take their kind
+    // from a modifier («tool», «service») are not deliverable kinds on their own.
+    it.each(ARTIFACT_LEXICON.filter(p => !['neutral', 'web', 'service', 'apiframework'].includes(p.kind)).map(p => [p.concept, p] as const))('%s reads as its kind from either side', (_concept, pair) => {
         expect(requestedArtifact(`Build a ${pair.en[0]}`).kind).toBe(pair.kind);
         expect(requestedArtifact(`ابنِ ${pair.ar[0]}`).kind).toBe(pair.kind);
+    });
+    it('a service head is an API only with a framework or API modifier, from either side', () => {
+        expect(requestedArtifact('Build a FastAPI service').kind).toBe('api');
+        expect(requestedArtifact('ابنِ خدمة فلاسك').kind).toBe('api');
+        expect(requestedArtifact('Build a service').kind).toBeNull();
+        expect(requestedArtifact('Create a fastapi').kind).toBeNull();
     });
 });
 

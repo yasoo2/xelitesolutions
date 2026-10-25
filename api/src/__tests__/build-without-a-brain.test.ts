@@ -63,14 +63,18 @@ describe('«بنِ» is the same verb as «ابنِ»', () => {
     });
 });
 
-describe('suppliers and orders are a database', () => {
-    it('his system needs a server, not a page', () => {
-        expect(PlanningEngine.classifyBuildScope('بنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات')).toBe('system');
+describe('suppliers and orders are records, and a claimed database is a server', () => {
+    // Eval round 19: a record noun never decides the server — suppliers are
+    // records like patients. What the request claims does.
+    it('his system is an application, never a page, and a server once it claims a database', () => {
+        expect(PlanningEngine.classifyBuildScope('بنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات')).toBe('app');
+        expect(PlanningEngine.classifyBuildScope('بنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات مع قاعدة بيانات')).toBe('system');
     });
 
-    it('and the plural forms the list used to miss', () => {
-        expect(PlanningEngine.classifyBuildScope('ابنِ نظاماً فيه الموردون والطلبيات')).toBe('system');
-        expect(PlanningEngine.classifyBuildScope('build a system with suppliers and vendors')).toBe('system');
+    it('and the plural forms read alike in both languages', () => {
+        expect(PlanningEngine.classifyBuildScope('ابنِ نظاماً فيه الموردون والطلبيات')).toBe(PlanningEngine.classifyBuildScope('build a system with suppliers and orders'));
+        expect(PlanningEngine.classifyBuildScope('build a system with suppliers and vendors')).toBe('app');
+        expect(PlanningEngine.classifyBuildScope('build a system with suppliers and vendors and user accounts')).toBe('system');
     });
 
     it('while a landing page stays a page', () => {
