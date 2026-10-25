@@ -3691,6 +3691,16 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
 
 /** Cross-cutting things the BACKEND covers when one was built alongside. */
 const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|endpoint|نقاط\s*وصول|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
+/**
+ * The service api_project builds keeps an owner on every row and lists only the
+ * signed-in employee's rows unless the role sees everyone's (scopeOf /
+ * owner_id): «each staff member only sees their own records» is that backend's
+ * work, whatever the interface engine (eval round 20: the English full-stack
+ * prompt went to a 65-minute model plan while its Arabic twin was covered).
+ * Narrow on purpose — the broad BACKEND_COVERS words («order», «api») must not
+ * cover a records feature such as «a summary of orders by month».
+ */
+const BACKEND_OWNS_ROWS = /\bown\s+(?:records|rows|data|entries|items)\b|\bonly\s+(?:sees?|views?|accesses)\s+(?:their|his|her)\b|سجلات(?:ه|ها|هم)\s+فقط/i;
 
 /**
  * A compound weather capability is covered only by independent source evidence.
@@ -4007,6 +4017,9 @@ export function uncoveredFeatures(request: string, engine: AppEngine | null, has
     if (!asked.length) return [];
     const covers = engine ? ENGINE_COVERS[engine] : null;
     return asked.filter(f => {
+        // Per-user ownership is the backend's, whatever the interface engine
+        // (the records branch below returns before the backend check).
+        if (hasBackend && BACKEND_OWNS_ROWS.test(f)) return false;
         if (engine === 'weather' && weatherFeatureCovered(f, evidence)) return false;
         if (engine === 'records') return !recordFeatureCovered(f, request, evidence);
         if (engine !== 'weather' && covers && covers.test(f)) return false;

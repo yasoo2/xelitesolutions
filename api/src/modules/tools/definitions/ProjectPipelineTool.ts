@@ -1323,6 +1323,65 @@ export function requestDeclaresOwnBackend(request: string): boolean {
     return requestedArtifact(String(request || '')).needsServer;
 }
 
+/**
+ * A greenfield application that claims its own server, which
+ * deterministicPhasesFor builds as api_project + react_project. Eval round 20:
+ * P251 «… the owner sees all bookings» went to a browser-only plan, and the
+ * full-stack prompts to a 40–70 minute local model plan, while the builders
+ * that cover them were one branch away.
+ */
+export function serverClaimingApplication(request: string): boolean {
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.needsServer
+        && ['app', 'booking', 'store', 'system'].includes(String(artifact.kind))
+        && deterministicRescueAllowed(request);
+}
+
+const SERVER_SOURCE = /(?:^|\/)(?:server|backend|api)(?:\/|\.(?:[cm]?[jt]s|py)$)|(?:^|\/)(?:routes?|controllers?|endpoints)\/|(?:^|\/)(?:manage|wsgi|asgi)\.py$/i;
+const SERVER_FRAMEWORK = /["'](?:express|fastify|koa|hono|@nestjs\/core|@hapi\/hapi|restify)["']\s*:|\b(?:npm|pnpm|yarn)\s+(?:install|i|add)\b[^\n]*\b(?:express|fastify|koa|hono|@nestjs\/core)\b|\b(?:pip|pip3)\s+install\b[^\n]*\b(?:flask|fastapi|django)\b|^\s*(?:flask|fastapi|django)\b/im;
+
+/** Does this plan build a server: a service builder, server source, or a server framework it installs? */
+export function planBuildsAServer(request: string, phases: any[]): boolean {
+    const list = Array.isArray(phases) ? phases : [];
+    if (planContainsTool(list, 'api_project') || planContainsTool(list, 'scaffold_full_stack')) return true;
+    const tasks = list.flatMap((phase: any) => [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask ? [phase.verificationTask] : [])]);
+    const structured = tasks.flatMap((task: any) => {
+        const structure = task?.args?.structure && typeof task.args.structure === 'object' ? task.args.structure : {};
+        return Object.keys(structure).map(key => key.replace(/\\/g, '/'));
+    });
+    const paths = [...plannedFilePaths(list), ...structured];
+    if (paths.some(file => SERVER_SOURCE.test(file))) return true;
+    const texts = tasks.flatMap((task: any) => {
+        const args = task?.args || {};
+        const structure = args.structure && typeof args.structure === 'object' ? Object.values(args.structure) : [];
+        return [args.content, args.command, ...structure].filter(value => typeof value === 'string') as string[];
+    });
+    if (texts.some(text => SERVER_FRAMEWORK.test(text))) return true;
+    // The deliverable IS the service: its own source is the server.
+    return requestedArtifact(String(request || '')).kind === 'api' && paths.some(file => /\.(?:[cm]?[jt]s|py|go|rb|php)$/i.test(file));
+}
+
+/**
+ * The plan with the service its request claims, or null when it builds one
+ * already (or claims none). Never delivered browser-only: «… the owner sees
+ * all bookings» kept in each customer's browser is a front end with nowhere
+ * to put a row. The model's phases are kept; the service phase comes first
+ * because the interface depends on it.
+ */
+export function planWithRequestedService(request: string, phases: any[]): any[] | null {
+    const text = String(request || '');
+    const artifact = requestedArtifact(text);
+    if (!artifact.needsServer || routesToCliScaffold(text, artifact)) return null;
+    if (!Array.isArray(phases) || phases.length === 0 || planBuildsAServer(text, phases)) return null;
+    const service = {
+        phaseNumber: 1,
+        name: 'Data service and schema',
+        description: `The request claims its own server (${artifact.evidence.serverClaims.slice(0, 3).join('; ')}): build the data service the interface depends on.`,
+        tasks: [{ tool: 'api_project', description: `Backend and database for: ${text}`, args: { request: text } }],
+    };
+    return [service, ...phases.map((phase: any, index: number) => ({ ...phase, phaseNumber: index + 2 }))];
+}
+
 const PLANNED_SOURCE_WRITERS = new Set(['ai_write_file', 'write_file', 'file_write', 'create_file']);
 const PLANNED_TEST_FILE = /(?:^|\/)(?:__tests__|tests?|spec)\/|(?:^|\/)test_[^/]+\.py$|(?:^|\/)[^/]+_test\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$/i;
 const WEB_ARTIFACT_FILE = /\.(?:html?|jsx|tsx|vue|svelte|css|scss|sass|less)$/i;
@@ -2125,8 +2184,13 @@ export class ProjectPipelineTool implements ToolDefinition {
         // CLI/CSV requests are file-level projects, not web apps. They should
         // use the deterministic scaffold path even without an explicit schema.
         const isCliOrCsv = isCliRequestFn(productRequest);
+        // A greenfield application that claims its own server is built by
+        // api_project + react_project; the stock-coverage check below still
+        // decides whether a model plans it instead (eval round 20, P251/P151).
+        const claimsOwnServer = !hasExplicitRecordSchema(productRequest) && !deterministicWorkflow && !isCliOrCsv
+            && serverClaimingApplication(productRequest);
         const stockPhases = isGreenfield
-            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv)
+            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv || claimsOwnServer)
             ? deterministicPhasesFor(productRequest)
             : null;
         /**
@@ -2229,10 +2293,14 @@ export class ProjectPipelineTool implements ToolDefinition {
             say(pick(isAr,
                 deterministicWorkflow
                     ? `[pipeline] الطلب يصرّح بسير عمل مترابط — أبني عقد النظام الكامل مباشرة: ${hisOwnSchema.reason}`
-                    : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
+                    : claimsOwnServer
+                        ? `[pipeline] الطلب يطلب خادمه الخاص وتغطيه أدوات البناء — أبني الخدمة والواجهة مباشرة: ${hisOwnSchema.reason}`
+                        : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
                 deterministicWorkflow
                     ? `[pipeline] the request declares a coordinated workflow — building its full-system contract directly: ${hisOwnSchema.reason}`
-                    : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
+                    : claimsOwnServer
+                        ? `[pipeline] the request claims its own server and the builders cover it — building its service and interface directly: ${hisOwnSchema.reason}`
+                        : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
             hisPlan = {
                 ok: true,
                 output: {
@@ -2413,6 +2481,22 @@ export class ProjectPipelineTool implements ToolDefinition {
                         logs: boundedPipelineLogs(plannerResult?.logs),
                     };
                 }
+            }
+        }
+
+        // Whatever planned it — the model, a rescue or the stock path — a plan
+        // for a request that claims its own server builds that server: the
+        // model's phases are kept and the service phase is added before them
+        // (eval round 20, P251: a browser-only plan for «the owner sees all
+        // bookings»).
+        if (isGreenfield && Array.isArray(plannerResult?.output?.phases) && plannerResult.output.phases.length > 0) {
+            const withService = planWithRequestedService(productRequest, plannerResult.output.phases);
+            if (withService) {
+                say(pick(isAr,
+                    '[pipeline] الطلب يطلب خادماً والخطة لا تبني واحداً — أضفتُ مرحلة الخدمة قبل مراحلها',
+                    '[pipeline] the request claims a server and the plan builds none — adding the service phase before its phases'));
+                plannerResult.output.phases = withService;
+                plannerResult.output.totalPhases = withService.length;
             }
         }
 
