@@ -261,7 +261,7 @@ describe('what cannot be measured is said as such', () => {
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.get('/api/rakhams', (q, r) => r.json([]));\n" });
         const report = judgeRequestCoverage({ records: records([{ key: 'mrabws', ar: 'المرابع', en: 'المرابع' }]), evidence: collectServerEvidence([dir], []), probe: { mrabws: 'absent' }, backendRequested: true });
         expect(report.missing).toEqual([]);
-        expect(report.unverified.map(r => r.key)).toEqual(['mrabws']);
+        expect((report.unverified || []).map(r => r.key)).toEqual(['mrabws']);
     });
     it('capabilities and unverified records keep the delivery «not verified» — and never «partial»', () => {
         const report = judgeRequestCoverage({ records: { ...records([]), capabilities: ['per-user record isolation — «x»'] }, evidence: collectServerEvidence([], []), backendRequested: true });
