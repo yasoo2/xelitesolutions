@@ -125,7 +125,7 @@ export interface ModelRoundResult {
  */
 export async function askForCss(
     findings: Array<{ id: string; detailEn?: string; detail?: string; evidence?: any[] }>,
-    opts: { timeoutMs?: number } = {},
+    opts: { timeoutMs?: number; context?: any } = {},
 ): Promise<ModelRoundResult> {
     if (!findings.length) return { css: '', why: 'nothing left to describe' };
     const eligible = cssRepairable(findings);
@@ -133,14 +133,15 @@ export async function askForCss(
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { routeToModel } = require('../llm/intelligent-router');
-        const answer = await Promise.race([
-            routeToModel(
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { askToAuthor } = require('../../modules/tools/model-call-race');
+        //  A timer that only resolved '' left the call running in the inference
+        //  lane, on a leash no CPU model could meet: see `askToAuthor`.
+        const answer = await askToAuthor((context: any) => routeToModel(
                 [{ role: 'user', content: cssRepairPrompt(eligible) }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                { purpose: 'internal' },
-            ),
-            new Promise(r => setTimeout(() => r(''), Math.max(5000, opts.timeoutMs || 45_000))),
-        ]);
+                { ...(context || {}), purpose: 'internal' },
+            ), opts.context || {}, Math.max(5000, opts.timeoutMs || 45_000));
         const gate = safeCss(answer);
         if (!gate.ok) return { css: '', why: gate.why || 'refused' };
         return { css: gate.css };
@@ -421,8 +422,9 @@ export async function askForHandler(
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { routeToModel } = require('../llm/intelligent-router');
-        const ask = async (prompt: string) => Promise.race([
-            routeToModel(
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { askToAuthor } = require('../../modules/tools/model-call-race');
+        const ask = async (prompt: string) => askToAuthor((context: any) => routeToModel(
                 [{ role: 'user', content: prompt }],
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 //  ⛔ THE PROVIDER HE CHOSE, not the free mesh — and marked
@@ -431,10 +433,8 @@ export async function askForHandler(
                 //  answer needs. Both call sites in this file used to pass
                 //  `internalCall`, a key the router never reads; see the note
                 //  at the top of the file for what that cost.
-                { ...(opts.context || {}), purpose: 'internal' },
-            ),
-            new Promise(r => setTimeout(() => r(''), Math.max(5000, opts.timeoutMs || 90_000))),
-        ]);
+                { ...(context || {}), purpose: 'internal' },
+            ), opts.context || {}, Math.max(5000, opts.timeoutMs || 90_000));
 
         const first = handlerRepairPrompt(findings, file, source, labels);
         const gate = safeComponent(await ask(first), source);

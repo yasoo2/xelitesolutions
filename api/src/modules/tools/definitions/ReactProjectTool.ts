@@ -29,7 +29,8 @@ import { acceptanceFor as acceptanceCriteriaFor, type JudgedCriterion } from '..
 import { CAPABILITIES } from '../../../core/quality/scope-audit';
 import { namedRequirements, requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
-import { askWithin, askForTheContract } from '../model-call-race';
+import { askToAuthor, askForTheContract } from '../model-call-race';
+import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
@@ -4603,7 +4604,9 @@ export class ReactProjectTool extends BaseTool {
          */
         // Request interpretation and authored copy improve a build, but the
         // deterministic renderer is the delivery floor. One slow provider must
-        // not spend minutes blocking that floor before a file exists.
+        // not spend minutes blocking that floor before a file exists. This
+        // leash is for remote providers: served by the local model, authoring
+        // calls wait for the router's sized deadline (`askToAuthor`).
         const optionalModelTimeoutMs = (() => {
             const configured = Number(process.env.JOE_OPTIONAL_MODEL_TIMEOUT_MS);
             const requested = Number.isFinite(configured) && configured > 0 ? configured : 12_000;
@@ -4961,7 +4964,7 @@ export class ReactProjectTool extends BaseTool {
                     isArabic: artifactIsAr,
                     current: content,
                     fields: wanted,
-                }, async (prompt: string) => askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
+                }, async (prompt: string) => askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -5780,7 +5783,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         fields: seedFields,
                         wanted: countHeAskedFor(request),
                         minNumeric: minimumHeStated(request),
-                    }, async (prompt: string) => askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
+                    }, async (prompt: string) => askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -6047,6 +6050,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // simply keeps its proven deterministic component.
             const authoringStartedAt = Date.now();
             const AUTHORING_TOTAL_BUDGET_MS = 30_000;
+            // A remote provider's budget: the local model is not raced against
+            // it (see `askToAuthor`) — 30 s is not one section on a CPU model.
+            const authoredLocally = servedByLocalModel(context);
             /**
              *  ⛔ AND A SECTION HE NAMED IS BUILT EVEN WITH NO TEMPLATE BEHIND IT.
              *
@@ -6119,11 +6125,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ],
             }, async (prompt: string) => {
                 const remaining = AUTHORING_TOTAL_BUDGET_MS - (Date.now() - authoringStartedAt);
-                if (remaining <= 0) throw new Error('the interface authoring time budget was used');
+                if (remaining <= 0 && !authoredLocally) throw new Error('the interface authoring time budget was used');
                 // Bound the full enhancement, not every component in it. The
                 // first batch gets a useful response window; any remaining
                 // batch shares what is left rather than restarting the clock.
-                return askWithin((context: any) => routeToModel([{ role: 'user', content: prompt }],
+                return askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -8043,7 +8049,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                                 return known.changed;
                             }
                             term(`improve: no deterministic fix left for ${rich.map((f: any) => f.id).join(', ') || 'the rest'} — asking the model for CSS, under a syntax gate`);
-                            const got = await askForCss(rich, { timeoutMs: 45_000 });
+                            const got = await askForCss(rich, { timeoutMs: 45_000, context });
                             if (!got.css) {
                                 term(`improve: the model round produced nothing usable (${got.why || 'no answer'}) — nothing written`);
                                 return [];

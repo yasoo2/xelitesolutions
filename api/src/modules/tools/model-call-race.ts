@@ -96,3 +96,24 @@ export async function askWithin<T>(
 export function askForTheContract<T>(call: ModelCall<T>, context: any, leashMs: number): Promise<T> {
     return servedByLocalModel(context) ? call(context) : askWithin(call, context, leashMs);
 }
+
+/**
+ * A call that WRITES his build — the copy, the catalogue rows, the authored
+ * sections, a repair round. Eval 2026-10-25 (P001-landing-ar, current code):
+ * the copy call was cancelled 12 s after qwen3.5 started on it, «the model did
+ * not answer in time», and that one leash loss marked the model unavailable,
+ * so interface authoring stood down too and his clinic page shipped in derived
+ * words — on a CPU model whose planner call, minutes earlier, had needed 25 min.
+ * A fixed leash measures the clock, not the model. Served by the local model it
+ * waits for the router's sized, admission-started deadline (and the run's
+ * signal), as the contract calls do; on any other provider the leash stays,
+ * and the call it abandons is aborted.
+ */
+export function askToAuthor<T>(
+    call: ModelCall<T>,
+    context: any,
+    leashMs: number,
+    timeoutMessage?: string,
+): Promise<T> {
+    return servedByLocalModel(context) ? call(context) : askWithin(call, context, leashMs, timeoutMessage);
+}
