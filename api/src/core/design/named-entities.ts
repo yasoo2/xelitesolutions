@@ -103,6 +103,37 @@ export function curatedNounKey(word: string): string {
     return NOUNS.find(x => x.re.test(w))?.key || '';
 }
 
+/**
+ * THE NOUN AN ITEM NAMES IS ITS HEAD, NEVER ITS POSSESSOR.
+ *
+ * Eval run500 (2026-10-26, P001): «… فيه قسم رئيسي جذاب، والخدمات، وآراء
+ * العملاء، ونموذج تواصل …» — a landing page's sections. «آراء العملاء» is
+ * testimonials, but its second word matched `customers`, and with «الخدمات»
+ * that made two recognised nouns: the page was judged as a records app and
+ * its delivery failed «customers (not built)». The same English request
+ * («services, testimonials») read no table at all.
+ *
+ * A two-word item is read whole first («العملاء المحتملون» → leads), then by
+ * its head: the first word in Arabic («آراء العملاء» are opinions, «المنتجات
+ * الرقمية» are products), the last in English («customer reviews» are
+ * reviews). Only when the head is a word for holding or working the
+ * possessor's records («إدارة المرضى», «سجل المرضى», «patient records») does
+ * the item name the possessor.
+ */
+const RECORDS_OF = /^(?:(?:ال)?(?:إدارة|ادارة|تتبع|متابعة|تسجيل|سجل|سجلات|جدول|جداول|قائمة|قوائم|بيانات|ملف|ملفات|أرشيف|ارشيف)|management|tracking|records?|lists?|data|database|directory|table|registry|files?)$/iu;
+
+function nounOfItem(item: string): Noun | undefined {
+    const whole = String(item || '').trim();
+    const token = whole.split(/\s+/).filter(Boolean);
+    const exact = NOUNS.find(x => x.re.test(whole));
+    if (exact || token.length < 2) return exact;
+    const arabic = /[\u0600-\u06FF]/u.test(token[0]);
+    const head = arabic ? token[0] : token[token.length - 1];
+    const possessor = arabic ? token[token.length - 1] : token[0];
+    return NOUNS.find(x => x.re.test(head))
+        || (RECORDS_OF.test(head) ? NOUNS.find(x => x.re.test(possessor)) : undefined);
+}
+
 /** The columns a table of this kind actually needs to be usable. */
 function fieldsFor(n: Noun): ModelField[] {
     switch (n.kind) {
@@ -226,13 +257,13 @@ export function namedEntities(request: string): ModelEntity[] {
         // named ten domains and delivered four.
         if (read.length >= MAX_MODEL_ENTITIES) break;
         // A phrase like «صور نباتات» must not match on its last word alone:
-        // only a single noun, or a noun with its definite article, is a table.
+        // the item names its head noun (nounOfItem), never its possessor.
         const token = w.split(/\s+/);
         if (token.length > 2) continue;
         // «التحقق من المدخلات», «input validation», «automated tests» are
         // qualities the software must have — requirements, never tables.
         if (isDeliverable(w)) continue;
-        const n = NOUNS.find(x => token.some(t => x.re.test(t)));
+        const n = nounOfItem(w);
         /**
          * …and never a name the system already serves.
          *
@@ -291,7 +322,7 @@ function listedReserved(request: string): Noun[] {
     for (const w of splitListItems(trimTail(listed.part))) {
         const token = w.split(/\s+/);
         if (token.length > 2) continue;
-        const n = NOUNS.find(x => token.some(t => x.re.test(t)));
+        const n = nounOfItem(w);
         if (n && RESERVED_TABLES.has(n.key) && !out.includes(n)) out.push(n);
     }
     return out;
