@@ -453,6 +453,109 @@ function extractMissingNpmRunner(ticket: RepairTicket) {
   return null;
 }
 
+interface MissingNpxExecutableEvidence {
+  packageName: string;
+  executable: string;
+  installedVersion: string;
+  dev: boolean;
+  cwd: string;
+  task: string;
+}
+
+/**
+ *  ⛔ AN EXECUTABLE THE INSTALLED RELEASE NO LONGER SHIPS.
+ *
+ *  P001 (run500): the plan ran `npm install -D tailwindcss postcss
+ *  autoprefixer && npx tailwindcss init -p`. The registry's latest was
+ *  tailwindcss@4.3.3, whose manifest declares no executable at all, so npx
+ *  answered «could not determine executable to run» — while the plan's own
+ *  next files (tailwind.config.js, the @tailwind directives) were written for
+ *  the release that had one. No file was named, so the healer stopped with
+ *  "General phase failure has no evidence-bound repair file" and the build
+ *  ended at 1/5.
+ *
+ *  The evidence is on disk, not in a catalogue: the package npx was asked for
+ *  is installed in the command's directory and declared by its manifest, and
+ *  the installed release's `bin` lacks that name. Which release does declare
+ *  it is the registry's answer — npm_manager asks it (`providesBin`); nothing
+ *  here guesses a major.
+ */
+function npxPackageSpec(segment: string): string | null {
+  const match = segment.match(/^npx\s+(.+)$/i);
+  if (!match) return null;
+  for (const token of match[1].split(/\s+/)) {
+    // An explicit -p/--package names the package apart from the executable;
+    // that is another shape, and this reader does not guess it.
+    if (/^(?:-p|--package)(?:=|$)/.test(token)) return null;
+    if (token.startsWith('-')) continue;
+    return token;
+  }
+  return null;
+}
+
+function installedManifest(root: string, packageName: string): any | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'node_modules', ...packageName.split('/'), 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function manifestDeclaresExecutable(manifest: any, executable: string): boolean {
+  const bin = manifest?.bin;
+  if (typeof bin === 'string') return bin.trim().length > 0;
+  if (bin && typeof bin === 'object') {
+    const names = Object.keys(bin);
+    // npx runs a package's only executable whatever its name.
+    return names.includes(executable) || names.length === 1;
+  }
+  return !!manifest?.directories?.bin;
+}
+
+function extractMissingNpxExecutable(ticket: RepairTicket): MissingNpxExecutableEvidence | null {
+  for (const failed of ticket.failedTasks) {
+    if (failed.tool !== 'shell_execute' || !failed.cwd || !failed.command) continue;
+    const evidence = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    if (!/could not determine executable to run/i.test(evidence)) continue;
+    const base = path.resolve(failed.cwd);
+    let dir = base;
+    for (const rawSegment of failed.command.split(/&&|\|\||;|\|/)) {
+      const segment = rawSegment.trim();
+      const cd = segment.match(/^cd\s+(?:\/d\s+)?["']?([^"']+?)["']?$/i);
+      if (cd) {
+        // The executor may already have bound the cwd the plan's `cd` named;
+        // follow a `cd` only when it exists and stays inside the recorded cwd.
+        const next = path.resolve(dir, cd[1]);
+        const relative = path.relative(base, next);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative) && fs.existsSync(next)) dir = next;
+        continue;
+      }
+      const spec = npxPackageSpec(segment);
+      if (!spec) continue;
+      const packageName = spec.match(/^((?:@[^/@\s]+\/)?[^@\s]+)/)?.[1] || '';
+      if (!isSafeNpmPackageName(packageName)) continue;
+      const executable = packageName.split('/').pop() || packageName;
+      const manifest = installedManifest(dir, packageName);
+      if (!manifest || manifestDeclaresExecutable(manifest, executable)) continue;
+      let declared: any = null;
+      try { declared = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch { declared = null; }
+      const dev = !!declared?.devDependencies?.[packageName];
+      // A transitive package is not the plan's own install; pinning it as a
+      // direct dependency would be a change the evidence does not ask for.
+      if (!dev && !declared?.dependencies?.[packageName]) continue;
+      return {
+        packageName,
+        executable,
+        installedVersion: String(manifest.version || 'unknown'),
+        dev,
+        cwd: dir,
+        task: failed.task,
+      };
+    }
+  }
+  return null;
+}
+
 interface MissingNpmTestDependencyEvidence {
   packageName: string;
   cwd: string;
@@ -1140,6 +1243,29 @@ export class SelfFixService {
           command: 'install',
           ...(invalidNpmVersion.explicitSpecifier ? { packages: [token] } : {}),
           cwd: invalidNpmVersion.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const missingNpxExecutable = extractMissingNpxExecutable(ticket);
+    if (missingNpxExecutable) {
+      const { packageName, executable, installedVersion, dev, cwd } = missingNpxExecutable;
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `npx could not run ${executable}: the installed ${packageName}@${installedVersion} declares no "${executable}" executable. Install the newest published ${packageName} whose manifest declares it (registry evidence) in the recorded project cwd, then rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          packages: [packageName],
+          dev,
+          cwd,
+          providesBin: executable,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

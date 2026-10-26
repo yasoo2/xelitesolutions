@@ -1214,6 +1214,49 @@ async function recoverNpmInvalidVersion(
     };
 }
 
+function binDeclaresExecutable(output: unknown, packageName: string, executable: string): boolean {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(String(output || '').trim() || 'null');
+    } catch {
+        return false;
+    }
+    const unscoped = packageName.split('/').pop() || packageName;
+    const declares = (value: unknown): boolean => {
+        if (Array.isArray(value)) return value.some(declares);
+        if (typeof value === 'string') return value.trim().length > 0 && executable === unscoped;
+        return !!value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, executable);
+    };
+    return declares(parsed);
+}
+
+/**
+ * The newest stable published release of `packageName` whose manifest declares
+ * the executable `executable`, as the registry reports it. Majors are probed
+ * newest first, one release (the newest) per major; a release without the
+ * executable is never chosen, and no major is assumed.
+ */
+export async function findReleaseProvidingBin(
+    workDir: string,
+    packageName: string,
+    executable: string,
+    timeoutMs: number,
+): Promise<{ version?: string; error?: string; probed: string[] }> {
+    const listing = await handleShellCommand('npm', ['view', packageName, 'versions', '--json'], workDir, timeoutMs, false);
+    const stable = listing.ok ? stableVersionsFromNpmView(listing.output).sort(compareNpmVersions) : [];
+    if (!stable.length) return { error: `npm_no_stable_published_version:${packageName}`, probed: [] };
+    const newestPerMajor = new Map<number, string>();
+    for (const version of stable) newestPerMajor.set(versionTuple(version)[0], version);
+    const candidates = [...newestPerMajor.values()].sort(compareNpmVersions).reverse();
+    const probed: string[] = [];
+    for (const version of candidates) {
+        probed.push(version);
+        const probe = await handleShellCommand('npm', ['view', `${packageName}@${version}`, 'bin', '--json'], workDir, timeoutMs, false);
+        if (probe.ok && binDeclaresExecutable(probe.output, packageName, executable)) return { version, probed };
+    }
+    return { error: `npm_no_release_declares_executable:${packageName}:${executable}`, probed };
+}
+
 export class NpmManagerTool extends BaseTool {
     name = 'npm_manager';
     description = 'Manage npm dependencies and run scripts.';
@@ -1221,7 +1264,7 @@ export class NpmManagerTool extends BaseTool {
     tags = ['npm', 'package', 'install'];
     inputSchema = {
         type: 'object' as const,
-        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' }, cwd: { type: 'string' }, projectPath: { type: 'string' } },
+        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' }, cwd: { type: 'string' }, projectPath: { type: 'string' }, providesBin: { type: 'string' } },
         required: ['command']
     };
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
@@ -1323,6 +1366,21 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
             let installArgs = args;
+            // A repair that must run `npx <executable>` installs the release
+            // that ships it — chosen from registry manifests, never assumed.
+            const providesBin = typeof input?.providesBin === 'string' ? input.providesBin.trim() : '';
+            if (installLike && providesBin) {
+                const target = pkgs.length === 1 ? String(pkgs[0]).trim() : '';
+                if (!VALID_NPM_PACKAGE_NAME.test(target)) {
+                    return { ok: false, error: 'npm_provides_bin_needs_one_bare_package', logs };
+                }
+                const provider = await findReleaseProvidingBin(workDir, target, providesBin, Math.min(installTimeoutMs, 60_000));
+                logs.push(`npm.bin_probe=${target}:${providesBin} probed=${provider.probed.join(',') || 'none'}`);
+                if (!provider.version) return { ok: false, error: provider.error, logs };
+                const pinned = `${target}@^${provider.version}`;
+                installArgs = args.map(token => token === target ? pinned : token);
+                logs.push(`npm.bin_provider=${pinned} declares ${providesBin}`);
+            }
             let r = await handleShellCommand('npm', installArgs, workDir, installLike ? installTimeoutMs : 5 * 60_000, false);
             if (!r.ok && installLike) {
                 const failureText = `${r.error || ''}\n${String((r as any).output || '')}\n${(r.logs || []).join('\n')}`;
