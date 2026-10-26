@@ -1525,13 +1525,62 @@ export function projectAuditRoots(sourceRoot: string, runtimeRoot: string): stri
     return roots;
 }
 
-export function projectAuditDirectory(roots: string[]): string {
-    for (const root of roots.map(value => String(value || '').trim()).filter(Boolean)) {
-        if (fs.existsSync(path.join(root, 'index.html'))) return root;
-        if (fs.existsSync(path.join(root, 'dist', 'index.html'))) return path.join(root, 'dist');
-        if (fs.existsSync(path.join(root, 'public', 'index.html'))) return path.join(root, 'public');
+/** Folders that hold no delivered page: installed packages, generated reports, tests. */
+const NOT_A_PAGE_FOLDER = /^(?:node_modules|coverage|__tests__|tests?|__mocks__)$/iu;
+
+/** The usual places a build leaves its page: the part's root, dist/, public/. */
+function usualPageDirectory(base: string): string {
+    for (const rel of ['', 'dist', 'public']) {
+        if (fs.existsSync(path.join(base, rel, 'index.html'))) return rel ? path.join(base, rel) : base;
     }
-    return roots.map(value => String(value || '').trim()).find(Boolean) || '';
+    return '';
+}
+
+/**
+ * The folder holding a part's delivered page, wherever the build put it.
+ *
+ * Root, dist/ and public/ were the only places looked at, so a page written
+ * beside its server (src/index.html served by src/server.js — P001) or in
+ * client/, www/, static/ … counted as «no interface»: Browser QA never ran
+ * and the run failed on a page that was on disk. The usual places still win;
+ * after them the shallowest index.html in the part's own tree, never inside
+ * installed packages, hidden folders, coverage reports or tests.
+ */
+export function deliveredPageDirectory(root: string, maxDepth = 3): string {
+    const base = String(root || '').trim();
+    if (!base) return '';
+    const usual = usualPageDirectory(base);
+    if (usual) return usual;
+    let level = [base];
+    for (let depth = 1; depth <= maxDepth && level.length; depth++) {
+        const next: string[] = [];
+        for (const dir of level) {
+            let entries: fs.Dirent[] = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (!entry.isDirectory() || entry.name.startsWith('.') || NOT_A_PAGE_FOLDER.test(entry.name)) continue;
+                next.push(path.join(dir, entry.name));
+            }
+        }
+        const found = next.find(dir => fs.existsSync(path.join(dir, 'index.html')));
+        if (found) return found;
+        level = next;
+    }
+    return '';
+}
+
+export function projectAuditDirectory(roots: string[]): string {
+    const clean = roots.map(value => String(value || '').trim()).filter(Boolean);
+    // Every part's usual places first, so a search never outranks them.
+    for (const root of clean) {
+        const page = usualPageDirectory(root);
+        if (page) return page;
+    }
+    for (const root of clean) {
+        const page = deliveredPageDirectory(root);
+        if (page) return page;
+    }
+    return clean[0] || '';
 }
 
 const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|available)|no\s+tests?|placeholder|todo).*|(?:true|:|exit\s+0))$/iu;
@@ -3268,8 +3317,7 @@ export class ProjectPipelineTool implements ToolDefinition {
          * failure of its own, named.
          */
         const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
-        const interfaceDelivered = interfaceRoots.some(root => ['index.html', path.join('dist', 'index.html'), path.join('public', 'index.html')]
-            .some(rel => fs.existsSync(path.join(root, rel))));
+        const interfaceDelivered = interfaceRoots.some(root => Boolean(deliveredPageDirectory(root)));
         if (!interfaceDelivered && verifiedLiveUrl(ledger.all()) && deliveryRoles.interface) {
             ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no index.html)' });
             syncFromLedger();
