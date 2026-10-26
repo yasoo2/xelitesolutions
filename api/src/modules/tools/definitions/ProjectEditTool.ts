@@ -34,6 +34,7 @@ import { acceptanceFor, judgeAcceptance } from '../../../core/quality/acceptance
 import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
+import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -412,7 +413,7 @@ export function syntaxOk(file: string, code: string): { ok: boolean; error?: str
         if (componentError) return { ok: false, error: componentError };
         return { ok: true };
     } catch (e: any) {
-        return { ok: false, error: String(e?.message || e).split('\n')[0].slice(0, 160) };
+        return { ok: false, error: parserDiagnosis(e) };
     }
 }
 

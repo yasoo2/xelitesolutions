@@ -3,6 +3,7 @@ import path from 'path';
 
 import { syntaxFileKind } from '../../../shared/syntax-contract';
 import { moduleGoal, packageTypeOf } from '../../../core/quality/js-syntax-check';
+import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
@@ -267,7 +268,7 @@ export class AutoTesterTool implements ToolDefinition {
                     });
                     logs.push(`esbuild syntax passed: ${name}`);
                 } catch (error: any) {
-                    const detail = String(error?.errors?.[0]?.text || error?.message || error).split('\n')[0].slice(0, 300);
+                    const detail = parserDiagnosis(error);
                     return this.failure(`Syntax error in ${name}: ${detail}`, logs, 'syntax');
                 }
             }
