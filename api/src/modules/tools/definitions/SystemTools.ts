@@ -14,6 +14,7 @@ import { prepareArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { AUTONOMOUS_FILE_BYTES } from '../../services/AutonomousFilePolicy';
+import { editAlreadyApplied } from '../../../shared/utils/edit-in-place';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
@@ -752,6 +753,12 @@ export class FileEditTool extends BaseTool {
         const toFile = (t: string) => t.replace(/\r\n?/g, '\n').split('\n').join(dominantEnding);
         const findInFile = toFile(find);
         const replaceInFile = toFile(replace);
+        // A rerun of an edit that already landed is that edit, not missing
+        // text, and must not land twice (shared/utils/edit-in-place.ts).
+        if (editAlreadyApplied(content, findInFile, replaceInFile)) {
+            logs.push(`edit=${filename} (already in place)`);
+            return { ok: true, output: { success: true, alreadyApplied: true }, logs };
+        }
         if (!content.includes(findInFile)) {
             /**
              *  A FAILURE THAT NAMES NOTHING CANNOT BE REPAIRED.

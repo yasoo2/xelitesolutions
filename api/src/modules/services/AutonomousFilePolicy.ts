@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
+import { editAlreadyApplied } from '../../shared/utils/edit-in-place';
 
 /** Bounded text files only. Existing files allow one unique literal edit, never a blind overwrite. */
 export const AUTONOMOUS_FILE_BYTES = 128 * 1024;
@@ -180,6 +181,9 @@ export function validateAutonomousFileOperation(name: string, input: Record<stri
                 const newline = crlf > lf ? '\r\n' : '\n';
                 const normalize = (value: string) => value.replace(/\r\n|\r|\n/g, newline);
                 const find = normalize(input.find), replace = normalize(input.replace);
+                // An edit already in place is prepared as no change, never applied twice.
+                if (editAlreadyApplied(content, find, replace)) return { path: target, find: input.find, replace: input.replace,
+                    autonomousEditBefore: content, autonomousEditAfter: content };
                 const offset = content.indexOf(find);
                 if (offset < 0) deny('edit_text_not_found');
                 if (content.indexOf(find, offset + 1) >= 0) deny('ambiguous_edit_match');
