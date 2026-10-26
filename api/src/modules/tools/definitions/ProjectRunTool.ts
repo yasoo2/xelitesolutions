@@ -4,6 +4,7 @@ import { staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
+import { importedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
@@ -1584,6 +1585,36 @@ export class ProjectRunTool implements ToolDefinition {
                 const installError = String(installResult?.error || 'npm install failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
                 prerequisiteRecovery = `npm install failed: ${installError}`;
                 logs.push(`project_run: auto npm install failed (${installError})`);
+            }
+        }
+        // The script's program is declared nowhere, but a project file imports
+        // the package of that exact name: that import is the evidence, and
+        // npm_manager installs only a release whose manifest declares the program.
+        const binaryProvider = missingPrerequisite === 'vite' && !prerequisiteRecovery
+            ? importedPackageForScriptBinary(cwd, missingPrerequisite)
+            : null;
+        if (missingPrerequisite && binaryProvider) {
+            const binary = missingPrerequisite;
+            say(pick(isAr,
+                `📦 السكربت يشغّل ${binary} والملف ${binaryProvider.importedBy[0]} يستورد ${binaryProvider.packageName}، لكنه غير معلن في manifest؛ أثبّته من الإصدار الذي يعلن هذا البرنامج…`,
+                `📦 The script runs ${binary} and ${binaryProvider.importedBy[0]} imports ${binaryProvider.packageName}, which the manifest does not declare; installing it from the release that declares that program…`));
+            let installResult: any;
+            try {
+                installResult = await new NpmManagerTool().execute(scriptBinaryInstallInput(cwd, binary, binaryProvider), context);
+            } catch (error: any) {
+                installResult = { ok: false, error: String(error?.message || error) };
+            }
+            const missingAfterInstall = installResult?.ok ? launchPrerequisiteError(cwd, detected) : missingPrerequisite;
+            if (installResult?.ok && !missingAfterInstall) {
+                missingPrerequisite = null;
+                logs.push(`project_run: installed imported ${binaryProvider.packageName} for ${binary} (${binaryProvider.importedBy.join(', ')})`);
+            } else {
+                missingPrerequisite = missingAfterInstall;
+                const installError = String(installResult?.error || '').trim().replace(/\s+/gu, ' ').slice(0, 700);
+                prerequisiteRecovery = installResult?.ok
+                    ? `npm install ${binaryProvider.packageName} completed but preflight still reports ${missingAfterInstall}`
+                    : `npm install ${binaryProvider.packageName} failed: ${installError || 'npm install failed'}`;
+                logs.push(`project_run: ${prerequisiteRecovery}`);
             }
         }
         if (missingPrerequisite) {

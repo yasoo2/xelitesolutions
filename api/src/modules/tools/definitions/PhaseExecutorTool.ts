@@ -7,6 +7,7 @@ import { persistJoeProjects, samePipelineRun, writeJoeProject } from '../../../a
 import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
+import { importedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
 import { autoBuildManifest, buildFailureEvidence, manifestAwaitsInstall, plannedFilesNotYetWritten } from '../auto-build-readiness';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
@@ -1071,7 +1072,26 @@ async function ensureNpmScriptDependencies(
         appendLog(`[PhaseExecutor] npm preflight failed: ${error}`);
         return { ok: false, error: `npm preflight install failed before ${scriptName}: ${error}` };
     }
-    const stillMissing = missing.filter(binary => !localBinaryExists(projectRoot, binary));
+    let stillMissing = missing.filter(binary => !localBinaryExists(projectRoot, binary));
+    // The manifest named no package for the program. A project file that
+    // imports a package of that exact name is the evidence of which package
+    // it is; npm_manager installs it only from a release declaring the program.
+    for (const binary of stillMissing) {
+        const provider = importedPackageForScriptBinary(projectRoot, binary);
+        if (!provider) continue;
+        appendLog(`[PhaseExecutor] npm preflight: ${binary} is undeclared; ${provider.importedBy.slice(0, 3).join(', ')} import${provider.importedBy.length === 1 ? 's' : ''} ${provider.packageName} — installing it${provider.dev ? ' as a dev dependency' : ''} from the release that declares ${binary}`);
+        const declareResult = await executeTool('npm_manager', {
+            ...scriptBinaryInstallInput(projectRoot, binary, provider),
+            workspaceId: executionContext.workspaceId,
+            sessionId: executionContext.sessionId,
+        }, executionContext);
+        if (!declareResult?.ok) {
+            const error = String(declareResult?.error || 'npm_install_failed');
+            appendLog(`[PhaseExecutor] npm preflight failed: ${error}`);
+            return { ok: false, error: `npm preflight could not install ${provider.packageName} for ${binary} before ${scriptName}: ${error}` };
+        }
+    }
+    stillMissing = stillMissing.filter(binary => !localBinaryExists(projectRoot, binary));
     if (stillMissing.length) {
         const error = `npm preflight completed but local binary is still missing: ${stillMissing.join(', ')}`;
         appendLog(`[PhaseExecutor] npm preflight failed: ${error}`);
