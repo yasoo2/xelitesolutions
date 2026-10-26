@@ -9,6 +9,7 @@ import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from 
 import { localFileExistsWithExactCase } from './ProjectRunTool';
 import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
+import { MACHINE_STATE_DIRECTORIES } from '../../../shared/utils/project-tree';
 
 type ArtifactProfile = {
     kind: 'markdown_document' | 'structured_data' | 'source_code' | 'frontend_asset' | 'text_document';
@@ -319,7 +320,7 @@ function runtimeFilesystemGuidance(
 ): string {
     if (!contract) return '';
 
-    const ignoredDirectories = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.cache']);
+    const ignoredDirectories = new Set(['dist', 'build', ...MACHINE_STATE_DIRECTORIES]);
     const existing: string[] = [];
     const walk = (directory: string, depth: number) => {
         if (depth > 6 || existing.length >= 180) return;

@@ -22,8 +22,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
+import { MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 
-const IGNORED_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next', '.turbo', '.cache', 'out']);
+const IGNORED_DIRS = new Set(['dist', 'build', 'out', ...MACHINE_STATE_DIRECTORIES]);
 const PARSEABLE = /\.(?:js|mjs|cjs)$/iu;
 
 export interface JsSyntaxResult {
