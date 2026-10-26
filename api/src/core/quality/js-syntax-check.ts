@@ -51,7 +51,7 @@ export function listJavaScriptSources(projectDir: string): string[] {
     return found.sort();
 }
 
-function moduleGoal(file: string, text: string, packageType: string): boolean {
+export function moduleGoal(file: string, text: string, packageType: string): boolean {
     if (/\.mjs$/iu.test(file)) return true;
     if (/\.cjs$/iu.test(file)) return false;
     return packageType === 'module' || /^\s*(?:import|export)[\s{*]/mu.test(text);
@@ -74,27 +74,51 @@ async function nodeCheck(probe: string, timeoutMs: number): Promise<{ ok: boolea
     return { ok, out: [data.error, data.output, result.error].filter(Boolean).join('\n') };
 }
 
+export function packageTypeOf(projectDir: string): string {
+    try { return String(JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf-8')).type || ''); }
+    catch { return ''; /* no manifest — the source decides its own goal */ }
+}
+
+async function probeOne(tmp: string, index: number, projectDir: string, file: string, packageType: string, timeoutMs: number): Promise<JsSyntaxResult['failure']> {
+    let text: string;
+    try { text = fs.readFileSync(path.resolve(projectDir, file), 'utf-8'); }
+    catch (error: any) { return { file, error: `cannot read the file: ${String(error?.code || error?.message || error)}` }; }
+    const probe = path.join(tmp, `${index}-${file.replace(/[^\w.-]/gu, '_')}.${moduleGoal(file, text, packageType) ? 'mjs' : 'cjs'}`);
+    fs.writeFileSync(probe, text, 'utf-8');
+    const result = await nodeCheck(probe, timeoutMs);
+    if (result.ok) return null;
+    const said = result.out.split(/\r?\n/u).find(line => /Error/u.test(line)) || 'syntax error';
+    const where = result.out.split(/\r?\n/u).find(line => line.startsWith(probe));
+    const lineNo = where ? where.slice(probe.length).replace(/^:/u, '') : '';
+    return { file: lineNo ? `${file}:${lineNo}` : file, error: said.trim().slice(0, 300) };
+}
+
 export async function checkJavaScriptSyntax(projectDir: string, timeoutMs = 15_000): Promise<JsSyntaxResult> {
     const files = listJavaScriptSources(projectDir);
     if (!files.length) return { files, failure: null };
-    let packageType = '';
-    try { packageType = String(JSON.parse(fs.readFileSync(path.join(projectDir, 'package.json'), 'utf-8')).type || ''); }
-    catch { /* no manifest — the source decides its own goal */ }
+    const packageType = packageTypeOf(projectDir);
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-syntax-'));
     try {
         for (const [index, file] of files.entries()) {
-            const text = fs.readFileSync(path.join(projectDir, file), 'utf-8');
-            const probe = path.join(tmp, `${index}-${file.replace(/[^\w.-]/gu, '_')}.${moduleGoal(file, text, packageType) ? 'mjs' : 'cjs'}`);
-            fs.writeFileSync(probe, text, 'utf-8');
-            const result = await nodeCheck(probe, timeoutMs);
-            if (!result.ok) {
-                const said = result.out.split(/\r?\n/u).find(line => /Error/u.test(line)) || 'syntax error';
-                const where = result.out.split(/\r?\n/u).find(line => line.startsWith(probe));
-                const lineNo = where ? where.slice(probe.length).replace(/^:/u, '') : '';
-                return { files, failure: { file: lineNo ? `${file}:${lineNo}` : file, error: said.trim().slice(0, 300) } };
-            }
+            const failure = await probeOne(tmp, index, projectDir, file, packageType, timeoutMs);
+            if (failure) return { files, failure };
         }
         return { files, failure: null };
+    } finally {
+        try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
+    }
+}
+
+/**
+ * ONE FILE, THE SAME TRUTH. A launcher about to start `server.js` asks the
+ * same question as the lint pass and gets the same answer: the file is
+ * parsed under the goal Node will run it with, never under plain
+ * `node --check`, which passes broken ESM in a `.js` file (see the header).
+ */
+export async function checkJavaScriptFile(projectDir: string, file: string, timeoutMs = 15_000): Promise<JsSyntaxResult['failure']> {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-syntax-'));
+    try {
+        return await probeOne(tmp, 0, projectDir, file, packageTypeOf(projectDir), timeoutMs);
     } finally {
         try { fs.rmSync(tmp, { recursive: true, force: true }); } catch { /* best effort */ }
     }

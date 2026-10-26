@@ -2,6 +2,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot } from '../path-containment';
 import { staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
+import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
@@ -1196,27 +1197,23 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
 
 /**
  * Syntax is a cheap foreground fact to collect before a detached process hides
- * its stderr. `node --check` is intentionally limited to JavaScript-family
- * targets; TypeScript must be checked by its project toolchain instead.
+ * its stderr. It is limited to JavaScript-family targets; TypeScript must be
+ * checked by its project toolchain instead.
+ *
+ * This ran plain `node --check server.js`. On Node 24.18 that exits ZERO for
+ * `import express from "express";\nconst = 1;` in a `.js` file of a package
+ * with no `"type": "module"` — the script parse fails, the module retry
+ * swallows the error — so a broken ESM entry passed the gate and died in the
+ * detached child, where its stderr is not in front of him. The shared checker
+ * parses the entry under the goal Node will run it with, as lint does.
  */
 async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target || !/\.(?:js|mjs|cjs)$/iu.test(target)) return null;
-    const result = await ExecutionGateway.execute({
-        id: `project-run-syntax-${Date.now()}`,
-        type: 'shell',
-        payload: {
-            command: 'node',
-            args: ['--check', target],
-            options: { cwd, timeout: 8000, shell: false, stdio: 'pipe' },
-        },
-        priority: 'high',
-    });
-    const data = result.data || {};
-    if (result.success && data.ok !== false && data.exitCode === 0) return null;
-    const detail = String(data.error || result.error || data.output || 'node --check failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
-    return `launchability: runtime syntax check failed (${target}): ${detail}`;
+    const failure = await checkJavaScriptFile(cwd, target, 8000);
+    if (!failure) return null;
+    return `launchability: runtime syntax check failed (${failure.file}): ${failure.error}`;
 }
 
 export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {

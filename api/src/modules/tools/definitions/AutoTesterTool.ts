@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 import { syntaxFileKind } from '../../../shared/syntax-contract';
+import { moduleGoal, packageTypeOf } from '../../../core/quality/js-syntax-check';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
@@ -206,8 +207,22 @@ export class AutoTesterTool implements ToolDefinition {
             .map(item => item.file);
         if (javascriptFiles.length > 0) {
             const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
+            // Plain `node --check x.js` exits 0 for broken ESM in a package
+            // without "type": "module" (Node 24.18): the script parse fails
+            // and the module retry swallows it. A .js file whose goal is the
+            // module goal is parsed with that goal stated, from stdin.
+            const packageType = packageTypeOf(projectPath);
             const command = javascriptFiles
-                .map(file => `node --check ${quote(path.relative(projectPath, file) || file)}`)
+                .map(file => {
+                    const name = path.relative(projectPath, file) || file;
+                    let text = '';
+                    try { text = fs.readFileSync(file, 'utf8'); } catch { /* node reports the missing file */ }
+                    if (path.extname(file).toLowerCase() === '.js' && moduleGoal(file, text, packageType)) {
+                        logs.push(`Parsing as an ES module: ${name.split(path.sep).join('/')}`);
+                        return `node --input-type=module --check < ${quote(name)}`;
+                    }
+                    return `node --check ${quote(name)}`;
+                })
                 .join(' && ');
             const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
             const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
