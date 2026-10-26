@@ -532,6 +532,9 @@ export const MAX_SOURCE_CHARS = 40_000;
  */
 const SLICE_WINDOW = 1_400;
 
+/** What marks the place where the source was cut between two windows. */
+const WINDOW_JOIN = '\n\n… …\n\n';
+
 /** The content words of a requirement — what to look for in the source. */
 function requirementWords(r: NamedRequirement): string[] {
     return (String(r.text || '') + ' ' + String(r.quote || ''))
@@ -579,7 +582,7 @@ function joinWindows(src: string, merged: Array<[number, number]>, max: number):
     let out = '';
     for (const [a, b] of merged) {
         if (out.length >= max) break;
-        out += (out ? '\n\n… …\n\n' : '') + src.slice(a, Math.min(b, a + (max - out.length)));
+        out += (out ? WINDOW_JOIN : '') + src.slice(a, Math.min(b, a + (max - out.length)));
     }
     return out;
 }
@@ -1521,14 +1524,14 @@ export async function verifyNamed(
      */
     const fromBatch = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
     let batchError = '';
+    const batchShown = reqs.length > 1 ? sliceForMany(reqs, src) : '';
     if (reqs.length > 1) {
-        const shown = sliceForMany(reqs, src);
         try {
-            const raw = await call(verificationPrompt(reqs, shown, isArabic));
+            const raw = await call(verificationPrompt(reqs, batchShown, isArabic));
             for (const v of parseVerdicts(raw)) {
                 if (v.id && reqs.some(r => r.id === v.id)) {
                     fromBatch.set(v.id, v);
-                    shownFor.set(v.id, shown);
+                    shownFor.set(v.id, batchShown);
                 }
             }
         } catch (e: any) {
@@ -1536,12 +1539,40 @@ export async function verifyNamed(
         }
     }
 
-    const stillUnanswered = reqs.filter(r => !fromBatch.has(r.id));
+    /**
+     *  ⛔ AN ANSWER GIVEN OVER THE BATCH'S CUT IS NOT THE LAST WORD.
+     *
+     *  Eval P051 (dental admin, ten requirements, 136962 chars of source): the
+     *  batch slice was 40007 chars of windows filled in source order, and the
+     *  summary page's JSX sat past it. The judge said so honestly — «the JSX
+     *  rendering code … is cut off» — and that «unprovable» was taken as the
+     *  verdict: the per-requirement road never ran, and delivery was blocked on
+     *  «a summary page showing totals, a chart» while the slice chosen for that
+     *  requirement alone carried the chart.
+     *
+     *  So when the batch was shown a cut that left out part of a requirement's
+     *  own slice, only a «met» whose line is in what it was shown settles it.
+     *  Any other answer is asked again over the requirement's own slice, and
+     *  judged against what THAT call showed. A batch that already carried every
+     *  window of the requirement is not asked again — the same text would only
+     *  ask the same question. A re-ask that returns nothing leaves the batch
+     *  answer standing.
+     */
+    const batchCut = !!batchShown && batchShown.length < src.length;
+    const batchShowedAllOf = (own: string): boolean =>
+        own.split(WINDOW_JOIN).every(piece => batchShown.includes(piece));
+    const settledByBatch = (r: NamedRequirement): boolean => {
+        const v = fromBatch.get(r.id);
+        if (!v) return false;
+        if (!batchCut || deterministic.has(r.id)) return true;
+        if (v.verdict === 'met' && foundInSource(v.evidence, batchShown)) return true;
+        return batchShowedAllOf(sliceFor(r, src));
+    };
+    const stillUnanswered = reqs.filter(r => !settledByBatch(r));
     const answers = await Promise.all(stillUnanswered.map(async r => {
         const shown = sliceFor(r, src);
-        shownFor.set(r.id, shown);
-        try { return { id: r.id, raw: await call(verificationPrompt([r], shown, isArabic)) }; }
-        catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
+        try { return { id: r.id, raw: await call(verificationPrompt([r], shown, isArabic)), shown }; }
+        catch (e: any) { return { id: r.id, raw: '', shown, error: String(e && e.message || e) }; }
     }));
     /**
      *  A brain that cannot be reached certifies nothing and condemns nothing.
@@ -1585,7 +1616,10 @@ export async function verifyNamed(
         const named = parsed.find(v => v.id === a.id);
         const lone = parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined;
         const answer = named || lone;
-        if (answer) byId.set(a.id, { ...answer, id: a.id });
+        if (answer) {
+            byId.set(a.id, { ...answer, id: a.id });
+            shownFor.set(a.id, a.shown);
+        } else if (!fromBatch.has(a.id)) shownFor.set(a.id, a.shown);
     }
     return reqs.map(r => {
         const known = deterministic.get(r.id);
