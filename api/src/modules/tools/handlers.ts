@@ -1,11 +1,14 @@
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
+import { leadWithFailure } from '../../shared/utils/failure-text';
 
 export interface HandlerResult {
     ok: boolean;
     output?: any;
     error?: string;
+    /** The command's stderr exactly as printed; `error` is the same text with the failure first. */
+    stderr?: string;
     logs: string[];
 }
 
@@ -42,10 +45,12 @@ export async function handleShellCommand(
         priority: 'normal'
     });
 
+    const stderr = String(result.error || result.data?.error || '');
     return {
         ok: result.success && result.data?.ok !== false,
         output: result.data?.output || '',
-        error: result.error || result.data?.error || '',
+        error: leadWithFailure(stderr),
+        stderr,
         logs
     };
 }
