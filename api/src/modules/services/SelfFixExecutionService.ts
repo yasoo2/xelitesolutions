@@ -65,6 +65,23 @@ function nearestManifestRoot(file: unknown): string {
   return '';
 }
 
+/**
+ * Does the repaired project's own manifest declare a build? The post-repair
+ * proof used to run «npm run build» on every project, so a build-free site
+ * (`start: npx serve src`) or a plain server failed the rerun on «Missing
+ * script: "build"» after its repair had landed (eval P001). Only a manifest
+ * that cannot be read keeps the build step, so npm reports the real error.
+ */
+function manifestDeclaresBuild(projectRoot: string): boolean {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+    const build = manifest?.scripts?.build;
+    return typeof build === 'string' && build.trim().length > 0;
+  } catch {
+    return true;
+  }
+}
+
 function projectContextAfterRepair(projectContext: any, repairedFile?: unknown): any {
   const root = nearestManifestRoot(repairedFile);
   if (!root) return projectContext;
@@ -219,7 +236,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
           ...phase,
           name: `${String(phase.name || 'Project')} — post-repair verification`,
           tasks: [
-            {
+            ...(manifestDeclaresBuild(projectRoot) ? [{
               task: 'Build the repaired project without rewriting generated files',
               tool: 'shell_execute',
               args: {
@@ -227,7 +244,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
                 cwd: projectRoot,
                 projectPath: projectRoot,
               },
-            },
+            }] : []),
             {
               task: 'Verify the repaired project can start',
               tool: 'project_run',
