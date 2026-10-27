@@ -180,6 +180,44 @@ const AR_EN: Record<string, string> = {
     'حداد': 'blacksmith', 'بلاط': 'tiles', 'اسمنت': 'cement',
     'مخبز': 'bakery', 'مخبوزات': 'baked goods', 'معجنات': 'pastries',
     'زبون سعيد': 'happy customer', 'تقييم': 'review', 'نجوم': 'stars', 'جائزه': 'award',
+    // ---- the records a system keeps ----
+    // Measured on the 250 Arabic requests of eval run500 (2026-10-27): about
+    // seventy nouns a person names as the records of his system reached the
+    // database as transliterations — «العلاجات» of a dental clinic's API
+    // became the table and route `alajats`, «الجلسات» `jlsats`, «المتبرعين»
+    // `mtbrayns`. These are ordinary nouns with ordinary English names; the
+    // plural is written out so the table's label is plural too (a stripped
+    // suffix lands on the singular). Words whose English depends on the
+    // business («الوصفات» recipes or prescriptions, «الباقات» packages or
+    // bouquets, «الصفوف» classes or rows,
+    // «العلامات» grades or tags, «القطع», «المواد», «العناوين») are left out:
+    // a stable transliterated key is honest, a guessed English word is not.
+    'علاج': 'treatment', 'علاجات': 'treatments', 'تطعيم': 'vaccination', 'تطعيمات': 'vaccinations',
+    'تشخيص': 'diagnosis', 'تشخيصات': 'diagnoses', 'مريض': 'patient', 'مرضي': 'patients',
+    'جلسه': 'session', 'جلسات': 'sessions', 'تذكره': 'ticket', 'تذاكر': 'tickets',
+    'تبرع': 'donation', 'تبرعات': 'donations', 'متبرع': 'donor', 'متبرعين': 'donors', 'متبرعون': 'donors',
+    'مستفيد': 'beneficiary', 'مستفيدين': 'beneficiaries', 'مستفيدون': 'beneficiaries',
+    'ضيف': 'guest', 'ضيوف': 'guests', 'نزيل': 'guest', 'نزلاء': 'guests',
+    'مسافر': 'traveler', 'مسافرين': 'travelers', 'مسافرون': 'travelers',
+    'مدرب': 'trainer', 'مدربين': 'trainers', 'مدربون': 'trainers',
+    'متدرب': 'trainee', 'متدربين': 'trainees', 'متدربون': 'trainees',
+    'لاعب': 'player', 'لاعبين': 'players', 'لاعبون': 'players',
+    'مرشح': 'candidate', 'مرشحين': 'candidates', 'مرشحون': 'candidates',
+    'مؤلف': 'author', 'مؤلفين': 'authors', 'مؤلفون': 'authors',
+    'مالك': 'owner', 'مالكين': 'owners', 'مالكون': 'owners', 'قارئ': 'reader', 'قراء': 'readers',
+    'صديق': 'friend', 'اصدقاء': 'friends', 'حيوان': 'animal', 'حيوانات': 'animals',
+    'اشتراك': 'subscription', 'اشتراكات': 'subscriptions', 'اعاره': 'loan', 'اعارات': 'loans',
+    'رحلات': 'trips', 'نشاط': 'activity', 'انشطه': 'activities',
+    'مباراه': 'match', 'مباريات': 'matches', 'فيلم': 'movie', 'افلام': 'movies',
+    'مقابلات': 'interviews', 'وظيفه': 'job', 'وظائف': 'jobs',
+    'كفاله': 'sponsorship', 'كفالات': 'sponsorships', 'البوم': 'album', 'البومات': 'albums',
+    'شكوي': 'complaint', 'شكاوي': 'complaints', 'ردود': 'replies',
+    'مصروف': 'expense', 'مصاريف': 'expenses', 'ميزانيه': 'budget', 'ميزانيات': 'budgets',
+    'مقال': 'article', 'مقالات': 'articles', 'تعليق': 'comment', 'تعليقات': 'comments',
+    'منشور': 'post', 'منشورات': 'posts', 'مطاعم': 'restaurants', 'مشروب': 'drink', 'مشروبات': 'drinks',
+    'درس': 'lesson', 'دروس': 'lessons', 'محصول': 'crop', 'محاصيل': 'crops', 'مواشي': 'livestock',
+    'قضيه': 'case', 'قضايا': 'cases', 'مناسبات': 'events', 'طاوله': 'table', 'طاولات': 'tables',
+    'مقاس': 'size', 'مقاسات': 'sizes',
 };
 
 /** The exact form, then suffix-stripped forms of it. */

@@ -103,6 +103,13 @@ export function curatedNounKey(word: string): string {
     return NOUNS.find(x => x.re.test(w))?.key || '';
 }
 
+/** The English of a noun on the curated list, or '' — the label beside the key above. */
+export function curatedNounEnglish(word: string): string {
+    const w = String(word || '').trim();
+    if (!w) return '';
+    return NOUNS.find(x => x.re.test(w))?.en || '';
+}
+
 /**
  * THE NOUN AN ITEM NAMES IS ITS HEAD, NEVER ITS POSSESSOR.
  *

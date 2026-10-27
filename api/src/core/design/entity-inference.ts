@@ -479,6 +479,19 @@ export function englishFor(phrase: string): string | null {
     const bare = String(phrase || '').replace(/^ال/, '').trim();
     if (!bare) return null;
     if (!/[\u0621-\u064A]/.test(bare)) return bare;
+    /**
+     * THE KEY AND THE LABEL READ ONE DICTIONARY.
+     *
+     * keyFromArabic asks the curated list first, so «المرضى» is keyed
+     * `patients`; this reader asked only the translator, which does not carry
+     * it, so the same table's English label was «المرضى» (eval run500, P101).
+     */
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { curatedNounEnglish } = require('./named-entities');
+        const known = curatedNounEnglish(String(phrase || '').trim());
+        if (known) return known;
+    } catch { /* the list reader is optional here */ }
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { englishSubject } = require('./subject-translation');
