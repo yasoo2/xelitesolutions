@@ -109,3 +109,54 @@ export function whyNoStaticSite(projectDir: unknown): string {
     }
     return `no dist/index.html in ${dir}, and no index.html at its root or in src/`;
 }
+
+const LINK_HREF = /<a\b[^>]*?\bhref\s*=\s*["']([^"']*)["']/gi;
+
+/** The project folder's own top-level entry a listing link points at, or ''. */
+function listedTopLevelName(href: string): string {
+    let ref = String(href || '')
+        .replace(/&#(?:47|x2f);/gi, '/')
+        .replace(/&#(?:92|x5c);/gi, '\\')
+        .replace(/&amp;/gi, '&');
+    try { ref = decodeURIComponent(ref); } catch { /* keep the raw text */ }
+    // `serve` on Windows writes «\src&#47;» — a folder link with a backslash.
+    ref = ref.replace(/\\/g, '/').replace(/[?#].*$/, '');
+    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(ref)) return '';
+    const segments = ref.replace(/^(?:\.?\/)+/, '').split('/');
+    return segments[0] || '';
+}
+
+/**
+ * IS WHAT THE SERVER ANSWERED A LIST OF THIS PROJECT'S FILES?
+ *
+ * Eval run500, 2026-10-27 (P001-landing-ar): the site was written into
+ * src/index.html and the model's start script was «npx serve -l 8080». serve
+ * answered — from the project root, which holds no index.html — with its
+ * «Files within dental-clinic-site» listing. project_run called that «the
+ * project is running», browser QA measured the listing («not one button,
+ * link or form», «largest heading 15px»), and repair had no file of the site
+ * to change. A correct site failed after 106 minutes.
+ *
+ * Generator-independent: a page that links the project's own manifest, or
+ * two of its top-level entries one of which is a folder, is the folder's
+ * index — a site does not link its package.json or its src/ directory. A
+ * project with its own root index.html is never judged: any static server
+ * there answers with that document.
+ */
+export function listsProjectFiles(html: unknown, projectDir: unknown): boolean {
+    const dir = String(projectDir || '').trim();
+    if (!dir || isFile(path.join(dir, 'index.html'))) return false;
+    let entries: fs.Dirent[] = [];
+    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
+    const byName = new Map(entries.map(entry => [entry.name.toLowerCase(), entry]));
+    const linked = new Set<string>();
+    let linksAFolder = false;
+    for (const match of String(html || '').matchAll(LINK_HREF)) {
+        const name = listedTopLevelName(match[1]).toLowerCase();
+        const entry = name ? byName.get(name) : undefined;
+        if (!entry) continue;
+        linked.add(name);
+        if (entry.isDirectory()) linksAFolder = true;
+    }
+    return linked.has('package.json') || (linked.size >= 2 && linksAFolder);
+}

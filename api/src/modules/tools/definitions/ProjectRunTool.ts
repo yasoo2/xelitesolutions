@@ -1,6 +1,6 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot } from '../path-containment';
-import { staticSiteRoot } from '../preview-site';
+import { listsProjectFiles, staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
@@ -163,6 +163,37 @@ async function answersHttp(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS): Pro
             req.on('error', () => finish(false));
         } catch {
             finish(false);
+        }
+    });
+}
+
+/** The first bytes of a loopback page's body, or '' when it does not answer. */
+async function loopbackPageText(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS, limit = 256 * 1024): Promise<string> {
+    return new Promise(resolve => {
+        let settled = false;
+        let body = '';
+        const finish = (value: string) => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+        try {
+            const req = http.get(url, res => {
+                res.setEncoding('utf8');
+                res.on('data', (chunk: string) => {
+                    body += chunk;
+                    if (body.length >= limit) { finish(body); req.destroy(); }
+                });
+                res.on('end', () => finish(body));
+                res.on('error', () => finish(body));
+            });
+            req.setTimeout(timeoutMs, () => {
+                req.destroy();
+                finish(body);
+            });
+            req.on('error', () => finish(body));
+        } catch {
+            finish('');
         }
     });
 }
@@ -1840,6 +1871,32 @@ export class ProjectRunTool implements ToolDefinition {
         // `localhost` can resolve to ::1 while the new process owns 127.0.0.1;
         // an old IPv6 listener on the same port would then display the wrong app.
         const url = confirmedLiveUrl;
+        // A server that answers with the folder's file list is not serving the
+        // site (see listsProjectFiles): the build-free page it failed to find
+        // is served instead, or the start is reported as the failure it is.
+        if (listsProjectFiles(await loopbackPageText(url), cwd)) {
+            if (pid) await killTree(Number(pid)).catch(() => {});
+            if (RUNNING.get(key)?.pid === pid) RUNNING.delete(key);
+            const why = 'the start command served a list of the project files, not its page';
+            logs.push(`project_run: ${url} answered with a listing of ${cwd}; ${why}`);
+            const servedStatically = await staticSiteFallback(why);
+            if (servedStatically) return servedStatically;
+            const listingMessage = pick(isAr,
+                `أمر التشغيل «${detected.command}» أجاب بقائمة ملفات المشروع بدل صفحته — لا يوجد index.html في المجلد الذي يخدمه. لن أسمّي قائمة الملفات تطبيقاً يعمل.`,
+                `The start command «${detected.command}» answered with a list of the project's files instead of its page — the folder it serves has no index.html. A file listing is not a running app.`);
+            say(`⛔ ${listingMessage}`);
+            return {
+                ok: false,
+                error: listingMessage,
+                output: {
+                    port: livePort, ready: false, cwd, command: detected.command,
+                    note: 'served_file_listing',
+                    verificationFailed: true,
+                    message: listingMessage,
+                },
+                logs,
+            };
+        }
         rememberLiveProject(context, cwd, { url, port: livePort, pid: Number(pid) });
         say(pick(isAr,
             `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,
