@@ -30,6 +30,8 @@
  *  is honest, rather than inventing a shop he did not describe.
  */
 
+import { parseModelJson } from '../../shared/utils/json';
+
 export interface FieldSpec {
     key: string;
     label?: string;
@@ -174,7 +176,7 @@ export function parseRows(raw: string): Array<Record<string, any>> {
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
         try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
+            const parsed = parseModelJson(c.slice(start, end + 1));
             const rows = parsed && (parsed.rows || parsed.items || parsed.products);
             if (Array.isArray(rows)) return rows.filter(r => r && typeof r === 'object');
         } catch { /* try the next candidate */ }

@@ -43,6 +43,7 @@
  */
 
 import type { DesignGenome } from './composer';
+import { parseModelJson } from '../../shared/utils/json';
 
 export interface AuthoringSpec {
     /** His sentence, verbatim. The only authority for what gets built. */
@@ -533,7 +534,7 @@ export function parseAuthored(raw: string): Record<string, string> {
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
         try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
+            const parsed = parseModelJson(c.slice(start, end + 1));
             const files = parsed && parsed.files;
             if (files && typeof files === 'object') {
                 const out: Record<string, string> = {};

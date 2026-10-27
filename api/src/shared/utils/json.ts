@@ -78,13 +78,62 @@ export function jsonReplyCandidates(text: string): string[] {
 }
 
 /**
+ * A RAW LINE BREAK INSIDE A STRING HAS ONE MEANING, AND IT IS NOT «REFUSE».
+ *
+ * From his own run (P001, run-1793116203492): six model-authored sections,
+ * 8 to 31 minutes of generation each, and four came back refused as «the
+ * reply held no usable file». Reproduced on the same prompt: a 4.5 KB Cta in
+ * `{"files":{"Cta":"…"}}` with every line break escaped as `\n` but ONE,
+ *
+ *     SyntaxError: Bad control character in string literal … (line 3 column 4560)
+ *
+ * and `JSON.parse` threw the whole file away for it. A small model writing a
+ * file inside a JSON string slips like this all the time. Inside a JSON
+ * string a raw newline, tab or other control character can only mean
+ * itself, so it is escaped and the span parsed again. Nothing else is
+ * guessed: outside strings the text is left as written, and a reply that is
+ * still not JSON stays refused.
+ */
+export function escapeControlCharsInStrings(span: string): string {
+    const s = String(span ?? '');
+    let out = '';
+    let inStr = false;
+    for (let i = 0; i < s.length; i++) {
+        const c = s[i];
+        if (inStr) {
+            if (c === '\\') { out += c + (s[i + 1] ?? ''); i++; continue; }
+            if (c === '"') inStr = false;
+            const code = c.charCodeAt(0);
+            if (code < 0x20) {
+                out += c === '\n' ? '\\n' : c === '\r' ? '\\r' : c === '\t' ? '\\t'
+                    : '\\u' + code.toString(16).padStart(4, '0');
+                continue;
+            }
+        } else if (c === '"') inStr = true;
+        out += c;
+    }
+    return out;
+}
+
+/** `JSON.parse`, then once more with raw control characters in strings escaped. Throws as `JSON.parse` does. */
+export function parseModelJson<T = any>(span: string): T {
+    try {
+        return JSON.parse(span) as T;
+    } catch (first) {
+        const repaired = escapeControlCharsInStrings(span);
+        if (repaired === span) throw first;
+        return JSON.parse(repaired) as T;
+    }
+}
+
+/**
  * Parse the first JSON value in a model's reply, tolerating the prose around it
  * and a ```json fence. Returns null rather than throwing — a router that dies
  * on a stray sentence is worse than one that falls back.
  */
 export function parseFirstJson<T = any>(text: string): T | null {
     for (const span of jsonReplyCandidates(text)) {
-        try { return JSON.parse(span) as T; } catch { /* try the next candidate */ }
+        try { return parseModelJson<T>(span); } catch { /* try the next candidate */ }
     }
     return null;
 }

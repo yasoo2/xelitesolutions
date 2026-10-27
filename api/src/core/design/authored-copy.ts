@@ -37,6 +37,8 @@
  *  vocabulary of a business he never mentioned.
  */
 
+import { parseModelJson } from '../../shared/utils/json';
+
 /** The fields worth authoring. Structural keys (routes, hrefs) stay derived. */
 export const COPY_FIELDS = [
     'tagline', 'heroTitle', 'heroLede', 'cta', 'perks',
@@ -177,7 +179,7 @@ export function parseVerdict(raw: string): Record<string, string> | null {
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
         try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
+            const parsed = parseModelJson(c.slice(start, end + 1));
             const fails = parsed && (parsed.fails ?? parsed.failures);
             if (fails && typeof fails === 'object' && !Array.isArray(fails)) {
                 const out: Record<string, string> = {};
@@ -234,7 +236,7 @@ export function parseCopy(raw: string): Record<string, any> {
         const end = c.lastIndexOf('}');
         if (start < 0 || end <= start) continue;
         try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
+            const parsed = parseModelJson(c.slice(start, end + 1));
             const f = parsed && (parsed.fields || parsed);
             if (f && typeof f === 'object' && !Array.isArray(f)) return f as Record<string, any>;
         } catch { /* try the next candidate */ }
