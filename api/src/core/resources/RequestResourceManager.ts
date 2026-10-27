@@ -97,6 +97,8 @@ export interface RequestResourceManagerOptions {
     sampleMemory?: () => MemoryReading;
     /** Memory the local inference server holds for loaded models; it is reclaimable for the next inference. */
     sampleResidentInference?: () => Promise<number>;
+    /** How often a running inference re-reads what the server holds (see withInference). */
+    residencyRefreshMs?: number;
     now?: () => number;
 }
 
@@ -210,6 +212,7 @@ export class RequestResourceManager {
     private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number };
     private readonly sampleMemory: () => MemoryReading;
     private readonly sampleResidentInference: () => Promise<number>;
+    private readonly residencyRefreshMs: number;
     private readonly now: () => number;
     private lastMemory: MemorySnapshot | null = null;
     private activeRequests = 0;
@@ -237,6 +240,9 @@ export class RequestResourceManager {
         // An injected memory reading is a test of the floor itself: no live server is asked.
         this.sampleResidentInference = options.sampleResidentInference
             || (options.sampleMemory ? async () => 0 : residentInferenceBytes);
+        // 0: an injected memory reading with no residency reader asks no live server, so nothing is kept fresh.
+        this.residencyRefreshMs = options.sampleMemory && !options.sampleResidentInference ? 0
+            : boundedInteger(options.residencyRefreshMs, 20000, 10, 20000);
         this.now = options.now || Date.now;
     }
 
@@ -363,6 +369,7 @@ export class RequestResourceManager {
             const kind = this.kind(options.kind || 'inference');
             let release: Release | undefined;
             let marker: { live: boolean } | undefined;
+            let residency: ReturnType<typeof setInterval> | undefined;
             let started = 0;
             try {
                 release = await this.inference.acquire(signal.signal, this.timeout(options.queueTimeoutMs),
@@ -376,6 +383,19 @@ export class RequestResourceManager {
                 this.emit(store, { lane: 'inference', state: 'started', kind, ...this.memoryEvent(budget.memory),
                     contextTokens: budget.contextTokens, outputTokens: budget.outputTokens, queueWaitMs: Math.max(0, started - startedWaiting) });
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+                // ⛔ P001-landing-ar, run-1793050584667 (2026-10-27): a 37-minute local
+                // call finished, and 768 ms later the next inference was refused
+                // RESOURCE_LOW_MEMORY with reclaimableBytes 0 (available 1 072 111 616,
+                // floor 1 073 741 824), then the phase's npm install the same way. The
+                // model that had just answered was resident, but residency had last been
+                // read when that call was admitted — 37 minutes earlier, maybe before the
+                // model loaded — so the missed probe had no recent answer to reuse.
+                // While the call runs, the server is read again (it answers /api/ps in
+                // ~6 ms while generating), so the next admission knows what it holds.
+                if (this.residencyRefreshMs) {
+                    residency = setInterval(() => { void this.reclaimableBytes(); }, this.residencyRefreshMs);
+                    residency.unref?.();
+                }
                 const result = await this.inferenceContext.run(marker, () => work(budget));
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
                 this.emit(store, { lane: 'inference', state: 'completed', kind, contextTokens: budget.contextTokens,
@@ -385,6 +405,7 @@ export class RequestResourceManager {
                 this.recordFailure(store, 'inference', kind, error, started || startedWaiting);
                 throw error;
             } finally {
+                if (residency !== undefined) clearInterval(residency);
                 if (marker) marker.live = false;
                 release?.();
                 signal.dispose();
