@@ -680,7 +680,12 @@ export function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: str
     // A browser UI file such as src/App.tsx is not identity evidence: React
     // phases often write it before the scaffold/manifest is bound, and accepting
     // it would let a stale named directory become the runtime root. This is
-    // deliberately narrow and accepts only server-shaped entrypoints.
+    // deliberately narrow and accepts only server-shaped entrypoints, plus the
+    // page of a build-free site: index.html at the child's root or in its src/
+    // (the two folders staticSiteRoot serves). Measured on P001 (run-1793133495009):
+    // a plain HTML/CSS/JS site writes no package.json and no server, so without
+    // its page the project was never bound and browser_run had no folder to
+    // serve. The same direct-child + label match guards both kinds.
     const requestedLabel = String(projectName || '')
         .trim()
         .replace(/\\/g, '/')
@@ -695,7 +700,8 @@ export function projectRootFromWrittenFile(filePath: unknown, workspaceRoot: str
     const directChild = firstSegment ? path.join(workspace, firstSegment) : '';
     const directChildLabel = firstSegment.replace(/[-_]+/g, ' ').replace(/\s+/g, ' ').trim().toLocaleLowerCase();
     const relativeInsideChild = directChild ? path.relative(directChild, candidate).replace(/\\/g, '/') : '';
-    const runtimeEvidence = /(?:^|\/)(?:server|index|main)\.(?:js|mjs|cjs|ts)$/iu.test(relativeInsideChild);
+    const runtimeEvidence = /(?:^|\/)(?:server|index|main)\.(?:js|mjs|cjs|ts)$/iu.test(relativeInsideChild)
+        || /^(?:src\/)?index\.html?$/iu.test(relativeInsideChild);
     const labelsMatch = !!requestedLabel && !!directChildLabel && (
         requestedLabel === directChildLabel
         || requestedLabel.includes(directChildLabel)
@@ -780,6 +786,8 @@ export function canSyncRuntimeProjectContext(projectContext: Record<string, any>
 function syncRuntimeProjectContext(projectContext: Record<string, any>, pipelineRunId: unknown, logs: string[]): void {
     const key = sessionProjectKey(projectContext?.sessionId);
     const active = (global as any).joeProjects?.[key];
+    // No session project yet: nothing to synchronize, so nothing was refused.
+    if (!active) return;
     if (!canSyncRuntimeProjectContext(projectContext, active, pipelineRunId)) {
         logs.push('[PhaseExecutor] refused to synchronize active project root without a matching pipeline run');
         return;
