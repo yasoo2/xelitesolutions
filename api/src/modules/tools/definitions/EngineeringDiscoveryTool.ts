@@ -69,6 +69,14 @@ export interface EngineeringEvidence {
 type Candidate = NonNullable<EngineeringEvidence['selectedProject']>;
 
 /**
+ * A project's own source, as the planner sees it. A build-free site's page is
+ * its HTML file; without it the plan saw only the script and the stylesheet and
+ * repaired a static site as if its script were the server.
+ */
+export const DISCOVERY_SOURCE_EXTENSION = /\.(?:(?:c|m)?(?:js|jsx|ts|tsx)|py|go|java|rb|rs|vue|svelte|css|scss|html?)$/iu;
+const DISCOVERY_ENTRYPOINTS = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js', 'index.html', 'src/index.html'];
+
+/**
  * Discovery may inspect a workspace with hundreds of generated projects.
  * Keep the scan complete, but periodically return the event loop to the API
  * so run-status polling and the visible Joe session never freeze behind it.
@@ -632,11 +640,11 @@ export class EngineeringDiscoveryTool extends BaseTool {
                     : /^(?:lint)(?::|$)/u.test(name) ? 'lint' : /^(?:typecheck|type-check|check:types)(?::|$)/u.test(name) ? 'typecheck' : undefined;
                 if (kind) candidateChecks.push({ kind, command: `npm run ${name}`, source: 'package.json' });
             }
-            const sourceFiles = inventory.filter(item => /\.(?:c|m)?(?:js|jsx|ts|tsx|py|go|java|rb|rs|vue|svelte|css|scss)$/iu.test(item.name)).map(item => item.relative).slice(0, 120);
+            const sourceFiles = inventory.filter(item => DISCOVERY_SOURCE_EXTENSION.test(item.name)).map(item => item.relative).slice(0, 120);
             const testFiles = inventory.filter(item => /(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)|(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/iu.test(item.relative)).map(item => item.relative).slice(0, 40);
             if (inventory.length > sourceFiles.length && sourceFiles.length === 120 || testFiles.length === 40)
                 blockers.push({ code: 'discovery_file_inventory_limited', message: 'Source/test inventories are bounded; omitted files are not planning evidence.' });
-            const entrypoints = new Set(['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js']);
+            const entrypoints = new Set(DISCOVERY_ENTRYPOINTS);
             selectedProject = { root: scope.root, projectKinds: ['node'], manifests: [{ path: 'package.json', kind: 'package.json', scripts }],
                 git: {}, likelyEntrypoints: sourceFiles.filter(file => entrypoints.has(file)), sourceFiles, testFiles, candidateChecks };
         }
@@ -689,7 +697,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         }
         if (!kinds.size) kinds.add('other');
 
-        const entryCandidates = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js', 'main.py', 'app.py', 'main.go'];
+        const entryCandidates = [...DISCOVERY_ENTRYPOINTS, 'main.py', 'app.py', 'main.go'];
         // Historical projects are stack references for greenfield work only.
         // Do not synchronously probe their source entrypoints or Git metadata.
         const likelyEntrypoints = referenceOnly
@@ -704,7 +712,6 @@ export class EngineeringDiscoveryTool extends BaseTool {
     private inspectSourceFiles(root: string): string[] {
         const found: string[] = [];
         const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo', 'vendor']);
-        const sourceExtension = /\.(?:c|m)?(?:js|jsx|ts|tsx|py|go|java|rb|rs|vue|svelte|css|scss)$/i;
         const visit = (dir: string, depth: number) => {
             if (found.length >= 120 || depth > 6) return;
             let entries: fs.Dirent[];
@@ -714,7 +721,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 if (entry.name.startsWith('.') || skip.has(entry.name)) continue;
                 const absolute = path.join(dir, entry.name);
                 if (entry.isDirectory()) visit(absolute, depth + 1);
-                else if (entry.isFile() && sourceExtension.test(entry.name)) found.push(absolute);
+                else if (entry.isFile() && DISCOVERY_SOURCE_EXTENSION.test(entry.name)) found.push(absolute);
             }
         };
         visit(root, 0);
