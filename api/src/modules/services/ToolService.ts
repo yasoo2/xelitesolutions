@@ -20,6 +20,7 @@ const RESOURCE_HEAVY_TOOLS = new Set([
     'shell_execute', 'npm_manager', 'docker_manager', 'project_edit', 'react_project',
 ]);
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
+import { describeResourceRefusal } from '../../shared/resource-refusal';
 import { agentSearchUrl } from '../browser/challenge';
 import { autonomousDevelopmentEnabled, autonomousToolAdmitted, autonomousIdentity, autonomousContextMatches } from './AutonomousDevelopmentPolicy';
 import { autonomousFileTool, snapshotAutonomousFileInput, validateAutonomousFileOperation } from './AutonomousFilePolicy';
@@ -1226,6 +1227,22 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     } catch (e: any) {
         const duration = Date.now() - t0;
+        // A refusal from the resource guard (withHeavy above, or a model call
+        // inside the tool) is Joe declining to start, not a tool that broke:
+        // its code, his sentence and its numbers — never internal_exception
+        // and a stack pointing at the guard (shared/resource-refusal.ts).
+        const refusal = describeResourceRefusal(e, isArabicReply({
+            language: (context as any)?.language,
+            text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
+        }));
+        if (refusal) {
+            logs.push(`resource_refused=${refusal} duration=${duration}ms`);
+            try {
+                const { broadcastTerminalLine } = require('../../api/ws');
+                broadcastTerminalLine(contextSessionId, `\x1b[33m${refusal}\x1b[0m\r\n`);
+            } catch { /* ws is optional in isolated unit tests */ }
+            return { ok: false, error: refusal, logs };
+        }
         const errStr = formatToolError(e);
         const cancelled = errStr.includes('run_cancelled_by_owner');
         logs.push(`${cancelled ? 'cancelled' : 'exception'}=${errStr} duration=${duration}ms`);

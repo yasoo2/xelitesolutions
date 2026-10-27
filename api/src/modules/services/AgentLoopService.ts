@@ -35,6 +35,7 @@ import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } fro
 import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
+import { resourceRefusalSentence } from '../../shared/resource-refusal';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -903,18 +904,8 @@ export class AgentLoopService {
     static humanizeFailure(text: string, language: string): string {
         const t = String(text || '').trim();
         if (!t) return t;
-        if (/RESOURCE_(?:LOW_MEMORY|MEMORY_UNAVAILABLE)/.test(t)) return language === 'ar'
-            ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي أو تعذّر قياسها. لم أوقف أي برنامج آخر.'
-            : 'The heavy step could not start because available memory is insufficient or could not be measured. No other application was stopped.';
-        if (/RESOURCE_CONTEXT_OVERFLOW|OLLAMA_OUTPUT_INPUT|LOCAL_COMPLETION_LIMIT/.test(t)) return language === 'ar'
-            ? 'لم يكتمل الطلب ضمن السياق والذاكرة المتاحين. لم أقصّ الطلب أو أغيّر النموذج؛ يلزم تقسيم العمل إلى خطوات أصغر.'
-            : 'The request did not complete within the available context and memory. The request was not truncated and the model was not changed; the work needs smaller steps.';
-        if (/RESOURCE_QUEUE_(?:FULL|TIMEOUT)/.test(t)) return language === 'ar'
-            ? 'تعذّر بدء الخطوة ضمن طابور الموارد المحدود. توقفت هذه المحاولة دون تشغيل عمل ثقيل إضافي.'
-            : 'The step could not start within the bounded resource queue. This attempt stopped without launching additional heavy work.';
-        if (/RESOURCE_CANCELLED|OLLAMA_ABORTED/.test(t)) return language === 'ar'
-            ? 'أوقفتُ الطلب بناءً على الإلغاء؛ تُحرَّر حجوزاته عند توقف العمل التابع له فعليًا.'
-            : 'The request was cancelled; its reservations are released as its owned work settles.';
+        const resource = resourceRefusalSentence(t, language === 'ar');
+        if (resource) return resource;
         const RAW_ERROR = /ENOENT|EACCES|EPERM|ECONN|ETIMEDOUT|EADDRINUSE|is not recognized as an internal|SyntaxError:|TypeError:|ReferenceError:|Cannot read propert|no such file or directory|command not found|MODULE_NOT_FOUND/i;
         if (!RAW_ERROR.test(t)) return t;
         return language === 'ar'
