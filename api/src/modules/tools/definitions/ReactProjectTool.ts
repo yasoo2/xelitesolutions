@@ -35,6 +35,7 @@ import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily }
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { buildImageBrief } from '../../../core/design/image-brief';
+import { requestedArtifact } from '../../../core/design/requested-artifact';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
@@ -1107,6 +1108,24 @@ export function earlyProjectDeclaration(input: {
     const understood = input.named && input.named.length
         ? input.named.map(r => r.text)
         : acceptanceCriteriaFor(request).map(criterion => input.isArabic ? criterion.ar : criterion.en);
+    /**
+     *  ⛔ A SITE IS NOT AN APP JOE FAILED TO RECOGNISE.
+     *
+     *  Eval P001 (run-1793116203492), «اعمل موقع تعريفي احترافي لـعيادة
+     *  أسنان…», classified page=landing · app=none — and the terminal told
+     *  him «لا أعرف نوع هذا التطبيق … ما سأبنيه هيكلٌ عامّ». Nothing in that
+     *  sentence was true: he asked for a site, the site path is the one that
+     *  builds from his named sections, and no app kind was ever missing.
+     *  Every site request with no stock app engine heard the same confession.
+     *  The deliverable he named decides which sentence is his; the unknown-app
+     *  one stays for a request that names an app (or names nothing).
+     */
+    if (requestedArtifact(request).kind === 'page') {
+        if (input.isArabic) {
+            return `سأبني هذا الموقع من طلبك مباشرةً، من غير محرّك تطبيق جاهز. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً واضحاً'}.`;
+        }
+        return `I'll build this site from your request, with no ready-made app engine. From your request I understood: ${understood.length ? understood.join(' · ') : 'no clear element'}.`;
+    }
     if (input.isArabic) {
         return `لا أعرف نوع هذا التطبيق، ولا أملك محرّكاً جاهزاً له — ما سأبنيه هيكلٌ عامّ. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً تفاعلياً واضحاً'}.`;
     }
