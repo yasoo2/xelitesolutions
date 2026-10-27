@@ -94,6 +94,18 @@ export interface ExecutionOptions {
      * can never run forever.
      */
     idleTimeout?: number;
+    /**
+     * What a SILENT command is doing, when silence is not idleness.
+     *
+     * `npm install` on a pipe prints nothing until it is done. Eval run500
+     * P001 (2026-10-26): it wrote 2,226 files into node_modules and its cache
+     * in five minutes — 1,040 in the last full minute — and was killed as
+     * «no progress for 302.1s» while still writing. Asked only when the idle
+     * interval passes in silence: a changed answer re-arms the interval; the
+     * same answer, or a probe that throws, ends the command as before.
+     * `timeout` stays the absolute ceiling.
+     */
+    idleProgress?: () => Promise<string> | string;
     detached?: boolean;
     /**
      *  DO NOT WAIT FOR IT — WHICH IS NOT THE SAME AS DETACH IT.
@@ -840,9 +852,32 @@ export class ExecutionEngine {
                 void terminateProcessTree(child).finally(() => settle({ ok: false, exitCode: 124, error: reason }));
             };
             let sawOutput = false;
+            // Each arm is a generation: output that arrives while the
+            // progress probe is being read supersedes that read's verdict.
+            let idleGeneration = 0;
+            let progressMark: string | null = null;
+            const readProgress = async (): Promise<string | null> => {
+                try { return String(await rest.idleProgress!()); } catch { return null; }
+            };
+            if (rest.idleTimeout && rest.idleProgress) {
+                void readProgress().then(mark => { if (progressMark === null) progressMark = mark; });
+            }
+            const onIdle = async (generation: number) => {
+                if (rest.idleProgress) {
+                    const mark = await readProgress();
+                    if (settled || stopping || generation !== idleGeneration) return;
+                    if (mark !== null && mark !== progressMark) {
+                        progressMark = mark;
+                        armIdleTimer();
+                        return;
+                    }
+                }
+                finishTimeout('idle_timeout');
+            };
             const armIdleTimer = () => {
                 if (!rest.idleTimeout || settled || stopping) return;
                 if (idleTimer) clearTimeout(idleTimer);
+                const generation = ++idleGeneration;
                 // Process creation and runtime bootstrap can be delayed by the
                 // host scheduler before user code has any chance to print.
                 // Give only that first silence a small bounded grace period;
@@ -850,7 +885,7 @@ export class ExecutionEngine {
                 const delay = sawOutput
                     ? rest.idleTimeout
                     : Math.max(rest.idleTimeout, Math.min(5_000, rest.idleTimeout * 3));
-                idleTimer = setTimeout(() => finishTimeout('idle_timeout'), delay);
+                idleTimer = setTimeout(() => { void onIdle(generation); }, delay);
             };
             const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
                 sawOutput = true;

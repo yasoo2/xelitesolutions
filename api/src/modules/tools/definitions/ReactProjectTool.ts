@@ -44,7 +44,7 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
-import { NETWORK_INSTALL_TIMEOUTS } from '../../../shared/network-install-timeouts';
+import { NETWORK_INSTALL_TIMEOUTS, installProgressProbe } from '../../../shared/network-install-timeouts';
 import { externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../../../core/api-discovery/integration';
 
 // One measured budget for every project install (see the shared module).
@@ -6939,7 +6939,11 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              * on this machine, -2 means it timed out.
              */
             const run = async (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number): Promise<number> => {
-                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation });
+                const r = await shell.run(cmd, args, {
+                    cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation,
+                    // npm is silent on a pipe; what it writes is its progress.
+                    idleProgress: cmd === 'npm' && idleTimeoutMs ? installProgressProbe(proj, args) : undefined,
+                });
                 lastLog = r.out;
                 if (context?.isCancelled?.()) throw new Error('run_cancelled_by_owner');
                 if (r.missing) return -1;
