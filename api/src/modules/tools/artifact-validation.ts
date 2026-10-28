@@ -40,6 +40,10 @@ function isStructuredExtension(ext: string): boolean {
     return ['.json', '.yaml', '.yml', '.toml', '.ini', '.env'].includes(ext);
 }
 
+function isDocumentExtension(ext: string): boolean {
+    return ['.md', '.mdx', '.markdown', '.rst', '.adoc', '.txt'].includes(ext);
+}
+
 function isSourceExtension(ext: string): boolean {
     return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh', '.sql'].includes(ext);
 }
@@ -57,6 +61,37 @@ function looksLikeNode(source: string): boolean {
     return /(?:\b(?:const|let|var)\s+[A-Za-z_$][\w$]*\s*=|\brequire\s*\(|\bmodule\.exports\b|\bimport\s+[\s\S]*?\s+from\s+["'])/u.test(source);
 }
 
+const MANIFEST_DEPENDENCY_SECTIONS = ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies'];
+// npm's own name rule (validate-npm-package-name): URL-safe characters, an
+// optional @scope/, no leading dot or underscore, at most 214 characters.
+// Upper case stays allowed because legacy packages such as JSONStream exist.
+const NPM_PACKAGE_NAME = /^(?:@[a-z0-9~-][a-z0-9._~-]*\/)?[a-z0-9~-][a-z0-9._~-]*$/iu;
+
+/**
+ * A package.json is a promise that `npm install` can fetch every key it
+ * declares. A `node:` built-in (node:sqlite, node:fs) ships with Node and is
+ * imported directly; listed as a dependency it makes the install itself fail,
+ * so the project never runs. The same holds for any key npm rejects as a name.
+ * Only names are judged here: whether a version exists needs the registry and
+ * belongs to the install step.
+ */
+export function uninstallableManifestDependencies(manifest: unknown): string[] {
+    const found: string[] = [];
+    if (!manifest || typeof manifest !== 'object' || Array.isArray(manifest)) return found;
+    for (const section of MANIFEST_DEPENDENCY_SECTIONS) {
+        const values = (manifest as Record<string, unknown>)[section];
+        if (!values || typeof values !== 'object' || Array.isArray(values)) continue;
+        for (const name of Object.keys(values)) {
+            if (/^node:/iu.test(name)) {
+                found.push(`${section}.${name} is a Node built-in: import it as '${name}' and do not list it`);
+            } else if (name.length > 214 || !NPM_PACKAGE_NAME.test(name)) {
+                found.push(`${section}.${name} is not a valid npm package name`);
+            }
+        }
+    }
+    return found;
+}
+
 /**
  * Validate only high-confidence, destination-level contracts. This is not a
  * formatter and never invents a replacement artifact. It protects the later
@@ -66,7 +101,9 @@ export function validateArtifactContent(filePath: string, content: string): stri
     const ext = path.extname(filePath).toLowerCase();
     const basename = path.basename(filePath).toLowerCase();
 
-    if (/```(?:json|javascript|typescript|python|js|ts|py)?/iu.test(content)) {
+    // In a document a fence is content (a README's «```bash npm start```»),
+    // not the chat wrapper left around a file.
+    if (!isDocumentExtension(ext) && /```(?:json|javascript|typescript|python|js|ts|py)?/iu.test(content)) {
         return `artifact_type_mismatch: ${filePath} still contains an incomplete Markdown fence`;
     }
 
@@ -77,6 +114,12 @@ export function validateArtifactContent(filePath: string, content: string): stri
             } catch (error: any) {
                 const detail = String(error?.message || 'invalid JSON').split('\n')[0];
                 return `artifact_validation_failed: ${filePath} is not valid JSON (${detail})`;
+            }
+            if (basename === 'package.json') {
+                const uninstallable = uninstallableManifestDependencies(JSON.parse(content));
+                if (uninstallable.length > 0) {
+                    return `manifest_dependency_uninstallable: ${filePath} declares what npm install cannot fetch: ${uninstallable.join('; ')}`;
+                }
             }
         }
         return null;
