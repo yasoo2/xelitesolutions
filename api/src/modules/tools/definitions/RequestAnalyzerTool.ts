@@ -1,5 +1,6 @@
 import { ToolDefinition } from '../types';
 import { callLLM } from '../../../core/llm';
+import { readModelJsonObject } from '../../../shared/utils/json';
 
 /**
  * RequestAnalyzerTool - Advanced request analysis using LLM
@@ -111,14 +112,11 @@ IMPORTANT: Return ONLY valid JSON, no markdown, no explanations.`;
             logs.push(`LLM analysis completed`);
 
             // Parse LLM response
-            let analysis;
-            try {
-                // Extract JSON from response (in case LLM adds markdown)
-                const jsonMatch = response.match(/\{[\s\S]*\}/);
-                const jsonStr = jsonMatch ? jsonMatch[0] : response;
-                analysis = JSON.parse(jsonStr);
-            } catch (parseError) {
-                logs.push(`JSON parse error: ${parseError}`);
+            // Read through the shared reader (round 22, W7): a fence, prose and a
+            // brace after the answer no longer turn a good analysis into the fallback.
+            let analysis: any = readModelJsonObject(String(response || ''));
+            if (!analysis) {
+                logs.push('JSON parse error: the analysis reply held no JSON object');
                 // Fallback to basic analysis
                 analysis = this.fallbackAnalysis(userRequest);
             }

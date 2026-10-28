@@ -51,14 +51,29 @@ function closeOf(s: string, start: number, memo: Map<number, number>): number {
 }
 
 /**
- * True when what follows an opener that never closes reads as JSON up to the
- * next opener or the end: strings, numbers, literals, `:` and `,`. That is a
- * value the reply was cut inside, and every later bracket is a piece of it —
- * never an answer of its own. Anything else (words, a full stop) means the
- * bracket was prose, «use [ for lists», and the answer may still follow.
+ * True when what follows an opener that never closes reads as JSON to the end:
+ * strings, numbers, literals, `:`, `,` and whole values. That is a value the
+ * reply was cut inside, and every later bracket is a piece of it — never an
+ * answer of its own. Anything else (words, a full stop) means the bracket was
+ * prose, «use [ for lists», and the answer may still follow.
+ *
+ * AN OPENER INSIDE IT IS READ, NOT TAKEN AS PROOF (round 22, W7). A second
+ * opener used to end the reading with «cut»: «write {{name}} … {{ to escape
+ * them. {"intent":…}» opens two braces that never close, so the scan stopped
+ * at the first and the answer after them was never read. A nested value that
+ * closes is read past; one that never closes decides in its place — the
+ * innermost unclosed opener is the one whose contents say whether the reply
+ * was cut. Each opener's answer is kept (`cuts`), so a reply of a thousand
+ * braces is still read once.
  */
-function opensCutValue(s: string, opener: number): boolean {
-    for (let i = opener + 1; i < s.length; i++) {
+function opensCutValue(s: string, opener: number, memo: Map<number, number>, cuts: Map<number, boolean>): boolean {
+    const decided = cuts.get(opener);
+    if (decided !== undefined) return decided;
+    const chain: number[] = [];
+    let answer = true;
+    let i = opener + 1;
+    chain.push(opener);
+    scan: for (; i < s.length; i++) {
         const c = s[i];
         if (/\s|[:,0-9.+\-eE]/u.test(c)) continue;
         if (c === '"') {
@@ -67,16 +82,25 @@ function opensCutValue(s: string, opener: number): boolean {
                 if (s[j] === '\\') { j++; continue; }
                 if (s[j] === '"') break;
             }
-            if (j >= s.length) return true;             // cut inside a string
+            if (j >= s.length) break scan;              // cut inside a string
             i = j;
             continue;
         }
-        if (c === '{' || c === '[') return true;
+        if (c === '{' || c === '[') {
+            const close = closeOf(s, i, memo);
+            if (close >= 0) { i = close; continue; }    // a whole value inside this one
+            const known = cuts.get(i);
+            if (known !== undefined) { answer = known; break scan; }
+            chain.push(i);                              // the innermost unclosed opener decides
+            continue;
+        }
         const literal = /^(?:true|false|null)/u.exec(s.slice(i, i + 5));
         if (literal) { i += literal[0].length - 1; continue; }
-        return false;
+        answer = false;
+        break;
     }
-    return true;
+    for (const at of chain) cuts.set(at, answer);
+    return answer;
 }
 
 /**
@@ -89,6 +113,7 @@ function opensCutValue(s: string, opener: number): boolean {
 export function balancedJsonSpans(text: string): string[] {
     const s = String(text ?? '');
     const memo = new Map<number, number>();
+    const cuts = new Map<number, boolean>();
     const out: string[] = [];
     let from = 0;
     while (from < s.length) {
@@ -101,7 +126,7 @@ export function balancedJsonSpans(text: string): string[] {
             from = end + 1;
             continue;
         }
-        if (opensCutValue(s, start)) break;
+        if (opensCutValue(s, start, memo, cuts)) break;
         from = start + 1;
     }
     return out;
@@ -232,9 +257,26 @@ export function readModelJson<T>(text: string, pick: (parsed: any) => T | undefi
     return undefined;
 }
 
-/** The first JSON object (not an array, not a scalar) in a model's reply, or null. */
+const isPlainObject = (value: unknown): value is Record<string, any> =>
+    !!value && typeof value === 'object' && !Array.isArray(value);
+
+/**
+ * The first JSON object (not a scalar) in a model's reply, or null.
+ *
+ * AN OBJECT HANDED BACK IN A LIST OF ONE IS STILL THE OBJECT (round 22, W7).
+ * A small model asked for `{"intent":…}` often answers `[{"intent":…}]`. The
+ * greedy readers this replaced cut from the first `{` to the last `}` and read
+ * it; this reader saw an array, refused it, and the intent, the action and the
+ * router's analysis all fell back as if the model had said nothing. A list of
+ * exactly one object answers with that object; a longer list names no single
+ * answer and is still refused.
+ */
 export function readModelJsonObject<T extends Record<string, any> = Record<string, any>>(text: string): T | null {
-    return readModelJson<T>(text, parsed => (parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed as T : undefined)) ?? null;
+    return readModelJson<T>(text, parsed => {
+        if (isPlainObject(parsed)) return parsed as T;
+        if (Array.isArray(parsed) && parsed.length === 1 && isPlainObject(parsed[0])) return parsed[0] as T;
+        return undefined;
+    }) ?? null;
 }
 
 const TRAILING_COMMA = /,\s*([}\]])/g;
@@ -250,10 +292,20 @@ const TRAILING_COMMA = /,\s*([}\]])/g;
  * between them) — on each candidate and on the widest `[…]` span — and as the
  * last resort every whole object inside that span that parses is kept: four
  * good nodes beat zero. A salvage is said, never silent.
+ *
+ * A PLAN IS A LIST OF STEPS (round 22, W7). The first array that parsed was
+ * taken whatever it held: «Tools I will use: ["file_write","shell_execute"].
+ * Plan: [{"id":"s1",…}]» returned the two tool names, and each became a step
+ * with no inputs. An answer is a list of objects; a list of anything else is
+ * prose the reply carried, and an empty list answers only when nothing else
+ * in the reply does. And a plan cut at the token limit before its `]` is the
+ * salvage's case, which the comment above always promised and the reader
+ * never reached: with no closing bracket, the widest span runs to the end.
  */
 export function parseModelJsonArray(text: string, onSalvage?: (kept: number) => void): any[] | null {
     const cleaned = String(text ?? '').replace(/```(?:json)?/gi, '');
-    const widest = cleaned.match(/\[[\s\S]*\]/)?.[0] || '';
+    const firstList = cleaned.search(/\[\s*\{/u);
+    const widest = cleaned.match(/\[[\s\S]*\]/)?.[0] || (firstList >= 0 ? cleaned.slice(firstList) : '');
     const spans = [...jsonReplyCandidates(text).filter(span => span.startsWith('[')), widest].filter(Boolean);
     const repairs: Array<(span: string) => string> = [
         span => span,
@@ -261,15 +313,18 @@ export function parseModelJsonArray(text: string, onSalvage?: (kept: number) => 
         span => span.replace(/[“”«»]/g, '"').replace(/[‘’]/g, "'").replace(TRAILING_COMMA, '$1'),
         span => span.replace(/\}\s*\{/g, '},{').replace(TRAILING_COMMA, '$1'),
     ];
+    let emptyList: any[] | null = null;
     for (const span of [...new Set(spans)]) {
         for (const repair of repairs) {
             try {
                 const value = parseModelJson(repair(span));
-                if (Array.isArray(value)) return value;
+                if (!Array.isArray(value)) continue;
+                if (value.length && value.every(isPlainObject)) return value;
+                if (!value.length) emptyList = emptyList ?? value;
             } catch { /* the next repair */ }
         }
     }
-    if (!widest) return null;
+    if (!widest) return emptyList;
     // Salvage: each whole object, read with strings skipped (a `}` inside a
     // step's description no longer splits it). An object that never closes is
     // where the reply was cut; nothing after it is a node of its own.
@@ -282,5 +337,5 @@ export function parseModelJsonArray(text: string, onSalvage?: (kept: number) => 
         at = widest.indexOf('{', end + 1);
     }
     if (kept.length) onSalvage?.(kept.length);
-    return kept.length ? kept : null;
+    return kept.length ? kept : emptyList;
 }

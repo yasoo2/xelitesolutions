@@ -2,6 +2,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { resolveToolPath } from '../utils';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
 import path from 'path';
+import { readModelJsonObject } from '../../../shared/utils/json';
 
 // Helper to get LLM function lazily to avoid circular dependency.
 //
@@ -21,6 +22,21 @@ const getLLM = () => {
     if (typeof fn !== 'function') throw new Error('LLM module exports no callLLM function');
     return fn;
 };
+
+/**
+ * The model's JSON object, read through the shared reader (round 22, W7). The
+ * greedy `/\{[\s\S]*\}/` each tool here kept glued the answer to any brace in
+ * a sentence after it and refused the pair. What each tool accepts is
+ * unchanged: a reply with no braces at all is still `{}`, and one whose braces
+ * hold no valid object is still an error.
+ */
+function jsonAnswer(response: string): Record<string, any> {
+    const text = String(response || '');
+    const parsed = readModelJsonObject(text);
+    if (parsed) return parsed;
+    if (/\{[\s\S]*\}/.test(text)) throw new Error('the model reply held no valid JSON object');
+    return {};
+}
 
 /**
  * ELITE TOOLS SUITE - FIXED TYPES & CIRCULAR DEPS
@@ -63,7 +79,7 @@ export class DependencyGraphTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return valid JSON.' }]);
-            const json = JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}');
+            const json = jsonAnswer(response);
             return { ok: true, output: json, logs: ['Generated dependency graph'] };
         } catch (e: any) {
             return { ok: false, error: 'Failed', logs: [e.message] };
@@ -96,7 +112,7 @@ export class BusinessLogicTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON rules.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -126,7 +142,7 @@ export class ChaosTestingTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON scenarios.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -162,7 +178,7 @@ export class ComplianceValidatorTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON report.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -196,7 +212,7 @@ export class CostEstimatorTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON cost.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -222,7 +238,7 @@ export class AmbiguityResolverTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -252,7 +268,7 @@ export class MultiAgentDebateTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON transcript.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }
@@ -281,7 +297,7 @@ export class SelfConfidenceTool implements ToolDefinition {
         try {
             const callLLM = getLLM();
             const response = await callLLM(prompt, [{ role: 'system', content: 'Return JSON score.' }]);
-            return { ok: true, output: JSON.parse(response.match(/\{[\s\S]*\}/)?.[0] || '{}'), logs: [] };
+            return { ok: true, output: jsonAnswer(response), logs: [] };
         } catch (e: any) { return { ok: false, error: e.message, logs: [] }; }
     }
 }

@@ -7,6 +7,7 @@ import { executePlannedActions } from './executor';
 import { getBrowserSession, stopSession, touchSession, screenshotSessionJpeg } from './manager';
 import { getSessionRunConfig, setSessionSecretEncrypted } from '../services/secrets';
 import { agentSearchUrl } from './challenge';
+import { readModelJson } from '../../shared/utils/json';
 
 const cfg = DEFAULT_BROWSER_CONFIG;
 
@@ -88,15 +89,6 @@ Structure: { "actions": [ ... ], "thought": "Brief Arabic/English reasoning expl
 
 IMPORTANT: Never include a "thought" object inside the "actions" array. Use the root "thought" field instead.
 `;
-
-function extractJsonLike(text: string) {
-  const raw = String(text || '').trim();
-  if (!raw) return '';
-  if (raw.startsWith('{') && raw.endsWith('}')) return raw;
-  if (raw.startsWith('[') && raw.endsWith(']')) return raw;
-  const m = raw.match(/\{[\s\S]*\}/);
-  return String(m?.[0] || '').trim();
-}
 
 function deepRedactForDebug(v: any): any {
   if (v == null) return v;
@@ -301,14 +293,10 @@ function plannedFromUnknown(r: any): Planned | null {
           : typeof (r as any)?.text === 'string'
             ? (r as any).text
             : '';
-    const jsonLike = extractJsonLike(text);
-    if (!jsonLike) return null;
-    try {
-      const parsed = JSON.parse(jsonLike);
-      if (parsed && typeof parsed === 'object' && Array.isArray((parsed as any).actions)) {
-        return { actions: (parsed as any).actions };
-      }
-    } catch { }
+    // The shared reader (round 22, W7): the object that carries `actions`,
+    // wherever it stands among the braces of the reply.
+    const actions = readModelJson(text, (parsed: any) => (parsed && typeof parsed === 'object' && Array.isArray(parsed.actions) ? parsed.actions : undefined));
+    if (actions) return { actions };
   }
 
   return null;
