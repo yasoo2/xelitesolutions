@@ -14,7 +14,7 @@ import {
     routesToCliScaffold,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 /**
  * Eval round 19 (adversarial review of the merged verdict and artifact

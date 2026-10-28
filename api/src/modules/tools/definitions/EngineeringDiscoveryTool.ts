@@ -7,7 +7,7 @@ import { readJoeProjectForRun } from '../../../api/page-store';
 import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
 import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence } from '../../services/AutonomousEngineeringPolicy';
 import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
-import { pythonExecutable } from '../../../core/quality/python-runtime';
+import { pythonExecutable } from '../../../core/quality/python-executable';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';

@@ -9,7 +9,7 @@ import {
     requestDeclaresOwnBackend,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { isCliRequest } from '../core/design/app-blueprints';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 /**
  * Eval round 15, 2026-10-24 — three runs where the deterministic chain built

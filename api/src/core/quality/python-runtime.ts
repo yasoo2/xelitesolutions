@@ -30,6 +30,11 @@
  */
 
 import { executionEngine } from '../../kernel/ExecutionEngine';
+import { pythonExecutable } from './python-executable';
+
+// The name each platform ships lives in its own import-free module, so readers
+// that need only the name do not load the execution kernel.
+export { pythonExecutable };
 
 export interface PythonRun {
     /** true only when the process ran AND exited 0. */
@@ -39,11 +44,6 @@ export interface PythonRun {
     output: string;
     error: string;
     exitCode?: number | null;
-}
-
-/** `python` on Windows, `python3` everywhere else — the name each platform actually ships. */
-export function pythonExecutable(): string {
-    return process.platform === 'win32' ? 'python' : 'python3';
 }
 
 /**

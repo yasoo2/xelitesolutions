@@ -1,6 +1,6 @@
 import { namedTargetFile } from '../core/orchestrator/file-intent';
 import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 /**
  * Round 21 review, group 1 #7:

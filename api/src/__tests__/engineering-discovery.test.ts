@@ -4,7 +4,7 @@ import path from 'path';
 import { DISCOVERY_YIELD_EVERY, EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
 
 import { hasExplicitRecordSchema } from '../core/design/app-blueprints';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 describe('evidence-first engineering discovery', () => {
   const roots: string[] = [];

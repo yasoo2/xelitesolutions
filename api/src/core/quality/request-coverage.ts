@@ -49,7 +49,7 @@ import { keyForPhrase } from '../design/entity-inference';
 import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 import { emptyTestRun } from './test-run-evidence';
-import { pythonExecutable } from './python-runtime';
+import { pythonExecutable } from './python-executable';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 
 export interface RequestedRecord {

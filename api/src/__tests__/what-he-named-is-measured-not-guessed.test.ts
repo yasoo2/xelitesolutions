@@ -22,7 +22,7 @@ import {
     type RequestedRecords,
 } from '../core/quality/request-coverage';
 import { deliveryVerdict } from '../core/quality/delivery-verdict';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 /**
  * Round 20 — the adversarial review of round 19's record-coverage gate found

@@ -32,7 +32,7 @@ import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-r
 import { namedTargetFile } from '../../../core/orchestrator/file-intent';
 import { foldChars } from '../../../core/orchestrator/promptNormalizer';
 import { AR_END, AR_START } from '../../../shared/arabic-word-boundary';
-import { pythonExecutable } from '../../../core/quality/python-runtime';
+import { pythonExecutable } from '../../../core/quality/python-executable';
 import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';

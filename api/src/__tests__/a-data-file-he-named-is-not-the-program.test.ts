@@ -1,5 +1,5 @@
 import { deterministicPhasesFor, pythonTestCommand } from '../modules/tools/definitions/ProjectPipelineTool';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 /**
  * Eval P301-cli-ar, 2026-10-25: «اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV …

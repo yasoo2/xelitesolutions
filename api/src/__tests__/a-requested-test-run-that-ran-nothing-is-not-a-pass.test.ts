@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runRequestedTests } from '../core/quality/request-coverage';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 import { AutoTesterTool } from '../modules/tools/definitions/AutoTesterTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
 import * as ToolService from '../modules/services/ToolService';

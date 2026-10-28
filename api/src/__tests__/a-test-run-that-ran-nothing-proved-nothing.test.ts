@@ -24,7 +24,7 @@ import { emptyTestRun } from '../core/quality/test-run-evidence';
 import { deterministicPhasesFor, pythonTestCommand } from '../modules/tools/definitions/ProjectPipelineTool';
 import { QualityRunTool } from '../modules/tools/definitions/QualityTools';
 import { handleShellCommand } from '../modules/tools/handlers';
-import { pythonExecutable } from '../core/quality/python-runtime';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 jest.mock('../modules/tools/handlers', () => ({ handleShellCommand: jest.fn() }));
 jest.mock('../modules/tools/utils', () => ({ resolveToolPath: (value: string) => value }));
