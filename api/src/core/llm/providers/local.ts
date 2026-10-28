@@ -78,8 +78,9 @@ export class LocalProvider {
             return result.content;
         }
         // Generic compatible servers have no portable context-size parameter.
-        // Admission serializes their work without pretending to resize the model.
-        return requestResourceManager.withHeavy(
+        // Admission serializes their work without pretending to resize the model,
+        // as a model call: the model the server holds is this call's own.
+        return requestResourceManager.withLocalModelCall(
             () => {
                 try { options?.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
                 return this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options);

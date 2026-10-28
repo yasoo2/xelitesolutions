@@ -52,32 +52,73 @@ export function residentRamBytes(model: unknown): number {
     return typeof vram === 'number' && Number.isFinite(vram) && vram > 0 ? Math.max(0, size - vram) : size;
 }
 
-/** Sum of the RAM part over the models the loopback Ollama server reports as loaded; 0 on any doubt. */
-export async function residentInferenceBytes(): Promise<number> {
-    if (cached && Date.now() - cached.at < CACHE_MS) return cached.bytes;
-    const url = psUrl();
-    const measured = !url ? null : await new Promise<number | null>(resolve => {
-        const req = http.get(url, { timeout: TIMEOUT_MS }, res => {
+/** The models the loopback server reports as loaded, or null when it did not answer. */
+function loadedModels(url: URL, timeoutMs = TIMEOUT_MS): Promise<unknown[] | null> {
+    return new Promise(resolve => {
+        const req = http.get(url, { timeout: timeoutMs }, res => {
             let body = '';
             res.setEncoding('utf8');
             res.on('data', chunk => { if (body.length < 65536) body += chunk; });
             res.on('end', () => {
                 try {
                     const models = JSON.parse(body)?.models;
-                    const total = Array.isArray(models)
-                        ? models.reduce((sum: number, m: unknown) => sum + residentRamBytes(m), 0)
-                        : 0;
-                    resolve(res.statusCode === 200 ? total : null);
+                    resolve(res.statusCode === 200 ? (Array.isArray(models) ? models : []) : null);
                 } catch { resolve(null); }
             });
         });
         req.on('timeout', () => { req.destroy(); resolve(null); });
         req.on('error', () => resolve(null));
     });
+}
+
+/** Sum of the RAM part over the models the loopback Ollama server reports as loaded; 0 on any doubt. */
+export async function residentInferenceBytes(): Promise<number> {
+    if (cached && Date.now() - cached.at < CACHE_MS) return cached.bytes;
+    const url = psUrl();
+    const models = url ? await loadedModels(url) : null;
+    const measured = models === null ? null : models.reduce((sum: number, m: unknown) => sum + residentRamBytes(m), 0);
     const now = Date.now();
     if (measured !== null) lastGood = { at: now, bytes: measured };
     const bytes = measured !== null ? measured
         : lastGood && now - lastGood.at < LAST_GOOD_MS ? lastGood.bytes : 0;
     cached = { at: now, bytes };
     return bytes;
+}
+
+/**
+ * UNLOAD THE MODELS THE LOOPBACK SERVER HOLDS IN RAM, for heavy work that is
+ * not a model call (RequestResourceManager decides when: only when nothing
+ * else would clear the memory floor and no model call is admitted or waiting).
+ *
+ * Ollama's own unload is a generate request with `keep_alive: 0`; the next
+ * model call loads the model again. Only models with a RAM part are asked —
+ * a model held in VRAM is not in the way of an install. Returns the RAM the
+ * unloaded models held; 0 on any doubt, which leaves the caller's refusal as
+ * it was.
+ */
+export async function releaseResidentInference(timeoutMs = 15_000): Promise<number> {
+    const ps = psUrl();
+    const models = ps ? await loadedModels(ps) : null;
+    if (!ps || !models) return 0;
+    let released = 0;
+    for (const model of models) {
+        const ram = residentRamBytes(model);
+        const name = String((model as any)?.name || (model as any)?.model || '');
+        if (!ram || !name) continue;
+        const unloaded = await new Promise<boolean>(resolve => {
+            const body = JSON.stringify({ model: name, keep_alive: 0 });
+            const req = http.request(new URL('/api/generate', ps), {
+                method: 'POST', timeout: timeoutMs,
+                headers: { 'content-type': 'application/json', 'content-length': Buffer.byteLength(body) },
+            }, res => { res.resume(); res.on('end', () => resolve(res.statusCode === 200)); });
+            req.on('timeout', () => { req.destroy(); resolve(false); });
+            req.on('error', () => resolve(false));
+            req.end(body);
+        });
+        if (unloaded) released += ram;
+    }
+    // What the server holds has changed: the next reading asks it again.
+    cached = null;
+    lastGood = null;
+    return released;
 }

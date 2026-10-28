@@ -4,7 +4,10 @@ const mockOpenAI = jest.fn();
 jest.mock('openai', () => ({ __esModule: true, default: mockOpenAI }));
 jest.mock('../core/resources/RequestResourceManager', () => ({ requestResourceManager: {
     withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: Math.min(admission.requestedOutputTokens, 4096 - admission.promptEstimatedTokens - 1) }),
-    withHeavy: async (work: any) => work(),
+    // A model call is admitted as one: other heavy work may have an idle model
+    // unloaded for it (RequestResourceManager.admitBesideIdleModels).
+    withHeavy: async () => { throw new Error('a model call was admitted as other heavy work'); },
+    withLocalModelCall: async (work: any) => work(),
     currentSignal: () => undefined,
 } }));
 

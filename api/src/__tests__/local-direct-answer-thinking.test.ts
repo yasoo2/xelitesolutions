@@ -34,6 +34,7 @@ function localFixture(base = 'http://127.0.0.1:11434', configuredModel = 'qwen3.
     jest.doMock('../core/resources/RequestResourceManager', () => ({ ...jest.requireActual('../core/resources/RequestResourceManager'), requestResourceManager: {
         withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: Math.min(admission.requestedOutputTokens, 4096 - admission.promptEstimatedTokens - 1) }),
         withHeavy: async (work: any) => work(),
+        withLocalModelCall: async (work: any) => work(),
         currentSignal: () => undefined,
     } }));
     const { LocalProvider } = require('../core/llm/providers/local');

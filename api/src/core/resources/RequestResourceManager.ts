@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
-import { residentInferenceBytes } from './resident-inference';
+import { releaseResidentInference, residentInferenceBytes } from './resident-inference';
 import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
 import { CONTEXT_HARD_MAX_TOKENS, contextTierForMemory, localContextCeilingTokens } from './context-ceiling';
 
@@ -101,6 +101,12 @@ export interface RequestResourceManagerOptions {
      * never for other heavy work.
      */
     sampleResidentInference?: () => Promise<number>;
+    /**
+     * Unload the idle models the local server holds in RAM and return what they
+     * held (see admitBesideIdleModels). Defaults to the loopback server's own
+     * unload; an injected memory reading with no unloader unloads nothing.
+     */
+    releaseResidentInference?: () => Promise<number>;
     /** How often a running inference re-reads what the server holds (see withInference). */
     residencyRefreshMs?: number;
     now?: () => number;
@@ -216,6 +222,7 @@ export class RequestResourceManager {
     private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number };
     private readonly sampleMemory: () => MemoryReading;
     private readonly sampleResidentInference: () => Promise<number>;
+    private readonly releaseResidentInference: () => Promise<number>;
     private readonly residencyRefreshMs: number;
     private readonly now: () => number;
     private lastMemory: MemorySnapshot | null = null;
@@ -244,6 +251,8 @@ export class RequestResourceManager {
         // An injected memory reading is a test of the floor itself: no live server is asked.
         this.sampleResidentInference = options.sampleResidentInference
             || (options.sampleMemory ? async () => 0 : residentInferenceBytes);
+        this.releaseResidentInference = options.releaseResidentInference
+            || (options.sampleMemory ? async () => 0 : releaseResidentInference);
         // 0: an injected memory reading with no residency reader asks no live server, so nothing is kept fresh.
         this.residencyRefreshMs = options.sampleMemory && !options.sampleResidentInference ? 0
             : boundedInteger(options.residencyRefreshMs, 20000, 10, 20000);
@@ -317,6 +326,18 @@ export class RequestResourceManager {
         return this.admitHeavy(work, options, false);
     }
 
+    /**
+     * A local model call to a server Joe cannot size — a generic
+     * OpenAI-compatible server has no portable context parameter, so there is
+     * no budget to give it (withInference is for the managed Ollama path). It
+     * is still a MODEL CALL: the model the server holds is its own, credited to
+     * it, and never unloaded for it (admitBesideIdleModels is for other heavy
+     * work). Serialized like every heavy admission.
+     */
+    async withLocalModelCall<T>(work: () => Promise<T>, options: HeavyOptions = {}): Promise<T> {
+        return this.admitHeavy(work, options, true);
+    }
+
     private async admitHeavy<T>(work: () => Promise<T>, options: HeavyOptions, localInference: boolean): Promise<T> {
         const store = this.context.getStore();
         if (!store) return this.run({ requestId: `resource-${++this.implicitCounter}`, signal: options.signal }, () => this.admitHeavy(work, options, localInference));
@@ -341,8 +362,9 @@ export class RequestResourceManager {
                 this.assertOpen(store);
                 if (parent && !parent.live) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                // Only a local model call may count the resident model as its own.
-                const memory = this.admitMemory(localInference ? await this.reclaimableBytes() : 0);
+                // Only a local model call may count the resident model as its own;
+                // other heavy work may have an idle one unloaded for it.
+                const memory = localInference ? this.admitMemory(await this.reclaimableBytes()) : await this.admitBesideIdleModels(signal.signal);
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -485,6 +507,45 @@ export class RequestResourceManager {
 
     private async reclaimableBytes(): Promise<number> {
         try { return nonnegative(await this.sampleResidentInference()) ?? 0; } catch { return 0; }
+    }
+
+    /**
+     * HEAVY WORK THAT IS NOT A MODEL CALL, BESIDE AN IDLE MODEL IN RAM.
+     *
+     * Review r21 stopped crediting a resident model's RAM to an install —
+     * nothing gives it back to npm — and so, on the owner's 16 GB laptop with
+     * qwen3.5:9b resident (5.7 GiB), every `npm install` and build with 0.9 GB
+     * free was refused while the model sat idle: the build stopped although the
+     * memory was there to be had. Ollama unloads a model on request and loads
+     * it again for the next call. So the floor is judged on free memory first,
+     * and only when it fails and the RAM the server holds would clear it is
+     * that model unloaded and free memory read again (the server returns it as
+     * it unloads). The model is idle then: a model call holds the heavy lane
+     * for its whole run (withInference is admitted through admitHeavy), so
+     * while this heavy work is being admitted no model call of this process is
+     * running. A GPU server's model sits in VRAM — it has no RAM part to give
+     * and is never unloaded for an install; a refusal that unloading cannot
+     * cure stays the refusal it was, with its numbers.
+     */
+    private async admitBesideIdleModels(signal: AbortSignal): Promise<MemorySnapshot> {
+        try { return this.admitMemory(0); } catch (refusal) {
+            if (!(refusal instanceof ResourceAdmissionError) || refusal.code !== 'RESOURCE_LOW_MEMORY') throw refusal;
+            const held = await this.reclaimableBytes();
+            if (!held || !this.clearsFloor(this.measure().availableBytes + held)) throw refusal;
+            let released = 0;
+            try { released = nonnegative(await this.releaseResidentInference()) ?? 0; } catch { released = 0; }
+            if (!released) throw refusal;
+            for (let attempt = 0; ; attempt++) {
+                if (signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+                if (this.clearsFloor(this.measure().availableBytes) || attempt >= 40) return this.admitMemory(0);
+                await new Promise(resolve => setTimeout(resolve, 250));
+            }
+        }
+    }
+
+    /** The floor admitMemory holds every admission to. */
+    private clearsFloor(usableBytes: number): boolean {
+        return usableBytes >= this.policy.minFreeBytes && usableBytes > this.policy.reserveBytes;
     }
 
     /**
