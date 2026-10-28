@@ -126,8 +126,23 @@ export function isActionableEditRequest(request: string): boolean {
 }
 
 /** Read an explicit, quoted wording replacement from a short follow-up. */
+/**
+ * HIS WORDS WITHOUT THEIR MARKS — EXCEPT WHAT HE QUOTED (round 21).
+ *
+ * Tanween, shadda, the short vowels and tatweel change how a word is typed,
+ * not which word it is: «سطراً» and «سطرًا», «أضِف» and «أضف» are one word to a
+ * reader. The readers below matched one typing, so «وأضف تحت عنوان خدماتنا
+ * سطراً «…»» — alef before the tanween, the way it is most often typed — was
+ * not read, and a two-part edit lost its second part without a word. The
+ * structure is read with the marks off; a quoted value is his exact text,
+ * replaced as he wrote it, so it keeps them.
+ */
+function withoutMarksOutsideQuotes(request: string): string {
+    return String(request || '').replace(/([«"][^»"\n]*[»"])|[\u064B-\u065F\u0670\u0640]/gu, (_mark, quoted) => quoted || '');
+}
+
 export function parseLiteralTextReplacement(request: string): { from: string; to: string } | null {
-    const text = String(request || '').trim();
+    const text = withoutMarksOutsideQuotes(String(request || '').trim());
     if (!/(?:غيّ?ر|غير|بدّ?ل|بدل|استبدل|\b(?:change|replace)\b)/iu.test(text)) return null;
     const pair = text.match(/[«"]([^»"\n]{1,120})[»"][^«"\n]{0,60}(?:إلى|الى|\bto\b|\bwith\b)[^«"\n]{0,24}[«"]([^»"\n]{1,120})[»"]/iu);
     if (!pair) return null;
@@ -158,7 +173,7 @@ export interface ServicesSectionEdit {
 
 /** Read a concrete request to add a services section to a generated site. */
 export function parseServicesSectionEdit(request: string): ServicesSectionEdit | null {
-    const text = String(request || '').trim();
+    const text = withoutMarksOutsideQuotes(String(request || '').trim());
     const add = /(?:أضف|اضف|إضاف[ةه]|اضاف[ةه]|أنشئ|انشئ|ضع|حط|\badd\b|\bcreate\b)/iu.test(text);
     const services = /(?:قسم\s+(?:ال)?خدمات|(?:ال)?خدمات\s+(?:قسم|section)|\bservices?\s+section\b)/iu.test(text);
     if (!add || !services) return null;
@@ -185,7 +200,7 @@ export function parseServicesSectionEdit(request: string): ServicesSectionEdit |
  * never be swallowed into an earlier value.
  */
 export function parsePresentationEdits(request: string): PresentationEdit[] {
-    const text = String(request || '').trim();
+    const text = withoutMarksOutsideQuotes(String(request || '').trim());
     const out: PresentationEdit[] = [];
     const literal = parseLiteralTextReplacement(text);
     if (literal) out.push({ kind: 'literal', ...literal });
@@ -491,17 +506,38 @@ const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 // Build output stays this walker's own choice.
 const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
 
-function listFiles(dir: string, base = ''): string[] {
+/**
+ * EVERY EDITABLE FILE OF THE PROJECT, AT ANY DEPTH (round 21).
+ *
+ * This stopped after 60 files without a word, so text in the 61st — the
+ * content file that sorts after a components folder of 70 — was «not found»
+ * and his edit refused on a project that held it. The walk is complete,
+ * asynchronous (a project walk never holds the event loop of a server other
+ * people use), and in name order on every platform.
+ */
+async function listFiles(dir: string, base = ''): Promise<string[]> {
+    let entries: fs.Dirent[] = [];
+    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
     const out: string[] = [];
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
         if (e.isDirectory()) {
-            if (!isMachineStateDirectory(e.name) && !BUILD_OUTPUT_DIRS.has(e.name)) out.push(...listFiles(path.join(dir, e.name), path.join(base, e.name)));
+            if (!isMachineStateDirectory(e.name) && !BUILD_OUTPUT_DIRS.has(e.name)) out.push(...await listFiles(path.join(dir, e.name), path.join(base, e.name)));
         } else if (EDITABLE.test(e.name)) {
             out.push(path.join(base, e.name).replace(/\\/g, '/'));
         }
-        if (out.length > 60) break;
     }
     return out;
+}
+
+/** The files whose text holds this text, read a bounded number at a time. */
+async function filesContaining(dir: string, files: string[], text: string): Promise<string[]> {
+    const hits: string[] = [];
+    for (let i = 0; i < files.length; i += 32) {
+        const batch = files.slice(i, i + 32);
+        const bodies = await Promise.all(batch.map(f => fs.promises.readFile(path.join(dir, f), 'utf-8').catch(() => '')));
+        bodies.forEach((body, j) => { if (body.includes(text)) hits.push(batch[j]); });
+    }
+    return hits;
 }
 
 export class ProjectEditTool extends BaseTool {
@@ -900,7 +936,7 @@ export class ProjectEditTool extends BaseTool {
             const read = (rel: string) => pending.get(rel) ?? fs.readFileSync(path.join(dir, rel), 'utf-8');
             const stage = (rel: string, body: string) => pending.set(rel, body);
             const failures: string[] = [];
-            const editable = listFiles(dir);
+            const editable = await listFiles(dir);
             const cssRel = ['src/styles/base.css', 'src/styles/app.css'].find(rel => fs.existsSync(path.join(dir, rel)));
             const ensureCss = (rule: string, marker: string) => {
                 if (!cssRel) return;
@@ -910,10 +946,13 @@ export class ProjectEditTool extends BaseTool {
 
             for (const op of presentationEdits) {
                 if (op.kind === 'literal') {
+                    // Every file that holds the text he quoted: a wording change is made
+                    // everywhere it stands, and the note says in how many files (round 21:
+                    // the first four were changed and the rest left without a word).
                     const matches = editable.filter(rel => {
                         try { return !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(rel) && read(rel).includes(op.from); }
                         catch { return false; }
-                    }).slice(0, 4);
+                    });
                     if (!matches.length) { failures.push(`literal not found: ${op.from}`); continue; }
                     for (const rel of matches) stage(rel, read(rel).split(op.from).join(op.to));
                     notes.push(isAr ? `غيّرت النص «${op.from}» إلى «${op.to}».` : `Changed "${op.from}" to "${op.to}".`);
@@ -1622,10 +1661,9 @@ export class ProjectEditTool extends BaseTool {
         if (!touched.length && !brandEditApplied) {
             const literal = parseLiteralTextReplacement(request);
             if (literal) {
-                const candidates = listFiles(dir)
-                    .filter(f => !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(f))
-                    .filter(f => fs.readFileSync(path.join(dir, f), 'utf-8').includes(literal.from))
-                    .slice(0, 4);
+                // Every file that holds it (see the deterministic path above).
+                const candidates = await filesContaining(dir, (await listFiles(dir))
+                    .filter(f => !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(f)), literal.from);
                 for (const rel of candidates) {
                     const before = fs.readFileSync(path.join(dir, rel), 'utf-8');
                     const after = before.split(literal.from).join(literal.to);
@@ -1644,12 +1682,13 @@ export class ProjectEditTool extends BaseTool {
 
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length && !deterministicIntentHandled) {
-            const files = listFiles(dir);
+            const files = await listFiles(dir);
+            const bodies = await Promise.all(files.map(f => fs.promises.readFile(path.join(dir, f), 'utf-8').catch(() => '')));
             // Rank files by overlap with the request's words; content.js first
             // for wording changes, components for structure.
             const { scored } = rankFilesForEdit(
                 request,
-                files.map(f => ({ f, body: fs.readFileSync(path.join(dir, f), 'utf-8') })),
+                files.map((f, i) => ({ f, body: bodies[i] })),
             );
             if (!scored.length) {
                 return { ok: true, output: { message: isAr ? 'لم أستطع تحديد الملف المقصود — سمِّ الملف أو الجزء المطلوب تعديله.' : 'Could not locate the file to edit — name the file or the part to change.' }, logs } as any;
