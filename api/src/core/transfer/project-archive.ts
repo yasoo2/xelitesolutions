@@ -13,6 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 
 export interface ExportResult {
     buffer: Buffer;
@@ -31,11 +32,20 @@ const MANIFEST = 'joe-project.json';
 const MAX_EXTRACT_BYTES = 200 * 1024 * 1024;
 const MAX_ENTRIES = 5000;
 
-const IGNORED = new Set(['node_modules', '.git', '.checkpoints']);
+/**
+ * What an export leaves behind: the folders tools and Joe keep inside a project
+ * (shared/utils/project-tree). This list knew `.checkpoints` but not
+ * `.joe-versions` — ten undo snapshots of the whole project, so the archive
+ * carried every file eleven times and a 500-file project no longer imported
+ * under MAX_ENTRIES — nor the package caches and virtualenvs. Yarn's own folder
+ * stays: it holds the release the project pins (`yarnPath`) and, for zero
+ * installs, the committed cache, without which the imported project cannot run.
+ */
+const ARCHIVE_KEEPS = new Set(['.yarn']);
 
 function walk(dir: string, base: string, out: Array<{ abs: string; rel: string }>): void {
     for (const name of fs.readdirSync(dir)) {
-        if (IGNORED.has(name)) continue;
+        if (isMachineStateDirectory(name) && !ARCHIVE_KEEPS.has(name)) continue;
         const abs = path.join(dir, name);
         const st = fs.statSync(abs);
         if (st.isDirectory()) walk(abs, base, out);

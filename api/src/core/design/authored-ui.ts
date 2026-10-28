@@ -43,7 +43,7 @@
  */
 
 import type { DesignGenome } from './composer';
-import { parseModelJson } from '../../shared/utils/json';
+import { readModelJson } from '../../shared/utils/json';
 
 export interface AuthoringSpec {
     /** His sentence, verbatim. The only authority for what gets built. */
@@ -526,24 +526,16 @@ export function authoringPrompt(spec: AuthoringSpec, only?: string): string {
  *  failure -- refusing it would be refusing the common case.
  */
 export function parseAuthored(raw: string): Record<string, string> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const candidates = [fenced ? fenced[1] : '', text];
-    for (const c of candidates) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = parseModelJson(c.slice(start, end + 1));
-            const files = parsed && parsed.files;
-            if (files && typeof files === 'object') {
-                const out: Record<string, string> = {};
-                for (const [k, v] of Object.entries(files)) if (typeof v === 'string') out[k] = v;
-                return out;
-            }
-        } catch { /* try the next candidate */ }
-    }
-    return {};
+    //  The shared reader (shared/utils/json): the first ``` fence anywhere was
+    //  taken as the answer, so a ```jsx block quoted inside a file — or a
+    //  sentence with a brace after the JSON — refused a whole authored section.
+    return readModelJson(String(raw || ''), (parsed: any): Record<string, string> | undefined => {
+        const files = parsed && parsed.files;
+        if (!files || typeof files !== 'object') return undefined;
+        const out: Record<string, string> = {};
+        for (const [k, v] of Object.entries(files)) if (typeof v === 'string') out[k] = v;
+        return out;
+    }) ?? {};
 }
 
 /**

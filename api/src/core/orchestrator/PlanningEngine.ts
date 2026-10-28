@@ -22,6 +22,7 @@ import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBest
 import fs from 'fs';
 import path from 'path';
 import { mentionsCommandLine, readsCsvInput, requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
+import { parseModelJsonArray, readModelJsonObject } from '../../shared/utils/json';
 
 export interface ExecutionStep {
     id: string;
@@ -561,10 +562,10 @@ Rules:
         finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
         }
-        const m = raw && raw.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        let obj: any;
-        try { obj = JSON.parse(m[0]); } catch { return null; }
+        // The shared reader: a sentence with a brace after the answer, or a raw
+        // line break inside a string, no longer turns the router's answer into null.
+        const obj: any = readModelJsonObject(raw);
+        if (!obj) return null;
         const intent = String(obj?.intent || '').toLowerCase().trim();
         const allowed = ['build_page', 'edit_page', 'analyze_repo', 'answer', 'other'];
         if (!allowed.includes(intent) || intent === 'other') return null;
@@ -614,10 +615,8 @@ Rules:
         finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
         }
-        const m = raw && raw.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        let obj: any;
-        try { obj = JSON.parse(m[0]); } catch { return null; }
+        const obj: any = readModelJsonObject(raw);
+        if (!obj) return null;
         const action = String(obj?.action || '').toLowerCase().trim();
         if (!action || action === 'none') return null;
         const tool = PlanningEngine.browserToolForAction(action);
@@ -3623,41 +3622,14 @@ Return ONLY a JSON array of steps:
      * TOLERANT JSON. The field log: «Dynamic DAG generation failed:
      * SyntaxError: Expected ',' or '}' after property value at position
      * 1306» — one bad character from a weak model threw away an otherwise
-     * valid 5-node plan and dropped the run into the failover node. Broken
-     * JSON is repaired in stages (fences, trailing commas, smart quotes),
-     * and as the last resort every individually-valid object is salvaged —
-     * four good nodes beat zero.
+     * valid 5-node plan and dropped the run into the failover node. The
+     * repairs and the salvage live in the shared reader (shared/utils/json),
+     * which the adaptive planner reads through too: one reader, so a reply
+     * one planner can read the other can as well.
      */
     static parseJsonArrayLoose(text: string): any[] | null {
-        const cleaned = String(text || '').replace(/```(?:json)?/gi, '');
-        const m = cleaned.match(/\[[\s\S]*\]/);
-        if (!m) return null;
-        const raw = m[0];
-        const attempts = [
-            raw,
-            raw.replace(/,\s*([}\]])/g, '$1'),
-            raw.replace(/[“”«»]/g, '"').replace(/[‘’]/g, "'").replace(/,\s*([}\]])/g, '$1'),
-            raw.replace(/\}\s*\{/g, '},{').replace(/,\s*([}\]])/g, '$1'),
-        ];
-        for (const a of attempts) {
-            try { const v = JSON.parse(a); if (Array.isArray(v)) return v; } catch { /* next repair */ }
-        }
-        // Salvage: extract each balanced {...} object and keep the valid ones.
-        const objs: any[] = [];
-        let depth = 0, start = -1;
-        for (let i = 0; i < raw.length; i++) {
-            const c = raw[i];
-            if (c === '{') { if (depth === 0) start = i; depth++; }
-            else if (c === '}') {
-                depth--;
-                if (depth === 0 && start >= 0) {
-                    try { objs.push(JSON.parse(raw.slice(start, i + 1).replace(/,\s*([}\]])/g, '$1'))); } catch { /* skip the broken one */ }
-                    start = -1;
-                }
-            }
-        }
-        if (objs.length) console.warn(`[PlanningEngine] JSON was broken — salvaged ${objs.length} valid node(s) instead of failing over.`);
-        return objs.length ? objs : null;
+        return parseModelJsonArray(text, kept =>
+            console.warn(`[PlanningEngine] JSON was broken — salvaged ${kept} valid node(s) instead of failing over.`));
     }
 
     /**

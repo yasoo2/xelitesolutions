@@ -15,6 +15,7 @@ import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { catalogueFor } from './toolCatalog';
 import { compactHistoryForPrompt } from './history-compact';
 import { isBuildRequest } from '../intelligence/intent-classifier';
+import { parseModelJsonArray } from '../../shared/utils/json';
 
 export interface ParallelGroup {
     stepIds: string[];
@@ -414,22 +415,17 @@ Return ONLY a JSON array of steps:
 }
 
 /**
- * Parse JSON array from LLM response (handles markdown fences, extra text)
+ * Parse JSON array from LLM response (handles markdown fences, extra text).
+ *
+ * This was a private copy of the first-fence / first `[` to last `]` reader,
+ * without the raw line breaks, trailing commas and salvage PlanningEngine's
+ * reader already tolerated — one weak character threw the adaptive plan away
+ * where the other planner kept it. Both now read through the shared reader.
  */
 function parseJsonArrayLoose(text: string): any[] | null {
     if (!text) return null;
-    // Try to extract JSON array from markdown fence
-    const fenceMatch = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-    if (fenceMatch) {
-        try { return JSON.parse(fenceMatch[1]); } catch { }
-    }
-    // Try to find first [ and last ]
-    const start = text.indexOf('[');
-    const end = text.lastIndexOf(']');
-    if (start >= 0 && end > start) {
-        try { return JSON.parse(text.slice(start, end + 1)); } catch { }
-    }
-    return null;
+    return parseModelJsonArray(text, kept =>
+        console.warn(`[AdaptiveDAG] JSON was broken — salvaged ${kept} valid step(s) instead of failing over.`));
 }
 
 /**

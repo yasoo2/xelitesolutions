@@ -35,6 +35,7 @@ import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
+import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -483,14 +484,18 @@ export function adoptLocalImage(src: string, projDir: string, alt: string): { sr
 const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 // `.joe-versions` is the project's own history. An editor that can see into it
 // would offer the model yesterday's copy of App.jsx as a file to change — and a
-// rewritten past is worse than no past at all.
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'build', '.joe-versions']);
+// rewritten past is worse than no past at all. The same holds for every folder
+// tools and Joe keep inside a project (shared/utils/project-tree): this list
+// knew `.joe-versions` but not `.checkpoints`, whose JSON holds the page's own
+// words, so a literal text edit rewrote Joe's resume state beside the page.
+// Build output stays this walker's own choice.
+const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
 
 function listFiles(dir: string, base = ''): string[] {
     const out: string[] = [];
     for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
         if (e.isDirectory()) {
-            if (!SKIP_DIRS.has(e.name)) out.push(...listFiles(path.join(dir, e.name), path.join(base, e.name)));
+            if (!isMachineStateDirectory(e.name) && !BUILD_OUTPUT_DIRS.has(e.name)) out.push(...listFiles(path.join(dir, e.name), path.join(base, e.name)));
         } else if (EDITABLE.test(e.name)) {
             out.push(path.join(base, e.name).replace(/\\/g, '/'));
         }

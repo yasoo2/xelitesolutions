@@ -6,6 +6,7 @@ import { isWithinRoot, resolveToolPath } from '../utils';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
 import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence } from '../../services/AutonomousEngineeringPolicy';
+import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';
@@ -75,6 +76,18 @@ type Candidate = NonNullable<EngineeringEvidence['selectedProject']>;
  */
 export const DISCOVERY_SOURCE_EXTENSION = /\.(?:(?:c|m)?(?:js|jsx|ts|tsx)|py|go|java|rb|rs|vue|svelte|css|scss|html?)$/iu;
 const DISCOVERY_ENTRYPOINTS = ['src/index.ts', 'src/main.ts', 'src/main.tsx', 'src/index.tsx', 'src/App.tsx', 'src/App.jsx', 'index.ts', 'index.js', 'index.html', 'src/index.html'];
+/** A page a build-free site serves: on its own it makes the folder a project (round 21 review). */
+const DISCOVERY_PAGE = /\.html?$/iu;
+const DISCOVERY_TEST_FILE = /(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)|(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/iu;
+/**
+ * Folders a tool writes its output into — never source someone wrote. Once a
+ * page counted as source, the generated HTML in these filled the 120-file
+ * inventory before the site's own files were reached (round 21 review):
+ * Next's `out`, Jekyll/Eleventy's `_site`, Storybook's `storybook-static`,
+ * coverage.py's `htmlcov`, Playwright's report. `docs` is NOT here: a GitHub
+ * Pages site keeps its real pages there.
+ */
+const GENERATED_OUTPUT_DIRECTORIES: ReadonlySet<string> = new Set(['dist', 'build', 'out', '_site', 'storybook-static', 'htmlcov', 'playwright-report', 'vendor']);
 
 /**
  * Discovery may inspect a workspace with hundreds of generated projects.
@@ -327,10 +340,13 @@ export class EngineeringDiscoveryTool extends BaseTool {
          * only for an existing-project request below. Greenfield requests still
          * ignore incomplete roots as write targets.
          */
+        // A page is an implementation signal too: a build-free site (index.html
+        // and styles.css, no manifest, no script) is a project, and the scope
+        // repair of one used to find «no project» and plan from nothing.
         const hasImplementationSignal = (entries: fs.Dirent[]) => {
             const names = new Set(entries.map(entry => entry.name));
             return names.has('src') || names.has('app') || names.has('tests') || names.has('test') || names.has('__tests__')
-                || entries.some(entry => entry.isFile() && /\.(?:[cm]?[jt]sx?|py|go)$/i.test(entry.name));
+                || entries.some(entry => entry.isFile() && (/\.(?:[cm]?[jt]sx?|py|go)$/i.test(entry.name) || DISCOVERY_PAGE.test(entry.name)));
         };
         /**
          * Do not cap discovered project roots by an arbitrary count. A workspace
@@ -386,7 +402,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
             // into a recursive source/test scan. Those projects are only
             // read-only stack references; detailed evidence is required only
             // for the selected project that Joe may actually change.
-            candidates.push(this.inspectProject(root, !buildsSomethingNew, buildsSomethingNew));
+            candidates.push(await this.inspectProject(root, !buildsSomethingNew, buildsSomethingNew));
             await yieldIfNeeded();
         }
         for (const candidate of candidates) {
@@ -436,7 +452,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         // the target is on record.
         if (!selectedProject && targetsKnownArtifact) {
             selectedProject = candidates.find(c => path.resolve(c.root) === path.resolve(knownArtifactRoot))
-                || this.inspectProject(knownArtifactRoot);
+                || await this.inspectProject(knownArtifactRoot);
             facts.push({ id: 'workspace.selected_project', source: 'workspace', statement: `The request is bound to the session's known artifact at ${selectedProject.root}.` });
         } else if (!selectedProject && !buildsSomethingNew && requestedExisting && candidates.length > 1) {
             /**
@@ -576,14 +592,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
         let completeInventory = !listing.output.truncated && listing.output.tree.length <= 256;
         const inventory: Array<{ relative: string; name: string; type: string; size: number }> = [];
         const queue = [{ relative: '', depth: 0, entries }];
-        const skip = new Set(['dist', 'build', 'coverage', '.next', '.cache', '.turbo', 'vendor']);
+        // Generated output and machine state are never read into the sealed
+        // inventory: they spent its bounded directory budget on someone else's files.
+        const skip = (name: string) => GENERATED_OUTPUT_DIRECTORIES.has(name) || isMachineStateDirectory(name);
         let directories = 1, observed = entries.length;
         while (queue.length) {
             const current = queue.shift()!;
             for (const entry of current.entries) {
                 const relative = current.relative ? `${current.relative}/${entry.name}` : entry.name;
                 if (entry.type === 'file') inventory.push({ relative, name: entry.name, type: entry.type, size: entry.size });
-                else if (!skip.has(entry.name) && !entry.name.startsWith('.')) {
+                else if (!skip(entry.name) && !entry.name.startsWith('.')) {
                     if (current.depth >= 3 || directories >= 12 || observed >= 512) { completeInventory = false; continue; }
                     if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
                     const child = await executeTool('inspect_directory', { path: path.join(scope.root, relative), depth: 1 }, context);
@@ -632,20 +650,31 @@ export class EngineeringDiscoveryTool extends BaseTool {
         }
         if (!engineeringScope(context)) return { ok: false, error: 'engineering_scope_invalid', logs: [] };
         let selectedProject: Candidate | undefined;
-        if (manifest && completeInventory) {
-            const scripts: Record<string, string> = Object.fromEntries(Object.entries(manifest.scripts || {})) as Record<string, string>;
+        // A page selects the project as a manifest does: a build-free site
+        // (index.html + styles.css) has no package.json and was invisible here,
+        // so its scope repair planned without a project. A package.json that is
+        // present but invalid still withholds selection (its blocker says why).
+        const hasManifestFile = entries.some((e: any) => e.name === 'package.json' && e.type === 'file');
+        const servesAPage = !hasManifestFile && inventory.some(item => DISCOVERY_PAGE.test(item.name));
+        if ((manifest || servesAPage) && completeInventory) {
+            const scripts: Record<string, string> = Object.fromEntries(Object.entries(manifest?.scripts || {})) as Record<string, string>;
             const candidateChecks: Candidate['candidateChecks'] = [];
             for (const name of Object.keys(scripts)) {
                 const kind = /^(?:test)(?::|$)/u.test(name) ? 'test' : /^(?:build)(?::|$)/u.test(name) ? 'build'
                     : /^(?:lint)(?::|$)/u.test(name) ? 'lint' : /^(?:typecheck|type-check|check:types)(?::|$)/u.test(name) ? 'typecheck' : undefined;
                 if (kind) candidateChecks.push({ kind, command: `npm run ${name}`, source: 'package.json' });
             }
-            const sourceFiles = inventory.filter(item => DISCOVERY_SOURCE_EXTENSION.test(item.name)).map(item => item.relative).slice(0, 120);
-            const testFiles = inventory.filter(item => /(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)|(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/iu.test(item.relative)).map(item => item.relative).slice(0, 40);
-            if (inventory.length > sourceFiles.length && sourceFiles.length === 120 || testFiles.length === 40)
-                blockers.push({ code: 'discovery_file_inventory_limited', message: 'Source/test inventories are bounded; omitted files are not planning evidence.' });
+            // The sealed inventory keeps its bounds; a list cut at a bound says
+            // so by the files it found, not by a count that happens to equal it.
+            const allSources = inventory.filter(item => DISCOVERY_SOURCE_EXTENSION.test(item.name)).map(item => item.relative);
+            const allTests = inventory.filter(item => DISCOVERY_TEST_FILE.test(item.relative)).map(item => item.relative);
+            const sourceFiles = allSources.slice(0, 120);
+            const testFiles = allTests.slice(0, 40);
+            if (allSources.length > sourceFiles.length || allTests.length > testFiles.length)
+                blockers.push({ code: 'discovery_file_inventory_limited', message: `Source/test inventories are bounded (${sourceFiles.length} of ${allSources.length} source files, ${testFiles.length} of ${allTests.length} test files); omitted files are not planning evidence.` });
             const entrypoints = new Set(DISCOVERY_ENTRYPOINTS);
-            selectedProject = { root: scope.root, projectKinds: ['node'], manifests: [{ path: 'package.json', kind: 'package.json', scripts }],
+            selectedProject = { root: scope.root, projectKinds: manifest ? ['node'] : ['other'],
+                manifests: manifest ? [{ path: 'package.json', kind: 'package.json', scripts }] : [],
                 git: {}, likelyEntrypoints: sourceFiles.filter(file => entrypoints.has(file)), sourceFiles, testFiles, candidateChecks };
         }
         const evidence: EngineeringEvidence = sealEngineeringEvidence(context, {
@@ -657,7 +686,7 @@ export class EngineeringDiscoveryTool extends BaseTool {
         return { ok: true, output: { evidence }, logs: [`engineering_discovery.entries=${entries.length} bounded=1 recursive=0`] };
     }
 
-    private inspectProject(root: string, includeFileInventory = true, referenceOnly = false): Candidate {
+    private async inspectProject(root: string, includeFileInventory = true, referenceOnly = false): Promise<Candidate> {
         const manifests: Candidate['manifests'] = [];
         const kinds = new Set<Candidate['projectKinds'][number]>();
         const checks: Candidate['candidateChecks'] = [];
@@ -703,55 +732,52 @@ export class EngineeringDiscoveryTool extends BaseTool {
         const likelyEntrypoints = referenceOnly
             ? []
             : entryCandidates.filter(file => fs.existsSync(path.join(root, file))).map(file => path.join(root, file));
-        const sourceFiles = includeFileInventory ? this.inspectSourceFiles(root) : undefined;
-        const testFiles = includeFileInventory ? this.inspectTestFiles(root) : undefined;
+        const inventory = includeFileInventory ? await this.inspectInventory(root) : undefined;
         const git = referenceOnly ? { isRepository: false } : this.inspectGit(root);
-        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints, sourceFiles, testFiles, candidateChecks: checks };
+        return { root: path.resolve(root), projectKinds: [...kinds], manifests, git, likelyEntrypoints,
+            sourceFiles: inventory?.sourceFiles, testFiles: inventory?.testFiles, candidateChecks: checks };
     }
 
-    private inspectSourceFiles(root: string): string[] {
-        const found: string[] = [];
-        const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo', 'vendor']);
-        const visit = (dir: string, depth: number) => {
-            if (found.length >= 120 || depth > 6) return;
+    /**
+     * THE PROJECT'S SOURCE AND TESTS, ALL OF THEM.
+     *
+     * Two synchronous walks stopped silently at 120 source and 40 test files
+     * (and six folder levels). Once a page counted as source, a project's
+     * generated HTML (out/, _site/, storybook-static/) filled the 120 before its
+     * own files were reached, and the planner — and the evidencedPaths gate
+     * built from this list — never saw them (round 21 review). A bound here has
+     * nothing to protect: the planner's prompt carries a truncated excerpt that
+     * says it is truncated, and a blocker for a large project would stop every
+     * repair of it. So the walk reads the whole project, skipping only folders
+     * that are not anyone's source — dot folders, machine state, tool output —
+     * and gives the event loop back as it goes, as the root scan does.
+     */
+    private async inspectInventory(root: string): Promise<{ sourceFiles: string[]; testFiles: string[] }> {
+        type Found = { file: string; source: boolean; test: boolean };
+        let directories = 0;
+        // Sibling folders are read concurrently (an awaited readdir per folder,
+        // one after another, waited on the I/O pool once per folder); their
+        // files are still returned in the sorted depth-first order.
+        const visit = async (dir: string): Promise<Found[]> => {
             let entries: fs.Dirent[];
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-                if (found.length >= 120) return;
-                if (entry.name.startsWith('.') || skip.has(entry.name)) continue;
-                const absolute = path.join(dir, entry.name);
-                if (entry.isDirectory()) visit(absolute, depth + 1);
-                else if (entry.isFile() && DISCOVERY_SOURCE_EXTENSION.test(entry.name)) found.push(absolute);
-            }
-        };
-        visit(root, 0);
-        return found;
-    }
-
-    private inspectTestFiles(root: string): string[] {
-        const found: string[] = [];
-        const skip = new Set(['.git', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo']);
-        const visit = (dir: string, depth: number) => {
-            if (found.length >= 40 || depth > 6) return;
-            let entries: fs.Dirent[];
-            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-                if (found.length >= 40) return;
-                if (entry.name.startsWith('.') && entry.name !== '.env.example') continue;
+            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
+            if (++directories % DISCOVERY_YIELD_EVERY === 0) await yieldToDiscoveryScheduler();
+            const parts = await Promise.all(entries.sort((a, b) => a.name.localeCompare(b.name)).map(async (entry): Promise<Found[]> => {
                 const absolute = path.join(dir, entry.name);
                 if (entry.isDirectory()) {
-                    if (!skip.has(entry.name)) visit(absolute, depth + 1);
-                    continue;
+                    const walkable = !entry.name.startsWith('.') && !isMachineStateDirectory(entry.name) && !GENERATED_OUTPUT_DIRECTORIES.has(entry.name);
+                    return walkable ? visit(absolute) : [];
                 }
-                if (!entry.isFile()) continue;
-                const relative = path.relative(root, absolute).split(path.sep).join('/');
-                if (/(?:^|\/)(?:__tests__|tests?|spec)(?:\/|$)/i.test(relative) || /(?:\.test|\.spec)\.[cm]?[jt]sx?$|_test\.py$|_test\.go$/i.test(relative)) {
-                    found.push(absolute);
-                }
-            }
+                if (!entry.isFile()) return [];
+                const source = !entry.name.startsWith('.') && DISCOVERY_SOURCE_EXTENSION.test(entry.name);
+                const test = (!entry.name.startsWith('.') || entry.name === '.env.example')
+                    && DISCOVERY_TEST_FILE.test(path.relative(root, absolute).split(path.sep).join('/'));
+                return source || test ? [{ file: absolute, source, test }] : [];
+            }));
+            return parts.flat();
         };
-        visit(root, 0);
-        return found;
+        const found = await visit(root);
+        return { sourceFiles: found.filter(item => item.source).map(item => item.file), testFiles: found.filter(item => item.test).map(item => item.file) };
     }
 
     private inspectGit(root: string): Candidate['git'] {

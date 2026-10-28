@@ -30,7 +30,7 @@
  *  is honest, rather than inventing a shop he did not describe.
  */
 
-import { parseModelJson } from '../../shared/utils/json';
+import { readModelJson } from '../../shared/utils/json';
 
 export interface FieldSpec {
     key: string;
@@ -168,20 +168,16 @@ export function cataloguePrompt(spec: CatalogueSpec): string {
     ].join('\n');
 }
 
+/**
+ *  Read through the shared reader (shared/utils/json): the first ``` fence of
+ *  any language, then the first `{` to the last `}`, read an example in a fence
+ *  or two objects glued by a sentence as the answer and refused the rows.
+ */
 export function parseRows(raw: string): Array<Record<string, any>> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = parseModelJson(c.slice(start, end + 1));
-            const rows = parsed && (parsed.rows || parsed.items || parsed.products);
-            if (Array.isArray(rows)) return rows.filter(r => r && typeof r === 'object');
-        } catch { /* try the next candidate */ }
-    }
-    return [];
+    return readModelJson(String(raw || ''), parsed => {
+        const rows = parsed && (parsed.rows || parsed.items || parsed.products);
+        return Array.isArray(rows) ? rows.filter((r: any) => r && typeof r === 'object') : undefined;
+    }) ?? [];
 }
 
 /** Why this row cannot go on the shelf. '' when it can. */
