@@ -113,9 +113,12 @@ export function describeResourceFault(error: unknown, isAr: boolean): string | n
     if (code === 'RESOURCE_CLEANUP_FAILED') sentence = isAr
         ? 'نُفّذت الخطوة، لكن تحرير ما حجزته من موارد فشل بعد انتهائها.'
         : 'The step ran, but releasing what it held failed after it finished.';
+    // Only a call the local server received: one whose deadline passed while it
+    // waited for its turn is RESOURCE_QUEUE_TIMEOUT, a refusal (second review
+    // of round 21).
     else if (code === 'RESOURCE_TIMEOUT') sentence = isAr
-        ? 'تجاوز استدعاء النموذج المحلي مهلته (ويشمل ذلك انتظاره في الطابور) فأُوقف؛ لم يُرفض لنقصٍ في الموارد، وقد يكون جزءٌ من العمل قد نُفّذ.'
-        : 'The local model call ran past its deadline (queue wait included) and was stopped; it was not refused for lack of resources, and part of the work may have run.';
+        ? 'تجاوز استدعاء النموذج المحلي مهلته بعد أن بدأ فأُوقف؛ لم يُرفض لنقصٍ في الموارد، وقد يكون جزءٌ من العمل قد نُفّذ.'
+        : 'The local model call ran past its deadline after it started and was stopped; it was not refused for lack of resources, and part of the work may have run.';
     else sentence = isAr
         ? 'فشل فحصٌ داخليّ في حارس الموارد — عطلٌ في ترتيب استدعاءات جو نفسه، لا نقصٌ في الذاكرة أو الطابور.'
         : 'An internal resource-guard check failed — a fault in the order of Joe\'s own calls, not a shortage of memory or queue room.';

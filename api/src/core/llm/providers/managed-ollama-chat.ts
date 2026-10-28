@@ -19,14 +19,16 @@ const MAX_MESSAGES = 256;
 const MAX_TOOLS = 128;
 
 export class ManagedOllamaError extends Error {
-    constructor(public readonly code: string, message: string) {
+    constructor(public readonly code: string, message: string,
+        /** The numbers behind the code (a queue wait, a deadline), shown with his sentence. */
+        public readonly details: Record<string, number | string> = {}) {
         super(message);
         this.name = 'ManagedOllamaError';
     }
 }
 
-function fail(code: string, message: string): never {
-    throw new ManagedOllamaError(code, message);
+function fail(code: string, message: string, details?: Record<string, number | string>): never {
+    throw new ManagedOllamaError(code, message, details);
 }
 
 /** A closed vocabulary for a local server's error body: the text itself may hold prompt or secret fragments. */
@@ -438,8 +440,17 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
     if (options.temperature !== undefined && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) fail('OLLAMA_UNSUPPORTED_INPUT', 'Temperature must be finite and between 0 and 2.');
     if (options.format !== undefined && options.format !== 'json' && !object(options.format)) fail('OLLAMA_FORMAT_INPUT', 'Native format must be json or a JSON-schema object.');
     const deadline = new AbortController();
-    const deadlineAt = Date.now() + options.timeoutMs;
+    const startedAt = Date.now();
+    const deadlineAt = startedAt + options.timeoutMs;
     let timedOut = false;
+    // ⛔ Second review of round 21: a call whose deadline passed while it WAITED
+    // for its turn (no request sent, nothing admitted) was reported as a model
+    // call that «ran past its deadline … part of the work may have run» — all
+    // false. These two instants say which it was: before the request reaches
+    // the server, the deadline ends a wait (RESOURCE_QUEUE_TIMEOUT, an
+    // admission refusal); after it, a run (RESOURCE_TIMEOUT).
+    let queuedAt = 0;
+    let sentAt = 0;
     const timer = setTimeout(() => { timedOut = true; deadline.abort(); }, options.timeoutMs);
     timer.unref?.();
     const outer = linkedSignals([options.signal, deadline.signal]);
@@ -473,6 +484,7 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         if (Buffer.byteLength(json(basePayload), 'utf8') > MAX_REQUEST_BYTES) fail('OLLAMA_INPUT_LIMIT', 'Local inference request exceeded the byte limit.');
         checkDeadline();
         const manager = dependencies.resourceManager ?? requestResourceManager;
+        queuedAt = Date.now();
         const result = await manager.withInference(async budget => {
             checkDeadline();
             try { options.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
@@ -490,6 +502,8 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 const endpoint = new URL(options.baseURL);
                 endpoint.pathname = '/api/chat';
                 let response: Response;
+                checkDeadline();
+                sentAt = Date.now();
                 try {
                     response = await (dependencies.fetch ?? localInferenceFetch())(endpoint.toString(), {
                         method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
@@ -526,9 +540,10 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
             } finally { run.close(); }
         }, { promptEstimatedTokens: mapped.promptEstimatedTokens, requestedOutputTokens: outputTokens,
             requestedContextTokens: maxContextTokens, fitOutputToContext: true, signal: outer.signal,
-            // The caller's deadline already covers queue wait (RESOURCE_TIMEOUT below);
-            // a second, fixed 300 s queue cap failed every call queued behind one CPU
-            // plan (eval round 6: RESOURCE_QUEUE_TIMEOUT at 300 013 ms, deadline 30 min).
+            // The caller's deadline already covers queue wait (RESOURCE_QUEUE_TIMEOUT
+            // below, with the wait it measured); a second, fixed 300 s queue cap
+            // failed every call queued behind one CPU plan (eval round 6:
+            // RESOURCE_QUEUE_TIMEOUT at 300 013 ms, deadline 30 min).
             queueTimeoutMs: options.timeoutMs });
         checkDeadline();
         // Every successful receipt teaches the deadlines what this machine really does.
@@ -538,7 +553,14 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
             outputTokens: result.metrics?.eval_count, outputMs: Math.round((result.metrics?.eval_duration || 0) / 1e6), contextTokens: result.metrics?.contextTokens }));
         return result;
     } catch (error) {
-        if (timedOut) fail('RESOURCE_TIMEOUT', 'Local inference exceeded its request deadline, including queue wait.');
+        if (timedOut) {
+            const now = Date.now();
+            const queueWaitMs = Math.max(0, (sentAt || now) - (queuedAt || startedAt));
+            if (!sentAt) fail('RESOURCE_QUEUE_TIMEOUT', 'Local inference did not start before its request deadline: it was still waiting for its turn.',
+                { queueWaitMs, deadlineMs: options.timeoutMs });
+            fail('RESOURCE_TIMEOUT', 'Local inference ran past its request deadline after the local server received it.',
+                { deadlineMs: options.timeoutMs, queueWaitMs, runMs: Math.max(0, now - sentAt) });
+        }
         if (outer.signal.aborted) fail('RESOURCE_CANCELLED', 'Local inference was cancelled.');
         if (error instanceof ManagedOllamaError) throw error;
         if (typeof (error as any)?.code === 'string' && /^(?:RESOURCE_|HEAVY_)/.test((error as any).code)) throw error;
