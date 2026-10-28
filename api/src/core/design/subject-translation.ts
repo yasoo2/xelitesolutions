@@ -202,7 +202,10 @@ const AR_EN: Record<string, string> = {
     'مدرب': 'trainer', 'مدربين': 'trainers', 'مدربون': 'trainers',
     'متدرب': 'trainee', 'متدربين': 'trainees', 'متدربون': 'trainees',
     'لاعب': 'player', 'لاعبين': 'players', 'لاعبون': 'players',
-    'مرشح': 'candidate', 'مرشحين': 'candidates', 'مرشحون': 'candidates',
+    // «مرشح» alone is a candidate or a filter (water, coffee, air); only the
+    // human plurals are one word. «كفالة» — a sponsorship, a warranty, a
+    // guarantee or bail — is left out for the same reason (round 21 review).
+    'مرشحين': 'candidates', 'مرشحون': 'candidates',
     'مؤلف': 'author', 'مؤلفين': 'authors', 'مؤلفون': 'authors',
     'مالك': 'owner', 'مالكين': 'owners', 'مالكون': 'owners', 'قارئ': 'reader', 'قراء': 'readers',
     'صديق': 'friend', 'اصدقاء': 'friends', 'حيوان': 'animal', 'حيوانات': 'animals',
@@ -210,7 +213,7 @@ const AR_EN: Record<string, string> = {
     'رحلات': 'trips', 'نشاط': 'activity', 'انشطه': 'activities',
     'مباراه': 'match', 'مباريات': 'matches', 'فيلم': 'movie', 'افلام': 'movies',
     'مقابلات': 'interviews', 'وظيفه': 'job', 'وظائف': 'jobs',
-    'كفاله': 'sponsorship', 'كفالات': 'sponsorships', 'البوم': 'album', 'البومات': 'albums',
+    'البوم': 'album', 'البومات': 'albums',
     'شكوي': 'complaint', 'شكاوي': 'complaints', 'ردود': 'replies',
     'مصروف': 'expense', 'مصاريف': 'expenses', 'ميزانيه': 'budget', 'ميزانيات': 'budgets',
     'مقال': 'article', 'مقالات': 'articles', 'تعليق': 'comment', 'تعليقات': 'comments',
@@ -220,13 +223,42 @@ const AR_EN: Record<string, string> = {
     'مقاس': 'size', 'مقاسات': 'sizes',
 };
 
+/**
+ * A SUFFIX THAT CHANGES WHAT A WORD COUNTS MUST LAND ON THE SAME WORD.
+ *
+ * Round 21 review: «القراءة» (reading) came out as "readers". Folding writes
+ * its ة as ه, the lone ه was taken off as if it were the pronoun «his», and
+ * «قراء» — the broken plural of «قارئ» — answered. «القراءات» (readings) did
+ * the same through ات. The ta marbuta and the plural endings are part of what
+ * the word means, not decoration on it:
+ *
+ *   - a plural or dual ending (ات, يات, ون, ين, ان) comes off a SINGULAR, so a
+ *     stem the dictionary knows as a plural is a different word;
+ *   - a lone ه is a feminine ending as often as it is «his» (and informal
+ *     writing uses it for every ة). Taking it off names the same thing only
+ *     for a person — «طبيبة» is a doctor, «مهندسة» an engineer — or for the
+ *     feminine of an adjective in -ي («برمجية» is «برمجي», software), while
+ *     for anything else the stem is another word: «كتابة» writing is not
+ *     «كتاب» a book, «قراءة» reading is not «قراء» readers.
+ *
+ * Shapes of the two languages, not a list of words: an English plural ends in
+ * s (not -ss, -us, -is), and a role is named by its agent ending.
+ */
+const NUMBER_SUFFIX = new Set(['يات', 'ات', 'ون', 'ين', 'ان']);
+const pluralEnglish = (en: string) => /[^siu]s$/i.test(String(en || '').trim().split(/\s+/).pop() || '');
+const personEnglish = (en: string) => /(?:er|or|ist|ian|ant|ent|ee|ess)$/i.test(String(en || '').trim().split(/\s+/).pop() || '');
+
 /** The exact form, then suffix-stripped forms of it. */
 function lookupExact(n: string): string | null {
     if (AR_EN[n]) return AR_EN[n];
     for (const suf of SUFFIXES) {
         if (n.endsWith(suf) && n.length - suf.length >= 3) {
             const bare = n.slice(0, n.length - suf.length);
-            if (AR_EN[bare]) return AR_EN[bare];
+            const en = AR_EN[bare];
+            if (!en) continue;
+            if (NUMBER_SUFFIX.has(suf) && pluralEnglish(en)) continue;
+            if (suf === 'ه' && (pluralEnglish(en) || !(personEnglish(en) || bare.endsWith('ي')))) continue;
+            return en;
         }
     }
     return null;
@@ -275,4 +307,31 @@ export function englishSubject(subject: string): { query: string; translated: bo
     }
     if (!words.length) return { query: src, translated: false };
     return { query: words.join(' '), translated: true };
+}
+
+/**
+ * THE ENGLISH OF A LABEL IS THE ENGLISH OF ALL OF IT.
+ *
+ * `englishSubject` is a search query: a word it does not know contributes
+ * nothing, and a shorter query is still a good one. A LABEL is read by a
+ * person as the name of his column, so a part of it is a different name —
+ * «اسم الموظف» (the employee's name) became "employee", «قائمة المواعيد» (the
+ * appointment list) became "menu", «عقود الإيجار» (lease contracts) "rent".
+ *
+ * Every Arabic word must be known, or the answer is null and the caller shows
+ * his own word. Arabic names the head first («اسم الموظف», «المنتجات
+ * الرقمية»), English last («employee name», «digital products»), so the words
+ * come back in English order.
+ */
+export function englishPhrase(phrase: string): string | null {
+    const raw = String(phrase || '').trim().split(/[\s،,]+/).filter(Boolean);
+    if (!raw.length || !raw.some(w => /[؀-ۿ]/.test(w))) return null;
+    const out: string[] = [];
+    for (const w of raw) {
+        if (/^[A-Za-z][A-Za-z0-9'&.-]*$/.test(w)) { out.push(w); continue; }
+        const en = /[؀-ۿ]/.test(w) ? lookup(w) : null;
+        if (!en) return null;
+        out.push(en);
+    }
+    return out.reverse().join(' ');
 }

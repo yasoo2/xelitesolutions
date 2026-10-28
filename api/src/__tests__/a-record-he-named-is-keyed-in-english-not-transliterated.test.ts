@@ -13,7 +13,7 @@
  * different dictionaries: «المرضى» was keyed `patients` but labelled
  * «المرضى» in English.
  */
-import { englishFor, inferModel } from '../core/design/entity-inference';
+import { englishFor, inferModel, tableEnglishFor } from '../core/design/entity-inference';
 import { namedEntities } from '../core/design/named-entities';
 import { englishSubject } from '../core/design/subject-translation';
 
@@ -28,8 +28,9 @@ describe('a record he named is keyed in English, not transliterated', () => {
     });
 
     it('a curated noun has the same English as its key', () => {
-        expect(englishFor('المرضى')).toBe('patients');
-        expect(englishFor('المواعيد')).toBe('appointments');
+        // A TABLE's English (round 21: englishFor labels columns, in his number).
+        expect(tableEnglishFor('المرضى')).toBe('patients');
+        expect(tableEnglishFor('المواعيد')).toBe('appointments');
         const patients = inferModel(P101).entities.find(e => e.key === 'patients');
         if (patients) expect(patients.en).toBe('patients');
     });

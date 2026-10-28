@@ -31,6 +31,8 @@ import { ModelEntity, ModelField } from './data-model';
 import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
 import { hisWordsOnly } from './page-head';
 import { CONJUNCTION_WAW_SOURCE, isDeliverable, isInterfaceNoun, listRegion, stripAttachedPreposition } from './request-lists';
+import { englishPhrase } from './subject-translation';
+import { foldChars } from '../orchestrator/promptNormalizer';
 
 /* ────────────────────────────── field makers ───────────────────────────── */
 
@@ -174,51 +176,93 @@ function keyOf(phrase: string): string {
  * photo engine uses to search for «نباتات» in English.
  */
 function keyFromArabic(phrase: string): string {
-    const bare = String(phrase || '').replace(/^ال/, '').trim();
+    const text = String(phrase || '').trim();
+    let lists: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try { lists = require('./named-entities'); } catch { lists = null; }
     /**
-     * A NOUN THE LIST READER KNOWS GETS THE SAME KEY HERE.
+     * A NOUN THE LIST READER KNOWS GETS THE SAME KEY HERE — READ THE SAME WAY.
      *
      * Eval round 15 (P101): the list reader keyed «المرضى» as `patients`
      * and this reader, asking a dictionary without the word, as `mrdas` —
      * two names for one table, so the design and the request's own list no
-     * longer agreed on what had been asked for.
+     * longer agreed on what had been asked for. And the item is read by its
+     * head, as the list reader reads it (round 21 review): «مواعيد المرضى»
+     * are appointments, and «آراء العملاء» — keyed `customers` by its last
+     * word, so behind an interface head a testimonials resource became a
+     * customers table — is opinions, keyed by his own words below.
      */
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { curatedNounKey } = require('./named-entities');
-        const known = curatedNounKey(String(phrase || '').trim().split(/\s+/).pop() || '');
-        if (known) return known;
-    } catch { /* the list reader is optional here */ }
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { englishSubject } = require('./subject-translation');
-        const out = englishSubject(bare);
-        if (out?.translated && out.query) return keyOf(out.query);
-    } catch { /* fall through to the letters themselves */ }
+    const known = String(lists?.nounKeyOfItem?.(text) || '');
+    if (known) return known;
     /**
-     * AND WHEN NO DICTIONARY HAS THE WORD — TRANSLITERATE.
+     * THE TRANSLATOR ANSWERS FOR THE WHOLE RECORD, OR NOT AT ALL.
      *
-     * Measured: «الحيوانات» and «التطعيمات» and «المعاينات» all vanished,
-     * because the translator's dictionary did not carry them. A dictionary is
-     * a whitelist of a language — the same trap as a whitelist of the world,
-     * one level down.
-     *
-     * A table key does not need to be an English WORD. It needs to be a legal,
-     * stable identifier; the Arabic label travels beside it and is what the
-     * owner actually reads. So every Arabic noun gets a key, forever, with no
-     * dictionary at all.
+     * Round 21 review: a word the dictionary knew stood in for a phrase it did
+     * not — «عقود الإيجار» (lease contracts) was keyed `rents`, so the delivery
+     * gate demanded /api/rents of a server that rightly served its contracts,
+     * and called it «not served». A holder word in front («جدول الرواتب»,
+     * «إدارة الحاويات») is where the records are kept, not what they are; the
+     * rest is the record, and every word of it must be known.
      */
-    const MAP: Record<string, string> = {
-        'ا': 'a', 'أ': 'a', 'إ': 'i', 'آ': 'aa', 'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j',
-        'ح': 'h', 'خ': 'kh', 'د': 'd', 'ذ': 'dh', 'ر': 'r', 'ز': 'z', 'س': 's', 'ش': 'sh',
-        'ص': 's', 'ض': 'd', 'ط': 't', 'ظ': 'z', 'ع': 'a', 'غ': 'gh', 'ف': 'f', 'ق': 'q',
-        'ك': 'k', 'ل': 'l', 'م': 'm', 'ن': 'n', 'ه': 'h', 'و': 'w', 'ي': 'y', 'ى': 'a',
-        'ة': 'a', 'ء': '', 'ئ': 'y', 'ؤ': 'w',
-    };
-    const word = bare.split(/\s+/).filter(Boolean).pop() || '';
-    let out = '';
-    for (const ch of word) out += MAP[ch] === undefined ? '' : MAP[ch];
-    out = out.replace(/[^a-z0-9]/g, '').slice(0, 30);
+    const record = String(lists?.withoutRecordHolder?.(text) || text);
+    const english = englishPhrase(record);
+    if (english && !/[\u0621-\u064A]/.test(english)) {
+        const key = keyOf(english);
+        if (key) return key;
+    }
+    // A record is named in one word or two; more is a clause, and spelling a
+    // clause out as a key invents a table («وثيم اخضر جميل للنظام» is a wish
+    // about the theme, not `thym_akhdr_jmyl_llnzams`).
+    if (record.split(/\s+/).filter(Boolean).length > 2) return '';
+    return transliterated(record);
+}
+
+/** The phrase without a head that only holds its records («جدول الرواتب» → «الرواتب»). */
+function recordWords(phrase: string): string {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        return String(require('./named-entities').withoutRecordHolder(phrase) || phrase);
+    } catch { return phrase; }
+}
+
+/**
+ * AND WHEN NO DICTIONARY HAS THE WORD — TRANSLITERATE.
+ *
+ * Measured: «الحيوانات» and «التطعيمات» and «المعاينات» all vanished,
+ * because the translator's dictionary did not carry them. A dictionary is
+ * a whitelist of a language — the same trap as a whitelist of the world,
+ * one level down.
+ *
+ * A table key does not need to be an English WORD. It needs to be a legal,
+ * stable identifier; the Arabic label travels beside it and is what the
+ * owner actually reads. So every Arabic noun gets a key, forever, with no
+ * dictionary at all.
+ *
+ * Stable means one key per WORD, not per spelling (round 21 review): the
+ * letters are folded first, as every request reader folds them, so
+ * «الإجازات» and «الاجازات», «الإجازة» and «الاجازه» are one table — and no
+ * word of a phrase keeps its article («جدول الصفوف» was `alsfwfs`). Every word
+ * of the record is in the key: the last word alone named «عقود الإيجار»
+ * after the rent.
+ */
+const TRANSLITERATION: Record<string, string> = {
+    'ا': 'a', 'ب': 'b', 'ت': 't', 'ث': 'th', 'ج': 'j', 'ح': 'h', 'خ': 'kh', 'د': 'd',
+    'ذ': 'dh', 'ر': 'r', 'ز': 'z', 'س': 's', 'ش': 'sh', 'ص': 's', 'ض': 'd', 'ط': 't',
+    'ظ': 'z', 'ع': 'a', 'غ': 'gh', 'ف': 'f', 'ق': 'q', 'ك': 'k', 'ل': 'l', 'م': 'm',
+    'ن': 'n', 'ه': 'h', 'و': 'w', 'ي': 'y',
+};
+
+function transliterated(phrase: string): string {
+    const parts = foldChars(phrase).split(/\s+/).filter(Boolean)
+        .map(word => (word.length > 3 ? word.replace(/^ال/, '') : word))
+        .map(word => {
+            const letters = Array.from(word);
+            // A final ه is the folded ta marbuta far more often than not: «الإجازة» is `ajazas`.
+            return letters.map((ch, i) => (ch === 'ه' && i === letters.length - 1 && i > 1) ? 'a' : (TRANSLITERATION[ch] ?? '')).join('');
+        })
+        .map(word => word.replace(/[^a-z0-9]/g, ''))
+        .filter(Boolean);
+    const out = parts.join('_').slice(0, 30).replace(/_+$/, '');
     return out.length >= 3 ? (out.endsWith('s') ? out : `${out}s`) : '';
 }
 
@@ -471,34 +515,51 @@ export const NEVER = new Set([
 export const MAX_MODEL_ENTITIES = 24;
 
 /**
- * The English of an Arabic noun, or null when no dictionary has it.
+ * The English of an Arabic label, or null when no dictionary has all of it.
  * Never a transliteration — the caller decides what to do with "unknown",
  * and inventing a word is not one of the options.
+ *
+ * A LABEL IS HIS WORD, IN HIS NUMBER (round 21 review).
+ *
+ * This read the curated TABLE list first, so a column labelled «الموظف» (the
+ * employee) came out "employees", «الفاتورة» "invoices", «المورد»
+ * "suppliers" — a table's name on one row's field. And it took a word it knew
+ * for the whole label: «اسم الموظف» was "employee", «قائمة المواعيد» "menu".
+ * A column's English is the English of every word of it, singular where he
+ * wrote one; the table list answers for table names only (tableEnglishFor).
  */
 export function englishFor(phrase: string): string | null {
-    const bare = String(phrase || '').replace(/^ال/, '').trim();
+    const text = String(phrase || '').trim();
+    const bare = text.replace(/^ال/, '').trim();
     if (!bare) return null;
     if (!/[\u0621-\u064A]/.test(bare)) return bare;
-    /**
-     * THE KEY AND THE LABEL READ ONE DICTIONARY.
-     *
-     * keyFromArabic asks the curated list first, so «المرضى» is keyed
-     * `patients`; this reader asked only the translator, which does not carry
-     * it, so the same table's English label was «المرضى» (eval run500, P101).
-     */
+    const english = englishPhrase(text);
+    return english && !/[\u0621-\u064A]/.test(english) ? english : null;
+}
+
+/**
+ * The English of a TABLE he named, or null.
+ *
+ * THE KEY AND THE LABEL READ ONE DICTIONARY. keyFromArabic asks the curated
+ * list first, so «المرضى» is keyed `patients`; a reader that asked only the
+ * translator labelled the same table «المرضى» in English (eval run500, P101).
+ * So a table's English comes from the noun the item names, read the way the
+ * key is read (head first; the possessor only when the head is not content
+ * about it), then from the translator
+ * — of the record, not of the word that holds it («جدول الرواتب» is payroll).
+ */
+export function tableEnglishFor(phrase: string): string | null {
+    const text = String(phrase || '').trim();
+    if (!text) return null;
+    if (!/[\u0621-\u064A]/.test(text)) return text;
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { curatedNounEnglish } = require('./named-entities');
-        const known = curatedNounEnglish(String(phrase || '').trim());
+        const { nounEnglishOfItem, withoutRecordHolder } = require('./named-entities');
+        const known = String(nounEnglishOfItem(text) || '');
         if (known) return known;
+        return englishFor(String(withoutRecordHolder(text) || text));
     } catch { /* the list reader is optional here */ }
-    try {
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { englishSubject } = require('./subject-translation');
-        const out = englishSubject(bare);
-        if (out?.translated && out.query && !/[\u0621-\u064A]/.test(out.query)) return String(out.query).trim();
-    } catch { /* no dictionary is an answer too */ }
-    return null;
+    return englishFor(text);
 }
 
 /**
@@ -549,7 +610,7 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
     if (!subject) return null;
     const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
     if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
-    const english = englishFor(subject);
+    const english = tableEnglishFor(subject);
     return {
         key,
         ar: subject,
@@ -641,7 +702,9 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
         seen.add(key);
         if (entities.length >= limit) continue;
         const normalizedPhrase = entityPhrase(phrase);
-        const kind = inferKind(normalizedPhrase);
+        // The record's shape, not its holder's: «قائمة المواعيد» is appointments
+        // (a date and a time), not a list (round 21 review).
+        const kind = inferKind(recordWords(normalizedPhrase));
         /**
          * A TRANSLITERATION IS NOT AN ENGLISH WORD.
          *
@@ -659,7 +722,7 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
          */
         const english = englishFor(phrase);
         entities.push({
-            key, ar: normalizedPhrase.replace(/^ال/, 'ال'), en: englishFor(normalizedPhrase) || normalizedPhrase,
+            key, ar: normalizedPhrase.replace(/^ال/, 'ال'), en: tableEnglishFor(normalizedPhrase) || normalizedPhrase,
             fields: fieldsForKind(kind, { sells }),
         } as ModelEntity);
     }
