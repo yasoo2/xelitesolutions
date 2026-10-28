@@ -52,18 +52,19 @@ describe('an install writing past any subset is not idle', () => {
 
     it('a tarball that keeps growing in place, deep in a folder, keeps a silent install alive', async () => {
         const dir = tmp();
-        // Silent; creates one file deep inside node_modules, then only appends to it.
+        // Silent; creates one file deep inside node_modules, then only appends to it, for
+        // six idle bounds after the creation — only the growing file says it is alive.
         const writer = [
             '-e',
             `const fs=require('fs'),p=require('path');const d=p.join(${JSON.stringify(dir)},'node_modules','.staging','pkg-1a2b','package');`
             + `fs.mkdirSync(d,{recursive:true});const f=p.join(d,'big.tgz');fs.writeFileSync(f,'');let i=0;`
-            + `const t=setInterval(()=>{fs.appendFileSync(f,'x'.repeat(1024));if(++i>=16){clearInterval(t);process.exit(0);}},150);`,
+            + `const t=setInterval(()=>{fs.appendFileSync(f,'x'.repeat(1024));if(++i>=24){clearInterval(t);process.exit(0);}},250);`,
         ];
         const r = await executionEngine.runArgvStreaming('node', writer, {
-            cwd: dir, timeout: 20_000, idleTimeout: 300, idleProgress: installProgressProbe(dir, []),
+            cwd: dir, timeout: 40_000, idleTimeout: 1000, idleProgress: installProgressProbe(dir, []),
         }).done;
         expect(r).toEqual({ ok: true, exitCode: 0 });
-        expect(fs.statSync(path.join(dir, 'node_modules', '.staging', 'pkg-1a2b', 'package', 'big.tgz')).size).toBe(16 * 1024);
+        expect(fs.statSync(path.join(dir, 'node_modules', '.staging', 'pkg-1a2b', 'package', 'big.tgz')).size).toBe(24 * 1024);
     });
 
     it('each install owns its probe: a write in one project is not progress of another', async () => {

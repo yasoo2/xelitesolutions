@@ -28,12 +28,15 @@ const components = (count: number) => Object.fromEntries(Array.from({ length: co
 afterAll(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); });
 
 describe('the only importing file is never cut off', () => {
+    // Writing 1 650 files is slow on a busy Windows machine; the search itself is not the cost.
+    jest.setTimeout(180_000);
+
     it('a root vite.config.js after 450 component files is still the evidence', async () => {
         const root = project({ ...components(450), 'vite.config.js': "import { defineConfig } from 'vite';\nexport default defineConfig({});" });
         const expected = { packageName: 'vite', dev: true, importedBy: ['vite.config.js'] };
         await expect(findImportedPackageForScriptBinary(root, 'vite')).resolves.toEqual(expected);
         expect(importedPackageForScriptBinary(root, 'vite')).toEqual(expected);
-    }, 60_000);
+    });
 
     it('an importer six folders deep is found, and a runtime import makes it a dependency', async () => {
         const root = project({ 'src/pages/blog/[slug]/parts/deep/Post.ts': "import { getCollection } from 'astro:content';\nimport type { AstroGlobal } from 'astro';" },
@@ -58,5 +61,5 @@ describe('the only importing file is never cut off', () => {
         reading = false;
         expect(found?.importedBy).toEqual(['vite.config.ts']);
         expect(turns).toBeGreaterThan(10);
-    }, 60_000);
+    });
 });

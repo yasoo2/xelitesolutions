@@ -80,7 +80,10 @@ function isToolConfigFile(relative: string): boolean {
  * generator of filesystem requests; the async driver serves project_run and
  * the sync driver serves the one caller that has not moved yet.
  */
-type SearchRequest = { op: 'readdir'; at: string } | { op: 'read'; at: string } | { op: 'manifest'; at: string };
+// `read` names every source file of one folder at once, so the async driver
+// reads them side by side instead of one round trip per file.
+type SearchRequest = { op: 'readdir'; at: string } | { op: 'read'; at: string[] } | { op: 'manifest'; at: string };
+const READ_CONCURRENCY = 32;
 
 function* searchImporters(projectRoot: string, name: string): Generator<SearchRequest, ScriptBinaryProvider | null, unknown> {
     if (!VALID_UNSCOPED_PACKAGE.test(name)) return null;
@@ -102,34 +105,45 @@ function* searchImporters(projectRoot: string, name: string): Generator<SearchRe
         .filter(entry => entry.isFile() && TOOL_CONFIG_FILE.test(entry.name))
         .map(entry => path.join(projectRoot, entry.name))
         .sort();
-    for (const file of rootConfigs) {
-        const source = yield { op: 'read', at: file };
-        if (typeof source === 'string' && importedPackageNames(source).has(name)) importedBy.push(relative(file));
-    }
+    const consider = (files: string[], sources: unknown) => {
+        files.forEach((file, i) => {
+            const source = Array.isArray(sources) ? sources[i] : null;
+            if (typeof source === 'string' && importedPackageNames(source).has(name)) importedBy.push(relative(file));
+        });
+    };
+    if (rootConfigs.length) consider(rootConfigs, yield { op: 'read', at: rootConfigs });
     const queue: Array<{ dir: string; entries?: fs.Dirent[] }> = [{ dir: projectRoot, entries: rootEntries }];
     for (let next = 0; next < queue.length; next++) {
         const { dir } = queue[next];
         const entries = queue[next].entries || ((yield { op: 'readdir', at: dir }) as fs.Dirent[] | null) || [];
         queue[next] = { dir }; // read once; let the listing go
+        const sources: string[] = [];
         for (const entry of entries) {
             const at = path.join(dir, entry.name);
             if (entry.isDirectory()) {
                 if (!isMachineStateDirectory(entry.name) && !BUILD_OUTPUT_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) queue.push({ dir: at });
-                continue;
+            } else if (entry.isFile() && SOURCE_FILE.test(entry.name) && !rootConfigs.includes(at)) {
+                sources.push(at);
             }
-            if (!entry.isFile() || !SOURCE_FILE.test(entry.name) || rootConfigs.includes(at)) continue;
-            const source = yield { op: 'read', at };
-            if (typeof source === 'string' && importedPackageNames(source).has(name)) importedBy.push(relative(at));
         }
+        if (sources.length) consider(sources, yield { op: 'read', at: sources });
     }
     if (!importedBy.length) return null;
     return { packageName: name, dev: importedBy.every(isToolConfigFile), importedBy };
 }
 
+function readSync(file: string): string | null {
+    try { return fs.statSync(file).size > MAX_FILE_BYTES ? null : fs.readFileSync(file, 'utf8'); } catch { return null; }
+}
+
+async function readAsync(file: string): Promise<string | null> {
+    try { return (await fs.promises.stat(file)).size > MAX_FILE_BYTES ? null : await fs.promises.readFile(file, 'utf8'); } catch { return null; }
+}
+
 function answerSync(request: SearchRequest): unknown {
     try {
         if (request.op === 'readdir') return fs.readdirSync(request.at, { withFileTypes: true });
-        if (request.op === 'read' && fs.statSync(request.at).size > MAX_FILE_BYTES) return null;
+        if (request.op === 'read') return request.at.map(readSync);
         return fs.readFileSync(request.at, 'utf8');
     } catch { return null; }
 }
@@ -137,7 +151,13 @@ function answerSync(request: SearchRequest): unknown {
 async function answerAsync(request: SearchRequest): Promise<unknown> {
     try {
         if (request.op === 'readdir') return await fs.promises.readdir(request.at, { withFileTypes: true });
-        if (request.op === 'read' && (await fs.promises.stat(request.at)).size > MAX_FILE_BYTES) return null;
+        if (request.op === 'read') {
+            const sources: Array<string | null> = [];
+            for (let i = 0; i < request.at.length; i += READ_CONCURRENCY) {
+                sources.push(...await Promise.all(request.at.slice(i, i + READ_CONCURRENCY).map(readAsync)));
+            }
+            return sources;
+        }
         return await fs.promises.readFile(request.at, 'utf8');
     } catch { return null; }
 }
