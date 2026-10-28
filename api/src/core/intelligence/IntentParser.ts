@@ -6,6 +6,7 @@ import { answerRequestText } from '../llm/requested-answer-language';
 import { isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
@@ -361,13 +362,10 @@ Return ONLY a JSON object:
                 // while the local brain is available (intelligence economy).
             } as any, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
-            let analysis: any;
-            try {
-                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                analysis = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
-            } catch (e) {
-                analysis = {};
-            }
+            // The shared reader (shared/utils/json): the greedy first-`{`-to-last-`}`
+            // span glued the answer to any brace in a sentence after it, and one raw
+            // line break in a string threw the whole analysis away.
+            const analysis: any = readModelJsonObject(responseText) ?? {};
             
             return {
                 goal: userText,
@@ -572,13 +570,8 @@ Return ONLY a JSON object:
                 language: 'en'
             } as any, undefined, undefined, undefined, undefined, undefined, { ...(context || {}), purpose: 'internal' });
 
-            let parsed: any;
-            try {
-                const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-                parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : JSON.parse(responseText);
-            } catch (e) {
-                throw new Error(`Failed to parse specification JSON: ${e}`);
-            }
+            const parsed: any = readModelJsonObject(responseText);
+            if (!parsed) throw new Error('Failed to parse specification JSON: the reply holds no JSON object');
 
             // Validate and normalize the parsed specification
             const spec: StructuredSpecification = {

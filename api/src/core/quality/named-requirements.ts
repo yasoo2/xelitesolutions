@@ -37,6 +37,7 @@
 
 import { createHash } from 'node:crypto';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
+import { readModelJson } from '../../shared/utils/json';
 import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion, splitListItems, stripLeadingConjunction } from '../design/request-lists';
 
 export interface NamedRequirement {
@@ -259,25 +260,20 @@ export function extractionPrompt(request: string, isArabic: boolean): string {
     ].join('\n');
 }
 
+/**
+ *  Read through the shared reader (shared/utils/json): a raw line break inside
+ *  a quote, a ```bash fence inside a requirement, or a sentence with a brace
+ *  after the answer each threw every named requirement away here.
+ */
 export function parseRequirements(raw: string): Array<{ text: string; quote: string }> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
-            const list = parsed && (parsed.requirements || parsed.features);
-            if (Array.isArray(list)) {
-                return list
-                    .filter(r => r && typeof r === 'object')
-                    .map(r => ({ text: String(r.text ?? ''), quote: String(r.quote ?? '') }))
-                    .filter(r => r.text.trim());
-            }
-        } catch { /* try the next candidate */ }
-    }
-    return [];
+    return readModelJson(String(raw || ''), parsed => {
+        const list = parsed && (parsed.requirements || parsed.features);
+        if (!Array.isArray(list)) return undefined;
+        return list
+            .filter((r: any) => r && typeof r === 'object')
+            .map((r: any) => ({ text: String(r.text ?? ''), quote: String(r.quote ?? '') }))
+            .filter((r: { text: string }) => r.text.trim());
+    }) ?? [];
 }
 
 /**
@@ -700,18 +696,14 @@ const asVerdict = (v: any, fallbackId: string) => {
 };
 
 export function parseVerdicts(raw: string): Array<{ id: string; verdict: string; evidence: string; why: string }> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        let parsed: any;
-        try { parsed = JSON.parse(c.slice(start, end + 1)); } catch { continue; }
-        if (!parsed || typeof parsed !== 'object') continue;
+    //  Every candidate the reply holds, read the shared way (shared/utils/json);
+    //  the first that has one of the three shapes below is the answer.
+    return readModelJson(String(raw || ''), (parsed: any) => {
+        if (!parsed || typeof parsed !== 'object') return undefined;
 
-        //  1. the shape the brief asks for
-        const list = Array.isArray(parsed.verdicts) ? parsed.verdicts
+        //  1. the shape the brief asks for — or that list on its own
+        const list = Array.isArray(parsed) ? parsed
+            : Array.isArray(parsed.verdicts) ? parsed.verdicts
             : Array.isArray(parsed.results) ? parsed.results
                 : null;
         if (list) {
@@ -726,9 +718,8 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
         //     measured coming back from the keyless mesh
         const entries = Object.entries(parsed)
             .filter(([, v]) => v && typeof v === 'object' && ('verdict' in (v as any) || 'met' in (v as any)));
-        if (entries.length) return entries.map(([k, v]) => asVerdict(v, k));
-    }
-    return [];
+        return entries.length ? entries.map(([k, v]) => asVerdict(v, k)) : undefined;
+    }) ?? [];
 }
 
 /**

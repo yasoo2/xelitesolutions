@@ -37,7 +37,7 @@
  *  vocabulary of a business he never mentioned.
  */
 
-import { parseModelJson } from '../../shared/utils/json';
+import { readModelJson } from '../../shared/utils/json';
 
 /** The fields worth authoring. Structural keys (routes, hrefs) stay derived. */
 export const COPY_FIELDS = [
@@ -172,25 +172,17 @@ export function verifyPrompt(request: string, drafted: Record<string, any>): str
 
 /** Read the verifier's answer. Unreadable means «nothing proven», not «all fine». */
 export function parseVerdict(raw: string): Record<string, string> | null {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = parseModelJson(c.slice(start, end + 1));
-            const fails = parsed && (parsed.fails ?? parsed.failures);
-            if (fails && typeof fails === 'object' && !Array.isArray(fails)) {
-                const out: Record<string, string> = {};
-                for (const [k, v] of Object.entries(fails)) out[k] = String(v);
-                return out;
-            }
-            //  An explicit empty object is a real verdict: nothing failed.
-            if (fails !== undefined) return {};
-        } catch { /* try the next candidate */ }
-    }
-    return null;
+    //  Every candidate the reply holds, read the shared way (shared/utils/json).
+    return readModelJson(String(raw || ''), (parsed: any): Record<string, string> | undefined => {
+        const fails = parsed && (parsed.fails ?? parsed.failures);
+        if (fails && typeof fails === 'object' && !Array.isArray(fails)) {
+            const out: Record<string, string> = {};
+            for (const [k, v] of Object.entries(fails)) out[k] = String(v);
+            return out;
+        }
+        //  An explicit empty object is a real verdict: nothing failed.
+        return fails !== undefined ? {} : undefined;
+    }) ?? null;
 }
 
 export function copyPrompt(spec: CopySpec): string {
@@ -230,18 +222,12 @@ export function copyPrompt(spec: CopySpec): string {
 
 export function parseCopy(raw: string): Record<string, any> {
     const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = parseModelJson(c.slice(start, end + 1));
-            const f = parsed && (parsed.fields || parsed);
-            if (f && typeof f === 'object' && !Array.isArray(f)) return f as Record<string, any>;
-        } catch { /* try the next candidate */ }
-    }
-    return {};
+    const isRecord = (v: any): v is Record<string, any> => !!v && typeof v === 'object' && !Array.isArray(v);
+    //  The shape the brief asks for wins over any object met before it; a bare
+    //  object of fields is still his copy when no candidate carries `fields`.
+    return readModelJson(text, (parsed: any) => (isRecord(parsed) && isRecord(parsed.fields) ? parsed.fields : undefined))
+        ?? readModelJson(text, (parsed: any) => (isRecord(parsed) && !parsed.fields ? parsed : undefined))
+        ?? {};
 }
 
 /**
