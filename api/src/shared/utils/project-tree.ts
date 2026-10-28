@@ -14,11 +14,18 @@
  * sources to parse) skips the directories that tools and Joe itself create
  * there: package/tool caches, virtualenvs, Joe's checkpoints and state. Build
  * outputs (dist, build) are a separate, per-walker decision and are not here.
+ *
+ * Joe's own state folders are named where Joe writes them, and every one is
+ * here (round 21 review: two were missing): `.joe-versions` holds the ten undo
+ * snapshots of the whole project (core/project/versions.ts VERSIONS_DIR) — ten
+ * copies of every file, sorted before `server.js`, enough to fill a layout list
+ * with yesterday's App.jsx; `.checkpoints` holds the resumable build state
+ * (core/resume/checkpoint.ts), JSON a literal text edit would otherwise rewrite.
  */
 
 export const MACHINE_STATE_DIRECTORIES: ReadonlySet<string> = new Set([
     '.git', 'node_modules', '.npm-cache', '.pnpm-store', '.yarn', '.cache', '.turbo', '.next', 'coverage',
-    '.engineering-checkpoints', '.joe', '__pycache__', '.pytest_cache', '.venv', 'venv',
+    '.engineering-checkpoints', '.joe', '.joe-versions', '.checkpoints', '__pycache__', '.pytest_cache', '.venv', 'venv',
 ]);
 
 /** True when a directory of this name holds machine-made state, never a project's own files. */
