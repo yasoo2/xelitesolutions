@@ -181,8 +181,10 @@ export function validateAutonomousFileOperation(name: string, input: Record<stri
                 const newline = crlf > lf ? '\r\n' : '\n';
                 const normalize = (value: string) => value.replace(/\r\n|\r|\n/g, newline);
                 const find = normalize(input.find), replace = normalize(input.replace);
-                // An edit already in place is prepared as no change, never applied twice.
-                if (editAlreadyApplied(content, find, replace)) return { path: target, find: input.find, replace: input.replace,
+                // An edit already in place is prepared as no change, never applied twice —
+                // judged as this policy lands an edit: on a text that occurs once, so an
+                // ambiguous match is never answered «already applied» (the deny below stands).
+                if (editAlreadyApplied(content, find, replace, 'unique')) return { path: target, find: input.find, replace: input.replace,
                     autonomousEditBefore: content, autonomousEditAfter: content };
                 const offset = content.indexOf(find);
                 if (offset < 0) deny('edit_text_not_found');
