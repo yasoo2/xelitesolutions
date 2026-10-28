@@ -19,6 +19,9 @@ import { bindRunCancellation } from '../../core/session/attended-run';
 const RESOURCE_HEAVY_TOOLS = new Set([
     'shell_execute', 'npm_manager', 'docker_manager', 'project_edit', 'react_project',
 ]);
+// Heavy tools whose own heavy work is model calls (and the processes they start
+// through executeTool), each admitted on its own: never unload the model for them.
+const MODEL_BOUND_TOOLS = new Set(['project_edit', 'react_project']);
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
 import { describeResourceFault, describeResourceRefusal } from '../../shared/resource-refusal';
 import { agentSearchUrl } from '../browser/challenge';
@@ -1119,7 +1122,12 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                             : run());
                         return (RESOURCE_HEAVY_TOOLS.has(effectiveName) || effectiveName.startsWith('browser_')
                             || !!engineeringExecutionTask(name, executionContext))
-                            ? requestResourceManager.withHeavy(executeScoped, { kind: `tool:${effectiveName}`, signal: resourceCancellation.signal })
+                            ? requestResourceManager.withHeavy(executeScoped, {
+                                kind: `tool:${effectiveName}`, signal: resourceCancellation.signal,
+                                // Their heavy parts are model calls and the processes they
+                                // start, each admitted on its own (see HeavyOptions.modelBound).
+                                modelBound: MODEL_BOUND_TOOLS.has(effectiveName) || effectiveName.startsWith('browser_'),
+                            })
                             : executeScoped();
                     },
                     what: effectiveName,

@@ -52,6 +52,27 @@ describe('a resource refusal is not a crash', () => {
         expect(r.error).toMatch(/^RESOURCE_LOW_MEMORY: The heavy step could not start/);
     });
 
+    it('admits a tool whose heavy work is model calls as model-bound, and a process tool on free memory (second review of round 21)', async () => {
+        const seen: Array<{ kind: string; modelBound: boolean }> = [];
+        jest.spyOn(requestResourceManager, 'withHeavy').mockImplementation((async (_work: any, options: any) => {
+            seen.push({ kind: String(options?.kind), modelBound: options?.modelBound === true });
+            return { ok: true, output: {}, logs: [] };
+        }) as any);
+        const tools: Array<[string, any]> = [
+            ['shell_execute', { command: 'npm install' }], ['npm_manager', { command: 'install' }],
+            ['project_edit', { request: 'غيّر نص «أ» إلى «ب»' }], ['react_project', { request: 'landing page' }],
+        ];
+        for (const [tool, input] of tools) {
+            await executionFirewall.runInContext(`bound-${tool}`, () => executeTool(tool, input, { sessionId: `bound-${tool}` })).catch(() => undefined);
+        }
+        expect(seen).toEqual(expect.arrayContaining([
+            { kind: 'tool:shell_execute', modelBound: false },
+            { kind: 'tool:npm_manager', modelBound: false },
+            { kind: 'tool:project_edit', modelBound: true },
+            { kind: 'tool:react_project', modelBound: true },
+        ]));
+    });
+
     it('still reports a real fault inside a tool as internal_exception', async () => {
         jest.spyOn(requestResourceManager, 'withHeavy').mockImplementation(async () => { throw new TypeError('tool bug'); });
         const r: any = await run({ command: 'npm install' }, { sessionId: 'real-fault' });

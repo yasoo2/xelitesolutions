@@ -66,6 +66,17 @@ export interface HeavyOptions {
     kind?: string;
     signal?: AbortSignal;
     queueTimeoutMs?: number;
+    /**
+     * This work's heavy parts are model calls (admitted on their own) or a
+     * browser that is already running — project_edit, react_project, a browser
+     * action. The model the local server holds counts as available to it, and
+     * it is never unloaded for it: unloading it there only made the work's own
+     * first model call load it again (second review of round 21: five
+     * project_edit runs, five unloads, five cold loads). Work that allocates its
+     * own memory — a process, an install, a build, a recogniser — leaves this
+     * unset and is judged on what is really free.
+     */
+    modelBound?: boolean;
 }
 
 export interface InferenceOptions extends HeavyOptions {
@@ -362,9 +373,12 @@ export class RequestResourceManager {
                 this.assertOpen(store);
                 if (parent && !parent.live) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                // Only a local model call may count the resident model as its own;
-                // other heavy work may have an idle one unloaded for it.
-                const memory = localInference ? this.admitMemory(await this.reclaimableBytes()) : await this.admitBesideIdleModels(signal.signal);
+                // A model call, or work whose heavy parts are model calls, counts the
+                // resident model as its own; work that allocates its own memory may
+                // have an idle one unloaded for it.
+                const memory = localInference || options.modelBound
+                    ? this.admitMemory(await this.reclaimableBytes())
+                    : await this.admitBesideIdleModels(signal.signal);
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -523,9 +537,13 @@ export class RequestResourceManager {
      * it unloads). The model is idle then: a model call holds the heavy lane
      * for its whole run (withInference is admitted through admitHeavy), so
      * while this heavy work is being admitted no model call of this process is
-     * running. A GPU server's model sits in VRAM — it has no RAM part to give
-     * and is never unloaded for an install; a refusal that unloading cannot
-     * cure stays the refusal it was, with its numbers.
+     * running. A model call already queued behind this work loads the model
+     * again when its turn comes — the price of the install running at all,
+     * where the alternative was refusing it. Only work that allocates its own
+     * memory comes here (HeavyOptions.modelBound). A GPU server's model sits
+     * in VRAM — it has no RAM part to give and is never unloaded for an
+     * install; a refusal that unloading cannot cure stays the refusal it was,
+     * with its numbers.
      */
     private async admitBesideIdleModels(signal: AbortSignal): Promise<MemorySnapshot> {
         try { return this.admitMemory(0); } catch (refusal) {

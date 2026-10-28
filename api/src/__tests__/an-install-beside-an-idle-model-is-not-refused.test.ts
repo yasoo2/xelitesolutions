@@ -81,6 +81,19 @@ describe('an install beside an idle model is not refused', () => {
         expect(unloads).toEqual([]);
     });
 
+    it('work whose heavy parts are model calls is admitted beside the model, which stays loaded (second review)', async () => {
+        // project_edit, react_project, a browser action: unloading the model for them
+        // only made their own first model call load it again.
+        models = [{ ...LAPTOP_MODEL }];
+        const guard = machine();
+        await expect(guard.withHeavy(async () => 'edit', { kind: 'tool:project_edit', modelBound: true })).resolves.toBe('edit');
+        await expect(guard.withHeavy(async () => 'click', { kind: 'tool:browser_click', modelBound: true })).resolves.toBe('click');
+        expect(unloads).toEqual([]);
+        // …while the install it starts, admitted on its own, still has it unloaded.
+        await expect(guard.withHeavy(async () => 'npm install', { kind: 'tool:npm_manager' })).resolves.toBe('npm install');
+        expect(unloads).toEqual(['qwen3.5:9b']);
+    });
+
     it('GPU server: a model held in VRAM is not unloaded for an install, and too little RAM is still refused', async () => {
         models = [{ name: 'qwen3.5:27b', size: Math.round(18 * GiB), size_vram: Math.round(18 * GiB) }];
         const guard = new RequestResourceManager({

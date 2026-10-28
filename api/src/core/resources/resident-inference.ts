@@ -86,9 +86,10 @@ export async function residentInferenceBytes(): Promise<number> {
 }
 
 /**
- * UNLOAD THE MODELS THE LOOPBACK SERVER HOLDS IN RAM, for heavy work that is
- * not a model call (RequestResourceManager decides when: only when nothing
- * else would clear the memory floor and no model call is admitted or waiting).
+ * UNLOAD THE MODELS THE LOOPBACK SERVER HOLDS IN RAM, for heavy work that
+ * allocates its own memory (RequestResourceManager decides when: only when
+ * nothing else would clear the memory floor, while no model call of this
+ * process runs; a model call queued behind the work loads it again).
  *
  * Ollama's own unload is a generate request with `keep_alive: 0`; the next
  * model call loads the model again. Only models with a RAM part are asked —
