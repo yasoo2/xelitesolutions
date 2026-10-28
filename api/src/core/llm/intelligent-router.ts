@@ -17,6 +17,7 @@ import { servedModelConfig } from './served-local-selection';
 import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
 import { localReasoningOptions } from './providers/local';
 import { isManagedOllamaEndpoint, managedOllamaChat, managedContextCeilingTokens } from './providers/managed-ollama-chat';
+import { admitLocalModelCall } from '../resources/local-model-call';
 
 /** What a local answer with no output cap may write: the room the managed window leaves its prompt. */
 export function uncappedLocalOutputTokens(messages: any[]): number {
@@ -1875,79 +1876,93 @@ export async function routeToModel(
                         if (managed.tool_calls?.length) return customAnswer(JSON.stringify({ type: 'tool_calls', tool_calls: managed.tool_calls }));
                         return customAnswer(cleanOutput(managed.content));
                     }
-                    const client = new OpenAI({
-                        apiKey: effectiveApiKey || 'dummy',
-                        baseURL: effectiveBaseUrl,
-                        maxRetries: 0,
-                    });
-                    const model = isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
-                    // Preserve the caller's output budget on both SDK transports.
-                    // Official OpenAI uses its current field; compatible vendors
-                    // (including NIM) retain the max_tokens contract they expose.
-                    const requestedCompletionBudget = Number(context?.maxCompletionTokens);
-                    const maxCompletionTokens = Number.isFinite(requestedCompletionBudget) && requestedCompletionBudget > 0
-                        ? Math.max(1, Math.min(12000, Math.floor(requestedCompletionBudget))) : undefined;
-                    const completionOptions = maxCompletionTokens
-                        ? (cfgProvider === 'openai' && /^https:\/\/api\.openai\.com\/v1\/?$/.test(effectiveBaseUrl || '')
-                            ? { max_completion_tokens: maxCompletionTokens } : { max_tokens: maxCompletionTokens }) : {};
-                    // Honor explicit non-thinking answers only on canonical local Ollama.
-                    const customReasoningOptions = cfgProvider === 'local'
-                        ? localReasoningOptions(model, effectiveBaseUrl || '', context?.localReasoningEffort) : {};
-                    const assertCustomComplete = (finishReason: unknown) => {
-                        if (isExplicitCanonicalLocal) {
-                            throwIfCallerAborted();
-                            if (providerAbortController.signal.aborted) throw new Error('selected local request aborted');
+                    // A compatible server on THIS machine at any other spelling
+                    // (LM Studio, llama.cpp, Ollama at 0.0.0.0 or 127.1) is a local
+                    // model call: it holds the heavy lane for its whole run, like the
+                    // managed one above (second review of round 21). The provider
+                    // deadline already counts the wait; a wait that outlives it is a
+                    // queue refusal, never a provider failure.
+                    return await admitLocalModelCall(effectiveBaseUrl, async admission => {
+                        if (admission && providerAbortController.signal.aborted && !callerSignal?.aborted) {
+                            throw Object.assign(new Error('RESOURCE_QUEUE_TIMEOUT'), { code: 'RESOURCE_QUEUE_TIMEOUT', details: { deadlineMs: providerTimeoutMs } });
                         }
-                        if (finishReason === 'length') {
-                            throw Object.assign(new Error('completion limit reached'), { code: 'CUSTOM_COMPLETION_LIMIT' });
-                        }
-                    };
-                    // When the caller wants live tokens and no tool-calling is in
-                    // play, actually STREAM. This is the route the user's machine
-                    // takes (custom groq config), and it was buffering complete
-                    // responses — so "live code" arrived a whole section at a time.
-                    if (typeof onPartial === 'function' && !tools?.length) {
-                        // Best effort: an endpoint that rejects streaming falls
-                        // through to the buffered call below — losing liveness,
-                        // never the answer.
-                        try {
-                            const stream: any = await (client.chat.completions.create as any)({
-                                model, messages: flatMessages as any, stream: true,
-                                ...completionOptions,
-                                ...customReasoningOptions,
-                            }, providerRequestOptions);
-                            let text = '';
-                            for await (const chunk of stream) {
-                                assertCustomComplete(chunk?.choices?.[0]?.finish_reason);
-                                const d = chunk?.choices?.[0]?.delta?.content || '';
-                                if (d) { text += d; try { onPartial(d); } catch { /* UI only */ } }
+                        // The admission's own cancellation (his request closing) stops the request too.
+                        if (admission?.aborted) providerAbortController.abort(callerAbortError());
+                        else admission?.addEventListener('abort', () => providerAbortController.abort(callerAbortError()), { once: true });
+                        const client = new OpenAI({
+                            apiKey: effectiveApiKey || 'dummy',
+                            baseURL: effectiveBaseUrl,
+                            maxRetries: 0,
+                        });
+                        const model = isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
+                        // Preserve the caller's output budget on both SDK transports.
+                        // Official OpenAI uses its current field; compatible vendors
+                        // (including NIM) retain the max_tokens contract they expose.
+                        const requestedCompletionBudget = Number(context?.maxCompletionTokens);
+                        const maxCompletionTokens = Number.isFinite(requestedCompletionBudget) && requestedCompletionBudget > 0
+                            ? Math.max(1, Math.min(12000, Math.floor(requestedCompletionBudget))) : undefined;
+                        const completionOptions = maxCompletionTokens
+                            ? (cfgProvider === 'openai' && /^https:\/\/api\.openai\.com\/v1\/?$/.test(effectiveBaseUrl || '')
+                                ? { max_completion_tokens: maxCompletionTokens } : { max_tokens: maxCompletionTokens }) : {};
+                        // Honor explicit non-thinking answers only on canonical local Ollama.
+                        const customReasoningOptions = cfgProvider === 'local'
+                            ? localReasoningOptions(model, effectiveBaseUrl || '', context?.localReasoningEffort) : {};
+                        const assertCustomComplete = (finishReason: unknown) => {
+                            if (isExplicitCanonicalLocal) {
+                                throwIfCallerAborted();
+                                if (providerAbortController.signal.aborted) throw new Error('selected local request aborted');
                             }
-                            if (text.trim()) return customAnswer(cleanOutput(text));
-                        } catch (se: any) {
-                            // Never issue a second request after the deadline. The
-                            // buffered retry is useful for a 400/unsupported stream,
-                            // but harmful once the controller has already aborted.
-                            if (providerAbortController?.signal.aborted || callerSignal?.aborted || se?.code === 'CUSTOM_COMPLETION_LIMIT' || providerFailureState(se)) throw se;
-                            console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
+                            if (finishReason === 'length') {
+                                throw Object.assign(new Error('completion limit reached'), { code: 'CUSTOM_COMPLETION_LIMIT' });
+                            }
+                        };
+                        // When the caller wants live tokens and no tool-calling is in
+                        // play, actually STREAM. This is the route the user's machine
+                        // takes (custom groq config), and it was buffering complete
+                        // responses — so "live code" arrived a whole section at a time.
+                        if (typeof onPartial === 'function' && !tools?.length) {
+                            // Best effort: an endpoint that rejects streaming falls
+                            // through to the buffered call below — losing liveness,
+                            // never the answer.
+                            try {
+                                const stream: any = await (client.chat.completions.create as any)({
+                                    model, messages: flatMessages as any, stream: true,
+                                    ...completionOptions,
+                                    ...customReasoningOptions,
+                                }, providerRequestOptions);
+                                let text = '';
+                                for await (const chunk of stream) {
+                                    assertCustomComplete(chunk?.choices?.[0]?.finish_reason);
+                                    const d = chunk?.choices?.[0]?.delta?.content || '';
+                                    if (d) { text += d; try { onPartial(d); } catch { /* UI only */ } }
+                                }
+                                if (text.trim()) return customAnswer(cleanOutput(text));
+                            } catch (se: any) {
+                                // Never issue a second request after the deadline. The
+                                // buffered retry is useful for a 400/unsupported stream,
+                                // but harmful once the controller has already aborted.
+                                if (providerAbortController?.signal.aborted || callerSignal?.aborted || se?.code === 'CUSTOM_COMPLETION_LIMIT' || providerFailureState(se)) throw se;
+                                console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
+                            }
                         }
-                    }
-                    const completion = await (client.chat.completions.create as any)({
-                        model,
-                        messages: flatMessages as any,
-                        tools: tools as any,
-                        tool_choice: tools ? 'auto' : undefined,
-                        ...completionOptions,
-                        ...customReasoningOptions,
-                    }, providerRequestOptions);
-                    assertCustomComplete(completion.choices[0]?.finish_reason);
-                    const message = completion.choices[0]?.message;
-                    if (message?.tool_calls && message.tool_calls.length > 0) {
-                        return customAnswer(JSON.stringify({
-                            type: 'tool_calls',
-                            tool_calls: message.tool_calls,
-                        }));
-                    }
-                    return customAnswer(cleanOutput(message?.content || ''));
+                        const completion = await (client.chat.completions.create as any)({
+                            model,
+                            messages: flatMessages as any,
+                            tools: tools as any,
+                            tool_choice: tools ? 'auto' : undefined,
+                            ...completionOptions,
+                            ...customReasoningOptions,
+                        }, providerRequestOptions);
+                        assertCustomComplete(completion.choices[0]?.finish_reason);
+                        const message = completion.choices[0]?.message;
+                        if (message?.tool_calls && message.tool_calls.length > 0) {
+                            return customAnswer(JSON.stringify({
+                                type: 'tool_calls',
+                                tool_calls: message.tool_calls,
+                            }));
+                        }
+                        return customAnswer(cleanOutput(message?.content || ''));
+                    }, { kind: 'custom-local-inference', signal: callerSignal, queueTimeoutMs: providerTimeoutMs });
                 }
             } catch (err: any) {
                 throwIfCallerAborted();

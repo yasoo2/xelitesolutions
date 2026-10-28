@@ -4,6 +4,7 @@
  * Overrides: LLM7_BASE_URL, LLM7_MODEL, LLM7_API_KEY, LLM7_DISABLE=1
  */
 import OpenAI from 'openai';
+import { admitLocalModelCall } from '../../resources/local-model-call';
 import fs from 'fs';
 import path from 'path';
 
@@ -305,11 +306,13 @@ export class LLM7Provider {
                 // The gateway client is reached through `as any`, and an `any`
                 // argument infers the generic as `unknown` — which made every
                 // read off the completion a type error. Pinned explicitly.
+                // LLM7_BASE_URL may name a compatible server on this machine: that is a
+                // local model call, admitted for its whole run (second review of round 21).
                 const completion = await LLM7Provider.withGatewayTurn<any>(options?.signal, () =>
-                    (this.client.chat.completions.create as any)(
+                    admitLocalModelCall(LLM7_BASE_URL, () => (this.client.chat.completions.create as any)(
                         body(m),
                         { timeout: timeoutMs, signal: options?.signal }
-                    )
+                    ), { kind: 'compatible-gateway-inference', signal: options?.signal, queueTimeoutMs: timeoutMs })
                 );
                 const message = completion.choices[0]?.message;
                 if (message?.tool_calls && message.tool_calls.length > 0) return JSON.stringify({ type: 'tool_calls', tool_calls: message.tool_calls });
