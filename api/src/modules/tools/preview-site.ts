@@ -20,6 +20,7 @@
  * classifier, never a reason to skip a real server).
  */
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
 import { isWithinRoot } from './path-containment';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
@@ -169,6 +170,61 @@ function holdsIndexDocument(entries: fs.Dirent[]): boolean {
     return entries.some(entry => !entry.isDirectory() && /^index\.html?$/i.test(entry.name));
 }
 
+/** A loopback GET: its status and body (up to 1 MB), or null. Only project_run's own child is asked. */
+function fetchLoopback(url: URL, timeoutMs = 2500): Promise<{ status: number; body: Buffer } | null> {
+    if (url.protocol !== 'http:' || !/^(?:127\.0\.0\.1|localhost|\[::1\])$/i.test(url.hostname)) return Promise.resolve(null);
+    return new Promise(resolve => {
+        const req = http.get(url, { timeout: timeoutMs }, res => {
+            const chunks: Buffer[] = [];
+            let size = 0;
+            res.on('data', (chunk: Buffer) => { size += chunk.length; if (size <= 1_000_000) chunks.push(chunk); });
+            res.on('end', () => resolve(size > 1_000_000 ? null : { status: res.statusCode || 0, body: Buffer.concat(chunks) }));
+            res.on('error', () => resolve(null));
+        });
+        req.on('timeout', () => { req.destroy(); resolve(null); });
+        req.on('error', () => resolve(null));
+    });
+}
+
+/**
+ * …AND THE SERVER ITSELF CONFIRMS IT (review r21, second round).
+ *
+ * The shape above is a name overlap: a working app whose home page links
+ * «/admin» and «/api», with its server in src/ beside admin/ and api/, named
+ * two of src/'s three entries and was killed as a listing; so was a
+ * bilingual page linking «/en» and «/ar» beside locales/en and locales/ar. A
+ * file server is known by what it serves: a listed FILE answers with its own
+ * bytes, a listed FOLDER with a listing of that folder's own children. An app
+ * route answers with its page. So a candidate folder is a served listing only
+ * when the server, asked for its entries, answers as a file server does. A
+ * few entries are asked (each probe is one loopback request); if none
+ * confirms, the page is not called a listing — browser QA still judges what
+ * it shows.
+ */
+async function servedAsListing(folder: string, entries: fs.Dirent[], listed: Set<string>, pageUrl: string): Promise<boolean> {
+    let base: URL;
+    try { base = new URL(pageUrl); } catch { return false; }
+    base = new URL(base.pathname.endsWith('/') ? base.pathname : base.pathname.replace(/[^/]*$/, ''), base);
+    const named = entries.filter(entry => !entry.name.startsWith('.') && listed.has(entry.name.toLowerCase()));
+    for (const entry of named.filter(e => e.isFile()).slice(0, 3)) {
+        const answer = await fetchLoopback(new URL(encodeURIComponent(entry.name), base));
+        if (!answer || answer.status !== 200) continue;
+        const disk = await fs.promises.readFile(path.join(folder, entry.name)).catch(() => null);
+        if (disk && answer.body.equals(disk)) return true;
+    }
+    for (const entry of named.filter(e => e.isDirectory()).slice(0, 3)) {
+        const url = new URL(`${encodeURIComponent(entry.name)}/`, base);
+        const answer = await fetchLoopback(url);
+        if (!answer || answer.status !== 200) continue;
+        const children = (await fs.promises.readdir(path.join(folder, entry.name), { withFileTypes: true }).catch(() => [] as fs.Dirent[]))
+            .filter(child => !child.name.startsWith('.'));
+        const inner = listedEntryNames(answer.body.toString('utf8'), url.href);
+        const hits = children.filter(child => inner.has(child.name.toLowerCase())).length;
+        if (children.length && hits * 5 >= children.length * 3) return true;
+    }
+    return false;
+}
+
 /**
  * IS WHAT THE SERVER ANSWERED A LIST OF THIS PROJECT'S FILES?
  *
@@ -211,7 +267,7 @@ export async function listsProjectFiles(html: unknown, projectDir: unknown, page
         if (holdsIndexDocument(entries)) continue;
         const visible = entries.filter(entry => !entry.name.startsWith('.'));
         const named = visible.filter(entry => listed.has(entry.name.toLowerCase())).length;
-        if (named >= 2 && named * 5 >= visible.length * 3) return true;
+        if (named >= 2 && named * 5 >= visible.length * 3 && await servedAsListing(folder, entries, listed, pageUrl)) return true;
     }
     return false;
 }

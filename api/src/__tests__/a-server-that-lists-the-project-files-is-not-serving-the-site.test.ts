@@ -31,10 +31,29 @@ const SERVE_WINDOWS_LISTING = '<!DOCTYPE html><html lang="en"><head><title>Files
 const LISTER = [
     "const http = require('http'); const fs = require('fs');",
     "http.createServer((req, res) => {",
+    "  const rel = decodeURIComponent(req.url.split('?')[0]).replace(/^[\\\\/]+/, '');",
+    "  if (rel && fs.existsSync(rel) && fs.statSync(rel).isFile()) { res.writeHead(200); return res.end(fs.readFileSync(rel)); }",
     "  const items = fs.readdirSync('.').map(n => '<li><a href=\"\\\\' + n + (fs.statSync(n).isDirectory() ? '&#47;' : '') + '\">' + n + '</a></li>').join('');",
     "  res.writeHead(200, { 'content-type': 'text/html' }); res.end('<title>Files within</title><ul>' + items + '</ul>');",
     "}).listen(Number(process.env.PORT), '127.0.0.1');",
 ].join('\n');
+
+// A file server as `serve` and `python -m http.server` are: a folder answers
+// with its listing, a file with its own bytes. The detector asks the server.
+async function fileServer(root: string): Promise<{ url: string; close: () => Promise<void> }> {
+    const server = http.createServer((req, res) => {
+        const rel = decodeURIComponent(String(req.url || '/').split('?')[0]).replace(/^[\\/]+/, '');
+        const at = path.join(root, rel);
+        let stat: fs.Stats;
+        try { stat = fs.statSync(at); } catch { res.writeHead(404); res.end(); return; }
+        if (stat.isFile()) { res.writeHead(200); res.end(fs.readFileSync(at)); return; }
+        const items = fs.readdirSync(at).map(n => `<li><a href="${encodeURIComponent(n)}${fs.statSync(path.join(at, n)).isDirectory() ? '/' : ''}">${n}</a></li>`).join('');
+        res.writeHead(200, { 'content-type': 'text/html' });
+        res.end(`<ul>${items}</ul>`);
+    });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    return { url: `http://127.0.0.1:${(server.address() as any).port}/`, close: () => new Promise<void>(done => server.close(() => done())) };
+}
 
 function project(shape: { site: boolean }): string {
     const workspace = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-run-listing-'));
@@ -64,12 +83,15 @@ describe('a server that lists the project files is not serving the site', () => 
 
     it('recognises serve\'s Windows listing of the project folder, and not a page that links its own files', async () => {
         const dir = project({ site: true });
-        expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(true);
-        const page = '<nav><a href="index.html">الرئيسية</a><a href="styles.css">x</a><a href="#contact">تواصل</a><a href="https://example.com/src/">ext</a></nav>';
-        expect(await listsProjectFiles(page, dir)).toBe(false);
-        // A folder that holds its own page is answered with it, never listed.
-        fs.writeFileSync(path.join(dir, 'index.html'), '<h1>root</h1>');
-        expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(false);
+        const served = await fileServer(dir);
+        try {
+            expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir, served.url)).toBe(true);
+            const page = '<nav><a href="index.html">الرئيسية</a><a href="styles.css">x</a><a href="#contact">تواصل</a><a href="https://example.com/src/">ext</a></nav>';
+            expect(await listsProjectFiles(page, dir, served.url)).toBe(false);
+            // A folder that holds its own page is answered with it, never listed.
+            fs.writeFileSync(path.join(dir, 'index.html'), '<h1>root</h1>');
+            expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir, served.url)).toBe(false);
+        } finally { await served.close(); }
     });
 
     it('the P001 shape is served from src/, not as a file listing', async () => {
