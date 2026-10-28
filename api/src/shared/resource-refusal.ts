@@ -63,6 +63,12 @@ export function resourceFaultCode(error: unknown): string | null {
 /** His sentence for a refusal code found in the text, or null when the text names none. */
 export function resourceRefusalSentence(text: string, isAr: boolean): string | null {
     const t = String(text || '');
+    // An idle local model was asked to unload for this step and the memory did
+    // not come back (RequestResourceManager.admitBesideIdleModels): «no other
+    // application was stopped» alone would hide that (second review of round 21).
+    if (/RESOURCE_LOW_MEMORY/.test(t) && /\breleasedBytes=[1-9]/.test(t)) return isAr
+        ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي. طلبتُ من خادم النموذج المحلي إفراغ نموذجه الخامل لإفساح المجال (يُحمَّل من جديد عند استدعائه التالي)، لكن الذاكرة لم تعد بما يكفي. لم أوقف أي برنامج آخر.'
+        : 'The heavy step could not start because available memory is insufficient. The local model server was asked to unload its idle model to make room (it loads again on its next call), but not enough memory came back. No other application was stopped.';
     if (/RESOURCE_(?:LOW_MEMORY|MEMORY_UNAVAILABLE)/.test(t)) return isAr
         ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي أو تعذّر قياسها. لم أوقف أي برنامج آخر.'
         : 'The heavy step could not start because available memory is insufficient or could not be measured. No other application was stopped.';
@@ -87,9 +93,11 @@ export function resourceRefusalSentence(text: string, isAr: boolean): string | n
 export function describeResourceRefusal(error: unknown, isAr: boolean): string | null {
     const code = resourceRefusalCode(error);
     if (!code) return null;
-    const sentence = resourceRefusalSentence(code, isAr)
+    const numbers = numbersOf(error);
+    // The sentence is chosen from the code and its numbers: what was done for the step is in them.
+    const sentence = resourceRefusalSentence(`${code}${numbers}`, isAr)
         || (isAr ? 'لم تبدأ الخطوة: رفضها حارس الموارد.' : 'The step did not start: the resource guard refused it.');
-    return `${code}: ${sentence}${numbersOf(error)}`;
+    return `${code}: ${sentence}${numbers}`;
 }
 
 function numbersOf(error: unknown): string {
