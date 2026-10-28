@@ -24,7 +24,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract, hasExplicitRecordSchema, requestedArtifactWithoutStockEngine } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor, type JudgedCriterion } from '../../../core/quality/acceptance';
 import { CAPABILITIES } from '../../../core/quality/scope-audit';
 import { namedRequirements, requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
@@ -35,7 +35,8 @@ import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily }
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { buildImageBrief } from '../../../core/design/image-brief';
-import { requestedArtifact } from '../../../core/design/requested-artifact';
+import { requestedArtifact, statesManagingPurpose } from '../../../core/design/requested-artifact';
+import { normalise as normaliseArabic } from '../../../core/language/arabic';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
@@ -1075,6 +1076,27 @@ function projectDisambiguator(runId: string, sessionKey: string): string {
 }
 
 /**
+ *  ⛔ «SITE» IS THE SENTENCE OF ONE DELIVERABLE: A SITE THAT PRESENTS.
+ *
+ *  Round 21 review: the site sentence was taken for every request whose
+ *  deliverable is a page, so «اعمل موقع يحسب القسط الشهري للقرض …» — a page
+ *  that is really a program — heard «سأبني هذا الموقع من طلبك مباشرةً» while
+ *  the build fell to the generic section scaffold the honest sentence names.
+ *  The section builder is the right path only for a site that presents
+ *  (landing, portfolio, «تعريفي»): no server claim, nothing to compute, no
+ *  records to keep. Every one of those facts is read by the shared readers;
+ *  only the computing verbs are read here, in folded form.
+ */
+const ASKS_TO_COMPUTE = /\b(?:calculat(?:e|es|ed|ing|or|ors|ion|ions)|comput(?:e|es|ed|ing))\b|(?<![\p{L}\p{N}_])(?:[وف]?(?:[يتن]حسب|احسب)|(?:ال)?حاسب(?:ه|ات))(?![\p{L}\p{N}_])/u;
+function isPresentationSite(request: string): boolean {
+    const artifact = requestedArtifact(request);
+    if (artifact.kind !== 'page' || !artifact.evidence.presentation || artifact.needsServer) return false;
+    const program = requestedArtifactWithoutStockEngine(request) || ASKS_TO_COMPUTE.test(normaliseArabic(request));
+    const records = hasExplicitRecordSchema(request) || statesManagingPurpose(request) || hasWorkflowApplicationContract(request);
+    return !program && !records;
+}
+
+/**
  * The terminal announcement is derived from the request, not copied from a
  * project-specific template. It is deliberately small and engine-agnostic:
  * the words it says are the elements the request actually names.
@@ -1120,7 +1142,7 @@ export function earlyProjectDeclaration(input: {
      *  The deliverable he named decides which sentence is his; the unknown-app
      *  one stays for a request that names an app (or names nothing).
      */
-    if (requestedArtifact(request).kind === 'page') {
+    if (isPresentationSite(request)) {
         if (input.isArabic) {
             return `سأبني هذا الموقع من طلبك مباشرةً، من غير محرّك تطبيق جاهز. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً واضحاً'}.`;
         }
