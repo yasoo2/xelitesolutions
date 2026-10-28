@@ -10,7 +10,7 @@ import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast, broadcastTerminalLine } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
-import { prepareArtifactContent } from '../artifact-validation';
+import { prepareArtifactContent, validateArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
 import { AUTONOMOUS_FILE_BYTES } from '../../services/AutonomousFilePolicy';
@@ -780,7 +780,19 @@ export class FileEditTool extends BaseTool {
                 : ` The file has ${lines.length} lines and none of them opens with that text.`;
             return { ok: false, error: `Text to replace not found in ${filename}. Looked for: ${wanted}.${hint}`, logs };
         }
-        if (typeof input.autonomousEditBefore === 'string' && typeof input.autonomousEditAfter === 'string') {
+        // An edit is a write: the destination contract file_write and
+        // ai_write_file enforce holds here too, or a one-line edit can leave a
+        // package.json that is not JSON, or one npm install cannot fetch. Only
+        // a violation the edit itself introduces is refused, so a file that
+        // was already off can still be repaired by editing it. A function
+        // replacement keeps `$&`, `$'` and `$$` in his text literal.
+        const autonomousEdit = typeof input.autonomousEditBefore === 'string' && typeof input.autonomousEditAfter === 'string';
+        const edited: string = autonomousEdit ? input.autonomousEditAfter : content.replace(findInFile, () => replaceInFile);
+        const introduced = validateArtifactContent(filename, edited);
+        if (introduced && !validateArtifactContent(filename, content)) {
+            return { ok: false, error: `${introduced}. The edit was not applied; ${filename} is unchanged.`, logs };
+        }
+        if (autonomousEdit) {
             // The gateway prepared a unique literal edit. Recheck the same preimage
             // on the writable descriptor; no await or path reopen occurs before writing.
             const fd = fs.openSync(full, fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW ?? 0));
@@ -796,12 +808,12 @@ export class FileEditTool extends BaseTool {
                     return { ok: false, error: 'file_changed', logs };
                 }
                 if (context?.isCancelled?.()) return { ok: false, error: 'cancelled', logs };
-                content = input.autonomousEditAfter;
+                content = edited;
                 fs.writeFileSync(fd, content, 'utf8');
                 fs.ftruncateSync(fd, Buffer.byteLength(content));
             } finally { fs.closeSync(fd); }
         } else {
-            content = content.replace(findInFile, replaceInFile);
+            content = edited;
             fs.writeFileSync(full, content);
         }
         logs.push(`edit=${filename}`);
