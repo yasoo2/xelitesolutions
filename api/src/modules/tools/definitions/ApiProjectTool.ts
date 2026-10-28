@@ -33,6 +33,8 @@ import { NETWORK_INSTALL_TIMEOUTS, installProgressProbe } from '../../../shared/
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { backendFingerprint, durableReadCommand, issueBackendEvidence, payloadMatches, type LocalBackendEvidence } from '../../../core/quality/local-backend-evidence';
+import { testsRequestedIn } from '../../../core/quality/request-coverage';
+import { normaliseListedRequest } from '../../../core/design/listed-request';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
@@ -451,12 +453,185 @@ export function apiColumnsForRequest(probe: string): ApiColumn[] {
     }
 }
 
-function filePackageJson(name: string): string {
+function filePackageJson(name: string, withTests = false): string {
     return JSON.stringify({
         name: `api-${slug(name)}`, private: true, version: '0.1.0', type: 'module',
-        scripts: { start: 'node server.js', dev: 'node --watch server.js' },
+        scripts: { start: 'node server.js', dev: 'node --watch server.js', ...(withTests ? { test: 'node --test' } : {}) },
         dependencies: { express: '^4.21.2' },
     }, null, 2);
+}
+
+/** One served table the endpoint tests exercise: its key, and a body its own validation must refuse (or null). */
+export interface ApiTestResource { key: string; invalid: Record<string, unknown> | null }
+
+/**
+ * A body the generated server's OWN validation refuses with 400, computed from
+ * the schema it was built with — never a guess. The primary table (db.js
+ * validate): a missing required column, a non-number in a REAL/INT column, or
+ * a text over 2000 characters. A model table (entities.js validate): a missing
+ * required field, a text over 500 characters, or a link to a parent row that
+ * does not exist. null when the schema refuses nothing.
+ */
+export function apiTestResources(primary: { key: string; columns: Array<{ key: string; type?: string; required?: boolean }> } | null, entities: any[]): ApiTestResource[] {
+    const out: ApiTestResource[] = [];
+    if (primary && primary.key) {
+        const cols = Array.isArray(primary.columns) ? primary.columns : [];
+        const required = cols.find(c => c && c.required);
+        const numeric = cols.find(c => c && /^(?:REAL|INT)$/i.test(String(c.type || '')));
+        const textual = cols.find(c => c && !/^(?:REAL|INT)$/i.test(String(c.type || '')));
+        out.push({
+            key: primary.key,
+            invalid: required ? {} : numeric ? { [numeric.key]: 'not-a-number' } : textual ? { [textual.key]: 'x'.repeat(2001) } : null,
+        });
+    }
+    for (const entity of Array.isArray(entities) ? entities : []) {
+        const key = String(entity?.key || '').trim();
+        if (!key || out.some(r => r.key === key)) continue;
+        const fields: any[] = Array.isArray(entity?.fields) ? entity.fields : [];
+        const relations: any[] = Array.isArray(entity?.relations) && entity.relations.length ? entity.relations : (entity?.belongsTo ? [entity.belongsTo] : []);
+        const required = fields.find(f => f && f.required);
+        const textual = fields.find(f => f && String(f.type || '').toUpperCase() !== 'REAL');
+        const link = relations.find(r => r && r.key);
+        out.push({
+            key,
+            invalid: required ? {} : textual ? { [textual.key]: 'x'.repeat(501) } : link ? { [link.key]: 999999999 } : null,
+        });
+    }
+    return out;
+}
+
+/**
+ * tests/api.test.js — written because the request asked for tests.
+ *
+ * Eval round 15 (P101): «اختبارات آلية لكل نقطة» produced an API with no test
+ * at all, and no way for any gate to run one. These tests are real: they boot
+ * THIS server on a free port with a signing key of their own, and check what
+ * every table's endpoints promise — the list answers, a missing row is 404, a
+ * write without an account is 401, and a body the table's own validation must
+ * refuse is 400. They read and never write: a wrongly accepted body is deleted
+ * again before the test fails.
+ */
+export function fileApiTestsJs(resources: ApiTestResource[], ownerEmail: string): string {
+    return `// Endpoint tests for this API — run them with: npm test
+// Each run boots the server on a free port with its own signing key and checks
+// every table's contract. They never write: a wrongly accepted body is deleted
+// again before the test fails.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import crypto from 'node:crypto';
+import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const OWNER = ${JSON.stringify(ownerEmail)};
+const RESOURCES = ${JSON.stringify(resources, null, 2)};
+const SECRET = crypto.randomBytes(32).toString('hex');
+// How long the server may take to boot — longer on a slow machine if needed.
+const BOOT_MS = Number(process.env.API_TEST_BOOT_MS || 60000);
+
+let server;
+let base = '';
+let auth = {};
+let output = '';
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+const b64 = (value) => Buffer.from(value).toString('base64url');
+function tokenFor(user) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64(JSON.stringify({ sub: user.id, email: user.email, role: user.role, iat: now, exp: now + 600 }));
+  const sig = b64(crypto.createHmac('sha256', SECRET).update(\`\${header}.\${payload}\`).digest());
+  return \`\${header}.\${payload}.\${sig}\`;
+}
+
+before(async () => {
+  const port = await freePort();
+  base = \`http://127.0.0.1:\${port}\`;
+  server = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: { ...process.env, PORT: String(port), API_JWT_SECRET: SECRET, NODE_NO_WARNINGS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  server.stderr.on('data', (chunk) => { output += chunk; });
+  const deadline = Date.now() + BOOT_MS;
+  for (;;) {
+    try {
+      const res = await fetch(\`\${base}/api/health\`);
+      if (res.ok) break;
+    } catch { /* not listening yet */ }
+    if (server.exitCode !== null || Date.now() > deadline) {
+      throw new Error(\`the server did not start: \${output.slice(-800)}\`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  // The server seeded its owner on boot; sign in as that owner with this run's key.
+  const { db } = await import(new URL('../db.js', import.meta.url));
+  const owner = db.userByEmail(OWNER);
+  assert.ok(owner, \`no owner account \${OWNER} after boot\`);
+  auth = { Authorization: \`Bearer \${tokenFor(owner)}\` };
+});
+
+after(() => {
+  if (server && server.exitCode === null) server.kill();
+});
+
+test('GET /api/health answers', async () => {
+  const res = await fetch(\`\${base}/api/health\`);
+  assert.equal(res.status, 200);
+});
+
+for (const resource of RESOURCES) {
+  const url = () => \`\${base}/api/\${resource.key}\`;
+
+  test(\`GET /api/\${resource.key} answers with its rows\`, async () => {
+    const res = await fetch(url(), { headers: auth });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const rows = Array.isArray(body) ? body : (body[resource.key] ?? body.rows ?? body.items);
+    assert.ok(Array.isArray(rows), \`no list of \${resource.key} in \${JSON.stringify(body).slice(0, 200)}\`);
+  });
+
+  test(\`GET /api/\${resource.key}/<missing id> answers 404\`, async () => {
+    const res = await fetch(\`\${url()}/2147483000\`, { headers: auth });
+    assert.equal(res.status, 404);
+  });
+
+  test(\`POST /api/\${resource.key} without an account answers 401\`, async () => {
+    const res = await fetch(url(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(res.status, 401);
+  });
+
+  if (resource.invalid) {
+    test(\`POST /api/\${resource.key} with a body its validation refuses answers 400\`, async () => {
+      const res = await fetch(url(), {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify(resource.invalid),
+      });
+      const body = await res.json().catch(() => ({}));
+      const created = body && (body.row || body.item);
+      if (res.status === 201 && created && created.id !== undefined) {
+        await fetch(\`\${url()}/\${created.id}\`, { method: 'DELETE', headers: auth });
+      }
+      assert.equal(res.status, 400, \`expected 400, got \${res.status}: \${JSON.stringify(body).slice(0, 200)}\`);
+    });
+  }
+}
+`;
 }
 
 /**
@@ -2580,7 +2755,17 @@ export class ApiProjectTool extends BaseTool {
          * nothing is added behind them.
          */
         const { declaredTables } = require('../../../core/design/declared-tables');
-        const declaredForRelation = declaredTables(request).length;
+        /**
+         * HIS TABLES, READ THE WAY THE DELIVERY GATE READS THEM (round 20).
+         *
+         * «لإدارة مصمم مستقل: إضافة وتعديل وحذف وبحث في الأعمال والعملاء
+         * والفواتير» lists the actions before the records. Read raw, «بحث في
+         * الأعمال» is one item and «الأعمال» never became a table — while the
+         * gate, reading the same sentence, demanded it. Every table reader
+         * below takes the same normalised list (core/design/listed-request).
+         */
+        const listedRequest = normaliseListedRequest(request).text;
+        const declaredForRelation = declaredTables(listedRequest).length;
         /**
          * AND THE REST OF THE SYSTEM'S TABLES.
          *
@@ -2606,7 +2791,7 @@ export class ApiProjectTool extends BaseTool {
         const { designDataModel } = require('../../../core/design/schema-designer');
         const designed = workflowApplication
             ? []
-            : await designDataModel(request, { onNote: (n: string) => term(n) });
+            : await designDataModel(listedRequest, { onNote: (n: string) => term(n) });
 
         /**
          * AND THE SYSTEM NAMES ITS OWN PRIMARY TABLE.
@@ -2639,7 +2824,7 @@ export class ApiProjectTool extends BaseTool {
          * built. A restaurant keeps `dishes` and its seed menu, because
          * `dishes` IS in the model.
          */
-        const primarySelection = selectApiPrimary(appKind, picked, designed, request);
+        const primarySelection = selectApiPrimary(appKind, picked, designed, listedRequest);
         const promoted = primarySelection.promoted;
         const resource = primarySelection.resource;
         const labelAr = primarySelection.labelAr;
@@ -2921,9 +3106,18 @@ export class ApiProjectTool extends BaseTool {
             // .auth-secret holds the token-signing key: it must never be committed.
             '.gitignore': 'node_modules\n.npm-cache\ndata.db\ndata.json\n.auth-secret\n',
         };
+        // The request asked for tests (eval round 15, P101 «اختبارات آلية لكل
+        // نقطة»): real endpoint tests that boot this server, and a test script.
+        if (testsRequestedIn(requestForReading)) {
+            const testedEntities = (Array.isArray(model) ? model : []).filter((entity: any) => String(entity?.key || '') !== resource);
+            files['tests/api.test.js'] = fileApiTestsJs(apiTestResources(feed ? null : { key: resource, columns }, testedEntities), ownerEmail);
+            files['package.json'] = filePackageJson(brand, true);
+            term(`api_project: the request asks for tests — wrote tests/api.test.js (${feed ? '' : `/api/${resource}, `}${testedEntities.map((entity: any) => `/api/${entity.key}`).join(', ') || 'no other tables'}) and «npm test»`);
+        }
         // Streamed to the Logs panel as each file lands — a backend build is
         // watched the same way a frontend build is.
         for (const [rel, body] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
             try {
                 broadcast({

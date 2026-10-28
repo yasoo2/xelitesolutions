@@ -65,14 +65,22 @@ describe('an element on a page is not a data service', () => {
         //  defect. Widening the strip until a real backend request slips
         //  through would leave him with a front end and nowhere to put a row —
         //  a worse failure than the one being fixed, and a silent one.
+        //  Eval round 19: «owns data» is read from what the request CLAIMS —
+        //  accounts, a database, a backend, two parties sharing rows — never
+        //  from a record noun. Suppliers and orders are records like patients;
+        //  the same sentence claiming a database is a system.
         for (const t of [
             'Build a bookings system with user accounts and an admin dashboard.',
-            'Build an inventory system with suppliers, orders and reports.',
+            'Build an inventory system with suppliers, orders and reports, backed by a database.',
             'Build a REST API and a database for a clinic, plus a front end.',
             'ابنِ نظام حجوزات فيه حسابات مستخدمين ولوحة تحكم',
-            'ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات',
+            'ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات مع قاعدة بيانات',
         ]) {
             expect({ t, scope: scope(t) }).toEqual({ t, scope: 'system' });
+        }
+        //  …and without a claim the same records are an application, never a page.
+        for (const t of ['Build an inventory system with suppliers, orders and reports.', 'ابنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات']) {
+            expect({ t, scope: scope(t) }).toEqual({ t, scope: 'app' });
         }
     });
 
@@ -118,8 +126,8 @@ describe('an element on a page is not a data service', () => {
         ].join(' ');
         expect(scope(request)).toBe('app');
 
-        // Real report functionality still owns data and must keep its backend.
-        expect(scope('Build an inventory system with suppliers, orders and reports.')).toBe('system');
+        // Real report functionality keeps its backend when the request claims one.
+        expect(scope('Build an inventory system with suppliers, orders and reports, backed by a database.')).toBe('system');
         expect(scope('Build a dashboard with user accounts and monthly reports.')).toBe('system');
     });
 });

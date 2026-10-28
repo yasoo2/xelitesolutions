@@ -1,8 +1,9 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
-import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage, probePathsFor, probeServedResources, requestCoverageRepairTask, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun } from '../../../core/quality/request-coverage';
 import { RepairTicketService } from '../../services/RepairTicketService';
 import { deliveryPartsForRun } from '../../../core/quality/delivery-parts';
+import { staticSiteRoot } from '../preview-site';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
@@ -680,11 +681,16 @@ function buildCliScaffold(request: string, projectName: string): {
     const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
 
     const scaffold = generateCliScaffold(lang, format, flat, projectName);
-    const { pkgJson, tsconfigJson, testFile, sampleFile, testFileName } = scaffold;
-    let { entryPoint, entryPointContent } = scaffold;
+    const { pkgJson, tsconfigJson, sampleFile } = scaffold;
+    let { entryPoint, entryPointContent, testFile, testFileName } = scaffold;
     let manifest = pkgJson;
     // A named entry replaces the default one wherever the manifest runs it.
     // Interpreted languages only: compiled targets keep their build layout.
+    // Only a SOURCE file in the program's language is an entry: «تكتب الأسطر
+    // الخاطئة في ملف errors.csv» names what the program writes, and taking it
+    // as the entry wrote the Python program into errors.csv, which the program
+    // then overwrote with its own output (eval round 19, P301). A named data
+    // file reaches the program through the request text, never the structure.
     const runner = CLI_RUNNER[lang];
     if (namedEntry && runner && namedEntry !== entryPoint) {
         try {
@@ -694,6 +700,18 @@ function buildCliScaffold(request: string, projectName: string): {
             manifest = JSON.stringify(pkg, null, 2);
             entryPoint = namedEntry;
         } catch { /* keep the default entry when the stock manifest is unreadable */ }
+    }
+    // A Python program's tests are named after it and run by the standard
+    // library: a test script that needs pytest made the verdict depend on the
+    // machine (this laptop has no pytest), not on the program (eval round 19).
+    if (lang === 'python') {
+        testFileName = `test_${path.basename(entryPoint, '.py').replace(/[^A-Za-z0-9_]/g, '_')}.py`;
+        testFile = generatePythonTest(entryPoint, format === 'csv');
+        try {
+            const pkg = JSON.parse(manifest);
+            pkg.scripts = { ...(pkg.scripts || {}), test: pythonTestCommand([testFileName], true) };
+            manifest = JSON.stringify(pkg, null, 2);
+        } catch { /* keep the stock manifest */ }
     }
 
     const asksForFilter = /\bfilter(?:s|ing)?\b|property\s*=\s*value|matching\s+entries|فلتر|تصفية|يصفي/i.test(request);
@@ -732,7 +750,7 @@ function buildCliScaffold(request: string, projectName: string): {
             description: `Write ${testFileName} for the requested behaviour`,
             args: {
                 path: testFileName,
-                description: cliTestBrief(entryPoint, runCommand, testCommand, request),
+                description: cliTestBrief(entryPoint, runCommand, testCommand, request, lang),
             },
         });
     }
@@ -843,15 +861,16 @@ function generateTypeScriptScaffold(request: string, projectName: string, isCsv:
 }
 
 function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
-    // The test runs with Python alone: the test brief asks for the standard
-    // library only, and pytest is a package nobody installs (eval P301: «No
-    // module named pytest» failed a finished program at delivery).
-    const pkgJson = npmManifest(projectName, request, 'main.py', { start: 'python main.py', test: 'python test.py' });
+    // The test runs with Python alone: a standard-library unittest suite named
+    // after the program (eval P301: «No module named pytest» failed a finished
+    // program at delivery). A Python library is not an npm package, so the
+    // manifest only says how the program starts and how its tests run.
+    const pkgJson = npmManifest(projectName, request, 'main.py', { start: 'python main.py', test: 'python -m unittest -v test_main.py' });
     const entryPoint = 'main.py';
     const entryPointContent = generatePythonEntry(request, isCsv);
-    const testFile = generatePythonTest();
+    const testFile = generatePythonTest('main.py', isCsv);
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test.py', toolchainFiles: {} };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test_main.py', toolchainFiles: {} };
 }
 
 function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -906,8 +925,7 @@ function generateTypeScriptEntry(request: string): string {
 
 function generatePythonEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        // The standard library reads CSV; pandas is a package nothing installs.
-        return `# ${request}\nimport csv\nimport json\nimport sys\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    \n    try:\n        with open(file_path, newline='', encoding='utf-8') as f:\n            rows = list(csv.DictReader(f))\n        print(json.dumps(rows, indent=2, ensure_ascii=False))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
+        return `# ${request}\nimport csv\nimport json\nimport sys\n\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>", file=sys.stderr)\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], newline='', encoding='utf-8') as f:\n            rows = list(csv.DictReader(f))\n    except OSError as e:\n        print(f"Error: {e}", file=sys.stderr)\n        sys.exit(1)\n    print(json.dumps(rows, indent=2, ensure_ascii=False))\n\n\nif __name__ == "__main__":\n    main()`;
     }
     return `# ${request}\nimport json\nimport sys\n\ndef filter_json(data, filter_str):\n    prop, value = filter_str.split('=')\n    if not prop or not value:\n        raise ValueError("Filter must be in format: property=value")\n    return [item for item in data if str(item.get(prop, '')) == value]\n\ndef main():\n    if len(sys.argv) < 3:\n        print("Usage: python main.py <json-file> <property=value>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    filter_str = sys.argv[2]\n    \n    try:\n        with open(file_path, 'r') as f:\n            data = json.load(f)\n        if not isinstance(data, list):\n            raise ValueError("JSON file must contain an array")\n        filtered = filter_json(data, filter_str)\n        print(json.dumps(filtered, indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
 }
@@ -943,8 +961,26 @@ function generateTypeScriptTest(): string {
     return `// Test for CLI filter tool\nconst { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node dist/index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
 }
 
-function generatePythonTest(): string {
-    return `# Test for CLI filter tool\nimport json\nimport subprocess\nimport os\n\ntest_file = os.path.join(os.path.dirname(__file__), 'sample.json')\ntest_data = [\n    {"name": "Alice", "age": 30, "city": "NYC"},\n    {"name": "Bob", "age": 25, "city": "LA"},\n    {"name": "Charlie", "age": 35, "city": "NYC"}\n]\nwith open(test_file, 'w') as f:\n    json.dump(test_data, f, indent=2)\n\nresult = subprocess.run(['python', 'main.py', 'sample.json', 'city=NYC'], capture_output=True, text=True)\nresult_data = json.loads(result.stdout.strip())\nassert len(result_data) == 2, f"Expected 2 results, got {len(result_data)}"\nassert result_data[0]['name'] == 'Alice', f"Expected Alice, got {result_data[0]['name']}"\nassert result_data[1]['name'] == 'Charlie', f"Expected Charlie, got {result_data[1]['name']}"\nprint("Test passed!")`;
+/** The stock program's own test, as a standard-library unittest case run against its entry. */
+function generatePythonTest(entry = 'main.py', isCsv = false): string {
+    const head = `import json\nimport os\nimport subprocess\nimport sys\nimport unittest\n\nHERE = os.path.dirname(os.path.abspath(__file__))\nENTRY = os.path.join(HERE, ${JSON.stringify(entry)})\n\n\n`;
+    const body = isCsv
+        ? `class CsvToJsonTest(unittest.TestCase):\n    def test_converts_every_row(self):\n        sample = os.path.join(HERE, 'sample.csv')\n        with open(sample, 'w', encoding='utf-8', newline='') as f:\n            f.write('name,city\\nAlice,NYC\\nBob,LA\\n')\n        result = subprocess.run([sys.executable, ENTRY, sample], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual(json.loads(result.stdout), [{'name': 'Alice', 'city': 'NYC'}, {'name': 'Bob', 'city': 'LA'}])\n`
+        : `class FilterToolTest(unittest.TestCase):\n    def test_filters_by_property(self):\n        sample = os.path.join(HERE, 'sample.json')\n        with open(sample, 'w', encoding='utf-8') as f:\n            json.dump([{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}], f, indent=2)\n        result = subprocess.run([sys.executable, ENTRY, sample, 'city=NYC'], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual([item['name'] for item in json.loads(result.stdout)], ['Alice', 'Charlie'])\n`;
+    return `${head}${body}\n\nif __name__ == '__main__':\n    unittest.main()\n`;
+}
+
+/**
+ * How a Python program's tests run. Tests Joe authors are standard-library
+ * unittest cases, run by the standard library on every machine. Tests the
+ * model planned may be pytest-style: pytest runs them where it is installed,
+ * and unittest is the fallback — so the command never needs a package the
+ * machine may not have, and an empty run still fails (Python ≥ 3.12 exits 5).
+ */
+export function pythonTestCommand(files: string[], authoredByJoe: boolean): string {
+    const list = files.join(' ');
+    if (authoredByJoe) return `python -m unittest -v ${list}`;
+    return `python -c "import importlib.util,subprocess,sys;m=['pytest','-v'] if importlib.util.find_spec('pytest') else ['unittest','-v'];sys.exit(subprocess.call([sys.executable,'-m',*m,*sys.argv[1:]]))" ${list}`;
 }
 
 function generateBashTest(): string {
@@ -967,6 +1003,25 @@ function generateJavaScriptTest(): string {
 
 function generateSampleData(): string {
     return `[\n  { "name": "Alice", "age": 30, "city": "NYC" },\n  { "name": "Bob", "age": 25, "city": "LA" },\n  { "name": "Charlie", "age": 35, "city": "NYC" }\n]`;
+}
+
+/**
+ * ⛔ ONE ANSWER TO «IS THIS A COMMAND-LINE PROGRAM?» — for the router and for
+ * the delivery gate alike.
+ *
+ * Eval round 19: deterministicPhasesFor built a CLI scaffold for «a Python CLI
+ * that reads invoices», «a bash script that backs up my PostgreSQL database»
+ * and P347 «… لـموقع أخبار», while requestedDeliveryRoles judged the same
+ * requests as a server (a claim noun) or an interface (a domain noun) — so a
+ * correct CLI could never be delivered. Both now ask this predicate: the
+ * object of the verb when the lexicon knows it, otherwise the command-line /
+ * CSV-input fallback for a request classified as file-level.
+ */
+export function routesToCliScaffold(request: string, artifact = requestedArtifact(request)): boolean {
+    if (artifact.kind === 'cli') return true;
+    if (artifact.kind) return false;
+    const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+    return PlanningEngine.classifyBuildScope(request) === 'page' && isCliRequestFn(request);
 }
 
 export function deterministicPhasesFor(request: string): {
@@ -1010,7 +1065,7 @@ export function deterministicPhasesFor(request: string): {
     // the verb (eval round 15: P333/P337, Arabic CLIs over «الزبائن» and
     // «الحجوزات», became api_project + react_project). An object the lexicon
     // does not know keeps the old command-line / CSV-input fallback for a page.
-    if (artifact.kind === 'cli' || (!artifact.kind && scope === 'page' && isCliRequestFn(request))) {
+    if (routesToCliScaffold(request, artifact)) {
         return buildCliScaffold(request, projectName);
     }
 
@@ -1221,7 +1276,12 @@ export function interactiveAppNeedsReactBuilder(request: string): boolean {
         // with the planner and its honest gates.
         const kind = detectAppKind(stripDeclaredOptions(text));
         if (!kind || (scope !== 'app' && scope !== 'system')) return false;
-        return /\b(?:web|browser|frontend|front[ -]?end|responsive|mobile|ui|interface|application|app|dashboard|portal|calculator|notes?|tracker|weather|shop|form|button|crud|tasks?)\b/i.test(text)
+        // Read from the artifact reader in both languages: an English-only
+        // word list sent «ابني متجر إلكتروني …» (P201) past this rescue while
+        // its English twin was caught (eval round 19).
+        const artifact = requestedArtifact(text);
+        return artifact.interfaceNamed
+            || ['app', 'store', 'booking', 'game'].includes(String(artifact.kind))
             || kind === 'productivity';
     } catch {
         return false;
@@ -1264,11 +1324,15 @@ export function planContainsUnrequestedApiBuilder(request: string, phases: any[]
 }
 
 const NEGATED_INTERFACE = /\b(?:no|without|not)\s+(?:(?:a|an|any)\s+)?(?:(?:web|user|graphical)\s+)?(?:front[- ]?end|ui|gui|user\s+interface|interface|pages?|screens?|dashboard)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:واجهة(?:\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية))?|صفحات|شاشات)/giu;
-const INTERFACE_FOR_PEOPLE = /\b(?:front[- ]?end|ui|gui|user\s+interface|web\s+(?:app|application|page|site|interface)|website|pages?|screens?|dashboard|admin\s+panel)\b|واجهة\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية)|صفحة|صفحات|شاشة|شاشات|لوحة\s+(?:تحكم|إدارة|ادارة)|موقع|تطبيق\s+ويب/iu;
-
-/** Does the request ask for something people look at — an interface, pages, a dashboard? */
+/**
+ * Does the request ask for something people look at — an interface, pages, a
+ * dashboard? Read by the artifact reader: the deliverable itself, or an
+ * interface named beside it. A keyword anywhere made «… لـموقع أخبار» (P147)
+ * an API WITH an unrequested React interface, and «… pages from a website» a
+ * CLI with an interface (eval round 19).
+ */
 export function requestNamesAnInterface(request: string): boolean {
-    return INTERFACE_FOR_PEOPLE.test(String(request || '').replace(NEGATED_INTERFACE, ' '));
+    return requestedArtifact(String(request || '')).interfaceNamed;
 }
 
 /**
@@ -1278,8 +1342,8 @@ export function requestNamesAnInterface(request: string): boolean {
  * ABOUT an API, and get their interface (eval round 15 review).
  */
 export function buildObjectIsAnApi(request: string): boolean {
-    const text = String(request || '');
-    return requestedArtifact(text).kind === 'api' && !requestNamesAnInterface(text);
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.kind === 'api' && !artifact.interfaceNamed;
 }
 
 /**
@@ -1289,6 +1353,65 @@ export function buildObjectIsAnApi(request: string): boolean {
  */
 export function requestDeclaresOwnBackend(request: string): boolean {
     return requestedArtifact(String(request || '')).needsServer;
+}
+
+/**
+ * A greenfield application that claims its own server, which
+ * deterministicPhasesFor builds as api_project + react_project. Eval round 20:
+ * P251 «… the owner sees all bookings» went to a browser-only plan, and the
+ * full-stack prompts to a 40–70 minute local model plan, while the builders
+ * that cover them were one branch away.
+ */
+export function serverClaimingApplication(request: string): boolean {
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.needsServer
+        && ['app', 'booking', 'store', 'system'].includes(String(artifact.kind))
+        && deterministicRescueAllowed(request);
+}
+
+const SERVER_SOURCE = /(?:^|\/)(?:server|backend|api)(?:\/|\.(?:[cm]?[jt]s|py)$)|(?:^|\/)(?:routes?|controllers?|endpoints)\/|(?:^|\/)(?:manage|wsgi|asgi)\.py$/i;
+const SERVER_FRAMEWORK = /["'](?:express|fastify|koa|hono|@nestjs\/core|@hapi\/hapi|restify)["']\s*:|\b(?:npm|pnpm|yarn)\s+(?:install|i|add)\b[^\n]*\b(?:express|fastify|koa|hono|@nestjs\/core)\b|\b(?:pip|pip3)\s+install\b[^\n]*\b(?:flask|fastapi|django)\b|^\s*(?:flask|fastapi|django)\b/im;
+
+/** Does this plan build a server: a service builder, server source, or a server framework it installs? */
+export function planBuildsAServer(request: string, phases: any[]): boolean {
+    const list = Array.isArray(phases) ? phases : [];
+    if (planContainsTool(list, 'api_project') || planContainsTool(list, 'scaffold_full_stack')) return true;
+    const tasks = list.flatMap((phase: any) => [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask ? [phase.verificationTask] : [])]);
+    const structured = tasks.flatMap((task: any) => {
+        const structure = task?.args?.structure && typeof task.args.structure === 'object' ? task.args.structure : {};
+        return Object.keys(structure).map(key => key.replace(/\\/g, '/'));
+    });
+    const paths = [...plannedFilePaths(list), ...structured];
+    if (paths.some(file => SERVER_SOURCE.test(file))) return true;
+    const texts = tasks.flatMap((task: any) => {
+        const args = task?.args || {};
+        const structure = args.structure && typeof args.structure === 'object' ? Object.values(args.structure) : [];
+        return [args.content, args.command, ...structure].filter(value => typeof value === 'string') as string[];
+    });
+    if (texts.some(text => SERVER_FRAMEWORK.test(text))) return true;
+    // The deliverable IS the service: its own source is the server.
+    return requestedArtifact(String(request || '')).kind === 'api' && paths.some(file => /\.(?:[cm]?[jt]s|py|go|rb|php)$/i.test(file));
+}
+
+/**
+ * The plan with the service its request claims, or null when it builds one
+ * already (or claims none). Never delivered browser-only: «… the owner sees
+ * all bookings» kept in each customer's browser is a front end with nowhere
+ * to put a row. The model's phases are kept; the service phase comes first
+ * because the interface depends on it.
+ */
+export function planWithRequestedService(request: string, phases: any[]): any[] | null {
+    const text = String(request || '');
+    const artifact = requestedArtifact(text);
+    if (!artifact.needsServer || routesToCliScaffold(text, artifact)) return null;
+    if (!Array.isArray(phases) || phases.length === 0 || planBuildsAServer(text, phases)) return null;
+    const service = {
+        phaseNumber: 1,
+        name: 'Data service and schema',
+        description: `The request claims its own server (${artifact.evidence.serverClaims.slice(0, 3).join('; ')}): build the data service the interface depends on.`,
+        tasks: [{ tool: 'api_project', description: `Backend and database for: ${text}`, args: { request: text } }],
+    };
+    return [service, ...phases.map((phase: any, index: number) => ({ ...phase, phaseNumber: index + 2 }))];
 }
 
 const PLANNED_SOURCE_WRITERS = new Set(['ai_write_file', 'write_file', 'file_write', 'create_file']);
@@ -1317,9 +1440,17 @@ function commonDirectory(files: string[]): string {
 }
 
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
-function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string): string {
+function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = ''): string {
+    const runner = lang === 'python'
+        ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
+        : lang === 'javascript' || lang === 'typescript'
+            ? 'Write it with node:test and node:assert, runnable by `node --test`. '
+            : lang === 'bash'
+                ? 'Write it as a bash script that exits non-zero on the first failed check. '
+                : '';
     return `A small self-contained test for the program in ${entry} (${request}). `
         + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
+        + runner
         + 'Use only the standard library of the language; no placeholder assertions.'
         + (testCommand ? ` The test is run as \`${testCommand}\`: it must itself run every check it defines and exit with a non-zero code when any fails.` : '');
 }
@@ -1362,18 +1493,19 @@ function paperPlanRunPhase(request: string, files: string[], tests: string[]): {
     const runCommand = `${runner} ${entry}`;
     const tasks: any[] = [];
     let testFiles = tests.filter(file => ext.test(file)).map(within);
-    const authored = testFiles.length ? ''
+    const authoredByJoe = !testFiles.length;
+    const authored = !authoredByJoe ? ''
         : lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
     if (authored) testFiles = [authored];
-    // Each test runs with the language alone, as generatePythonScaffold explains.
-    const testCommand = lang === 'python' ? testFiles.map(file => `python ${file}`).join(' && ')
+    // Each test runs with the language alone (pythonTestCommand explains Python's).
+    const testCommand = lang === 'python' ? pythonTestCommand(testFiles, authoredByJoe)
         : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
             : `node --test ${testFiles.join(' ')}`;
     if (authored) {
         tasks.push({
             task: `Write ${authored} for the requested behaviour`,
             tool: 'ai_write_file',
-            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, testCommand, request) },
+            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, testCommand, request, lang) },
         });
     }
     const name = (projectDir === '.' ? 'program' : path.posix.basename(projectDir)).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'program';
@@ -1526,31 +1658,42 @@ export function projectAuditRoots(sourceRoot: string, runtimeRoot: string): stri
 }
 
 /** Folders that hold no delivered page: installed packages, generated reports, tests. */
-const NOT_A_PAGE_FOLDER = /^(?:node_modules|coverage|__tests__|tests?|__mocks__)$/iu;
+const NOT_A_PAGE_FOLDER = /^(?:node_modules|coverage|htmlcov|playwright-report|test-results|storybook-static|__tests__|tests?|__mocks__)$/iu;
 
-/** The usual places a build leaves its page: the part's root, dist/, public/. */
-function usualPageDirectory(base: string): string {
-    for (const rel of ['', 'dist', 'public']) {
-        if (fs.existsSync(path.join(base, rel, 'index.html'))) return rel ? path.join(base, rel) : base;
-    }
-    return '';
+/**
+ * THE FOLDER A PART SERVES TO PEOPLE, or ''.
+ *
+ * Round 20 review: only index.html, dist/ and public/ counted, so a build-free
+ * site Joe writes into src/ (P001: src/index.html, served by project_run's
+ * strict loopback server from src/) was «no interface» — and blocked while it
+ * was live on screen. src/index.html and the static-site classifier the
+ * loopback server itself uses now count too.
+ */
+export function servedInterfaceDirectory(root: string): string {
+    const dir = String(root || '').trim();
+    if (!dir) return '';
+    if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+    if (fs.existsSync(path.join(dir, 'dist', 'index.html'))) return path.join(dir, 'dist');
+    if (fs.existsSync(path.join(dir, 'public', 'index.html'))) return path.join(dir, 'public');
+    if (fs.existsSync(path.join(dir, 'src', 'index.html'))) return path.join(dir, 'src');
+    try { return staticSiteRoot(dir, { servedAtRoot: true }) || ''; } catch { return ''; }
 }
 
 /**
- * The folder holding a part's delivered page, wherever the build put it.
+ * The folder holding a part's page wherever the build put it.
  *
- * Root, dist/ and public/ were the only places looked at, so a page written
- * beside its server (src/index.html served by src/server.js — P001) or in
- * client/, www/, static/ … counted as «no interface»: Browser QA never ran
- * and the run failed on a page that was on disk. The usual places still win;
- * after them the shallowest index.html in the part's own tree, never inside
- * installed packages, hidden folders, coverage reports or tests.
+ * A page in client/, www/, static/ … is no usual place, so after the served
+ * places above comes the shallowest index.html in the part's own tree, never
+ * inside installed packages, hidden folders, generated reports (coverage,
+ * htmlcov, playwright-report …) or tests. A page found only by this search is
+ * evidence of an interface only where the request asks for one: a report a
+ * test run left behind is not a delivered page (round 21 review).
  */
 export function deliveredPageDirectory(root: string, maxDepth = 3): string {
     const base = String(root || '').trim();
     if (!base) return '';
-    const usual = usualPageDirectory(base);
-    if (usual) return usual;
+    const served = servedInterfaceDirectory(base);
+    if (served) return served;
     let level = [base];
     for (let depth = 1; depth <= maxDepth && level.length; depth++) {
         const next: string[] = [];
@@ -1571,10 +1714,10 @@ export function deliveredPageDirectory(root: string, maxDepth = 3): string {
 
 export function projectAuditDirectory(roots: string[]): string {
     const clean = roots.map(value => String(value || '').trim()).filter(Boolean);
-    // Every part's usual places first, so a search never outranks them.
+    // Every part's served places first, so a search never outranks them.
     for (const root of clean) {
-        const page = usualPageDirectory(root);
-        if (page) return page;
+        const served = servedInterfaceDirectory(root);
+        if (served) return served;
     }
     for (const root of clean) {
         const page = deliveredPageDirectory(root);
@@ -1605,6 +1748,21 @@ function rootHasBuildStep(root: string, manifest: any): boolean {
 /** The request names a build as a step to run — never the imperative «Build …» or the noun in «بناء نظام». */
 const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
 
+/**
+ * ONE CONTRACT FOR EVERY DELIVERED ROOT — THE PRIMARY ONE INCLUDED.
+ *
+ * Round 20 review: the primary root kept a reader (asksForChecks) that matched
+ * every imperative «Build …», every «بناء» and every «tests», and then demanded
+ * BOTH a build and a test script. With one verdict that no later instrument can
+ * clear, that blocked every English «Build …» app whose manifest has no test
+ * script, and every API-only delivery (a plain Node server has no build step) —
+ * pushing a repair toward a fake «build» script. The rule now reads what the
+ * request asks of the part: a test script when the request asks for tests
+ * (testsRequestedIn — the same reader the record gate uses), a build script when
+ * the part really has a build step or the request names the build command.
+ * Placeholder scripts («exit 0», «true», «echo no tests») are refused on every
+ * root, always. `additionalRoot` only changes the wording.
+ */
 export function inspectProjectQualityContract(
     projectRoot: string,
     request = '',
@@ -1626,34 +1784,17 @@ export function inspectProjectQualityContract(
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
     }
-    if (opts.additionalRoot) {
-        /**
-         * ANOTHER DELIVERED PART ANSWERS ONLY FOR WHAT THE REQUEST ASKS OF IT.
-         *
-         * The primary root keeps its contract below. asksForChecks matches every
-         * imperative «Build …» and every «بناء», so applying it to the API root
-         * of a full-stack pair demanded a build script from a plain Node server
-         * that has no build step (round 15 review: all 25 English full-stack
-         * prompts). A test script is required when the request asks for tests;
-         * a build script when this part has a build step or the request names
-         * the command.
-         */
-        const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
-        if (opts.testsRequested === true && !has('test')) {
-            failures.push('package.json has no truthful test script although the request asks for tests');
-        }
-        if ((rootHasBuildStep(root, manifest) || BUILD_COMMAND_NAMED.test(String(request || ''))) && !has('build')) {
-            failures.push('package.json has no truthful build script although this part has a build step');
-        }
-        return { ok: failures.length === 0, failures };
+    const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
+    const testsAsked = typeof opts.testsRequested === 'boolean' ? opts.testsRequested : !!testsRequestedIn(String(request || ''));
+    const where = opts.additionalRoot ? 'this part' : 'the project';
+    if (testsAsked && !has('test')) {
+        failures.push(`package.json has no truthful test script although the request asks for tests (${where})`);
     }
-    const asksForChecks = /(?:\b(?:npm\s+)?(?:run\s+)?(?:build|test|tests)\b|بناء|اختبار)/iu.test(String(request || ''));
-    if (asksForChecks) {
-        for (const name of ['build', 'test']) {
-            if (typeof scripts[name] !== 'string' || !scripts[name].trim()) {
-                failures.push(`package.json has no truthful ${name} script although the request requires it`);
-            }
-        }
+    const buildNamed = BUILD_COMMAND_NAMED.test(String(request || ''));
+    if ((rootHasBuildStep(root, manifest) || buildNamed) && !has('build')) {
+        failures.push(buildNamed
+            ? `package.json has no truthful build script although the request names the build (${where})`
+            : `package.json has no truthful build script although ${where} has a build step`);
     }
     return { ok: failures.length === 0, failures };
 }
@@ -1755,17 +1896,67 @@ export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set(['api_project', 'react_proje
  */
 export function requestedDeliveryRoles(request: string): { service: boolean; interface: boolean; program: boolean } {
     const text = String(request || '');
-    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
-    const webWord = requestNamesAnInterface(text) || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
-    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    const artifact = requestedArtifact(text);
+    // What the router builds as a command-line program is proven as one, by
+    // its own tests — whatever data it reads («invoices», «a PostgreSQL
+    // database») or site it reads from (eval round 19). Only an interface
+    // named beside it adds a second instrument.
+    if (routesToCliScaffold(text, artifact)) return { service: false, interface: artifact.interfaceNamed, program: true };
     const apiWithApp = /\bwith\s+(?:an?\s+)?(?:[\w./+-]+\s+){0,2}api\b|(?:مع|و)\s*واجهة\s+(?:برمجية|برمجة|خلفية)/iu.test(text);
-    // The API object comes from the one artifact reader the router also uses
-    // (requestedArtifact): roles and routing can never disagree on it.
-    const service = requestedArtifact(text).kind === 'api' || requestDeclaresOwnBackend(text) || apiWithApp;
-    let cli = false;
-    try { cli = require('../../../core/design/app-blueprints').isCliRequest(text) === true; } catch { cli = false; }
-    const iface = !(negatedInterface && !webWord) && !buildObjectIsAnApi(text) && !(cli && !webWord);
-    return { service, interface: iface, program: cli && !webWord && !service };
+    // The API object and the server claims come from the one artifact reader
+    // the router also uses: roles and routing can never disagree on them.
+    const service = artifact.kind === 'api' || artifact.needsServer || apiWithApp;
+    if (artifact.kind === 'api') return { service, interface: artifact.interfaceNamed, program: false };
+    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
+    const webWord = artifact.interfaceNamed || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
+    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    return { service, interface: !(negatedInterface && !webWord), program: false };
+}
+
+/**
+ * Does the confirmed live address serve a page at «/»? A server-rendered or
+ * framework interface (Next.js, SvelteKit, Flask templates) has no index.html
+ * on disk; the page it answers is the evidence. Loopback only (project_run's
+ * own address), GET only, bounded by project_run's own answer timeout.
+ */
+export async function servesHtmlAtRoot(liveUrl: unknown): Promise<boolean> {
+    const raw = String(liveUrl || '').trim();
+    if (!raw) return false;
+    let url: URL;
+    try { url = new URL('/', raw); } catch { return false; }
+    if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)) return false;
+    let timeoutMs = 2500;
+    try { timeoutMs = Number(require('./ProjectRunTool').HTTP_ANSWER_TIMEOUT_MS) || 2500; } catch { /* default */ }
+    const http = require('http');
+    return await new Promise<boolean>(resolve => {
+        const req = http.get(url, { timeout: timeoutMs, headers: { Accept: 'text/html' } }, (res: any) => {
+            const ok = Number(res.statusCode) >= 200 && Number(res.statusCode) < 300 && /text\/html/i.test(String(res.headers?.['content-type'] || ''));
+            res.resume();
+            resolve(ok);
+        });
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', () => resolve(false));
+    });
+}
+
+/**
+ * A REQUEST THAT NEEDS A SERVER IS NOT DELIVERED BY A BROWSER-ONLY BUILD.
+ *
+ * Round 20 review (P251): «customers … book …, and the owner sees all bookings»
+ * claims data one party writes and another reads — only a server keeps it. A
+ * React-only plan built it in the browser: each customer's booking lived in
+ * that customer's browser, the owner could never see one, and nothing at
+ * delivery measured the missing server. Returns the failure naming the server
+ * claims, or '' when no server was asked for, an api_project part was bound,
+ * or a delivered root registers server routes.
+ */
+export function missingRequestedServer(request: string, roots: string[], parts: Array<{ tool?: string }>): string {
+    if (!requestedDeliveryRoles(request).service) return '';
+    if ((Array.isArray(parts) ? parts : []).some(part => String(part?.tool || '') === 'api_project')) return '';
+    if (collectServerEvidence(roots, []).routes.length > 0) return '';
+    let claims: string[] = [];
+    try { claims = requestedArtifact(String(request || '')).evidence.serverClaims || []; } catch { claims = []; }
+    return `the request needs a server (${claims.join(', ') || 'an API it serves'}), but no delivered part registers server routes`;
 }
 
 export function planTouchesRunnable(phases: unknown): boolean {
@@ -2132,8 +2323,13 @@ export class ProjectPipelineTool implements ToolDefinition {
         // CLI/CSV requests are file-level projects, not web apps. They should
         // use the deterministic scaffold path even without an explicit schema.
         const isCliOrCsv = isCliRequestFn(productRequest);
+        // A greenfield application that claims its own server is built by
+        // api_project + react_project; the stock-coverage check below still
+        // decides whether a model plans it instead (eval round 20, P251/P151).
+        const claimsOwnServer = !hasExplicitRecordSchema(productRequest) && !deterministicWorkflow && !isCliOrCsv
+            && serverClaimingApplication(productRequest);
         const stockPhases = isGreenfield
-            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv)
+            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv || claimsOwnServer)
             ? deterministicPhasesFor(productRequest)
             : null;
         /**
@@ -2236,10 +2432,14 @@ export class ProjectPipelineTool implements ToolDefinition {
             say(pick(isAr,
                 deterministicWorkflow
                     ? `[pipeline] الطلب يصرّح بسير عمل مترابط — أبني عقد النظام الكامل مباشرة: ${hisOwnSchema.reason}`
-                    : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
+                    : claimsOwnServer
+                        ? `[pipeline] الطلب يطلب خادمه الخاص وتغطيه أدوات البناء — أبني الخدمة والواجهة مباشرة: ${hisOwnSchema.reason}`
+                        : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
                 deterministicWorkflow
                     ? `[pipeline] the request declares a coordinated workflow — building its full-system contract directly: ${hisOwnSchema.reason}`
-                    : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
+                    : claimsOwnServer
+                        ? `[pipeline] the request claims its own server and the builders cover it — building its service and interface directly: ${hisOwnSchema.reason}`
+                        : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
             hisPlan = {
                 ok: true,
                 output: {
@@ -2420,6 +2620,22 @@ export class ProjectPipelineTool implements ToolDefinition {
                         logs: boundedPipelineLogs(plannerResult?.logs),
                     };
                 }
+            }
+        }
+
+        // Whatever planned it — the model, a rescue or the stock path — a plan
+        // for a request that claims its own server builds that server: the
+        // model's phases are kept and the service phase is added before them
+        // (eval round 20, P251: a browser-only plan for «the owner sees all
+        // bookings»).
+        if (isGreenfield && Array.isArray(plannerResult?.output?.phases) && plannerResult.output.phases.length > 0) {
+            const withService = planWithRequestedService(productRequest, plannerResult.output.phases);
+            if (withService) {
+                say(pick(isAr,
+                    '[pipeline] الطلب يطلب خادماً والخطة لا تبني واحداً — أضفتُ مرحلة الخدمة قبل مراحلها',
+                    '[pipeline] the request claims a server and the plan builds none — adding the service phase before its phases'));
+                plannerResult.output.phases = withService;
+                plannerResult.output.totalPhases = withService.length;
             }
         }
 
@@ -2648,16 +2864,26 @@ export class ProjectPipelineTool implements ToolDefinition {
         const deliveryRoles = requestedDeliveryRoles(productRequest);
         // A program asked for on its own (a CLI, a script) has no URL: its own
         // passing test run proves it runs, not project_run.
-        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service;
         const sessionPartsKey = String(context?.sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
         /** Every root a phase bound in this run, plus the roots of the last live run. */
         const deliveredRoots = (extra: string[] = []) => Array.from(new Set([
             ...deliveryPartsForRun(sessionPartsKey, context?.runId).map(part => part.root),
             ...extra,
         ].map(root => String(root || '').trim()).filter(root => root && fs.existsSync(root)).map(root => path.resolve(root))));
+        const programRootCandidate = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+        // Round 20 review: a «tool» the router read as a CLI but that came out
+        // with a page is judged like any interface — live run, quality, scope,
+        // records and Browser QA — never by its own test run alone.
+        const programServesAPage = deliveredRoots([programRootCandidate]).some(root => !!servedInterfaceDirectory(root));
+        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && !programServesAPage;
+        if (deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && programServesAPage) {
+            appendBoundedPipelineLog(logs, '[pipeline] the program serves a page, so it is proven live like an interface, not by its own tests alone');
+        }
         let requestCoverage: RequestCoverageReport | undefined;
         let requestCoverageFailed = false;
-        let deliveryRequired: DeliveryInstrument[] = [];
+        // A program's own test run proves it runs; its manifest must still pass
+        // the same contract as any delivery (a «test»: «exit 0» proves nothing).
+        let deliveryRequired: DeliveryInstrument[] = programOnly ? ['quality'] : [];
         const syncFromLedger = (final = false) => {
             const verdict = deliveryVerdict({
                 phaseVerified: verified,
@@ -2676,8 +2902,13 @@ export class ProjectPipelineTool implements ToolDefinition {
             finalHonestBlocker = honestBlocker || blocking;
             liveRunError = blocking
                 ? [verdict.firstError, ...liveRunNotes].filter(Boolean).join('; ').slice(0, 900)
-                : (final && verdict.unread.length && !verdict.verified)
-                    ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}`.slice(0, 900)
+                : (final && (verdict.unread.length || verdict.unverified.length) && !verdict.verified)
+                    // Unread: his words produced no record. Unverified: read, but no
+                    // instrument could measure it — never told as «could not be read».
+                    ? [
+                        verdict.unread.length ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}` : '',
+                        verdict.unverified.length ? `not measured, so their delivery is not verified: ${verdict.unverified.join('; ')}` : '',
+                    ].filter(Boolean).join('; ').slice(0, 900)
                     : '';
             return verdict;
         };
@@ -2694,18 +2925,27 @@ export class ProjectPipelineTool implements ToolDefinition {
          * whenever project_run confirmed a live URL — even when the quality or
          * scope gate already failed — so missing records are always named.
          */
+        /** One executed run of his tests per unchanged tree: a re-measurement after an edit re-runs them, an idle one does not. */
+        const requestedTestRuns = new Map<string, RequestedTestsRun>();
         const measureRequestedRecords = async (runRes: any, roots: string[]) => {
             ledger.forget('coverage');
-            const backendRequested = requestDeclaresOwnBackend(productRequest);
+            ledger.forget('tests');
+            // The gate's own fact — a server the request asks for (a backend, a
+            // database, sign-in, accounts, roles, an API) — not every claim the
+            // router reads as needing a server (round 20: an invoice in a list of
+            // records made P080's actions «unread records»).
+            const backendRequested = backendRequestedFor(productRequest);
             const records = requestedRecords(productRequest, { backendRequested });
-            if (!records.entities.length && !records.unread.length) {
+            if (!records.entities.length && !records.unread.length && !(records.capabilities || []).length && !records.testsRequested) {
                 requestCoverage = undefined;
                 return;
             }
-            const deliveredRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), ...roots].filter(Boolean)));
+            const runRoot = String(runRes?.output?.cwd || '').trim();
+            const deliveredRoots = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
             const evidence = collectServerEvidence(deliveredRoots, records.entities);
             const servedApplies = backendRequested || evidence.routes.length > 0;
-            let probe: Record<string, 'served' | 'absent' | 'inconclusive'> | undefined;
+            let probe: Record<string, ProbeResult> | undefined;
+            const probeDetails: Record<string, string[]> = {};
             const base = verifiedLiveUrl(ledger.all());
             if (servedApplies && base && records.entities.length) {
                 const bound = bindRunCancellation(context?.cancellation, context?.signal);
@@ -2713,20 +2953,51 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // project_run's own bound for one HTTP answer — no new constant.
                     const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
                     probe = await probeServedResources(base, evidence.prefixes,
-                        records.entities.map(record => ({ key: record.key, ids: identifiersFor(record, evidence.labelKeys[record.key] || []) })),
-                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500 });
+                        records.entities.map(record => {
+                            const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
+                            // The exact path each record's own route registers — never a guessed prefix.
+                            return { key: record.key, ids, paths: probePathsFor(evidence, ids) };
+                        }),
+                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
                 } finally {
                     bound.dispose();
                 }
             }
-            requestCoverage = judgeRequestCoverage({ records, evidence, probe, backendRequested });
+            // «Tested» means his tests RAN and passed (round 20: a word in a
+            // skipped test, or a file no test script collects, counted as tested).
+            let testsRun: RequestedTestsRun | undefined;
+            if (records.testsRequested) {
+                const testsRoot = requestedTestsRoot(evidence, runRoot, deliveredRoots);
+                const fingerprint = `${testsRoot}|${testTreeFingerprint(testsRoot, evidence)}`;
+                testsRun = requestedTestRuns.get(fingerprint);
+                if (!testsRun) {
+                    say(pick(isAr, '▶️ أشغّل الاختبارات التي طلبتها لأثبت أنها تنجح…', '▶️ Running the tests you asked for, to prove they pass…'));
+                    testsRun = await runRequestedTests(testsRoot, (tool, input) =>
+                        executeTool(tool, input, { ...(context || {}), language: isAr ? 'ar' : 'en' }));
+                    requestedTestRuns.set(fingerprint, testsRun);
+                }
+                deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, 'tests']));
+                // No runner Joe knows: 'tests' stays required and unmeasured — not verified, never passed.
+                if (!testsRun.noRunner) {
+                    ledger.record({
+                        instrument: 'tests',
+                        target: testsRun.root,
+                        ok: testsRun.passed,
+                        error: testsRun.passed ? undefined
+                            : `the requested tests ${testsRun.ran ? 'did not pass' : 'could not run'} in ${path.basename(testsRun.root || '.')}: ${String(testsRun.error || '').slice(0, 400)}`,
+                    });
+                }
+            }
+            requestCoverage = judgeRequestCoverage({ records, evidence, probe, probeDetails, backendRequested, testsRun });
+            const unverified = coverageUnverified(requestCoverage);
             ledger.record({
                 instrument: 'coverage',
                 ok: requestCoverage.missing.length === 0,
                 error: requestCoverage.missing.length ? coverageError(requestCoverage) : undefined,
                 unread: requestCoverage.unread,
+                unverified,
             });
-            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} tests=${requestCoverage.testsRequested ? 'requested' : 'not requested'}`);
+            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} unverified=${unverified.length} capabilities=${(requestCoverage.capabilities || []).length} tests=${testsRun ? (testsRun.passed ? 'passed' : testsRun.ran ? 'failed' : testsRun.noRunner ? 'no runner' : 'not run') : 'not requested'}`);
         };
         /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
         let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
@@ -2778,11 +3049,19 @@ export class ProjectPipelineTool implements ToolDefinition {
         };
         /** A program's proof: its own tests, run through quality_run on the project root. */
         const recordProgramProof = async () => {
-            const programRoot = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+            const programRoot = programRootCandidate;
             if (!programRoot || !fs.existsSync(programRoot)) {
                 ledger.record({ instrument: 'program', ok: false, error: 'no program root was bound, so its own tests could not be run' });
                 return syncFromLedger();
             }
+            // The same contract the live path applies — placeholders refused,
+            // the scripts the request asks for present — measured before the run.
+            const quality = inspectProjectQualityContract(programRoot, productRequest);
+            ledger.record({
+                instrument: 'quality',
+                ok: quality.ok,
+                error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
+            });
             say(pick(isAr, '▶️ أشغّل اختبارات البرنامج نفسه لأثبت أنه يعمل…', '▶️ Running the program\'s own tests to prove it works…'));
             try {
                 const run = await executeTool('quality_run', { path: programRoot, tasks: ['test'] }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
@@ -3317,9 +3596,20 @@ export class ProjectPipelineTool implements ToolDefinition {
          * failure of its own, named.
          */
         const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
-        const interfaceDelivered = interfaceRoots.some(root => Boolean(deliveredPageDirectory(root)));
+        // A request that needs a server is never delivered by a browser-only build.
+        if (verified && !programOnly) {
+            const serverGap = missingRequestedServer(productRequest, interfaceRoots, deliveryPartsForRun(sessionPartsKey, context?.runId));
+            if (serverGap) {
+                ledger.record({ instrument: 'service', ok: false, error: serverGap });
+                syncFromLedger();
+            }
+        }
+        const interfaceDelivered = interfaceRoots.some(root => !!servedInterfaceDirectory(root))
+            || String(liveRunResult?.output?.kind || '') === 'static-site'
+            || await servesHtmlAtRoot(verifiedLiveUrl(ledger.all()))
+            || (deliveryRoles.interface && interfaceRoots.some(root => !!deliveredPageDirectory(root)));
         if (!interfaceDelivered && verifiedLiveUrl(ledger.all()) && deliveryRoles.interface) {
-            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no index.html)' });
+            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no page is served at the live address)' });
             syncFromLedger();
         }
         // Browser QA never runs to "rescue" an outcome already measured as
@@ -3662,7 +3952,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 : finalVerified ? 'delivered'
                     // A requested record measured missing blocks — it is never a partial delivery.
                     : finalDeliveryVerdict.coverageFailed ? 'blocked'
-                    : (finalDeliveryVerdict.unread.length && !finalDeliveryVerdict.failures.length) ? 'not_verified'
+                    : ((finalDeliveryVerdict.unread.length || finalDeliveryVerdict.unverified.length) && !finalDeliveryVerdict.failures.length) ? 'not_verified'
                         : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
             finalVerified,
@@ -4072,23 +4362,38 @@ export class ProjectPipelineTool implements ToolDefinition {
         if (requestCoverage) {
             // What he named, record by record. «0 checked» is said as such —
             // never as «all built».
-            const mark = (value: boolean | null, yes: string, no: string) => value === null ? '' : value ? yes : no;
+            // «not measured» is said as such — a record the probe could not see is never counted as proven.
+            const applies = (value: boolean | null, measuredHere: boolean) => measuredHere || value !== null;
+            const mark = (value: boolean | null, measuredHere: boolean, yes: string, no: string) => !applies(value, measuredHere) ? ''
+                : value === null ? (ar ? `${yes}: لم يُقَس` : `${yes}: not measured`) : value ? yes : no;
+            const unverifiedCount = (requestCoverage.unverified || []).length;
             lines.push('');
             lines.push(ar
-                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} مثبتة`
-                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length}/${requestCoverage.checked} proven`);
+                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} مثبتة`
+                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} proven`);
             for (const record of requestCoverage.records.slice(0, 24)) {
                 const facts = [
-                    mark(record.served, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
-                    mark(record.tested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
-                    mark(record.present, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
+                    mark(record.served, requestCoverage.servedApplies, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
+                    mark(record.tested, !!requestCoverage.testsRequested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
+                    mark(record.present, !requestCoverage.servedApplies, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
                 ].filter(Boolean).join(ar ? '، ' : ', ');
                 lines.push(`- ${record.ar && record.ar !== record.key ? `${record.ar} (${record.key})` : record.key}: ${facts}`);
+            }
+            if (requestCoverage.testsRun) {
+                const run = requestCoverage.testsRun;
+                lines.push(ar
+                    ? `- اختباراتك (${run.runner || 'tests'}): ${run.passed ? 'شُغّلت ونجحت' : run.ran ? 'شُغّلت وفشلت' : 'لم تُشغَّل'}`
+                    : `- Your tests (${run.runner || 'tests'}): ${run.passed ? 'ran and passed' : run.ran ? 'ran and failed' : 'did not run'}`);
             }
             if (requestCoverage.unread.length) {
                 lines.push(ar
                     ? `- لم أستطع قراءتها كسجلات، فلم أتحقق من تسليمها: ${requestCoverage.unread.join('، ')}`
                     : `- Could not read these as records, so their delivery is not verified: ${requestCoverage.unread.join(', ')}`);
+            }
+            if ((requestCoverage.capabilities || []).length) {
+                lines.push(ar
+                    ? `- قاعدة طلبتها ولم يقِسها فحص حي بعد، فلم أتحقق منها: ${(requestCoverage.capabilities || []).join('، ')}`
+                    : `- A rule you stated that no live check measures yet, so it is not verified: ${(requestCoverage.capabilities || []).join(', ')}`);
             }
         }
 

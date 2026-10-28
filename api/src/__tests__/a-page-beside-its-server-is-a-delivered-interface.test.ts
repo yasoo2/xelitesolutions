@@ -51,6 +51,11 @@ describe('a page beside its server is a delivered interface', () => {
         write('.cache/index.html');
         write('tests/fixtures/index.html');
         write('__tests__/index.html');
+        // Reports a test or coverage run leaves behind (round 21 review).
+        write('htmlcov/index.html');
+        write('playwright-report/index.html');
+        write('test-results/index.html');
+        write('storybook-static/index.html');
         expect(deliveredPageDirectory(tmp)).toBe('');
         expect(projectAuditDirectory([tmp])).toBe(tmp);
     });
@@ -63,8 +68,8 @@ describe('a page beside its server is a delivered interface', () => {
         expect(projectAuditDirectory([api, react])).toBe(path.join(react, 'public'));
     });
 
-    test('the interface gate asks the same question the audit does', () => {
+    test('a page found only by searching the tree counts where the request asks for an interface', () => {
         const src = fs.readFileSync(path.join(__dirname, '../modules/tools/definitions/ProjectPipelineTool.ts'), 'utf8');
-        expect(src).toMatch(/const interfaceDelivered = interfaceRoots\.some\(root => Boolean\(deliveredPageDirectory\(root\)\)\);/);
+        expect(src).toMatch(/\|\| \(deliveryRoles\.interface && interfaceRoots\.some\(root => !!deliveredPageDirectory\(root\)\)\);/);
     });
 });

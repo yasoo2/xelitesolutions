@@ -13,6 +13,7 @@ import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../
 import { requestTextForPrompt, transportRequestText, truncateAuxiliaryText, truncateEvidenceJsonText, DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { brandFrom } from '../../../core/design/page-head';
 import { jsonReplyCandidates } from '../../../shared/utils/json';
+import { hasBuildVerb, requestedArtifact } from '../../../core/design/requested-artifact';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
 
@@ -2010,10 +2011,24 @@ ${this.scopePlanningInstructions(projectDescription)}`;
     private constrainedFrontendPlan(projectDescription: string, evidence?: EngineeringEvidence): any | null {
         const request = String(projectDescription || '').trim();
         const lower = request.toLowerCase();
-        const createsFrontend = /\b(?:create|build|make|design|implement)\b/i.test(request)
-            && /\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form|converter)\b/i.test(request);
+        /**
+         * Read from the artifact reader, in both languages (eval round 19):
+         * an English-only verb and noun list sent «ابني متجر إلكتروني …» (P201)
+         * and «اعمل موقع تعريفي …» (P001) to a 40–70 minute model plan while
+         * their English twins took this instant path; and a booking app whose
+         * owner sees every customer's booking (P251, a server claim) got a
+         * browser-only plan where each booking would live in one browser.
+         */
+        const artifact = requestedArtifact(request);
+        const frontendKind = ['app', 'store', 'booking', 'game', 'bot', 'report', 'page'].includes(String(artifact.kind));
+        const unknownObjectFrontend = !artifact.kind
+            && (/\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form|converter|calculator|timer)\b/i.test(request)
+                || /(?<![\p{L}\p{N}_])(?:محول|حاسب[ةه]|متتبع|مؤقت|نموذج)(?![\p{L}\p{N}_])/u.test(request));
+        const createsFrontend = hasBuildVerb(request) && (frontendKind || unknownObjectFrontend);
         const publicDataCapability = /\b(?:weather|forecast|currency|exchange\s+rate|forex|ip\s+(?:information|info|location|geolocation))\b|طقس|حرارة|تحويل\s+عمل|سعر\s+الصرف|معلومات\s+.*ip/iu.test(request);
-        const externalOrStateful = /\b(?:backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request)
+        const externalOrStateful = artifact.needsServer
+            || /\b(?:backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request)
+            || /(?:دفع\s+(?:إلكتروني|الكتروني)|بوابة\s+دفع|بطاقة\s+ائتمان)/u.test(request)
             || (/\bapi\b/i.test(request) && !publicDataCapability);
         const existingWorkspace = evidence?.mode === 'existing_workspace'
             || Boolean(evidence?.selectedProject?.root)
@@ -2022,6 +2037,42 @@ ${this.scopePlanningInstructions(projectDescription)}`;
 
         const scope = this.requirementScope(request);
         const projectName = brandFrom(request, /[؀-ۿ]/u.test(request)) || 'Requested web application';
+        /**
+         * One document is built by the page builder in both languages — the
+         * same decision deterministicPhasesFor makes — never React in one
+         * language and the page builder in the other (25/25 English landings
+         * went to React, 25/25 Arabic ones to the page builder). A page head
+         * with records to manage is an application and stays on React below,
+         * and an object the lexicon does not know («a currency converter»)
+         * keeps the React plan it always had.
+         */
+        let buildScope = 'app';
+        try { buildScope = require('../../../core/orchestrator/PlanningEngine').PlanningEngine.classifyBuildScope(request); } catch { /* React below */ }
+        if (artifact.kind === 'page' && buildScope === 'page') {
+            return {
+                projectName,
+                projectVibe: 'Constrained single-page delivery',
+                totalPhases: 1,
+                estimatedDuration: 'bounded local page build and browser verification',
+                dependencies: {},
+                derivedFromExplicitRequest: true,
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Page',
+                    description: 'Technical stack decision: use the registered page builder because the request asks for one document, not an application or a service; build and verify it locally.',
+                    requirementsCovered: scope.targets.map((_, index) => `R${index + 1}`),
+                    deliverables: ['A responsive page built from the request.'],
+                    estimatedTime: 'bounded by local page build and browser QA',
+                    tasks: [{
+                        task: 'Build the requested page from the user request.',
+                        tool: 'web_page_builder',
+                        args: { request },
+                        priority: 'high',
+                        realisticMinutes: 10,
+                    }],
+                }],
+            };
+        }
         return {
             projectName,
             projectVibe: 'Constrained self-contained frontend delivery',

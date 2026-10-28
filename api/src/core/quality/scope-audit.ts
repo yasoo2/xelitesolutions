@@ -35,7 +35,17 @@ export interface Capability {
     /** The code shows it. */
     evidence: RegExp;
     /** Optional shape-aware evidence for capabilities whose runtime form matters. */
-    evidenceCheck?: (source: string) => boolean;
+    evidenceCheck?: (source: string, ctx?: ScopeEvidenceContext) => boolean;
+}
+
+/** What the delivered tree is, for evidence that depends on who uses the capability. */
+export interface ScopeEvidenceContext {
+    /**
+     * The delivered tree has no interface for people — an API-only delivery —
+     * so a service's own route handlers are the evidence for search, filtering
+     * and sorting. With an interface, the interface must offer them.
+     */
+    serviceOnly?: boolean;
 }
 
 /**
@@ -98,70 +108,206 @@ export function hasFormValidationEvidence(source: string): boolean {
  * established names as a supporting alternative, or require an interaction
  * shape paired with state, a handler, or a data fetch/update.
  */
-export function hasSearchEvidence(source: string): boolean {
+export function hasSearchEvidence(source: string, ctx?: ScopeEvidenceContext): boolean {
     return /setQuery|searchTerm|onSearch|\[query,/i.test(source)
         || (SEARCH_INTERACTION.test(source) && SEARCH_STATE_OR_IO.test(source))
-        || hasServiceSearchEvidence(source);
+        || (ctx?.serviceOnly === true && hasServiceSearchEvidence(source));
 }
 
 /**
- * SCOPE EVIDENCE BY ROLE (round 15 review, C4).
+ * SCOPE EVIDENCE BY ROLE (round 15 review, C4) — AND PER ROUTE HANDLER (round 20).
  *
  * Search, filtering and sorting were proven only by UI state (setQuery,
  * xFilter, sortBy). An API that really searches — a route reading
- * `req.query.q` and narrowing its rows — was reported «missing: search»,
- * so an API-only request asking for search could never be delivered. A
- * service proves these by the query parameters its routes read AND an
- * operation that uses them; a bare `app.get('/api/items')` proves nothing.
+ * `req.query.q` and narrowing its rows — was reported «missing: search», so
+ * an API-only request asking for search could never be delivered.
+ *
+ * Round 20 review: the first version tested the parameter name and «some
+ * .filter( somewhere» separately over the whole tree read as one string. A
+ * route that logged `req.query.q` and returned every row, beside any delete
+ * handler calling `.filter(`, counted as search — and it was ORed into the UI
+ * checks, so a store whose interface had no search box passed. Now a
+ * parameter counts only when, inside the SAME route handler, it is used by the
+ * operation that narrows (a .filter/.includes callback, a WHERE/LIKE the value
+ * is bound to, a comprehension's condition) or orders the rows — and only for
+ * an API-only delivery (ScopeEvidenceContext.serviceOnly).
  */
 const SEARCH_PARAMS = new Set(['q', 'query', 'search', 'term', 'keyword', 'keywords', 's']);
 const SORT_PARAMS = new Set(['sort', 'sortby', 'sort_by', 'order', 'orderby', 'order_by', 'dir', 'direction']);
 const PAGE_PARAMS = new Set(['page', 'limit', 'offset', 'per_page', 'perpage', 'pagesize', 'page_size', 'cursor', 'skip', 'take']);
+/** A parameter read generically (Object.entries(req.query)): any field the client names. */
+const ANY_FIELD = '*';
+
+/** The text of the call whose «(» is at `open`, through its matching «)» — strings and comments skipped. */
+function callText(src: string, open: number): string {
+    let depth = 0;
+    for (let i = open; i < src.length; i++) {
+        const c = src[i];
+        if (c === '"' || c === "'" || c === '`') {
+            for (i++; i < src.length && src[i] !== c; i++) if (src[i] === '\\') i++;
+            continue;
+        }
+        if (c === '/' && src[i + 1] === '/') { const nl = src.indexOf('\n', i); i = nl < 0 ? src.length : nl; continue; }
+        if (c === '/' && src[i + 1] === '*') { const end = src.indexOf('*/', i + 2); i = end < 0 ? src.length : end + 1; continue; }
+        if (c === '(') depth++;
+        else if (c === ')' && --depth === 0) return src.slice(open, i + 1);
+    }
+    return src.slice(open);
+}
+
+/** The body of a function or arrow named `name` in the source, or ''. */
+function namedFunctionText(src: string, name: string): string {
+    const esc = name.replace(/[$]/g, '\\$');
+    const decl = new RegExp(`\\bfunction\\s+${esc}\\s*\\(|\\b(?:const|let|var)\\s+${esc}\\s*=\\s*(?:async\\s*)?(?:function\\b[^(]*)?\\(`).exec(src);
+    if (!decl) return '';
+    const open = src.indexOf('(', decl.index + decl[0].length - 1);
+    const params = callText(src, open);
+    const afterParams = open + params.length;
+    const brace = src.indexOf('{', afterParams);
+    if (brace < 0 || brace - afterParams > 12) return src.slice(decl.index, afterParams + 200);
+    let depth = 0;
+    for (let i = brace; i < src.length; i++) {
+        if (src[i] === '{') depth++;
+        else if (src[i] === '}' && --depth === 0) return src.slice(decl.index, i + 1);
+    }
+    return src.slice(decl.index);
+}
+
+/**
+ * Every route handler in the source: an Express/Koa/Fastify-style
+ * registration with its handler (and the body of a named handler it passes),
+ * or a decorated Python handler (Flask/FastAPI) through the end of its def.
+ */
+export function routeHandlers(source: string): string[] {
+    const src = String(source || '');
+    const out: string[] = [];
+    const reg = /\b[A-Za-z_$][\w$]*\.(?:get|post|put|patch|delete|all)\s*\(\s*['"`]/gu;
+    for (let m = reg.exec(src); m; m = reg.exec(src)) {
+        const open = src.indexOf('(', m.index);
+        const call = callText(src, open);
+        let text = call;
+        const afterPath = call.replace(/^\(\s*(['"`])(?:\\.|(?!\1).)*\1\s*,?/su, '');
+        for (const ref of afterPath.matchAll(/(?:^|,)\s*([A-Za-z_$][\w$]*)\s*(?=,|\)\s*$)/gu)) {
+            const body = namedFunctionText(src, ref[1]);
+            if (body) text += '\n' + body;
+        }
+        out.push(text);
+        reg.lastIndex = open + Math.max(1, call.length);
+    }
+    const lines = src.split('\n');
+    for (let i = 0; i < lines.length; i++) {
+        if (!/^\s*@[A-Za-z_][\w.]*\.(?:get|post|put|patch|delete|route|api_route)\s*\(/u.test(lines[i])) continue;
+        let j = i;
+        while (j < lines.length && !/^\s*(?:async\s+)?def\s/u.test(lines[j])) j++;
+        if (j >= lines.length) break;
+        const indent = (lines[j].match(/^\s*/) || [''])[0].length;
+        let k = j + 1;
+        while (k < lines.length && (lines[k].trim() === '' || (lines[k].match(/^\s*/) || [''])[0].length > indent)) k++;
+        out.push(lines.slice(i, k).join('\n'));
+        i = k - 1;
+    }
+    return out;
+}
+
+const escapeRe = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+/** The query parameters one handler reads, each with the identifiers that carry its value. */
+function handlerQueryReads(handler: string): Array<{ name: string; ids: string[] }> {
+    const reads = new Map<string, Set<string>>();
+    const add = (name: string, id: string) => {
+        const key = name.toLowerCase();
+        if (!reads.has(key)) reads.set(key, new Set());
+        reads.get(key)!.add(id);
+    };
+    const direct = [
+        /\breq(?:uest)?\.query\.([A-Za-z_][\w]*)/gu,
+        /\breq(?:uest)?\.query\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]/gu,
+        /\(\s*req(?:uest)?\.query\s*\|\|\s*\{\}\s*\)\.([A-Za-z_][\w]*)/gu,
+        /\brequest\.(?:args|GET|query_params)\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu,
+        /\bsearchParams\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu,
+    ];
+    for (const re of direct) {
+        for (const m of handler.matchAll(re)) {
+            add(m[1], m[0]);
+            const expr = escapeRe(m[0]);
+            for (const alias of handler.matchAll(new RegExp(`(?:\\b(?:const|let|var)\\s+|^[ \\t]*)([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*${expr}`, 'gmu'))) add(m[1], alias[1]);
+        }
+    }
+    for (const m of handler.matchAll(/\b(?:const|let|var)\s*\{([^}]{1,200})\}\s*=\s*\(?\s*req(?:uest)?\.query\b/gu)) {
+        for (const part of m[1].split(',')) {
+            const [left, right] = part.split(':').map(s => s.split('=')[0].trim());
+            if (/^[A-Za-z_]\w*$/u.test(left)) add(left, right && /^[A-Za-z_$][\w$]*$/u.test(right) ? right : left);
+        }
+    }
+    for (const m of handler.matchAll(/\[\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)\s*\]\s*of\s+Object\.entries\(\s*\(?\s*req(?:uest)?\.query\b/gu)) {
+        add(ANY_FIELD, m[1]);
+        add(ANY_FIELD, m[2]);
+    }
+    // FastAPI: a decorated handler's defaulted parameters are its query parameters.
+    const def = handler.match(/^\s*(?:async\s+)?def\s+\w+\s*\(([^)]*)\)/mu);
+    if (def && /^\s*@/mu.test(handler)) {
+        for (const param of def[1].split(',')) {
+            const pm = param.match(/^\s*([A-Za-z_]\w*)\s*(?::[^=]*)?=\s*(?!Depends\b|Body\b|Path\b|Header\b|File\b|Form\b)/u);
+            if (pm && pm[1] !== 'self') add(pm[1], pm[1]);
+        }
+    }
+    return Array.from(reads, ([name, ids]) => ({ name, ids: Array.from(ids) }));
+}
+
+/** Is any of these identifiers used by an operation of this kind inside the handler? */
+function usedBy(handler: string, ids: string[], kind: 'narrow' | 'order'): boolean {
+    const mentions = (text: string) => ids.some(id => /^[A-Za-z_$][\w$]*$/u.test(id)
+        ? new RegExp(`(?<![\\w$.])${escapeRe(id)}(?![\\w$])`, 'u').test(text)
+        : text.includes(id));
+    const calls = kind === 'narrow'
+        ? /\.(?:filter|includes|where|find|filter_by|startsWith|indexOf|some)\s*\(|\bfilter\s*\(/gu
+        : /\.(?:sort|orderBy|order_by|sortBy)\s*\(|\bsorted\s*\(/gu;
+    for (const m of handler.matchAll(calls)) {
+        if (mentions(callText(handler, m.index! + m[0].length - 1))) return true;
+    }
+    const sql = kind === 'narrow' ? /\b(?:WHERE|I?LIKE)\b/gu : /\bORDER\s+BY\b/giu;
+    for (const m of handler.matchAll(sql)) {
+        if (mentions(handler.slice(m.index!))) return true;
+    }
+    if (kind === 'narrow') {
+        for (const m of handler.matchAll(/\[[^\]\n]*\bfor\b[^\]\n]*\bif\b[^\]\n]*\]/gu)) if (mentions(m[0])) return true;
+    }
+    return false;
+}
 
 /** The query parameters a server route reads: req.query.x, req.query['x'], const { x } = req.query, request.args.get('x'). */
 export function serviceQueryParams(source: string): string[] {
-    const src = String(source || '');
-    const names = new Set<string>();
-    for (const m of src.matchAll(/\breq(?:uest)?\.query\.([A-Za-z_][\w]*)/gu)) names.add(m[1].toLowerCase());
-    for (const m of src.matchAll(/\breq(?:uest)?\.query\[\s*['"]([A-Za-z_][\w]*)['"]\s*\]/gu)) names.add(m[1].toLowerCase());
-    for (const m of src.matchAll(/\{\s*([^}]{1,200})\}\s*=\s*req(?:uest)?\.query\b/gu)) {
-        for (const part of m[1].split(',')) {
-            const name = part.split(/[:=]/)[0].trim();
-            if (/^[A-Za-z_]\w*$/u.test(name)) names.add(name.toLowerCase());
-        }
-    }
-    for (const m of src.matchAll(/\brequest\.args\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu)) names.add(m[1].toLowerCase());
-    for (const m of src.matchAll(/\bsearchParams\.get\(\s*['"]([A-Za-z_][\w]*)['"]/gu)) names.add(m[1].toLowerCase());
-    return Array.from(names);
+    return Array.from(new Set(routeHandlers(source).flatMap(h => handlerQueryReads(h).map(r => r.name)).filter(n => n !== ANY_FIELD)));
 }
 
-const NARROWS_ROWS = /\.filter\s*\(|\bWHERE\b|\bI?LIKE\b|\.includes\s*\(|\$regex|\.find\s*\(\s*\{|\.where\s*\(/u;
-
 export function hasServiceSearchEvidence(source: string): boolean {
-    return serviceQueryParams(source).some(name => SEARCH_PARAMS.has(name)) && NARROWS_ROWS.test(String(source || ''));
+    return routeHandlers(source).some(h => handlerQueryReads(h)
+        .some(r => SEARCH_PARAMS.has(r.name) && usedBy(h, r.ids, 'narrow')));
 }
 
 export function hasServiceFilterEvidence(source: string): boolean {
-    const fieldParams = serviceQueryParams(source).filter(name => !SEARCH_PARAMS.has(name) && !SORT_PARAMS.has(name) && !PAGE_PARAMS.has(name));
-    return fieldParams.length > 0 && /\.filter\s*\(|\bWHERE\b|\.where\s*\(/u.test(String(source || ''));
+    return routeHandlers(source).some(h => handlerQueryReads(h)
+        .some(r => !SEARCH_PARAMS.has(r.name) && !SORT_PARAMS.has(r.name) && !PAGE_PARAMS.has(r.name) && usedBy(h, r.ids, 'narrow')));
 }
 
 export function hasServiceSortingEvidence(source: string): boolean {
-    return serviceQueryParams(source).some(name => SORT_PARAMS.has(name)) && /\bORDER\s+BY\b|\.sort\s*\(|\.orderBy\s*\(/iu.test(String(source || ''));
+    return routeHandlers(source).some(h => handlerQueryReads(h)
+        .some(r => SORT_PARAMS.has(r.name) && usedBy(h, r.ids, 'order')));
 }
 
 /** Filtering must change the rendered collection from one or more controls. */
-export function hasFilterEvidence(source: string): boolean {
+export function hasFilterEvidence(source: string, ctx?: ScopeEvidenceContext): boolean {
     const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source);
     const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source);
-    return (hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source)) || hasServiceFilterEvidence(source);
+    return (hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source))
+        || (ctx?.serviceOnly === true && hasServiceFilterEvidence(source));
 }
 
 /** Sorting is separate from search and filtering and needs an executable order change. */
-export function hasSortingEvidence(source: string): boolean {
+export function hasSortingEvidence(source: string, ctx?: ScopeEvidenceContext): boolean {
     return (/\.sort\s*\(/i.test(source)
         && /\bsort(?:By|Order|Direction|Key)?\b|\bsetSort[A-Za-z0-9_]*\b/i.test(source))
-        || hasServiceSortingEvidence(source);
+        || (ctx?.serviceOnly === true && hasServiceSortingEvidence(source));
 }
 
 export const CAPABILITIES: Capability[] = [
@@ -342,7 +488,7 @@ export function requestedCapabilities(request: string): Capability[] {
     return CAPABILITIES.filter(c => capabilityIsRequested(c, text));
 }
 
-const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest)$/i;
+const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest|py)$/i;
 const PRODUCTION_CODE_EXT = /\.(jsx?|tsx?)$/i;
 /**
  * A LOCKFILE IS NOT EVIDENCE OF A FEATURE. Test-only and specification-only
@@ -421,8 +567,32 @@ export interface ScopeReport {
 }
 
 /** Evaluate ordinary and shape-aware evidence without asking a model to infer intent. */
-export function capabilityEvidence(capability: Capability, source: string): boolean {
-    return capability.evidence.test(source) || Boolean(capability.evidenceCheck?.(source));
+export function capabilityEvidence(capability: Capability, source: string, ctx?: ScopeEvidenceContext): boolean {
+    return capability.evidence.test(source) || Boolean(capability.evidenceCheck?.(source, ctx));
+}
+
+const INTERFACE_FILE = /\.(?:html?|jsx|tsx|vue|svelte)$/i;
+
+/**
+ * Does the delivered tree carry an interface for people? An index.html at a
+ * root, in src/, public/ or dist/, or any page/component file. Without one the
+ * delivery is API-only and its route handlers are the scope evidence.
+ */
+export function deliveredTreeHasInterface(dirs: string[]): boolean {
+    let found = false;
+    const visit = (dir: string, depth: number) => {
+        if (found || depth > 4) return;
+        let entries: fs.Dirent[] = [];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            if (found) return;
+            if (e.name === 'node_modules' || e.name === '.git' || e.name.startsWith('.')) continue;
+            if (e.isDirectory()) { visit(path.join(dir, e.name), depth + 1); continue; }
+            if (INTERFACE_FILE.test(e.name)) found = true;
+        }
+    };
+    for (const d of dirs) { if (d && fs.existsSync(d)) visit(d, 0); }
+    return found;
 }
 
 /**
@@ -495,7 +665,8 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
         });
     if (!requested.length) return { requested: [], built: [], missing: [], unchecked };
     const src = readProjectSource(projectDirs);
-    const built = requested.filter(c => capabilityEvidence(c, src));
+    const ctx: ScopeEvidenceContext = { serviceOnly: !deliveredTreeHasInterface(projectDirs) };
+    const built = requested.filter(c => capabilityEvidence(c, src, ctx));
     const missing = requested.filter(c => !built.includes(c));
     return { requested, built, missing, unchecked };
 }
