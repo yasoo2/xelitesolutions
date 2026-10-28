@@ -62,7 +62,7 @@ describe('the records he named, and every item that could not be read', () => {
 });
 
 describe('evidence comes from routes with handlers, never from test calls or client calls', () => {
-    it('harvests registrations and label-bound keys; skips supertest and axios calls', () => {
+    it('harvests registrations and label-bound keys; skips supertest and axios calls', async () => {
         const dir = tree({
             'server.js': "const app = require('express')();\napp.get('/api/patients', (req, res) => res.json([]));\nrouter.post('/appointments', handler);\napp.use('/api/alajats', alajatRouter);\n// app.get('/api/commented', h)\n",
             'models.js': "module.exports = [{ key: 'alajats', ar: 'العلاجات', en: 'العلاجات', fields: [] }];\n",
@@ -72,7 +72,7 @@ describe('evidence comes from routes with handlers, never from test calls or cli
             'tests/api.test.js': "request(app).get('/api/treatments').expect(200);\n",
         });
         const records = requestedRecords(P101, { backendRequested: true }).entities;
-        const ev = collectServerEvidence([dir], records);
+        const ev = await collectServerEvidence([dir], records);
         const paths = ev.routes.map(r => r.path);
         expect(paths).toEqual(expect.arrayContaining(['/api/patients', '/appointments', '/api/alajats']));
         expect(paths).not.toContain('/api/treatments');
@@ -87,10 +87,10 @@ describe('evidence comes from routes with handlers, never from test calls or cli
 });
 
 describe('the verdict per record', () => {
-    it('P101\'s stock bookings API misses every record, and says so by name', () => {
+    it('P101\'s stock bookings API misses every record, and says so by name', async () => {
         const dir = tree({ 'server.js': "app.get('/api/bookings', (q, s) => s.json([]));\napp.post('/api/orders', h);\n" });
         const records = requestedRecords(P101, { backendRequested: true });
-        const report = judgeRequestCoverage({ records, evidence: collectServerEvidence([dir], records.entities), backendRequested: true });
+        const report = judgeRequestCoverage({ records, evidence: await collectServerEvidence([dir], records.entities), backendRequested: true });
         expect(report.missing).toHaveLength(3);
         expect(report.missing.every(r => r.served === false && r.tested === false)).toBe(true);
         const error = coverageError(report);
@@ -99,28 +99,28 @@ describe('the verdict per record', () => {
         expect(report.patternResources).toEqual(expect.arrayContaining(['bookings', 'orders']));
         expect(report.serverFile).toMatch(/server\.js$/);
     });
-    it('a test that calls a route the server lacks does not make it served (T3b)', () => {
+    it('a test that calls a route the server lacks does not make it served (T3b)', async () => {
         const dir = tree({ 'server.js': "app.get('/api/patients', h);\n", 'test/api.test.js': "request(app).get('/api/treatments');\n" });
         const records = requestedRecords('Create a REST API with endpoints for patients, treatments.', { backendRequested: true });
-        const report = judgeRequestCoverage({ records, evidence: collectServerEvidence([dir], records.entities), backendRequested: true });
+        const report = judgeRequestCoverage({ records, evidence: await collectServerEvidence([dir], records.entities), backendRequested: true });
         expect(report.records.find(r => r.key === 'treatments')?.served).toBe(false);
         expect(report.records.find(r => r.key === 'patients')?.served).toBe(true);
     });
-    it('a probed 404 refutes static text, except a write-only or nested route', () => {
+    it('a probed 404 refutes static text, except a write-only or nested route', async () => {
         const dir = tree({ 'routes.js': "router.get('/api/patients', h);\nrouter.post('/api/appointments', h);\nrouter.get('/api/patients/:id/treatments', h);\n" });
         const records = requestedRecords('Create a REST API with endpoints for patients, appointments, treatments.', { backendRequested: true });
-        const ev = collectServerEvidence([dir], records.entities);
+        const ev = await collectServerEvidence([dir], records.entities);
         const report = judgeRequestCoverage({ records, evidence: ev, backendRequested: true, probe: { patients: 'absent', appointments: 'absent', treatments: 'absent' } });
         expect(report.records.find(r => r.key === 'patients')?.served).toBe(false);
         expect(report.records.find(r => r.key === 'appointments')?.served).toBe(true);
         expect(report.records.find(r => r.key === 'treatments')?.served).toBe(true);
     });
-    it('a static build with no backend proves a record by its label in the source', () => {
+    it('a static build with no backend proves a record by its label in the source', async () => {
         const dir = tree({ 'src/App.jsx': "export default function App() { return <h1>{'إدارة المواعيد'}</h1>; }\nconst patients = [];\n" });
         const P051 = 'Build an admin dashboard for a dental clinic to manage patients, appointments, treatments: add, edit, delete and search each one, with a summary page showing totals and a chart.';
         const records = requestedRecords(P051, { backendRequested: false });
         expect(records.entities.map(e => e.key)).toEqual(expect.arrayContaining(['patients', 'appointments', 'treatments']));
-        const report = judgeRequestCoverage({ records, evidence: collectServerEvidence([dir], records.entities), backendRequested: false });
+        const report = judgeRequestCoverage({ records, evidence: await collectServerEvidence([dir], records.entities), backendRequested: false });
         expect(report.servedApplies).toBe(false);
         expect(report.records.find(r => r.key === 'patients')?.present).toBe(true);
         // His Arabic label inside a string literal counts for a static build.
@@ -162,7 +162,7 @@ describe('the runtime probe', () => {
             res.writeHead(404, { 'content-type': 'application/json' }); res.end('{}');
         });
         const records = requestedRecords('Create a REST API with endpoints for patients, appointments.', { backendRequested: true });
-        const ev = collectServerEvidence([dir], records.entities);
+        const ev = await collectServerEvidence([dir], records.entities);
         const probe = await probeServedResources(base, ev.prefixes, records.entities.map(r => ({ key: r.key, ids: identifiersFor(r) })), { timeoutMs: 2500 });
         const report = judgeRequestCoverage({ records, evidence: ev, backendRequested: true, probe });
         expect(report.missing).toEqual([]);

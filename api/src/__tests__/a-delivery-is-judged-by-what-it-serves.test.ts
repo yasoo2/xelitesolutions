@@ -258,15 +258,15 @@ describe('builders and the gate read one list: the actions come off before the r
 
 describe('a request that needs a server is never delivered by a browser-only build (finding 22, part 4)', () => {
     const P251 = 'Build a booking web app for a car rental company where customers pick a date and time slot, see which slots are already taken, book with their name and phone, and the owner sees all bookings in a calendar view.';
-    it('a React-only delivery is blocked, naming the claim; a root that registers routes, or a bound api_project part, satisfies it', () => {
+    it('a React-only delivery is blocked, naming the claim; a root that registers routes, or a bound api_project part, satisfies it', async () => {
         const react = tree({ 'package.json': pkg({ dev: 'vite', build: 'vite build' }), 'index.html': '<div id="root"></div>', 'src/App.jsx': 'export default function App(){ return null; }' });
-        const gap = missingRequestedServer(P251, [react], [{ tool: 'react_project' }]);
+        const gap = await missingRequestedServer(P251, [react], [{ tool: 'react_project' }]);
         expect(gap).toMatch(/the request needs a server \(.+\), but no delivered part registers server routes/);
         const api = tree({ 'package.json': pkg({ start: 'node server.js' }), 'server.js': "import express from 'express';\nconst app = express();\napp.get('/api/bookings', (req, res) => res.json([]));\napp.listen(4100);" });
-        expect(missingRequestedServer(P251, [react, api], [{ tool: 'react_project' }])).toBe('');
-        expect(missingRequestedServer(P251, [react], [{ tool: 'react_project' }, { tool: 'api_project' }])).toBe('');
+        expect(await missingRequestedServer(P251, [react, api], [{ tool: 'react_project' }])).toBe('');
+        expect(await missingRequestedServer(P251, [react], [{ tool: 'react_project' }, { tool: 'api_project' }])).toBe('');
         // No server asked for: nothing to measure.
-        expect(missingRequestedServer('Make a quiz game about a bakery with 10 questions and a timer.', [react], [])).toBe('');
+        expect(await missingRequestedServer('Make a quiz game about a bakery with 10 questions and a timer.', [react], [])).toBe('');
     });
     it('the failure blocks — it is never a partial delivery — and the pipeline records it at delivery', () => {
         const v = deliveryVerdict({ phaseVerified: true, requestFidelityBlocked: false, measurements: [{ instrument: 'live', ok: true }, { instrument: 'service', ok: false, error: 'no server' }] });
@@ -275,6 +275,6 @@ describe('a request that needs a server is never delivered by a browser-only bui
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
         // The parts are this run's own (round 20 runtime: keyed by session and the
         // run id pipelinePhaseIds gives every run, even one whose context has none).
-        expect(src).toMatch(/const serverGap = missingRequestedServer\(productRequest, interfaceRoots, deliveryPartsForRun\(sessionPartsKey, phaseIds\.runId\)\);\s*if \(serverGap\) \{\s*ledger\.record\(\{ instrument: 'service', ok: false, error: serverGap \}\);/);
+        expect(src).toMatch(/const serverGap = await missingRequestedServer\(productRequest, interfaceRoots, deliveryPartsForRun\(sessionPartsKey, phaseIds\.runId\)\);\s*if \(serverGap\) \{\s*ledger\.record\(\{ instrument: 'service', ok: false, error: serverGap \}\);/);
     });
 });

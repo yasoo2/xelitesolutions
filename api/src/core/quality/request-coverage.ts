@@ -50,6 +50,7 @@ import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitLi
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 import { emptyTestRun } from './test-run-evidence';
 import { pythonExecutable } from './python-runtime';
+import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -249,8 +250,10 @@ function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
 
 // ─── evidence in the delivered tree ─────────────────────────────────────────
 
-const SKIP_DIRS = new Set(['node_modules', 'dist', 'build', 'public', 'coverage', '.cache', '.git', '.npm-cache',
-    '.engineering-checkpoints', '__pycache__', 'venv', '.venv', '.next', '.joe', '.pytest_cache']);
+/** Compiled or copied output: never the source that registers a route. */
+const BUILD_OUTPUT = new Set(['dist', 'build']);
+/** Folders (and then files) read side by side, a bounded number at a time. */
+const READ_CONCURRENCY = 32;
 const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go)$/iu;
 /** Page source: read for a static build's «present» check, never harvested for routes. */
 const MARKUP_EXT = /\.(?:html?|vue|svelte)$/iu;
@@ -323,36 +326,70 @@ function rootHasBundler(root: string): boolean {
     try { return fs.readdirSync(root).some(name => /^(?:vite|webpack|rollup|next|nuxt|svelte|astro)\.config\./iu.test(name)); } catch { return false; }
 }
 
-function walk(root: string, out: string[], depth = 0, includePublic = false): void {
-    if (depth > 8 || out.length > 4000) return;
-    let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(root, { withFileTypes: true }); } catch { return; }
-    for (const entry of entries) {
-        if (entry.name.startsWith('.') && entry.name !== '.') { if (SKIP_DIRS.has(entry.name) || entry.isDirectory()) continue; }
-        const full = path.join(root, entry.name);
-        if (entry.isDirectory()) {
-            // A build-free site keeps its pages in public/; a bundled one's public/ is copied output.
-            const skip = SKIP_DIRS.has(entry.name) && !(includePublic && entry.name === 'public');
-            if (!skip) walk(full, out, depth + 1, includePublic);
-            continue;
+/**
+ * EVERY SOURCE FILE OF THE DELIVERED TREE, WITHOUT HOLDING THE EVENT LOOP.
+ *
+ * Round 21 (writing fork's hand-back): this walk was synchronous, kept its own
+ * skip list, and stopped without a word past 4 000 files or 8 levels — a
+ * server file after them was no evidence, so its records could read «not
+ * served» on a server that served them, and every delivery check held the
+ * event loop of a server other people were using. What is skipped is now
+ * skipped by kind: the machine state every project walker skips
+ * (project-tree), build output, dot-folders, and public/ where a bundler
+ * copies it. Sibling folders are read side by side, a bounded number at a
+ * time; a symbolic link is not followed, so no loop can make it endless.
+ */
+async function sourceFiles(root: string, includePublic: boolean): Promise<string[]> {
+    const out: string[] = [];
+    let level = [root];
+    while (level.length) {
+        const next: string[] = [];
+        for (let i = 0; i < level.length; i += READ_CONCURRENCY) {
+            const listed = await Promise.all(level.slice(i, i + READ_CONCURRENCY).map(dir =>
+                fs.promises.readdir(dir, { withFileTypes: true }).then(entries => ({ dir, entries }), () => ({ dir, entries: [] as fs.Dirent[] }))));
+            for (const { dir, entries } of listed) {
+                for (const entry of entries) {
+                    const full = path.join(dir, entry.name);
+                    if (entry.isDirectory()) {
+                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name)) continue;
+                        // A build-free site keeps its pages in public/; a bundled one's public/ is copied output.
+                        if (entry.name === 'public' && !includePublic) continue;
+                        next.push(full);
+                    } else if (entry.isFile() && (SOURCE_EXT.test(entry.name) || MARKUP_EXT.test(entry.name)) && !/\.d\.ts$/iu.test(entry.name)) {
+                        out.push(full);
+                    }
+                }
+            }
         }
-        if (entry.isFile() && (SOURCE_EXT.test(entry.name) || MARKUP_EXT.test(entry.name)) && !/\.d\.ts$/iu.test(entry.name)) out.push(full);
+        level = next;
     }
+    return out;
+}
+
+/** Each file's text, or null for one over 1 MB or unreadable, read a bounded number at a time. */
+async function readSources(files: string[]): Promise<Array<string | null>> {
+    const texts: Array<string | null> = [];
+    for (let i = 0; i < files.length; i += READ_CONCURRENCY) {
+        texts.push(...await Promise.all(files.slice(i, i + READ_CONCURRENCY).map(async file => {
+            try { return (await fs.promises.stat(file)).size > 1_000_000 ? null : await fs.promises.readFile(file, 'utf8'); } catch { return null; }
+        })));
+    }
+    return texts;
 }
 
 const isParamSegment = (segment: string) => /^(?::|\{|<|\*|\$\{)/u.test(segment) || segment.includes('${');
 const joinPath = (...parts: string[]) => `/${parts.map(p => String(p || '').replace(/^\/+|\/+$/gu, '')).filter(Boolean).join('/')}`;
 
 /** Route registrations, test files, page text and label-bound keys in the delivered roots. */
-export function collectServerEvidence(roots: string[], records: RequestedRecord[]): CoverageEvidence {
+export async function collectServerEvidence(roots: string[], records: RequestedRecord[]): Promise<CoverageEvidence> {
     const seen = new Set<string>();
     const files: string[] = [];
     for (const root of roots.map(r => String(r || '').trim()).filter(Boolean)) {
         let real = root;
-        try { real = fs.realpathSync(root); } catch { continue; }
+        try { real = await fs.promises.realpath(root); } catch { continue; }
         if (seen.has(real)) continue;
         seen.add(real);
-        walk(real, files, 0, !rootHasBundler(real));
+        files.push(...await sourceFiles(real, !rootHasBundler(real)));
     }
     const routes: HarvestedRoute[] = [];
     const prefixes = new Set<string>();
@@ -361,12 +398,11 @@ export function collectServerEvidence(roots: string[], records: RequestedRecord[
     const source: string[] = [];
     const tests: string[] = [];
     const labelKeys: Record<string, Set<string>> = {};
-    for (const file of Array.from(new Set(files))) {
-        let raw = '';
-        try {
-            if (fs.statSync(file).size > 1_000_000) continue;
-            raw = fs.readFileSync(file, 'utf8');
-        } catch { continue; }
+    const unique = Array.from(new Set(files));
+    const texts = await readSources(unique);
+    for (const [index, file] of unique.entries()) {
+        const raw = texts[index];
+        if (raw === null) continue;
         const text = stripComments(raw, file);
         if (isTestFile(file)) { testFiles.push(file); tests.push(text); continue; }
         source.push(text);

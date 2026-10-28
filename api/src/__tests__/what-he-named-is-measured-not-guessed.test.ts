@@ -153,23 +153,23 @@ const records = (entities: Array<{ key: string; ar?: string; en?: string }>, tes
 });
 
 describe('routes are harvested from what serves them, never from an HTTP client', () => {
-    it('an API-client module registers nothing; an app named «api» does', () => {
+    it('an API-client module registers nothing; an app named «api» does', async () => {
         const dir = tree({
             'web/src/services/patients.js': "import api from './api';\nexport const add = data => api.post('/api/patients', data);\nexport const edit = (id, data) => api.put(`/api/patients/${id}`, data);\n",
             'server/server.js': "const express = require('express');\nconst api = express();\napi.get('/api/bookings', (req, res) => res.json([]));\napi.listen(3000);\n",
         });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         expect(evidence.routes.map(r => r.path)).toEqual(['/api/bookings']);
         expect(evidence.routes[0].known).toBe(true);
     });
-    it('a FastAPI router joins its prefix to its decorator path', () => {
+    it('a FastAPI router joins its prefix to its decorator path', async () => {
         const dir = tree({ 'main.py': 'from fastapi import FastAPI, APIRouter\napp = FastAPI()\nrouter = APIRouter(prefix="/books")\n@router.get("/")\ndef books():\n    return []\napp.include_router(router)\n' });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         expect(evidence.routes.map(r => r.path)).toContain('/books/');
     });
-    it('a static site\'s page is read for presence — HTML too, public/ when there is no bundler', () => {
+    it('a static site\'s page is read for presence — HTML too, public/ when there is no bundler', async () => {
         const dir = tree({ 'public/index.html': '<section id="services"><h2>الخدمات</h2></section>', 'public/app.js': 'void 0;' });
-        const report = judgeRequestCoverage({ records: records([{ key: 'services', ar: 'الخدمات', en: 'services' }]), evidence: collectServerEvidence([dir], []), backendRequested: false });
+        const report = judgeRequestCoverage({ records: records([{ key: 'services', ar: 'الخدمات', en: 'services' }]), evidence: await collectServerEvidence([dir], []), backendRequested: false });
         expect(report.missing).toEqual([]);
         expect(report.records[0].present).toBe(true);
     });
@@ -186,7 +186,7 @@ describe('the probe measures the path each record\'s route registers', () => {
     it('a versioned Express API under /api/v1 is served, not refuted by /api/', async () => {
         const base = await serve((req, res) => (/^\/api\/v1\/(patients|appointments)\/?$/.test(String(req.url)) ? json(res, 200, []) : json(res, 404, {})));
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.get('/api/v1/patients', (q, r) => r.json([]));\napp.get('/api/v1/appointments', (q, r) => r.json([]));\n" });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         const recs = records([{ key: 'patients' }, { key: 'appointments' }]);
         const details: Record<string, string[]> = {};
         const probe = await probeServedResources(base, evidence.prefixes, recs.entities.map(r => { const ids = identifiersFor(r); return { key: r.key, ids, paths: probePathsFor(evidence, ids) }; }), { timeoutMs: 2000, details });
@@ -199,14 +199,14 @@ describe('the probe measures the path each record\'s route registers', () => {
             return req.url === '/books/' ? json(res, 200, []) : json(res, 404, {});
         });
         const dir = tree({ 'main.py': 'from fastapi import FastAPI, APIRouter\napp = FastAPI()\nrouter = APIRouter(prefix="/books")\n@router.get("/")\ndef books():\n    return []\n' });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         const ids = identifiersFor({ item: 'books', key: 'books', ar: '', en: 'books' });
         expect(await probeServedResources(base, evidence.prefixes, [{ key: 'books', ids, paths: probePathsFor(evidence, ids) }], { timeoutMs: 2000 })).toEqual({ books: 'served' });
     });
     it('a registered GET that does not answer (unmounted, or a 500) is NOT served — a POST beside it cannot outvote the probe', async () => {
         const base = await serve((req, res) => (req.url === '/api/patients' ? json(res, 500, { error: 'boom' }) : json(res, 404, {})));
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.get('/api/patients', (q, r) => r.json([]));\napp.post('/api/patients', (q, r) => r.json({}));\n" });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         const recs = records([{ key: 'patients' }]);
         const ids = identifiersFor(recs.entities[0]);
         const probe = await probeServedResources(base, evidence.prefixes, [{ key: 'patients', ids, paths: probePathsFor(evidence, ids) }], { timeoutMs: 2000 });
@@ -214,15 +214,15 @@ describe('the probe measures the path each record\'s route registers', () => {
         const report = judgeRequestCoverage({ records: recs, evidence, probe, backendRequested: true });
         expect(report.records[0].served).toBe(false);
     });
-    it('a write-only route is what a GET probe cannot see: still served', () => {
+    it('a write-only route is what a GET probe cannot see: still served', async () => {
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.post('/api/visits', (q, r) => r.json({}));\n" });
-        const report = judgeRequestCoverage({ records: records([{ key: 'visits' }]), evidence: collectServerEvidence([dir], []), probe: { visits: 'absent' }, backendRequested: true });
+        const report = judgeRequestCoverage({ records: records([{ key: 'visits' }]), evidence: await collectServerEvidence([dir], []), probe: { visits: 'absent' }, backendRequested: true });
         expect(report.records[0].served).toBe(true);
     });
     it('a permissive catch-all prefix proves nothing either way', async () => {
         const base = await serve((req, res) => json(res, 200, []));
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.get('/api/:resource', (q, r) => r.json([]));\n" });
-        const evidence = collectServerEvidence([dir], []);
+        const evidence = await collectServerEvidence([dir], []);
         const probe = await probeServedResources(base, evidence.prefixes, [{ key: 'patients', ids: ['patients'], paths: probePathsFor(evidence, ['patients']) }], { timeoutMs: 2000 });
         expect(probe.patients).toBe('inconclusive');
     });
@@ -258,14 +258,14 @@ describe('«tested» means his tests ran and passed', () => {
 });
 
 describe('what cannot be measured is said as such', () => {
-    it('a transliterated-only record is «not measured», never «not served»', () => {
+    it('a transliterated-only record is «not measured», never «not served»', async () => {
         const dir = tree({ 'server.js': "const express = require('express');\nconst app = express();\napp.get('/api/rakhams', (q, r) => r.json([]));\n" });
-        const report = judgeRequestCoverage({ records: records([{ key: 'mrabws', ar: 'المرابع', en: 'المرابع' }]), evidence: collectServerEvidence([dir], []), probe: { mrabws: 'absent' }, backendRequested: true });
+        const report = judgeRequestCoverage({ records: records([{ key: 'mrabws', ar: 'المرابع', en: 'المرابع' }]), evidence: await collectServerEvidence([dir], []), probe: { mrabws: 'absent' }, backendRequested: true });
         expect(report.missing).toEqual([]);
         expect((report.unverified || []).map(r => r.key)).toEqual(['mrabws']);
     });
-    it('capabilities and unverified records keep the delivery «not verified» — and never «partial»', () => {
-        const report = judgeRequestCoverage({ records: { ...records([]), capabilities: ['per-user record isolation — «x»'] }, evidence: collectServerEvidence([], []), backendRequested: true });
+    it('capabilities and unverified records keep the delivery «not verified» — and never «partial»', async () => {
+        const report = judgeRequestCoverage({ records: { ...records([]), capabilities: ['per-user record isolation — «x»'] }, evidence: await collectServerEvidence([], []), backendRequested: true });
         const unverified = coverageUnverified(report);
         expect(unverified.join(' ')).toMatch(/per-user record isolation .*not measured/);
         const verdict = deliveryVerdict({ phaseVerified: true, requestFidelityBlocked: false, measurements: [{ instrument: 'live', ok: true }, { instrument: 'coverage', ok: true, unverified }] });

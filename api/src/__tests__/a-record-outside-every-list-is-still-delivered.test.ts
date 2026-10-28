@@ -41,9 +41,9 @@ function tree(files: Record<string, string>): string {
     }
     return dir;
 }
-const judged = (request: string, files: Record<string, string>) => {
+const judged = async (request: string, files: Record<string, string>) => {
     const records = requestedRecords(request, { backendRequested: true });
-    const report = judgeRequestCoverage({ records, evidence: collectServerEvidence([tree(files)], records.entities), backendRequested: true });
+    const report = judgeRequestCoverage({ records, evidence: await collectServerEvidence([tree(files)], records.entities), backendRequested: true });
     return { records, report };
 };
 const server = (paths: string[]) => "const app = require('express')();\n"
@@ -82,17 +82,17 @@ describe('a noun no list knows', () => {
 });
 
 describe('and the gate measures it on what was built', () => {
-    it('a server keyed the way Joe keys them serves every record', () => {
+    it('a server keyed the way Joe keys them serves every record', async () => {
         const keys = namedEntities(RENTALS).map(e => e.key);
-        const { report } = judged(RENTALS, { 'server.js': server(keys.map(k => `/api/${k}`)) });
+        const { report } = await judged(RENTALS, { 'server.js': server(keys.map(k => `/api/${k}`)) });
         expect(report.checked).toBe(3);
         expect(report.missing).toEqual([]);
         expect(report.unverified).toEqual([]);
         expect(report.records.every(r => r.served === true)).toBe(true);
     });
 
-    it('a server that names them in English beside his word is matched on his word', () => {
-        const { report } = judged(RENTALS, {
+    it('a server that names them in English beside his word is matched on his word', async () => {
+        const { report } = await judged(RENTALS, {
             'server.js': server(['/api/tenants', '/api/contracts', '/api/payments']),
             'resources.js': "module.exports = [\n  { key: 'tenants', label: 'المستأجرين' },\n  { key: 'contracts', label: 'العقود' },\n];\n",
         });
@@ -101,8 +101,8 @@ describe('and the gate measures it on what was built', () => {
         expect(report.records.map(r => [r.ar, r.served])).toEqual([['المستأجرين', true], ['العقود', true], ['المدفوعات', true]]);
     });
 
-    it('a server whose English no one wrote beside his word is «not measured», never «not served»', () => {
-        const { report } = judged(RENTALS, { 'server.js': server(['/api/tenants', '/api/contracts', '/api/payments']) });
+    it('a server whose English no one wrote beside his word is «not measured», never «not served»', async () => {
+        const { report } = await judged(RENTALS, { 'server.js': server(['/api/tenants', '/api/contracts', '/api/payments']) });
         expect(report.missing).toEqual([]);
         const byAr = new Map(report.records.map(r => [r.ar, r.served]));
         expect(byAr.get('المستأجرين')).toBeNull();
@@ -111,20 +111,20 @@ describe('and the gate measures it on what was built', () => {
         expect(coverageUnverified(report).join(' ')).toMatch(/المستأجرين \(serving not measured\)/);
     });
 
-    it('…while a record the server really lacks is still «not served» — the gate is not weakened', () => {
+    it('…while a record the server really lacks is still «not served» — the gate is not weakened', async () => {
         const keys = namedEntities(RENTALS).map(e => e.key);
-        const { report } = judged(RENTALS, { 'server.js': server(keys.filter(k => k !== 'payments').map(k => `/api/${k}`)) });
+        const { report } = await judged(RENTALS, { 'server.js': server(keys.filter(k => k !== 'payments').map(k => `/api/${k}`)) });
         expect(report.missing.map(r => r.key)).toEqual(['payments']);
         expect(coverageError(report)).toMatch(/^requested_entities_not_delivered: payments — المدفوعات \(not served\)/);
     });
 });
 
 describe('a word it knew does not stand in for a phrase it did not', () => {
-    it('«عقود الإيجار» is not keyed after the rent, so a server of leases is never «not served»', () => {
+    it('«عقود الإيجار» is not keyed after the rent, so a server of leases is never «not served»', async () => {
         const key = keyForPhrase('عقود الإيجار');
         expect(key).not.toBe('rents');
         expect(englishFor('عقود الإيجار')).toBeNull();
-        const { records, report } = judged(LEASES, { 'server.js': server(['/api/leases', '/api/tenants', '/api/payments']) });
+        const { records, report } = await judged(LEASES, { 'server.js': server(['/api/leases', '/api/tenants', '/api/payments']) });
         expect(records.entities.map(e => e.key)).toContain(key);
         expect(report.missing).toEqual([]);
         expect(report.records.find(r => r.key === key)?.served).toBeNull();

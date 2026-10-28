@@ -2232,10 +2232,10 @@ export async function servesHtmlAtRoot(liveUrl: unknown): Promise<boolean> {
  * claims, or '' when no server was asked for, an api_project part was bound,
  * or a delivered root registers server routes.
  */
-export function missingRequestedServer(request: string, roots: string[], parts: Array<{ tool?: string }>): string {
+export async function missingRequestedServer(request: string, roots: string[], parts: Array<{ tool?: string }>): Promise<string> {
     if (!requestedDeliveryRoles(request).service) return '';
     if ((Array.isArray(parts) ? parts : []).some(part => String(part?.tool || '') === 'api_project')) return '';
-    if (collectServerEvidence(roots, []).routes.length > 0) return '';
+    if ((await collectServerEvidence(roots, [])).routes.length > 0) return '';
     let claims: string[] = [];
     try { claims = requestedArtifact(String(request || '')).evidence.serverClaims || []; } catch { claims = []; }
     return `the request needs a server (${claims.join(', ') || 'an API it serves'}), but no delivered part registers server routes`;
@@ -3254,7 +3254,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
             const runRoot = String(runRes?.output?.cwd || '').trim();
             const deliveredRoots = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
-            const evidence = collectServerEvidence(deliveredRoots, records.entities);
+            const evidence = await collectServerEvidence(deliveredRoots, records.entities);
             const servedApplies = backendRequested || evidence.routes.length > 0;
             let probe: Record<string, ProbeResult> | undefined;
             const probeDetails: Record<string, string[]> = {};
@@ -3321,7 +3321,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             // static site keeps the fallback (round 15 review, finding 28).
             if (servedByStaticFallback(runRes)) {
                 const runRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), qualityRoot, ...auditRoots].filter(Boolean)));
-                const serverRoutes = deliveryRoles.service ? 1 : collectServerEvidence(runRoots, []).routes.length;
+                const serverRoutes = deliveryRoles.service ? 1 : (await collectServerEvidence(runRoots, [])).routes.length;
                 if (serverRoutes > 0) {
                     runRes = {
                         ...runRes,
@@ -3955,7 +3955,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
         // A request that needs a server is never delivered by a browser-only build.
         if (verified && !programOnly) {
-            const serverGap = missingRequestedServer(productRequest, interfaceRoots, deliveryPartsForRun(sessionPartsKey, phaseIds.runId));
+            const serverGap = await missingRequestedServer(productRequest, interfaceRoots, deliveryPartsForRun(sessionPartsKey, phaseIds.runId));
             if (serverGap) {
                 ledger.record({ instrument: 'service', ok: false, error: serverGap });
                 syncFromLedger();
