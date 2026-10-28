@@ -8,6 +8,7 @@ import { findImportedPackageForScriptBinary, scriptBinaryInstallInput } from '..
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
+import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
 import * as fs from 'fs';
 import * as http from 'http';
 import * as path from 'path';
@@ -600,7 +601,11 @@ const TYPESCRIPT_ENTRYPOINTS = [
     'src/index.tsx', 'src/main.tsx', 'src/server.tsx', 'src/app.tsx',
     'index.ts', 'main.ts', 'server.ts', 'app.ts',
 ];
-const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
+// Machine state (node_modules, caches, virtualenvs, Joe's own state) is the
+// shared list in shared/utils/project-tree.ts; build output is this walker's
+// own decision: a built folder is not a project to run.
+const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
+const isIgnoredProjectDir = (name: string): boolean => isMachineStateDirectory(name) || BUILD_OUTPUT_DIRS.has(name);
 
 function hasProjectMarker(dir: string): boolean {
     if (PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) return true;
@@ -678,7 +683,7 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
     if (rootIsRunnable) candidates.push(workspaceRoot);
     try {
         for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
-            if (!entry.isDirectory() || entry.name.startsWith('.') || IGNORED_PROJECT_DIRS.has(entry.name)) continue;
+            if (!entry.isDirectory() || entry.name.startsWith('.') || isIgnoredProjectDir(entry.name)) continue;
             const candidate = path.join(workspaceRoot, entry.name);
             if (hasProjectMarker(candidate)) candidates.push(candidate);
         }
@@ -823,14 +828,15 @@ function serverEntrypointScore(value: string): number {
 
 function serverEntrypointCandidates(cwd: string): string[] {
     const candidates: string[] = [];
-    const ignored = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
+    // Machine state comes from the shared list; the rest is this walker's own choice.
+    const ignored = new Set(['dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
     const extensions = /\.(?:js|mjs|cjs|ts|tsx)$/iu;
     const walk = (directory: string, depth: number): void => {
         if (depth > 3) return;
         let entries: fs.Dirent[] = [];
         try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
         for (const entry of entries) {
-            if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
+            if (entry.name.startsWith('.') || ignored.has(entry.name) || (entry.isDirectory() && isMachineStateDirectory(entry.name))) continue;
             const absolute = path.join(directory, entry.name);
             if (entry.isDirectory()) {
                 walk(absolute, depth + 1);
