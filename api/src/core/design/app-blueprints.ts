@@ -2274,8 +2274,12 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  place now — the clarifier, which must ask about the container HE named
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
+ *
+ *  «قائمه» is «قائمة» typed the way most people type it (round 21): the
+ *  informal «بدي قائمه الطلاب فيها: الاسم، العمر» missed the container,
+ *  and its columns became the tables `asms` and `amrs`.
  */
-export const RECORD_CONTAINER = /(?:جدول|قائمة|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
+export const RECORD_CONTAINER = /(?:جدول|قائم[ةه]|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.

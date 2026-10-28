@@ -14,8 +14,11 @@ const keys = (r: string) => inferModel(r).entities.map(e => e.key);
 
 describe('a business nobody hardcoded still gets a database', () => {
     it('a car rental', () => {
+        // «vehicles» is the curated `cars` table: the list reader and the delivery
+        // gate key it so, and an English item is read by its head as theirs are
+        // (round 21) — one table, one key, whichever reader built it.
         expect(keys('a car rental system with vehicles, rentals, drivers and invoices'))
-            .toEqual(['vehicles', 'rentals', 'drivers', 'invoices']);
+            .toEqual(['cars', 'rentals', 'drivers', 'invoices']);
     });
 
     it('a library', () => {

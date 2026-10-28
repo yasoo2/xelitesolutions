@@ -159,7 +159,24 @@ function entityPhrase(phrase: string): string {
 }
 
 function keyOf(phrase: string): string {
-    const bare = entityPhrase(phrase)
+    /**
+     * AN ENGLISH ITEM IS READ BY ITS HEAD, AS AN ARABIC ONE IS (round 21).
+     *
+     * This keyed a phrase by its last word: «patient records» became
+     * `records`, «an appointment list» `lists` — and in the designer the shape
+     * reader's tables then outvoted the list reader's named ones, so the build
+     * made tables nobody asked for while the delivery gate asked for the ones
+     * he named. The curated noun the item names comes first, read as every
+     * list reader reads it (whole, head, then the possessor unless the head is
+     * content about it); else the record without the word that holds it.
+     */
+    const text = entityPhrase(phrase).replace(/^(?:a|an|the)\s+/iu, '').trim();
+    let lists: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try { lists = require('./named-entities'); } catch { lists = null; }
+    const known = String(lists?.nounKeyOfItem?.(text) || '');
+    if (known) return known;
+    const bare = String(lists?.withoutRecordHolder?.(text) || text)
         .replace(/\b(platform|system|module|feature|management|manager|section|page of)\b/gi, ' ')
         .replace(/[^A-Za-z0-9 ]+/g, ' ')
         .trim().toLowerCase();
@@ -329,6 +346,17 @@ export function featurePhrases(request: string): string[] {
      * verb is the ASK, not one of the things asked for.
      */
     const STEM = /\b(build|make|create|develop|design|i want|need)\b|^(ابن|ابنِ|اعمل|صمّ?م|[اأإآ]نشئ|طوّ?ر|[أا]ريد|نظام|منصّ?ة|تطبيق|موقع)/i;
+    /**
+     * A CHUNK THAT ENDS IN A PREPOSITION INTRODUCES THE LIST (round 21).
+     *
+     * «A clinic system with: patient records, …» split at the colon left «A
+     * clinic system with», keyed `withs` by its last word — a table named
+     * after a preposition. An item of a list is a noun phrase, and a noun
+     * phrase does not end in «with», «for», «of» or «including»: the sentence
+     * goes on after the colon. Arabic introduces the same way («… فيها:»,
+     * «… يشمل:»). Grammar, not vocabulary of any domain.
+     */
+    const INTRODUCER_END = /(?:\b(?:with|for|of|including|includes?|containing|contains?|has|have|having|featuring|covering)|(?:^|\s)(?:فيه|فيها|يشمل|تشمل|يتضمن|تتضمن|يحتوي(?:\s+على)?|تحتوي(?:\s+على)?|مع))\s*$/iu;
     const conjunction = new RegExp(`\\s+and\\s+|${CONJUNCTION_WAW_SOURCE}`, 'iu');
     const pieces: string[] = [];
     // The colon is a separator too — «ابنِ نظاماً لعيادة بيطرية: الحيوانات»
@@ -377,7 +405,7 @@ export function featurePhrases(request: string): string[] {
         else out.push(c);
     }
     return out.map(p => p.trim())
-        .filter(p => p.length > 1 && p.length < 60 && !STEM.test(p));
+        .filter(p => p.length > 1 && p.length < 60 && !STEM.test(p) && !INTRODUCER_END.test(p));
 }
 
 export interface Inference {
@@ -608,6 +636,20 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
     if (everyLabelCarriesTheContainer(labels)) return null;   //  several tables, not one
     const subject = String(recordedSubject(request) || '').trim();
     if (!subject) return null;
+    /**
+     *  …AND THE CONTAINER THAT NAMES IT STANDS OUTSIDE HIS LIST (round 21).
+     *
+     *  «نظام لعيادة فيه: إدارة المرضى، وقائمة المواعيد، والفواتير» is a
+     *  list of three records, one of which happens to be a list. The
+     *  container sat INSIDE an item, and this read it as the table the whole
+     *  list describes: one `appointments` table with «إدارة المرضى» and
+     *  «الفواتير» for columns — patients and invoices gone, while the list
+     *  reader and the delivery gate asked for all three. A table he described
+     *  is named by a container in front of his list; a container that is an
+     *  item of the list names that item.
+     */
+    const bareWord = (text: string) => foldChars(text).replace(/^ال/u, '');
+    if (labels.some(label => RECORD_CONTAINER.test(label) && bareWord(label).includes(bareWord(subject)))) return null;
     const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
     if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
     const english = tableEnglishFor(subject);
