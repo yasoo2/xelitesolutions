@@ -1898,7 +1898,12 @@ export class ShellExecuteTool extends BaseTool {
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
-            echoResult(String(r.output || ''), r.ok ? '' : String(r.stderr ?? r.error ?? ''), r.ok ? 0 : 1);
+            // What a command printed to stderr is part of what it said, success
+            // or not: unittest writes «Ran 0 tests … OK» there, and a reader of
+            // the runner's summary cannot tell a pass from an empty run without
+            // it (round 21). Only a failure falls back to the error text.
+            const stderr = r.ok ? String(r.stderr || '') : String(r.stderr ?? r.error ?? '');
+            echoResult(String(r.output || ''), stderr, r.ok ? 0 : 1);
 
             return {
                 ok: r.ok,
@@ -1906,7 +1911,7 @@ export class ShellExecuteTool extends BaseTool {
                 output: {
                     status: r.ok ? 'success' : 'failed',
                     stdout: String(r.output || ''),
-                    stderr: r.ok ? '' : String(r.stderr ?? r.error ?? ''),
+                    stderr,
                     exitCode: r.ok ? 0 : 1,
                     cwd: workDir,
                     durationMs,

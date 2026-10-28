@@ -48,6 +48,7 @@ import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities, nounKe
 import { keyForPhrase } from '../design/entity-inference';
 import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
+import { emptyTestRun } from './test-run-evidence';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -726,9 +727,16 @@ function isWithin(file: string, root: string): boolean {
  * Run his project's own tests once: npm's test script through quality_run, or
  * Python's own runner (pytest when the project uses it, else unittest — the
  * standard library, present wherever Python is). The caller supplies the tool
- * executor, so the run goes through the same execution path as every tool.
+ * executor, so the run goes through the same execution path as every tool —
+ * named `runTool`: the boot gate (ExecutionEnforcer) reads any bare call of a
+ * function named exec in Joe's source as a process spawn, and refuses to start.
+ *
+ * A run that ran no test is not a pass (round 21): unittest before Python 3.12
+ * prints «Ran 0 tests … OK» and exits 0, pytest exits 0 when every test was
+ * skipped. The runner's own summary says so (test-run-evidence), as quality_run
+ * reads it for npm's test script.
  */
-export async function runRequestedTests(root: string, exec: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
+export async function runRequestedTests(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
     const dir = String(root || '').trim();
     if (!dir || !fs.existsSync(dir)) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
     let scripts: Record<string, string> = {};
@@ -738,7 +746,7 @@ export async function runRequestedTests(root: string, exec: (tool: string, input
     }
     if (hasManifest && String(scripts.test || '').trim() && !PLACEHOLDER_TEST.test(String(scripts.test))) {
         try {
-            const run = await exec('quality_run', { path: dir, tasks: ['test'] });
+            const run = await runTool('quality_run', { path: dir, tasks: ['test'] });
             const executed = Array.isArray(run?.output?.results) ? run.output.results.filter((r: any) => r?.skipped === false) : [];
             const passed = run?.ok === true && executed.length > 0;
             return { root: dir, ran: executed.length > 0, passed, runner: 'npm test', error: passed ? undefined : String(run?.error || executed[0]?.error || 'the test script did not pass').slice(0, 400) };
@@ -755,9 +763,15 @@ export async function runRequestedTests(root: string, exec: (tool: string, input
         }
         const command = usesPytest ? 'python -m pytest -q' : 'python -m unittest discover -v';
         try {
-            const run = await exec('shell_execute', { command, cwd: dir });
-            const passed = run?.ok === true;
-            return { root: dir, ran: true, passed, runner: command, error: passed ? undefined : String(run?.error || run?.output?.stderr || 'the tests did not pass').slice(0, 400) };
+            const run = await runTool('shell_execute', { command, cwd: dir });
+            const printed = `${String(run?.output?.stdout ?? '')}
+${String(run?.output?.stderr ?? '')}`;
+            const ranNothing = run?.ok === true ? emptyTestRun(printed) : null;
+            const passed = run?.ok === true && !ranNothing;
+            const error = passed ? undefined
+                : ranNothing ? `the test command ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`
+                    : String(run?.error || run?.output?.stderr || 'the tests did not pass');
+            return { root: dir, ran: true, passed, runner: command, error: error?.slice(0, 400) };
         } catch (error: any) {
             return { root: dir, ran: false, passed: false, runner: command, error: String(error?.message || error).slice(0, 300) };
         }

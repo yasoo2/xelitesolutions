@@ -273,6 +273,8 @@ describe('a request that needs a server is never delivered by a browser-only bui
         expect(v.verified).toBe(false);
         expect(v.partial).toBe(false);
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
-        expect(src).toMatch(/const serverGap = missingRequestedServer\(productRequest, interfaceRoots, deliveryPartsForRun\(sessionPartsKey, context\?\.runId\)\);\s*if \(serverGap\) \{\s*ledger\.record\(\{ instrument: 'service', ok: false, error: serverGap \}\);/);
+        // The parts are this run's own (round 20 runtime: keyed by session and the
+        // run id pipelinePhaseIds gives every run, even one whose context has none).
+        expect(src).toMatch(/const serverGap = missingRequestedServer\(productRequest, interfaceRoots, deliveryPartsForRun\(sessionPartsKey, phaseIds\.runId\)\);\s*if \(serverGap\) \{\s*ledger\.record\(\{ instrument: 'service', ok: false, error: serverGap \}\);/);
     });
 });

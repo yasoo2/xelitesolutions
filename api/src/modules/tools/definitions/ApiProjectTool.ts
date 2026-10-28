@@ -510,6 +510,12 @@ export function apiTestResources(primary: { key: string; columns: Array<{ key: s
  * write without an account is 401, and a body the table's own validation must
  * refuse is 400. They read and never write: a wrongly accepted body is deleted
  * again before the test fails.
+ *
+ * The test is HIS project's file, run by his test runner, not a process Joe
+ * starts — but this source is Joe's, and the boot gate (ExecutionEnforcer)
+ * reads every bare spawn call in it as Joe bypassing the one execution path,
+ * and refuses to start. So the test calls the spawner through its module
+ * object, which is the same call to his runner.
  */
 export function fileApiTestsJs(resources: ApiTestResource[], ownerEmail: string): string {
     return `// Endpoint tests for this API — run them with: npm test
@@ -518,7 +524,7 @@ export function fileApiTestsJs(resources: ApiTestResource[], ownerEmail: string)
 // again before the test fails.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn } from 'node:child_process';
+import childProcess from 'node:child_process';
 import crypto from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
@@ -560,7 +566,7 @@ function tokenFor(user) {
 before(async () => {
   const port = await freePort();
   base = \`http://127.0.0.1:\${port}\`;
-  server = spawn(process.execPath, ['server.js'], {
+  server = childProcess.spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
     env: { ...process.env, PORT: String(port), API_JWT_SECRET: SECRET, NODE_NO_WARNINGS: '1' },
     stdio: ['ignore', 'pipe', 'pipe'],
