@@ -27,6 +27,7 @@ import type { ModelEntity, ModelField } from './data-model';
 import { MAX_MODEL_ENTITIES, NEVER, englishFor, fieldsForKind, inferKind, isCapability, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
 import { isDeliverable, isInterfaceNoun, listRegion, splitListItems, type ListMarker } from './request-lists';
+import { foldChars } from '../orchestrator/promptNormalizer';
 
 const T = (key: string, ar: string, en: string, required = false): ModelField =>
     ({ key, type: 'TEXT', required, ar, en });
@@ -119,7 +120,8 @@ const NOUNS: Noun[] = [
     { key: 'travelers', ar: 'المسافرون', en: 'travelers', kind: 'person', re: /^(ال)?مسافر(ين|ون)?$|^travell?ers?$/i },
     { key: 'children', ar: 'الأطفال', en: 'children', kind: 'person', re: /^(ال)?[أا]طفال$|^children$|^kids$/i },
     { key: 'players', ar: 'اللاعبون', en: 'players', kind: 'person', re: /^(ال)?لاعب(ين|ون)?$|^players?$/i },
-    { key: 'candidates', ar: 'المرشحون', en: 'candidates', kind: 'person', re: /^(ال)?مرشح(ين|ون)?$|^candidates?$/i },
+    // Only the human plurals: «المرشح» alone is a candidate or a filter.
+    { key: 'candidates', ar: 'المرشحون', en: 'candidates', kind: 'person', re: /^(ال)?مرشح(ين|ون)$|^candidates?$/i },
     { key: 'authors', ar: 'المؤلفون', en: 'authors', kind: 'person', re: /^(ال)?مؤلف(ين|ون)?$|^authors?$/i },
     { key: 'nurses', ar: 'الممرضون', en: 'nurses', kind: 'person', re: /^(ال)?ممرض(ين|ون|ات)?$|^nurses?$/i },
     { key: 'friends', ar: 'الأصدقاء', en: 'friends', kind: 'person', re: /^(ال)?[أا]صدقاء$|^friends?$/i },
@@ -127,7 +129,13 @@ const NOUNS: Noun[] = [
     { key: 'treatments', ar: 'العلاجات', en: 'treatments', kind: 'plain', re: /^(ال)?علاج(ات)?$|^treatments?$/i },
     { key: 'tables', ar: 'الطاولات', en: 'tables', kind: 'plain', re: /^(ال)?طاولات$|^tables$/i },
     { key: 'drinks', ar: 'المشروبات', en: 'drinks', kind: 'thing', re: /^(ال)?مشروبات$|^drinks?$|^beverages?$/i },
-    { key: 'pets', ar: 'الحيوانات', en: 'pets', kind: 'plain', re: /^(ال)?حيوانات$|^pets?$|^animals?$/i },
+    /**
+     * «الحيوانات» is animals — in a zoo, on a farm, at a vet. It was keyed
+     * `pets` while the translator said "animals", so one table had two English
+     * names (round 21 review). His word decides; «pets» is its own noun.
+     */
+    { key: 'pets', ar: 'الحيوانات الأليفة', en: 'pets', kind: 'plain', re: /^(ال)?حيوانات (ال)?[أا]ليف[ةه]$|^pets?$/i },
+    { key: 'animals', ar: 'الحيوانات', en: 'animals', kind: 'plain', re: /^(ال)?حيوان(ات)?$|^animals?$/i },
     { key: 'materials', ar: 'المواد', en: 'materials', kind: 'thing', re: /^(ال)?مواد$|^materials?$/i },
     { key: 'bouquets', ar: 'الباقات', en: 'bouquets', kind: 'thing', re: /^(ال)?باقات$|^bouquets?$/i },
     { key: 'crops', ar: 'المحاصيل', en: 'crops', kind: 'thing', re: /^(ال)?محاصيل$|^crops?$/i },
@@ -161,7 +169,9 @@ const NOUNS: Noun[] = [
     { key: 'deliveries', ar: 'التوصيلات', en: 'deliveries', kind: 'deal', re: /^(ال)?توصيلات$|^deliveries$/i },
     { key: 'tickets', ar: 'التذاكر', en: 'tickets', kind: 'deal', re: /^(ال)?تذاكر$|^tickets?$/i },
     { key: 'enrollments', ar: 'التسجيلات', en: 'enrollments', kind: 'deal', re: /^(ال)?تسجيلات$|^enrol?lments?$/i },
-    { key: 'warranties', ar: 'الكفالات', en: 'warranties', kind: 'deal', re: /^(ال)?كفالات$|^warrant(y|ies)$/i },
+    // «الكفالات» is sponsorships, warranties, guarantees or bail — the business
+    // decides, so the Arabic word keeps its own honest key (round 21 review).
+    { key: 'warranties', ar: 'الضمانات', en: 'warranties', kind: 'deal', re: /^warrant(y|ies)$/i },
     { key: 'budgets', ar: 'الميزانيات', en: 'budgets', kind: 'deal', re: /^(ال)?ميزانيات$|^budgets?$/i },
     { key: 'viewings', ar: 'المعاينات', en: 'viewings', kind: 'event', re: /^(ال)?معاينات$|^viewings?$/i },
     { key: 'vaccinations', ar: 'التطعيمات', en: 'vaccinations', kind: 'event', re: /^(ال)?تطعيمات$|^vaccinations?$/i },
@@ -175,18 +185,43 @@ const NOUNS: Noun[] = [
     { key: 'exercises', ar: 'التمارين', en: 'exercises', kind: 'event', re: /^(ال)?تمارين$|^exercises?$|^workouts?$/i },
 ];
 
-/** The table key of a noun on the curated list, or '' — so every reader keys «المرضى» as `patients`. */
-export function curatedNounKey(word: string): string {
-    const w = String(word || '').trim();
-    if (!w) return '';
-    return NOUNS.find(x => x.re.test(w))?.key || '';
+/**
+ * ONE SPELLING OF A WORD IS EVERY SPELLING OF IT.
+ *
+ * Round 21 review: «نظام لعيادة فيه: اداره المرضى، وقائمه المواعيد» — informal
+ * Arabic writes ة as ه, drops the hamza, writes ى as ي — and a list written
+ * that way matched none of the patterns above, which were written in one
+ * spelling. Both sides are folded the way promptNormalizer.foldChars folds a
+ * request (أ/إ/آ → ا, ة → ه, ى → ي, ئ → ي, ؤ → و, ء and marks dropped), so
+ * a pattern is matched as the word, not as one way of typing it.
+ */
+const foldPattern = (source: string) => source
+    .replace(/[ً-ْٰـ]/gu, '')
+    .replace(/[أإآٱ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ة/gu, 'ه')
+    .replace(/ئ/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ء/gu, '');
+const fold = (word: string) => foldChars(String(word || '').trim());
+const FOLDED_NOUNS: Array<{ noun: Noun; re: RegExp }> = NOUNS.map(noun =>
+    ({ noun, re: new RegExp(foldPattern(noun.re.source), noun.re.flags) }));
+
+/** The curated noun this one word (or whole item) is, in any spelling. */
+function nounFor(word: string): Noun | undefined {
+    const w = fold(word);
+    if (!w) return undefined;
+    return FOLDED_NOUNS.find(x => x.re.test(w))?.noun;
 }
 
-/** The English of a noun on the curated list, or '' — the label beside the key above. */
+/** The table key of a noun on the curated list, or '' — so every reader keys «المرضى» as `patients`. */
+export function curatedNounKey(word: string): string {
+    return nounFor(word)?.key || '';
+}
+
+/**
+ * The English of a TABLE on the curated list, or '' — the label beside the key
+ * above. A table's name only: a column labelled «الموظف» is one employee, not
+ * the `employees` table (entity-inference.englishFor reads columns).
+ */
 export function curatedNounEnglish(word: string): string {
-    const w = String(word || '').trim();
-    if (!w) return '';
-    return NOUNS.find(x => x.re.test(w))?.en || '';
+    return nounFor(word)?.en || '';
 }
 
 /**
@@ -200,24 +235,81 @@ export function curatedNounEnglish(word: string): string {
  * («services, testimonials») read no table at all.
  *
  * A two-word item is read whole first («العملاء المحتملون» → leads), then by
- * its head: the first word in Arabic («آراء العملاء» are opinions, «المنتجات
- * الرقمية» are products), the last in English («customer reviews» are
- * reviews). Only when the head is a word for holding or working the
- * possessor's records («إدارة المرضى», «سجل المرضى», «patient records») does
- * the item name the possessor.
+ * its head: the first word in Arabic («المنتجات الرقمية» are products), the
+ * last in English («customer reviews» are reviews).
+ *
+ * …AND THE HEAD SILENCES THE POSSESSOR ONLY WHEN IT SAYS WHAT IT IS.
+ *
+ * Round 21 review: the first version let the possessor speak only after a
+ * head from a short list of record-keeping words («إدارة», «سجل», "records"),
+ * so every other head silenced it. «Build a clinic backend with: doctor
+ * profiles, appointment scheduling, patient history» read no table at all,
+ * nor did «اداره المرضى، وقائمه المواعيد» (the list words written with ه),
+ * and the delivery gate, handed nothing, required nothing. A doctor profile
+ * IS the doctor's record; scheduling and history are things done to
+ * appointments and patients. What the possessor must not name is CONTENT
+ * ABOUT it — what people said («آراء العملاء», testimonials, feedback) or what
+ * shows it («صور المنتجات», photos, a gallery, a logo). So the possessor names
+ * the record unless the head is one of those words of the language. Matched
+ * folded, like every noun here.
  */
-const RECORDS_OF = /^(?:(?:ال)?(?:إدارة|ادارة|تتبع|متابعة|تسجيل|سجل|سجلات|جدول|جداول|قائمة|قوائم|بيانات|ملف|ملفات|أرشيف|ارشيف)|management|tracking|records?|lists?|data|database|directory|table|registry|files?)$/iu;
+const CONTENT_ABOUT = new RegExp(foldPattern(`^(?:(?:ال)?(?:${[
+    'آراء', 'رأي', 'شهادات', 'تجارب', 'انطباعات', 'قصص',
+    'صور', 'صورة', 'معرض', 'معارض', 'فيديو', 'فيديوهات', 'مقاطع', 'لقطات', 'شعار', 'شعارات',
+].join('|')})|opinions?|testimonials?|feedback|stories|story|quotes?|impressions?`
+    + '|photos?|images?|pictures?|gallery|galleries|videos?|clips?|logos?)$'), 'iu');
+
+/** The head and the other word of a two-word item: Arabic names the head first, English last. */
+function headOf(item: string): { head: string; other: string } | null {
+    const token = String(item || '').trim().split(/\s+/).filter(Boolean);
+    if (token.length < 2) return null;
+    const arabic = /[\u0600-\u06FF]/u.test(token[0]);
+    return arabic
+        ? { head: token[0], other: token[token.length - 1] }
+        : { head: token[token.length - 1], other: token[0] };
+}
 
 function nounOfItem(item: string): Noun | undefined {
-    const whole = String(item || '').trim();
-    const token = whole.split(/\s+/).filter(Boolean);
-    const exact = NOUNS.find(x => x.re.test(whole));
-    if (exact || token.length < 2) return exact;
-    const arabic = /[\u0600-\u06FF]/u.test(token[0]);
-    const head = arabic ? token[0] : token[token.length - 1];
-    const possessor = arabic ? token[token.length - 1] : token[0];
-    return NOUNS.find(x => x.re.test(head))
-        || (RECORDS_OF.test(head) ? NOUNS.find(x => x.re.test(possessor)) : undefined);
+    const exact = nounFor(item);
+    const parts = headOf(item);
+    if (exact || !parts) return exact;
+    return nounFor(parts.head)
+        || (CONTENT_ABOUT.test(fold(parts.head)) ? undefined : nounFor(parts.other));
+}
+
+/**
+ * The key of the curated table a listed item names, read the way namedEntities
+ * reads it (whole, head, then the possessor unless the head is content about
+ * it), or ''. One rule for every reader of an item, so no reader keys «صور
+ * المنتجات» as `products` that the list reader rightly did not read as a table.
+ */
+export function nounKeyOfItem(item: string): string {
+    return nounOfItem(item)?.key || '';
+}
+
+/** The English of the curated table an item names (the same reading), or ''. */
+export function nounEnglishOfItem(item: string): string {
+    return nounOfItem(item)?.en || '';
+}
+
+/**
+ * A WORD THAT HOLDS RECORDS IS NOT THE RECORD.
+ *
+ * «جدول الرواتب», «إدارة الحاويات», «سجل التطعيمات», "patient records" — the
+ * head says where the records are kept or how they are worked; what they ARE
+ * is the rest. A key or a table name read from the whole phrase named the
+ * holder, or needed a dictionary to know it. Folded, both scripts.
+ */
+const RECORD_HOLDER = new RegExp(foldPattern('^(?:(?:ال)?(?:إدارة|تتبع|متابعة|تسجيل|سجل|سجلات|جدول|جداول|قائمة|قوائم|كشف|بيانات|ملف|ملفات|أرشيف)'
+    + '|management|tracking|records?|lists?|data|database|directory|table|registry|files?)$'), 'iu');
+
+/** The item without a head that only holds its records («جدول الرواتب» → «الرواتب»), else the item. */
+export function withoutRecordHolder(item: string): string {
+    const text = String(item || '').trim();
+    const parts = headOf(text);
+    if (!parts || !RECORD_HOLDER.test(fold(parts.head))) return text;
+    const token = text.split(/\s+/).filter(Boolean);
+    return (/[\u0600-\u06FF]/u.test(token[0]) ? token.slice(1) : token.slice(0, -1)).join(' ');
 }
 
 /** The columns a table of this kind actually needs to be usable. */
