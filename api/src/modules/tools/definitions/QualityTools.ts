@@ -7,6 +7,7 @@ import path from 'path';
 
 import { resolveToolPath } from '../utils';
 import { checkJavaScriptSyntax } from '../../../core/quality/js-syntax-check';
+import { emptyTestRun } from '../../../core/quality/test-run-evidence';
 
 function getWorkspaceRoot() {
     return resolveToolPath('.');
@@ -173,7 +174,10 @@ export class QualityRunTool extends BaseTool {
 
         const runNpmScript = async (script: string, extraArgs: string[] = [], timeoutMs = 10 * 60_000, env?: NodeJS.ProcessEnv) => {
             const args = ['run', script, ...extraArgs];
-            return handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId, env);
+            // The environment travels only when there is one to carry.
+            return env
+                ? handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId, env)
+                : handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId);
         };
         /**
          * A PORT OF ITS OWN FOR THE TEST RUN.
@@ -196,10 +200,14 @@ export class QualityRunTool extends BaseTool {
                     // JavaScript source — when the source runs as written. A
                     // build script may compile another grammar (JSX in .js),
                     // so there the build is the check. Nothing to parse stays skipped.
-                    const syntax = scripts.build ? { files: [], failure: null } : await checkJavaScriptSyntax(projectDir);
-                    if (!syntax.files.length) results.push({ task, ok: true, skipped: true });
-                    else if (syntax.failure) results.push({ task, ok: false, skipped: false, method: 'node --check', error: `${syntax.failure.file}: ${syntax.failure.error}` });
-                    else results.push({ task, ok: true, skipped: false, method: 'node --check', output: `No lint script; Node parsed ${syntax.files.length} JavaScript file(s): ${syntax.files.join(', ').slice(0, 3000)}` });
+                    const syntax = scripts.build ? { files: [] as string[], failure: null, notParsed: undefined } : await checkJavaScriptSyntax(projectDir);
+                    const notParsed = (syntax.notParsed || []).map(entry => `${entry.file} (${entry.why})`).join('; ');
+                    if (!syntax.files.length) results.push({ task, ok: true, skipped: true, ...(notParsed ? { output: `Not parsed: ${notParsed}` } : {}) });
+                    // Only the parser's rejection names his file; a check that
+                    // could not run says so and is not a pass (round 21).
+                    else if (syntax.failure?.kind === 'syntax') results.push({ task, ok: false, skipped: false, method: 'node --check', error: `${syntax.failure.file}: ${syntax.failure.error}` });
+                    else if (syntax.failure) results.push({ task, ok: false, skipped: false, unchecked: true, method: 'node --check', error: syntax.failure.error });
+                    else results.push({ task, ok: true, skipped: false, method: 'node --check', output: `No lint script; Node parsed ${syntax.files.length} JavaScript file(s): ${syntax.files.join(', ').slice(0, 3000)}${notParsed ? `. Not parsed: ${notParsed}`.slice(0, 1000) : ''}` });
                     continue;
                 }
                 const r = await runNpmScript('lint', [], 10 * 60_000);
@@ -234,7 +242,12 @@ export class QualityRunTool extends BaseTool {
                     continue;
                 }
                 const r = await runNpmScript('test', [], 15 * 60_000, testEnv);
-                if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
+                // An exit code cannot tell «nothing failed» from «nothing ran»
+                // (unittest before 3.12, cargo with an uncompiled test file, go
+                // with no _test.go): the runner's own summary can (round 21).
+                const ranNothing = r.ok ? emptyTestRun(`${String(r.output || '')}\n${String((r as any).stderr ?? r.error ?? '')}`) : null;
+                if (ranNothing) results.push({ task, ok: false, skipped: false, error: `the test command ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`.slice(0, 4000) });
+                else if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
                 else results.push({ task, ok: false, skipped: false, error: String(r.error || '').slice(0, 4000) });
                 continue;
             }

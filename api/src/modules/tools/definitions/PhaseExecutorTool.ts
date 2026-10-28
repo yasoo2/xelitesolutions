@@ -8,7 +8,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { importedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
-import { autoBuildManifest, buildFailureEvidence, manifestAwaitsInstall, plannedFilesNotYetWritten, plannedTaskWrites } from '../auto-build-readiness';
+import { autoBuildManifests, buildFailureEvidence, manifestAwaitsInstall, manifestDeclaresBuild, plannedFilesNotYetWritten, plannedTaskWrites } from '../auto-build-readiness';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { elidedParts } from '../../../shared/utils/elided-content';
@@ -2570,21 +2570,37 @@ let verificationFailed = false;
             );
             if (hasCodeTasks && !phase.verificationTask && allOk && executedCount > 0 && executionContext.workspaceId) {
                 const writtenPaths = tasks.flatMap((t: any) => plannedTaskWrites(t));
-                // The manifest this phase wrote, else the plan's once an earlier
-                // phase put it on disk: the check follows the project, not the
-                // one phase that happened to write package.json (P001).
-                const pkgPath = autoBuildManifest(writtenPaths, plannedProjectFiles, executionContext.workspaceId);
-                const projectDir = pkgPath ? pkgPath.split('/').slice(0, -1).join('/') : '';
-                const awaitedFiles = pkgPath && projectContext?.isFinalPhase !== true
-                    ? plannedFilesNotYetWritten(projectDir, plannedProjectFiles, executionContext.workspaceId)
-                    : [];
-                if (!pkgPath) {
-                    appendLog('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote no package.json, so there is no build to run.');
-                } else if (awaitedFiles.length) {
-                    // Not a pass: no receipt is recorded. The phase that writes the
-                    // last planned file runs it; the final phase never waits.
-                    appendLog(`[PhaseExecutor] ⏳ Auto-build check waits for the phase that completes this project: ${awaitedFiles.length} planned file(s) not written yet (${awaitedFiles.slice(0, 4).join(', ')}${awaitedFiles.length > 4 ? ', …' : ''}).`);
-                } else {
+                // The manifest nearest each file this phase wrote — one it wrote,
+                // or the plan's once an earlier phase put it on disk: the check
+                // follows the project, not the one phase that happened to write
+                // package.json (P001). Every project the phase touched is checked,
+                // not the first one found (round 21); the final phase, which never
+                // waits, also checks every planned project on disk.
+                const manifests = autoBuildManifests(writtenPaths, plannedProjectFiles, executionContext.workspaceId, { everyPlanned: projectContext?.isFinalPhase === true });
+                if (!manifests.length) {
+                    appendLog('[PhaseExecutor] ℹ️ Auto-build check skipped honestly: this phase wrote into no project with a package.json, so there is no build to run.');
+                }
+                for (const pkgPath of manifests) {
+                    const projectDir = pkgPath.split('/').slice(0, -1).join('/');
+                    const awaitedFiles = projectContext?.isFinalPhase !== true
+                        ? plannedFilesNotYetWritten(projectDir, plannedProjectFiles, executionContext.workspaceId)
+                        : [];
+                    if (awaitedFiles.length) {
+                        // Not a pass: no receipt is recorded. The phase that writes the
+                        // last planned file runs it; the final phase never waits.
+                        appendLog(`[PhaseExecutor] ⏳ Auto-build check waits for the phase that completes this project: ${awaitedFiles.length} planned file(s) not written yet (${awaitedFiles.slice(0, 4).join(', ')}${awaitedFiles.length > 4 ? ', …' : ''}).`);
+                        continue;
+                    }
+                    // `npm run --if-present build` with no build script prints nothing
+                    // and exits 0: that was logged as a pass and recorded as a passed
+                    // receipt for a build that never ran (round 21). A project that
+                    // declares no build has nothing to check — said, and no receipt.
+                    let manifestRoot = '';
+                    try { manifestRoot = path.dirname(resolveToolPath(pkgPath, { workspaceId: executionContext.workspaceId })); } catch { /* the build reports it */ }
+                    if (manifestRoot && !manifestDeclaresBuild(manifestRoot)) {
+                        appendLog(`[PhaseExecutor] ℹ️ Auto-build check skipped honestly: ${pkgPath} declares no build script, so there is no build to run (no receipt recorded).`);
+                        continue;
+                    }
                     appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);
                     let buildSelection: VerificationSelection | undefined;
                     let buildSelectedAt = 0;

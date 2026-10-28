@@ -61,6 +61,6 @@ test('the layout shown to the model lists the project files, not the caches insi
     expect(prompt.length).toBeLessThan(4000);
 });
 
-test('the parser reads the sources someone wrote, never a cache or Joe state that happens to end in .js', () => {
-    expect(listJavaScriptSources(ROOT).sort()).toEqual(['db.js', 'routes/patients.js', 'server.js']);
+test('the parser reads the sources someone wrote, never a cache or Joe state that happens to end in .js', async () => {
+    expect((await listJavaScriptSources(ROOT)).sort()).toEqual(['db.js', 'routes/patients.js', 'server.js']);
 });

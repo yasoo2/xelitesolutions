@@ -30,6 +30,8 @@ import { engineeringExecution, issueEngineeringExecution } from '../../services/
 import { autonomousFileTextIsSafe } from '../../services/AutonomousFilePolicy';
 import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { namedTargetFile } from '../../../core/orchestrator/file-intent';
+import { foldChars } from '../../../core/orchestrator/promptNormalizer';
+import { AR_END, AR_START } from '../../../shared/arabic-word-boundary';
 import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
@@ -667,14 +669,16 @@ const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: 'python
 function buildCliScaffold(request: string, projectName: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
 } {
-    const named = namedTargetFile(request);
-    const namedExt = named ? path.extname(named).toLowerCase() : '';
     // The file he named is the program only when it is source code. Eval P301
     // (2026-10-25): «… وتكتب الأسطر الخاطئة في ملف errors.csv» names the file
     // the program WRITES; taking it as the entry ran `python errors.csv`, and
     // the Python program was authored into a .csv file. A data file stays the
     // program's input or output, as his request says; the entry keeps the
-    // language's own name.
+    // language's own name. Only source names are counted, BEFORE the «exactly
+    // one name» rule (round 21 review): «validate.py … errors.csv» lost
+    // validate.py, because two names counted as no name.
+    const named = namedTargetFile(request, name => Boolean(CLI_LANGUAGE_BY_EXTENSION[path.extname(name).toLowerCase()]));
+    const namedExt = named ? path.extname(named).toLowerCase() : '';
     const namedEntry = named && CLI_LANGUAGE_BY_EXTENSION[namedExt] ? named : null;
     // The program he named decides the language before any keyword guess does.
     const lang = (namedEntry && CLI_LANGUAGE_BY_EXTENSION[namedExt]) || detectLanguage(request);
@@ -751,7 +755,7 @@ function buildCliScaffold(request: string, projectName: string): {
             description: `Write ${testFileName} for the requested behaviour`,
             args: {
                 path: testFileName,
-                description: cliTestBrief(entryPoint, runCommand, testCommand, request, lang),
+                description: cliTestBrief(entryPoint, runCommand, testCommand, request, lang, toolchainPackageName(projectName)),
             },
         });
     }
@@ -769,16 +773,36 @@ function buildCliScaffold(request: string, projectName: string): {
     };
 }
 
+/**
+ * ⛔ A LANGUAGE HE NAMES IN ARABIC IS NAMED (round 21 review). «أداة سطر أوامر
+ * بلغة بايثون» fell through every English pattern to the TypeScript default.
+ * Arabic names are matched on the folded request (foldChars: أ/إ/آ→ا, ة→ه,
+ * ى→ي), so «بلغة» and «بلغه» are one spelling. A name that is also an everyday
+ * word counts only inside a language phrase: English «go» («let me go
+ * through my notes»), Arabic «جو» (also Joe's own name, and «weather»), «باش»
+ * (Maghrebi «in order to»), «شل», «رست».
+ */
+const IN_LANGUAGE_AR = `${AR_START}(?:بال|ب|ال)?لغه\\s+`;
+const ARABIC_LANGUAGE_NAMES: Array<[ReturnType<typeof detectLanguage>, RegExp]> = [
+    ['python', new RegExp(`${AR_START}با?ي(?:ث|ت)ون${AR_END}`, 'u')],
+    ['typescript', new RegExp(`${AR_START}تايب\\s*سكري?بت${AR_END}`, 'u')],
+    ['bash', new RegExp(`${IN_LANGUAGE_AR}(?:باش|شل)${AR_END}|${AR_START}سكري?بت\\s+(?:باش|شل)${AR_END}|${AR_START}(?:باش|شل)\\s+سكري?بت${AR_END}`, 'u')],
+    ['go', new RegExp(`${IN_LANGUAGE_AR}(?:جو|غو|قو|go)${AR_END}|${AR_START}(?:جو|غو|قو)لانج${AR_END}`, 'u')],
+    ['rust', new RegExp(`${IN_LANGUAGE_AR}(?:رست|راست)${AR_END}`, 'u')],
+    ['javascript', new RegExp(`${AR_START}جافا\\s*سكري?بت${AR_END}`, 'u')],
+];
+
 function detectLanguage(request: string): 'typescript' | 'python' | 'bash' | 'go' | 'rust' | 'javascript' | 'unknown' {
-    const req = request.toLowerCase();
+    const req = foldChars(request);
     
     // Explicit language mentions (TypeScript first for specificity)
-    if (/\bpython\b/.test(req)) return 'python';
+    if (/\bpython[23]?\b/.test(req)) return 'python';
     if (/\btypescript\b|\bts\b/.test(req)) return 'typescript';
     if (/\bbash\b|\bshell\b|\bsh\b/.test(req)) return 'bash';
-    if (/\bgo\b|\bgolang\b/.test(req)) return 'go';
+    if (/\bgolang\b|\bgo\s+(?:cli|program|tool|script|binary|module|code|app|application|utility|command)\b|\b(?:in|using|written\s+in)\s+go\b/.test(req)) return 'go';
     if (/\brust\b/.test(req)) return 'rust';
     if (/\bjavascript\b/.test(req)) return 'javascript';
+    for (const [lang, name] of ARABIC_LANGUAGE_NAMES) if (name.test(req)) return lang;
     
     // Framework/tool hints (Node.js ecosystem defaults to TypeScript)
     if (/django|flask|fastapi|pandas|numpy|pip|conda|virtualenv/.test(req)) return 'python';
@@ -891,7 +915,9 @@ function generateGoScaffold(request: string, projectName: string, isCsv: boolean
     const entryPointContent = generateGoEntry(request, isCsv);
     const testFile = generateGoTest();
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'test.go', toolchainFiles: { 'go.mod': goMod } };
+    // `go test` compiles only files named *_test.go: a test in test.go is part
+    // of the program and «[no test files]» passes (round 21 review).
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'main_test.go', toolchainFiles: { 'go.mod': goMod } };
 }
 
 function generateRustScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -901,9 +927,12 @@ function generateRustScaffold(request: string, projectName: string, isCsv: boole
     const cargoToml = `[package]\nname = "${crate}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${isCsv ? 'csv = "1.3"\n' : ''}serde_json = "1.0"\n`;
     const entryPoint = 'src/main.rs';
     const entryPointContent = generateRustEntry(request, isCsv);
-    const testFile = generateRustTest();
+    const testFile = generateRustTest(crate);
     const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'src/test.rs', toolchainFiles: { 'Cargo.toml': cargoToml } };
+    // src/test.rs is compiled only when main.rs declares `mod test;` — it did
+    // not, so `cargo test` ran 0 tests and passed (round 21 review). A file in
+    // tests/ is an integration test cargo builds by itself, against the binary.
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'tests/cli.rs', toolchainFiles: { 'Cargo.toml': cargoToml } };
 }
 
 function generateJavaScriptScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -942,14 +971,14 @@ function generateGoEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
         return `// ${request}\npackage main\n\nimport (\n\t"encoding/csv"\n\t"encoding/json"\n\t"fmt"\n\t"os"\n)\n\nfunc main() {\n\tif len(os.Args) < 2 {\n\t\tfmt.Println("Usage: go run main.go <csv-file>")\n\t\tos.Exit(1)\n\t}\n\t\n\tfile, err := os.Open(os.Args[1])\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\tdefer file.Close()\n\n\treader := csv.NewReader(file)\n\trecords, err := reader.ReadAll()\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tif len(records) == 0 {\n\t\treturn\n\t}\n\n\theaders := records[0]\n\tvar results []map[string]string\n\tfor _, row := range records[1:] {\n\t\trecord := make(map[string]string)\n\t\tfor i, h := range headers {\n\t\t\trecord[h] = row[i]\n\t\t}\n\t\tresults = append(results, record)\n\t}\n\n\toutput, _ := json.MarshalIndent(results, "", "  ")\n\tfmt.Println(string(output))\n}`;
     }
-    return `// ${request}\npackage main\n\nimport (\n\t"encoding/json"\n\t"os"\n)\n\nfunc main() {\n\tif len(os.Args) < 3 {\n\t\tfmt.Println("Usage: go run main.go <json-file> <property=value>")\n\t\tos.Exit(1)\n\t}\n\n\tfilePath := os.Args[1]\n\tfilter := os.Args[2]\n\n\tcontent, err := os.ReadFile(filePath)\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tvar data []map[string]interface{}\n\tif err := json.Unmarshal(content, &data); err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tprop, value, _ := strings.Cut(filter, "=")\n\tvar filtered []map[string]interface{}\n\tfor _, item := range data {\n\t\tif val, ok := item[prop].(string); ok && val == value {\n\t\t\tfiltered = append(filtered, item)\n\t\t}\n\t}\n\n\toutput, _ := json.MarshalIndent(filtered, "", "  ")\n\tfmt.Println(string(output))\n}`;
+    return `// ${request}\npackage main\n\nimport (\n\t"encoding/json"\n\t"fmt"\n\t"os"\n\t"strings"\n)\n\nfunc main() {\n\tif len(os.Args) < 3 {\n\t\tfmt.Println("Usage: go run main.go <json-file> <property=value>")\n\t\tos.Exit(1)\n\t}\n\n\tfilePath := os.Args[1]\n\tfilter := os.Args[2]\n\n\tcontent, err := os.ReadFile(filePath)\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tvar data []map[string]interface{}\n\tif err := json.Unmarshal(content, &data); err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tprop, value, _ := strings.Cut(filter, "=")\n\tvar filtered []map[string]interface{}\n\tfor _, item := range data {\n\t\tif val, ok := item[prop].(string); ok && val == value {\n\t\t\tfiltered = append(filtered, item)\n\t\t}\n\t}\n\n\toutput, _ := json.MarshalIndent(filtered, "", "  ")\n\tfmt.Println(string(output))\n}`;
 }
 
 function generateRustEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
         return `// ${request}\nuse std::env;\nuse std::fs::File;\nuse std::io::BufReader;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: {} <csv-file>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file = File::open(&args[1]).expect("Failed to open file");\n    let mut reader = csv::Reader::from_reader(BufReader::new(file));\n    \n    let mut results = Vec::new();\n    for result in reader.deserialize() {\n        let record: serde_json::Value = result.expect("CSV parse error");\n        results.push(record);\n    }\n    \n    println!("{}", serde_json::to_string_pretty(&results).unwrap());\n}\n\n// Cargo.toml needs:\n// [dependencies]\n// csv = "1.3"\n// serde = { version = "1.0", features = ["derive"] }\n// serde_json = "1.0"`;
     }
-    return `// ${request}\nuse std::env;\nuse std::fs;\nuse serde_json::Value;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 3 {\n        eprintln!("Usage: {} <json-file> <property=value>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file_path = &args[1];\n    let filter = &args[2];\n    let parts: Vec<&str> = filter.split('=').collect();\n    if parts.len() != 2 {\n        eprintln!("Filter must be in format: property=value");\n        std::process::exit(1);\n    }\n    let (prop, value) = (parts[0], parts[1]);\n\n    let content = fs::read_to_string(file_path).expect("Failed to read file");\n    let data: Vec<Value> = serde_json::from_str(&content).expect("Invalid JSON");\n    \n    let filtered: Vec<Value> = data.into_iter()\n        .filter(|item| item.get(&prop).map(|v| v.as_str()) == Some(value))\n        .collect();\n    \n    println!("{}", serde_json::to_string_pretty(&filtered).unwrap());\n}`;
+    return `// ${request}\nuse std::env;\nuse std::fs;\nuse serde_json::Value;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 3 {\n        eprintln!("Usage: {} <json-file> <property=value>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file_path = &args[1];\n    let filter = &args[2];\n    let parts: Vec<&str> = filter.split('=').collect();\n    if parts.len() != 2 {\n        eprintln!("Filter must be in format: property=value");\n        std::process::exit(1);\n    }\n    let (prop, value) = (parts[0], parts[1]);\n\n    let content = fs::read_to_string(file_path).expect("Failed to read file");\n    let data: Vec<Value> = serde_json::from_str(&content).expect("Invalid JSON");\n    \n    let filtered: Vec<Value> = data.into_iter()\n        .filter(|item| item.get(&prop).and_then(|v| v.as_str()) == Some(value))\n        .collect();\n    \n    println!("{}", serde_json::to_string_pretty(&filtered).unwrap());\n}`;
 }
 
 function generateJavaScriptEntry(request: string): string {
@@ -972,16 +1001,50 @@ function generatePythonTest(entry = 'main.py', isCsv = false): string {
 }
 
 /**
- * How a Python program's tests run. Tests Joe authors are standard-library
- * unittest cases, run by the standard library on every machine. Tests the
- * model planned may be pytest-style: pytest runs them where it is installed,
- * and unittest is the fallback — so the command never needs a package the
- * machine may not have, and an empty run still fails (Python ≥ 3.12 exits 5).
+ * How a Python program's tests run — ⛔ AND THAT AN EMPTY RUN FAILS ON EVERY
+ * PYTHON (round 21 review).
+ *
+ * `python -m unittest` exits 5 on «Ran 0 tests» only since Python 3.12; on
+ * 3.11 and older it prints «OK» and exits 0. And a plan's tests are often
+ * pytest-style — bare `def test_…():` functions — which unittest does not
+ * collect, so on a machine without pytest such a file «passed» with nothing
+ * run. So the tests are run by a small standard-library runner, the same on
+ * every version, that:
+ *   - imports each test file and collects unittest.TestCase tests, bare
+ *     `test*` functions and plain `Test*` classes — what pytest collects
+ *     without its plugins — so a pytest-style file is really run;
+ *   - fails when no test ran, or when every test was skipped;
+ *   - lets a test that needs a pytest fixture fail on the missing argument,
+ *     by name, rather than be skipped.
+ * Tests Joe authors use only this runner, so the verdict never depends on the
+ * machine. Tests a plan wrote run under pytest where it is installed (its
+ * fixtures and marks; it fails an empty collection itself, and a run whose
+ * every test was skipped is refused by the delivery's reader of the runner's
+ * summary, test-run-evidence); this runner is the fallback.
+ *
+ * One line: npm hands the script to cmd.exe on Windows and to sh elsewhere,
+ * so it holds no double quote, `$`, backslash, `%` or backtick.
  */
+const PYTHON_TEST_IMPORTS = 'import importlib.util as u,inspect,os,subprocess,sys,unittest';
+const PYTEST_WHERE_INSTALLED = "sys.exit(subprocess.call([sys.executable,'-m','pytest','-v',*sys.argv[1:]])) if u.find_spec('pytest') else 0";
+const PYTHON_TEST_RUNNER = [
+    // Each test file's folder is importable, as pytest's rootdir insertion makes it.
+    'sys.path[:0]=[os.path.dirname(os.path.abspath(f)) for f in sys.argv[1:]]',
+    'ms=[u.module_from_spec(u.spec_from_file_location(os.path.splitext(os.path.basename(f))[0],f)) for f in sys.argv[1:]]',
+    '[(sys.modules.__setitem__(m.__name__,m),m.__spec__.loader.exec_module(m)) for m in ms]',
+    'S=unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromModule(m) for m in ms])',
+    "S.addTests(unittest.FunctionTestCase(v) for m in ms for k,v in vars(m).items() if k.startswith('test') and inspect.isfunction(v) and v.__module__==m.__name__)",
+    "S.addTests(unittest.FunctionTestCase(getattr(c(),n)) for m in ms for k,c in vars(m).items() if k.startswith('Test') and inspect.isclass(c) and not issubclass(c,unittest.TestCase) and c.__module__==m.__name__ for n in dir(c) if n.startswith('test') and callable(getattr(c,n)))",
+    'r=unittest.TextTestRunner(verbosity=2).run(S)',
+    'n=r.testsRun-len(r.skipped)',
+    "n or print('FAILED (no test ran)',file=sys.stderr)",
+    'sys.exit(0 if n and r.wasSuccessful() else 1)',
+];
+
 export function pythonTestCommand(files: string[], authoredByJoe: boolean): string {
-    const list = files.join(' ');
-    if (authoredByJoe) return `python -m unittest -v ${list}`;
-    return `python -c "import importlib.util,subprocess,sys;m=['pytest','-v'] if importlib.util.find_spec('pytest') else ['unittest','-v'];sys.exit(subprocess.call([sys.executable,'-m',*m,*sys.argv[1:]]))" ${list}`;
+    const list = files.map(file => (/\s/u.test(file) ? `"${file}"` : file)).join(' ');
+    const program = [PYTHON_TEST_IMPORTS, ...(authoredByJoe ? [] : [PYTEST_WHERE_INSTALLED]), ...PYTHON_TEST_RUNNER].join(';');
+    return `python -c "${program}" ${list}`;
 }
 
 function generateBashTest(): string {
@@ -989,11 +1052,33 @@ function generateBashTest(): string {
 }
 
 function generateGoTest(): string {
-    return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"testing"\n)\n\nfunc TestCLIFilter(t *testing.T) {\n\ttestData := []map[string]interface{}{\n\t\t{"name": "Alice", "age": 30, "city": "NYC"},\n\t\t{"name": "Bob", "age": 25, "city": "LA"},\n\t\t{"name": "Charlie", "age": 35, "city": "NYC"},\n\t}\n\n\ttestFile := "sample.json"\n\tdata, _ := json.MarshalIndent(testData, "", "  ")\n\tos.WriteFile(testFile, data, 0644)\n\n\toutput, _ := exec.Command("go", "run", "main.go", "sample.json", "city=NYC").Output()\n\tvar result []map[string]interface{}\n\tjson.Unmarshal(output, &result)\n\n\tif len(result) != 2 {\n\t\tt.Fatalf("Expected 2 results, got %d", len(result))\n\t}\n\tif result[0]["name"] != "Alice" {\n\t\tt.Fatalf("Expected Alice, got %v", result[0]["name"])\n\t}\n\tif result[1]["name"] != "Charlie" {\n\t\tt.Fatalf("Expected Charlie, got %v", result[1]["name"])\n\t}\n}\n`;
+    return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"os/exec"\n\t"testing"\n)\n\nfunc TestCLIFilter(t *testing.T) {\n\ttestData := []map[string]interface{}{\n\t\t{"name": "Alice", "age": 30, "city": "NYC"},\n\t\t{"name": "Bob", "age": 25, "city": "LA"},\n\t\t{"name": "Charlie", "age": 35, "city": "NYC"},\n\t}\n\n\ttestFile := "sample.json"\n\tdata, _ := json.MarshalIndent(testData, "", "  ")\n\tos.WriteFile(testFile, data, 0644)\n\n\toutput, _ := exec.Command("go", "run", "main.go", "sample.json", "city=NYC").Output()\n\tvar result []map[string]interface{}\n\tjson.Unmarshal(output, &result)\n\n\tif len(result) != 2 {\n\t\tt.Fatalf("Expected 2 results, got %d", len(result))\n\t}\n\tif result[0]["name"] != "Alice" {\n\t\tt.Fatalf("Expected Alice, got %v", result[0]["name"])\n\t}\n\tif result[1]["name"] != "Charlie" {\n\t\tt.Fatalf("Expected Charlie, got %v", result[1]["name"])\n\t}\n}\n`;
 }
 
-function generateRustTest(): string {
-    return `#[cfg(test)]\nmod tests {\n    use std::process::Command;\n    \n    #[test]\n    fn test_cli_filter() {\n        let test_data = r#"[\n  {"name": "Alice", "age": 30, "city": "NYC"},\n  {"name": "Bob", "age": 25, "city": "LA"},\n  {"name": "Charlie", "age": 35, "city": "NYC"}\n]"#;\n    \n    std::fs::write("sample.json", test_data).unwrap();\n    \n    let output = Command::new("cargo")\n        .args(["run", "--", "sample.json", "city=NYC"])\n        .output()\n        .expect("Failed to execute command");\n    \n    let output = String::from_utf8_lossy(&output.stdout);\n    let result: Vec<serde_json::Value> = serde_json::from_str(&output).unwrap();\n    \n    assert_eq!(result.len(), 2);\n    assert_eq!(result[0]["name"], "Alice");\n    assert_eq!(result[1]["name"], "Charlie");\n}\n}`;
+/** The stock filter's test as a Cargo integration test: tests/ is compiled by cargo itself, and the binary is the program's own. */
+function generateRustTest(bin: string): string {
+    return [
+        'use std::process::Command;',
+        '',
+        '#[test]',
+        'fn filters_by_property() {',
+        '    let sample = std::env::temp_dir().join(format!("{}-sample-{}.json", env!("CARGO_PKG_NAME"), std::process::id()));',
+        '    std::fs::write(&sample, r#"[{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}]"#).unwrap();',
+        '',
+        `    let output = Command::new(env!("CARGO_BIN_EXE_${bin}"))`,
+        '        .arg(&sample)',
+        '        .arg("city=NYC")',
+        '        .output()',
+        '        .expect("the program runs");',
+        '    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));',
+        '',
+        '    let result: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();',
+        '    assert_eq!(result.len(), 2);',
+        '    assert_eq!(result[0]["name"], "Alice");',
+        '    assert_eq!(result[1]["name"], "Charlie");',
+        '}',
+        '',
+    ].join('\n');
 }
 
 function generateJavaScriptTest(): string {
@@ -1441,14 +1526,18 @@ function commonDirectory(files: string[]): string {
 }
 
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
-function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = ''): string {
+function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = '', binary = ''): string {
     const runner = lang === 'python'
         ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
         : lang === 'javascript' || lang === 'typescript'
             ? 'Write it with node:test and node:assert, runnable by `node --test`. '
             : lang === 'bash'
                 ? 'Write it as a bash script that exits non-zero on the first failed check. '
-                : '';
+                : lang === 'rust'
+                    ? `Write it as a Cargo integration test (this file is in tests/, which \`cargo test\` compiles by itself): #[test] functions that run the built program with std::process::Command::new(env!("CARGO_BIN_EXE_${binary || 'the-binary'}")). `
+                    : lang === 'go'
+                        ? 'Write it as a Go test in package main (the file name ends in _test.go, so `go test` compiles it): func TestXxx(t *testing.T) functions that run the program with exec.Command("go", "run", ".", ...). '
+                        : '';
     return `A small self-contained test for the program in ${entry} (${request}). `
         + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
         + runner

@@ -629,7 +629,8 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         // honestly when the phase wrote no package.json.
         // P001 (2026-10-25): the manifest now comes from autoBuildManifest, already
         // '/'-normalised, so the dir is split from it rather than replace()d first.
-        expect(phaseExec).toMatch(/autoBuildManifest\(writtenPaths, plannedProjectFiles/);
+        // Round 21: autoBuildManifests — every project the phase wrote into.
+        expect(phaseExec).toMatch(/autoBuildManifests\(writtenPaths, plannedProjectFiles/);
         expect(phaseExec).toMatch(/pkgPath\.split\('\/'\)\.slice\(0, -1\)/);
         expect(phaseExec).toMatch(/skipped honestly/);
         expect(phaseExec).toMatch(/timeout: 300000/);

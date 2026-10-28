@@ -65,17 +65,71 @@ export function planWrites(phases: any[]): string[] {
       .flatMap((task: any) => plannedTaskWrites(task)))));
 }
 
-/** The workspace-relative package.json to check: this phase's, else the plan's once it is on disk. */
-export function autoBuildManifest(phaseWrites: string[], plannedProjectFiles: string[], workspaceId?: string): string | null {
-  const isManifest = (file: string) => /(^|\/)package\.json$/i.test(norm(file));
-  const written = phaseWrites.map(norm).find(isManifest);
-  if (written) return written;
+/**
+ * The workspace-relative package.json files to check: for each file this
+ * phase wrote, the manifest nearest above it — one this phase wrote, or one
+ * the plan writes that an earlier phase put on disk.
+ *
+ * ⛔ EVERY PROJECT THE PHASE TOUCHED (round 21 review). This returned the
+ * first manifest only, so a phase of a two-project plan (an API and its web
+ * client) checked whichever package.json came first and never built the
+ * other. `everyPlanned` (the final phase, which never waits) adds every
+ * planned manifest on disk, so a check an earlier phase deferred is never
+ * dropped because the completing phase wrote nothing inside that project.
+ */
+export function autoBuildManifests(
+  phaseWrites: string[],
+  plannedProjectFiles: string[],
+  workspaceId?: string,
+  opts: { everyPlanned?: boolean } = {},
+): string[] {
+  const isManifest = (file: string) => /(^|\/)package\.json$/i.test(file);
+  const written = phaseWrites.map(norm).filter(Boolean);
+  const candidates = new Set(written.filter(isManifest));
+  const onDisk = new Set<string>();
   for (const planned of plannedProjectFiles.map(norm).filter(isManifest)) {
+    if (candidates.has(planned)) continue;
     try {
-      if (fs.existsSync(resolveToolPath(planned, { workspaceId }))) return planned;
+      if (fs.existsSync(resolveToolPath(planned, { workspaceId }))) { candidates.add(planned); onDisk.add(planned); }
     } catch { /* outside the workspace: not ours to build */ }
   }
-  return null;
+  const dirOf = (manifest: string) => (manifest.includes('/') ? manifest.slice(0, manifest.lastIndexOf('/')) : '');
+  const touched = new Set<string>();
+  for (const file of written) {
+    let nearest: string | null = null;
+    let depth = -1;
+    for (const manifest of candidates) {
+      const dir = dirOf(manifest);
+      if (dir && !file.startsWith(`${dir}/`)) continue;
+      const level = dir ? dir.split('/').length : 0;
+      if (level > depth) { nearest = manifest; depth = level; }
+    }
+    if (nearest) touched.add(nearest);
+  }
+  if (opts.everyPlanned) for (const manifest of onDisk) touched.add(manifest);
+  return Array.from(touched).sort();
+}
+
+/**
+ * ONE READER OF «DOES THIS PROJECT DECLARE A BUILD?» — for the phase's
+ * automatic build check and for self-fix's post-repair proof alike.
+ *
+ * The post-repair proof used to run «npm run build» on every project, so a
+ * build-free site (`start: npx serve src`) or a plain server failed the rerun
+ * on «Missing script: "build"» after its repair had landed (eval P001). And the
+ * phase's check ran `npm run --if-present build` with no build script, which
+ * prints nothing and exits 0 — «Auto-build check passed» and a passed receipt
+ * for a build that never ran (round 21 review). Only a manifest that cannot be
+ * read keeps the build step, so npm reports the real error.
+ */
+export function manifestDeclaresBuild(projectRoot: string): boolean {
+  try {
+    const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
+    const build = manifest?.scripts?.build;
+    return typeof build === 'string' && build.trim().length > 0;
+  } catch {
+    return true;
+  }
 }
 
 /** Files the plan puts in this project that no phase has written yet. */

@@ -1,4 +1,4 @@
-import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
+import { deterministicPhasesFor, pythonTestCommand } from '../modules/tools/definitions/ProjectPipelineTool';
 
 /**
  * Eval P301-cli-ar, 2026-10-25: «اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV …
@@ -17,7 +17,8 @@ describe('a data file he named is the program\'s input or output, not the progra
         expect(pkg.main).toBe('main.py');
         expect(pkg.scripts.start).toBe('python main.py');
         const authored = tasks.filter((t: any) => t.tool === 'ai_write_file').map((t: any) => t.args.path);
-        expect(authored).toEqual(['main.py', 'test.py']);
+        // The test is named after the program (eval round 19).
+        expect(authored).toEqual(['main.py', 'test_main.py']);
         expect(authored).not.toContain('errors.csv');
         // his request, which names errors.csv as the output, still reaches the author
         expect(tasks[1].args.description).toContain('errors.csv');
@@ -32,8 +33,9 @@ describe('a data file he named is the program\'s input or output, not the progra
     it('the Python test runs with Python alone, and its brief names that command', () => {
         const tasks = tasksOf(P301);
         const pkg = JSON.parse(tasks[0].args.structure['package.json']);
-        expect(pkg.scripts.test).toBe('python test.py');
-        expect(JSON.stringify(tasks)).not.toMatch(/pytest/);
-        expect(tasks[2].args.description).toContain('The test is run as `python test.py`');
+        expect(pkg.scripts.test).toBe(pythonTestCommand(['test_main.py'], true));
+        // Nothing asks for pytest; the brief only says not to use it.
+        expect(JSON.stringify(tasks).replace(/\(no pytest\)/g, '')).not.toMatch(/pytest/);
+        expect(tasks[2].args.description).toContain(`The test is run as \`${pkg.scripts.test}\``);
     });
 });
