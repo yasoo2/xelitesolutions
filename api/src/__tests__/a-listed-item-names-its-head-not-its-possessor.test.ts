@@ -80,3 +80,34 @@ describe('the possessor names the record unless the head is content about it', (
         expect(inferModel('ابنِ نظاماً لمكتبة: الكتب، والأعضاء، وآراء العملاء').entities.map(e => e.key)).not.toContain('customers');
     });
 });
+
+/**
+ * Round 21 (after the head-noun rule above): the delivery gate still read a
+ * two-word item by ANY of its words. «صور المنتجات» in a library system
+ * demanded a products table the builder rightly never made, so a server that
+ * served everything he asked for failed as «not served»; and «member photos»
+ * was silently passed as delivered because a members table existed. The gate
+ * reads an item the way the builders read it.
+ */
+describe('the delivery gate reads an item the way the builders do', () => {
+    it('content about a record is not that record\'s table, in Arabic or English', () => {
+        const ar = requestedRecords('ابنِ نظاماً لمكتبة فيه: الكتب، والأعضاء، وآراء العملاء، وصور المنتجات', { backendRequested: true });
+        expect(ar.entities.map(e => e.key)).toEqual(['books', 'members']);
+        const en = requestedRecords('Build a library backend with: books, members, customer testimonials, product photos', { backendRequested: true });
+        expect(en.entities.map(e => e.key)).toEqual(['books', 'members']);
+        // Not built as records and not measurable: said, never failed and never passed.
+        expect(en.unread).toEqual(['customer testimonials', 'product photos']);
+    });
+    it('content about a record he also listed is not delivered by that record\'s table', () => {
+        const en = requestedRecords('Build a library backend with: books, members, member photos', { backendRequested: true });
+        expect(en.entities.map(e => e.key)).toEqual(['books', 'members']);
+        expect(en.unread).toEqual(['member photos']);
+        const ar = requestedRecords('ابنِ نظاماً لمكتبة فيه: الكتب، والأعضاء، وصور الأعضاء', { backendRequested: true });
+        expect(ar.unread).toEqual(['صور الأعضاء']);
+    });
+    it('an item still names the record its head or its possessor is', () => {
+        expect(requestedRecords('ابنِ نظاماً لعيادة فيه: الأطباء، ومواعيد المرضى', { backendRequested: true }).entities.map(e => e.key))
+            .toEqual(['doctors', 'appointments']);
+        expect(requestedRecords(CLINIC_EN, { backendRequested: true }).unread).toEqual([]);
+    });
+});

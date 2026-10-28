@@ -44,7 +44,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import { declaredTables } from '../design/declared-tables';
-import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities } from '../design/named-entities';
+import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities, nounKeyOfItem } from '../design/named-entities';
 import { keyForPhrase } from '../design/entity-inference';
 import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
@@ -204,9 +204,12 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
             if (item.split(/\s+/).length > 4) { clauses.push(item); continue; }
             if (entities.some(entity => itemNamesRecord(item, entity))) continue;
             // A dictionary noun in a proven records list is one of his records,
-            // even where namedEntities' two-noun floor declined the list.
+            // even where namedEntities' two-noun floor declined the list. A
+            // two-word item is read as the builders read it (round 21 review):
+            // «صور المنتجات», "customer testimonials" are content about products
+            // and customers, not those tables, so no server is failed for them.
             const tokens = item.split(/\s+/);
-            const key = curatedNounKey(item) || (tokens.length <= 2 ? tokens.map(t => curatedNounKey(t)).find(Boolean) || '' : '');
+            const key = curatedNounKey(item) || (tokens.length <= 2 ? nounKeyOfItem(item) : '');
             if (key && !entities.some(entity => entity.key === key)) {
                 entities.push({ item, key, ar: /[؀-ۿ]/u.test(item) ? item : '', en: /[؀-ۿ]/u.test(item) ? key : item });
                 continue;
@@ -234,10 +237,12 @@ function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
     const labels = [entity.ar, entity.en, entity.key, entity.item].map(norm).filter(Boolean);
     if (labels.includes(i) || labels.map(singularWord).includes(singularWord(i))) return true;
     if (curatedNounKey(item) === entity.key || keyForPhrase(item) === entity.key) return true;
-    // The builders read a two-word item by its words («menu items» → items):
-    // the same reading here, so an item they built is never «unread».
+    // The builders read a two-word item by its head, then by its possessor
+    // unless the head is content about it («مواعيد المرضى» → appointments,
+    // «صور المنتجات» → none): the same reading here, so an item they built is
+    // never «unread» and content they rightly did not build is never a record.
     const tokens = String(item || '').trim().split(/\s+/);
-    return tokens.length <= 2 && tokens.some(token => curatedNounKey(token) === entity.key);
+    return tokens.length <= 2 && nounKeyOfItem(item) === entity.key;
 }
 
 // ─── evidence in the delivered tree ─────────────────────────────────────────
