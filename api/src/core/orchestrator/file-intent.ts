@@ -75,6 +75,11 @@ const SAFE_RELATIVE_PATH = /^[A-Za-z0-9_\-.\/\\\u0600-\u06FF]+$/;
  * exactly, and asking «which path?» about it is a question he already answered
  * (eval L2-file, 2026-10-22). Only one safe relative name with an extension
  * counts; two different names, an absolute path or `..` mean null.
+ *
+ * `accept` narrows the names to the kind the caller is asking about BEFORE the
+ * «exactly one» rule (round 21 review): «a Python CLI validate.py that writes
+ * bad rows to errors.csv» names one program and one data file, and counting
+ * the data file first made the program's name disappear (two names → null).
  */
 const NAMED_FILE = String.raw`([A-Za-z0-9_\-.\/\\؀-ۿ]+\.[A-Za-z0-9]{1,16})`;
 const OPEN_QUOTE = String.raw`[\x60'"“”«]?`;
@@ -89,14 +94,15 @@ const NAMED_FILE_PATTERNS = [
 // «Node.js», «Vue.js», «Three.js» name a technology, not a file he wants written.
 const TECHNOLOGY_NAME = /^(?:node|vue|next|nuxt|react|express|three|d3|chart|angular|ember|backbone|deno|bun|solid|svelte|alpine|moment|lodash|p5|anime|pixi|babylon|socket\.io)\.js$/i;
 
-export function namedTargetFile(input: string): string | null {
+export function namedTargetFile(input: string, accept?: (name: string) => boolean): string | null {
     const raw = String(input || '');
     const names = new Set<string>();
     for (const re of NAMED_FILE_PATTERNS) {
         for (const m of raw.matchAll(re)) names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
     }
     const valid = [...names].filter(n => n && !TECHNOLOGY_NAME.test(n) && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
-        && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n));
+        && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n)
+        && (!accept || accept(n)));
     return valid.length === 1 ? valid[0] : null;
 }
 

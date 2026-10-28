@@ -126,7 +126,7 @@ describe('P301: the file the program writes is never the program', () => {
     it('a named SOURCE file is still the entry, and its test is named after it', () => {
         const { structure, pkg } = scaffold('Write a Python script wordcount.py that counts the words in a file and writes the result to report.txt.');
         expect(pkg.scripts.start).toBe('python wordcount.py');
-        expect(pkg.scripts.test).toBe('python -m unittest -v test_wordcount.py');
+        expect(pkg.scripts.test).toBe(pythonTestCommand(['test_wordcount.py'], true));
         expect(Object.keys(structure)).toEqual(expect.arrayContaining(['wordcount.py']));
         expect(Object.keys(structure)).not.toContain('report.txt');
     });
@@ -136,18 +136,21 @@ describe('a Python program is proven without packages the machine may not have',
     it('the CLI scaffold runs standard-library unittest, declares no npm dependency, and asks for unittest tests', () => {
         const plan = deterministicPhasesFor(exam('P302-cli-en'))!;
         const pkg = JSON.parse(plan.phases[0].tasks[0].args.structure['package.json']);
-        expect(pkg.scripts.test).toBe('python -m unittest -v test_main.py');
+        expect(pkg.scripts.test).toBe(pythonTestCommand(['test_main.py'], true));
         expect(pkg.scripts.test).not.toMatch(/pytest/);
         expect(pkg.dependencies || {}).toEqual({});
         const brief = plan.phases[0].tasks.find((t: any) => t.args.path === 'test_main.py').args.description;
         expect(brief).toMatch(/unittest\.TestCase/);
         expect(brief.replace('(no pytest)', '')).not.toMatch(/pytest/);
     });
-    it('tests Joe authors run on unittest; tests a plan wrote prefer pytest only where it is installed', () => {
-        expect(pythonTestCommand(['test_main.py'], true)).toBe('python -m unittest -v test_main.py');
+    it('tests Joe authors run on the standard library; tests a plan wrote prefer pytest only where it is installed', () => {
+        const own = pythonTestCommand(['test_main.py'], true);
+        expect(own).toMatch(/^python -c ".*unittest.*" test_main\.py$/);
+        expect(own).not.toMatch(/pytest/);
         const planned = pythonTestCommand(['tests/test_x.py'], false);
         expect(planned).toMatch(/find_spec\('pytest'\)/);
-        expect(planned).toMatch(/'unittest','-v'/);
+        // The fallback collects what pytest would: bare test functions too (round 21).
+        expect(planned).toMatch(/FunctionTestCase/);
     });
     const python = (() => { try { execSync('python --version', { stdio: 'ignore' }); return true; } catch { return false; } })();
     (python ? it : it.skip)('the stock CSV program passes its own test when it really runs, and an empty suite fails', () => {

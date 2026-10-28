@@ -5,6 +5,7 @@ import {
     completePaperPlan,
     deterministicPhasesFor,
     planContainsUnrequestedApiBuilder,
+    pythonTestCommand,
     requestDeclaresOwnBackend,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { isCliRequest } from '../core/design/app-blueprints';
@@ -108,9 +109,11 @@ describe('a paper plan that read the request is completed, not replaced', () => 
             expect(run.tasks[0].args.description).toMatch(/Create its own input fixture, run `python src\/main\.py`/);
             const manifest = JSON.parse(run.tasks[1].args.content);
             expect(run.tasks[1].args.path).toBe('dental-cli/package.json');
-            // The test Joe authors is a standard-library unittest suite (was `python -m pytest`):
+            // The test Joe authors runs on the standard library alone (was `python -m pytest`):
             // pytest is never installed, and eval P301 failed a finished program on «No module named pytest».
-            expect(manifest.scripts).toEqual({ start: 'python src/main.py', test: 'python -m unittest -v test_main.py' });
+            // Since round 21 that runner also fails an empty run on every Python version.
+            expect(manifest.scripts).toEqual({ start: 'python src/main.py', test: pythonTestCommand(['test_main.py'], true) });
+            expect(manifest.scripts.test).not.toMatch(/pytest/);
             expect(run.verificationTask).toMatchObject({ tool: 'quality_run', args: { path: 'dental-cli', tasks: ['test'] } });
         }
     });

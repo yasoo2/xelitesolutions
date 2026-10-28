@@ -7,6 +7,7 @@ import path from 'path';
 
 import { resolveToolPath } from '../utils';
 import { checkJavaScriptSyntax } from '../../../core/quality/js-syntax-check';
+import { emptyTestRun } from '../../../core/quality/test-run-evidence';
 
 function getWorkspaceRoot() {
     return resolveToolPath('.');
@@ -173,7 +174,10 @@ export class QualityRunTool extends BaseTool {
 
         const runNpmScript = async (script: string, extraArgs: string[] = [], timeoutMs = 10 * 60_000, env?: NodeJS.ProcessEnv) => {
             const args = ['run', script, ...extraArgs];
-            return handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId, env);
+            // The environment travels only when there is one to carry.
+            return env
+                ? handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId, env)
+                : handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId);
         };
         /**
          * A PORT OF ITS OWN FOR THE TEST RUN.
@@ -238,7 +242,12 @@ export class QualityRunTool extends BaseTool {
                     continue;
                 }
                 const r = await runNpmScript('test', [], 15 * 60_000, testEnv);
-                if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
+                // An exit code cannot tell «nothing failed» from «nothing ran»
+                // (unittest before 3.12, cargo with an uncompiled test file, go
+                // with no _test.go): the runner's own summary can (round 21).
+                const ranNothing = r.ok ? emptyTestRun(`${String(r.output || '')}\n${String((r as any).stderr ?? r.error ?? '')}`) : null;
+                if (ranNothing) results.push({ task, ok: false, skipped: false, error: `the test command ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`.slice(0, 4000) });
+                else if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
                 else results.push({ task, ok: false, skipped: false, error: String(r.error || '').slice(0, 4000) });
                 continue;
             }
