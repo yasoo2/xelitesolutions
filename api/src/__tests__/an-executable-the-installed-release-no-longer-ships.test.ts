@@ -149,6 +149,8 @@ describe('npm_manager installs the release whose manifest declares the executabl
             if (args[0] === 'view' && args[2] === 'bin') {
                 return { ok: true, output: binByVersion[args[1]] || '', logs: [] };
             }
+            // Not deprecated: npm prints nothing.
+            if (args[0] === 'view' && args[2] === 'deprecated') return { ok: true, output: '', logs: [] };
             return { ok: true, output: 'install ok', logs: [] };
         });
         return calls;
@@ -162,13 +164,18 @@ describe('npm_manager installs the release whose manifest declares the executabl
         });
 
         expect(result.ok).toBe(true);
-        expect(calls.slice(0, 4)).toEqual([
+        expect(calls.slice(0, 5)).toEqual([
             ['view', 'tailwindcss', 'versions', '--json'],
             ['view', 'tailwindcss@4.3.3', 'bin', '--json'],
             ['view', 'tailwindcss@3.4.19', 'bin', '--json'],
+            ['view', 'tailwindcss@3.4.19', 'deprecated', '--json'],
             ['install', 'tailwindcss@^3.4.19', '-D'],
         ]);
         expect(result.logs.join('\n')).toContain('npm.bin_provider=tailwindcss@^3.4.19 declares tailwindcss');
+        // The chosen major is said, not left to be inferred from a version string.
+        const reason = 'tailwindcss@3.4.19 (major 3) is the newest stable, non-deprecated release that declares "tailwindcss"; 4.3.3 declares no "tailwindcss"';
+        expect(result.logs.join('\n')).toContain(reason);
+        expect(result.output.binProvider).toEqual({ version: '3.4.19', major: 3, reason, skippedDeprecated: [] });
     });
 
     it('installs nothing when no published release declares it', async () => {

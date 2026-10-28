@@ -1649,6 +1649,14 @@ export class ProjectRunTool implements ToolDefinition {
             if (installResult?.ok && !missingAfterInstall) {
                 missingPrerequisite = null;
                 logs.push(`project_run: installed imported ${binaryProvider.packageName} for ${binary} (${binaryProvider.importedBy.join(', ')})`);
+                // Which release, and which major, was pinned is his to see — never silent.
+                const chosen = installResult?.output?.binProvider;
+                if (chosen?.version) {
+                    logs.push(`project_run: ${chosen.reason || `${binaryProvider.packageName}@${chosen.version}`}`);
+                    say(pick(isAr,
+                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج ${binary}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
+                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable, non-deprecated release that declares ${binary}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
+                }
             } else {
                 missingPrerequisite = missingAfterInstall;
                 const installError = String(installResult?.error || '').trim().replace(/\s+/gu, ' ').slice(0, 700);
