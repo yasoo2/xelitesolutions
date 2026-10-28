@@ -4,7 +4,7 @@ import { listsProjectFiles, staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
-import { importedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
+import { findImportedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
@@ -1632,7 +1632,7 @@ export class ProjectRunTool implements ToolDefinition {
         // the package of that exact name: that import is the evidence, and
         // npm_manager installs only a release whose manifest declares the program.
         const binaryProvider = missingPrerequisite === 'vite' && !prerequisiteRecovery
-            ? importedPackageForScriptBinary(cwd, missingPrerequisite)
+            ? await findImportedPackageForScriptBinary(cwd, missingPrerequisite)
             : null;
         if (missingPrerequisite && binaryProvider) {
             const binary = missingPrerequisite;
