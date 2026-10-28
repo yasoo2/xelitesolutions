@@ -32,8 +32,9 @@ describe('the decoder is constrained, not merely asked nicely', () => {
         expect(s).toMatch(/format: ask\.schema,/);
         expect(s).toMatch(/options: \{ temperature: 0 \}/);
         expect(s).toMatch(/stream: false/);
-        // An older Ollama ignores `format` and answers prose — read tolerantly.
-        expect(s).toMatch(/parseFirstJson\(text\)/);
+        // An older Ollama ignores `format` and answers prose — read tolerantly,
+        // for the answer of the shape the schema asks for (round 21).
+        expect(s).toMatch(/answerOfSchemaShape\(text, ask\.schema\)/);
     });
 
     it('local first, cloud second, null when neither validates', () => {

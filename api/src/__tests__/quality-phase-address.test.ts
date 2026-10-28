@@ -181,7 +181,8 @@ describe('a model that adds a sentence after its JSON is still understood', () =
 
     it('and the router uses it where it used to crash', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
-        expect(src).toMatch(/import \{ parseFirstJson \}/);
+        // The analysis is an object: the shared reader of the first object (round 21).
+        expect(src).toMatch(/import \{ readModelJsonObject \}/);
         //  ⛔ THE ANCHOR IS PROVEN BEFORE ANYTHING IS BUILT ON IT.
         //
         //  `indexOf` returns -1 when the text moves, and `slice(-1)` then

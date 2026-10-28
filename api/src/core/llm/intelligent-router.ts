@@ -25,7 +25,7 @@ export function uncappedLocalOutputTokens(messages: any[]): number {
 }
 import OpenAI from 'openai';
 import { createHash } from 'crypto';
-import { parseFirstJson } from '../../shared/utils/json';
+import { readModelJsonObject } from '../../shared/utils/json';
 import { safeProviderError, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost, providerCircuitKey, providerCircuitStatus, providerFailureState, providerRetryAfterMs, recordProviderCircuitFailure, releaseProviderCircuitProbe, PROVIDER_RECOVERY_TIMEOUT_MS } from './provider-continuity';
 
 let hack: any = pollinationsProvider;
@@ -296,7 +296,7 @@ Return exactly this JSON structure:
                     { role: 'user', content: userMessage }
                 ], analyzeTask(userMessage, history), undefined, undefined, undefined, undefined, undefined,
                 { modelConfig: { provider: 'auto' }, purpose: 'internal' });
-                const parsed = parseFirstJson<any>(result);
+                const parsed = readModelJsonObject<any>(result);
                 if (parsed) return parsed;
             }
             return analyzeTask(userMessage, history);
@@ -335,8 +335,9 @@ Return exactly this JSON structure:
         // A greedy `/\{[\s\S]*\}/` reached for the LAST brace in the reply, so a
         // model that added one sentence after its JSON produced
         // «Unexpected non-whitespace character after JSON» on every single run
-        // and the analysis was silently discarded.
-        const analysis = parseFirstJson<any>(responseText);
+        // and the analysis was silently discarded. The analysis is an object: a
+        // list the model showed first is not it (round 21).
+        const analysis = readModelJsonObject<any>(responseText);
         if (analysis) {
             return { ...analysis, estimatedTokens: userMessage.length * 10 };
         }

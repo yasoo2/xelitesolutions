@@ -22,7 +22,7 @@
  * would have done without a model at all, which is how every model-touched
  * path in this system stays safe on a machine where every provider can fail.
  */
-import { parseFirstJson } from '../../shared/utils/json';
+import { readModelJson } from '../../shared/utils/json';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
 import { localInferenceFetch } from './providers/loopback-fetch';
 
@@ -35,6 +35,23 @@ export interface StructuredAsk {
     timeoutMs?: number;
     /** Called with a one-line note about which path answered. */
     onNote?: (note: string) => void;
+}
+
+/**
+ * The first value in the reply of the shape the schema asks for at its top —
+ * an object for an object schema, an array for an array schema. A reply that
+ * shows an example list before its answer, or ends with a sentence that holds
+ * a brace, is read for the answer (round 21: «the first parseable value of any
+ * shape» handed back the example). Undefined when no candidate has the shape.
+ */
+export function answerOfSchemaShape(text: string, schema: Record<string, any>): any | undefined {
+    const top = String(schema?.type || '');
+    return readModelJson(text, parsed => {
+        if (parsed === null || parsed === undefined) return undefined;
+        if (top === 'object') return typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : undefined;
+        if (top === 'array') return Array.isArray(parsed) ? parsed : undefined;
+        return parsed;
+    });
 }
 
 const ollamaHost = (): string =>
@@ -69,7 +86,7 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
                 baseURL: host, model, messages: [{ role: 'user', content: ask.prompt }],
                 format: ask.schema, temperature: 0, timeoutMs, maxCompletionTokens: 1024,
             });
-            return parseFirstJson(completion.content) ?? undefined;
+            return answerOfSchemaShape(completion.content, ask.schema);
         } catch (error: any) {
             if (/^RESOURCE_/.test(String(error?.code || ''))) throw error;
             return undefined;
@@ -98,7 +115,7 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
         if (!text) return undefined;
         // A constrained decoder returns bare JSON; parse tolerantly anyway,
         // because an older Ollama silently ignores `format` and answers prose.
-        return parseFirstJson(text) ?? undefined;
+        return answerOfSchemaShape(text, ask.schema);
     } catch {
         return undefined;
     } finally {
@@ -122,7 +139,7 @@ export async function askCloudStructured(ask: StructuredAsk): Promise<any | unde
         const out = await router.generateResponse?.(prompt, { internal: true });
         const text = typeof out === 'string' ? out : String(out?.content ?? out?.text ?? '');
         if (!text.trim()) return undefined;
-        return parseFirstJson(text) ?? undefined;
+        return answerOfSchemaShape(text, ask.schema);
     } catch {
         return undefined;
     }

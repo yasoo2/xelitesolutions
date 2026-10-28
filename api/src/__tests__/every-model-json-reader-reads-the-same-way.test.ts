@@ -31,6 +31,7 @@ import { balancedJsonSpans, jsonReplyCandidates, parseFirstJson, parseModelJsonA
 import { parseRequirements, parseVerdicts } from '../core/quality/named-requirements';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
 import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+import { answerOfSchemaShape } from '../core/llm/structured';
 import adaptiveDag from '../core/orchestrator/adaptive-dag-planner';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { parseRows } from '../core/design/authored-catalogue';
@@ -142,5 +143,23 @@ describe('every reader of a model JSON reply reads through the shared reader', (
         expect(parseVerdicts('{"note":"nothing to say"}')).toEqual([]);
         expect(() => parsePlan('{"projectName":"x"}')).toThrow(/Missing phases array/);
         expect(PlanningEngine.parseJsonArrayLoose('sorry, I cannot help with that')).toBeNull();
+    });
+});
+
+/**
+ * Round 21 (writing fork's hand-back): the structured asker and the router
+ * still took the first parseable value of ANY shape, so a reply that showed an
+ * example list before its object answer handed back the example.
+ */
+describe('a structured answer is the value of the shape its schema asks for', () => {
+    const reply = 'For example ["a","b"] is a list. The answer: {"tables":["patients"]}';
+    it('an object schema reads the object, an array schema the array', () => {
+        expect(answerOfSchemaShape(reply, { type: 'object' })).toEqual({ tables: ['patients'] });
+        expect(answerOfSchemaShape(reply, { type: 'array' })).toEqual(['a', 'b']);
+    });
+    it('a schema with no top type takes the first value; no candidate of the shape is undefined', () => {
+        expect(answerOfSchemaShape(reply, {})).toEqual(['a', 'b']);
+        expect(answerOfSchemaShape('only a list: [1, 2]', { type: 'object' })).toBeUndefined();
+        expect(answerOfSchemaShape('no JSON at all', { type: 'object' })).toBeUndefined();
     });
 });
