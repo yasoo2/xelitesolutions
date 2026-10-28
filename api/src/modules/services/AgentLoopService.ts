@@ -36,6 +36,7 @@ import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../..
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
 import { resourceRefusalSentence } from '../../shared/resource-refusal';
+import { planWrites } from '../tools/auto-build-readiness';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -1094,14 +1095,9 @@ export class AgentLoopService {
             // a later phase writes; the import gate knew only the current phase,
             // so eval round 12 (P001) rejected App.tsx six times for importing
             // Header/Hero/Services/Reviews/Contact/Footer that phases 3+ create.
-            plannedProjectFiles: Array.from(new Set<string>(phases.flatMap((planned: any) =>
-                (Array.isArray(planned?.tasks) ? planned.tasks : [])
-                    .filter((task: any) => /^(?:ai_write_file|write_file)$/.test(String(task?.tool || '').trim()))
-                    .map((task: any) => {
-                        const args = { ...(task?.args || {}), ...(task?.input || {}) };
-                        return String(args.path || args.filePath || args.filename || '').trim();
-                    })
-                    .filter(Boolean)))),
+            // scaffold_project's files count too: its package.json is the
+            // manifest the phase build check looks for (P001, 2026-10-28).
+            plannedProjectFiles: planWrites(phases),
         };
         const executionContext = {
             runId,

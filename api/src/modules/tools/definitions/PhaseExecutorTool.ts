@@ -8,7 +8,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { importedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
-import { autoBuildManifest, buildFailureEvidence, manifestAwaitsInstall, plannedFilesNotYetWritten } from '../auto-build-readiness';
+import { autoBuildManifest, buildFailureEvidence, manifestAwaitsInstall, plannedFilesNotYetWritten, plannedTaskWrites } from '../auto-build-readiness';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { elidedParts } from '../../../shared/utils/elided-content';
@@ -2569,9 +2569,7 @@ let verificationFailed = false;
                 ['ai_write_file', 'write_file', 'file_edit', 'file_edit_advanced', 'scaffold_project'].includes(String(t.tool || ''))
             );
             if (hasCodeTasks && !phase.verificationTask && allOk && executedCount > 0 && executionContext.workspaceId) {
-                const writtenPaths = tasks
-                    .map((t: any) => String(t?.args?.path || t?.args?.filename || t?.input?.path || t?.input?.filename || ''))
-                    .filter(Boolean);
+                const writtenPaths = tasks.flatMap((t: any) => plannedTaskWrites(t));
                 // The manifest this phase wrote, else the plan's once an earlier
                 // phase put it on disk: the check follows the project, not the
                 // one phase that happened to write package.json (P001).

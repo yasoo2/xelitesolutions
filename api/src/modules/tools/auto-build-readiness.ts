@@ -26,6 +26,45 @@ import { resolveToolPath } from './utils';
 
 const norm = (file: string) => String(file || '').trim().replace(/\\/g, '/').replace(/^\.\//, '');
 
+/**
+ * The workspace-relative files a planned task writes.
+ *
+ * Eval run500, P001-landing-ar (2026-10-28, run-1793183272224): phase 1 ran
+ * scaffold_project with baseDir «dental-clinic-landing» and a structure holding
+ * package.json, yet the phase said «this phase wrote no package.json» and no
+ * later phase ever found a manifest to build: only path/filename arguments were
+ * read as writes, and a scaffold names its files as baseDir + structure keys.
+ * Directories (null content) are not files; a structure whose every key repeats
+ * baseDir is read as the tool writes it, without the doubled prefix.
+ */
+export function plannedTaskWrites(task: any): string[] {
+  const args = { ...(task?.args || {}), ...(task?.input || {}) };
+  if (String(task?.tool || '').trim() !== 'scaffold_project') {
+    const file = norm(String(args.path || args.filePath || args.filename || ''));
+    return file ? [file] : [];
+  }
+  const structure = args.structure && typeof args.structure === 'object' && !Array.isArray(args.structure) ? args.structure : {};
+  const base = norm(String(args.baseDir || args.projectName || args.name || '.')).replace(/\/+$/, '') || '.';
+  const keys = Object.keys(structure).map(norm);
+  const repeated = base !== '.' && keys.length > 0 && keys.every(key => key === base || key.startsWith(`${base}/`));
+  return Object.entries(structure)
+    .filter(([, content]) => content !== null)
+    .map(([key]) => {
+      const file = norm(key);
+      return repeated ? (file === base ? '' : file.slice(base.length + 1)) : file;
+    })
+    .filter(Boolean)
+    .map(file => (base === '.' ? file : `${base}/${file}`));
+}
+
+/** Every file the whole plan writes, once each: write tasks and scaffolds alike. */
+export function planWrites(phases: any[]): string[] {
+  return Array.from(new Set<string>((Array.isArray(phases) ? phases : []).flatMap((planned: any) =>
+    (Array.isArray(planned?.tasks) ? planned.tasks : [])
+      .filter((task: any) => /^(?:ai_write_file|write_file|scaffold_project)$/.test(String(task?.tool || '').trim()))
+      .flatMap((task: any) => plannedTaskWrites(task)))));
+}
+
 /** The workspace-relative package.json to check: this phase's, else the plan's once it is on disk. */
 export function autoBuildManifest(phaseWrites: string[], plannedProjectFiles: string[], workspaceId?: string): string | null {
   const isManifest = (file: string) => /(^|\/)package\.json$/i.test(norm(file));
