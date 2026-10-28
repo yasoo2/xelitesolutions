@@ -1254,13 +1254,23 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
  * swallows the error — so a broken ESM entry passed the gate and died in the
  * detached child, where its stderr is not in front of him. The shared checker
  * parses the entry under the goal Node will run it with, as lint does.
+ *
+ * Only the parser's own rejection blocks the launch (round 21). A check that
+ * could not run — a full probe queue, a timeout on a busy machine, a file it
+ * could not read — measured nothing: it is said in the log, and the launch
+ * goes on, because readiness is still proven by the probe afterwards and a
+ * working project is never refused on a measurement that did not happen.
  */
-async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
+async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }, logs: string[]): Promise<string | null> {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target || !/\.(?:js|mjs|cjs)$/iu.test(target)) return null;
     const failure = await checkJavaScriptFile(cwd, target, 8000);
     if (!failure) return null;
+    if (failure.kind === 'unchecked') {
+        logs.push(`launchability: runtime syntax check not measured (${failure.file}): ${failure.error}`);
+        return null;
+    }
     return `launchability: runtime syntax check failed (${failure.file}): ${failure.error}`;
 }
 
@@ -1692,7 +1702,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        const syntaxFailure = await runtimeSyntaxError(cwd, detected);
+        const syntaxFailure = await runtimeSyntaxError(cwd, detected, logs);
         if (syntaxFailure) {
             const syntaxMessage = pick(isAr,
                 `تعذّر تشغيل المشروع بأمان قبل الإطلاق المنفصل: ${syntaxFailure}`,

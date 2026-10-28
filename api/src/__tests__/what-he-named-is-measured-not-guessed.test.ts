@@ -22,6 +22,7 @@ import {
     type RequestedRecords,
 } from '../core/quality/request-coverage';
 import { deliveryVerdict } from '../core/quality/delivery-verdict';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 /**
  * Round 20 — the adversarial review of round 19's record-coverage gate found
@@ -249,7 +250,7 @@ describe('«tested» means his tests ran and passed', () => {
         const placeholder = tree({ 'package.json': JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }) });
         expect(await runRequestedTests(placeholder, exec)).toMatchObject({ ran: false, passed: false });
         const py = tree({ 'app.py': 'x = 1\n', 'tests.py': 'import unittest\n' });
-        expect(await runRequestedTests(py, exec)).toMatchObject({ ran: true, passed: true, runner: 'python -m unittest discover -v' });
+        expect(await runRequestedTests(py, exec)).toMatchObject({ ran: true, passed: true, runner: `${pythonExecutable()} -m unittest discover -v` });
         const unknown = tree({ 'main.rb': 'puts 1' });
         expect(await runRequestedTests(unknown, exec)).toMatchObject({ ran: false, noRunner: true });
         expect(calls.map(c => c[0])).toEqual(['quality_run', 'shell_execute']);

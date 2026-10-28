@@ -3,6 +3,7 @@ import path from 'path';
 
 import { syntaxFileKind } from '../../../shared/syntax-contract';
 import { checkJavaScriptFiles, describeGoalPlan } from '../../../core/quality/js-syntax-check';
+import { emptyTestRun } from '../../../core/quality/test-run-evidence';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
@@ -360,6 +361,12 @@ export class AutoTesterTool implements ToolDefinition {
 
         try {
             const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
+            // A test script that ran no test proved nothing (round 21): `node --test`
+            // with no test file, unittest before 3.12 and `go test` all exit 0 on
+            // an empty run. The runner's own summary says so, as quality_run reads it.
+            const output = (result as any).output || {};
+            const ranNothing = result.ok && kind !== 'build' ? emptyTestRun(`${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`) : null;
+            if (ranNothing) return this.failure(`the ${kind} script ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`, logs, kind);
             return result.ok
                 ? {
                     ok: true,

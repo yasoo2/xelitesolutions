@@ -1,5 +1,6 @@
 import { namedTargetFile } from '../core/orchestrator/file-intent';
 import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 /**
  * Round 21 review, group 1 #7:
@@ -28,14 +29,14 @@ describe('the program he names is the entry, whatever data files he names beside
     });
 
     it('the CLI scaffold makes validate.py the program', () => {
-        expect(entryOf(request)).toMatchObject({ main: 'validate.py', start: 'python validate.py' });
+        expect(entryOf(request)).toMatchObject({ main: 'validate.py', start: `${pythonExecutable()} validate.py` });
     });
 });
 
 describe('a language he names in Arabic is the language of the program', () => {
     it.each([
-        ['اكتب أداة سطر أوامر بلغة بايثون تقرأ ملف CSV وتطبع عدد الأسطر', 'main.py', 'python main.py'],
-        ['اكتب أداة سطر أوامر باللغة بايتون تعد الكلمات في ملف', 'main.py', 'python main.py'],
+        ['اكتب أداة سطر أوامر بلغة بايثون تقرأ ملف CSV وتطبع عدد الأسطر', 'main.py', `${pythonExecutable()} main.py`],
+        ['اكتب أداة سطر أوامر باللغة بايتون تعد الكلمات في ملف', 'main.py', `${pythonExecutable()} main.py`],
         ['اكتب أداة سطر أوامر بلغة جافاسكربت تعد الكلمات في ملف', 'index.js', 'node index.js'],
         ['اكتب أداة سطر أوامر بلغة جافا سكريبت تعد الكلمات في ملف', 'index.js', 'node index.js'],
         ['اكتب أداة سطر أوامر بلغة رست تعد الكلمات في ملف', 'src/main.rs', expect.stringMatching(/^\.\/target\/release\//u)],

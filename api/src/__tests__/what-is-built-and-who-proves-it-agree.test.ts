@@ -14,6 +14,7 @@ import {
     routesToCliScaffold,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 /**
  * Eval round 19 (adversarial review of the merged verdict and artifact
@@ -119,13 +120,13 @@ describe('P301: the file the program writes is never the program', () => {
         for (const id of ['P301-cli-ar', 'P302-cli-en']) {
             const { plan, structure, pkg } = scaffold(exam(id));
             expect({ id, keys: Object.keys(structure).filter(k => /\.csv$/i.test(k)) }).toEqual({ id, keys: [] });
-            expect({ id, start: pkg.scripts.start, main: pkg.main }).toEqual({ id, start: 'python main.py', main: 'main.py' });
+            expect({ id, start: pkg.scripts.start, main: pkg.main }).toEqual({ id, start: `${pythonExecutable()} main.py`, main: 'main.py' });
             expect(plan.phases[0].tasks.map((t: any) => t.args.path).filter(Boolean)).toEqual(['main.py', 'test_main.py']);
         }
     });
     it('a named SOURCE file is still the entry, and its test is named after it', () => {
         const { structure, pkg } = scaffold('Write a Python script wordcount.py that counts the words in a file and writes the result to report.txt.');
-        expect(pkg.scripts.start).toBe('python wordcount.py');
+        expect(pkg.scripts.start).toBe(`${pythonExecutable()} wordcount.py`);
         expect(pkg.scripts.test).toBe(pythonTestCommand(['test_wordcount.py'], true));
         expect(Object.keys(structure)).toEqual(expect.arrayContaining(['wordcount.py']));
         expect(Object.keys(structure)).not.toContain('report.txt');
@@ -145,14 +146,14 @@ describe('a Python program is proven without packages the machine may not have',
     });
     it('tests Joe authors run on the standard library; tests a plan wrote prefer pytest only where it is installed', () => {
         const own = pythonTestCommand(['test_main.py'], true);
-        expect(own).toMatch(/^python -c ".*unittest.*" test_main\.py$/);
+        expect(own).toMatch(new RegExp(`^${pythonExecutable()} -c ".*unittest.*" test_main\\.py$`));
         expect(own).not.toMatch(/pytest/);
         const planned = pythonTestCommand(['tests/test_x.py'], false);
         expect(planned).toMatch(/find_spec\('pytest'\)/);
         // The fallback collects what pytest would: bare test functions too (round 21).
         expect(planned).toMatch(/FunctionTestCase/);
     });
-    const python = (() => { try { execSync('python --version', { stdio: 'ignore' }); return true; } catch { return false; } })();
+    const python = (() => { try { execSync(`${pythonExecutable()} --version`, { stdio: 'ignore' }); return true; } catch { return false; } })();
     (python ? it : it.skip)('the stock CSV program passes its own test when it really runs, and an empty suite fails', () => {
         const plan = deterministicPhasesFor('Write a Python command-line tool that converts a CSV file to JSON.')!;
         const structure = plan.phases[0].tasks[0].args.structure as Record<string, string>;

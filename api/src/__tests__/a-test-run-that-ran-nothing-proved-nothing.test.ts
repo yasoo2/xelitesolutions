@@ -24,6 +24,7 @@ import { emptyTestRun } from '../core/quality/test-run-evidence';
 import { deterministicPhasesFor, pythonTestCommand } from '../modules/tools/definitions/ProjectPipelineTool';
 import { QualityRunTool } from '../modules/tools/definitions/QualityTools';
 import { handleShellCommand } from '../modules/tools/handlers';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 jest.mock('../modules/tools/handlers', () => ({ handleShellCommand: jest.fn() }));
 jest.mock('../modules/tools/utils', () => ({ resolveToolPath: (value: string) => value }));
@@ -140,7 +141,7 @@ describe('a compiled toolchain\'s test is where its toolchain compiles tests', (
     });
 });
 
-const python = (() => { try { execSync('python --version', { stdio: 'ignore' }); return true; } catch { return false; } })();
+const python = (() => { try { execSync(`${pythonExecutable()} --version`, { stdio: 'ignore' }); return true; } catch { return false; } })();
 
 (python ? describe : describe.skip)('a Python test run fails when nothing ran, on every Python, and runs pytest-style tests', () => {
     let dir = '';
@@ -170,7 +171,7 @@ const python = (() => { try { execSync('python --version', { stdio: 'ignore' });
     });
 
     it('the premise: under pre-3.12 unittest, `python -m unittest` passes an empty file', () => {
-        const old = run('python -m unittest -v test_empty.py');
+        const old = run(`${pythonExecutable()} -m unittest -v test_empty.py`);
         expect(old.stderr).toMatch(/Ran 0 tests/u);
         expect(old.status).toBe(0);
     });
@@ -181,7 +182,7 @@ const python = (() => { try { execSync('python --version', { stdio: 'ignore' });
     });
 
     // Where pytest is installed a plan's tests run under it; its own summary then differs.
-    const hasPytest = spawnSync('python', ['-c', 'import pytest']).status === 0;
+    const hasPytest = spawnSync(pythonExecutable(), ['-c', 'import pytest']).status === 0;
     it.each(hasPytest ? [true] : [true, false])('a pytest-style file is really run, without pytest (Joe-authored: %s)', (own) => {
         const passed = run(pythonTestCommand(['test_bare.py'], own));
         expect({ status: passed.status, stderr: passed.stderr }).toMatchObject({ status: 0, stderr: expect.stringMatching(/Ran 2 tests/u) });

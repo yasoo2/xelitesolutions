@@ -27,7 +27,7 @@ import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorToo
 import { ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
 import { NpmManagerTool } from '../modules/tools/definitions/SystemTools';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
-import { importedPackageForScriptBinary } from '../modules/tools/script-binary-provider';
+import { findImportedPackageForScriptBinary } from '../modules/tools/script-binary-provider';
 
 const mockedExecuteTool = executeTool as jest.MockedFunction<typeof executeTool>;
 
@@ -167,7 +167,7 @@ describe('a script program the manifest never declared', () => {
         }
     }, 20_000);
 
-    it('reads only the project\'s own files, and a runtime import makes it a dependency', () => {
+    it('reads only the project\'s own files, and a runtime import makes it a dependency', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-script-binary-unit-'));
         try {
             fs.mkdirSync(path.join(root, 'pages'), { recursive: true });
@@ -177,10 +177,10 @@ describe('a script program the manifest never declared', () => {
             // An import inside node_modules is not the project's statement.
             fs.writeFileSync(path.join(root, 'node_modules', 'x', 'index.js'), "require('jest');");
 
-            expect(importedPackageForScriptBinary(root, 'next')).toEqual({ packageName: 'next', dev: false, importedBy: ['pages/index.jsx'] });
-            expect(importedPackageForScriptBinary(root, 'jest')).toBeNull();
-            expect(importedPackageForScriptBinary(root, 'react')).toBeNull(); // declared: the install's job
-            expect(importedPackageForScriptBinary(root, './bin/run')).toBeNull();
+            await expect(findImportedPackageForScriptBinary(root, 'next')).resolves.toEqual({ packageName: 'next', dev: false, importedBy: ['pages/index.jsx'] });
+            await expect(findImportedPackageForScriptBinary(root, 'jest')).resolves.toBeNull();
+            await expect(findImportedPackageForScriptBinary(root, 'react')).resolves.toBeNull(); // declared: the install's job
+            await expect(findImportedPackageForScriptBinary(root, './bin/run')).resolves.toBeNull();
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
         }

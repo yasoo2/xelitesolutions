@@ -32,6 +32,7 @@ import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-r
 import { namedTargetFile } from '../../../core/orchestrator/file-intent';
 import { foldChars } from '../../../core/orchestrator/promptNormalizer';
 import { AR_END, AR_START } from '../../../shared/arabic-word-boundary';
+import { pythonExecutable } from '../../../core/quality/python-runtime';
 import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
@@ -664,7 +665,13 @@ const CLI_LANGUAGE_BY_EXTENSION: Record<string, ReturnType<typeof detectLanguage
     '.js': 'javascript', '.cjs': 'javascript', '.mjs': 'javascript', '.ts': 'typescript',
     '.py': 'python', '.sh': 'bash', '.go': 'go', '.rs': 'rust',
 };
-const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: 'python', bash: 'bash' };
+/**
+ * The interpreter each language is run with. Python's is the name the
+ * platform ships (python-runtime): a Linux server has `python3`, and often no
+ * `python` at all, so `python main.py` failed a finished program there.
+ */
+const PYTHON = pythonExecutable();
+const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: PYTHON, bash: 'bash' };
 
 function buildCliScaffold(request: string, projectName: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
@@ -890,7 +897,7 @@ function generatePythonScaffold(request: string, projectName: string, isCsv: boo
     // after the program (eval P301: «No module named pytest» failed a finished
     // program at delivery). A Python library is not an npm package, so the
     // manifest only says how the program starts and how its tests run.
-    const pkgJson = npmManifest(projectName, request, 'main.py', { start: 'python main.py', test: 'python -m unittest -v test_main.py' });
+    const pkgJson = npmManifest(projectName, request, 'main.py', { start: `${PYTHON} main.py`, test: `${PYTHON} -m unittest -v test_main.py` });
     const entryPoint = 'main.py';
     const entryPointContent = generatePythonEntry(request, isCsv);
     const testFile = generatePythonTest('main.py', isCsv);
@@ -1044,7 +1051,7 @@ const PYTHON_TEST_RUNNER = [
 export function pythonTestCommand(files: string[], authoredByJoe: boolean): string {
     const list = files.map(file => (/\s/u.test(file) ? `"${file}"` : file)).join(' ');
     const program = [PYTHON_TEST_IMPORTS, ...(authoredByJoe ? [] : [PYTEST_WHERE_INSTALLED]), ...PYTHON_TEST_RUNNER].join(';');
-    return `python -c "${program}" ${list}`;
+    return `${PYTHON} -c "${program}" ${list}`;
 }
 
 function generateBashTest(): string {
@@ -1528,7 +1535,7 @@ function commonDirectory(files: string[]): string {
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
 function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = '', binary = ''): string {
     const runner = lang === 'python'
-        ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
+        ? `Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as \`${PYTHON} -m unittest -v <this file>\`; run the program with sys.executable through subprocess. `
         : lang === 'javascript' || lang === 'typescript'
             ? 'Write it with node:test and node:assert, runnable by `node --test`. '
             : lang === 'bash'

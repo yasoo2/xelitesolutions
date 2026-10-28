@@ -77,8 +77,9 @@ function isToolConfigFile(relative: string): boolean {
  * with no file count or depth cap: what is skipped is skipped by kind
  * (machine state, build output, dot-folders, a generated file over
  * MAX_FILE_BYTES), never by position. The search is written once as a
- * generator of filesystem requests; the async driver serves project_run and
- * the sync driver serves the one caller that has not moved yet.
+ * generator of filesystem requests, read by one asynchronous driver: both
+ * callers (project_run and the phase executor's npm preflight) await it, so the
+ * event loop is never held by a project walk.
  */
 // `read` names every source file of one folder at once, so the async driver
 // reads them side by side instead of one round trip per file.
@@ -132,20 +133,8 @@ function* searchImporters(projectRoot: string, name: string): Generator<SearchRe
     return { packageName: name, dev: importedBy.every(isToolConfigFile), importedBy };
 }
 
-function readSync(file: string): string | null {
-    try { return fs.statSync(file).size > MAX_FILE_BYTES ? null : fs.readFileSync(file, 'utf8'); } catch { return null; }
-}
-
 async function readAsync(file: string): Promise<string | null> {
     try { return (await fs.promises.stat(file)).size > MAX_FILE_BYTES ? null : await fs.promises.readFile(file, 'utf8'); } catch { return null; }
-}
-
-function answerSync(request: SearchRequest): unknown {
-    try {
-        if (request.op === 'readdir') return fs.readdirSync(request.at, { withFileTypes: true });
-        if (request.op === 'read') return request.at.map(readSync);
-        return fs.readFileSync(request.at, 'utf8');
-    } catch { return null; }
 }
 
 async function answerAsync(request: SearchRequest): Promise<unknown> {
@@ -173,18 +162,6 @@ export async function findImportedPackageForScriptBinary(projectRoot: string, bi
     const search = searchImporters(projectRoot, String(binary || '').trim());
     let step = search.next();
     while (!step.done) step = search.next(await answerAsync(step.value));
-    return step.value;
-}
-
-/**
- * The same search with synchronous reads, for PhaseExecutorTool's npm
- * preflight until it awaits findImportedPackageForScriptBinary (owned by
- * another change; reported in review r21). New callers use the async one.
- */
-export function importedPackageForScriptBinary(projectRoot: string, binary: string): ScriptBinaryProvider | null {
-    const search = searchImporters(projectRoot, String(binary || '').trim());
-    let step = search.next();
-    while (!step.done) step = search.next(answerSync(step.value));
     return step.value;
 }
 

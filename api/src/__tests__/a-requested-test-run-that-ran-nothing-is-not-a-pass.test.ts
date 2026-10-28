@@ -2,7 +2,10 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { runRequestedTests } from '../core/quality/request-coverage';
+import { pythonExecutable } from '../core/quality/python-runtime';
+import { AutoTesterTool } from '../modules/tools/definitions/AutoTesterTool';
 import { ShellExecuteTool } from '../modules/tools/definitions/SystemTools';
+import * as ToolService from '../modules/services/ToolService';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
@@ -55,7 +58,7 @@ const runTool = (id: string) => async (tool: string, input: any) => {
 describe('a test run that ran nothing is not a pass', () => {
     it('a successful command keeps what it printed to stderr', async () => {
         const root = project({});
-        const result: any = await shell('stderr-on-success')({ command: 'python -c "import sys; sys.stderr.write(\'said on stderr\')"', cwd: root });
+        const result: any = await shell('stderr-on-success')({ command: `${pythonExecutable()} -c "import sys; sys.stderr.write('said on stderr')"`, cwd: root });
         expect(result.ok).toBe(true);
         expect(String(result.output.stderr)).toContain('said on stderr');
     });
@@ -64,10 +67,10 @@ describe('a test run that ran nothing is not a pass', () => {
         olderUnittest();
         const root = project({ 'app.py': 'def add(a, b):\n    return a + b\n', 'test_app.py': 'import unittest\n' });
         // The interpreter really says «OK» and exits 0 here: only the summary can tell.
-        const bare: any = await shell('empty-run-bare')({ command: 'python -m unittest discover -v', cwd: root });
+        const bare: any = await shell('empty-run-bare')({ command: `${pythonExecutable()} -m unittest discover -v`, cwd: root });
         expect(bare.ok).toBe(true);
         const run = await runRequestedTests(root, runTool('empty-run-gate'));
-        expect(run).toMatchObject({ ran: true, passed: false, runner: 'python -m unittest discover -v' });
+        expect(run).toMatchObject({ ran: true, passed: false, runner: `${pythonExecutable()} -m unittest discover -v` });
         expect(String(run.error)).toMatch(/ran no tests \(unittest: Ran 0 tests/);
     });
 
@@ -78,5 +81,36 @@ describe('a test run that ran nothing is not a pass', () => {
             'test_app.py': 'import unittest\nfrom app import add\n\nclass AddTest(unittest.TestCase):\n    def test_adds(self):\n        self.assertEqual(add(2, 3), 5)\n',
         });
         expect(await runRequestedTests(root, runTool('ran-run-gate'))).toMatchObject({ ran: true, passed: true, error: undefined });
+    });
+});
+
+/**
+ * The same shape in auto_tester's unit and integration runs: it ran the
+ * project's declared script and took its exit code. `node --test` with no test
+ * file prints «ℹ tests 0» and exits 0 on Node 24 — on every machine.
+ */
+describe('auto_tester: a declared test script that ran nothing is not a pass', () => {
+    const autoTester = (root: string, id: string) => {
+        jest.spyOn(ToolService, 'executeTool').mockImplementation(async (tool: string, input: any) => {
+            if (tool !== 'shell_execute') throw new Error(`unexpected tool ${tool}`);
+            return shell(`${id}-shell`)(input) as any;
+        });
+        return executionFirewall.runInContext(id, () => new AutoTesterTool().execute({ testType: 'unit', projectPath: root }, { workspaceId: id })) as Promise<any>;
+    };
+
+    it('`node --test` with no test file fails, saying the runner ran no tests', async () => {
+        const root = project({ 'package.json': JSON.stringify({ name: 'shop', scripts: { test: 'node --test' } }), 'index.js': 'module.exports = 1;\n' });
+        const result = await autoTester(root, 'auto-tester-empty');
+        expect(result.ok).toBe(false);
+        expect(String(result.error)).toMatch(/^the unit test script ran no tests \(node --test: ℹ tests 0\)/u);
+    });
+
+    it('a test that ran and passed passes', async () => {
+        const root = project({
+            'package.json': JSON.stringify({ name: 'shop', scripts: { test: 'node --test' } }),
+            'add.test.js': "const test = require('node:test');\nconst assert = require('node:assert');\ntest('adds', () => assert.strictEqual(1 + 1, 2));\n",
+        });
+        const result = await autoTester(root, 'auto-tester-ran');
+        expect(result).toMatchObject({ ok: true, output: { passed: true } });
     });
 });

@@ -9,6 +9,7 @@ import {
     requestDeclaresOwnBackend,
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { isCliRequest } from '../core/design/app-blueprints';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 /**
  * Eval round 15, 2026-10-24 — three runs where the deterministic chain built
@@ -106,13 +107,13 @@ describe('a paper plan that read the request is completed, not replaced', () => 
             const run = completed.phases[completed.phases.length - 1];
             expect(completed.projectDir).toBe('dental-cli');
             expect(run.tasks[0]).toMatchObject({ tool: 'ai_write_file', args: { path: 'dental-cli/test_main.py' } });
-            expect(run.tasks[0].args.description).toMatch(/Create its own input fixture, run `python src\/main\.py`/);
+            expect(run.tasks[0].args.description).toContain(`Create its own input fixture, run \`${pythonExecutable()} src/main.py\``);
             const manifest = JSON.parse(run.tasks[1].args.content);
             expect(run.tasks[1].args.path).toBe('dental-cli/package.json');
             // The test Joe authors runs on the standard library alone (was `python -m pytest`):
             // pytest is never installed, and eval P301 failed a finished program on «No module named pytest».
             // Since round 21 that runner also fails an empty run on every Python version.
-            expect(manifest.scripts).toEqual({ start: 'python src/main.py', test: pythonTestCommand(['test_main.py'], true) });
+            expect(manifest.scripts).toEqual({ start: `${pythonExecutable()} src/main.py`, test: pythonTestCommand(['test_main.py'], true) });
             expect(manifest.scripts.test).not.toMatch(/pytest/);
             expect(run.verificationTask).toMatchObject({ tool: 'quality_run', args: { path: 'dental-cli', tasks: ['test'] } });
         }

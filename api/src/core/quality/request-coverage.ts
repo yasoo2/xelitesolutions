@@ -49,6 +49,7 @@ import { keyForPhrase } from '../design/entity-inference';
 import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 import { emptyTestRun } from './test-run-evidence';
+import { pythonExecutable } from './python-runtime';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -761,7 +762,8 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
         for (const f of ['requirements.txt', 'pyproject.toml', 'setup.cfg', 'pytest.ini']) {
             try { if (/\bpytest\b/iu.test(fs.readFileSync(path.join(dir, f), 'utf8'))) usesPytest = true; } catch { /* absent */ }
         }
-        const command = usesPytest ? 'python -m pytest -q' : 'python -m unittest discover -v';
+        // The interpreter the platform ships: `python3` on a Linux server.
+        const command = `${pythonExecutable()} ${usesPytest ? '-m pytest -q' : '-m unittest discover -v'}`;
         try {
             const run = await runTool('shell_execute', { command, cwd: dir });
             const printed = `${String(run?.output?.stdout ?? '')}

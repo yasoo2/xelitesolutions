@@ -12,8 +12,9 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { spawnSync } from 'child_process';
+import * as jsSyntax from '../core/quality/js-syntax-check';
 import { checkJavaScriptFile } from '../core/quality/js-syntax-check';
-import { ProjectRunTool } from '../modules/tools/definitions/ProjectRunTool';
+import { ProjectRunTool, ProjectStopTool } from '../modules/tools/definitions/ProjectRunTool';
 import { AutoTesterTool } from '../modules/tools/definitions/AutoTesterTool';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
@@ -70,6 +71,26 @@ describe('a broken ES module entry does not pass the launch gate', () => {
         expect(result.output).toMatchObject({ ready: false, verificationFailed: true });
         expect(result.error).toMatch(/runtime syntax check failed \(server\.js:2\): SyntaxError/u);
         expect(launch).not.toHaveBeenCalled();
+    });
+
+    it('a check that could not run is said, and never refuses a working project its launch (round 21)', async () => {
+        write('package.json', JSON.stringify({ name: 'clinic-api', scripts: { start: 'node server.js' } }));
+        write('server.js', "require('http').createServer((q, s) => s.end('ok')).listen(process.env.PORT);\n");
+        jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(root);
+        jest.spyOn(jsSyntax, 'checkJavaScriptFile').mockResolvedValue({ file: 'server.js', error: 'the check could not run: the probe queue is full', kind: 'unchecked' });
+        const launch = jest.spyOn(ExecutionGateway, 'startManaged');
+        const ctx = { sessionId: 'esm-gate-unchecked', workspaceId: 'esm-gate-unchecked', userId: 'u' };
+        try {
+            const result: any = await executionFirewall.runInContext('esm-gate-unchecked', () =>
+                new ProjectRunTool().execute({ cwd: root }, ctx));
+
+            // It ran, and readiness — not the check that did not happen — proved it.
+            expect(launch).toHaveBeenCalled();
+            expect(result.ok).toBe(true);
+            expect(String((result.logs || []).join('\n'))).toMatch(/runtime syntax check not measured \(server\.js\): the check could not run: the probe queue is full/u);
+        } finally {
+            await executionFirewall.runInContext('esm-gate-unchecked-stop', () => new ProjectStopTool().execute({}, ctx)).catch(() => undefined);
+        }
     });
 
     it('auto_tester parses through the same checker: a real parse, no shell line, the parser\'s words', async () => {

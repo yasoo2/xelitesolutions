@@ -4,6 +4,7 @@ import path from 'path';
 import { DISCOVERY_YIELD_EVERY, EngineeringDiscoveryTool } from '../modules/tools/definitions/EngineeringDiscoveryTool';
 
 import { hasExplicitRecordSchema } from '../core/design/app-blueprints';
+import { pythonExecutable } from '../core/quality/python-runtime';
 
 describe('evidence-first engineering discovery', () => {
   const roots: string[] = [];
@@ -179,7 +180,7 @@ describe('evidence-first engineering discovery', () => {
     expect(result.ok).toBe(true);
     expect(result.output.evidence.selectedProject.projectKinds).toContain('python');
     expect(result.output.evidence.selectedProject.candidateChecks).toEqual(expect.arrayContaining([
-      expect.objectContaining({ kind: 'test', command: 'python -m unittest discover -s tests' }),
+      expect.objectContaining({ kind: 'test', command: `${pythonExecutable()} -m unittest discover -s tests` }),
     ]));
     expect(result.output.evidence.selectedProject.projectKinds).not.toContain('node');
   });

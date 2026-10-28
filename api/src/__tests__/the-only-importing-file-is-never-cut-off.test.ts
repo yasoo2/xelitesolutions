@@ -1,7 +1,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { findImportedPackageForScriptBinary, importedPackageForScriptBinary } from '../modules/tools/script-binary-provider';
+import { findImportedPackageForScriptBinary } from '../modules/tools/script-binary-provider';
 
 /**
  * Review r21 (855fd3f8): the search for «which package does this script's
@@ -35,7 +35,6 @@ describe('the only importing file is never cut off', () => {
         const root = project({ ...components(450), 'vite.config.js': "import { defineConfig } from 'vite';\nexport default defineConfig({});" });
         const expected = { packageName: 'vite', dev: true, importedBy: ['vite.config.js'] };
         await expect(findImportedPackageForScriptBinary(root, 'vite')).resolves.toEqual(expected);
-        expect(importedPackageForScriptBinary(root, 'vite')).toEqual(expected);
     });
 
     it('an importer six folders deep is found, and a runtime import makes it a dependency', async () => {
@@ -43,7 +42,6 @@ describe('the only importing file is never cut off', () => {
             { scripts: { build: 'astro build' }, dependencies: {} });
         const expected = { packageName: 'astro', dev: false, importedBy: ['src/pages/blog/[slug]/parts/deep/Post.ts'] };
         await expect(findImportedPackageForScriptBinary(root, 'astro')).resolves.toEqual(expected);
-        expect(importedPackageForScriptBinary(root, 'astro')).toEqual(expected);
     });
 
     it('what is skipped is skipped by kind, not by position: machine state and build output are not evidence', async () => {

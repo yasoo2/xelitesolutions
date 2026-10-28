@@ -7,6 +7,7 @@ import { readJoeProjectForRun } from '../../../api/page-store';
 import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
 import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence } from '../../services/AutonomousEngineeringPolicy';
 import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
+import { pythonExecutable } from '../../../core/quality/python-runtime';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
 export type ExecutionStatus = 'succeeded' | 'failed' | 'blocked' | 'not_started';
@@ -717,7 +718,9 @@ export class EngineeringDiscoveryTool extends BaseTool {
             kinds.add('python');
             manifests.push({ path: manifestPath, kind: name });
         }
-        if (kinds.has('python') && (fs.existsSync(path.join(root, 'tests')) || fs.existsSync(path.join(root, 'test')))) addCheck('test', 'python -m unittest discover -s tests', root);
+        // The folder that is there, run by the interpreter the platform ships.
+        const pythonTests = ['tests', 'test'].find(dir => fs.existsSync(path.join(root, dir)));
+        if (kinds.has('python') && pythonTests) addCheck('test', `${pythonExecutable()} -m unittest discover -s ${pythonTests}`, root);
         const goMod = path.join(root, 'go.mod');
         if (fs.existsSync(goMod)) {
             kinds.add('go');
