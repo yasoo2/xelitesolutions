@@ -196,10 +196,14 @@ export class QualityRunTool extends BaseTool {
                     // JavaScript source — when the source runs as written. A
                     // build script may compile another grammar (JSX in .js),
                     // so there the build is the check. Nothing to parse stays skipped.
-                    const syntax = scripts.build ? { files: [], failure: null } : await checkJavaScriptSyntax(projectDir);
-                    if (!syntax.files.length) results.push({ task, ok: true, skipped: true });
-                    else if (syntax.failure) results.push({ task, ok: false, skipped: false, method: 'node --check', error: `${syntax.failure.file}: ${syntax.failure.error}` });
-                    else results.push({ task, ok: true, skipped: false, method: 'node --check', output: `No lint script; Node parsed ${syntax.files.length} JavaScript file(s): ${syntax.files.join(', ').slice(0, 3000)}` });
+                    const syntax = scripts.build ? { files: [] as string[], failure: null, notParsed: undefined } : await checkJavaScriptSyntax(projectDir);
+                    const notParsed = (syntax.notParsed || []).map(entry => `${entry.file} (${entry.why})`).join('; ');
+                    if (!syntax.files.length) results.push({ task, ok: true, skipped: true, ...(notParsed ? { output: `Not parsed: ${notParsed}` } : {}) });
+                    // Only the parser's rejection names his file; a check that
+                    // could not run says so and is not a pass (round 21).
+                    else if (syntax.failure?.kind === 'syntax') results.push({ task, ok: false, skipped: false, method: 'node --check', error: `${syntax.failure.file}: ${syntax.failure.error}` });
+                    else if (syntax.failure) results.push({ task, ok: false, skipped: false, unchecked: true, method: 'node --check', error: syntax.failure.error });
+                    else results.push({ task, ok: true, skipped: false, method: 'node --check', output: `No lint script; Node parsed ${syntax.files.length} JavaScript file(s): ${syntax.files.join(', ').slice(0, 3000)}${notParsed ? `. Not parsed: ${notParsed}`.slice(0, 1000) : ''}` });
                     continue;
                 }
                 const r = await runNpmScript('lint', [], 10 * 60_000);

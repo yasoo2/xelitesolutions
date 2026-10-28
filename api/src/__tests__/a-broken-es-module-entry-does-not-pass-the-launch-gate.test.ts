@@ -43,7 +43,8 @@ describe('a broken ES module entry does not pass the launch gate', () => {
         write('package.json', JSON.stringify({ scripts: { start: 'node server.js' } }));
         write('server.js', BROKEN_ESM);
         const failure = await asSystem(() => checkJavaScriptFile(root, 'server.js'));
-        expect(failure).toEqual({ file: 'server.js:2', error: expect.stringMatching(/SyntaxError/u) });
+        // The parser's own line, and a rejection — never a probe path (round 21).
+        expect(failure).toEqual({ file: 'server.js:2', error: expect.stringMatching(/^SyntaxError: /u), kind: 'syntax' });
     });
 
     it('passes valid ESM, valid CommonJS, and fails broken CommonJS and a missing file', async () => {
@@ -53,7 +54,7 @@ describe('a broken ES module entry does not pass the launch gate', () => {
         expect(await asSystem(() => checkJavaScriptFile(root, 'esm.js'))).toBeNull();
         expect(await asSystem(() => checkJavaScriptFile(root, 'cjs.js'))).toBeNull();
         expect(await asSystem(() => checkJavaScriptFile(root, 'broken.cjs'))).toMatchObject({ file: 'broken.cjs:2' });
-        expect(await asSystem(() => checkJavaScriptFile(root, 'gone.js'))).toMatchObject({ file: 'gone.js', error: expect.stringMatching(/cannot read/u) });
+        expect(await asSystem(() => checkJavaScriptFile(root, 'gone.js'))).toMatchObject({ file: 'gone.js', error: expect.stringMatching(/^the check could not run: cannot read/u), kind: 'unchecked' });
     });
 
     it('project_run refuses to launch the broken entry and says where it broke', async () => {
@@ -71,21 +72,20 @@ describe('a broken ES module entry does not pass the launch gate', () => {
         expect(launch).not.toHaveBeenCalled();
     });
 
-    it('auto_tester parses a module-goal .js file with the module goal stated', async () => {
+    it('auto_tester parses through the same checker: a real parse, no shell line, the parser\'s words', async () => {
         write('src/app.js', BROKEN_ESM);
         write('src/legacy.js', "module.exports = 1;\n");
         jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(root);
-        const exec = jest.spyOn(ToolService, 'executeTool').mockResolvedValue({ ok: false, error: 'SyntaxError', logs: [] } as any);
+        const exec = jest.spyOn(ToolService, 'executeTool');
 
-        const result: any = await new AutoTesterTool().execute(
+        const result: any = await executionFirewall.runInContext('esm-gate-tester', () => new AutoTesterTool().execute(
             { testType: 'syntax', projectPath: '.', files: ['src/app.js', 'src/legacy.js'] },
-            { workspaceId: 'esm-gate-tester' });
+            { workspaceId: 'esm-gate-tester' }));
 
-        const command = String((exec.mock.calls[0][1] as any).command);
-        expect(command).toMatch(/node --input-type=module --check < '?src[\\/]+app\.js'?/u);
-        expect(command).toMatch(/node --check '?src[\\/]+legacy\.js'?/u);
         expect(result.ok).toBe(false);
-        // What that command runs: the module goal from stdin fails on these bytes.
-        expect(spawnSync(process.execPath, ['--input-type=module', '--check'], { input: BROKEN_ESM }).status).toBe(1);
+        expect(result.output.errors[0]).toMatchObject({ type: 'syntax' });
+        expect(result.error).toMatch(/^Syntax error in src\/app\.js:2: SyntaxError: Unexpected token '='/u);
+        // The shell line it used to build is gone: single quotes are not quotes to cmd.exe.
+        expect(exec).not.toHaveBeenCalled();
     });
 });

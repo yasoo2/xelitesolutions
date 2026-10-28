@@ -30,6 +30,8 @@
  * So the model is allowed to be wrong. It is not allowed to be believed.
  */
 
+import { parserDiagnosis } from '../../shared/utils/parser-diagnosis';
+
 // Stylesheet-only repair cannot fix handlers, semantics, authorization or runtime errors.
 const CSS_REPAIRABLE_FINDINGS = new Set([
     'contrast', 'low_contrast', 'small_targets', 'tap_targets', 'mobile_tap_targets',
@@ -374,7 +376,11 @@ export function safeComponent(raw: any, previous: string): { ok: boolean; source
         //  'tsx' parses plain JSX too, so one loader covers .jsx and .tsx.
         esbuild.transformSync(src, { loader: 'tsx' });
     } catch (e: any) {
-        return { ok: false, source: '', why: `does not parse (${String(e?.message || e).slice(0, 80)})` };
+        // The parser's words, located (round 21): a cut esbuild message was
+        // its header line, «Transform failed with 1 error:», and nothing else.
+        // An error esbuild did not locate is the check failing, not his file.
+        const rejected = Array.isArray(e?.errors) && e.errors.some((entry: any) => entry?.text);
+        return { ok: false, source: '', why: rejected ? `does not parse (${parserDiagnosis(e)})` : `its parse could not be checked (${String(e?.message || e).split(/\r?\n/u)[0]})` };
     }
     /**
      *  A CLASS IT DROPPED IS A PIECE OF THE DESIGN IT DELETED.
