@@ -62,14 +62,14 @@ describe('a server that lists the project files is not serving the site', () => 
         for (const r of roots) fs.rmSync(r, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 });
     });
 
-    it('recognises serve\'s Windows listing of the project folder, and not a page that links its own files', () => {
+    it('recognises serve\'s Windows listing of the project folder, and not a page that links its own files', async () => {
         const dir = project({ site: true });
-        expect(listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(true);
+        expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(true);
         const page = '<nav><a href="index.html">الرئيسية</a><a href="styles.css">x</a><a href="#contact">تواصل</a><a href="https://example.com/src/">ext</a></nav>';
-        expect(listsProjectFiles(page, dir)).toBe(false);
-        // A project whose root holds its own page is never judged.
+        expect(await listsProjectFiles(page, dir)).toBe(false);
+        // A folder that holds its own page is answered with it, never listed.
         fs.writeFileSync(path.join(dir, 'index.html'), '<h1>root</h1>');
-        expect(listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(false);
+        expect(await listsProjectFiles(SERVE_WINDOWS_LISTING, dir)).toBe(false);
     });
 
     it('the P001 shape is served from src/, not as a file listing', async () => {

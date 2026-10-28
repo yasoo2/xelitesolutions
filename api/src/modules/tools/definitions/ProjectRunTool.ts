@@ -1885,7 +1885,7 @@ export class ProjectRunTool implements ToolDefinition {
         // A server that answers with the folder's file list is not serving the
         // site (see listsProjectFiles): the build-free page it failed to find
         // is served instead, or the start is reported as the failure it is.
-        if (listsProjectFiles(await loopbackPageText(url), cwd)) {
+        if (await listsProjectFiles(await loopbackPageText(url), cwd, url)) {
             if (pid) await killTree(Number(pid)).catch(() => {});
             if (RUNNING.get(key)?.pid === pid) RUNNING.delete(key);
             const why = 'the start command served a list of the project files, not its page';
