@@ -36,17 +36,20 @@ describe('a test suite that is still talking is still working', () => {
         expect(r.ok).toBe(false);
     });
 
-    it('the allowed silence learns from passing runs and never drops below the old bound', () => {
-        expect(testQuietBoundMs(45_000)).toBe(45_000);
-        noteTestQuietGap(20_000);
-        expect(testQuietBoundMs(45_000)).toBe(60_000);
-        noteTestQuietGap(5_000);
-        expect(testQuietBoundMs(45_000)).toBe(60_000);
+    it('the allowed silence learns from passing runs of the same project and never drops below the old bound', () => {
+        // Per project since the round 15 review (finding 31): one project's slow
+        // suite never raises another project's bound.
+        const project = __dirname;
+        expect(testQuietBoundMs(45_000, project)).toBe(45_000);
+        noteTestQuietGap(20_000, project);
+        expect(testQuietBoundMs(45_000, project)).toBe(60_000);
+        noteTestQuietGap(5_000, project);
+        expect(testQuietBoundMs(45_000, project)).toBe(60_000);
     });
 
     it('app_tests uses the silence bound and learns from its passing runs', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'terminal-audit.ts'), 'utf8');
-        expect(src).toMatch(/run\(npm, \['test'\], appDir, testQuietBoundMs\(Math\.max\(per, 45_000\)\), say, true\);/);
-        expect(src).toMatch(/if \(r\.ok\) noteTestQuietGap\(r\.longestQuietMs\);/);
+        expect(src).toMatch(/const floor = Math\.max\(per, 45_000\);\s*const r = await run\(npm, \['test'\], appDir, testQuietBoundMs\(floor, appDir\), say, true, \{ ceilingMs: testCeilingMs\(floor\), cancel: opts\.cancel \}\);/);
+        expect(src).toMatch(/if \(r\.ok\) noteTestQuietGap\(r\.longestQuietMs, appDir\);/);
     });
 });

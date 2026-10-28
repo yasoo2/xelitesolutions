@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { requestedDeliveryRoles } from '../modules/tools/definitions/ProjectPipelineTool';
-import { deliveryPartsForRun, recordDeliveryPart } from '../core/quality/delivery-parts';
+import { clearDeliveryParts, deliveryPartsForRun, recordDeliveryPart } from '../core/quality/delivery-parts';
 import { deliveryVerdict } from '../core/quality/delivery-verdict';
 import { hasFilterEvidence, hasSearchEvidence, hasSortingEvidence } from '../core/quality/scope-audit';
 
@@ -47,6 +47,12 @@ describe('every part a phase bound in this run is known', () => {
         expect(deliveryPartsForRun('s-parts', 'run-2')).toEqual([]);
         recordDeliveryPart('s-parts', 'run-2', { root: '/w/cli', tool: 'ai_write_file' });
         expect(deliveryPartsForRun('s-parts', 'run-2').map(p => path.basename(p.root))).toEqual(['cli']);
+        // A second run in the same session no longer wipes the first one's
+        // parts mid-flight (round 15 review, finding 42); a run's parts end when
+        // the run clears them.
+        expect(deliveryPartsForRun('s-parts', 'run-1').map(p => path.basename(p.root))).toEqual(['api-clinic', 'react-clinic']);
+        clearDeliveryParts('s-parts', 'run-1');
+        clearDeliveryParts('s-parts', 'run-2');
         expect(deliveryPartsForRun('s-parts', 'run-1')).toEqual([]);
     });
 });

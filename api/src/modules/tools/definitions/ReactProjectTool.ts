@@ -7718,6 +7718,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     //  dependencies, a real bundle on disk, and whether the
                     //  bundle the server serves is the one just built.
                     appDir: proj,
+                    //  The owner's stop ends a running test suite too.
+                    cancel: cancellation,
                 });
             };
             /**

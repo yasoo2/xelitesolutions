@@ -2,7 +2,8 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
 import { collectServerEvidence, coverageError, identifiersFor, judgeRequestCoverage, probeServedResources, requestCoverageRepairTask, requestedRecords, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
 import { RepairTicketService } from '../../services/RepairTicketService';
-import { deliveryPartsForRun } from '../../../core/quality/delivery-parts';
+import { clearDeliveryParts, deliveryPartsForRun } from '../../../core/quality/delivery-parts';
+import { builderClaimsRemeasured, markUnremeasuredBuilderClaims, measureBuilderProofs, regressedBuilderProofs, servedByStaticFallback, type BuilderProofs } from '../../../core/quality/builder-proofs';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
@@ -1430,12 +1431,19 @@ export function applyLiveRunOutcome(
 }
 
 /**
- * After a repair, an ADOPTED server is not proof: project_run answers
- * «already running» for the recorded process, which still holds the
- * pre-repair code (round 15 review). Post-repair runs ask for a restart; an
- * answer that adopted anyway is a live-run failure, never a pass.
+ * After a repair (or after phases edited the tree), an ADOPTED server is not
+ * proof: project_run answers «already running» for the recorded process,
+ * which still holds the pre-edit code (round 15 review). Post-edit runs ask
+ * for a restart; an answer that adopted anyway is a live-run failure.
+ *
+ * Nor is a STATIC FALLBACK standing in for a server that used to start: when
+ * the restarted server answers on no port, project_run serves dist/ or the
+ * static site instead (ok:true). If the run before the edit was a real
+ * server, that fallback means the edit broke it — a live failure, so the
+ * caller restores the file instead of keeping a dead backend behind static
+ * pages (round 15 review, findings 16 and 28).
  */
-export function postRepairRunOutcome(runResult: any): any {
+export function postRepairRunOutcome(runResult: any, before?: any): any {
     const output = runResult?.output || {};
     if (runResult?.ok === true && (output.adopted === true || output.kind === 'already-running')) {
         return {
@@ -1444,7 +1452,185 @@ export function postRepairRunOutcome(runResult: any): any {
             error: 'the post-repair run adopted the pre-repair server instead of restarting it, so the repair was never measured',
         };
     }
+    if (servedByStaticFallback(runResult) && before?.ok === true && !servedByStaticFallback(before)
+        && before?.output?.devServerConfirmed !== false) {
+        return {
+            ...runResult,
+            ok: false,
+            error: `the server that started before the edit no longer starts; only static files were served instead (${String(output.fallbackFrom || output.kind).slice(0, 200)})`,
+        };
+    }
     return runResult;
+}
+
+/** The record keys a coverage repair pass of this dimension targets (the same split requestCoverageRepairTask makes). */
+export function coverageRepairTargets(report: RequestCoverageReport | undefined, dimension: 'served' | 'tested'): string[] {
+    const missing = report?.missing || [];
+    return (dimension === 'served'
+        ? missing.filter(r => r.served === false || r.present === false)
+        : missing.filter(r => r.tested === false && r.served !== false && r.present !== false)
+    ).map(r => r.key);
+}
+
+const measurementKey = (m: { instrument: string; target?: string }) => `${m.instrument}${m.target ? `:${path.basename(m.target)}` : ''}`;
+
+/** Every instrument (per part) that passed — what a repair must not break. */
+export function passingMeasurementKeys(measurements: Array<{ instrument: string; ok: boolean; target?: string }>): string[] {
+    return Array.from(new Set(measurements.filter(m => m.ok && m.instrument !== 'coverage').map(measurementKey)));
+}
+
+/** Of what passed before, what now fails. */
+export function regressedMeasurementKeys(passedBefore: string[], measurements: Array<{ instrument: string; ok: boolean; target?: string }>): string[] {
+    const failing = new Set(measurements.filter(m => !m.ok).map(measurementKey));
+    return passedBefore.filter(key => failing.has(key));
+}
+
+/** Beyond this, a file is not embedded in the author's brief: it would crowd out the brief itself. */
+const EDIT_IN_PLACE_MAX_CHARS = 48_000;
+
+/**
+ * A REPAIR OF AN EXISTING FILE SEES THE FILE.
+ *
+ * SelfFix plans ai_write_file, which never reads its target: the server file
+ * was regenerated from the ticket alone, and «keep every existing route»
+ * could not be honoured (round 15 review, finding 27). The current content
+ * goes into the brief, with the instruction to edit it in place.
+ */
+export function editInPlaceRepairInput(tool: string, input: Record<string, any> | undefined, file: string, current: Buffer | null): Record<string, any> {
+    const base = { ...(input || {}) };
+    if (tool !== 'ai_write_file' || !current) return base;
+    const text = current.toString('utf8');
+    if (!text.trim() || text.length > EDIT_IN_PLACE_MAX_CHARS) return base;
+    const name = path.basename(file);
+    base.description = [
+        String(base.description || '').trim(),
+        `EDIT THIS EXISTING FILE IN PLACE. Its current content is below. Keep every existing route, middleware (authentication included), storage and export exactly as they are; add only what this repair needs, and return the whole file.`,
+        `--- current ${name} ---`,
+        text,
+        `--- end of current ${name} ---`,
+    ].filter(Boolean).join('\n');
+    return base;
+}
+
+/** Did any phase of this pipeline run a task — and so possibly edit the tree? */
+export function pipelineExecutedTasks(pipeline: any): boolean {
+    return (Array.isArray(pipeline?.results) ? pipeline.results : []).some((phase: any) => Number(phase?.executedTasks) > 0);
+}
+
+export interface CoverageRepairPass {
+    /** The file the repair writes (inside the server root). */
+    file: string;
+    /** Other files this pass may change (the project's package.json, when a test script is added): snapshotted and restored with it. */
+    guardedFiles?: string[];
+    /** Runs after the repair tool succeeded and before the restart — e.g. adding the test script the new tests need. A throw undoes the pass. */
+    afterRepair?: () => void | Promise<void>;
+    /** The record keys this pass must fix. */
+    targeted: string[];
+    /** The live run before the repair: a static fallback standing in for it is a failure. */
+    runBefore: any;
+    /** Run the planned repair tool, given the file's current content (null when it does not exist yet). */
+    runRepairTool: (current: Buffer | null) => Promise<any>;
+    /** Restart the server on the tree as it now is (project_run restart:true). */
+    restartServer: () => Promise<any>;
+    /** Record a run's live, quality, scope and coverage measurements. */
+    recordRun: (run: any, before: any) => Promise<void>;
+    measurements: () => Array<{ instrument: string; ok: boolean; target?: string }>;
+    /** The record keys still missing in the latest coverage measurement. */
+    currentTargets: () => string[];
+    /** The builder's live claims on the server answering now. */
+    measureProofs: () => Promise<BuilderProofs | null>;
+}
+
+/**
+ * ONE COVERAGE REPAIR PASS: NOTHING IT WRITES STAYS UNLESS IT IS PROVEN.
+ *
+ * The file is snapshotted; the repair runs; the server is RESTARTED and every
+ * gate measured again. The file goes back byte for byte (a file the repair
+ * created is removed), and a restarted server is restarted on the restored
+ * file, when any of these hold (round 15 review, findings 15, 16, 27, 30):
+ * the tool did not finish or threw; the restarted server does not start —
+ * including static files standing in for it; a record the pass targeted is
+ * still missing; a check that passed before now fails; or a live claim of the
+ * builder that held before (anonymous writes refused, a wrong password
+ * refused, rows surviving the restart) no longer does.
+ */
+export async function runCoverageRepairPass(pass: CoverageRepairPass): Promise<{ undoReason: string; remeasured: boolean }> {
+    // Every file the pass may change, snapshotted before anything runs.
+    const guarded = Array.from(new Set([pass.file, ...(pass.guardedFiles || [])].filter(Boolean)));
+    const snapshots = new Map<string, Buffer | null>(guarded.map(file => [file, fs.existsSync(file) ? fs.readFileSync(file) : null]));
+    const snapshot = snapshots.get(pass.file) ?? null;
+    const passedBefore = passingMeasurementKeys(pass.measurements());
+    let proofsBefore: BuilderProofs | null = null;
+    try { proofsBefore = await pass.measureProofs(); } catch { proofsBefore = null; }
+    let undoReason = '';
+    let restarted = false;
+    let remeasured = false;
+    try {
+        const repair = await pass.runRepairTool(snapshot);
+        if (repair?.ok !== true) {
+            undoReason = `the repair tool did not finish: ${String(repair?.error || 'repair tool failed').slice(0, 300)}`;
+        } else {
+            if (pass.afterRepair) await pass.afterRepair();
+            const rerun = await pass.restartServer();
+            restarted = true;
+            await pass.recordRun(rerun, pass.runBefore);
+            if (pass.measurements().some(m => m.instrument === 'live' && !m.ok)) {
+                undoReason = 'the repaired server no longer starts';
+            } else {
+                const stillMissing = pass.currentTargets().filter(key => pass.targeted.includes(key));
+                const lostInstruments = regressedMeasurementKeys(passedBefore, pass.measurements());
+                let proofsAfter: BuilderProofs | null = null;
+                if (proofsBefore) { try { proofsAfter = await pass.measureProofs(); } catch { proofsAfter = null; } }
+                const lostClaims = proofsBefore && proofsAfter ? regressedBuilderProofs(proofsBefore, proofsAfter) : [];
+                remeasured = !!(proofsBefore && proofsAfter && builderClaimsRemeasured(proofsBefore, proofsAfter));
+                if (stillMissing.length) undoReason = `the records it targeted are still missing: ${stillMissing.join(', ')}`;
+                else if (lostInstruments.length) undoReason = `checks that passed before the repair now fail: ${lostInstruments.join(', ')}`;
+                else if (proofsBefore && !proofsAfter) undoReason = 'the builder\'s own live claims could not be measured again';
+                else if (lostClaims.length) undoReason = `the builder's own live claims no longer hold: ${lostClaims.join('; ')}`;
+            }
+        }
+    } catch (error: any) {
+        undoReason = `the repair raised: ${String(error?.message || error).slice(0, 300)}`;
+    }
+    if (undoReason) {
+        for (const [file, before] of snapshots) {
+            if (before) fs.writeFileSync(file, before);
+            else fs.rmSync(file, { force: true });
+        }
+        if (restarted) await pass.recordRun(await pass.restartServer(), pass.runBefore);
+    }
+    return { undoReason, remeasured };
+}
+
+/**
+ * MERGE ADAPTER — the coverage fork (091554ed) makes requestCoverageRepairTask
+ * return `manifestPatch: { file, script }` for a Node project with no test
+ * script, and exports applyTestScriptPatch(patch) → previous bytes | null.
+ * The repair pass applies it under the same snapshot as the repair file, so
+ * tests the repair writes actually run, and both files go back together when
+ * the pass is undone. Until that export exists this refuses (and the pass is
+ * undone) rather than pretending a test script was added.
+ */
+export function applyRepairManifestPatch(patch: { file: string; script: string }): void {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const coverage = require('../../../core/quality/request-coverage');
+    if (typeof coverage.applyTestScriptPatch !== 'function') throw new Error('the test-script patch is not available in this build');
+    if (coverage.applyTestScriptPatch(patch) === null) throw new Error(`the test script could not be added to ${path.basename(patch.file)}`);
+}
+
+export interface PipelinePhaseIds { sessionId: string; runId: string }
+
+/** The session and run every phase hand-off of one pipeline run shares. */
+export function pipelinePhaseIds(context: any, now = Date.now()): PipelinePhaseIds {
+    return {
+        sessionId: String(context?.sessionId || '').trim() || `pipeline-${now}`,
+        runId: String(context?.runId || '').trim() || `run-${now}`,
+    };
+}
+
+/** The key PhaseExecutor records delivery parts under (its sessionProjectKey). */
+export function sessionPartsKeyOf(sessionId: unknown): string {
+    return String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
 }
 
 export interface ScopeGateOutcome {
@@ -1727,8 +1913,30 @@ export class ProjectPipelineTool implements ToolDefinition {
     auditFields = ['request'];
     mockSupported = false;
 
+    /**
+     * ONE PHASE IDENTITY PER PIPELINE RUN.
+     *
+     * Each phase hand-off used to mint its own `pipeline-<ts>`/`run-<ts>` when
+     * the caller gave no ids, while delivery read the parts under
+     * 'default'/'' — so the parts were silently empty, and each repair sub-run
+     * started a new ledger (round 15 review). The ids are computed once here,
+     * every hand-off and every reader uses them, and this run's delivery parts
+     * are cleared when it starts (a retried pipeline in the same run never
+     * reads stale roots) and when it ends (the store stays bounded).
+     */
     async execute(input: { request: string; path?: string }, context?: any) {
-        const scopedFinal = (output: any) => ({ ...(output && typeof output === 'object' ? output : {}), pipelineFinal: true });
+        const phaseIds = pipelinePhaseIds(context);
+        const partsKey = sessionPartsKeyOf(phaseIds.sessionId);
+        clearDeliveryParts(partsKey, phaseIds.runId);
+        try {
+            return await this.executeRun(input, context, phaseIds);
+        } finally {
+            clearDeliveryParts(partsKey, phaseIds.runId);
+        }
+    }
+
+    private async executeRun(input: { request: string; path?: string }, context: any, phaseIds: PipelinePhaseIds) {
+        const scopedFinal =(output: any) => ({ ...(output && typeof output === 'object' ? output : {}), pipelineFinal: true });
         const planningScope = engineeringScope(context);
         if (hasEngineeringToken(context) && !planningScope) return { ok: false, error: 'engineering_scope_invalid', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_invalid', executed: false }), logs: [] };
         if (planningScope) {
@@ -2375,8 +2583,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         // is a cycle if imported at module load.
         const { AgentLoopService } = require('../../services/AgentLoopService');
         const pipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-            sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-            runId: context?.runId || `run-${Date.now()}`,
+            sessionId: phaseIds.sessionId,
+            runId: phaseIds.runId,
             userId: context?.userId || 'anonymous',
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
             // Keep the complete product request separate from model-authored
@@ -2422,11 +2630,17 @@ export class ProjectPipelineTool implements ToolDefinition {
          * this is evidence, not a name-based fallback, and it also covers a
          * manifest that was written during the final phase.
          */
+        // The phases recorded their project under the shared phase ids; a caller
+        // that gave no run id keeps the legacy session read as a fallback.
         const runtimeProjectHandoff = trustedRuntimeProjectHandoff(
+            phaseIds.sessionId,
+            context?.workspaceId || context?.sessionId || 'default',
+            phaseIds.runId,
+        ) || (!context?.runId ? trustedRuntimeProjectHandoff(
             context?.sessionId,
             context?.workspaceId || context?.sessionId || 'default',
             context?.runId,
-        );
+        ) : null);
         const runtimeProjectRoot = runtimeProjectHandoff?.sourceRoot || '';
         if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && runtimeProjectRoot) {
             plannerResult.output.projectRoot = runtimeProjectRoot;
@@ -2547,6 +2761,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         let scopeRepairAttempted = false;
         let requestCoverageRepairStatus = 'not_attempted';
         let requestCoverageRepairAttempted = false;
+        /** A server file a coverage repair rewrote after the builder proved it live, when its claims could not be measured again. */
+        let staleBuilderProof: { file: string; root: string } | null = null;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
         let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
@@ -2563,10 +2779,10 @@ export class ProjectPipelineTool implements ToolDefinition {
         // A program asked for on its own (a CLI, a script) has no URL: its own
         // passing test run proves it runs, not project_run.
         const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service;
-        const sessionPartsKey = String(context?.sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
+        const sessionPartsKey = sessionPartsKeyOf(phaseIds.sessionId);
         /** Every root a phase bound in this run, plus the roots of the last live run. */
         const deliveredRoots = (extra: string[] = []) => Array.from(new Set([
-            ...deliveryPartsForRun(sessionPartsKey, context?.runId).map(part => part.root),
+            ...deliveryPartsForRun(sessionPartsKey, phaseIds.runId).map(part => part.root),
             ...extra,
         ].map(root => String(root || '').trim()).filter(root => root && fs.existsSync(root)).map(root => path.resolve(root))));
         let requestCoverage: RequestCoverageReport | undefined;
@@ -2646,6 +2862,21 @@ export class ProjectPipelineTool implements ToolDefinition {
         let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
         const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
             lastAcceptanceRoots = { qualityRoot, auditRoots };
+            // Static files are not a live SYSTEM when the delivery needs a
+            // server: a requested service, or server routes in the run's own
+            // tree. A landing page whose bogus start script fell back to its
+            // static site keeps the fallback (round 15 review, finding 28).
+            if (servedByStaticFallback(runRes)) {
+                const runRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), qualityRoot, ...auditRoots].filter(Boolean)));
+                const serverRoutes = deliveryRoles.service ? 1 : collectServerEvidence(runRoots, []).routes.length;
+                if (serverRoutes > 0) {
+                    runRes = {
+                        ...runRes,
+                        ok: false,
+                        error: `the server did not start; only static files were served (${String(runRes?.output?.fallbackFrom || runRes?.output?.kind || 'static fallback').slice(0, 200)})`,
+                    };
+                }
+            }
             const live = applyLiveRunOutcome(true, runRes);
             ledger.record({ instrument: 'live', ok: live.verified, url: live.liveUrl, error: live.error });
             liveUrl = live.verified ? live.liveUrl : '';
@@ -2747,8 +2978,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // stale directory by a shared business noun.
                     runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
                 }
-                const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
-                liveRunResult = runRes;
+                // Phases that ran in THIS run may have rewritten the tree under a
+                // server still running from an earlier one: restart, never adopt,
+                // so live acceptance and the probes measure the edited code
+                // (round 15 review, finding 46).
+                const phasesEditedTree = pipelineExecutedTasks(pipeline);
+                if (phasesEditedTree) (runInput as Record<string, unknown>).restart = true;
+                const startedRun = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
+                const runRes = phasesEditedTree ? postRepairRunOutcome(startedRun) : startedRun;
+                liveRunResult = startedRun;
                 const liveRuntimeRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
@@ -2841,8 +3079,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 scopePlanner.output.projectRoot = artifactRoot;
                 scopePlanner.output.requirementsContext = requirementsContext;
                 const scopePipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-                    sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-                    runId: context?.runId || `run-${Date.now()}`,
+                    sessionId: phaseIds.sessionId,
+                    runId: phaseIds.runId,
                     userId: context?.userId || 'anonymous',
                     workspaceId: context?.workspaceId || context?.sessionId || 'default',
                     browserSessionId: context?.browserSessionId,
@@ -2862,8 +3100,24 @@ export class ProjectPipelineTool implements ToolDefinition {
                     scopeRepairStatus = 'scope_repair_pipeline_failed';
                     appendBoundedPipelineLog(logs, '[pipeline] scope repair phases did not verify successfully');
                     appendBoundedPipelineLog(logs, `[pipeline] scope repair evidence: ${summarizeScopeRepairPipeline(scopePipeline)}`);
+                    // Phases that edited the tree and then failed leave a server
+                    // running the pre-edit code: restart and judge the tree as it
+                    // now is, never Browser-QA the old process (finding 30).
+                    if (pipelineExecutedTasks(scopePipeline)) {
+                        const runBeforeScopeEdit = liveRunResult;
+                        const reMeasured = await executeTool(
+                            'project_run',
+                            { cwd: apiSiblingOf(artifactRoot) || artifactRoot, restart: true },
+                            { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                        );
+                        liveRunResult = reMeasured;
+                        const reRuntimeRoot = String(reMeasured?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
+                        await recordLiveAcceptance(postRepairRunOutcome(reMeasured, runBeforeScopeEdit), artifactRoot || reRuntimeRoot, projectAuditRoots(artifactRoot, reRuntimeRoot));
+                        appendBoundedPipelineLog(logs, '[pipeline] scope repair edited the tree and failed; the restarted server was measured again');
+                    }
                     return;
                 }
+                const runBeforeScopeRetry = liveRunResult;
                 const scopeRetryResult = await executeTool(
                     'project_run',
                     { cwd: apiSiblingOf(artifactRoot) || artifactRoot, restart: true },
@@ -2872,7 +3126,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 liveRunResult = scopeRetryResult;
                 const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
                 const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
-                await recordLiveAcceptance(postRepairRunOutcome(scopeRetryResult), artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
+                await recordLiveAcceptance(postRepairRunOutcome(scopeRetryResult, runBeforeScopeRetry), artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
                 scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
                 say(pick(isAr,
                     finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
@@ -3000,8 +3254,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                         repairPlanner.output.requirementsContext = requirementsContext;
                         if (repairProjectRoot) repairPlanner.output.projectRoot = repairProjectRoot;
                         repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-                            sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-                            runId: context?.runId || `run-${Date.now()}`,
+                            sessionId: phaseIds.sessionId,
+                            runId: phaseIds.runId,
                             userId: context?.userId || 'anonymous',
                             workspaceId: context?.workspaceId || context?.sessionId || 'default',
                             browserSessionId: context?.browserSessionId,
@@ -3084,6 +3338,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         const retryInput: Record<string, any> = { restart: true };
                         if (repairProjectRoot) retryInput.cwd = apiSiblingOf(repairProjectRoot) || repairProjectRoot;
                         else if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
+                        const runBeforeLiveRepair = liveRunResult;
                         const retryRunResult = await executeTool(
                             'project_run',
                             retryInput,
@@ -3095,7 +3350,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         ).trim();
                         const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
                         const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
-                        await recordLiveAcceptance(postRepairRunOutcome(retryRunResult), retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
+                        await recordLiveAcceptance(postRepairRunOutcome(retryRunResult, runBeforeLiveRepair), retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -3133,6 +3388,9 @@ export class ProjectPipelineTool implements ToolDefinition {
         const attemptRequestCoverageRepair = async (): Promise<void> => {
             if (requestCoverageRepairAttempted || context?.requestCoverageRepairAttempted === true) return;
             requestCoverageRepairAttempted = true;
+            const repairContext = { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' };
+            const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
+            const proofTimeoutMs = Number(HTTP_ANSWER_TIMEOUT_MS) || 2500;
             for (const dimension of ['served', 'tested'] as const) {
                 if (!requestCoverageFailed || !requestCoverage?.missing.length) return;
                 if (!measured('live', true) || measured('live', false)) return;
@@ -3143,8 +3401,11 @@ export class ProjectPipelineTool implements ToolDefinition {
                     testFiles: requestCoverage.testFiles || [],
                 });
                 if (!task || task.dimension !== dimension) continue;
-                const trustedRoots = Array.from(new Set([serverRoot, ...lastAcceptanceRoots.auditRoots].filter(Boolean)));
-                if (!serverRoot || !trustedRoots.some(root => isWithinRoot(task.repairFile, root))) {
+                // The server's own tree only: an interface file (its API client,
+                // its UI test) is never a coverage target, and nothing outside
+                // the server root would be restored by a server restart
+                // (round 15 review, finding 15).
+                if (!serverRoot || !isWithinRoot(task.repairFile, serverRoot)) {
                     requestCoverageRepairStatus = 'request_coverage_repair_no_trusted_target';
                     return;
                 }
@@ -3168,45 +3429,45 @@ export class ProjectPipelineTool implements ToolDefinition {
                     requestCoverageRepairStatus = `request_coverage_repair_unplanned:${String(plan?.strategy || plan?.reason || 'none').slice(0, 80)}`;
                     return;
                 }
-                const existed = fs.existsSync(task.repairFile);
-                const snapshot = existed ? fs.readFileSync(task.repairFile) : null;
                 say(pick(isAr,
                     `🔧 ${dimension === 'served' ? 'سجلات طلبتها غير مخدومة' : 'سجلات طلبتها بلا اختبار'}: ${requestCoverage.missing.map(r => r.ar || r.key).join('، ')} — أصلحها مرة واحدة في ${path.basename(task.repairFile)} ثم أعيد التشغيل والفحص.`,
                     `🔧 ${dimension === 'served' ? 'Requested records are not served' : 'Requested records are untested'}: ${requestCoverage.missing.map(r => r.key).join(', ')} — repairing once in ${path.basename(task.repairFile)}, then restarting and re-checking.`));
-                try {
-                    const repairResult = await executeTool(plan.suggestedTool, {
-                        ...(plan.suggestedInput || {}),
+                const bound = bindRunCancellation(context?.cancellation, context?.signal);
+                // MERGE WIRING: a test-script patch the repair task carries (coverage
+                // fork 091554ed) is applied under the same snapshot as the file.
+                const manifestPatch = (task as any).manifestPatch as { file: string; script: string } | undefined;
+                const manifestFile = manifestPatch?.file && isWithinRoot(manifestPatch.file, serverRoot) ? manifestPatch.file : '';
+                const pass = await runCoverageRepairPass({
+                    file: task.repairFile,
+                    guardedFiles: manifestFile ? [manifestFile] : [],
+                    afterRepair: manifestFile ? () => applyRepairManifestPatch(manifestPatch!) : undefined,
+                    targeted: coverageRepairTargets(requestCoverage, dimension),
+                    runBefore: liveRunResult,
+                    runRepairTool: (current) => executeTool(plan.suggestedTool, {
+                        ...editInPlaceRepairInput(plan.suggestedTool, plan.suggestedInput, task.repairFile, current),
                         sessionId: context?.sessionId,
                         workspaceId: context?.workspaceId || context?.sessionId,
-                    }, { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
-                    appendBoundedPipelineLogs(logs, repairResult?.logs);
-                    if (repairResult?.ok !== true) {
-                        requestCoverageRepairStatus = `request_coverage_repair_tool_failed:${dimension}`;
-                        noteLiveRunError(`request-coverage repair (${dimension}): ${String(repairResult?.error || 'repair tool failed').slice(0, 300)}`);
-                        return;
-                    }
-                    const coverageRerun = await executeTool('project_run', { cwd: serverRoot, restart: true },
-                        { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
-                    liveRunResult = coverageRerun;
-                    await recordLiveAcceptance(postRepairRunOutcome(coverageRerun), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots);
-                    if (measured('live', false)) {
-                        // The edit broke the server: put the file back exactly and start it again.
-                        if (snapshot) fs.writeFileSync(task.repairFile, snapshot);
-                        else fs.rmSync(task.repairFile, { force: true });
-                        const restoredRun = await executeTool('project_run', { cwd: serverRoot, restart: true },
-                            { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' });
-                        liveRunResult = restoredRun;
-                        await recordLiveAcceptance(postRepairRunOutcome(restoredRun), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots);
-                        requestCoverageRepairStatus = 'request_coverage_repair_restored';
-                        noteLiveRunError(`request-coverage repair (${dimension}) broke the server; ${path.basename(task.repairFile)} was restored`);
-                        return;
-                    }
-                    requestCoverageRepairStatus = requestCoverageFailed ? `repair_completed_records_still_missing:${dimension}` : 'repaired_and_served';
-                } catch (coverageRepairError: any) {
-                    requestCoverageRepairStatus = 'request_coverage_repair_error';
-                    noteLiveRunError(`request-coverage repair: ${String(coverageRepairError?.message || coverageRepairError).slice(0, 300)}`);
+                    }, repairContext).then((result: any) => { appendBoundedPipelineLogs(logs, result?.logs); return result; }),
+                    restartServer: async () => {
+                        const run = await executeTool('project_run', { cwd: serverRoot, restart: true }, repairContext);
+                        liveRunResult = run;
+                        return run;
+                    },
+                    recordRun: (run, before) => recordLiveAcceptance(postRepairRunOutcome(run, before), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots).then(() => undefined),
+                    measurements: () => ledger.all(),
+                    currentTargets: () => coverageRepairTargets(requestCoverage, dimension),
+                    measureProofs: () => measureBuilderProofs(verifiedLiveUrl(ledger.all()), { timeoutMs: proofTimeoutMs, signal: bound.signal }),
+                }).finally(() => bound.dispose());
+                if (pass.undoReason) {
+                    requestCoverageRepairStatus = `request_coverage_repair_restored:${dimension}`;
+                    noteLiveRunError(`request-coverage repair (${dimension}) was undone — ${pass.undoReason}; ${path.basename(task.repairFile)} was restored`);
                     return;
                 }
+                const remeasured = pass.remeasured;
+                // The builder's live claims about this file were made before the
+                // rewrite; unless they were measured again, the report must say so.
+                if (!remeasured) staleBuilderProof = { file: task.repairFile, root: serverRoot };
+                requestCoverageRepairStatus = requestCoverageFailed ? `repair_completed_records_still_missing:${dimension}` : 'repaired_and_served';
             }
         };
         if (requestCoverageFailed && measured('live', true) && !measured('live', false)) {
@@ -3604,7 +3865,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             projectName: String(plannerResult.output.projectName || 'project'),
             phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, requestCoverage,
             externalApi: runtimeProjectHandoff?.externalApi,
-            decisionEvidence, verificationUnavailable,
+            decisionEvidence, verificationUnavailable, staleBuilderProof,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -3923,8 +4184,10 @@ export class ProjectPipelineTool implements ToolDefinition {
         externalApi?: TrustedRuntimeProjectHandoff['externalApi'];
         decisionEvidence?: PipelineDecisionEvidence;
         verificationUnavailable?: boolean;
+        /** A server file rewritten after the builder proved it live, whose claims were not measured again. */
+        staleBuilderProof?: { file: string; root: string } | null;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable, requestCoverage } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable, requestCoverage, staleBuilderProof } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -4093,7 +4356,12 @@ export class ProjectPipelineTool implements ToolDefinition {
         const spoken: string[] = [];
         for (const p of phaseResults) {
             for (const t of (Array.isArray(p?.results) ? p.results : [])) {
-                const msg = redactDeliveryCredentials(guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar));
+                const said = guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar);
+                // A live claim about a file a later repair rewrote is not reprinted
+                // as proven unless it was measured again (round 15 review, finding 27).
+                const msg = redactDeliveryCredentials(staleBuilderProof
+                    ? markUnremeasuredBuilderClaims(said, ar, path.basename(staleBuilderProof.file))
+                    : said);
                 if (msg && !spoken.includes(msg)) spoken.push(msg);
             }
         }

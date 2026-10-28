@@ -112,7 +112,8 @@ export class QualityRunTool extends BaseTool {
         type: 'object' as const,
         properties: {
             path: { type: 'string' },
-            tasks: { type: 'array', items: { type: 'string', enum: ['lint', 'typecheck', 'test', 'build'] } }
+            tasks: { type: 'array', items: { type: 'string', enum: ['lint', 'typecheck', 'test', 'build'] } },
+            port: { type: 'number', description: 'PORT for the test run, so a suite that starts the app on its default port does not collide with the live server already holding it' },
         },
         required: ['path']
     };
@@ -146,10 +147,20 @@ export class QualityRunTool extends BaseTool {
 
         const results: any[] = [];
 
-        const runNpmScript = async (script: string, extraArgs: string[] = [], timeoutMs = 10 * 60_000) => {
+        const runNpmScript = async (script: string, extraArgs: string[] = [], timeoutMs = 10 * 60_000, env?: NodeJS.ProcessEnv) => {
             const args = ['run', script, ...extraArgs];
-            return handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId);
+            return handleShellCommand('npm', args, projectDir, timeoutMs, false, sessionId, env);
         };
+        /**
+         * A PORT OF ITS OWN FOR THE TEST RUN.
+         *
+         * Tests run at delivery while the live server holds the project's
+         * default port (round 15 review): a suite that starts the app on that
+         * port failed with EADDRINUSE, and the failure was read as the tests
+         * failing. The caller hands a free port; the suite gets it as PORT.
+         */
+        const testPort = Number(input?.port);
+        const testEnv = Number.isInteger(testPort) && testPort >= 1024 && testPort <= 65535 ? { PORT: String(testPort) } : undefined;
 
         for (const t of tasks) {
             const task = String(t || '').trim();
@@ -191,7 +202,7 @@ export class QualityRunTool extends BaseTool {
                     results.push({ task, ok: true, skipped: true });
                     continue;
                 }
-                const r = await runNpmScript('test', [], 15 * 60_000);
+                const r = await runNpmScript('test', [], 15 * 60_000, testEnv);
                 if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
                 else results.push({ task, ok: false, skipped: false, error: String(r.error || '').slice(0, 4000) });
                 continue;

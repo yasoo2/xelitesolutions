@@ -29,7 +29,13 @@ import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../..
 
 // Live processes, keyed by the workspace (or session) so one project owns one
 // server: starting again stops the previous one instead of leaking ports.
-interface RunningServer { pid: number; port: number; cwd: string; command: string; startedAt: number; }
+interface RunningServer {
+    pid: number; port: number; cwd: string; command: string; startedAt: number;
+    /** The session whose record names this server, so a stop can forget it there too. */
+    sessionKey?: string;
+    /** The pid's start time when it was launched: a reused pid never matches it. */
+    identity?: string;
+}
 const RUNNING: Map<string, RunningServer> = new Map();
 
 /** Tokenize the already-selected launcher without giving it a second shell. */
@@ -243,7 +249,7 @@ export async function startStaticSitePreview(context: any, projectDir: string, l
         logs.push(`project_run: the static site did not start: ${served.error || 'no answer'}`);
         return '';
     }
-    RUNNING.set(key, { pid: served.pid, port, cwd: root, command: 'node static-preview', startedAt: Date.now() });
+    await trackRunning(key, context, { pid: served.pid, port, cwd: root, command: 'node static-preview' });
     rememberLiveProject(context, root, { url: served.url, port, pid: served.pid }, projectDir);
     try {
         const { broadcast } = require('../../../api/ws');
@@ -293,7 +299,7 @@ function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
 
-export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number }, at = Date.now()): Record<string, any> {
+export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number; identity?: string }, at = Date.now()): Record<string, any> {
     return {
         ...previous,
         // The live preview belongs to the project this run just verified.
@@ -303,18 +309,22 @@ export function liveProjectRecord(previous: Record<string, any>, projectCwd: str
         // with the verified live process rather than preserving stale state.
         dir: projectCwd,
         type: previous.type || 'runtime',
-        live: { url: live.url, port: live.port, pid: live.pid, cwd: projectCwd, projectCwd, at },
+        live: { url: live.url, port: live.port, pid: live.pid, cwd: projectCwd, projectCwd, at, ...(live.identity ? { identity: live.identity } : {}) },
         updatedAt: at,
     };
 }
 
 /** Keep the verified server address attached to the session's active project. */
-function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }, projectCwd = cwd): void {
+function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number; identity?: string }, projectCwd = cwd): void {
     const sessionId = String(context?.sessionId || '').trim();
     if (!sessionId || !cwd || !live.url || !live.port) return;
     const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
     const previous = projects[sessionKey] || {};
+    // The pid's identity from the launch that tracked it, so a later retirement
+    // can tell this server from a process that reused its pid.
+    const tracked = RUNNING.get(runKey(context));
+    if (!live.identity && tracked?.identity && tracked.pid === live.pid) live = { ...live, identity: tracked.identity };
     const record = liveProjectRecord(previous, projectCwd, live);
     record.live.cwd = cwd;
     writeJoeProject(sessionKey, record, context?.runId ?? null);
@@ -1486,7 +1496,7 @@ export class ProjectRunTool implements ToolDefinition {
             logs.push(`project_run: serving dependency-free records bundle (${dependencyFreeBundle})`);
             const fallback = await startStaticBuildPreview(dependencyFreeBundle, port);
             if (fallback.ready && fallback.url && fallback.pid) {
-                RUNNING.set(key, { pid: fallback.pid, port, cwd: dependencyFreeBundle, command: 'node static-preview', startedAt: Date.now() });
+                await trackRunning(key, context, { pid: fallback.pid, port, cwd: dependencyFreeBundle, command: 'node static-preview' });
                 rememberLiveProject(context, dependencyFreeBundle, { url: fallback.url, port, pid: fallback.pid }, cwd);
                 say(pick(isAr,
                     `✅ تطبيق السجلات المحلي يعمل الآن — المعاينة: ${fallback.url}`,
@@ -1723,12 +1733,13 @@ export class ProjectRunTool implements ToolDefinition {
         }
 
         if (pid) {
-            RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
+            await trackRunning(key, context, { pid, port: livePort || port, cwd, command: detected.command });
             // A preview that exits after readiness must not remain adoptable.
             void managed.done.then((result) => {
                 const current = RUNNING.get(key);
                 if (current?.pid !== pid) return;
                 RUNNING.delete(key);
+                forgetRecordedLive(current.sessionKey, pid);
                 logs.push(`project_run: managed preview exited (${result.exitCode ?? 'no code'})`);
                 context?.onProgress?.(pick(isAr,
                     `⚠️ توقفت المعاينة بعد التشغيل؛ رمز الخروج ${result.exitCode ?? 'غير متاح'}.`,
@@ -1750,7 +1761,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs.push(`project_run: dev server unconfirmed; trying verified static bundle (${builtRoot})`);
                 const fallback = await startStaticBuildPreview(builtRoot, port);
                 if (fallback.ready && fallback.url && fallback.pid) {
-                    RUNNING.set(key, { pid: fallback.pid, port, cwd: builtRoot, command: 'node static-preview', startedAt: Date.now() });
+                    await trackRunning(key, context, { pid: fallback.pid, port, cwd: builtRoot, command: 'node static-preview' });
                     rememberLiveProject(context, builtRoot, { url: fallback.url, port, pid: fallback.pid }, cwd);
                     say(pick(isAr,
                         `✅ الخادم التطويري لم يبدأ، لكن نسخة الإنتاج المبنية تعمل الآن — المعاينة: ${fallback.url}`,
@@ -1922,7 +1933,7 @@ export function adoptionAllowed(input: any): boolean {
     return !input?.command && input?.restart !== true;
 }
 
-async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
+export async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
     try {
         const sessionId = String(context?.sessionId || '').trim();
         if (!sessionId || !cwd) return;
@@ -1933,8 +1944,10 @@ async function retireRecordedServer(context: any, cwd: string, logs: string[]): 
         const root = String(context?.workspaceRoot || '').trim()
             || path.resolve(cwd, '..');
         if (!canAdoptRecordedLive(live, cwd) && !theServerThisSessionLeftRunning(live, root)) return;
-        await killTree(Number(live.pid));
-        logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
+        const killed = await killRecorded(Number(live.pid), live.identity, logs);
+        // Either way the record no longer names a server this session owns.
+        forgetRecordedLive(sessionKey, Number(live.pid));
+        if (killed) logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
     } catch (e: any) {
         //  A server that will not die is not a reason to refuse to start.
         logs.push(`retire_failed: ${e?.message || e}`);
@@ -1946,13 +1959,89 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
     if (!server?.pid) return false;
     const pid = server.pid;
     try {
-        await killTree(pid);
-        logs.push(`stopped pid=${pid} port=${server.port}`);
+        if (await killRecorded(pid, server.identity, logs)) logs.push(`stopped pid=${pid} port=${server.port}`);
     } catch (e: any) {
         logs.push(`stop_failed pid=${pid}: ${e?.message || e}`);
     }
     RUNNING.delete(key);
+    // The session's record must not keep naming a pid that is gone: a later
+    // retirement would otherwise kill whatever process reused it (finding 39).
+    forgetRecordedLive(server.sessionKey, pid);
     return true;
+}
+
+/**
+ * A PID IS NOT AN IDENTITY.
+ *
+ * Windows reuses a freed pid within seconds, and Joe itself spawns npm, cmd
+ * and node children in that window: a record that still said pid P0 after
+ * its server died made the next retirement run `taskkill /F /T /PID P0` on
+ * whatever process had taken it (round 15 review, finding 39). A server is
+ * now recorded with its start time, and is killed only while the pid still
+ * belongs to a process that started at that moment.
+ */
+export const pidIdentity = {
+    async read(pid: number): Promise<string> {
+        if (!Number.isInteger(pid) || pid <= 0) return '';
+        try {
+            if (process.platform === 'linux') {
+                // /proc/<pid>/stat field 22: start time in clock ticks since boot.
+                const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+                const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                return fields[19] ? `linux:${fields[19]}` : '';
+            }
+            const probe = process.platform === 'win32'
+                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`] }
+                : { command: 'ps', args: ['-o', 'lstart=', '-p', String(pid)] };
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-pid-identity-${pid}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 10000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const data = result?.data || {};
+            const out = String(data.output || data.stdout || '').trim().split(/\r?\n/)[0].trim();
+            return result?.success && data.exitCode === 0 && out ? `${process.platform}:${out}` : '';
+        } catch {
+            return '';
+        }
+    },
+};
+
+/** Kill a recorded pid only while it is still the process that was recorded. */
+async function killRecorded(pid: number, identity: string | undefined, logs: string[]): Promise<boolean> {
+    if (identity) {
+        const now = await pidIdentity.read(pid);
+        if (now !== identity) {
+            logs.push(now
+                ? `pid ${pid} now belongs to another process (started ${now}, recorded ${identity}); not killed`
+                : `pid ${pid} is no longer running; nothing to kill`);
+            return false;
+        }
+    }
+    await killTree(pid);
+    return true;
+}
+
+/** Track a server this run started, with its session and its pid's identity. */
+async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string }): Promise<void> {
+    const sessionId = String(context?.sessionId || '').trim();
+    RUNNING.set(key, {
+        ...server,
+        startedAt: Date.now(),
+        ...(sessionId ? { sessionKey: sessionId.replace(/[^a-zA-Z0-9._-]/g, '_') } : {}),
+        identity: await pidIdentity.read(Number(server.pid)),
+    });
+}
+
+/** Forget the session's recorded live server when it names this pid. */
+export function forgetRecordedLive(sessionKey: string | undefined, pid: number): void {
+    if (!sessionKey || !pid) return;
+    const entry = (global as any).joeProjects?.[sessionKey];
+    if (!entry?.live || Number(entry.live.pid) !== Number(pid)) return;
+    const { live: _gone, ...rest } = entry;
+    writeJoeProject(sessionKey, rest, entry.pipelineRunId ?? null);
+    try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
 }
 
 export class ProjectStopTool implements ToolDefinition {

@@ -16,33 +16,50 @@ export interface DeliveryPart {
     tool: string;
 }
 
-interface RunParts { runId: string; parts: DeliveryPart[] }
-
-function store(): Record<string, RunParts> {
+/**
+ * ONE ENTRY PER (SESSION, RUN), FREED WHEN THE RUN ENDS.
+ *
+ * Round 15 review: the store held one {runId, parts} per session and a new
+ * run REPLACED it — a second build in the same session (tools and runs share
+ * a sessionId concurrently) wiped the first run's parts mid-flight, so it
+ * measured only its last root again (the P101 gap this ledger closes), and
+ * nothing was ever freed on a server with thousands of sessions. Entries are
+ * now keyed by session AND run, and the pipeline clears its own entry when it
+ * starts and when it ends.
+ */
+function store(): Map<string, DeliveryPart[]> {
     const g: any = global as any;
-    if (!g.joeDeliveryParts || typeof g.joeDeliveryParts !== 'object') g.joeDeliveryParts = {};
+    if (!(g.joeDeliveryParts instanceof Map)) g.joeDeliveryParts = new Map<string, DeliveryPart[]>();
     return g.joeDeliveryParts;
 }
 
 const runIdOf = (runId: unknown) => String(runId || '').trim();
+const entryKey = (sessionKey: string, runId: unknown) => `${String(sessionKey || 'default')}\u0000${runIdOf(runId)}`;
 
-/** Record a bound root for this session's run; a new run starts a new ledger. */
+/** Record a bound root for this session's run. */
 export function recordDeliveryPart(sessionKey: string, runId: unknown, part: DeliveryPart): DeliveryPart[] {
-    const id = runIdOf(runId);
-    const key = String(sessionKey || 'default');
     const all = store();
-    const current = all[key] && all[key].runId === id ? all[key] : { runId: id, parts: [] };
+    const key = entryKey(sessionKey, runId);
+    const parts = all.get(key) || [];
     const root = path.resolve(String(part.root || ''));
-    if (part.root && !current.parts.some(p => path.resolve(p.root) === root)) {
-        current.parts.push({ root, tool: String(part.tool || '') });
+    if (part.root && !parts.some(p => path.resolve(p.root) === root)) {
+        parts.push({ root, tool: String(part.tool || '') });
     }
-    all[key] = current;
-    return current.parts.map(p => ({ ...p }));
+    all.set(key, parts);
+    return parts.map(p => ({ ...p }));
 }
 
 /** The parts bound in THIS run only — never another run's. */
 export function deliveryPartsForRun(sessionKey: string, runId: unknown): DeliveryPart[] {
-    const entry = store()[String(sessionKey || 'default')];
-    if (!entry || entry.runId !== runIdOf(runId)) return [];
-    return entry.parts.map(p => ({ ...p }));
+    return (store().get(entryKey(sessionKey, runId)) || []).map(p => ({ ...p }));
+}
+
+/** Forget this run's parts: a retried pipeline in the same run starts clean, and the store stays bounded. */
+export function clearDeliveryParts(sessionKey: string, runId: unknown): void {
+    store().delete(entryKey(sessionKey, runId));
+}
+
+/** How many runs currently hold parts (a bound the tests can check). */
+export function deliveryPartRunsForTests(): number {
+    return store().size;
 }

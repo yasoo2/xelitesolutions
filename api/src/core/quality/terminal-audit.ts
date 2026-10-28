@@ -69,6 +69,8 @@ export interface TerminalAuditOptions {
      * bundle the server serves is the one that was just built.
      */
     appDir?: string;
+    /** The run's cancellation: a stop from the owner ends a running test suite too. */
+    cancel?: Promise<void>;
 }
 
 /** The failing ids, for a one-line verdict. */
@@ -94,14 +96,47 @@ export function failingIds(audit: TerminalAudit): string[] {
  * the longest quiet gap a passing suite showed), never below the old bound —
  * so nothing that used to finish is cut, and a hung, silent process still ends.
  */
-let longestPassingQuietMs = 0;
-export function testQuietBoundMs(floorMs: number): number {
-    return Math.max(floorMs, 3 * longestPassingQuietMs);
+/**
+ * PER PROJECT, CAPPED, AND NEVER FOREVER (round 15 review, findings 31, 40, 45).
+ *
+ * The learned silence was one process-wide number that only grew: on a shared
+ * server one tenant's slow passing suite raised every other tenant's hang
+ * bound for the life of the process. It is now learned per project directory
+ * and capped. And silence alone was the only bound: a suite that never exits
+ * but keeps printing (a retry loop logging every second, a server it started
+ * and never closed) held the delivery forever, and the owner's stop could not
+ * end it. An absolute ceiling and the run's cancellation now bound it too.
+ */
+const QUIET_CAP_MS = 5 * 60_000;
+const QUIET_PROJECTS_MAX = 512;
+const longestPassingQuietMs = new Map<string, number>();
+const projectKey = (appDir?: string) => {
+    const dir = String(appDir || '').trim();
+    if (!dir) return '';
+    try { return fs.realpathSync(dir); } catch { return path.resolve(dir); }
+};
+export function testQuietBoundMs(floorMs: number, appDir?: string): number {
+    const learned = longestPassingQuietMs.get(projectKey(appDir)) || 0;
+    return Math.max(floorMs, Math.min(QUIET_CAP_MS, 3 * learned));
 }
-export function noteTestQuietGap(ms: number): void {
-    if (Number.isFinite(ms) && ms > longestPassingQuietMs) longestPassingQuietMs = ms;
+export function noteTestQuietGap(ms: number, appDir?: string): void {
+    const key = projectKey(appDir);
+    if (!key || !Number.isFinite(ms) || ms <= (longestPassingQuietMs.get(key) || 0)) return;
+    longestPassingQuietMs.delete(key);
+    longestPassingQuietMs.set(key, ms);
+    // Oldest first: a long-lived server keeps only recent projects.
+    while (longestPassingQuietMs.size > QUIET_PROJECTS_MAX) {
+        const oldest = longestPassingQuietMs.keys().next().value;
+        if (oldest === undefined) break;
+        longestPassingQuietMs.delete(oldest);
+    }
 }
-export function resetTestQuietForTests(): void { longestPassingQuietMs = 0; }
+/** The absolute bound of one test run: ten silences, or the operator's JOE_APP_TEST_MAX_MS. */
+export function testCeilingMs(floorMs: number): number {
+    const operator = Number(process.env.JOE_APP_TEST_MAX_MS);
+    return Number.isFinite(operator) && operator > 0 ? operator : 10 * floorMs;
+}
+export function resetTestQuietForTests(): void { longestPassingQuietMs.clear(); }
 
 export async function run(
     file: string,
@@ -110,6 +145,7 @@ export async function run(
     timeoutMs: number,
     onLine?: (line: string) => void,
     idle = false,
+    bounds: { ceilingMs?: number; cancel?: Promise<void> } = {},
 ): Promise<{ ok: boolean; out: string; code: number | null; longestQuietMs: number }> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { executionEngine } = require('../../kernel/ExecutionEngine');
@@ -119,18 +155,29 @@ export async function run(
     let fire: (() => void) | null = null;
     let lastLineAt = Date.now();
     let longestQuietMs = 0;
+    let sawLine = false;
     const arm = () => {
         clearTimeout(timer);
-        timer = setTimeout(() => fire?.(), timeoutMs);
+        // The silence before the FIRST line includes the process starting up,
+        // which a loaded machine can stretch past a short bound: that first
+        // silence gets a small bounded grace, as the execution engine gives
+        // its own idle timer. Once output starts, the bound is exact.
+        const delay = idle && !sawLine ? Math.max(timeoutMs, Math.min(5_000, timeoutMs * 3)) : timeoutMs;
+        timer = setTimeout(() => fire?.(), delay);
     };
     try {
         child = executionEngine.runArgvStreaming(file, args, {
             cwd,
             env: { ...process.env, NODE_NO_WARNINGS: '1', CI: '1' },
+            // The engine's own absolute timer and cancellation: silence resets,
+            // these do not.
+            ...(bounds.ceilingMs && bounds.ceilingMs > 0 ? { timeout: bounds.ceilingMs } : {}),
+            ...(bounds.cancel ? { cancel: bounds.cancel } : {}),
             onLine: (l: string) => {
                 const now = Date.now();
-                longestQuietMs = Math.max(longestQuietMs, now - lastLineAt);
+                if (sawLine) longestQuietMs = Math.max(longestQuietMs, now - lastLineAt);
                 lastLineAt = now;
+                sawLine = true;
                 if (idle) arm();
                 if (lines.length < 200) lines.push(l);
                 // Indented, so his eye separates the command from its answer.
@@ -150,7 +197,11 @@ export async function run(
     longestQuietMs = Math.max(longestQuietMs, Date.now() - lastLineAt);
     const out = res.error === 'silent'
         ? [...lines, `(no output for ${Math.round(timeoutMs / 1000)} s — stopped as hung)`].join('\n')
-        : lines.join('\n');
+        : res.error === 'timeout' && idle && bounds.ceilingMs
+            ? [...lines, `(still running after ${Math.round(bounds.ceilingMs / 1000)} s — stopped at the ceiling)`].join('\n')
+            : res.error === 'cancelled'
+                ? [...lines, '(stopped: the run was cancelled)'].join('\n')
+                : lines.join('\n');
     return { ok: !!res.ok && res.exitCode === 0, out, code: res.exitCode ?? null, longestQuietMs };
 }
 
@@ -394,8 +445,9 @@ export async function auditInTerminal(
         if (appManifest?.scripts?.test) {
             await add('app_tests', 'npm test', async () => {
                 const npm = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-                const r = await run(npm, ['test'], appDir, testQuietBoundMs(Math.max(per, 45_000)), say, true);
-                if (r.ok) noteTestQuietGap(r.longestQuietMs);
+                const floor = Math.max(per, 45_000);
+                const r = await run(npm, ['test'], appDir, testQuietBoundMs(floor, appDir), say, true, { ceilingMs: testCeilingMs(floor), cancel: opts.cancel });
+                if (r.ok) noteTestQuietGap(r.longestQuietMs, appDir);
                 const last = String(r.out).trim().split('\n').filter(Boolean).pop() || '';
                 return r.ok
                     ? { ok: true, detail: 'the generated application test suite passed' }

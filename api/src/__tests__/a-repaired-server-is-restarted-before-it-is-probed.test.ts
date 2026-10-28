@@ -33,9 +33,12 @@ describe('a repaired server is restarted before it is probed', () => {
     it('every post-repair project_run restarts and goes through postRepairRunOutcome', () => {
         expect(src).toMatch(/'project_run',\s*\{ cwd: apiSiblingOf\(artifactRoot\) \|\| artifactRoot, restart: true \}/);
         expect(src).toMatch(/const retryInput: Record<string, any> = \{ restart: true \};/);
-        expect(src).toMatch(/await recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult\)/);
-        expect(src).toMatch(/await recordLiveAcceptance\(postRepairRunOutcome\(retryRunResult\)/);
-        expect(src).toMatch(/await recordLiveAcceptance\(postRepairRunOutcome\(coverageRerun\)/);
+        // Each also passes the run from before the edit, so a static fallback
+        // standing in for a server that used to start is a failure (finding 16).
+        expect(src).toMatch(/await recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult, runBeforeScopeRetry\)/);
+        expect(src).toMatch(/await recordLiveAcceptance\(postRepairRunOutcome\(retryRunResult, runBeforeLiveRepair\)/);
+        expect(src).toMatch(/recordRun: \(run, before\) => recordLiveAcceptance\(postRepairRunOutcome\(run, before\)/);
+        expect(src).toMatch(/const rerun = await pass\.restartServer\(\);\s*restarted = true;\s*await pass\.recordRun\(rerun, pass\.runBefore\);/);
     });
 });
 
@@ -100,6 +103,7 @@ describe('a coverage gap is repaired, not only failed', () => {
         expect(src).toMatch(/const attemptRequestCoverageRepair = async/);
         expect(src).toMatch(/requestCoverageRepairAttempted: true/);
         expect(src).toMatch(/request_coverage_repair_restored/);
+        expect(src).toMatch(/for \(const \[file, before\] of snapshots\) \{\s*if \(before\) fs\.writeFileSync\(file, before\);\s*else fs\.rmSync\(file, \{ force: true \}\);/);
         expect(src).toMatch(/await attemptRequestCoverageRepair\(\);/);
     });
 });
