@@ -175,7 +175,7 @@ describe('npm_manager installs the release whose manifest declares the executabl
         // The chosen major is said, not left to be inferred from a version string.
         const reason = 'tailwindcss@3.4.19 (major 3) is the newest stable, non-deprecated release that declares "tailwindcss"; 4.3.3 declares no "tailwindcss"';
         expect(result.logs.join('\n')).toContain(reason);
-        expect(result.output.binProvider).toEqual({ version: '3.4.19', major: 3, reason, skippedDeprecated: [] });
+        expect(result.output.binProvider).toEqual({ version: '3.4.19', major: 3, reason, deprecationKnown: true, skippedDeprecated: [] });
     });
 
     it('installs nothing when no published release declares it', async () => {

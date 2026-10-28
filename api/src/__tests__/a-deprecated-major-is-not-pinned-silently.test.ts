@@ -103,12 +103,15 @@ describe('a deprecated major is not pinned silently', () => {
 describe('project_run says which release and major it installed', () => {
     const sessionId = 'deprecated-major-run';
     afterAll(async () => {
-        await executionFirewall.runInContext('deprecated-major-stop', () =>
-            new ProjectStopTool().execute({}, { sessionId, workspaceId: 'w', userId: 'u' })).catch(() => undefined);
+        for (const session of [sessionId, `${sessionId}-unread`]) {
+            await executionFirewall.runInContext('deprecated-major-stop', () =>
+                new ProjectStopTool().execute({}, { sessionId: session, workspaceId: 'w', userId: 'u' })).catch(() => undefined);
+        }
         jest.restoreAllMocks();
     });
 
-    it('the vite it had to install is named with its major, and the app then runs', async () => {
+    /** project_run on a vite project whose script program is undeclared; npm_manager answers `binProvider`. */
+    async function runWith(binProvider: Record<string, unknown>, session: string) {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-deprecated-run-'));
         roots.push(root);
         fs.mkdirSync(path.join(root, 'src'));
@@ -119,7 +122,6 @@ describe('project_run says which release and major it installed', () => {
         jest.spyOn(workspaceService, 'getActiveRoot').mockReturnValue(root);
         // npm_manager's answer for the providesBin install (its registry choice is the real-npm test above);
         // what it puts on disk is a vite that serves the page on the port it is given.
-        const reason = 'vite@5.4.21 (major 5) is the newest stable, non-deprecated release that declares "vite"; skipped deprecated 6.0.0';
         const inputs: any[] = [];
         jest.spyOn(NpmManagerTool.prototype, 'execute').mockImplementation(async (input: any) => {
             inputs.push(input);
@@ -135,14 +137,30 @@ describe('project_run says which release and major it installed', () => {
             fs.mkdirSync(bin, { recursive: true });
             fs.writeFileSync(path.join(bin, 'vite.cmd'), '@node "%~dp0\\..\\vite\\bin\\vite.js" %*\r\n');
             fs.writeFileSync(path.join(bin, 'vite'), '#!/bin/sh\nexec node "$(dirname "$0")/../vite/bin/vite.js" "$@"\n', { mode: 0o755 });
-            return { ok: true, output: { output: 'added 1 package', binProvider: { version: '5.4.21', major: 5, reason, skippedDeprecated: ['6.0.0'] } }, logs: [] } as any;
+            return { ok: true, output: { output: 'added 1 package', binProvider }, logs: [] } as any;
         });
-        const result: any = await executionFirewall.runInContext('deprecated-major-run', () =>
-            new ProjectRunTool().execute({ cwd: root }, { sessionId, workspaceId: 'w', userId: 'u' }));
+        const result: any = await executionFirewall.runInContext(`deprecated-major-run-${session}`, () =>
+            new ProjectRunTool().execute({ cwd: root }, { sessionId: session, workspaceId: 'w', userId: 'u' }));
+        jest.restoreAllMocks();
+        return { result, inputs };
+    }
+
+    it('the vite it had to install is named with its major, and the app then runs', async () => {
+        const reason = 'vite@5.4.21 (major 5) is the newest stable, non-deprecated release that declares "vite"; skipped deprecated 6.0.0';
+        const { result, inputs } = await runWith({ version: '5.4.21', major: 5, reason, deprecationKnown: true, skippedDeprecated: ['6.0.0'] }, sessionId);
         expect(inputs).toHaveLength(1);
         expect(inputs[0]).toMatchObject({ packages: ['vite'], providesBin: 'vite' });
         expect(result.logs).toContain(`project_run: ${reason}`);
         expect(result.logs).toContain('✅ Installed vite@5.4.21 (major 5): the newest stable, non-deprecated release that declares vite. Skipped deprecated: 6.0.0.');
+        expect(result.ok).toBe(true);
+    });
+
+    it('a release whose deprecation could not be read is not called non-deprecated (second review of round 21)', async () => {
+        const reason = 'vite@5.4.21 (major 5) is the newest stable release that declares "vite" (its deprecation status could not be read)';
+        const { result } = await runWith({ version: '5.4.21', major: 5, reason, deprecationKnown: false, skippedDeprecated: [] }, `${sessionId}-unread`);
+        expect(result.logs).toContain(`project_run: ${reason}`);
+        expect(result.logs).toContain('✅ Installed vite@5.4.21 (major 5): the newest stable release that declares vite; whether it is deprecated could not be read.');
+        expect(result.logs.join('\n')).not.toMatch(/non-deprecated release that declares vite/);
         expect(result.ok).toBe(true);
     });
 });

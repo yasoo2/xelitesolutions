@@ -1669,9 +1669,12 @@ export class ProjectRunTool implements ToolDefinition {
                 const chosen = installResult?.output?.binProvider;
                 if (chosen?.version) {
                     logs.push(`project_run: ${chosen.reason || `${binaryProvider.packageName}@${chosen.version}`}`);
+                    // «Non-deprecated» only when the registry said so: a failed read is
+                    // said as one (second review of round 21).
+                    const known = chosen.deprecationKnown === true;
                     say(pick(isAr,
-                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج ${binary}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
-                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable, non-deprecated release that declares ${binary}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
+                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): ${known ? 'أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج' : 'أحدث إصدار مستقرّ يعلن البرنامج'} ${binary}${known ? '' : '؛ تعذّرت قراءة ما إذا كان مُهمَلًا'}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
+                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable${known ? ', non-deprecated' : ''} release that declares ${binary}${known ? '' : '; whether it is deprecated could not be read'}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
                 }
             } else {
                 missingPrerequisite = missingAfterInstall;
