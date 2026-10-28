@@ -95,7 +95,11 @@ export interface RequestResourceManagerOptions {
     reserveBytes?: number;
     maxContextTokens?: number;
     sampleMemory?: () => MemoryReading;
-    /** Memory the local inference server holds for loaded models; it is reclaimable for the next inference. */
+    /**
+     * RAM the local inference server holds for loaded models (not their VRAM).
+     * It is reclaimable for the next local model call only (withInference),
+     * never for other heavy work.
+     */
     sampleResidentInference?: () => Promise<number>;
     /** How often a running inference re-reads what the server holds (see withInference). */
     residencyRefreshMs?: number;
@@ -299,9 +303,23 @@ export class RequestResourceManager {
         });
     }
 
+    /**
+     * Admit heavy work that is NOT a local model call: an install, a build, a
+     * browser, a tool. Its floor is the memory that is really free.
+     *
+     * ⛔ Review r21 (14726945): this used to credit the resident model's bytes
+     * to every heavy tool, so `npm install` was admitted with 0.9 GB free
+     * because a 5.7 GB model was loaded — memory npm can never use, since
+     * Ollama gives it back only to the next model call. That credit belongs to
+     * withInference alone (see admitHeavy() and admitMemory()).
+     */
     async withHeavy<T>(work: () => Promise<T>, options: HeavyOptions = {}): Promise<T> {
+        return this.admitHeavy(work, options, false);
+    }
+
+    private async admitHeavy<T>(work: () => Promise<T>, options: HeavyOptions, localInference: boolean): Promise<T> {
         const store = this.context.getStore();
-        if (!store) return this.run({ requestId: `resource-${++this.implicitCounter}`, signal: options.signal }, () => this.withHeavy(work, options));
+        if (!store) return this.run({ requestId: `resource-${++this.implicitCounter}`, signal: options.signal }, () => this.admitHeavy(work, options, localInference));
         this.assertOpen(store);
         const parent = store.heavyLease;
         if (parent && (!parent.live || !parent.accepting)) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
@@ -323,7 +341,8 @@ export class RequestResourceManager {
                 this.assertOpen(store);
                 if (parent && !parent.live) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                const memory = this.admitMemory(await this.reclaimableBytes());
+                // Only a local model call may count the resident model as its own.
+                const memory = this.admitMemory(localInference ? await this.reclaimableBytes() : 0);
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -362,7 +381,7 @@ export class RequestResourceManager {
 
     async withInference<T>(work: (budget: ContextBudget) => Promise<T>, options: InferenceOptions): Promise<T> {
         if (this.inferenceContext.getStore()?.live) throw new ResourceAdmissionError('RESOURCE_INFERENCE_REENTRANT');
-        return this.withHeavy(async () => {
+        return this.admitHeavy(async () => {
             const store = this.context.getStore()!;
             const signal = combinedSignal(store.signal, options.signal);
             const startedWaiting = this.now();
@@ -410,7 +429,7 @@ export class RequestResourceManager {
                 release?.();
                 signal.dispose();
             }
-        }, { ...options, kind: options.kind || 'inference' });
+        }, { ...options, kind: options.kind || 'inference' }, true);
     }
 
     registerCleanup(cleanup: () => void | Promise<void>): () => void {
@@ -469,9 +488,11 @@ export class RequestResourceManager {
     }
 
     /**
-     * The floor guards against loading a model into too little memory. A model the
-     * local server already holds is reused or evicted for the next one, so its
-     * bytes count toward what this inference can use (see resident-inference.ts).
+     * The floor guards against starting heavy work in too little memory. For a
+     * local model call, a model the server already holds is reused or evicted
+     * for the next one, so its RAM counts toward what that call can use (see
+     * resident-inference.ts). Every other caller passes 0: nothing gives that
+     * memory back to an install or a build.
      */
     private admitMemory(reclaimableBytes = 0): MemorySnapshot {
         const memory = this.measure();
