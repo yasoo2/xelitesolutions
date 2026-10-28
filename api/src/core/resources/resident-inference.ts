@@ -13,6 +13,14 @@
  * missed probe reuses the last answer for up to a minute (a server busy
  * generating answers slowly); with no recent answer it reads as 0, which is
  * exactly the old behaviour.
+ *
+ * ⛔ ONLY THE RAM PART (review r21). /api/ps reports `size` (the whole model)
+ * and `size_vram` (the part on the GPU). The admission floor is a RAM floor,
+ * so a GPU server whose model sits in VRAM must not have that VRAM added to
+ * its free RAM — that skipped the floor on exactly the machine that serves
+ * many users. What is credited is size − size_vram; a reply with no
+ * size_vram (an older server) is read as all RAM, which is what it was before.
+ * And it is credited to a local model call only (RequestResourceManager).
  */
 import * as http from 'node:http';
 
@@ -36,7 +44,15 @@ function psUrl(): URL | null {
 /** Test seam: forget cached and last-good readings. */
 export function resetResidentInferenceForTests(): void { cached = null; lastGood = null; }
 
-/** Sum of `size` over the models the loopback Ollama server reports as loaded; 0 on any doubt. */
+/** The RAM one /api/ps model entry holds: size − size_vram, never negative; 0 for an entry without a size. */
+export function residentRamBytes(model: unknown): number {
+    const size = (model as any)?.size;
+    if (typeof size !== 'number' || !Number.isFinite(size) || size <= 0) return 0;
+    const vram = (model as any)?.size_vram;
+    return typeof vram === 'number' && Number.isFinite(vram) && vram > 0 ? Math.max(0, size - vram) : size;
+}
+
+/** Sum of the RAM part over the models the loopback Ollama server reports as loaded; 0 on any doubt. */
 export async function residentInferenceBytes(): Promise<number> {
     if (cached && Date.now() - cached.at < CACHE_MS) return cached.bytes;
     const url = psUrl();
@@ -49,7 +65,7 @@ export async function residentInferenceBytes(): Promise<number> {
                 try {
                     const models = JSON.parse(body)?.models;
                     const total = Array.isArray(models)
-                        ? models.reduce((sum: number, m: any) => sum + (Number.isFinite(m?.size) && m.size > 0 ? m.size : 0), 0)
+                        ? models.reduce((sum: number, m: unknown) => sum + residentRamBytes(m), 0)
                         : 0;
                     resolve(res.statusCode === 200 ? total : null);
                 } catch { resolve(null); }

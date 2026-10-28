@@ -19,9 +19,11 @@ describe('a resident local model is not memory taken from its own inference', ()
         await expect(manager.withHeavy(async () => 'ran')).rejects.toMatchObject({ code: 'RESOURCE_LOW_MEMORY' });
     });
 
-    it('the owner\'s measured state is admitted once the resident model is counted', async () => {
+    it('the owner\'s measured state is admitted for a model call once the resident model is counted', async () => {
         const manager = new RequestResourceManager({ sampleMemory: owner, sampleResidentInference: resident });
-        await expect(manager.withHeavy(async () => 'ran')).resolves.toBe('ran');
+        await expect(manager.withInference(async () => 'ran', { promptEstimatedTokens: 100, requestedOutputTokens: 100 })).resolves.toBe('ran');
+        // …and only for a model call: nothing gives the model's memory to an install (review r21).
+        await expect(manager.withHeavy(async () => 'npm install')).rejects.toMatchObject({ code: 'RESOURCE_LOW_MEMORY' });
     });
 
     it('the context tier is chosen from the same usable memory, not the 2048 floor', async () => {

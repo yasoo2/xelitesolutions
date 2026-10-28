@@ -20,7 +20,7 @@ const RESOURCE_HEAVY_TOOLS = new Set([
     'shell_execute', 'npm_manager', 'docker_manager', 'project_edit', 'react_project',
 ]);
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
-import { describeResourceRefusal } from '../../shared/resource-refusal';
+import { describeResourceFault, describeResourceRefusal } from '../../shared/resource-refusal';
 import { agentSearchUrl } from '../browser/challenge';
 import { autonomousDevelopmentEnabled, autonomousToolAdmitted, autonomousIdentity, autonomousContextMatches } from './AutonomousDevelopmentPolicy';
 import { autonomousFileTool, snapshotAutonomousFileInput, validateAutonomousFileOperation } from './AutonomousFilePolicy';
@@ -1231,10 +1231,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         // inside the tool) is Joe declining to start, not a tool that broke:
         // its code, his sentence and its numbers — never internal_exception
         // and a stack pointing at the guard (shared/resource-refusal.ts).
-        const refusal = describeResourceRefusal(e, isArabicReply({
+        const replyArabic = isArabicReply({
             language: (context as any)?.language,
             text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
-        }));
+        });
+        const refusal = describeResourceRefusal(e, replyArabic);
         if (refusal) {
             logs.push(`resource_refused=${refusal} duration=${duration}ms`);
             try {
@@ -1246,15 +1247,19 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const errStr = formatToolError(e);
         const cancelled = errStr.includes('run_cancelled_by_owner');
         logs.push(`${cancelled ? 'cancelled' : 'exception'}=${errStr} duration=${duration}ms`);
+        // Any other RESOURCE_* code (work that ran, or a guard against Joe's
+        // own call order) stays internal_exception, in words that say what it
+        // is; its stack stays in the log line above for whoever diagnoses it.
+        const shown = describeResourceFault(e, replyArabic) || errStr;
         // Owner cancellation is an expected terminal state, not an internal
         // failure. Keep real failures red and actionable, without printing a
         // frightening stack trace for a deliberate Stop action.
         if (!cancelled) {
             try {
                 const { broadcastTerminalLine } = require('../../api/ws');
-                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${errStr}\x1b[0m\r\n`);
+                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${shown}\x1b[0m\r\n`);
             } catch { /* ws is optional in isolated unit tests */ }
         }
-        return { ok: false, error: cancelled ? 'run_cancelled_by_owner' : `internal_exception: ${errStr}`, logs };
+        return { ok: false, error: cancelled ? 'run_cancelled_by_owner' : `internal_exception: ${shown}`, logs };
     }
 }

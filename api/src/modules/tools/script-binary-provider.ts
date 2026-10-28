@@ -27,9 +27,9 @@ import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 const SOURCE_FILE = /\.(?:[cm]?[jt]sx?|vue|svelte|astro)$/iu;
 const BUILD_OUTPUT_DIRECTORIES = new Set(['dist', 'build', 'out']);
 const VALID_UNSCOPED_PACKAGE = /^[a-z0-9][a-z0-9._~-]*$/u;
-const MAX_FILES = 400;
+// A source file this large is generated or bundled output, not a statement
+// of what the project imports.
 const MAX_FILE_BYTES = 512 * 1024;
-const MAX_DEPTH = 4;
 
 export interface ScriptBinaryProvider {
     packageName: string;
@@ -57,42 +57,39 @@ function importedPackageNames(source: string): Set<string> {
     return names;
 }
 
-function projectSourceFiles(root: string): string[] {
-    const files: string[] = [];
-    const walk = (dir: string, depth: number): void => {
-        if (depth > MAX_DEPTH || files.length >= MAX_FILES) return;
-        let entries: fs.Dirent[];
-        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
-        for (const entry of entries) {
-            if (files.length >= MAX_FILES) return;
-            if (entry.isDirectory()) {
-                if (isMachineStateDirectory(entry.name) || BUILD_OUTPUT_DIRECTORIES.has(entry.name) || entry.name.startsWith('.')) continue;
-                walk(path.join(dir, entry.name), depth + 1);
-            } else if (entry.isFile() && SOURCE_FILE.test(entry.name)) {
-                files.push(path.join(dir, entry.name));
-            }
-        }
-    };
-    walk(root, 0);
-    return files;
-}
+const TOOL_CONFIG_FILE = /^[\w.-]+\.config\.[cm]?[jt]s$/iu;
 
 function isToolConfigFile(relative: string): boolean {
-    const base = path.basename(relative);
-    return !relative.includes('/') && /^[\w.-]+\.config\.[cm]?[jt]s$/iu.test(base);
+    return !relative.includes('/') && TOOL_CONFIG_FILE.test(path.basename(relative));
 }
 
 /**
- * The package a manifest script's missing program comes from, when a project
- * file imports a package of that exact name and the manifest does not declare
- * it. Null for anything else: a path, a scoped or invalid name, a declared
- * package (that is the install's job), or no import naming it.
+ * ONE SEARCH, READ BY TWO DRIVERS.
+ *
+ * Review r21 (855fd3f8): the first walk went depth-first with a 400-file and
+ * depth-4 cap and synchronous reads. A project whose components/ folder held
+ * 400 files never reached the root vite.config.js that imports vite — the
+ * only importing file — and answered «nothing imports it», silently; and
+ * every read blocked the event loop the other users share.
+ *
+ * Now the project root's own tool configuration (*.config.*, where a build
+ * tool is imported) is read first, then every other source file breadth-first,
+ * with no file count or depth cap: what is skipped is skipped by kind
+ * (machine state, build output, dot-folders, a generated file over
+ * MAX_FILE_BYTES), never by position. The search is written once as a
+ * generator of filesystem requests; the async driver serves project_run and
+ * the sync driver serves the one caller that has not moved yet.
  */
-export function importedPackageForScriptBinary(projectRoot: string, binary: string): ScriptBinaryProvider | null {
-    const name = String(binary || '').trim();
+// `read` names every source file of one folder at once, so the async driver
+// reads them side by side instead of one round trip per file.
+type SearchRequest = { op: 'readdir'; at: string } | { op: 'read'; at: string[] } | { op: 'manifest'; at: string };
+const READ_CONCURRENCY = 32;
+
+function* searchImporters(projectRoot: string, name: string): Generator<SearchRequest, ScriptBinaryProvider | null, unknown> {
     if (!VALID_UNSCOPED_PACKAGE.test(name)) return null;
     let manifest: any;
-    try { manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8')); } catch { return null; }
+    try { manifest = JSON.parse(String((yield { op: 'manifest', at: path.join(projectRoot, 'package.json') }) ?? '')); } catch { return null; }
+    if (!manifest || typeof manifest !== 'object') return null;
     const declared = new Set<string>([
         ...Object.keys(manifest?.dependencies || {}),
         ...Object.keys(manifest?.devDependencies || {}),
@@ -102,16 +99,93 @@ export function importedPackageForScriptBinary(projectRoot: string, binary: stri
     if (declared.has(name)) return null;
 
     const importedBy: string[] = [];
-    for (const file of projectSourceFiles(projectRoot)) {
-        let source = '';
-        try {
-            if (fs.statSync(file).size > MAX_FILE_BYTES) continue;
-            source = fs.readFileSync(file, 'utf8');
-        } catch { continue; }
-        if (importedPackageNames(source).has(name)) importedBy.push(path.relative(projectRoot, file).replace(/\\/g, '/'));
+    const relative = (file: string) => path.relative(projectRoot, file).replace(/\\/g, '/');
+    const rootEntries = ((yield { op: 'readdir', at: projectRoot }) as fs.Dirent[] | null) || [];
+    const rootConfigs = rootEntries
+        .filter(entry => entry.isFile() && TOOL_CONFIG_FILE.test(entry.name))
+        .map(entry => path.join(projectRoot, entry.name))
+        .sort();
+    const consider = (files: string[], sources: unknown) => {
+        files.forEach((file, i) => {
+            const source = Array.isArray(sources) ? sources[i] : null;
+            if (typeof source === 'string' && importedPackageNames(source).has(name)) importedBy.push(relative(file));
+        });
+    };
+    if (rootConfigs.length) consider(rootConfigs, yield { op: 'read', at: rootConfigs });
+    const queue: Array<{ dir: string; entries?: fs.Dirent[] }> = [{ dir: projectRoot, entries: rootEntries }];
+    for (let next = 0; next < queue.length; next++) {
+        const { dir } = queue[next];
+        const entries = queue[next].entries || ((yield { op: 'readdir', at: dir }) as fs.Dirent[] | null) || [];
+        queue[next] = { dir }; // read once; let the listing go
+        const sources: string[] = [];
+        for (const entry of entries) {
+            const at = path.join(dir, entry.name);
+            if (entry.isDirectory()) {
+                if (!isMachineStateDirectory(entry.name) && !BUILD_OUTPUT_DIRECTORIES.has(entry.name) && !entry.name.startsWith('.')) queue.push({ dir: at });
+            } else if (entry.isFile() && SOURCE_FILE.test(entry.name) && !rootConfigs.includes(at)) {
+                sources.push(at);
+            }
+        }
+        if (sources.length) consider(sources, yield { op: 'read', at: sources });
     }
     if (!importedBy.length) return null;
     return { packageName: name, dev: importedBy.every(isToolConfigFile), importedBy };
+}
+
+function readSync(file: string): string | null {
+    try { return fs.statSync(file).size > MAX_FILE_BYTES ? null : fs.readFileSync(file, 'utf8'); } catch { return null; }
+}
+
+async function readAsync(file: string): Promise<string | null> {
+    try { return (await fs.promises.stat(file)).size > MAX_FILE_BYTES ? null : await fs.promises.readFile(file, 'utf8'); } catch { return null; }
+}
+
+function answerSync(request: SearchRequest): unknown {
+    try {
+        if (request.op === 'readdir') return fs.readdirSync(request.at, { withFileTypes: true });
+        if (request.op === 'read') return request.at.map(readSync);
+        return fs.readFileSync(request.at, 'utf8');
+    } catch { return null; }
+}
+
+async function answerAsync(request: SearchRequest): Promise<unknown> {
+    try {
+        if (request.op === 'readdir') return await fs.promises.readdir(request.at, { withFileTypes: true });
+        if (request.op === 'read') {
+            const sources: Array<string | null> = [];
+            for (let i = 0; i < request.at.length; i += READ_CONCURRENCY) {
+                sources.push(...await Promise.all(request.at.slice(i, i + READ_CONCURRENCY).map(readAsync)));
+            }
+            return sources;
+        }
+        return await fs.promises.readFile(request.at, 'utf8');
+    } catch { return null; }
+}
+
+/**
+ * The package a manifest script's missing program comes from, when a project
+ * file imports a package of that exact name and the manifest does not declare
+ * it. Null for anything else: a path, a scoped or invalid name, a declared
+ * package (that is the install's job), or no import naming it. Asynchronous:
+ * the event loop stays free while the project is read.
+ */
+export async function findImportedPackageForScriptBinary(projectRoot: string, binary: string): Promise<ScriptBinaryProvider | null> {
+    const search = searchImporters(projectRoot, String(binary || '').trim());
+    let step = search.next();
+    while (!step.done) step = search.next(await answerAsync(step.value));
+    return step.value;
+}
+
+/**
+ * The same search with synchronous reads, for PhaseExecutorTool's npm
+ * preflight until it awaits findImportedPackageForScriptBinary (owned by
+ * another change; reported in review r21). New callers use the async one.
+ */
+export function importedPackageForScriptBinary(projectRoot: string, binary: string): ScriptBinaryProvider | null {
+    const search = searchImporters(projectRoot, String(binary || '').trim());
+    let step = search.next();
+    while (!step.done) step = search.next(answerSync(step.value));
+    return step.value;
 }
 
 /** The npm_manager input that installs it from the release that declares the program. */

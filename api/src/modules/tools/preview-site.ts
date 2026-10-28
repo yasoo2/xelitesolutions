@@ -22,6 +22,7 @@
 import fs from 'fs';
 import path from 'path';
 import { isWithinRoot } from './path-containment';
+import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 
 /** The joeProjects key for a chat session — never the browser panel's «browser:» id. */
 export function previewKey(sessionId: unknown): string {
@@ -110,20 +111,62 @@ export function whyNoStaticSite(projectDir: unknown): string {
     return `no dist/index.html in ${dir}, and no index.html at its root or in src/`;
 }
 
-const LINK_HREF = /<a\b[^>]*?\bhref\s*=\s*["']([^"']*)["']/gi;
+const ANCHOR = /<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi;
+// An attribute by its exact name: «data-href» is not «href».
+const attribute = (name: string) => new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, 'i');
+const HREF = attribute('href');
+const TITLE = attribute('title');
 
-/** The project folder's own top-level entry a listing link points at, or ''. */
-function listedTopLevelName(href: string): string {
-    let ref = String(href || '')
-        .replace(/&#(?:47|x2f);/gi, '/')
-        .replace(/&#(?:92|x5c);/gi, '\\')
+function decodeEntities(text: string): string {
+    return String(text || '')
+        .replace(/&#x([0-9a-f]{1,6});/gi, (m, hex) => { try { return String.fromCodePoint(parseInt(hex, 16)); } catch { return m; } })
+        .replace(/&#(\d{1,7});/g, (m, dec) => { try { return String.fromCodePoint(Number(dec)); } catch { return m; } })
+        .replace(/&nbsp;/gi, ' ').replace(/&lt;/gi, '<').replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
         .replace(/&amp;/gi, '&');
-    try { ref = decodeURIComponent(ref); } catch { /* keep the raw text */ }
-    // `serve` on Windows writes «\src&#47;» — a folder link with a backslash.
-    ref = ref.replace(/\\/g, '/').replace(/[?#].*$/, '');
-    if (/^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(ref)) return '';
-    const segments = ref.replace(/^(?:\.?\/)+/, '').split('/');
-    return segments[0] || '';
+}
+
+/**
+ * The names a directory listing at `pageUrl` shows: each link that points at
+ * a direct child of the listed path AND reads as that child's own name (its
+ * text or title is the name, a folder's with its trailing «/»). That is how
+ * every listing writes an entry — serve, http-server, Python's http.server,
+ * serve-index, nginx and Apache autoindex — and how a site does not write its
+ * navigation: «/admin» reads «Admin panel», «/api/health» is not a child of
+ * «/», «#services» is an anchor.
+ */
+function listedEntryNames(html: string, pageUrl: string): Set<string> {
+    let base: URL;
+    try { base = new URL(pageUrl); } catch { return new Set(); }
+    const listedPath = base.pathname.endsWith('/') ? base.pathname : `${base.pathname.replace(/[^/]*$/, '')}`;
+    const names = new Set<string>();
+    for (const match of String(html || '').matchAll(ANCHOR)) {
+        const attributes = match[1] || '';
+        const hrefMatch = HREF.exec(attributes);
+        if (!hrefMatch) continue;
+        // `serve` on Windows writes «\src&#47;» — a folder link with a backslash.
+        const ref = decodeEntities(hrefMatch[1] ?? hrefMatch[2] ?? '').trim().replace(/\\/g, '/');
+        if (!ref || ref.startsWith('#') || /^(?:[a-z][a-z0-9+.-]*:|\/\/)/i.test(ref)) continue;
+        let target: URL;
+        try { target = new URL(ref, base); } catch { continue; }
+        if (target.origin !== base.origin || !target.pathname.startsWith(listedPath)) continue;
+        const rest = target.pathname.slice(listedPath.length).replace(/\/$/, '');
+        if (!rest || rest.includes('/')) continue; // the listed folder itself, its parent, or deeper
+        let name = rest;
+        try { name = decodeURIComponent(rest); } catch { /* keep the raw segment */ }
+        const said = (text: string) => {
+            const t = decodeEntities(text).replace(/\s+/g, ' ').trim();
+            return t === name || t === `${name}/` || t.startsWith(`${name} `) || t.startsWith(`${name}/ `);
+        };
+        const titleMatch = TITLE.exec(attributes);
+        const text = String(match[2] || '').replace(/<[^>]*>/g, ' ');
+        if (said(text) || (titleMatch && said(titleMatch[1] ?? titleMatch[2] ?? ''))) names.add(name.toLowerCase());
+    }
+    return names;
+}
+
+/** True when this folder answers «/» with a document of its own instead of a listing. */
+function holdsIndexDocument(entries: fs.Dirent[]): boolean {
+    return entries.some(entry => !entry.isDirectory() && /^index\.html?$/i.test(entry.name));
 }
 
 /**
@@ -137,26 +180,38 @@ function listedTopLevelName(href: string): string {
  * link or form», «largest heading 15px»), and repair had no file of the site
  * to change. A correct site failed after 106 minutes.
  *
- * Generator-independent: a page that links the project's own manifest, or
- * two of its top-level entries one of which is a folder, is the folder's
- * index — a site does not link its package.json or its src/ directory. A
- * project with its own root index.html is never judged: any static server
- * there answers with that document.
+ * ⛔ AND A WORKING APP IS NOT A LISTING (review r21, b4094048). The first rule
+ * was «links two top-level entries, one of them a folder»: an Express/EJS
+ * home page linking /admin and /api/health, in a project with admin/ and
+ * api/ folders, was called a listing and project_run killed the app. And it
+ * could not see a listing of a subfolder at all (`serve public`).
+ *
+ * So the evidence is the listing's own shape, measured against the folder
+ * actually being served: the page names, as listings do, at least two
+ * entries of one project folder that holds no index document, and those are
+ * most of that folder's visible entries (≥ 60 %; dot-files are not counted,
+ * since most listers hide them). The served folder is not guessed from the
+ * command: every folder of the project is a candidate (machine state such as
+ * node_modules is not served), read asynchronously, stopping at the first
+ * folder that matches.
  */
-export function listsProjectFiles(html: unknown, projectDir: unknown): boolean {
+export async function listsProjectFiles(html: unknown, projectDir: unknown, pageUrl = 'http://127.0.0.1/'): Promise<boolean> {
     const dir = String(projectDir || '').trim();
-    if (!dir || isFile(path.join(dir, 'index.html'))) return false;
-    let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return false; }
-    const byName = new Map(entries.map(entry => [entry.name.toLowerCase(), entry]));
-    const linked = new Set<string>();
-    let linksAFolder = false;
-    for (const match of String(html || '').matchAll(LINK_HREF)) {
-        const name = listedTopLevelName(match[1]).toLowerCase();
-        const entry = name ? byName.get(name) : undefined;
-        if (!entry) continue;
-        linked.add(name);
-        if (entry.isDirectory()) linksAFolder = true;
+    if (!dir) return false;
+    const listed = listedEntryNames(String(html || ''), pageUrl);
+    if (listed.size < 2) return false;
+    const pending = [dir];
+    while (pending.length) {
+        const folder = pending.pop() as string;
+        let entries: fs.Dirent[];
+        try { entries = await fs.promises.readdir(folder, { withFileTypes: true }); } catch { continue; }
+        for (const entry of entries) {
+            if (entry.isDirectory() && !isMachineStateDirectory(entry.name)) pending.push(path.join(folder, entry.name));
+        }
+        if (holdsIndexDocument(entries)) continue;
+        const visible = entries.filter(entry => !entry.name.startsWith('.'));
+        const named = visible.filter(entry => listed.has(entry.name.toLowerCase())).length;
+        if (named >= 2 && named * 5 >= visible.length * 3) return true;
     }
-    return linked.has('package.json') || (linked.size >= 2 && linksAFolder);
+    return false;
 }

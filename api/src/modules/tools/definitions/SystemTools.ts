@@ -1250,30 +1250,127 @@ function binDeclaresExecutable(output: unknown, packageName: string, executable:
 }
 
 /**
+ * What `npm view <pkg>@<version> deprecated --json` says: the deprecation
+ * message, '' when the release is not deprecated (npm prints nothing, or an
+ * empty string for an un-deprecated release), null when it could not be read.
+ */
+function deprecationNotice(probe: { ok?: boolean; output?: unknown }): string | null {
+    if (!probe?.ok) return null;
+    const text = String(probe.output ?? '').trim();
+    if (!text) return '';
+    try {
+        const parsed = JSON.parse(text);
+        return typeof parsed === 'string' ? parsed.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * How many releases `npm view <pkg>@<major> deprecated --json` names as
+ * deprecated: npm prints nothing for none, one string for one, an array for
+ * several. Null when it could not be read.
+ */
+function deprecatedReleaseCount(probe: { ok?: boolean; output?: unknown }): number | null {
+    if (!probe?.ok) return null;
+    const text = String(probe.output ?? '').trim();
+    if (!text) return 0;
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.filter(item => typeof item === 'string' && item.trim()).length;
+        return typeof parsed === 'string' ? (parsed.trim() ? 1 : 0) : null;
+    } catch {
+        return null;
+    }
+}
+
+export interface ReleaseProvidingBin {
+    version?: string;
+    /** The major the chosen release belongs to. */
+    major?: number;
+    /** One sentence: which release was chosen and why, naming what was skipped. */
+    reason?: string;
+    error?: string;
+    probed: string[];
+    /** Releases seen declaring the executable but deprecated, newest first. */
+    skippedDeprecated: string[];
+}
+
+/**
  * The newest stable published release of `packageName` whose manifest declares
- * the executable `executable`, as the registry reports it. Majors are probed
- * newest first, one release (the newest) per major; a release without the
- * executable is never chosen, and no major is assumed.
+ * the executable `executable` and that is not deprecated, as the registry
+ * reports it. Majors are probed newest first, starting from each major's
+ * newest release; a release without the executable is never chosen, and no
+ * major is assumed.
+ *
+ * ⛔ Review r21 (8c5b5be6): this could pin a release the registry marks
+ * deprecated («2.x is no longer supported») without a word. Now a deprecated
+ * release is never chosen: when a major's newest is deprecated, the registry
+ * is asked how many of that major's releases are, and either the whole major
+ * is passed over or its newest non-deprecated release is tried. The chosen
+ * major is named in `reason` — the line he reads — and when only deprecated
+ * releases declare the executable the answer says so instead of installing
+ * one. (A `^` pin of a non-deprecated release also keeps npm off the
+ * deprecated ones above it: npm prefers non-deprecated versions in a range.)
  */
 export async function findReleaseProvidingBin(
     workDir: string,
     packageName: string,
     executable: string,
     timeoutMs: number,
-): Promise<{ version?: string; error?: string; probed: string[] }> {
+): Promise<ReleaseProvidingBin> {
+    const npmView = (spec: string, field: string) => handleShellCommand('npm', ['view', spec, field, '--json'], workDir, timeoutMs, false);
     const listing = await handleShellCommand('npm', ['view', packageName, 'versions', '--json'], workDir, timeoutMs, false);
     const stable = listing.ok ? stableVersionsFromNpmView(listing.output).sort(compareNpmVersions) : [];
-    if (!stable.length) return { error: `npm_no_stable_published_version:${packageName}`, probed: [] };
-    const newestPerMajor = new Map<number, string>();
-    for (const version of stable) newestPerMajor.set(versionTuple(version)[0], version);
-    const candidates = [...newestPerMajor.values()].sort(compareNpmVersions).reverse();
-    const probed: string[] = [];
-    for (const version of candidates) {
-        probed.push(version);
-        const probe = await handleShellCommand('npm', ['view', `${packageName}@${version}`, 'bin', '--json'], workDir, timeoutMs, false);
-        if (probe.ok && binDeclaresExecutable(probe.output, packageName, executable)) return { version, probed };
+    if (!stable.length) return { error: `npm_no_stable_published_version:${packageName}`, probed: [], skippedDeprecated: [] };
+    const releasesPerMajor = new Map<number, string[]>();
+    for (const version of [...stable].reverse()) {
+        const major = versionTuple(version)[0];
+        releasesPerMajor.set(major, [...(releasesPerMajor.get(major) || []), version]);
     }
-    return { error: `npm_no_release_declares_executable:${packageName}:${executable}`, probed };
+    const majors = [...releasesPerMajor.keys()].sort((a, b) => b - a);
+    const probed: string[] = [];
+    const lacking: string[] = [];
+    const skippedDeprecated: string[] = [];
+    const deprecatedMajors: number[] = [];
+    const declares = async (version: string) => {
+        probed.push(version);
+        const probe = await npmView(`${packageName}@${version}`, 'bin');
+        const yes = !!probe.ok && binDeclaresExecutable(probe.output, packageName, executable);
+        if (!yes) lacking.push(version);
+        return yes;
+    };
+    const chosen = (version: string, notice: string | null): ReleaseProvidingBin => {
+        const major = versionTuple(version)[0];
+        const singly = skippedDeprecated.filter(v => !deprecatedMajors.includes(versionTuple(v)[0]));
+        const skipped = [
+            ...deprecatedMajors.map(m => `every ${m}.x release is deprecated`),
+            ...(singly.length ? [`skipped deprecated ${singly.join(', ')}`] : []),
+            ...(lacking.length ? [`${lacking.join(', ')} declare${lacking.length === 1 ? 's' : ''} no "${executable}"`] : []),
+        ];
+        const reason = `${packageName}@${version} (major ${major}) is the newest stable${notice === null ? '' : ', non-deprecated'} release that declares "${executable}"`
+            + `${notice === null ? ' (its deprecation status could not be read)' : ''}${skipped.length ? `; ${skipped.join('; ')}` : ''}`;
+        return { version, major, reason, probed, skippedDeprecated };
+    };
+    for (const major of majors) {
+        const releases = releasesPerMajor.get(major) as string[];
+        if (!await declares(releases[0])) continue; // one release per major says whether it ships the program
+        const notice = deprecationNotice(await npmView(`${packageName}@${releases[0]}`, 'deprecated'));
+        if (!notice) return chosen(releases[0], notice);
+        skippedDeprecated.push(releases[0]);
+        const deprecatedInMajor = deprecatedReleaseCount(await npmView(`${packageName}@${major}`, 'deprecated'));
+        if (deprecatedInMajor !== null && deprecatedInMajor >= releases.length) { deprecatedMajors.push(major); continue; }
+        for (const older of releases.slice(1)) {
+            const olderNotice = deprecationNotice(await npmView(`${packageName}@${older}`, 'deprecated'));
+            if (olderNotice) { skippedDeprecated.push(older); continue; }
+            if (await declares(older)) return chosen(older, olderNotice);
+            break; // this major stopped shipping the program below its newest: try the next major
+        }
+    }
+    if (skippedDeprecated.length) {
+        return { error: `npm_only_deprecated_releases_declare_executable:${packageName}:${executable}:${skippedDeprecated.join(',')}`, probed, skippedDeprecated };
+    }
+    return { error: `npm_no_release_declares_executable:${packageName}:${executable}`, probed, skippedDeprecated };
 }
 
 export class NpmManagerTool extends BaseTool {
@@ -1385,6 +1482,7 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
             let installArgs = args;
+            let binProvider: { version: string; major?: number; reason?: string; skippedDeprecated: string[] } | undefined;
             // A repair that must run `npx <executable>` installs the release
             // that ships it — chosen from registry manifests, never assumed.
             const providesBin = typeof input?.providesBin === 'string' ? input.providesBin.trim() : '';
@@ -1398,7 +1496,8 @@ export class NpmManagerTool extends BaseTool {
                 if (!provider.version) return { ok: false, error: provider.error, logs };
                 const pinned = `${target}@^${provider.version}`;
                 installArgs = args.map(token => token === target ? pinned : token);
-                logs.push(`npm.bin_provider=${pinned} declares ${providesBin}`);
+                logs.push(`npm.bin_provider=${pinned} declares ${providesBin} — ${provider.reason}`);
+                binProvider = { version: provider.version, major: provider.major, reason: provider.reason, skippedDeprecated: provider.skippedDeprecated };
             }
             let r = await handleShellCommand('npm', installArgs, workDir, installLike ? installTimeoutMs : 5 * 60_000, false);
             if (!r.ok && installLike) {
@@ -1455,7 +1554,7 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
 
-            return { ok: true, output: { output: String(r.output || '') }, logs: [...logs, ...(r.logs || [])] };
+            return { ok: true, output: { output: String(r.output || ''), ...(binProvider ? { binProvider } : {}) }, logs: [...logs, ...(r.logs || [])] };
         } catch (e: any) {
             return { ok: false, error: e.message || e.stderr, logs };
         }
