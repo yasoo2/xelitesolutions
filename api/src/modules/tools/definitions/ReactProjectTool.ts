@@ -5657,13 +5657,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                      *
                      * One reading of the sentence, in one order, for both.
                      */
-                    : (() => {
-                        const named = require('../../../core/design/named-entities').namedEntities(request);
-                        const shaped = require('../../../core/design/entity-inference').inferModel(request).entities;
-                        if (shaped.length > named.length) return shaped;
-                        if (named.length) return named;
-                        return require('../../../core/design/data-model').deriveDataModel(request);
-                    })())
+                    /**
+                     * …AND IT IS THE SERVER'S OWN READER, NOT A COPY OF IT (R4).
+                     *
+                     * The copy voted by count (`shaped.length > named.length`),
+                     * so the words in front of his list («Library system:»)
+                     * and content about a record («صور الأطباق», «آراء
+                     * الزبائن») became screens of tables the server's designer
+                     * no longer builds. readDataModel is the designer's own
+                     * reading without the model call: same readers, same order.
+                     */
+                    : require('../../../core/design/schema-designer').readDataModel(request))
                 : [];
             /**
              * AND THE APP MANAGES THE FIRST TABLE, NOT A GENERIC «سجلّ».

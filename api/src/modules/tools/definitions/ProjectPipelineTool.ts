@@ -3247,7 +3247,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             // router reads as needing a server (round 20: an invoice in a list of
             // records made P080's actions «unread records»).
             const backendRequested = backendRequestedFor(productRequest);
-            const records = requestedRecords(productRequest, { backendRequested });
+            // His list is read the way the builders read it (R2): api_project
+            // reads it as a request for a server, so when this run built one
+            // the gate reads the same list the same way — never a list one side
+            // proved and the other dropped.
+            const builtAServer = deliveryPartsForRun(sessionPartsKey, phaseIds.runId).some(part => part.tool === 'api_project');
+            const records = requestedRecords(productRequest, { backendRequested: backendRequested || builtAServer });
             if (!records.entities.length && !records.unread.length && !(records.capabilities || []).length && !records.testsRequested) {
                 requestCoverage = undefined;
                 return;

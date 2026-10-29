@@ -238,11 +238,22 @@ export function selectApiPrimary(
     picked: { resource: string; labelAr: string; generic?: boolean },
     designed: any[],
     request: string,
+    opts: { listing?: any } = {},
 ): ApiPrimarySelection {
     const { declaredTables } = require('../../../core/design/declared-tables');
-    const { namedEntities } = require('../../../core/design/named-entities');
+    const { listedRecords } = require('../../../core/design/named-entities');
+    const { keyForPhrase } = require('../../../core/design/entity-inference');
     const declared = declaredTables(String(request || '')) as any[];
-    const listed = declared.length ? declared : namedEntities(String(request || '')) as any[];
+    /**
+     * HIS LIST, READ BY THE READER THE DELIVERY GATE READS (round 21 review, R2).
+     *
+     * listedRecords is the one reading of his listed records for every builder
+     * and for the gate; this tool builds a server, so it reads the list as a
+     * request for one. The caller may hand over the reading it already made of
+     * the raw request (a run of leading actions is part of what proves a list).
+     */
+    const listing = opts.listing || listedRecords(String(request || ''), { backend: true });
+    const listed = declared.length ? declared : (listing.entities || []) as any[];
     const listedKeys = Array.from(new Set(
         listed.map(entity => String(entity?.key || '').toLowerCase()).filter(Boolean),
     ));
@@ -305,11 +316,10 @@ export function selectApiPrimary(
      *  list wins: its first table is the primary and the rest are built
      *  beside it.
      */
-    const { listedReservedKeys } = require('../../../core/design/named-entities');
     const { inferKind } = require('../../../core/design/entity-inference');
     const pickedKey = String(picked.resource || '').toLowerCase();
     const requestedKeys = Array.from(new Set([...listedKeys, ...(declaredKey ? [declaredKey] : [])]));
-    const servedKeys: string[] = declared.length ? [] : listedReservedKeys(String(request || ''));
+    const servedKeys: string[] = declared.length ? [] : (listing.served || []).map((s: any) => String(s.key));
     const stem = (value: string) => String(value || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/^ال/, '').trim();
     const labelStem = stem(picked.labelAr);
     const labelNamed = labelStem.length >= 3 && stem(String(request || '')).includes(labelStem);
@@ -321,10 +331,26 @@ export function selectApiPrimary(
     const kindTableWasAsked = !requestedKeys.length || requestedKeys.includes(pickedKey) || servedKeys.includes(pickedKey)
         || keyWasNamed(pickedKey) || labelNamed || !sameRoleListed;
     const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic' && kindTableWasAsked;
+    /**
+     * A TABLE DESIGNED FROM AN ITEM OF HIS LIST IS HIS, IN EITHER SCRIPT (R2).
+     *
+     * The only evidence an uncurated designed table could show was an exact
+     * Latin token of the request — and «الإجازات» is keyed `ajazats`, a token
+     * no Arabic sentence contains, so every Arabic table the designer read
+     * from his own list was discarded (round 21 review: «ابن باك اند لمكتب:
+     * الموظفين، الإجازات، الحضور» became a generic /api/items). The item it
+     * was read from IS the evidence: a designed table keyed exactly as an item
+     * of his list is keyed (keyForPhrase, the one key reader) is his.
+     */
+    const listItemKeys = new Set<string>((listing.entries || [])
+        .filter((entry: any) => entry.as === 'record' || entry.as === 'unread')
+        .flatMap((entry: any) => [String(entry.key || ''), String(keyForPhrase(entry.item) || '')])
+        .map((key: string) => key.toLowerCase())
+        .filter(Boolean));
     const explicitKeys = Array.from(new Set([
         ...requestedKeys,
-        ...(!knownPrimary ? (designed || []).map(entity => String(entity?.key || '').toLowerCase())
-            .filter(key => key && keyWasNamed(key)) : []),
+        ...(designed || []).map(entity => String(entity?.key || '').toLowerCase())
+            .filter(key => key && (listItemKeys.has(key) || (!knownPrimary && keyWasNamed(key)))),
     ]));
     const requestedEntities = declared.length
         ? declared
@@ -2771,6 +2797,11 @@ export class ApiProjectTool extends BaseTool {
          * below takes the same normalised list (core/design/listed-request).
          */
         const listedRequest = normaliseListedRequest(request).text;
+        // One reading of his listed records — for the designer, for this tool's
+        // own selection, and the one the delivery gate makes (R2) — read from
+        // his request as he wrote it, so a run of leading actions still proves it.
+        const { listedRecords } = require('../../../core/design/named-entities');
+        const listing = listedRecords(request, { backend: true });
         const declaredForRelation = declaredTables(listedRequest).length;
         /**
          * AND THE REST OF THE SYSTEM'S TABLES.
@@ -2797,7 +2828,7 @@ export class ApiProjectTool extends BaseTool {
         const { designDataModel } = require('../../../core/design/schema-designer');
         const designed = workflowApplication
             ? []
-            : await designDataModel(listedRequest, { onNote: (n: string) => term(n) });
+            : await designDataModel(listedRequest, { onNote: (n: string) => term(n), listing });
 
         /**
          * AND THE SYSTEM NAMES ITS OWN PRIMARY TABLE.
@@ -2830,7 +2861,7 @@ export class ApiProjectTool extends BaseTool {
          * built. A restaurant keeps `dishes` and its seed menu, because
          * `dishes` IS in the model.
          */
-        const primarySelection = selectApiPrimary(appKind, picked, designed, listedRequest);
+        const primarySelection = selectApiPrimary(appKind, picked, designed, listedRequest, { listing });
         const promoted = primarySelection.promoted;
         const resource = primarySelection.resource;
         const labelAr = primarySelection.labelAr;

@@ -44,9 +44,8 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import { declaredTables } from '../design/declared-tables';
-import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities, nounKeyOfItem } from '../design/named-entities';
+import { curatedNounKey, listedRecords, nounKeyOfItem } from '../design/named-entities';
 import { keyForPhrase } from '../design/entity-inference';
-import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 import { emptyTestRun } from './test-run-evidence';
 import { pythonExecutable } from './python-executable';
@@ -91,15 +90,12 @@ const norm = (value: unknown) => String(value || '')
 const singularWord = (word: string) => word.replace(/ies$/u, 'y').replace(/(ch|sh|ss|x)es$/u, '$1').replace(/s$/u, '');
 const escapeRe = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 
-/** Everything after the list that is clearly not one of its items («… مع صور … وثيم …»). */
-const LIST_TAIL = /\s+(?:مع|وبتصميم|بتصميم|بثيم|وثيم|and with|with a)\s+/iu;
-
 // ─── what the list names, after the actions and the rules are taken off ─────
 
 // One list reader for builders and this gate (round 20): the actions and the
 // trailing rule come off a list the same way everywhere, so the gate never
 // demands a record the builder could not have read.
-import { isActionWord, stripLeadingActions, withoutLeadingAction, isFeaturePhrase, normaliseListedRequest, type NormalisedRequest } from '../design/listed-request';
+import { isActionWord, stripLeadingActions, isFeaturePhrase, normaliseListedRequest, type NormalisedRequest } from '../design/listed-request';
 export { isActionWord, stripLeadingActions, isFeaturePhrase, normaliseListedRequest };
 export type { NormalisedRequest };
 
@@ -167,21 +163,32 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
     const isRecordLike = (label: string) => !isActionWord(label) && !isFeaturePhrase(label);
     const declared = declaredTables(shaped.text, Number.MAX_SAFE_INTEGER)
         .filter(entity => isRecordLike(String(entity?.key || '')) && isRecordLike(String(entity?.ar || '')));
-    const named = declared.length ? declared : namedEntities(shaped.text);
+    /**
+     * HIS LIST, READ BY THE ONE READER EVERY BUILDER READS (round 21 review, R2).
+     *
+     * The gate kept a floor of its own: a listed served table made it
+     * accountable, and its loop then required every dictionary noun of the
+     * list — `customers` of «Backend for my shop: products, product photos,
+     * customers…» — that namedEntities' floor had declined for every builder,
+     * so a server that built what the builders read failed «not served»; and
+     * a list the builders' floor declined in Arabic («الموظفين، الإجازات،
+     * الحضور») was never checked at all. listedRecords is now the reading of
+     * both sides: the same items, the same records, the same floor, with
+     * this delivery's own fact about a server.
+     */
+    const reading = listedRecords(shaped.text, { backend, actionLed: shaped.actionLed });
+    const named = declared.length ? declared : reading.entities;
     const entities: RequestedRecord[] = named
         .filter(entity => String(entity?.key || '').trim())
         .filter(entity => isRecordLike(String(entity.ar || entity.en || entity.key)) && isRecordLike(String(entity.key)))
         .map(entity => ({ item: String(entity.ar || entity.en || entity.key), key: String(entity.key), ar: String(entity.ar || ''), en: String(entity.en || '') }));
     // A listed table the system already serves («الطلبات» → orders) is still
     // one of his records: it must be served too.
-    const reservedKeys = listedReservedKeys(shaped.text);
-    const reservedLabels = alreadyOwned(shaped.text);
-    reservedKeys.forEach((key, i) => {
-        if (!entities.some(entity => entity.key === key)) {
-            const label = reservedLabels[i] || key;
-            entities.push({ item: label, key, ar: label, en: key });
+    for (const servedTable of reading.served) {
+        if (!entities.some(entity => entity.key === servedTable.key)) {
+            entities.push({ item: servedTable.ar, key: servedTable.key, ar: servedTable.ar, en: servedTable.key });
         }
-    });
+    }
 
     const unread: string[] = [];
     const capabilities: string[] = [];
@@ -198,23 +205,30 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
         || (shaped.marker === 'colon' && statesManagingPurpose(text) && entities.length >= 2)
         || (backend && entities.length > 0));
     if (shaped.region && accountable) {
-        for (const raw of splitListItems(shaped.region.split(LIST_TAIL)[0])) {
-            if (isActionWord(raw) || isFeaturePhrase(raw)) continue;
-            const item = withoutLeadingAction(raw);
-            if (!item || isDeliverable(item) || isInterfaceNoun(item) || isPossessivePhrase(item) || isActionWord(item) || isFeaturePhrase(item)) continue;
+        // Every item the shared reader read, as it read it: the gate never
+        // demands a record no builder read, and never passes an item it read
+        // as nothing.
+        for (const entry of reading.entries) {
+            const item = entry.item;
             if (perUserRule(item)) { capabilities.push(PER_USER_CAPABILITY(item)); continue; }
-            // A record is named by a noun phrase; four words and more is a clause.
-            if (item.split(/\s+/).length > 4) { clauses.push(item); continue; }
+            // A record is named by a noun phrase; five words and more is a clause.
+            if (entry.as === 'clause') { clauses.push(item); continue; }
+            // What no table can hold (search, sign-in with roles) is not a record
+            // obligation: the instruments that measure capabilities judge it.
+            if (entry.as === 'capability') continue;
             if (entities.some(entity => itemNamesRecord(item, entity))) continue;
-            // A dictionary noun in a proven records list is one of his records,
-            // even where namedEntities' two-noun floor declined the list. A
-            // two-word item is read as the builders read it (round 21 review):
-            // «صور المنتجات», "customer testimonials" are content about products
-            // and customers, not those tables, so no server is failed for them.
-            const tokens = item.split(/\s+/);
-            const key = curatedNounKey(item) || (tokens.length <= 2 ? nounKeyOfItem(item) : '');
-            if (key && !entities.some(entity => entity.key === key)) {
-                entities.push({ item, key, ar: /[؀-ۿ]/u.test(item) ? item : '', en: /[؀-ۿ]/u.test(item) ? key : item });
+            // A record he listed that the floor or a declaration left out is
+            // still one of his records (a one-item head list, a declared list
+            // that misses an item); content about a record («صور المنتجات»,
+            // "customer testimonials") and an item read as nothing are said,
+            // never failed and never passed.
+            // A noun read by shape is a record only of a proven list — the
+            // builders build it then, and only then.
+            if ((entry.as === 'record' || entry.as === 'served') && entry.key && (reading.proven || entry.named)) {
+                if (!entities.some(entity => entity.key === entry.key)) {
+                    const arabic = /[؀-ۿ]/u.test(item);
+                    entities.push({ item, key: entry.key, ar: arabic ? item : '', en: arabic ? entry.key : item });
+                }
                 continue;
             }
             unread.push(item);
@@ -240,12 +254,12 @@ function itemNamesRecord(item: string, entity: RequestedRecord): boolean {
     const labels = [entity.ar, entity.en, entity.key, entity.item].map(norm).filter(Boolean);
     if (labels.includes(i) || labels.map(singularWord).includes(singularWord(i))) return true;
     if (curatedNounKey(item) === entity.key || keyForPhrase(item) === entity.key) return true;
-    // The builders read a two-word item by its head, then by its possessor
-    // unless the head is content about it («مواعيد المرضى» → appointments,
-    // «صور المنتجات» → none): the same reading here, so an item they built is
-    // never «unread» and content they rightly did not build is never a record.
-    const tokens = String(item || '').trim().split(/\s+/);
-    return tokens.length <= 2 && nounKeyOfItem(item) === entity.key;
+    // The builders read an item by its head, then by the record a holder head
+    // holds («مواعيد المرضى» → appointments, «سجل مواعيد المرضى» → appointments,
+    // «صور المنتجات» → none, «رواتب الموظفين» → its own table, never the
+    // employees'): the same reading here, so an item they built is never
+    // «unread», and a record they built apart is never passed by its possessor.
+    return nounKeyOfItem(item) === entity.key;
 }
 
 // ─── evidence in the delivered tree ─────────────────────────────────────────

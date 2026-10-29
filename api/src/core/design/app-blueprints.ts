@@ -937,6 +937,18 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
  *  أسجل فيه المواعيد» puts «أسجل» beside the container, and it is refused
  *  here even though the earlier reader is the one that saves it.
  */
+/**
+ *  …AND A WORD OF GRAMMAR IS NO NAME EITHER (R3).
+ *
+ *  «My gym app should track: members, trainers, workouts» put «should» in
+ *  front of the recording verb, and the reader that looks there for the
+ *  table's name («بدي جدول للمواعيد أسجل فيه») built a `shoulds` table with
+ *  his three tables for columns. A modal, an auxiliary, a pronoun or the
+ *  infinitive's «to» stands in front of an English verb; none of them names
+ *  anything. A closed class of the language, not a vocabulary of domains.
+ */
+const ENGLISH_GRAMMAR_WORD = /^(?:should|would|will|shall|can|could|must|may|might|to|i|we|you|they|it|he|she|that|which|who|also|and|or|then|please|me|us)$/iu;
+
 function theNounBesideTheContainer(request: string): string | null {
     const beside = String(subjectAfterContainer(request) || '').trim();
     //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
@@ -998,7 +1010,7 @@ export function recordedSubject(requestRaw: string): string | null {
     const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
     const tail = before.slice(-1)[0] || '';
     const bare = tail.replace(/^(?:لل|ال|ل)/, '');
-    return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
+    return bare.length >= 3 && !ENGLISH_GRAMMAR_WORD.test(bare) ? bare : theNounBesideTheContainer(request);
 }
 
 /**

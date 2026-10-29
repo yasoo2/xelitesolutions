@@ -103,6 +103,13 @@ export class FoldedRegExp extends RegExp {
 export const WORD_END = '(?![\\p{L}\\p{N}])';
 /** A word starts here (use with /u). */
 export const WORD_START = '(?<![\\p{L}\\p{N}])';
+/**
+ * The prepositions that open an English modifier after its head: "appointments
+ * with doctors" are appointments, "fees for students" are fees, "management of
+ * patients" holds patients. A closed class of the language (one word, test
+ * with .test on a word).
+ */
+export const ENGLISH_PREPOSITION = /^(?:for|of|with|to|in|on|at|by|from|about|per|via|into)$/iu;
 /** One alef, whichever hamza form the writer typed: «أنشئ» «انشئ» «إنشئ». */
 export const ALEF = '[اأإآ]';
 
@@ -164,15 +171,25 @@ export type ListMarker = 'head' | 'colon' | 'opener';
  * first (it is the most specific), then a colon, then a plain opener. A head's
  * list ends at the next colon or sentence end: «manage patients, appointments,
  * treatments: add, edit…» lists three tables, not the actions after them.
+ *
+ * ONCE A COLON LIST HAS BEGUN, «إدارة X» IS ONE OF ITS ITEMS (round 21 review,
+ * R6). «… : المواعيد، إدارة المرضى، الفواتير» read the head in the middle of
+ * the list as a new list, so «المواعيد» was never read and the gate passed a
+ * build without it. A head that follows a separator of the colon's list is an
+ * item of that list (a holder: «إدارة المرضى» is patients); a head that opens
+ * the colon's list, or stands before it, still introduces its own.
  */
 export function listRegion(text: string): { region: string; marker: ListMarker; head?: string } | null {
     const req = String(text || '').replace(/\s+/g, ' ').trim();
     if (!req) return null;
     const head = INTERFACE_HEAD.exec(req);
+    const colonAt = req.search(/[:：]/u);
     if (head && head.index !== undefined) {
+        const insideColonList = colonAt >= 0 && colonAt < head.index
+            && /(?:[،,;؛]|\band)\s*$/iu.test(req.slice(colonAt + 1, head.index));
         const after = req.slice(head.index + head[0].length);
         const region = after.split(/[:：.!?؟]/u)[0].trim();
-        if (region) return { region, marker: 'head', head: head[0].trim() };
+        if (region && !insideColonList) return { region, marker: 'head', head: head[0].trim() };
     }
     const colon = req.match(/[:：]\s*(.+)$/);
     if (colon) return { region: colon[1], marker: 'colon' };

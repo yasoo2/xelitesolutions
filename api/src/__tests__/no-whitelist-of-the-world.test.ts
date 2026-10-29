@@ -107,6 +107,8 @@ describe('and it sits BEFORE the model, not after', () => {
         //  guard on the spelling of a line, not on the property the test
         //  is named for. The property is that the shape reader's output
         //  is validated, whatever the call looks like.
-        expect(d).toMatch(/validateDesign\(inferred\.entities/);
+        //  Round 22: the shape reader's reading is `shaped` (one reading of the
+        //  items, R4), and it is still validated before anything is returned.
+        expect(d).toMatch(/validateDesign\(shaped, floor\)/);
     });
 });
