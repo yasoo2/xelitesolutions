@@ -17,14 +17,14 @@ describe('workspace project discovery for project_run', () => {
 
     afterEach(() => fs.rmSync(root, { recursive: true, force: true }));
 
-    it('selects the stable named project rather than a generated retry copy', () => {
-        const result = resolveRunnableProject(root, 'شغّل مشروع «لوحة مهامي» القائم');
+    it('selects the stable named project rather than a generated retry copy', async () => {
+        const result = await resolveRunnableProject(root, 'شغّل مشروع «لوحة مهامي» القائم');
         expect(result.cwd).toBe(path.join(root, 'react-لوحة-مهامي'));
         expect(result.matched).toBe(true);
     });
 
-    it('selects an explicitly named folder from the ordinary unquoted Arabic chat command', () => {
-        const result = resolveRunnableProject(
+    it('selects an explicitly named folder from the ordinary unquoted Arabic chat command', async () => {
+        const result = await resolveRunnableProject(
             root,
             'شغّل المشروع الموجود داخل مساحة العمل باسم react-لوحة-مهامي. لا تنشئ مشروعاً جديداً.'
         );
@@ -32,47 +32,47 @@ describe('workspace project discovery for project_run', () => {
         expect(result.matched).toBe(true);
     });
 
-    it('resolves a named latest project in a continuation request', () => {
+    it('resolves a named latest project in a continuation request', async () => {
         const science = path.join(root, 'react-science-museum-00f00d5b');
         fs.mkdirSync(science, { recursive: true });
         fs.writeFileSync(path.join(science, 'package.json'), JSON.stringify({ scripts: { dev: 'vite' } }));
-        const result = resolveRunnableProject(root, 'افتح آخر مشروع Science Museum بنيته واقرأ ملفاته أولاً');
+        const result = await resolveRunnableProject(root, 'افتح آخر مشروع Science Museum بنيته واقرأ ملفاته أولاً');
         expect(result.cwd).toBe(science);
         expect(result.matched).toBe(true);
     });
 
-    it('matches a planner name to a truncated scaffold folder without guessing another project', () => {
+    it('matches a planner name to a truncated scaffold folder without guessing another project', async () => {
         const generated = path.join(root, 'Joe-System-Validation-and-Nexus-Developm');
         fs.mkdirSync(generated, { recursive: true });
         fs.writeFileSync(path.join(generated, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' } }));
-        const result = resolveRunnableProject(root, '"Joe System Validation and Nexus Development"');
+        const result = await resolveRunnableProject(root, '"Joe System Validation and Nexus Development"');
         expect(result.cwd).toBe(generated);
         expect(result.matched).toBe(true);
     });
 
-    it('does not let a short folder name swallow a sentence that merely contains it', () => {
+    it('does not let a short folder name swallow a sentence that merely contains it', async () => {
         // The prefix rule that finds a truncated scaffold must not revive the
         // unbounded reverse match it replaced: `api` is a prefix of nothing a
         // reader would call a project name.
         const short = path.join(root, 'api');
         fs.mkdirSync(short, { recursive: true });
         fs.writeFileSync(path.join(short, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' } }));
-        const result = resolveRunnableProject(root, '"api gateway for the freight platform"');
+        const result = await resolveRunnableProject(root, '"api gateway for the freight platform"');
         expect(result.cwd).toBeNull();
         expect(result.matched).toBe(false);
     });
 
-    it('refuses to guess when a workspace contains several projects and no name was supplied', () => {
-        const result = resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
+    it('refuses to guess when a workspace contains several projects and no name was supplied', async () => {
+        const result = await resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
         expect(result.cwd).toBeNull();
         expect(result.candidates).toHaveLength(3);
         expect(result.matched).toBe(false);
     });
 
-    it('uses the sole project below a workspace automatically', () => {
+    it('uses the sole project below a workspace automatically', async () => {
         fs.rmSync(path.join(root, 'react-لوحة-مهامي-d0bb'), { recursive: true, force: true });
         fs.rmSync(path.join(root, 'react-مدار-الحجوزات'), { recursive: true, force: true });
-        const result = resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
+        const result = await resolveRunnableProject(root, 'شغّل المشروع الموجود في مساحة العمل');
         expect(result.cwd).toBe(path.join(root, 'react-لوحة-مهامي'));
         expect(result.matched).toBe(true);
     });
@@ -116,75 +116,75 @@ describe('workspace project discovery for project_run', () => {
         }
     });
 
-    it('recognizes a TypeScript project without package.json only when tsconfig and an entrypoint exist', () => {
+    it('recognizes a TypeScript project without package.json only when tsconfig and an entrypoint exist', async () => {
         const project = path.join(root, 'typescript-service');
         fs.mkdirSync(path.join(project, 'src'), { recursive: true });
         fs.writeFileSync(path.join(project, 'tsconfig.json'), '{"compilerOptions":{"target":"ES2022"}}');
         fs.writeFileSync(path.join(project, 'src', 'index.ts'), 'import { createServer } from "node:http"; createServer((_req, res) => res.end("ok")).listen(4300);');
 
-        const resolved = resolveRunnableProject(root, 'شغّل المشروع باسم typescript-service');
+        const resolved = await resolveRunnableProject(root, 'شغّل المشروع باسم typescript-service');
         expect(resolved.cwd).toBe(project);
         expect(resolved.matched).toBe(true);
-        expect(detectStart(project, 4300)).toMatchObject({ kind: 'tsx-entry', expectPort: 4300, forced: false });
-        expect(detectStart(project, 4300).command).toContain('src/index.ts');
+        expect(await detectStart(project, 4300)).toMatchObject({ kind: 'tsx-entry', expectPort: 4300, forced: false });
+        expect((await detectStart(project, 4300)).command).toContain('src/index.ts');
     });
 
-    it('does not treat tsconfig without a conventional entrypoint as runnable', () => {
+    it('does not treat tsconfig without a conventional entrypoint as runnable', async () => {
         const project = path.join(root, 'typescript-incomplete');
         fs.mkdirSync(project, { recursive: true });
         fs.writeFileSync(path.join(project, 'tsconfig.json'), '{}');
-        const resolved = resolveRunnableProject(root, 'شغّل المشروع باسم typescript-incomplete');
+        const resolved = await resolveRunnableProject(root, 'شغّل المشروع باسم typescript-incomplete');
         expect(resolved.cwd).toBeNull();
         expect(resolved.matched).toBe(false);
     });
 
-    it('rejects npm start when its declared runtime target is missing', () => {
+    it('rejects npm start when its declared runtime target is missing', async () => {
         const project = path.join(root, 'broken-start');
         fs.mkdirSync(project, { recursive: true });
         fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node index.js' } }));
-        const detected = detectStart(project, 4300);
-        expect(launchabilityError(project, detected)).toContain('runtime target is missing');
+        const detected = await detectStart(project, 4300);
+        expect(await launchabilityError(project, detected)).toContain('runtime target is missing');
     });
 
-    it('rejects a JavaScript target that cannot prove a server listen', () => {
+    it('rejects a JavaScript target that cannot prove a server listen', async () => {
         const project = path.join(root, 'not-a-server');
         fs.mkdirSync(project, { recursive: true });
         fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node src/index.js' } }));
         fs.mkdirSync(path.join(project, 'src'), { recursive: true });
         fs.writeFileSync(path.join(project, 'src', 'index.js'), 'print("this is not a Node server")');
-        const detected = detectStart(project, 4300);
-        expect(launchabilityError(project, detected)).toContain('no observable server listen');
+        const detected = await detectStart(project, 4300);
+        expect(await launchabilityError(project, detected)).toContain('no observable server listen');
     });
 
-    it('accepts a Node target with observable HTTP listen evidence', () => {
+    it('accepts a Node target with observable HTTP listen evidence', async () => {
         const project = path.join(root, 'valid-server');
         fs.mkdirSync(project, { recursive: true });
         fs.writeFileSync(path.join(project, 'package.json'), JSON.stringify({ scripts: { start: 'node src/index.js' } }));
         fs.mkdirSync(path.join(project, 'src'), { recursive: true });
         fs.writeFileSync(path.join(project, 'src', 'index.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT || 4300);');
-        const detected = detectStart(project, 4300);
-        expect(launchabilityError(project, detected)).toBeNull();
+        const detected = await detectStart(project, 4300);
+        expect(await launchabilityError(project, detected)).toBeNull();
     });
 
-    it('keeps Vite prerequisite validation separate from runtime target validation', () => {
+    it('keeps Vite prerequisite validation separate from runtime target validation', async () => {
         const project = path.join(root, 'react-لوحة-مهامي');
-        const detected = detectStart(project, 4300);
-        expect(launchabilityError(project, detected)).toBeNull();
-        expect(launchPrerequisiteError(project, detected)).toBe('vite');
+        const detected = await detectStart(project, 4300);
+        expect(await launchabilityError(project, detected)).toBeNull();
+        expect(await launchPrerequisiteError(project, detected)).toBe('vite');
     });
 
-    it('reports absent Vite dependencies before detached startup and its 45-second port wait', () => {
+    it('reports absent Vite dependencies before detached startup and its 45-second port wait', async () => {
         const project = path.join(root, 'react-لوحة-مهامي');
-        const detected = detectStart(project, 4300);
-        expect(launchPrerequisiteError(project, detected)).toBe('vite');
+        const detected = await detectStart(project, 4300);
+        expect(await launchPrerequisiteError(project, detected)).toBe('vite');
 
         const viteBin = path.join(project, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite');
         fs.mkdirSync(path.dirname(viteBin), { recursive: true });
         fs.writeFileSync(viteBin, 'placeholder');
-        expect(launchPrerequisiteError(project, detected)).toBeNull();
+        expect(await launchPrerequisiteError(project, detected)).toBeNull();
     });
 
-    it('node:-prefixed builtins are never reported as missing npm dependencies', () => {
+    it('node:-prefixed builtins are never reported as missing npm dependencies', async () => {
         // npm forbids «:» in package names, and builtinModules omits the
         // prefix-only modules (node:sqlite, node:test) — so the generated API,
         // which opens its database with require('node:sqlite'), was refused
@@ -195,7 +195,7 @@ describe('workspace project discovery for project_run', () => {
             JSON.stringify({ name: 'api-sqlite-service', scripts: { start: 'node server.js' } }));
         fs.writeFileSync(path.join(project, 'server.js'),
             "const { DatabaseSync } = require('node:sqlite');\nconst t = require('node:test');\nconsole.log('ok');\n");
-        const detected = detectStart(project, 4310);
-        expect(launchPrerequisiteError(project, detected)).toBeNull();
+        const detected = await detectStart(project, 4310);
+        expect(await launchPrerequisiteError(project, detected)).toBeNull();
     });
 });

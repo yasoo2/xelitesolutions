@@ -2508,7 +2508,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             : '';
         let discoveryPath = projectPath || persistedUserRoot;
         if (!projectPath && latestProjectRequest && discoveryPath) {
-            const resolved = resolveRunnableProject(discoveryPath, productRequest);
+            const resolved = await resolveRunnableProject(discoveryPath, productRequest);
             if (resolved.matched && resolved.cwd) discoveryPath = resolved.cwd;
         }
         const discoveryResult = await executeTool('engineering_discovery',
@@ -3695,7 +3695,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     repairEvidence?.selectedProject?.root || plannerResult?.output?.projectRoot || discoveredProjectRoot || ''
                 ).trim();
                 const manifestReconciliation = repairRootForEvidence
-                    ? reconcileMissingRuntimeTarget(repairRootForEvidence, failureText)
+                    ? await reconcileMissingRuntimeTarget(repairRootForEvidence, failureText)
                     : { repaired: false, message: 'no trusted repair root available' };
                 if (manifestReconciliation.repaired) {
                     appendBoundedPipelineLog(logs, `[pipeline] ${manifestReconciliation.message}`);
@@ -3763,7 +3763,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         let missingRuntime = [] as string[];
                         if (bootstrapRoot && fs.existsSync(manifestPath)) {
                             try {
-                                missingRuntime = missingRuntimeDependencies(bootstrapRoot, detectStart(bootstrapRoot, 4300));
+                                missingRuntime = await missingRuntimeDependencies(bootstrapRoot, await detectStart(bootstrapRoot, 4300));
                             } catch (dependencyError: any) {
                                 appendBoundedPipelineLog(logs, `[pipeline] runtime dependency evidence unreadable: ${String(dependencyError?.message || dependencyError).slice(0, 240)}`);
                             }

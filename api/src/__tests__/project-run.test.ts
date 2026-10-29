@@ -128,7 +128,7 @@ describe('placeholder lifecycle scripts are not engineering evidence', () => {
 
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
-    test('rejects npm start when test is the npm placeholder that exits 1', () => {
+    test('rejects npm start when test is the npm placeholder that exits 1', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
             scripts: {
                 start: 'node server.js',
@@ -138,7 +138,7 @@ describe('placeholder lifecycle scripts are not engineering evidence', () => {
         fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT);', 'utf-8');
 
         expect(placeholderLifecycleScriptError(root)).toContain('scripts.test');
-        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toContain('failing placeholder');
+        expect(await launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toContain('failing placeholder');
     });
 
     test('rejects an explicitly failing build placeholder too', () => {
@@ -153,12 +153,12 @@ describe('placeholder lifecycle scripts are not engineering evidence', () => {
         expect(placeholderLifecycleScriptError(root)).toContain('scripts.build');
     });
 
-    test('does not require optional lifecycle scripts when they are absent or real', () => {
+    test('does not require optional lifecycle scripts when they are absent or real', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js', test: 'node tests/smoke.js' } }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer((_req, res) => res.end("ok")).listen(process.env.PORT);', 'utf-8');
 
         expect(placeholderLifecycleScriptError(root)).toBeNull();
-        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
+        expect(await launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
     });
 });
 
@@ -190,17 +190,17 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
 
     test('routes the repair through the existing npm manager and rechecks before launch', () => {
         expect(runSrc).toMatch(/new NpmManagerTool\(\)\.execute/);
-        expect(runSrc).toMatch(/missingAfterInstall = launchPrerequisiteError/);
+        expect(runSrc).toMatch(/missingAfterInstall = await launchPrerequisiteError/);
         expect(runSrc).toMatch(/auto npm install succeeded/);
     });
 
-    test('detects an uninstalled declared Vite dev server as an installable prerequisite', () => {
+    test('detects an uninstalled declared Vite dev server as an installable prerequisite', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
             scripts: { dev: 'vite' },
             devDependencies: { vite: '^5.4.11' },
         }), 'utf-8');
 
-        expect(launchPrerequisiteError(root, {
+        expect(await launchPrerequisiteError(root, {
             command: 'npm run dev -- --port 4300 --strictPort --host 127.0.0.1',
             kind: 'dev-server',
         })).toBe('vite');
@@ -257,13 +257,13 @@ describe('launch prerequisite recovery stays manifest-evidence-first', () => {
 });
 
 describe('runtime import dependency preflight', () => {
-    test('detects undeclared or missing runtime imports without flagging Node built-ins', () => {
+    test('detects undeclared or missing runtime imports without flagging Node built-ins', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-runtime-deps-'));
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' }, dependencies: { express: '^4.0.0' } }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server.js'), "const http = require('http'); const sqlite3 = require('sqlite3'); http.createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
-        expect(missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).toContain('sqlite3');
-        expect(missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).not.toContain('http');
-        expect(launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
+        expect(await missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).toContain('sqlite3');
+        expect(await missingRuntimeDependencies(root, { command: 'npm start', kind: 'npm-start' })).not.toContain('http');
+        expect(await launchabilityError(root, { command: 'npm start', kind: 'npm-start' })).toBeNull();
         fs.rmSync(root, { recursive: true, force: true });
     });
 });
@@ -287,25 +287,25 @@ describe('local runtime import preflight follows the real filesystem', () => {
 
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
-    test('reports the exact importer and missing local specifier instead of suggesting npm install', () => {
+    test('reports the exact importer and missing local specifier instead of suggesting npm install', async () => {
         const detected = { command: 'npm start', kind: 'npm-start' };
-        expect(missingLocalRuntimeImports(root, detected)).toEqual(['server.js -> ./routes/tasks']);
-        expect(launchabilityError(root, detected)).toContain('local runtime imports missing');
-        expect(launchabilityError(root, detected)).toContain('server.js -> ./routes/tasks');
+        expect(await missingLocalRuntimeImports(root, detected)).toEqual(['server.js -> ./routes/tasks']);
+        expect(await launchabilityError(root, detected)).toContain('local runtime imports missing');
+        expect(await launchabilityError(root, detected)).toContain('server.js -> ./routes/tasks');
     });
 
-    test('accepts the same project once the import points to the existing route layout', () => {
+    test('accepts the same project once the import points to the existing route layout', async () => {
         fs.writeFileSync(path.join(root, 'server.js'), [
             "const http = require('http');",
             "const tasks = require('./src/routes/tasks');",
             "http.createServer((_req, res) => res.end(tasks.ok ? 'ok' : 'bad')).listen(process.env.PORT);",
         ].join('\\n'), 'utf-8');
         const detected = { command: 'npm start', kind: 'npm-start' };
-        expect(missingLocalRuntimeImports(root, detected)).toEqual([]);
-        expect(launchabilityError(root, detected)).toBeNull();
+        expect(await missingLocalRuntimeImports(root, detected)).toEqual([]);
+        expect(await launchabilityError(root, detected)).toBeNull();
     });
 
-    test('does not report an existing CSS asset imported by a reachable frontend module', () => {
+    test('does not report an existing CSS asset imported by a reachable frontend module', async () => {
         fs.writeFileSync(path.join(root, 'server.js'), [
             "const http = require('http');",
             "require('./src/main.jsx');",
@@ -318,10 +318,10 @@ describe('local runtime import preflight follows the real filesystem', () => {
         ].join('\n'), 'utf-8');
         fs.writeFileSync(path.join(root, 'src', 'styles', 'app.css'), ':root { color-scheme: light; }\\n', 'utf-8');
 
-        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([]);
+        expect(await missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([]);
     });
 
-    test('reports a missing CSS asset imported by a reachable frontend module', () => {
+    test('reports a missing CSS asset imported by a reachable frontend module', async () => {
         fs.writeFileSync(path.join(root, 'server.js'), [
             "const http = require('http');",
             "require('./src/main.jsx');",
@@ -333,23 +333,23 @@ describe('local runtime import preflight follows the real filesystem', () => {
             'export default {};',
         ].join('\n'), 'utf-8');
 
-        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
+        expect(await missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
             'src/main.jsx -> ./styles/app.css',
         ]);
     });
 
-    test('rejects a local asset whose filename differs only by case', () => {
+    test('rejects a local asset whose filename differs only by case', async () => {
         fs.writeFileSync(path.join(root, 'server.js'), "require('./src/main.jsx');", 'utf-8');
         fs.mkdirSync(path.join(root, 'src', 'styles'), { recursive: true });
         fs.writeFileSync(path.join(root, 'src', 'main.jsx'), "import './styles/app.css';", 'utf-8');
         fs.writeFileSync(path.join(root, 'src', 'styles', 'App.css'), ':root { color-scheme: light; }', 'utf-8');
 
-        expect(missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
+        expect(await missingLocalRuntimeImports(root, { command: 'npm start', kind: 'npm-start' })).toEqual([
             'src/main.jsx -> ./styles/app.css',
         ]);
     });
 
-    test('repairs one proven sibling naming mismatch without creating a route file', () => {
+    test('repairs one proven sibling naming mismatch without creating a route file', async () => {
         fs.mkdirSync(path.join(root, 'server', 'routes'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server/index.js' } }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'index.js'), [
@@ -360,17 +360,17 @@ describe('local runtime import preflight follows the real filesystem', () => {
         fs.writeFileSync(path.join(root, 'server', 'routes', 'auth.js'), 'module.exports = { ok: true };\\n', 'utf-8');
 
         const detected = { command: 'npm start', kind: 'npm-start' };
-        const result = reconcileMissingRuntimeImports(root, detected);
+        const result = await reconcileMissingRuntimeImports(root, detected);
         const source = fs.readFileSync(path.join(root, 'server', 'index.js'), 'utf-8');
         expect(result.repaired).toBe(true);
         expect(result.changes).toEqual([expect.stringContaining('server/index.js: ./routes/authRoutes -> ./routes/auth.js')]);
         expect(source).toContain("require('./routes/auth.js')");
         expect(fs.existsSync(path.join(root, 'server', 'routes', 'authRoutes.js'))).toBe(false);
-        expect(missingLocalRuntimeImports(root, detected)).toEqual([]);
-        expect(launchabilityError(root, detected)).toBeNull();
+        expect(await missingLocalRuntimeImports(root, detected)).toEqual([]);
+        expect(await launchabilityError(root, detected)).toBeNull();
     });
 
-    test('does not guess between multiple similar sibling route files', () => {
+    test('does not guess between multiple similar sibling route files', async () => {
         fs.mkdirSync(path.join(root, 'server', 'routes'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server/index.js' } }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'index.js'), [
@@ -381,7 +381,7 @@ describe('local runtime import preflight follows the real filesystem', () => {
         fs.writeFileSync(path.join(root, 'server', 'routes', 'auth.js'), 'module.exports = { ok: true };\\n', 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'routes', 'authRouter.js'), 'module.exports = { ok: true };\\n', 'utf-8');
 
-        const result = reconcileMissingRuntimeImports(root, { command: 'npm start', kind: 'npm-start' });
+        const result = await reconcileMissingRuntimeImports(root, { command: 'npm start', kind: 'npm-start' });
         expect(result.repaired).toBe(false);
         expect(result.message).toMatch(/ambiguous/i);
         expect(fs.readFileSync(path.join(root, 'server', 'index.js'), 'utf-8')).toContain("require('./routes/authRoutes')");
@@ -397,7 +397,7 @@ describe('filesystem-backed start target selection', () => {
 
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
-    test('uses the unique backend entrypoint when a frontend lifecycle script is not the runnable contract', () => {
+    test('uses the unique backend entrypoint when a frontend lifecycle script is not the runnable contract', async () => {
         fs.mkdirSync(path.join(root, 'server'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
             scripts: { start: 'react-scripts start' },
@@ -405,34 +405,34 @@ describe('filesystem-backed start target selection', () => {
         }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'index.js'), "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
 
-        expect(detectStart(root, 4300)).toMatchObject({ command: 'node server/index.js', kind: 'node-entry' });
+        expect(await detectStart(root, 4300)).toMatchObject({ command: 'node server/index.js', kind: 'node-entry' });
     });
 
-    test('discovers a nested server/server.js entrypoint when no manifest is present', () => {
+    test('discovers a nested server/server.js entrypoint when no manifest is present', async () => {
         fs.mkdirSync(path.join(root, 'server'), { recursive: true });
         fs.writeFileSync(path.join(root, 'server', 'server.js'), "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
 
-        expect(detectStart(root, 4300)).toMatchObject({ command: 'node server/server.js', kind: 'node-entry' });
+        expect(await detectStart(root, 4300)).toMatchObject({ command: 'node server/server.js', kind: 'node-entry' });
     });
 
-    test('does not guess between multiple backend entrypoints', () => {
+    test('does not guess between multiple backend entrypoints', async () => {
         fs.mkdirSync(path.join(root, 'server'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'react-scripts start' } }), 'utf-8');
         const source = "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);";
         fs.writeFileSync(path.join(root, 'server', 'index.js'), source, 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'admin.js'), source, 'utf-8');
 
-        expect(detectStart(root, 4300)).toMatchObject({ command: 'npm start', kind: 'npm-start' });
+        expect(await detectStart(root, 4300)).toMatchObject({ command: 'npm start', kind: 'npm-start' });
     });
 
-    test('keeps a frontend-only project on its declared lifecycle script', () => {
+    test('keeps a frontend-only project on its declared lifecycle script', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'react-scripts start' } }), 'utf-8');
-        expect(detectStart(root, 4300)).toMatchObject({ command: 'npm start', kind: 'npm-start' });
+        expect(await detectStart(root, 4300)).toMatchObject({ command: 'npm start', kind: 'npm-start' });
     });
 });
 
 describe('bounded manifest-to-entrypoint reconciliation', () => {
-    test('repairs a missing node target from a unique on-disk server entrypoint', () => {
+    test('repairs a missing node target from a unique on-disk server entrypoint', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reconcile-'));
         fs.mkdirSync(path.join(root, 'src'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
@@ -441,14 +441,14 @@ describe('bounded manifest-to-entrypoint reconciliation', () => {
         }), 'utf-8');
         fs.writeFileSync(path.join(root, 'src', 'index.js'), "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
 
-        const result = reconcileMissingRuntimeTarget(root, 'launchability: runtime target is missing (index.js)');
+        const result = await reconcileMissingRuntimeTarget(root, 'launchability: runtime target is missing (index.js)');
         const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
         expect(result.repaired).toBe(true);
         expect(manifest.main).toBe('src/index.js');
         expect(manifest.scripts.start).toBe('node src/index.js');
     });
 
-    test('repairs a missing node target to the unique nested server/server.js entrypoint', () => {
+    test('repairs a missing node target to the unique nested server/server.js entrypoint', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reconcile-nested-'));
         fs.mkdirSync(path.join(root, 'server'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
@@ -457,7 +457,7 @@ describe('bounded manifest-to-entrypoint reconciliation', () => {
         }), 'utf-8');
         fs.writeFileSync(path.join(root, 'server', 'server.js'), "require('http').createServer((_req, res) => res.end('ok')).listen(process.env.PORT);", 'utf-8');
 
-        const result = reconcileMissingRuntimeTarget(root, 'launchability: runtime target is missing (src/index.js)');
+        const result = await reconcileMissingRuntimeTarget(root, 'launchability: runtime target is missing (src/index.js)');
         const manifest = JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf-8'));
         expect(result.repaired).toBe(true);
         expect(manifest.main).toBe('server/server.js');
@@ -465,7 +465,7 @@ describe('bounded manifest-to-entrypoint reconciliation', () => {
         fs.rmSync(root, { recursive: true, force: true });
     });
 
-    test('does not guess when equally ranked server entrypoints exist', () => {
+    test('does not guess when equally ranked server entrypoints exist', async () => {
         const root = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-reconcile-ambiguous-'));
         fs.mkdirSync(path.join(root, 'src'), { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node index.js' } }), 'utf-8');
@@ -473,7 +473,7 @@ describe('bounded manifest-to-entrypoint reconciliation', () => {
         fs.writeFileSync(path.join(root, 'src', 'foo.js'), source, 'utf-8');
         fs.writeFileSync(path.join(root, 'src', 'bar.js'), source, 'utf-8');
 
-        const result = reconcileMissingRuntimeTarget(root, 'runtime target is missing (index.js)');
+        const result = await reconcileMissingRuntimeTarget(root, 'runtime target is missing (index.js)');
         expect(result.repaired).toBe(false);
         expect(result.message).toMatch(/multiple equally ranked/i);
     });
@@ -481,7 +481,7 @@ describe('bounded manifest-to-entrypoint reconciliation', () => {
     test('project_run invokes bounded target reconciliation before rejecting a missing runtime target', () => {
         expect(runSrc).toMatch(/if \(launchability && !input\?\.command && \/runtime target is missing/);
         expect(runSrc).toMatch(/reconcileMissingRuntimeTarget\(cwd, launchability\)/);
-        expect(runSrc).toMatch(/detected = detectStart\(cwd, port\)/);
+        expect(runSrc).toMatch(/detected = await detectStart\(cwd, port\)/);
     });
 });
 
@@ -499,32 +499,32 @@ describe('named project discovery never falls back to the workspace repository',
 
     afterEach(() => { fs.rmSync(root, { recursive: true, force: true }); });
 
-    test('a quoted child name wins over the runnable workspace root', () => {
-        const result = resolveRunnableProject(root, '"Joe-System-Execution-Test"');
+    test('a quoted child name wins over the runnable workspace root', async () => {
+        const result = await resolveRunnableProject(root, '"Joe-System-Execution-Test"');
         expect(result.matched).toBe(true);
         expect(result.cwd).toBe(path.join(root, 'Joe-System-Execution-Test'));
     });
 
-    test('an explicit missing name returns no match instead of the workspace root', () => {
-        const result = resolveRunnableProject(root, '"missing-project"');
+    test('an explicit missing name returns no match instead of the workspace root', async () => {
+        const result = await resolveRunnableProject(root, '"missing-project"');
         expect(result.matched).toBe(false);
         expect(result.cwd).toBeNull();
     });
 
-    test('a package name identifies a runnable workspace root when the folder name differs', () => {
+    test('a package name identifies a runnable workspace root when the folder name differs', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), '{"name":"nexus-platform"}', 'utf-8');
-        const result = resolveRunnableProject(root, '"nexus"');
+        const result = await resolveRunnableProject(root, '"nexus"');
         expect(result.matched).toBe(true);
         expect(result.cwd).toBe(root);
     });
 
-    test('an incomplete active scaffold does not hide a named runnable workspace artifact', () => {
+    test('an incomplete active scaffold does not hide a named runnable workspace artifact', async () => {
         const incomplete = path.join(root, 'nexus-scaffold');
         fs.mkdirSync(incomplete, { recursive: true });
         fs.writeFileSync(path.join(root, 'package.json'), '{"name":"nexus"}', 'utf-8');
-        expect(shouldUseActiveProjectDirectly(incomplete, '"nexus"')).toBe(false);
-        expect(shouldUseActiveProjectDirectly(incomplete, '')).toBe(true);
-        const resolved = resolveRunnableProject(root, '"nexus"');
+        expect(await shouldUseActiveProjectDirectly(incomplete, '"nexus"')).toBe(false);
+        expect(await shouldUseActiveProjectDirectly(incomplete, '')).toBe(true);
+        const resolved = await resolveRunnableProject(root, '"nexus"');
         expect(resolved.matched).toBe(true);
         expect(resolved.cwd).toBe(root);
     });
@@ -558,12 +558,12 @@ describe('named project discovery never falls back to the workspace repository',
         expect(runSrc).toContain('const url = confirmedLiveUrl;');
     });
 
-    test('the announced preview origin must answer HTTP on the same loopback family', () => {
+    test('the announced preview origin must answer HTTP on the same loopback family', async () => {
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({
             scripts: { dev: 'vite' },
             devDependencies: { vite: '^5.0.0' },
         }), 'utf-8');
-        const detected = detectStart(root, 4300);
+        const detected = await detectStart(root, 4300);
         expect(detected.command).toContain('--host 127.0.0.1');
         expect(runSrc).toContain('const answeringUrl = await answeringLoopbackUrl(p, 1500);');
         expect(runSrc).toContain('if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }');
