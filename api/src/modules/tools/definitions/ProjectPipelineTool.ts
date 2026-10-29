@@ -2106,21 +2106,28 @@ export function inspectProjectQualityContract(
     }
     const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
     const failures: string[] = [];
+    const testsAsked = typeof opts.testsRequested === 'boolean' ? opts.testsRequested : !!testsRequestedIn(String(request || ''));
+    const buildNamed = BUILD_COMMAND_NAMED.test(String(request || ''));
+    const buildOwed = rootHasBuildStep(root, manifest) || buildNamed;
     // What a placeholder is, the one reader decides (placeholder-script): a
     // script whose every command only prints or exits — never a word list (Q9).
+    // A placeholder test script is refused always, as it was. A placeholder
+    // BUILD script is refused where a build is owed: a site with no build step
+    // whose manifest says «echo No build step required» builds nothing and
+    // claims nothing (the phase's build check records no receipt for it), and
+    // refusing it would fail a working delivery (round 22 integration).
     for (const name of ['build', 'test']) {
+        if (name === 'build' && !buildOwed) continue;
         if (typeof scripts[name] === 'string' && isPlaceholderScript(scripts[name])) {
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
     }
     const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
-    const testsAsked = typeof opts.testsRequested === 'boolean' ? opts.testsRequested : !!testsRequestedIn(String(request || ''));
     const where = opts.additionalRoot ? 'this part' : 'the project';
     if (testsAsked && !has('test')) {
         failures.push(`package.json has no truthful test script although the request asks for tests (${where})`);
     }
-    const buildNamed = BUILD_COMMAND_NAMED.test(String(request || ''));
-    if ((rootHasBuildStep(root, manifest) || buildNamed) && !has('build')) {
+    if (buildOwed && !has('build')) {
         failures.push(buildNamed
             ? `package.json has no truthful build script although the request names the build (${where})`
             : `package.json has no truthful build script although ${where} has a build step`);

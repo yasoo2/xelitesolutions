@@ -79,15 +79,21 @@ describe('Q9: one reader of «is this script a placeholder?», by what its comma
             const root = tmp('readers');
             fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'p', scripts: { build: script, test: script } }));
             const placeholder = isPlaceholderScript(script);
-            const contract = inspectProjectQualityContract(root, '');
+            // A placeholder build is refused where a build is owed — here, the request names it.
+            const contract = inspectProjectQualityContract(root, 'Build it and run npm run build');
             const said = {
                 script,
                 autoBuild: manifestDeclaresBuild(root),
                 contract: contract.failures.some(failure => /build script is a placeholder/u.test(failure)),
+                testContract: contract.failures.some(failure => /test script is a placeholder/u.test(failure)),
                 gatePatches: testScriptPatchFor(root) !== null,
             };
-            expect(said).toEqual({ script, autoBuild: !placeholder, contract: placeholder, gatePatches: placeholder });
+            expect(said).toEqual({ script, autoBuild: !placeholder, contract: placeholder, testContract: placeholder, gatePatches: placeholder });
         }
+        // Where no build is owed, a placeholder build claims nothing and fails no delivery.
+        const site = tmp('no-build-owed');
+        fs.writeFileSync(path.join(site, 'package.json'), JSON.stringify({ name: 'site', scripts: { build: 'echo No build step required', start: 'node server.js' } }));
+        expect(inspectProjectQualityContract(site, 'Make a landing page for a dental clinic')).toEqual({ ok: true, failures: [] });
         // The record gate does not run a placeholder test script as his tests.
         const root = tmp('gate');
         fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ name: 'p', scripts: { test: 'echo No tests yet' } }));
