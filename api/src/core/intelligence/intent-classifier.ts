@@ -5,6 +5,7 @@ import { hasRequestedAction, unquotedIntentText } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
 import { hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact } from '../design/requested-artifact';
 import { words } from '../language/arabic';
+import { readModelJsonObject } from '../../shared/utils/json';
 
 export interface IntentClassification {
     isBuild: boolean;
@@ -462,9 +463,9 @@ Examples:
             { role: 'user', content: goalRaw }
         ];
         const responseText = await routeToModel(messages, undefined, undefined, undefined, undefined, undefined, undefined, { purpose: 'internal' });
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+        // The shared reader (round 22, W7), not a greedy first-to-last brace.
+        const parsed: any = readModelJsonObject(String(responseText || ''));
+        if (parsed) {
             return {
                 isBuild: !!parsed.isBuild,
                 isBrowser: !!parsed.isBrowser,

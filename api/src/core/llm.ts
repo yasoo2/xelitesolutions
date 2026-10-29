@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import intelligentRouter from "./llm/intelligent-router";
 import { getSystemPrompt } from "./llm/system-prompt";
 import { setDynamicOpenAIKey, getDynamicOpenAIKey, getApiKeyForUser, setActiveProvider, getActiveProvider } from "./llm/utils";
+import { readModelJson, readModelJsonObject } from "../shared/utils/json";
 
 export { 
     setDynamicOpenAIKey, 
@@ -56,16 +57,16 @@ export async function planNextStep(messagesOrTask: string | any[], opts?: any): 
       undefined,
       typeof opts === 'object' ? opts : undefined
     );
-    try {
-      if (typeof response === 'string') {
-        const jsonMatch = response.match(/\{[\s\S]*\}/);
-        return JSON.parse(jsonMatch ? jsonMatch[0] : response);
-      }
-      return response;
-    } catch {
-      return { 
+    // Read through the shared reader (shared/utils/json), as every model-JSON
+    // reader does: the greedy `/\{[\s\S]*\}/` this was glued an answer to any
+    // brace in a sentence after it, and every browser-runner step that came
+    // back that way was thrown away as «no actions» (round 22, W7). The step
+    // asked for carries `actions`; an object without them is still read.
+    if (typeof response !== 'string') return response;
+    const step = readModelJson(response, parsed => (parsed && typeof parsed === 'object' && Array.isArray(parsed.actions) ? parsed : undefined))
+      ?? readModelJsonObject(response);
+    return step ?? {
         thought: String(response || ''),
         actions: []
       };
-    }
 }

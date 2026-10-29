@@ -706,7 +706,13 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
             : Array.isArray(parsed.verdicts) ? parsed.verdicts
             : Array.isArray(parsed.results) ? parsed.results
                 : null;
-        if (list) {
+        //  A list is the verdicts only when it speaks a verdict (round 22): an
+        //  example list the model wrote before its answer — «each item looks
+        //  like [{"id":"r1"}]» — was taken as the verdicts, every one empty,
+        //  and the real answer after it was never read. An item in a list that
+        //  does speak one is kept as before, so a single silent item is still
+        //  told apart from a missing one.
+        if (list && list.some((v: any) => v && typeof v === 'object' && ('verdict' in v || 'met' in v))) {
             const out = list.filter((v: any) => v && typeof v === 'object').map((v: any) => asVerdict(v, ''));
             if (out.length) return out;
         }

@@ -3056,9 +3056,9 @@ Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_
         ];
 
         const responseText = await routeToModel(messages, taskAnalysis);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const correction = JSON.parse(jsonMatch[0]);
+        // The shared reader (round 22, W7), not a greedy first-to-last brace.
+        const correction = readModelJsonObject<any>(String(responseText || ''));
+        if (correction) {
             if (correction.no_correction) return null;
             return { action: correction.name, input: correction.input };
         }

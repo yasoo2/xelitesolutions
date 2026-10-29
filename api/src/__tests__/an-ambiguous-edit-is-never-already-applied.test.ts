@@ -22,7 +22,9 @@ const FIND = '</ul>';
 const REPLACE = '  <li>Services</li>\n</ul>';
 // Two lists; the first already ends with the item, the second does not.
 const TWO_LISTS = '<ul>\n  <li>Home</li>\n  <li>Services</li>\n</ul>\n<ul>\n  <li>Blog</li>\n</ul>\n';
-// Every place the sought text sits is inside a copy of the replacement.
+// Every place the sought text sits is inside a copy of the replacement — but
+// there are two copies, and an editor that refuses a text found twice could
+// not have made them (round 22: the edit's own result is read by undoing it).
 const BOTH_EDITED = '<ul>\n  <li>Home</li>\n  <li>Services</li>\n</ul>\n<ul>\n  <li>Blog</li>\n  <li>Services</li>\n</ul>\n';
 const ONE_LIST = '<ul>\n  <li>Home</li>\n  <li>Services</li>\n</ul>\n';
 
@@ -40,16 +42,15 @@ describe('an ambiguous edit is never already applied', () => {
         expect(() => prepare(TWO_LISTS)).toThrow('ambiguous_edit_match');
     });
 
-    it('it still recognises its own result: one occurrence, or every occurrence inside a copy', () => {
+    it('it still recognises its own result, and only its own: two edited lists are still ambiguous', () => {
         const once = prepare(ONE_LIST);
         expect(once.autonomousEditAfter).toBe(once.autonomousEditBefore);
-        const both = prepare(BOTH_EDITED);
-        expect(both.autonomousEditAfter).toBe(BOTH_EDITED);
+        expect(() => prepare(BOTH_EDITED)).toThrow('ambiguous_edit_match');
     });
 
     it('the helper answers by the editor\'s landing rule', () => {
         expect(editAlreadyApplied(TWO_LISTS, FIND, REPLACE, 'unique')).toBe(false);
-        expect(editAlreadyApplied(BOTH_EDITED, FIND, REPLACE, 'unique')).toBe(true);
+        expect(editAlreadyApplied(BOTH_EDITED, FIND, REPLACE, 'unique')).toBe(false);
         expect(editAlreadyApplied(ONE_LIST, FIND, REPLACE, 'unique')).toBe(true);
         // A first-occurrence editor would land inside its own earlier result.
         expect(editAlreadyApplied(TWO_LISTS, FIND, REPLACE)).toBe(true);

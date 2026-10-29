@@ -38,6 +38,22 @@
  * in place only when every occurrence of the sought text lies inside a copy
  * of the replacement (one occurrence included); otherwise its ambiguity deny
  * stands.
+ *
+ * THE EDIT'S OWN RESULT IS READ BY UNDOING IT (round 22). The rule above looked
+ * for the sought text at one offset of the replacement only — its first. An
+ * «insert after» edit holds the sought text twice: find `</li>`, replace
+ * `</li>\n  <li>Contact</li>`. Once it has landed, the file's second `</li>` is
+ * the replacement's own second one, never covered by the first offset, so the
+ * rerun of an edit that had already landed was refused as ambiguous (an import
+ * inserted after `from 'react';` the same way). The question is now asked of
+ * the file itself: put the sought text back where a copy of the replacement
+ * stands, and see whether this editor would have landed exactly there — the
+ * first occurrence for a `first` editor, the one and only occurrence for a
+ * `unique` one. That reads every offset at once; for a `unique` editor it
+ * means exactly one copy of the replacement and no occurrence of the sought
+ * text outside it. A file whose two lists both carry the item is not what an
+ * editor that refuses a text found twice could have produced, so its
+ * ambiguity deny stands.
  */
 const MIN_RECOGNISABLE_REPLACEMENT = 24;
 
@@ -46,16 +62,13 @@ export type EditLanding = 'first' | 'unique';
 
 export function editAlreadyApplied(content: string, find: string, replace: string, landing: EditLanding = 'first'): boolean {
     if (!find || !replace || find === replace) return false;
-    const inner = replace.indexOf(find);
-    if (inner >= 0) {
-        const insideACopy = (at: number) => at >= inner && content.startsWith(replace, at - inner);
-        if (landing === 'first') return insideACopy(content.indexOf(find));
-        let seen = false;
-        for (let at = content.indexOf(find); at >= 0; at = content.indexOf(find, at + 1)) {
-            if (!insideACopy(at)) return false;
-            seen = true;
+    if (replace.includes(find)) {
+        for (let at = content.indexOf(replace); at >= 0; at = content.indexOf(replace, at + 1)) {
+            const undone = content.slice(0, at) + find + content.slice(at + replace.length);
+            const landsHere = undone.indexOf(find) === at;
+            if (landsHere && (landing === 'first' || undone.indexOf(find, at + 1) < 0)) return true;
         }
-        return seen;
+        return false;
     }
     if (content.includes(find)) return false;
     if (replace.trim().length < MIN_RECOGNISABLE_REPLACEMENT) return false;

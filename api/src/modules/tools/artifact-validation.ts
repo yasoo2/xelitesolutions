@@ -44,6 +44,24 @@ function isDocumentExtension(ext: string): boolean {
     return ['.md', '.mdx', '.markdown', '.rst', '.adoc', '.txt'].includes(ext);
 }
 
+/**
+ * A FENCE IS THE CHAT WRAPPER ONLY WHERE A WRAPPER STANDS (round 22).
+ *
+ * Any ``` anywhere in a non-document file refused the write: a JSX Markdown
+ * renderer's `m.startsWith('```')`, a Python docstring's code example, a
+ * `<pre>```js…```</pre>` — the file's own content, refused as leftover chat.
+ * normalizeArtifactContent has already removed a complete wrapper; what is left
+ * of one can only be a fence line opening the content (its closing fence was
+ * cut) or a fence line closing it (prose, or nothing, before it). A fence
+ * anywhere else is something the file itself says.
+ */
+function hasWrapperFence(content: string): boolean {
+    const lines = String(content || '').trim().split(/\r?\n/u);
+    const first = lines[0].trim();
+    const last = lines[lines.length - 1].trim();
+    return first.startsWith('```') || /^```[\w+.#-]*$/u.test(last);
+}
+
 function isSourceExtension(ext: string): boolean {
     return ['.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs', '.py', '.go', '.rs', '.java', '.cs', '.rb', '.php', '.sh', '.sql'].includes(ext);
 }
@@ -103,7 +121,7 @@ export function validateArtifactContent(filePath: string, content: string): stri
 
     // In a document a fence is content (a README's «```bash npm start```»),
     // not the chat wrapper left around a file.
-    if (!isDocumentExtension(ext) && /```(?:json|javascript|typescript|python|js|ts|py)?/iu.test(content)) {
+    if (!isDocumentExtension(ext) && hasWrapperFence(content)) {
         return `artifact_type_mismatch: ${filePath} still contains an incomplete Markdown fence`;
     }
 

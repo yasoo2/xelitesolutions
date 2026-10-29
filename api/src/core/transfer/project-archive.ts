@@ -13,7 +13,7 @@ import fs from 'fs';
 import path from 'path';
 import AdmZip from 'adm-zip';
 import { isWithinRoot } from '../../modules/tools/path-containment';
-import { isMachineStateDirectory } from '../../shared/utils/project-tree';
+import { installedEnvironmentKindSync, isMachineStateDirectory, JOE_PROJECT_RECORDS, toolOutputMarkers } from '../../shared/utils/project-tree';
 
 export interface ExportResult {
     buffer: Buffer;
@@ -43,13 +43,32 @@ const MAX_ENTRIES = 5000;
  */
 const ARCHIVE_KEEPS = new Set(['.yarn']);
 
-function walk(dir: string, base: string, out: Array<{ abs: string; rel: string }>): void {
-    for (const name of fs.readdirSync(dir)) {
-        if (isMachineStateDirectory(name) && !ARCHIVE_KEEPS.has(name)) continue;
+/**
+ * A FOLDER NAMED LIKE A TOOL'S OUTPUT IS HIS WHEN IT HOLDS HIS FILES (round 22).
+ *
+ * Round 21 made `coverage` and `.joe` machine state at any depth here, where
+ * before only node_modules, .git and .checkpoints were left behind: the export
+ * of a project whose src/App.jsx imports `./coverage/Plans` dropped
+ * src/coverage/Plans.jsx, and dropped `.joe/external-api.json` — the record the
+ * preview proxy and the pipeline read, so the maintained API route answered 404
+ * after import. A tool-output name is state where the tool writes it (the
+ * root) or where it holds that tool's output, an installed environment is
+ * known by what its installer wrote into it whatever it is called
+ * (shared/utils/project-tree), and Joe's records that belong to the project
+ * travel with it.
+ */
+function walk(dir: string, base: string, out: Array<{ abs: string; rel: string }>, parentEntries: string[] = []): void {
+    const names = fs.readdirSync(dir);
+    if (dir !== base && installedEnvironmentKindSync(dir, names, parentEntries)) return;
+    for (const name of names) {
         const abs = path.join(dir, name);
         const st = fs.statSync(abs);
-        if (st.isDirectory()) walk(abs, base, out);
-        else if (st.isFile()) out.push({ abs, rel: path.relative(base, abs) });
+        if (st.isDirectory()) {
+            const atRoot = dir === base;
+            const entries = !atRoot && toolOutputMarkers(name) ? fs.readdirSync(abs) : undefined;
+            if (isMachineStateDirectory(name, { atRoot, entries }) && !ARCHIVE_KEEPS.has(name)) continue;
+            walk(abs, base, out, names);
+        } else if (st.isFile()) out.push({ abs, rel: path.relative(base, abs) });
     }
 }
 
@@ -60,6 +79,10 @@ export function archiveProject(projectDir: string): ExportResult {
     }
     const files: Array<{ abs: string; rel: string }> = [];
     walk(root, root, files);
+    for (const record of JOE_PROJECT_RECORDS) {
+        const abs = path.join(root, ...record.split('/'));
+        try { if (fs.statSync(abs).isFile()) files.push({ abs, rel: path.relative(root, abs) }); } catch { /* this project has none */ }
+    }
     if (!files.length) throw new Error('the project directory is empty — nothing to export');
 
     const zip = new AdmZip();
