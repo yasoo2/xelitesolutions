@@ -30,6 +30,7 @@ import { isCanonicalLocalBaseUrl } from '../core/llm/explicit-local-selection';
 import { localReasoningOptions } from '../core/llm/providers/local';
 import { isManagedOllamaEndpoint, managedOllamaChat } from '../core/llm/providers/managed-ollama-chat';
 import { admitLocalModelCall } from '../core/resources/local-model-call';
+import { localInferenceFetch } from '../core/llm/providers/loopback-fetch';
 
 /** Groq rejects base64 image URLs over ~4MB; keep headroom under it. */
 export const VISION_MAX_IMAGE_BYTES = 2_800_000;
@@ -219,7 +220,8 @@ async function callVision(t: VisionTarget, dataUrl: string, language: string, us
         // review of round 21); a cloud target is not.
         return await admitLocalModelCall(t.baseUrl, async admission => {
             if (admission?.aborted) ctrl.abort(); else admission?.addEventListener('abort', abort, { once: true });
-            const res = await fetch(`${t.baseUrl}/chat/completions`, {
+            // A server on this machine is reached without undici's 300 s header timer (round 22).
+            const res = await localInferenceFetch()(`${t.baseUrl}/chat/completions`, {
                 method: 'POST',
                 signal: ctrl.signal,
                 headers: { 'Authorization': `Bearer ${t.apiKey}`, 'Content-Type': 'application/json' },

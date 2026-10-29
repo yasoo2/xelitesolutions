@@ -55,8 +55,21 @@ export function answerOfSchemaShape(text: string, schema: Record<string, any>): 
     });
 }
 
-const ollamaHost = (): string =>
-    String(process.env.OLLAMA_HOST || process.env.LOCAL_LLM_HOST || 'http://127.0.0.1:11434').replace(/\/+$/, '');
+/**
+ * The local Ollama server's base URL. Ollama itself reads OLLAMA_HOST with or
+ * without a scheme and with or without a port («0.0.0.0», «0.0.0.0:11434»,
+ * «http://127.0.0.1:11434»); a bare host was used as written, so every
+ * structured call went to «0.0.0.0:11434/api/generate» and answered nothing
+ * (round 22). The default port is Ollama's own.
+ */
+const ollamaHost = (): string => {
+    const raw = String(process.env.OLLAMA_HOST || process.env.LOCAL_LLM_HOST || 'http://127.0.0.1:11434').trim().replace(/\/+$/, '');
+    if (/^[a-z][a-z\d+.-]*:\/\//i.test(raw)) return raw;
+    // A bare IPv6 address («::1») has colons and no port: it is bracketed.
+    if (!raw.startsWith('[') && raw.split(':').length > 2) return `http://[${raw}]:11434`;
+    const hasPort = /^\[[^\]]*\]:\d+$/.test(raw) || (!raw.startsWith('[') && /:\d+$/.test(raw));
+    return `http://${hasPort ? raw : `${raw}:11434`}`;
+};
 
 /** The model Joe already picked for planning — never a hard-coded name. */
 function localModel(): string {

@@ -1,4 +1,6 @@
 import OpenAI from 'openai';
+import { localInferenceFetch } from './loopback-fetch';
+import { admitLocalModelCall, isLocalModelEndpoint } from '../../resources/local-model-call';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './managed-ollama-chat';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
 
@@ -79,11 +81,13 @@ export class LocalProvider {
         }
         // Generic compatible servers have no portable context-size parameter.
         // Admission serializes their work without pretending to resize the model,
-        // as a model call: the model the server holds is this call's own.
-        return requestResourceManager.withLocalModelCall(
-            () => {
+        // as a model call: the model the server holds is this call's own. A
+        // compatible server on ANOTHER machine is not this machine's memory, so
+        // its calls are not admitted here (round 22).
+        return admitLocalModelCall(baseURL,
+            admission => {
                 try { options?.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
-                return this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options);
+                return this.chatCompleteCompatible(messages, model, onDelta, admission || signal, options);
             },
             { kind: 'compatible-local-inference', signal },
         );
@@ -123,6 +127,10 @@ export class LocalProvider {
             baseURL,
             timeout: timeoutMs,
             maxRetries: 0,
+            // A server on this machine is reached without undici's 300 s header
+            // timer, which cut every non-streamed answer longer than five minutes
+            // (eval round 6) — vLLM and LM Studio come through here (round 22).
+            ...(isLocalModelEndpoint(baseURL) ? { fetch: localInferenceFetch() } : {}),
         });
 
         const mapped = messages.map(m => ({ role: m.role, content: m.content })) as any;

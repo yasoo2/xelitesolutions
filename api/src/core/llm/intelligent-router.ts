@@ -17,7 +17,8 @@ import { servedModelConfig } from './served-local-selection';
 import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
 import { localReasoningOptions } from './providers/local';
 import { isManagedOllamaEndpoint, managedOllamaChat, managedContextCeilingTokens } from './providers/managed-ollama-chat';
-import { admitLocalModelCall } from '../resources/local-model-call';
+import { admitLocalModelCall, isLocalModelEndpoint } from '../resources/local-model-call';
+import { localInferenceFetch } from './providers/loopback-fetch';
 
 /** What a local answer with no output cap may write: the room the managed window leaves its prompt. */
 export function uncappedLocalOutputTokens(messages: any[]): number {
@@ -1893,6 +1894,8 @@ export async function routeToModel(
                             apiKey: effectiveApiKey || 'dummy',
                             baseURL: effectiveBaseUrl,
                             maxRetries: 0,
+                            // A server on this machine: no undici 300 s header timer (round 22).
+                            ...(isLocalModelEndpoint(effectiveBaseUrl) ? { fetch: localInferenceFetch() } : {}),
                         });
                         const model = isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
                         // Preserve the caller's output budget on both SDK transports.

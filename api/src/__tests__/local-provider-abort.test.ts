@@ -73,4 +73,23 @@ describe('LocalProvider cancellation', () => {
         expect(mockCreate.mock.calls[0][0]).not.toHaveProperty('options');
         expect(nativeFetch).not.toHaveBeenCalled();
     });
+
+    it('a compatible server on this machine gets the timer-free transport and is admitted; one elsewhere neither (round 22)', async () => {
+        const { requestResourceManager } = require('../core/resources/RequestResourceManager');
+        const admitted = jest.spyOn(requestResourceManager, 'withLocalModelCall');
+        mockCreate.mockResolvedValue({ choices: [{ message: { content: 'OK' } }] });
+        // vLLM or LM Studio on this machine, in a spelling that is not the canonical one.
+        process.env.LOCAL_LLM_BASE_URL = 'http://0.0.0.0:8000/v1';
+        await expect(new LocalProvider().chatComplete([{ role: 'user', content: 'hello' }], 'local-model')).resolves.toBe('OK');
+        expect(typeof mockOpenAI.mock.calls[0][0].fetch).toBe('function');
+        expect(admitted).toHaveBeenCalledTimes(1);
+        mockOpenAI.mockClear();
+        admitted.mockClear();
+        // A compatible server on another machine: not this machine's memory, not its transport.
+        process.env.LOCAL_LLM_BASE_URL = 'https://models.example.com/v1';
+        await expect(new LocalProvider().chatComplete([{ role: 'user', content: 'hello' }], 'local-model')).resolves.toBe('OK');
+        expect(mockOpenAI.mock.calls[0][0]).not.toHaveProperty('fetch');
+        expect(admitted).not.toHaveBeenCalled();
+        admitted.mockRestore();
+    });
 });
