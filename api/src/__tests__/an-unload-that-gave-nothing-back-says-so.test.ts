@@ -77,7 +77,7 @@ describe('an unload that gave nothing back says so', () => {
             availableBytes: 0.9 * GiB });
         // The base code held the heavy lane ~10.4 s for memory that never came back.
         expect(heldMs).toBeLessThan(5000);
-    });
+    }, 30_000); // room for the old ten-second wait to be measured, not cut by the runner
 
     it('his sentence says the model was asked to unload, in both languages', async () => {
         const error: any = await machineThatKeepsTheCache().withHeavy(async () => 'npm install').catch(e => e);
