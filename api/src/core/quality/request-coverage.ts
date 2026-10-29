@@ -48,8 +48,10 @@ import { alreadyOwned, curatedNounKey, listedReservedKeys, namedEntities, nounKe
 import { keyForPhrase } from '../design/entity-inference';
 import { isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from '../design/request-lists';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
-import { emptyTestRun } from './test-run-evidence';
+import { emptyTestRun, judgeTestRun } from './test-run-evidence';
 import { pythonExecutable } from './python-executable';
+import { isRealScript } from './placeholder-script';
+import { pythonTestCommand } from './python-test-runner';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
 
 export interface RequestedRecord {
@@ -732,7 +734,8 @@ export interface RequestedTestsRun {
     error?: string;
 }
 
-const PLACEHOLDER_TEST = /no test specified|^\s*(?:exit\s+0|true|echo\b[^&|;]*)\s*$/iu;
+/** A test script that does work — the one placeholder reader decides (placeholder-script, Q9). */
+const hasRealTestScript = (scripts: Record<string, unknown>) => isRealScript(scripts.test);
 
 /** The root whose own test runner proves the tests: the manifest nearest the server file, or the run root. */
 export function requestedTestsRoot(evidence: CoverageEvidence, runRoot: string, roots: string[]): string {
@@ -760,28 +763,75 @@ function isWithin(file: string, root: string): boolean {
     return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
 }
 
+/** Python's test-file names, as pytest and unittest find them; the shared runner lists a folder by the same rule. */
+const PYTHON_TEST_FILE = /^(?:test.*|.*_test)\.py$/u;
+/** A Python environment's own packages: never his tests. */
+const PYTHON_PACKAGES_DIR = /^(?:site|dist)-packages$/u;
+
+/**
+ * The folders under the root that hold his Python test files, walked without
+ * holding the event loop (a bounded number of folders read side by side, as
+ * sourceFiles does). Machine state, build output, dot-folders and a Python
+ * environment — known by its pyvenv.cfg, whatever the folder is called, and
+ * its site-packages — are not his tests.
+ */
+async function pythonTestFolders(root: string): Promise<string[]> {
+    const found = new Set<string>();
+    let level = [root];
+    while (level.length) {
+        const next: string[] = [];
+        for (let i = 0; i < level.length; i += READ_CONCURRENCY) {
+            const listed = await Promise.all(level.slice(i, i + READ_CONCURRENCY).map(dir =>
+                fs.promises.readdir(dir, { withFileTypes: true }).then(entries => ({ dir, entries }), () => ({ dir, entries: [] as fs.Dirent[] }))));
+            for (const { dir, entries } of listed) {
+                if (dir !== root && entries.some(entry => entry.isFile() && entry.name === 'pyvenv.cfg')) continue;
+                for (const entry of entries) {
+                    if (entry.isDirectory()) {
+                        if (entry.name.startsWith('.') || isMachineStateDirectory(entry.name) || BUILD_OUTPUT.has(entry.name) || PYTHON_PACKAGES_DIR.test(entry.name)) continue;
+                        next.push(path.join(dir, entry.name));
+                    } else if (entry.isFile() && PYTHON_TEST_FILE.test(entry.name)) {
+                        found.add(dir);
+                    }
+                }
+            }
+        }
+        level = next;
+    }
+    return [...found].map(dir => (path.relative(root, dir) || '.').split(path.sep).join('/')).sort();
+}
+
+const exists = (file: string) => fs.promises.access(file).then(() => true, () => false);
+
 /**
  * Run his project's own tests once: npm's test script through quality_run, or
- * Python's own runner (pytest when the project uses it, else unittest — the
- * standard library, present wherever Python is). The caller supplies the tool
- * executor, so the run goes through the same execution path as every tool —
- * named `runTool`: the boot gate (ExecutionEnforcer) reads any bare call of a
- * function named exec in Joe's source as a process spawn, and refuses to start.
+ * his Python tests through the one Python test runner (python-test-runner) —
+ * pytest where it is installed, else the standard-library runner that also
+ * runs pytest-style tests. The caller supplies the tool executor, so the run
+ * goes through the same execution path as every tool — named `runTool`: the
+ * boot gate (ExecutionEnforcer) reads any bare call of a function named exec
+ * in Joe's source as a process spawn, and refuses to start.
  *
  * A run that ran no test is not a pass (round 21): unittest before Python 3.12
  * prints «Ran 0 tests … OK» and exits 0, pytest exits 0 when every test was
- * skipped. The runner's own summary says so (test-run-evidence), as quality_run
- * reads it for npm's test script.
+ * skipped. The one test-run judge reads the runner's own summary
+ * (test-run-evidence), as quality_run does for npm's test script.
+ *
+ * ⛔ HIS TESTS, WHEREVER HE PUT THEM (round 21 review, Q8). `python -m
+ * unittest discover` from the root walks only into packages: the default
+ * target this gate's own repair writes, tests/test_requested_records.py, has
+ * no __init__.py beside it, so working tests ran as «Ran 0 tests», exit 5 —
+ * and a pytest-style file never ran at all unless the project declared pytest.
+ * The test files are now found here, and the runner is given their folders.
  */
 export async function runRequestedTests(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
     const dir = String(root || '').trim();
-    if (!dir || !fs.existsSync(dir)) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
+    if (!dir || !(await exists(dir))) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
     let scripts: Record<string, string> = {};
-    const hasManifest = fs.existsSync(path.join(dir, 'package.json'));
+    const hasManifest = await exists(path.join(dir, 'package.json'));
     if (hasManifest) {
-        try { scripts = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'))?.scripts || {}; } catch { scripts = {}; }
+        try { scripts = JSON.parse(await fs.promises.readFile(path.join(dir, 'package.json'), 'utf8'))?.scripts || {}; } catch { scripts = {}; }
     }
-    if (hasManifest && String(scripts.test || '').trim() && !PLACEHOLDER_TEST.test(String(scripts.test))) {
+    if (hasManifest && hasRealTestScript(scripts)) {
         try {
             const run = await runTool('quality_run', { path: dir, tasks: ['test'] });
             const executed = Array.isArray(run?.output?.results) ? run.output.results.filter((r: any) => r?.skipped === false) : [];
@@ -791,27 +841,31 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
             return { root: dir, ran: false, passed: false, runner: 'npm test', error: String(error?.message || error).slice(0, 300) };
         }
     }
-    const pythonProject = ['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].some(f => fs.existsSync(path.join(dir, f)))
-        || (() => { try { return fs.readdirSync(dir).some(name => /\.py$/iu.test(name)); } catch { return false; } })();
+    const projectMarkers = await Promise.all(['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].map(f => exists(path.join(dir, f))));
+    const pythonProject = projectMarkers.some(Boolean)
+        || await fs.promises.readdir(dir).then(names => names.some(name => /\.py$/iu.test(name)), () => false);
     if (pythonProject) {
-        let usesPytest = false;
-        for (const f of ['requirements.txt', 'pyproject.toml', 'setup.cfg', 'pytest.ini']) {
-            try { if (/\bpytest\b/iu.test(fs.readFileSync(path.join(dir, f), 'utf8'))) usesPytest = true; } catch { /* absent */ }
-        }
-        // The interpreter the platform ships: `python3` on a Linux server.
-        const command = `${pythonExecutable()} ${usesPytest ? '-m pytest -q' : '-m unittest discover -v'}`;
+        const folders = await pythonTestFolders(dir);
+        // The runner as a delivered script would run it; the interpreter is
+        // the name this machine — the one running the check — ships.
+        const runner = 'python tests (pytest where installed, else the standard-library runner)';
+        if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project, so the requested tests cannot run' };
+        const command = pythonTestCommand(folders, false, pythonExecutable());
         try {
             const run = await runTool('shell_execute', { command, cwd: dir });
-            const printed = `${String(run?.output?.stdout ?? '')}
-${String(run?.output?.stderr ?? '')}`;
-            const ranNothing = run?.ok === true ? emptyTestRun(printed) : null;
-            const passed = run?.ok === true && !ranNothing;
-            const error = passed ? undefined
-                : ranNothing ? `the test command ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`
-                    : String(run?.error || run?.output?.stderr || 'the tests did not pass');
-            return { root: dir, ran: true, passed, runner: command, error: error?.slice(0, 400) };
+            const printed = `${String(run?.output?.stdout ?? '')}\n${String(run?.output?.stderr ?? '')}`;
+            const judged = judgeTestRun(run?.ok === true, printed);
+            // The runner fails an empty run itself (exit 1): its summary still says why.
+            const empty = judged.passed ? null : judged.ranNothing ?? emptyTestRun(printed);
+            // A failure's own words are at the END of what the runner printed (the
+            // assertion, «FAILED (failures=1)»): keep the end, not the first lines.
+            const said = String(run?.output?.stderr || run?.error || 'the tests did not pass').trim();
+            const error = judged.passed ? undefined
+                : empty ? `the test command ran no tests (${empty.runner}: ${empty.evidence})`
+                    : said.length > 400 ? `…${said.slice(-399)}` : said;
+            return { root: dir, ran: true, passed: judged.passed, runner: `${runner} in ${folders.join(', ')}`.slice(0, 300), error: error?.slice(0, 400) };
         } catch (error: any) {
-            return { root: dir, ran: false, passed: false, runner: command, error: String(error?.message || error).slice(0, 300) };
+            return { root: dir, ran: false, passed: false, runner, error: String(error?.message || error).slice(0, 300) };
         }
     }
     if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script, so the requested tests cannot run' };
@@ -1068,7 +1122,7 @@ export function testScriptPatchFor(root: string): { file: string; script: string
     if (!fs.existsSync(file)) return null;
     try {
         const scripts = JSON.parse(fs.readFileSync(file, 'utf8'))?.scripts || {};
-        if (String(scripts.test || '').trim() && !PLACEHOLDER_TEST.test(String(scripts.test))) return null;
+        if (hasRealTestScript(scripts)) return null;
     } catch { return null; }
     return { file, script: 'node --test tests/' };
 }

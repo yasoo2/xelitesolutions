@@ -70,7 +70,8 @@ describe('a test run that ran nothing is not a pass', () => {
         const bare: any = await shell('empty-run-bare')({ command: `${pythonExecutable()} -m unittest discover -v`, cwd: root });
         expect(bare.ok).toBe(true);
         const run = await runRequestedTests(root, runTool('empty-run-gate'));
-        expect(run).toMatchObject({ ran: true, passed: false, runner: `${pythonExecutable()} -m unittest discover -v` });
+        // Round 22 (Q8): his test files are found and run by the shared Python runner, not `unittest discover`.
+        expect(run).toMatchObject({ ran: true, passed: false, runner: expect.stringMatching(/^python tests .* in \.$/u) });
         expect(String(run.error)).toMatch(/ran no tests \(unittest: Ran 0 tests/);
     });
 

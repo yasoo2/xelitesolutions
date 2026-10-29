@@ -15,6 +15,7 @@ import {
 } from '../modules/tools/definitions/ProjectPipelineTool';
 import { ProjectPlannerTool } from '../modules/tools/definitions/ProjectPlannerTool';
 import { pythonExecutable } from '../core/quality/python-executable';
+import { pythonLauncher, pythonRunCommand } from '../core/quality/python-test-runner';
 
 /**
  * Eval round 19 (adversarial review of the merged verdict and artifact
@@ -120,13 +121,13 @@ describe('P301: the file the program writes is never the program', () => {
         for (const id of ['P301-cli-ar', 'P302-cli-en']) {
             const { plan, structure, pkg } = scaffold(exam(id));
             expect({ id, keys: Object.keys(structure).filter(k => /\.csv$/i.test(k)) }).toEqual({ id, keys: [] });
-            expect({ id, start: pkg.scripts.start, main: pkg.main }).toEqual({ id, start: `${pythonExecutable()} main.py`, main: 'main.py' });
+            expect({ id, start: pkg.scripts.start, main: pkg.main }).toEqual({ id, start: pythonRunCommand('main.py'), main: 'main.py' });
             expect(plan.phases[0].tasks.map((t: any) => t.args.path).filter(Boolean)).toEqual(['main.py', 'test_main.py']);
         }
     });
     it('a named SOURCE file is still the entry, and its test is named after it', () => {
         const { structure, pkg } = scaffold('Write a Python script wordcount.py that counts the words in a file and writes the result to report.txt.');
-        expect(pkg.scripts.start).toBe(`${pythonExecutable()} wordcount.py`);
+        expect(pkg.scripts.start).toBe(pythonRunCommand('wordcount.py'));
         expect(pkg.scripts.test).toBe(pythonTestCommand(['test_wordcount.py'], true));
         expect(Object.keys(structure)).toEqual(expect.arrayContaining(['wordcount.py']));
         expect(Object.keys(structure)).not.toContain('report.txt');
@@ -146,7 +147,9 @@ describe('a Python program is proven without packages the machine may not have',
     });
     it('tests Joe authors run on the standard library; tests a plan wrote prefer pytest only where it is installed', () => {
         const own = pythonTestCommand(['test_main.py'], true);
-        expect(own).toMatch(new RegExp(`^${pythonExecutable()} -c ".*unittest.*" test_main\\.py$`));
+        // Round 22 (Q11): through the launcher that finds Python where the script runs.
+        expect(own.startsWith(`${pythonLauncher()} -c "`)).toBe(true);
+        expect(own).toMatch(/ -c ".*unittest.*" test_main\.py$/u);
         expect(own).not.toMatch(/pytest/);
         const planned = pythonTestCommand(['tests/test_x.py'], false);
         expect(planned).toMatch(/find_spec\('pytest'\)/);

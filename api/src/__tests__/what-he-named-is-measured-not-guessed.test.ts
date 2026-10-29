@@ -250,7 +250,9 @@ describe('«tested» means his tests ran and passed', () => {
         const placeholder = tree({ 'package.json': JSON.stringify({ scripts: { test: 'echo "Error: no test specified" && exit 1' } }) });
         expect(await runRequestedTests(placeholder, exec)).toMatchObject({ ran: false, passed: false });
         const py = tree({ 'app.py': 'x = 1\n', 'tests.py': 'import unittest\n' });
-        expect(await runRequestedTests(py, exec)).toMatchObject({ ran: true, passed: true, runner: `${pythonExecutable()} -m unittest discover -v` });
+        // Round 22 (Q8): his test files are found and the shared Python runner runs them, not `unittest discover`.
+        expect(await runRequestedTests(py, exec)).toMatchObject({ ran: true, passed: true, runner: expect.stringMatching(/^python tests .* in \.$/u) });
+        expect(String(calls[calls.length - 1][1].command)).toMatch(new RegExp(`^${pythonExecutable()} -c "[^"]+" \\.$`, 'u'));
         const unknown = tree({ 'main.rb': 'puts 1' });
         expect(await runRequestedTests(unknown, exec)).toMatchObject({ ran: false, noRunner: true });
         expect(calls.map(c => c[0])).toEqual(['quality_run', 'shell_execute']);

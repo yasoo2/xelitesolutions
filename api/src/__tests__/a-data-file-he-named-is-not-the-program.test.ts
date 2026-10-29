@@ -1,5 +1,5 @@
 import { deterministicPhasesFor, pythonTestCommand } from '../modules/tools/definitions/ProjectPipelineTool';
-import { pythonExecutable } from '../core/quality/python-executable';
+import { pythonRunCommand } from '../core/quality/python-test-runner';
 
 /**
  * Eval P301-cli-ar, 2026-10-25: «اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV …
@@ -16,7 +16,7 @@ describe('a data file he named is the program\'s input or output, not the progra
         const tasks = tasksOf(P301);
         const pkg = JSON.parse(tasks[0].args.structure['package.json']);
         expect(pkg.main).toBe('main.py');
-        expect(pkg.scripts.start).toBe(`${pythonExecutable()} main.py`);
+        expect(pkg.scripts.start).toBe(pythonRunCommand('main.py'));
         const authored = tasks.filter((t: any) => t.tool === 'ai_write_file').map((t: any) => t.args.path);
         // The test is named after the program (eval round 19).
         expect(authored).toEqual(['main.py', 'test_main.py']);
@@ -28,7 +28,7 @@ describe('a data file he named is the program\'s input or output, not the progra
     it('a named source file is still the entry', () => {
         const pkg = JSON.parse(tasksOf('Write a Python command-line tool report.py that reads a CSV file and prints the totals')[0].args.structure['package.json']);
         expect(pkg.main).toBe('report.py');
-        expect(pkg.scripts.start).toBe(`${pythonExecutable()} report.py`);
+        expect(pkg.scripts.start).toBe(pythonRunCommand('report.py'));
     });
 
     it('the Python test runs with Python alone, and its brief names that command', () => {
@@ -37,6 +37,9 @@ describe('a data file he named is the program\'s input or output, not the progra
         expect(pkg.scripts.test).toBe(pythonTestCommand(['test_main.py'], true));
         // Nothing asks for pytest; the brief only says not to use it.
         expect(JSON.stringify(tasks).replace(/\(no pytest\)/g, '')).not.toMatch(/pytest/);
-        expect(tasks[2].args.description).toContain(`The test is run as \`${pkg.scripts.test}\``);
+        // Round 22: the brief says how the runner runs it — its two thousand characters
+        // (launcher and runner on one line) would only fill the author's window.
+        expect(tasks[2].args.description).toContain('The test is run by a standard-library runner that imports this file and runs every unittest test in it');
+        expect(tasks[2].args.description).not.toContain(pkg.scripts.test);
     });
 });
