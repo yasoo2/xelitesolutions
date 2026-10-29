@@ -133,9 +133,10 @@ describe('history is bounded, and read-only to the repairers', () => {
         const read = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', ...p), 'utf-8');
         // Repairing a snapshot would rewrite the past a restore hands back.
         expect(read('core', 'quality', 'self-repair.ts')).toMatch(/'\.joe-versions'/);
-        // The editor walks through the shared list of Joe's state folders, which names it.
+        // The editor walks through the shared project walker, whose list of Joe's
+        // state folders names it (round 22: one walker, his source by kind).
         expect(read('shared', 'utils', 'project-tree.ts')).toMatch(/'\.joe-versions'/);
-        expect(read('modules', 'tools', 'definitions', 'ProjectEditTool.ts')).toMatch(/isMachineStateDirectory\(e\.name\)/);
+        expect(read('modules', 'tools', 'definitions', 'ProjectEditTool.ts')).toMatch(/listProjectFiles\(dir,/);
     });
 });
 

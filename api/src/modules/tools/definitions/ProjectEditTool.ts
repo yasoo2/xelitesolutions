@@ -32,10 +32,10 @@ import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
 import { acceptanceFor, judgeAcceptance } from '../../../core/quality/acceptance';
 import { saysWord, words, normalise } from '../../../core/language/arabic';
-import { normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
+import { foldChars, normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
 import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
-import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
+import { byNameOrder, isJsonStore, isLockfile, jsonStoresWrittenBy, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../../shared/utils/project-tree';
 
 /** One parsed SEARCH/REPLACE block. */
 export interface EditBlock { file: string; search: string; replace: string }
@@ -141,14 +141,151 @@ function withoutMarksOutsideQuotes(request: string): string {
     return String(request || '').replace(/([«"][^»"\n]*[»"])|[\u064B-\u065F\u0670\u0640]/gu, (_mark, quoted) => quoted || '');
 }
 
-export function parseLiteralTextReplacement(request: string): { from: string; to: string } | null {
-    const text = withoutMarksOutsideQuotes(String(request || '').trim());
-    if (!/(?:غيّ?ر|غير|بدّ?ل|بدل|استبدل|\b(?:change|replace)\b)/iu.test(text)) return null;
-    const pair = text.match(/[«"]([^»"\n]{1,120})[»"][^«"\n]{0,60}(?:إلى|الى|\bto\b|\bwith\b)[^«"\n]{0,24}[«"]([^»"\n]{1,120})[»"]/iu);
+/**
+ * ⛔ HIS STRUCTURE IS READ ON FOLDED TEXT; WHAT HE QUOTED IS KEPT AS HE WROTE IT
+ * (round 22, W1).
+ *
+ * Measured: «أضف قسم الأسئلة الشائعة، وغير نص «احجز جلسة» الي «احجز موعدك»» parsed
+ * the FAQ only — «الي» (ى typed as ي) was not «إلى», so the button text stayed,
+ * the reply listed the FAQ alone and said ok. The same with “curly” quotes,
+ * «استبدل «مرحبا» بـ «اهلا»», «الاسئله الشائعه» (ة typed as ه), «إضف» (the
+ * wrong hamza). The marks were off but the letters were not folded, and only
+ * « » and " were quote marks. So:
+ *  - every pair of quote marks he may type is a boundary — « » (and »…«, typed
+ *    the other way round in a right-to-left line), " ", “ ”, „ “, ‘ ’, ‹ ›, and
+ *    ' ' where it opens and closes words rather than standing inside one
+ *    («the hero's title» has no quote in it);
+ *  - outside the quotes the text is folded exactly as promptNormalizer.foldChars
+ *    folds a request (أ/إ/آ → ا, ة → ه, ى → ي, ئ → ي, marks dropped), and the
+ *    patterns are written in their usual spelling and folded the same way, so
+ *    a pattern matches the word, not one way of typing it;
+ *  - a quoted value is never folded: it is his exact text, replaced as he
+ *    wrote it;
+ *  - «إلى», «بـ» and «لـ» all join a replacement pair;
+ *  - and a quoted span that no operation consumed is named as not done (see
+ *    unreadEditClauses), never reported as success.
+ */
+const QUOTE_CLOSERS: Readonly<Record<string, string>> = {
+    '«': '»', '»': '«', '“': '”“', '”': '”', '„': '“”', '‘': '’', '‚': '‘’', '‹': '›', '"': '"', "'": "'",
+};
+/** What may stand before a straight single quote that opens a value, and after one that closes it. */
+const SINGLE_QUOTE_OPENS_AFTER = /[\s([{«“„‘‚‹:،,؛;]/u;
+const SINGLE_QUOTE_CLOSES_BEFORE = /[\s)\]}»”’›.,;:!?،؛؟]/u;
+
+export interface QuotedSpan { value: string; open: number; close: number }
+
+/** Every quoted span he typed, in order, whatever pair of marks he used. Offsets are in his text. */
+export function quotedSpans(request: string): QuotedSpan[] {
+    const text = String(request || '');
+    const out: QuotedSpan[] = [];
+    for (let i = 0; i < text.length; i++) {
+        const closers = QUOTE_CLOSERS[text[i]];
+        if (!closers) continue;
+        if (text[i] === "'" && i > 0 && !SINGLE_QUOTE_OPENS_AFTER.test(text[i - 1])) continue;
+        let close = -1;
+        for (let j = i + 1; j < text.length && text[j] !== '\n'; j++) {
+            if (!closers.includes(text[j])) continue;
+            if (text[j] === "'" && j + 1 < text.length && !SINGLE_QUOTE_CLOSES_BEFORE.test(text[j + 1])) continue;
+            close = j;
+            break;
+        }
+        if (close < 0) continue;
+        const value = text.slice(i + 1, close);
+        if (value.trim()) out.push({ value, open: i, close });
+        i = close;
+    }
+    return out;
+}
+
+/** A request as its structure is read: folded text with every quoted span as «…», and the way back to his text. */
+interface EditStructure {
+    source: string;
+    /** Folded text; every quoted span is «…» (its inner punctuation blanked), every stray quote mark a space. */
+    text: string;
+    /** For each unit of `text`, the offset in `source` it came from (one more entry: the end). */
+    at: number[];
+    /** The quoted spans with their place in `text`: `from` is the «, `to` one past the ». */
+    spans: Array<QuotedSpan & { from: number; to: number }>;
+}
+
+function readEditStructure(request: string): EditStructure {
+    const source = String(request || '');
+    let text = '';
+    const at: number[] = [];
+    const emit = (piece: string, origin: number) => { text += piece; for (let u = 0; u < piece.length; u++) at.push(origin); };
+    const fold = (from: number, to: number, inside: boolean) => {
+        for (let i = from; i < to;) {
+            const ch = String.fromCodePoint(source.codePointAt(i) as number);
+            const blank = inside ? /[«»،,.;؛!؟?\n]/u.test(ch) : !!QUOTE_CLOSERS[ch];
+            emit(blank ? ' ' : foldChars(ch), i);
+            i += ch.length;
+        }
+    };
+    const spans: EditStructure['spans'] = [];
+    let k = 0;
+    for (const span of quotedSpans(source)) {
+        fold(k, span.open, false);
+        const from = text.length;
+        emit('«', span.open);
+        fold(span.open + 1, span.close, true);
+        emit('»', span.close);
+        spans.push({ ...span, from, to: text.length });
+        k = span.close + 1;
+    }
+    fold(k, source.length, false);
+    at.push(source.length);
+    return { source, text, at, spans };
+}
+
+/**
+ * A pattern written in his usual spelling, folded as the text is (named-entities'
+ * foldPattern): an optional mark (`غيّ?ر`) goes with its `?`, then every mark,
+ * and the letters fold as foldChars folds them. The `d` flag gives the place of
+ * every capture, so a quoted value is taken from his text, not from the fold.
+ * ⛔ No `[ء-ي]` range in a pattern read this way: its first letter folds away.
+ */
+const foldedPattern = (source: string, flags = 'iu') => new RegExp(source
+    .replace(/[\u064B-\u065F\u0670\u0640]\?/gu, '')
+    .replace(/[\u064B-\u065F\u0670\u0640]/gu, '')
+    .replace(/[أإآٱ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ة/gu, 'ه')
+    .replace(/ئ/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ء/gu, ''), `${flags}d`);
+
+/** The quoted span a capture stands in, or -1. */
+function spanOfCapture(st: EditStructure, m: RegExpExecArray | RegExpMatchArray | null, group: number): number {
+    const range = m?.indices?.[group];
+    if (!range) return -1;
+    return st.spans.findIndex(span => range[0] > span.from && range[0] < span.to);
+}
+
+/** His exact text for a quoted capture ('' when the capture is not a quoted span). */
+function quotedValue(st: EditStructure, m: RegExpExecArray | RegExpMatchArray | null, group: number): string {
+    const span = spanOfCapture(st, m, group);
+    return span >= 0 ? st.spans[span].value.trim() : '';
+}
+
+/** His text, marks off, for an unquoted capture. */
+function originalValue(st: EditStructure, m: RegExpExecArray | RegExpMatchArray | null, group: number): string {
+    const range = m?.indices?.[group];
+    if (!range) return '';
+    return st.source.slice(st.at[range[0]], st.at[range[1]]).replace(/[\u064B-\u065F\u0670\u0640]/gu, '').trim();
+}
+
+const LITERAL_VERB = foldedPattern(String.raw`(?:غيّ?ر|بدّ?ل|استبدل|تغيير|تبديل|استبدال|\b(?:change|replace)\b)`);
+/** «A» … إلى/to/with «B», or «A» بـ/لـ «B». */
+const LITERAL_PAIR = foldedPattern(String.raw`«([^»\n]{1,120})»[^«\n]{0,60}?(?:(?:(?<![\p{L}\p{N}_])إلى(?![\p{L}\p{N}_])|\bto\b|\bwith\b)[^«\n]{0,24}?|(?<![\p{L}\p{N}_])[بل]\s*)«([^»\n]{1,120})»`);
+
+function readLiteral(st: EditStructure): { from: string; to: string; spans: number[] } | null {
+    if (!LITERAL_VERB.test(st.text)) return null;
+    const pair = LITERAL_PAIR.exec(st.text);
     if (!pair) return null;
-    const from = pair[1].trim();
-    const to = pair[2].trim();
-    return from && to && from !== to ? { from, to } : null;
+    const from = quotedValue(st, pair, 1);
+    const to = quotedValue(st, pair, 2);
+    return from && to && from !== to ? { from, to, spans: [spanOfCapture(st, pair, 1), spanOfCapture(st, pair, 2)] } : null;
+}
+
+export function parseLiteralTextReplacement(request: string): { from: string; to: string } | null {
+    const literal = readLiteral(readEditStructure(String(request || '').trim()));
+    return literal ? { from: literal.from, to: literal.to } : null;
 }
 
 export type PresentationEdit =
@@ -171,77 +308,118 @@ export interface ServicesSectionEdit {
     beforeContact: boolean;
 }
 
-/** Read a concrete request to add a services section to a generated site. */
-export function parseServicesSectionEdit(request: string): ServicesSectionEdit | null {
-    const text = withoutMarksOutsideQuotes(String(request || '').trim());
-    const add = /(?:أضف|اضف|إضاف[ةه]|اضاف[ةه]|أنشئ|انشئ|ضع|حط|\badd\b|\bcreate\b)/iu.test(text);
-    const services = /(?:قسم\s+(?:ال)?خدمات|(?:ال)?خدمات\s+(?:قسم|section)|\bservices?\s+section\b)/iu.test(text);
-    if (!add || !services) return null;
-    const quotedLink = text.match(/(?:رابط|link)[^«"\n]{0,35}[«"]([^»"\n]{1,40})[»"]/iu);
-    const numberWords: Record<string, number> = {
-        واحد: 1, واحدة: 1, اثنين: 2, اثنتين: 2, اثنان: 2, ثلاث: 3, ثلاثة: 3,
-        اربع: 4, اربعة: 4, أربع: 4, أربعة: 4, خمس: 5, خمسة: 5, ست: 6, ستة: 6,
-        one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
-    };
-    const countHit = text.match(/(?:ب|with\s+)?(\d+|واحد(?:ة)?|اثن(?:ين|تان|تين)|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|ست(?:ة)?|one|two|three|four|five|six)\s+(?:خدمات?|services?)/iu);
-    const rawCount = String(countHit?.[1] || '').toLowerCase();
-    const count = Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (numberWords[rawCount] || 3)));
+/** Number words as his text is folded («ثلاثة» and «ثلاثه» are one key). */
+const NUMBER_WORDS: Readonly<Record<string, number>> = Object.fromEntries(Object.entries({
+    واحد: 1, واحدة: 1, اثنين: 2, اثنتين: 2, اثنان: 2, ثلاث: 3, ثلاثة: 3,
+    اربع: 4, اربعة: 4, أربع: 4, أربعة: 4, خمس: 5, خمسة: 5, ست: 6, ستة: 6,
+    one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+}).map(([word, n]) => [foldChars(word), n]));
+
+/** The spans of the structure that lie inside [from, to). */
+function spansWithin(st: EditStructure, from: number, to: number): number[] {
+    return st.spans.map((span, index) => (span.from >= from && span.to <= to ? index : -1)).filter(index => index >= 0);
+}
+
+const SERVICES_ADD = foldedPattern(String.raw`(?:أضف|إضاف[ةه]|أنشئ|ضع|حط|\badd\b|\bcreate\b)`);
+const SERVICES_NAMED = foldedPattern(String.raw`(?:قسم\s+(?:ال)?خدمات|(?:ال)?خدمات\s+(?:قسم|section)|\bservices?\s+section\b)`);
+const QUOTED_LINK = foldedPattern(String.raw`(?:رابط|link)[^«\n]{0,35}«([^»\n]{1,40})»`);
+const SERVICES_COUNT = foldedPattern(String.raw`(?:ب|with\s+)?(\d+|واحد(?:ة)?|اثن(?:ين|تان|تين)|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|ست(?:ة)?|one|two|three|four|five|six)\s+(?:خدمات?|services?)`);
+const BEFORE_CONTACT = foldedPattern(String.raw`(?:قبل\s+(?:قسم\s+)?التواصل|before\s+(?:the\s+)?contact)`);
+
+function readServicesSectionEdit(st: EditStructure): (ServicesSectionEdit & { spans: number[] }) | null {
+    if (!SERVICES_ADD.test(st.text) || !SERVICES_NAMED.test(st.text)) return null;
+    const link = QUOTED_LINK.exec(st.text);
+    const label = quotedValue(st, link, 1);
+    const rawCount = String(SERVICES_COUNT.exec(st.text)?.[1] || '').toLowerCase();
     return {
-        label: quotedLink?.[1]?.trim() || (/\p{Script=Arabic}/u.test(text) ? 'الخدمات' : 'Services'),
-        count,
-        beforeContact: /(?:قبل\s+(?:قسم\s+)?التواصل|before\s+(?:the\s+)?contact)/iu.test(text),
+        label: label || (/\p{Script=Arabic}/u.test(st.source) ? 'الخدمات' : 'Services'),
+        count: Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (NUMBER_WORDS[rawCount] || 3))),
+        beforeContact: BEFORE_CONTACT.test(st.text),
+        spans: label ? [spanOfCapture(st, link, 1)] : [],
     };
 }
+
+/** Read a concrete request to add a services section to a generated site. */
+export function parseServicesSectionEdit(request: string): ServicesSectionEdit | null {
+    const read = readServicesSectionEdit(readEditStructure(String(request || '').trim()));
+    return read ? { label: read.label, count: read.count, beforeContact: read.beforeContact } : null;
+}
+
+const MARK_QUOTED = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+[^،.\n]{0,55}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^«\n]{0,55}«([^»\n]{1,24})»[^،.\n]{0,90}(?:بجانب|قرب|محاذاة|beside|next\s+to)[^«\n]{0,45}«([^»\n]{1,80})»`);
+const MARK_DERIVED = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+[^،.\n]{0,65}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^،.\n]{0,65}(?:بجانب|قرب|محاذاة|beside|next\s+to)\s*«([^»\n]{1,80})»`);
+const HERO_CTA = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+(?:لي\s+)?(?:زر|button|cta)\s*«([^»\n]{1,80})»[^،.\n]{0,120}(?:القسم\s+(?:الرئيسي|الافتتاحي)|واجهة\s+(?:الموقع|الصفحة)|\bhero\b)[^،.\n]{0,140}(?:نموذج\s+التواصل|قسم\s+التواصل|\bcontact(?:\s+form|\s+section)?\b)`);
+const PHONE_CLAUSE = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+[^،.\n]{0,35}(?:حقل|input|field)[^،.\n]{0,30}(?:رقم\s+هاتف|هاتف|telephone|phone)[^،.\n]*`);
+const PHONE_REQUIRED = foldedPattern(String.raw`(?:مطلوب|required)`);
+const PHONE_REJECTS_LETTERS = foldedPattern(String.raw`(?:لا\s+يقبل[^،.\n]{0,20}(?:حروف|أحرف)|reject[^،.\n]{0,20}letters?|numeric[ -]?only)`);
+const FAQ_CLAUSE = foldedPattern(String.raw`(?:أضف|أنشئ|add|create)\s+[^،.\n]{0,45}(?:قسم\s+)?(?:الأسئلة\s+الشائعة|faq)[^،.\n]*`);
+const FAQ_NAME = foldedPattern(String.raw`(?:الأسئلة\s+الشائعة|faq)`);
+const FAQ_COUNT = foldedPattern(String.raw`(?:ب|with\s+)?(\d+|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|three|four|five)\s+(?:أسئلة|questions?)`);
+const FAQ_SINGLE_OPEN = foldedPattern(String.raw`(?:واحد[^،.\n]{0,12}فقط[^،.\n]{0,12}مفتوح|one\s+(?:item|question)\s+open)`);
+const FAQ_CLOSABLE = foldedPattern(String.raw`(?:إمكانية\s+إغلاقه|قابل[^،.\n]{0,20}للإغلاق|closable|can\s+be\s+closed)`);
+const CALCULATOR_FIGURES = foldedPattern(String.raw`(?:خصم|تخفيض|كود|رمز|العمل[ةه]|ضريب[ةه]|إعاد[ةه]\s+التعيين|\b(?:promo|discount|code|currenc\w*|tax|reset)\b)`);
+const CALCULATOR_CLAUSE = foldedPattern(String.raw`(?:أضف|أنشئ|وسّ?ع|طوّ?ر|عدّ?ل|add|create|extend|enhance|update)\s+[^،.\n]{0,80}(?:حاسب[ةه]|calculator)[^،.\n]*`);
+const SUBTITLE_BELOW = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+(?:تحت|أسفل|below|under)\s+(?:عنوان|heading|title)?\s*(?:«([^»\n]{1,60})»|([^«،,.\n]{2,60}))[^«\n]{0,50}(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*«([^»\n]{1,220})»`);
+const SUBTITLE_LINE_FIRST = foldedPattern(String.raw`(?:أضف|ضع|حط|add)\s+(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*«([^»\n]{1,220})»[^،.\n]{0,70}(?:تحت|أسفل|below|under)\s+(?:عنوان|heading|title)?\s*(?:«([^»\n]{1,60})»|([^«،.\n]{2,60}))`);
+
+/** One operation as read, with the quoted spans it consumed. */
+interface ReadPresentationEdit { op: PresentationEdit; spans: number[] }
 
 /**
  * Read several explicit presentation changes from one follow-up without asking
  * a provider to rediscover Joe's generated-project contract. Values must be
  * quoted: the quotes are the user's edit boundaries, so a later clause can
- * never be swallowed into an earlier value.
+ * never be swallowed into an earlier value. The structure is read on folded
+ * text (readEditStructure); the calculator's own figures — a promo code in
+ * capitals, percentages — are read from his text with the marks off, as before.
  */
-export function parsePresentationEdits(request: string): PresentationEdit[] {
-    const text = withoutMarksOutsideQuotes(String(request || '').trim());
-    const out: PresentationEdit[] = [];
-    const literal = parseLiteralTextReplacement(text);
-    if (literal) out.push({ kind: 'literal', ...literal });
+function readPresentationEdits(st: EditStructure, plain: string): ReadPresentationEdit[] {
+    const text = plain;
+    const out: ReadPresentationEdit[] = [];
+    const literal = readLiteral(st);
+    if (literal) out.push({ op: { kind: 'literal', from: literal.from, to: literal.to }, spans: literal.spans });
 
-    const mark = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,55}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^«"\n]{0,55}[«"]([^»"\n]{1,24})[»"][^،.\n]{0,90}(?:بجانب|قرب|محاذاة|beside|next\s+to)[^«"\n]{0,45}[«"]([^»"\n]{1,80})[»"]/iu);
-    if (mark) out.push({ kind: 'brand_mark', value: mark[1].trim(), beside: mark[2].trim() });
+    const mark = MARK_QUOTED.exec(st.text);
+    if (mark) out.push({ op: { kind: 'brand_mark', value: quotedValue(st, mark, 1), beside: quotedValue(st, mark, 2) }, spans: [spanOfCapture(st, mark, 1), spanOfCapture(st, mark, 2)] });
     else {
-        const derivedMark = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,65}(?:شعار|علام[ةه]|\b(?:logo|mark)\b)[^،.\n]{0,65}(?:بجانب|قرب|محاذاة|beside|next\s+to)\s*[«"]([^»"\n]{1,80})[»"]/iu);
-        const beside = derivedMark?.[1]?.trim() || '';
+        const derivedMark = MARK_DERIVED.exec(st.text);
+        const beside = quotedValue(st, derivedMark, 1);
         const value = Array.from(beside.replace(/\s+/g, ''))[0] || '';
-        if (beside && value) out.push({ kind: 'brand_mark', value, beside });
+        if (beside && value) out.push({ op: { kind: 'brand_mark', value, beside }, spans: [spanOfCapture(st, derivedMark, 1)] });
     }
 
-    const heroCta = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:لي\s+)?(?:زر|button|cta)\s*[«"]([^»"\n]{1,80})[»"][^،.\n]{0,120}(?:القسم\s+(?:الرئيسي|الافتتاحي)|واجهة\s+(?:الموقع|الصفحة)|\bhero\b)[^،.\n]{0,140}(?:نموذج\s+التواصل|قسم\s+التواصل|\bcontact(?:\s+form|\s+section)?\b)/iu);
-    if (heroCta) out.push({ kind: 'hero_contact_cta', label: heroCta[1].trim() });
+    const heroCta = HERO_CTA.exec(st.text);
+    if (heroCta) out.push({ op: { kind: 'hero_contact_cta', label: quotedValue(st, heroCta, 1) }, spans: [spanOfCapture(st, heroCta, 1)] });
 
-    const phoneClause = text.match(/(?:أضف|اضف|ضع|حط|add)\s+[^،.\n]{0,35}(?:حقل|input|field)[^،.\n]{0,30}(?:رقم\s+هاتف|هاتف|telephone|phone)[^،.\n]*/iu)?.[0] || '';
+    const phoneClause = PHONE_CLAUSE.exec(st.text)?.[0] || '';
     if (phoneClause) {
         out.push({
-            kind: 'phone_field',
-            required: /(?:مطلوب|required)/iu.test(phoneClause),
-            rejectLetters: /(?:لا\s+يقبل[^،.\n]{0,20}(?:حروف|احرف)|reject[^،.\n]{0,20}letters?|numeric[ -]?only)/iu.test(phoneClause),
+            op: { kind: 'phone_field', required: PHONE_REQUIRED.test(phoneClause), rejectLetters: PHONE_REJECTS_LETTERS.test(phoneClause) },
+            spans: [],
         });
     }
 
-    const faqClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|add|create)\s+[^،.\n]{0,45}(?:قسم\s+)?(?:الأسئلة\s+الشائعة|الاسئلة\s+الشائعة|faq)[^،.\n]*/iu)?.[0] || '';
-    if (faqClause) {
-        const countHit = faqClause.match(/(?:ب|with\s+)?(\d+|ثلاث(?:ة)?|أ?ربع(?:ة)?|خمس(?:ة)?|three|four|five)\s+(?:أسئلة|اسئلة|questions?)/iu);
-        const wordCounts: Record<string, number> = { ثلاث: 3, ثلاثة: 3, اربع: 4, اربعة: 4, أربع: 4, أربعة: 4, خمس: 5, خمسة: 5, three: 3, four: 4, five: 5 };
-        const rawCount = String(countHit?.[1] || '').toLowerCase();
+    const faq = FAQ_CLAUSE.exec(st.text);
+    if (faq) {
+        const rawCount = String(FAQ_COUNT.exec(faq[0])?.[1] || '').toLowerCase();
+        const link = QUOTED_LINK.exec(st.text);
+        const label = quotedValue(st, link, 1);
+        const range = faq.indices?.[0] || [faq.index, faq.index + faq[0].length];
+        // The section's own name, quoted inside the clause («قسم «الأسئلة الشائعة»»), is read by it too.
+        const named = spansWithin(st, range[0], range[1]).filter(index => FAQ_NAME.test(st.text.slice(st.spans[index].from, st.spans[index].to)));
         out.push({
-            kind: 'faq_section',
-            label: (text.match(/(?:رابط|link)[^«"\n]{0,35}[«"]([^»"\n]{1,40})[»"]/iu)?.[1] || (/\p{Script=Arabic}/u.test(text) ? 'الأسئلة الشائعة' : 'FAQ')).trim(),
-            count: Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (wordCounts[rawCount] || 3))),
-            singleOpen: /(?:واحد[^،.\n]{0,12}فقط[^،.\n]{0,12}مفتوح|one\s+(?:item|question)\s+open)/iu.test(text),
-            closable: /(?:إمكانية\s+إغلاقه|امكانية\s+اغلاقه|قابل[^،.\n]{0,20}للإغلاق|closable|can\s+be\s+closed)/iu.test(text),
+            op: {
+                kind: 'faq_section',
+                label: label || (/\p{Script=Arabic}/u.test(st.source) ? 'الأسئلة الشائعة' : 'FAQ'),
+                count: Math.max(1, Math.min(6, /^\d+$/.test(rawCount) ? Number(rawCount) : (NUMBER_WORDS[rawCount] || 3))),
+                singleOpen: FAQ_SINGLE_OPEN.test(st.text),
+                closable: FAQ_CLOSABLE.test(st.text),
+            },
+            spans: [...(label ? [spanOfCapture(st, link, 1)] : []), ...named],
         });
     }
 
-    const calculatorClause = text.match(/(?:أضف|اضف|أنشئ|انشئ|وسّ?ع|طوّ?ر|عدّ?ل|add|create|extend|enhance|update)\s+[^،.\n]{0,80}(?:حاسب[ةه]|calculator)[^،.\n]*/iu)?.[0] || '';
-    if (calculatorClause) {
+    const calculator = CALCULATOR_CLAUSE.exec(st.text);
+    if (calculator) {
         // A promo sentence can say "10% before tax" before declaring "tax
         // 16%". The nearest first percentage is then the discount, not the
         // tax rate. The final explicit tax declaration owns the rate.
@@ -252,28 +430,115 @@ export function parsePresentationEdits(request: string): PresentationEdit[] {
         const promo = text.match(/(?:كود|رمز|code)[^،.\n]{0,25}(?:خصم|تخفيض|promo|discount)[^A-Z0-9\n]{0,12}([A-Z][A-Z0-9_-]{2,30})|\b([A-Z][A-Z0-9_-]{2,30})\b[^،.\n]{0,25}(?:خصم|تخفيض|promo|discount)/u);
         const discount = text.match(/(?:خصم|تخفيض|discount)[^،.\n]{0,100}?(\d+(?:[.,]\d+)?)\s*%|(\d+(?:[.,]\d+)?)\s*%[^،.\n]{0,45}(?:خصم|تخفيض|discount)/iu);
         const discountRate = Number(String(discount?.[1] || discount?.[2] || '0').replace(',', '.'));
+        const range = calculator.indices?.[0] || [calculator.index, calculator.index + calculator[0].length];
+        const figureClauses = clauseRanges(st).filter(([from, to]) => CALCULATOR_FIGURES.test(st.text.slice(from, to)));
         out.push({
-            kind: 'calculator_section',
-            label: /\p{Script=Arabic}/u.test(text) ? 'حاسبة تكلفة الاستشارة' : 'Cost calculator',
-            taxRate: Number.isFinite(taxRate) ? Math.max(0, Math.min(100, taxRate)) : 0,
-            rejectNegative: /(?:لا\s+(?:يقبل|تقبل)|عدم\s+قبول|ارفض|reject|prevent)[^،.\n]{0,35}(?:سالب|negative)/iu.test(text),
-            resetLabel: /\p{Script=Arabic}/u.test(text) ? 'إعادة تعيين' : 'Reset',
-            currencies: wantsCurrencies
-                ? [{ code: 'JOD', label: 'الدينار', rate: 1 }, { code: 'USD', label: 'الدولار', rate: 1.41 }]
-                : [],
-            promoCode: String(promo?.[1] || promo?.[2] || '').trim(),
-            discountRate: Number.isFinite(discountRate) ? Math.max(0, Math.min(100, discountRate)) : 0,
-            invalidPromoFeedback: /(?:رسالة|تنبيه|خطأ|واضح|message|feedback|error)[^،.\n]{0,40}(?:خاطئ|غير\s+صحيح|invalid|wrong)|(?:خاطئ|غير\s+صحيح|invalid|wrong)[^،.\n]{0,40}(?:رسالة|تنبيه|خطأ|message|feedback|error)/iu.test(text),
-            preserveStateOnCurrencyChange: /(?:حافظ|احتفظ|ابق|بقاء|preserve|keep|retain)[^،.\n]{0,55}(?:الخدم[ةه]|الساعات|القيم|state|service|hours|values)/iu.test(text),
-            resetAll: /(?:إعاد[ةه]\s+التعيين|reset)[^،.\n]{0,90}(?:تمسح|تعيد|العمل[ةه]|الخصم|القيم|clear|restore|currency|discount|defaults)/iu.test(text),
+            op: {
+                kind: 'calculator_section',
+                label: /\p{Script=Arabic}/u.test(text) ? 'حاسبة تكلفة الاستشارة' : 'Cost calculator',
+                taxRate: Number.isFinite(taxRate) ? Math.max(0, Math.min(100, taxRate)) : 0,
+                rejectNegative: /(?:لا\s+(?:يقبل|تقبل)|عدم\s+قبول|ارفض|reject|prevent)[^،.\n]{0,35}(?:سالب|negative)/iu.test(text),
+                resetLabel: /\p{Script=Arabic}/u.test(text) ? 'إعادة تعيين' : 'Reset',
+                currencies: wantsCurrencies
+                    ? [{ code: 'JOD', label: 'الدينار', rate: 1 }, { code: 'USD', label: 'الدولار', rate: 1.41 }]
+                    : [],
+                promoCode: String(promo?.[1] || promo?.[2] || '').trim(),
+                discountRate: Number.isFinite(discountRate) ? Math.max(0, Math.min(100, discountRate)) : 0,
+                invalidPromoFeedback: /(?:رسالة|تنبيه|خطأ|واضح|message|feedback|error)[^،.\n]{0,40}(?:خاطئ|غير\s+صحيح|invalid|wrong)|(?:خاطئ|غير\s+صحيح|invalid|wrong)[^،.\n]{0,40}(?:رسالة|تنبيه|خطأ|message|feedback|error)/iu.test(text),
+                preserveStateOnCurrencyChange: /(?:حافظ|احتفظ|ابق|بقاء|preserve|keep|retain)[^،.\n]{0,55}(?:الخدم[ةه]|الساعات|القيم|state|service|hours|values)/iu.test(text),
+                resetAll: /(?:إعاد[ةه]\s+التعيين|reset)[^،.\n]{0,90}(?:تمسح|تعيد|العمل[ةه]|الخصم|القيم|clear|restore|currency|discount|defaults)/iu.test(text),
+            },
+            // A calculator is read from its whole clause, and its figures from
+            // every clause that states one (a promo code in quotes, currencies …).
+            spans: [...spansWithin(st, range[0], range[1]), ...figureClauses.flatMap(([from, to]) => spansWithin(st, from, to))],
         });
     }
 
-    const below = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^«"،,.\n]{2,60})[^«"\n]{0,50}(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"]/iu);
-    const lineFirst = text.match(/(?:أضف|اضف|ضع|حط|add)\s+(?:سطر(?:ا|ًا)?|نص(?:ا|ًا)?|وصف(?:ا|ًا)?|subtitle|line|text)\s*[«"]([^»"\n]{1,220})[»"][^،.\n]{0,70}(?:تحت|أسفل|اسفل|below|under)\s+(?:عنوان|heading|title)?\s*([^،.\n]{2,60})/iu);
-    if (below) out.push({ kind: 'section_subtitle', section: below[1].trim(), value: below[2].trim() });
-    else if (lineFirst) out.push({ kind: 'section_subtitle', section: lineFirst[2].trim(), value: lineFirst[1].trim() });
+    const below = SUBTITLE_BELOW.exec(st.text);
+    const lineFirst = below ? null : SUBTITLE_LINE_FIRST.exec(st.text);
+    if (below) {
+        out.push({
+            op: { kind: 'section_subtitle', section: quotedValue(st, below, 1) || originalValue(st, below, 2), value: quotedValue(st, below, 3) },
+            spans: [spanOfCapture(st, below, 1), spanOfCapture(st, below, 3)].filter(index => index >= 0),
+        });
+    } else if (lineFirst) {
+        out.push({
+            op: { kind: 'section_subtitle', section: quotedValue(st, lineFirst, 2) || originalValue(st, lineFirst, 3), value: quotedValue(st, lineFirst, 1) },
+            spans: [spanOfCapture(st, lineFirst, 1), spanOfCapture(st, lineFirst, 2)].filter(index => index >= 0),
+        });
+    }
     return out;
+}
+
+export function parsePresentationEdits(request: string): PresentationEdit[] {
+    const trimmed = String(request || '').trim();
+    return readPresentationEdits(readEditStructure(trimmed), withoutMarksOutsideQuotes(trimmed)).map(read => read.op);
+}
+
+/**
+ * A free-form value ends at the next edit clause, never at the prompt's end;
+ * a quoted one is exactly what he quoted, whatever marks he quoted it with.
+ * Read on the folded structure, so «الى», «إلى» and «إلي» are one word.
+ */
+const CHANGE_VALUE_MARKER = foldedPattern(String.raw`(?:(?<![\p{L}\p{N}_])(?:إلى|ليصبح|ليصير|يصير|تصير)(?![\p{L}\p{N}_])|=|\bto\b)\s*`);
+
+function readBoundedChangeValue(st: EditStructure): { value: string; span: number } {
+    const marker = CHANGE_VALUE_MARKER.exec(st.text);
+    if (!marker) return { value: '', span: -1 };
+    const after = marker.index + marker[0].length;
+    const span = st.spans.findIndex(candidate => candidate.from === after);
+    if (span >= 0) return { value: st.spans[span].value.trim(), span };
+    const tail = st.source.slice(st.at[after]).split('\n')[0].trim();
+    const value = tail.split(/[،.;]\s*(?=(?:ثم\s+)?(?:و?\s*)?(?:[أا]ضف|ضع|حط|غيّ?ر|غير|بدّ?ل|بدل|[اأ]حذف|[اأ]ختبر|ابن[يِى]?|add|change|replace|remove|test|build)(?![\p{L}\p{N}_]))/iu)[0]
+        .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
+    return { value, span: -1 };
+}
+
+export function boundedChangeValue(request: string): string {
+    return readBoundedChangeValue(readEditStructure(String(request || ''))).value;
+}
+
+/**
+ * ⛔ A QUOTED PART NO OPERATION READ IS NAMED, NEVER REPORTED AS DONE (round 22).
+ *
+ * Once one deterministic operation entered the compound path, the general
+ * (model) path was skipped, and a part no reader understood — the button text
+ * in «أضف قسم الأسئلة الشائعة، وغير نص «احجز جلسة» الي «احجز موعدك»» — was simply
+ * not there: ok, a reply listing the FAQ, the button unchanged. Every quoted
+ * span he wrote in a clause that asks for an edit is now accounted for: an
+ * operation that ran consumed it, or the clause is returned here, in his own
+ * words, to be named as not done. A clause that asks only to test or to look
+ * («ثم اختبر زر «احجز» في المتصفح») asks for no edit and is never named.
+ */
+/** An edit verb or its verbal noun, as one whole (folded) word, a conjunction or «بـ»/«الـ» before it. */
+const EDIT_CLAUSE_WORD = foldedPattern(String.raw`^(?:[وفب]?(?:ال)?(?:أضف|ضيف|ضف|ضع|حط|غيّ?ر|بدّ?ل|استبدل|عدّ?ل|احذف|امسح|أزل|اجعل|خلّ?ي|إضافة|تغيير|تبديل|استبدال|تعديل|حذف|إزالة)|change|replace|rename|add|insert|put|set|make|remove|delete|update|edit)$`);
+
+/** A clause asks for an edit when one of its first three words is an edit verb: «غير» deep inside «بقيمة غير صحيحة» is «not». */
+function asksForAnEdit(clause: string): boolean {
+    return clause.replace(/«[^»]*»/gu, ' ').split(/\s+/u).filter(Boolean).slice(0, 3).some(word => EDIT_CLAUSE_WORD.test(word));
+}
+
+/** The punctuation-bounded clauses of the structure, as [from, to) ranges. */
+function clauseRanges(st: EditStructure): Array<[number, number]> {
+    const ranges: Array<[number, number]> = [];
+    let start = 0;
+    for (const end of [...st.text.matchAll(/[،,.;؛!؟?\n]/gu)].map(m => m.index as number).concat(st.text.length)) {
+        ranges.push([start, end]);
+        start = end + 1;
+    }
+    return ranges;
+}
+
+function unreadEditClauses(st: EditStructure, consumed: ReadonlySet<number>): string[] {
+    const clauses: string[] = [];
+    for (const [start, end] of clauseRanges(st)) {
+        const inside = spansWithin(st, start, end);
+        if (inside.some(index => !consumed.has(index)) && asksForAnEdit(st.text.slice(start, end))) {
+            const words = st.source.slice(st.at[start], st.at[end]).replace(/^[\s،,.;؛!؟?]+|[\s،,.;؛!؟?]+$/gu, '');
+            if (words) clauses.push(words);
+        }
+    }
+    return clauses;
 }
 
 function renderCostCalculator(op: Extract<PresentationEdit, { kind: 'calculator_section' }>, ar: boolean): string {
@@ -344,15 +609,6 @@ export function isNamedRowTextEditRequest(request: string): boolean {
     const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
     const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
     return mutation && namedField;
-}
-
-/** A free-form value ends at the next edit clause, never at the prompt's end. */
-export function boundedChangeValue(request: string): string {
-    const tail = ((String(request || '').match(/(?:(?<![ء-ي])(?:إلى|الى|ليصبح|ليصير|يصير|تصير)(?![ء-ي])|=|\bto\b)\s*(.+)$/iu) || [])[1] || '').trim();
-    const quoted = tail.match(/^[«"']([^»"'\n]{1,220})[»"']/u);
-    if (quoted) return quoted[1].trim();
-    return tail.split(/[،.;]\s*(?=(?:ثم\s+)?(?:و?\s*)?(?:[أا]ضف|ضع|حط|غيّ?ر|غير|بدّ?ل|بدل|[اأ]حذف|[اأ]ختبر|ابن[يِى]?|add|change|replace|remove|test|build)(?![\p{L}\p{N}_]))/iu)[0]
-        .trim().replace(/^[«"']|[»"'.،!؟]+$/g, '').trim();
 }
 
 /**
@@ -507,37 +763,62 @@ const EDITABLE = /\.(jsx?|tsx?|mjs|css|html|json)$/i;
 const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
 
 /**
- * EVERY EDITABLE FILE OF THE PROJECT, AT ANY DEPTH (round 21).
+ * EVERY EDITABLE FILE THAT IS HIS SOURCE, AT ANY DEPTH (rounds 21 and 22).
  *
  * This stopped after 60 files without a word, so text in the 61st — the
  * content file that sorts after a components folder of 70 — was «not found»
- * and his edit refused on a project that held it. The walk is complete,
- * asynchronous (a project walk never holds the event loop of a server other
- * people use), and in name order on every platform.
+ * and his edit refused on a project that held it (round 21). Made complete, it
+ * then walked into what is not his: a literal edit rewrote Composer's vendor/,
+ * a virtualenv named env/, client/package-lock.json and the api project's
+ * data.json, and src/coverage/Plans.jsx was not seen at all (round 22). The
+ * walk is the shared one (shared/utils/project-tree): complete, bounded,
+ * asynchronous, in name order, and his source by kind — machine state, tool
+ * output where the tool writes it, installed environments by their markers,
+ * and the project's own .gitignore files.
  */
-async function listFiles(dir: string, base = ''): Promise<string[]> {
-    let entries: fs.Dirent[] = [];
-    try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
-    const out: string[] = [];
-    for (const e of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-        if (e.isDirectory()) {
-            if (!isMachineStateDirectory(e.name) && !BUILD_OUTPUT_DIRS.has(e.name)) out.push(...await listFiles(path.join(dir, e.name), path.join(base, e.name)));
-        } else if (EDITABLE.test(e.name)) {
-            out.push(path.join(base, e.name).replace(/\\/g, '/'));
-        }
-    }
-    return out;
+async function listFiles(dir: string): Promise<string[]> {
+    return listProjectFiles(dir, {
+        skipDirectory: name => BUILD_OUTPUT_DIRS.has(name),
+        keepFile: (_rel, name) => EDITABLE.test(name),
+    });
 }
 
-/** The files whose text holds this text, read a bounded number at a time. */
-async function filesContaining(dir: string, files: string[], text: string): Promise<string[]> {
-    const hits: string[] = [];
-    for (let i = 0; i < files.length; i += 32) {
-        const batch = files.slice(i, i + 32);
-        const bodies = await Promise.all(batch.map(f => fs.promises.readFile(path.join(dir, f), 'utf-8').catch(() => '')));
-        bodies.forEach((body, j) => { if (body.includes(text)) hits.push(batch[j]); });
-    }
-    return hits;
+/**
+ * Files a wording change never rewrites, at any depth: a package manifest, a
+ * lockfile, a build tool's config. (The root index.html keeps its own rule:
+ * its title is the brand's, renamed with it.) Round 21 anchored the first
+ * three at the root, so client/package-lock.json was rewritten.
+ */
+function isNotWording(rel: string): boolean {
+    return /(?:^|\/)(?:package\.json|vite\.config\.[^/]+)$/iu.test(rel) || isLockfile(rel) || /^index\.html$/iu.test(rel);
+}
+
+const SCRIPT_FILE = /\.(?:[cm]?[jt]sx?)$/iu;
+
+/**
+ * The files whose text holds this text, read a bounded number at a time
+ * (nothing is kept but the answer). A JSON file the project's own code writes
+ * — its data store: his users' records — is set apart, never a place his
+ * wording lives; the store evidence is read from the same pass (every script,
+ * and package.json for a json-server script).
+ */
+async function filesHolding(files: readonly string[], text: string, read: (rel: string) => Promise<string>): Promise<{ hits: string[]; dataStores: string[] }> {
+    const holding: string[] = [];
+    const tails = new Set<string>();
+    await mapBounded(files, PROJECT_FS_CONCURRENCY, async rel => {
+        let body = '';
+        try { body = await read(rel); } catch { return; }
+        if (SCRIPT_FILE.test(rel) || /(?:^|\/)package\.json$/iu.test(rel)) for (const tail of jsonStoresWrittenBy(body)) tails.add(tail);
+        if (body.includes(text)) holding.push(rel);
+    });
+    holding.sort(byNameOrder);
+    const stores = [...tails];
+    return { hits: holding.filter(rel => !isJsonStore(rel, stores)), dataStores: holding.filter(rel => isJsonStore(rel, stores)) };
+}
+
+/** Every file's text, read a bounded number at a time (an unreadable file reads as empty, as before). */
+async function readBodies(dir: string, files: readonly string[]): Promise<string[]> {
+    return mapBounded(files, PROJECT_FS_CONCURRENCY, rel => fs.promises.readFile(path.join(dir, rel), 'utf-8').catch(() => ''));
 }
 
 export class ProjectEditTool extends BaseTool {
@@ -864,7 +1145,6 @@ export class ProjectEditTool extends BaseTool {
 
         const touched: Array<{ file: string; before: string; after: string }> = [];
         const refused: string[] = [];
-        let brandEditApplied = false;
         let deterministicIntentHandled = false;
         const write = (rel: string, body: string): boolean => {
             const abs = path.join(dir, rel);
@@ -882,10 +1162,54 @@ export class ProjectEditTool extends BaseTool {
             return true;
         };
 
+        /**
+         * His request as its structure is read (readEditStructure), and the
+         * quoted spans each path that ran has read. Whatever is left in a clause
+         * that asks for an edit is named as not done at the end
+         * (unreadEditClauses) — unless the model, which reads the whole request,
+         * was asked.
+         */
+        const structure = readEditStructure(request);
+        const consumed = new Set<number>();
+        let modelReadTheRequest = false;
+        const consumeSpans = (spans: readonly number[]) => { for (const span of spans) if (span >= 0) consumed.add(span); };
+        /** The quoted spans whose text is this value (a row name, a new name). */
+        const consumeValue = (value: string) => {
+            const wanted = foldChars(String(value || '').trim());
+            if (wanted) structure.spans.forEach((span, index) => { if (foldChars(span.value.trim()) === wanted) consumed.add(index); });
+        };
+        /** The quoted spans of the clause a path read its request from (paths that read a clause, not a value). */
+        const consumeClauseOf = (pattern: RegExp) => {
+            const at = pattern.exec(request)?.index;
+            if (at === undefined) return;
+            let i = structure.at.findIndex(origin => origin >= at);
+            if (i < 0) i = structure.text.length;
+            const before = structure.text.slice(0, i).search(/[،,.;؛!؟?\n][^،,.;؛!؟?\n]*$/u);
+            const start = before < 0 ? 0 : before + 1;
+            const after = structure.text.slice(i).search(/[،,.;؛!؟?\n]/u);
+            consumeSpans(spansWithin(structure, start, after < 0 ? structure.text.length : i + after));
+        };
+        /**
+         * A rename reads its new name and, when he wrote one, the name it renames
+         * from: «… من «مشروعي» إلى «بصيرة»» — whatever the current brand is.
+         */
+        const consumeRename = () => {
+            const renamed = readBoundedChangeValue(structure);
+            consumeSpans([renamed.span]);
+            const previous = renamed.span > 0 ? structure.spans[renamed.span - 1] : null;
+            if (previous && /(?:^|[^\p{L}\p{N}_])(?:من|from)\s*$/u.test(structure.text.slice(0, previous.from))) consumeSpans([renamed.span - 1]);
+        };
+        /** The note of a wording change: every file it changed, by name, and the data it left alone. */
+        const literalNote = (from: string, to: string, files: readonly string[], stores: readonly string[]) => isAr
+            ? `غيّرت النص «${from}» إلى «${to}» في ${files.length} ملف: ${files.join('، ')}.${stores.length ? ` ولم ألمس ${stores.join('، ')} — بيانات يكتبها تطبيقك، لا نصاً كتبته أنت.` : ''}`
+            : `Changed "${from}" to "${to}" in ${files.length} file(s): ${files.join(', ')}.${stores.length ? ` Left ${stores.join(', ')} untouched — data your app writes, not your wording.` : ''}`;
+
         // ── deterministic fast paths — no model, nothing else can break ─────
-        const colourChange = /(غير|غيّر|بدل|بدّل|خلي|خلّي|اجعل)[^.\n]{0,25}(لون|ألوان|الوان)|\b(change|make)\b[^.\n]{0,25}\bcolou?rs?\b/i.test(request);
+        const COLOUR_INTENT = /(غير|غيّر|بدل|بدّل|خلي|خلّي|اجعل)[^.\n]{0,25}(لون|ألوان|الوان)|\b(change|make)\b[^.\n]{0,25}\bcolou?rs?\b/i;
+        const colourChange = COLOUR_INTENT.test(request);
         if (colourChange && fs.existsSync(path.join(dir, 'src', 'styles', 'tokens.css'))) {
             deterministicIntentHandled = true;
+            consumeClauseOf(COLOUR_INTENT);
             const palette = buildPalette(request);
             const paletteChanged = write('src/styles/tokens.css', `${paletteCss(palette)}
 :root[data-theme="dark"]{${darkTokenBlock(palette)}}
@@ -911,7 +1235,8 @@ export class ProjectEditTool extends BaseTool {
         // «قم باضافه هذه الصوره…» — the masdar form «إضافة/اضافه» and a «بـ»
         // prefix are how people actually write it; the old pattern only knew
         // the imperative «أضف» and let the field request fall to the model.
-        const imageIntent = /(ضي?ف|أضف|اضف|إضاف[ةه]|اضاف[ةه]|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل|استخدم|اجعل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put|use)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
+        const IMAGE_INTENT = /(ضي?ف|أضف|اضف|إضاف[ةه]|اضاف[ةه]|حطّ?|ركّ?ب|غيّ?ر|بدّ?ل|استخدم|اجعل)[^.\n]{0,30}صور(ة|ه)|صور(ة|ه)\s*(جديدة|حقيقية)|\b(add|change|set|put|use)\b[^.\n]{0,30}\b(photo|image|picture)\b/i;
+        const imageIntent = IMAGE_INTENT.test(request);
         const contentRel = 'src/content.js';
         const notes: string[] = [];
         const reEsc = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -924,66 +1249,75 @@ export class ProjectEditTool extends BaseTool {
          * row. Parse the explicit quoted operations, stage every file in memory,
          * validate the complete batch, and only then write it once per file.
          */
-        const presentationEdits = parsePresentationEdits(request);
+        const presentationReads = readPresentationEdits(structure, withoutMarksOutsideQuotes(request));
+        const presentationEdits = presentationReads.map(edit => edit.op);
         const hasStandaloneDeterministicEdit = presentationEdits.some(op => op.kind === 'faq_section' || op.kind === 'calculator_section');
-        if (!touched.length && (presentationEdits.length > 1 || hasStandaloneDeterministicEdit) && fs.existsSync(path.join(dir, contentRel))) {
+        // A colour change earlier in the same request is part of this
+        // transaction, not a reason to drop the rest of it (round 22: the batch
+        // used to require that nothing had been touched yet).
+        if ((presentationEdits.length > 1 || hasStandaloneDeterministicEdit) && fs.existsSync(path.join(dir, contentRel))) {
             // A recognized deterministic batch is handled even when every
             // requested value is already present. Falling through merely
             // because no byte changed makes an idempotent retry wait for an
             // LLM and fail when providers are unavailable.
             deterministicIntentHandled = true;
             const pending = new Map<string, string>();
-            const read = (rel: string) => pending.get(rel) ?? fs.readFileSync(path.join(dir, rel), 'utf-8');
+            // Every read is asynchronous and the scans over the whole project
+            // are bounded (round 22, W8: 3000 files read with readFileSync held
+            // the event loop of every other user for tens of milliseconds).
+            const read = async (rel: string): Promise<string> => {
+                const staged = pending.get(rel);
+                return staged !== undefined ? staged : fs.promises.readFile(path.join(dir, rel), 'utf-8');
+            };
+            const holding = async (files: readonly string[], text: string) => (await filesHolding(files, text, read)).hits;
             const stage = (rel: string, body: string) => pending.set(rel, body);
             const failures: string[] = [];
             const editable = await listFiles(dir);
             const cssRel = ['src/styles/base.css', 'src/styles/app.css'].find(rel => fs.existsSync(path.join(dir, rel)));
-            const ensureCss = (rule: string, marker: string) => {
+            const ensureCss = async (rule: string, marker: string) => {
                 if (!cssRel) return;
-                const css = read(cssRel);
+                const css = await read(cssRel);
                 if (!css.includes(marker)) stage(cssRel, `${css.trimEnd()}\n${rule}\n`);
             };
 
             for (const op of presentationEdits) {
                 if (op.kind === 'literal') {
-                    // Every file that holds the text he quoted: a wording change is made
-                    // everywhere it stands, and the note says in how many files (round 21:
-                    // the first four were changed and the rest left without a word).
-                    const matches = editable.filter(rel => {
-                        try { return !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(rel) && read(rel).includes(op.from); }
-                        catch { return false; }
-                    });
+                    // Every file of his source that holds the text he quoted: a wording
+                    // change is made everywhere it stands, and the note names every file
+                    // it changed (rounds 21 and 22) — never a manifest, a lockfile or the
+                    // data his app writes.
+                    const found = await filesHolding(editable, op.from, read);
+                    const matches = found.hits.filter(rel => !isNotWording(rel));
                     if (!matches.length) { failures.push(`literal not found: ${op.from}`); continue; }
-                    for (const rel of matches) stage(rel, read(rel).split(op.from).join(op.to));
-                    notes.push(isAr ? `غيّرت النص «${op.from}» إلى «${op.to}».` : `Changed "${op.from}" to "${op.to}".`);
+                    for (const rel of matches) stage(rel, (await read(rel)).split(op.from).join(op.to));
+                    notes.push(literalNote(op.from, op.to, matches, found.dataStores));
                     continue;
                 }
 
                 if (op.kind === 'brand_mark') {
-                    let content = read(contentRel);
+                    let content = await read(contentRel);
                     const brand = (content.match(/\n\s*brand:\s*'([^']*)'/) || [])[1] || '';
                     const targetMatches = !!brand && (normalise(brand) === normalise(op.beside) || saysWord(brand, op.beside) || saysWord(op.beside, brand));
-                    const component = editable
-                        .filter(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel) && read(rel).includes('{content.brand}'))
+                    const component = (await holding(editable.filter(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel)), '{content.brand}'))
                         .sort((a, b) => Number(!/(?:Navbar|Header)\./i.test(a)) - Number(!/(?:Navbar|Header)\./i.test(b)))[0];
                     if (!targetMatches || !component) { failures.push(`brand target not found: ${op.beside}`); continue; }
                     if (/\n\s*brandMark:\s*'/.test(content)) content = content.replace(/(\n\s*brandMark:\s*)'[^']*'/, `$1'${jsEsc(op.value)}'`);
                     else content = content.replace(/(\n\s*brand:\s*'[^']*',)/, `$1\n  brandMark: '${jsEsc(op.value)}',`);
                     stage(contentRel, content);
-                    let view = read(component);
+                    let view = await read(component);
                     if (!view.includes('content.brandMark')) {
                         view = view.replace('{content.brand}', `{content.brandMark ? <span className="brand-text-mark" aria-hidden="true">{content.brandMark}</span> : null}<span>{content.brand}</span>`);
                         stage(component, view);
                     }
-                    ensureCss('.brand-text-mark{display:inline-grid;place-items:center;width:1.8rem;height:1.8rem;margin-inline-end:.55rem;border-radius:.4rem;background:var(--brand);color:var(--on-brand);font-size:.78rem;font-weight:800;line-height:1}', '.brand-text-mark{');
+                    await ensureCss('.brand-text-mark{display:inline-grid;place-items:center;width:1.8rem;height:1.8rem;margin-inline-end:.55rem;border-radius:.4rem;background:var(--brand);color:var(--on-brand);font-size:.78rem;font-weight:800;line-height:1}', '.brand-text-mark{');
                     notes.push(isAr ? `أضفت العلامة النصية «${op.value}» بجانب «${brand}».` : `Added the text mark "${op.value}" beside "${brand}".`);
                     continue;
                 }
 
                 if (op.kind === 'hero_contact_cta') {
-                    let content = read(contentRel);
-                    const hero = editable.find(rel => /(?:Hero|Header)\.(?:jsx|tsx|js|ts)$/i.test(rel) && read(rel).includes('content.cta'));
-                    if (!hero || !read(hero).includes('content.contactHref')) { failures.push('hero contact CTA renderer not found'); continue; }
+                    let content = await read(contentRel);
+                    const hero = (await holding(editable.filter(rel => /(?:Hero|Header)\.(?:jsx|tsx|js|ts)$/i.test(rel)), 'content.cta'))[0];
+                    if (!hero || !(await read(hero)).includes('content.contactHref')) { failures.push('hero contact CTA renderer not found'); continue; }
                     if (/\n\s*cta:\s*'[^']*'/.test(content)) content = content.replace(/(\n\s*cta:\s*)'[^']*'/, `$1'${jsEsc(op.label)}'`);
                     else { failures.push('hero CTA content row not found'); continue; }
                     if (/\n\s*contactHref:\s*'[^']*'/.test(content)) content = content.replace(/(\n\s*contactHref:\s*)'[^']*'/, "$1'#contact'");
@@ -994,9 +1328,9 @@ export class ProjectEditTool extends BaseTool {
                 }
 
                 if (op.kind === 'phone_field') {
-                    const component = editable.find(rel => /Contact\.(?:jsx|tsx|js|ts)$/i.test(rel) && read(rel).includes('<form'));
+                    const component = (await holding(editable.filter(rel => /Contact\.(?:jsx|tsx|js|ts)$/i.test(rel)), '<form'))[0];
                     if (!component) { failures.push('contact form component not found'); continue; }
-                    let view = read(component);
+                    let view = await read(component);
                     if (!/\bphone\s*:/.test(view)) {
                         const state = /useState\(\{\s*name:\s*'',\s*email:\s*'',\s*msg:\s*''\s*\}\)/;
                         if (!state.test(view)) { failures.push('contact form state contract not found'); continue; }
@@ -1017,8 +1351,8 @@ export class ProjectEditTool extends BaseTool {
                 if (op.kind === 'faq_section') {
                     const appRel = ['src/App.jsx', 'src/App.tsx'].find(rel => fs.existsSync(path.join(dir, rel)));
                     if (!appRel) { failures.push('application composition file not found'); continue; }
-                    let content = read(contentRel);
-                    let app = read(appRel);
+                    let content = await read(contentRel);
+                    let app = await read(appRel);
                     const faqRel = `src/components/Faq.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}`;
                     const existingItems = (content.match(/faq:\s*\[([\s\S]*?)\n\s*\],/) || [])[1] || '';
                     const existingCount = (existingItems.match(/\{\s*q:\s*'/g) || []).length;
@@ -1044,8 +1378,8 @@ export class ProjectEditTool extends BaseTool {
                         app = app.replace(contactRender, `\n        <Faq content={content} />$1`);
                     }
                     stage(appRel, app);
-                    ensureCss('.nav-links{column-gap:18px}', '.nav-links{column-gap:18px}');
-                    ensureCss('.faq-wrap{max-width:820px}.faq-list{border-top:1px solid var(--line)}.faq-item{border-bottom:1px solid var(--line)}.faq-item h3{margin:0}.faq-trigger{width:100%;min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;text-align:start;cursor:pointer}.faq-trigger:focus-visible{outline:2px solid var(--brand);outline-offset:4px}.faq-answer{padding:0 0 1rem}.faq-answer p{margin:0;color:var(--text-muted)}', '.faq-wrap{');
+                    await ensureCss('.nav-links{column-gap:18px}', '.nav-links{column-gap:18px}');
+                    await ensureCss('.faq-wrap{max-width:820px}.faq-list{border-top:1px solid var(--line)}.faq-item{border-bottom:1px solid var(--line)}.faq-item h3{margin:0}.faq-trigger{width:100%;min-height:56px;display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:1rem 0;border:0;background:transparent;color:var(--text);font:inherit;font-weight:700;text-align:start;cursor:pointer}.faq-trigger:focus-visible{outline:2px solid var(--brand);outline-offset:4px}.faq-answer{padding:0 0 1rem}.faq-answer p{margin:0;color:var(--text-muted)}', '.faq-wrap{');
                     notes.push(isAr ? `أضفت قسم «${op.label}» التفاعلي وربطته بالقائمة؛ لا يبقى مفتوحاً إلا سؤال واحد ويمكن إغلاقه.` : `Added the interactive “${op.label}” section and navigation link with one closable item open at a time.`);
                     continue;
                 }
@@ -1053,7 +1387,7 @@ export class ProjectEditTool extends BaseTool {
                 if (op.kind === 'calculator_section') {
                     const appRel = ['src/App.jsx', 'src/App.tsx'].find(rel => fs.existsSync(path.join(dir, rel)));
                     if (!appRel) { failures.push('application composition file not found'); continue; }
-                    let app = read(appRel);
+                    let app = await read(appRel);
                     const calculatorRel = `src/components/CostCalculator.${appRel.endsWith('.tsx') ? 'tsx' : 'jsx'}`;
                     if (!fs.existsSync(path.join(dir, calculatorRel)) && !pending.has(calculatorRel)) {
                         const ar = artifactIsAr;
@@ -1073,13 +1407,13 @@ export class ProjectEditTool extends BaseTool {
                         app = app.replace(contactRender, `\n        <CostCalculator services={content.services || []} />$1`);
                     }
                     stage(appRel, app);
-                    ensureCss('.calculator-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:clamp(2rem,6vw,5rem);align-items:start}.calculator-copy p{color:var(--text-muted)}.calculator-panel{display:grid;gap:1rem;padding:clamp(1rem,3vw,1.5rem);border:1px solid var(--line);background:var(--surface)}.calculator-panel label{display:grid;gap:.5rem;font-weight:700}.calculator-panel select,.calculator-panel input{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}.calculator-totals{display:grid;gap:.65rem;margin:0}.calculator-totals div{display:flex;justify-content:space-between;gap:1rem}.calculator-totals dd{margin:0;font-variant-numeric:tabular-nums}.calculator-grand{padding-top:.75rem;border-top:1px solid var(--line);font-weight:800}.calculator-reset{justify-self:start}@media(max-width:720px){.calculator-wrap{grid-template-columns:1fr}.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-wrap{');
-                    ensureCss('.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}@media(max-width:720px){.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-promo{');
+                    await ensureCss('.calculator-wrap{display:grid;grid-template-columns:minmax(0,1fr) minmax(280px,440px);gap:clamp(2rem,6vw,5rem);align-items:start}.calculator-copy p{color:var(--text-muted)}.calculator-panel{display:grid;gap:1rem;padding:clamp(1rem,3vw,1.5rem);border:1px solid var(--line);background:var(--surface)}.calculator-panel label{display:grid;gap:.5rem;font-weight:700}.calculator-panel select,.calculator-panel input{width:100%;min-height:48px;padding:.7rem .8rem;border:1px solid var(--line);background:var(--bg);color:var(--text);font:inherit}.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}.calculator-totals{display:grid;gap:.65rem;margin:0}.calculator-totals div{display:flex;justify-content:space-between;gap:1rem}.calculator-totals dd{margin:0;font-variant-numeric:tabular-nums}.calculator-grand{padding-top:.75rem;border-top:1px solid var(--line);font-weight:800}.calculator-reset{justify-self:start}@media(max-width:720px){.calculator-wrap{grid-template-columns:1fr}.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-wrap{');
+                    await ensureCss('.calculator-promo{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.65rem;align-items:end}.calculator-feedback{grid-column:1/-1;min-height:1.4em;margin:0;color:var(--text-muted)}.calculator-feedback[data-state="invalid"]{color:#d84b5b}.calculator-feedback[data-state="valid"]{color:#13865b}@media(max-width:720px){.calculator-promo{grid-template-columns:1fr}.calculator-promo .btn{width:100%}}', '.calculator-promo{');
                     notes.push(artifactIsAr ? `أضفت «${op.label}» بحساب مباشر وضريبة ${op.taxRate}% وزر «${op.resetLabel}».` : `Added “${op.label}” with live calculation, ${op.taxRate}% tax, and a ${op.resetLabel} button.`);
                     continue;
                 }
 
-                let content = read(contentRel);
+                let content = await read(contentRel);
                 const sectionWords = words(op.section).filter(w => w.length > 2);
                 const titles = [...content.matchAll(/\n\s*([A-Za-z][A-Za-z0-9]*Title):\s*'([^']*)'/g)]
                     .map(m => {
@@ -1093,7 +1427,7 @@ export class ProjectEditTool extends BaseTool {
                     .filter(t => t.hits > 0)
                     .sort((a, b) => (b.density - a.density) || (b.hits - a.hits) || (a.value.length - b.value.length));
                 const title = titles[0];
-                const component = title && editable.find(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel) && read(rel).includes(`{content.${title.key}}`));
+                const component = title && (await holding(editable.filter(rel => /\.(?:jsx|tsx|js|ts)$/.test(rel)), `{content.${title.key}}`))[0];
                 if (!title || !component) { failures.push(`section heading not found: ${op.section}`); continue; }
                 const subtitleKey = title.key.replace(/Title$/, 'Subtitle');
                 if (new RegExp(`\\n\\s*${subtitleKey}:\\s*'`).test(content)) {
@@ -1102,7 +1436,7 @@ export class ProjectEditTool extends BaseTool {
                     content = content.replace(new RegExp(`(\\n\\s*${title.key}:\\s*'[^']*',)`), `$1\n  ${subtitleKey}: '${jsEsc(op.value)}',`);
                 }
                 stage(contentRel, content);
-                let view = read(component);
+                let view = await read(component);
                 if (!view.includes(`content.${subtitleKey}`)) {
                     const markerAt = view.indexOf(`{content.${title.key}}`);
                     const headingEnd = markerAt >= 0 ? view.indexOf('</h2>', markerAt) : -1;
@@ -1111,7 +1445,7 @@ export class ProjectEditTool extends BaseTool {
                     view = `${view.slice(0, insertAt)}\n        {content.${subtitleKey} ? <p className="section-intro">{content.${subtitleKey}}</p> : null}${view.slice(insertAt)}`;
                     stage(component, view);
                 }
-                ensureCss('.section-intro{max-width:62ch;margin:-1rem 0 1.75rem;color:var(--muted);line-height:1.75}', '.section-intro{');
+                await ensureCss('.section-intro{max-width:62ch;margin:-1rem 0 1.75rem;color:var(--muted);line-height:1.75}', '.section-intro{');
                 notes.push(isAr ? `أضفت النص الداعم تحت عنوان «${title.value}».` : `Added supporting text below "${title.value}".`);
             }
 
@@ -1120,7 +1454,10 @@ export class ProjectEditTool extends BaseTool {
                 if (!gate.ok) failures.push(`${rel}: ${gate.error}`);
             }
             if (failures.length) {
-                logs.push(`compound presentation batch refused atomically: ${failures.join(' | ')}`);
+                // Nothing of the batch is written, and what an earlier path of the
+                // same request wrote (a colour) goes back: one request, one answer.
+                for (const t of touched) fs.writeFileSync(path.join(dir, t.file), t.before, 'utf-8');
+                logs.push(`compound presentation batch refused atomically: ${failures.join(' | ')}${touched.length ? ` — ${touched.length} earlier file(s) of this request restored` : ''}`);
                 return {
                     ok: false,
                     error: isAr ? `لم أنفّذ دفعة التعديل لأن جزءاً منها لم يُحدَّد بأمان: ${failures.join('؛ ')}` : `The edit batch was not applied safely: ${failures.join('; ')}`,
@@ -1129,6 +1466,7 @@ export class ProjectEditTool extends BaseTool {
                 } as any;
             }
             for (const [rel, body] of pending) write(rel, body);
+            for (const edit of presentationReads) consumeSpans(edit.spans);
             logs.push(`compound presentation batch: ${presentationEdits.length} operation(s), ${pending.size} file(s), atomic and provider-independent`);
         }
         /** The photo the row/hero currently carries — its src, or undefined. */
@@ -1148,7 +1486,8 @@ export class ProjectEditTool extends BaseTool {
         //    shape by construction), the orphaned file is deleted from
         //    public/, and removing the LAST photo also empties the credits —
         //    no licence line for pictures that left. Same gates, same undo.
-        const removeImageIntent = /(احذف|امسح|شيل(?:ي|وا)?|أزل|ازل)[^.\n]{0,30}صور(ة|ه)|\b(remove|delete|drop)\b[^.\n]{0,30}\b(photo|image|picture)\b/i.test(request);
+        const REMOVE_IMAGE_INTENT = /(احذف|امسح|شيل(?:ي|وا)?|أزل|ازل)[^.\n]{0,30}صور(ة|ه)|\b(remove|delete|drop)\b[^.\n]{0,30}\b(photo|image|picture)\b/i;
+        const removeImageIntent = REMOVE_IMAGE_INTENT.test(request);
         if (!touched.length && removeImageIntent && fs.existsSync(path.join(dir, contentRel))) {
             const body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
             const target = pickPhotoRow(photoRows(body), request);
@@ -1173,6 +1512,7 @@ export class ProjectEditTool extends BaseTool {
                 write(contentRel, next);
                 dropUnreferenced(next, oldSrc);
                 notes.push(isAr ? `🗑️ أزلت الصورة من ${where} — وعاد الصف نصياً نظيفاً.` : `🗑️ Removed the photo from ${where} — the row is a clean text row again.`);
+                consumeClauseOf(REMOVE_IMAGE_INTENT);
                 logs.push(`image edit: ${target ? target.name : 'heroImage'} photo removed`);
             } else {
                 refused.push(`${contentRel}: image removal breaks the syntax (${gate.error}) — refused`);
@@ -1260,6 +1600,7 @@ export class ProjectEditTool extends BaseTool {
                             ? `🖼️ أضفت صورة حقيقية مرخّصة إلى ${where} (${img.src}) — والاعتماد في التذييل.`
                             : `🖼️ Added a real licensed photo to ${where} (${img.src}), credited in the footer.`);
                         logs.push(`image edit: ${target ? target.name : 'heroImage'} ← ${img.src}`);
+                        consumeClauseOf(IMAGE_INTENT);
                     } else {
                         refused.push(`${contentRel}: image edit breaks the syntax (${gate.error}) — refused`);
                     }
@@ -1272,7 +1613,8 @@ export class ProjectEditTool extends BaseTool {
         //    variable block in base.css; the swap replaces exactly that
         //    block, the palette and every component stay untouched, and the
         //    usual gates, build verify, undo and live preview ride along.
-        const styleIntent = /(غيّ?ر|بدّ?ل|اجعل|خلّ?ي)[^.\n]{0,25}(الطراز|طراز|النمط|نمط|الستايل|ستايل|الأسلوب|أسلوب|التصميم)|\b(change|switch|make)\b[^.\n]{0,25}\b(style|theme|look)\b/i.test(request);
+        const STYLE_INTENT = /(غيّ?ر|بدّ?ل|اجعل|خلّ?ي)[^.\n]{0,25}(الطراز|طراز|النمط|نمط|الستايل|ستايل|الأسلوب|أسلوب|التصميم)|\b(change|switch|make)\b[^.\n]{0,25}\b(style|theme|look)\b/i;
+        const styleIntent = STYLE_INTENT.test(request);
         const baseCssRel = 'src/styles/base.css';
         if (!touched.length && styleIntent && fs.existsSync(path.join(dir, baseCssRel))) {
             const { familyFor, swapFamilyCss, familyOf, FAMILY_LABEL_AR } = require('../../../core/design/families');
@@ -1298,6 +1640,7 @@ export class ProjectEditTool extends BaseTool {
                             ? `🎨 بدّلت الطراز من «${FAMILY_LABEL_AR[current]}» إلى «${FAMILY_LABEL_AR[wanted]}» — الألوان والمحتوى كما هما.`
                             : `🎨 Switched the design family to "${wanted}".`);
                         logs.push(`design family: ${current} → ${wanted} — deterministic, no model`);
+                        consumeClauseOf(STYLE_INTENT);
                     } else {
                         refused.push(`${baseCssRel}: family swap breaks the css (${gate.error}) — refused`);
                     }
@@ -1415,6 +1758,7 @@ export class ProjectEditTool extends BaseTool {
                     ? `➕ أضفت «${name}» إلى ${menuArr === 'menu' ? 'القائمة' : 'المنتجات'} بسعر «${price}»${img ? ' مع صورة حقيقية مرخّصة' : ''}.`
                     : `➕ Added "${name}" (${price})${img ? ' with a real licensed photo' : ''}.`);
                 logs.push(`row add: ${name} → ${menuArr}`);
+                for (const value of [name, price, desc]) consumeValue(value);
             } else if (!gate.ok) {
                 refused.push(`${contentRel}: row insert breaks the syntax (${gate.error}) — refused`);
             }
@@ -1442,6 +1786,7 @@ export class ProjectEditTool extends BaseTool {
                 dropUnreferenced(next, oldSrc);
                 notes.push(isAr ? `🗑️ حذفت «${target.name}» من ${menuArr === 'menu' ? 'القائمة' : 'المنتجات'}.` : `🗑️ Deleted "${target.name}".`);
                 logs.push(`row delete: ${target.name}`);
+                consumeValue(target.name);
             } else if (!gate.ok) {
                 refused.push(`${contentRel}: row delete breaks the syntax (${gate.error}) — refused`);
             }
@@ -1513,6 +1858,8 @@ export class ProjectEditTool extends BaseTool {
                             ? `✏️ غيّرت ${field} «${target.name}»${priceIntent || renameIntent ? ` إلى «${(newLine.match(priceIntent ? /price: '([^']*)'/ : /name: '([^']*)'/) || [])[1]}»` : ''}.`
                             : `✏️ Changed the ${field} of "${target.name}".`);
                         logs.push(`text edit: ${target.name} ${field} updated — no model call`);
+                        consumeValue(target.name);
+                        consumeValue(val);
                     } else {
                         refused.push(`${contentRel}: text edit breaks the syntax (${gate.error}) — refused`);
                     }
@@ -1563,16 +1910,16 @@ export class ProjectEditTool extends BaseTool {
                         const swapped = html.split(oldBrand).join(val);
                         if (swapped !== html) write('index.html', swapped);
                     }
-                    brandEditApplied = true;
                     notes.push(isAr
                         ? `✏️ غيّرت اسم ${/التطبيق|تطبيقي/i.test(request) ? 'التطبيق' : 'الموقع'}${oldBrand ? ` من «${oldBrand}»` : ''} إلى «${val}» — في المحتوى وفي عنوان التبويب.`
                         : `✏️ Renamed the site${oldBrand ? ` from "${oldBrand}"` : ''} to "${val}" — in the content and in the tab title.`);
                     logs.push(`brand edit: ${oldBrand || '(unset)'} → ${val} — no model call`);
+                    consumeRename();
                 } else if (next !== body) {
                     refused.push(`${contentRel}: renaming breaks the syntax (${gate.error}) — refused`);
                 } else if (oldBrand === val) {
-                    brandEditApplied = true;
                     logs.push(`brand edit already satisfied: ${val}`);
+                    consumeRename();
                 }
             }
         }
@@ -1580,7 +1927,7 @@ export class ProjectEditTool extends BaseTool {
         // A generated site has a stable content/App contract, so adding a
         // services section and its navigation target does not need a provider.
         // This path composes with colour and brand edits in the same request.
-        const servicesEdit = parseServicesSectionEdit(request);
+        const servicesEdit = readServicesSectionEdit(structure);
         if (servicesEdit && fs.existsSync(path.join(dir, contentRel)) && fs.existsSync(path.join(dir, 'src', 'App.jsx'))) {
             deterministicIntentHandled = true;
             let body = fs.readFileSync(path.join(dir, contentRel), 'utf-8');
@@ -1651,6 +1998,7 @@ export class ProjectEditTool extends BaseTool {
                 logs.push(servicesChanged
                     ? `services section edit: ${servicesEdit.count} item(s), nav=#services, before-contact=${servicesEdit.beforeContact}`
                     : `services section already satisfied: ${servicesEdit.count} item(s), nav=#services`);
+                consumeSpans(servicesEdit.spans);
             } else {
                 refused.push(`services section: generated-project contract unavailable or unsafe (${contentGate.error || appGate.error || 'missing link target'})`);
             }
@@ -1658,32 +2006,43 @@ export class ProjectEditTool extends BaseTool {
 
         // A quoted wording replacement is fully specified. Replace only the
         // exact source text, then use the normal syntax, build and QA gates.
-        if (!touched.length && !brandEditApplied) {
-            const literal = parseLiteralTextReplacement(request);
-            if (literal) {
-                // Every file that holds it (see the deterministic path above).
-                const candidates = await filesContaining(dir, (await listFiles(dir))
-                    .filter(f => !/^(?:package(?:-lock)?\.json|vite\.config\.|index\.html$)/i.test(f)), literal.from);
-                for (const rel of candidates) {
-                    const before = fs.readFileSync(path.join(dir, rel), 'utf-8');
+        // It runs whenever no path that ran has read its two values (round 22:
+        // it ran only when nothing had been touched, so a wording change beside
+        // a photo or a section was dropped without a word); a brand rename or a
+        // row rename that read the same pair has already made it.
+        {
+            const literal = readLiteral(structure);
+            if (literal && !literal.spans.some(span => consumed.has(span))) {
+                // Every file of his source that holds it (see the compound path above).
+                const found = await filesHolding(await listFiles(dir), literal.from, rel => fs.promises.readFile(path.join(dir, rel), 'utf-8'));
+                const changed: string[] = [];
+                for (const rel of found.hits.filter(file => !isNotWording(file))) {
+                    const before = await fs.promises.readFile(path.join(dir, rel), 'utf-8');
                     const after = before.split(literal.from).join(literal.to);
                     const gate = syntaxOk(rel, after);
-                    if (gate.ok && after !== before) write(rel, after);
+                    if (gate.ok && after !== before) { write(rel, after); changed.push(rel); }
                     else if (!gate.ok) refused.push(`${rel}: literal text edit breaks the syntax (${gate.error}) — refused`);
                 }
-                if (candidates.length && touched.length) {
-                    notes.push(isAr
-                        ? `غيّرت النص «${literal.from}» إلى «${literal.to}» في ${touched.length} ملف.`
-                        : `Changed "${literal.from}" to "${literal.to}" in ${touched.length} file(s).`);
-                    logs.push(`literal text edit: ${literal.from} -> ${literal.to} (${touched.map(t => t.file).join(', ')})`);
+                if (changed.length) {
+                    consumeSpans(literal.spans);
+                    notes.push(literalNote(literal.from, literal.to, changed, found.dataStores));
+                    logs.push(`literal text edit: ${literal.from} -> ${literal.to} (${changed.join(', ')})`);
                 }
             }
         }
 
         // ── the general path: SEARCH/REPLACE from the model ─────────────────
         if (!touched.length && !deterministicIntentHandled) {
-            const files = await listFiles(dir);
-            const bodies = await Promise.all(files.map(f => fs.promises.readFile(path.join(dir, f), 'utf-8').catch(() => '')));
+            modelReadTheRequest = true;
+            // Read a bounded number at a time (round 22: one Promise.all over
+            // every file met EMFILE on a large project and read it as empty),
+            // and a data store his app writes is never offered as a file to edit.
+            const listed = await listFiles(dir);
+            const listedBodies = await readBodies(dir, listed);
+            const storeTails = listed.flatMap((rel, i) => (SCRIPT_FILE.test(rel) || /(?:^|\/)package\.json$/iu.test(rel) ? jsonStoresWrittenBy(listedBodies[i]) : []));
+            const kept = listed.map((rel, i) => ({ rel, body: listedBodies[i] })).filter(item => !isJsonStore(item.rel, storeTails));
+            const files = kept.map(item => item.rel);
+            const bodies = kept.map(item => item.body);
             // Rank files by overlap with the request's words; content.js first
             // for wording changes, components for structure.
             const { scored } = rankFilesForEdit(
@@ -2197,12 +2556,25 @@ This is a correct answer, not a failure. Changing something the user did not ask
         writeJoeProject(sessionKey, { ...(entry || {}), dir, updatedAt: Date.now(), history, lastRequest: request.slice(0, 80) }, context?.runId ?? null);
         persistJoeProjects();
 
+        // ⛔ A quoted part no operation read is named, never reported as done
+        // (round 22) — unless the model, which reads the whole request, was asked.
+        const unread = modelReadTheRequest ? [] : unreadEditClauses(structure, consumed);
+        if (unread.length) {
+            notes.push(isAr
+                ? `لم أنفّذ ${unread.length === 1 ? 'هذا الجزء' : 'هذه الأجزاء'} من طلبك، لأنني لم أعرف ما المطلوب به: ${unread.map(clause => `«${clause}»`).join('؛ ')}. اطلبه وحده بصياغة أوضح.`
+                : `Not done — I could not tell what to do with: ${unread.map(clause => `"${clause}"`).join('; ')}. Ask for it on its own.`);
+            logs.push(`unread part(s) of the request: ${unread.join(' | ')}`);
+        }
+
         const stats = touched.map(t => {
             const d = diffSummary(t.before, t.after);
             return `   • ${t.file} (+${d.added} −${d.removed})`;
         }).join('\n');
-        const deliveryBlocked = visualVerificationBlocked || acceptanceBlocked;
-        const buildVerdict = visualVerificationBlocked
+        const deliveryBlocked = visualVerificationBlocked || acceptanceBlocked || unread.length > 0;
+        // A part not done at all is said first: it is the most definite of the three.
+        const buildVerdict = unread.length
+            ? (isAr ? '⚠️ نُفّذ جزء من طلبك فقط — والجزء الباقي مذكور أعلاه.' : '⚠️ Only part of your request was done — the rest is named above.')
+            : visualVerificationBlocked
             ? (isAr ? '⚠️ البناء نجح، لكن التسليم متوقف حتى يكتمل اختبار المتصفح المطلوب.' : '⚠️ Build passed, but delivery is blocked until the requested browser audit completes.')
             : acceptanceBlocked
                 ? (isAr ? '⚠️ البناء نجح، لكن التسليم متوقف لأن بعض التعديلات المطلوبة لم تُثبت بعد.' : '⚠️ Build passed, but delivery is blocked because some requested edits remain unproven.')
@@ -2210,17 +2582,19 @@ This is a correct answer, not a failure. Changing something the user did not ask
                 ? (isAr ? '✅ vite build نجح بعد التعديل — المشروع سليم.' : '✅ vite build passed after the edit.')
                 : buildVerified === false ? '' : (isAr ? 'ℹ️ (الحزم غير مثبتة — تخطيت تحقق البناء؛ بوابة الفحص النحوي طُبّقت على كل ملف)' : ''));
         const message = isAr
-            ? `${touched.length ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}` : 'لم يحتج المشروع إلى تغيير جديد؛ الحالة المطلوبة موجودة بالفعل.'}
+            ? `${touched.length ? `🔬 عُدّل المشروع جراحياً — ${touched.length} ملف:\n${stats}` : unread.length ? 'لم يتغير أي ملف.' : 'لم يحتج المشروع إلى تغيير جديد؛ الحالة المطلوبة موجودة بالفعل.'}
 ${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}${refused.length ? `\n⚠️ رُفض ${refused.length} تعديلاً غير آمن:\n${refused.map(r => `   • ${r}`).join('\n')}` : ''}
 
 🧭 «شغّل خادم التطوير» للمعاينة الحية · «تراجع» يسترجع الملفات السابقة`
-            : `${touched.length ? `Surgical edit — ${touched.length} file(s):\n${stats}` : 'No new file changes were needed; the requested state is already in place.'}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}`;
+            : `${touched.length ? `Surgical edit — ${touched.length} file(s):\n${stats}` : unread.length ? 'No file changed.' : 'No new file changes were needed; the requested state is already in place.'}\n${notes.length ? notes.join('\n') + '\n' : ''}${buildVerdict}`;
         return {
             ok: !deliveryBlocked,
-            ...(deliveryBlocked ? { error: visualVerificationBlocked
+            ...(deliveryBlocked ? { error: unread.length
+                ? `edit_part_unread: ${unread.join(' | ')}`
+                : visualVerificationBlocked
                 ? 'browser_qa_required: requested visible browser verification did not complete'
                 : 'edit_acceptance_unmet: one or more requested changes were not proven' } : {}),
-            output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented, visualVerificationBlocked, acceptance: editAcceptance },
+            output: { message, dir, touched: touched.map(t => t.file), refused, buildVerified, audit, improvement, invented, visualVerificationBlocked, acceptance: editAcceptance, unread },
             logs,
         } as any;
     }
