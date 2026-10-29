@@ -33,6 +33,7 @@ import { derivedColumns, statedRules, type DerivedField, columnsAnywhereInHisReq
 import { hisWordsOnly } from '../design/page-head';
 import fs from 'fs';
 import path from 'path';
+import { isMachineStateDirectory, listProjectFiles, mapBounded, PROJECT_FS_CONCURRENCY } from '../../shared/utils/project-tree';
 import { thePagesHeNamed } from '../design/site-plan';
 import { saysAny, saysWord } from '../language/arabic';
 import { requestedCapabilities, type Capability } from './scope-audit';
@@ -746,9 +747,34 @@ export interface Evidence {
     liveUrl?: string;
     /** The browser audit, or its skip reason. */
     audit?: { skipped?: string; score?: number } | null;
+    /** His source, already read (acceptanceSource) — the build paths read it without holding the loop. */
+    source?: string;
 }
 
-/** Read every source file once — the judge greps this, not the disk. */
+const ACCEPTANCE_SOURCE = /\.(jsx?|tsx?|html|css)$/i;
+
+/**
+ * HIS SOURCE, READ ONCE, WITHOUT HOLDING THE EVENT LOOP (round 22).
+ *
+ * The judge greps one text. It was read by a synchronous walk on project_edit's
+ * and react_project's request paths, which also read vendor/, an installed
+ * Python environment and the app's data files as evidence — a «met» earned by a
+ * library's own markup. The build paths read it through the shared walker of
+ * his source (shared/utils/project-tree: machine state, installed environments
+ * and his .gitignore left out), a bounded number of files at a time.
+ */
+export async function acceptanceSource(dir: string): Promise<string> {
+    const root = String(dir || '').trim();
+    if (!root) return '';
+    const files = await listProjectFiles(root, {
+        skipDirectory: name => name === 'dist' || name.startsWith('.'),
+        keepFile: (_relative, name) => ACCEPTANCE_SOURCE.test(name),
+    });
+    const texts = await mapBounded(files, PROJECT_FS_CONCURRENCY, file => fs.promises.readFile(path.join(root, file), 'utf-8').catch(() => ''));
+    return texts.join('\n');
+}
+
+/** Read every source file once — the judge greps this, not the disk (a direct call with no source read). */
 function sourceOf(dir: string): string {
     const out: string[] = [];
     const walk = (d: string, depth = 0) => {
@@ -756,7 +782,7 @@ function sourceOf(dir: string): string {
         let entries: fs.Dirent[] = [];
         try { entries = fs.readdirSync(d, { withFileTypes: true }); } catch { return; }
         for (const e of entries) {
-            if (e.name === 'node_modules' || e.name === 'dist' || e.name.startsWith('.')) continue;
+            if (isMachineStateDirectory(e.name, { atRoot: depth === 0 }) || e.name === 'dist' || e.name.startsWith('.')) continue;
             const p = path.join(d, e.name);
             if (e.isDirectory()) { walk(p, depth + 1); continue; }
             if (!/\.(jsx?|tsx?|html|css)$/i.test(e.name)) continue;
@@ -1057,7 +1083,7 @@ export function titleEvidence(src: string, expected: string): boolean {
  */
 export function judgeAcceptance(criteria: Criterion[], ev: Evidence, isAr = true): Acceptance {
     const dir = String(ev.dir || '');
-    const src = dir && fs.existsSync(dir) ? sourceOf(dir) : '';
+    const src = typeof ev.source === 'string' ? ev.source : dir && fs.existsSync(dir) ? sourceOf(dir) : '';
 
     const judged: JudgedCriterion[] = criteria.map(c => {
         const say = (verdict: Verdict, why: string): JudgedCriterion => ({ ...c, verdict, why });

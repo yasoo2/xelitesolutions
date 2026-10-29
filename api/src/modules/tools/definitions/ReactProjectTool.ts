@@ -8305,7 +8305,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         }
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
-        const { judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
+        const { judgeAcceptance, acceptanceBlock, acceptanceSource } = require('../../../core/quality/acceptance');
         /**
          *  ⛔ THE JUDGE WAS FED THE WHOLE DIRECTORY AND THEN CUT.
          *
@@ -8521,6 +8521,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             built,
             liveUrl: previewUrl,
             audit: audit || null,
+            source: await acceptanceSource(proj),
         }, isAr);
         // What the app can actually DO — stated as capabilities only when each
         // claim has evidence in the source that was really read.

@@ -30,7 +30,7 @@ import { broadcast, broadcastThinkingDetail } from '../../../api/ws';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { undefinedJsxComponentMismatch } from '../../../core/quality/source-contract';
-import { acceptanceFor, judgeAcceptance } from '../../../core/quality/acceptance';
+import { acceptanceFor, acceptanceSource, judgeAcceptance } from '../../../core/quality/acceptance';
 import { saysWord, words, normalise } from '../../../core/language/arabic';
 import { foldChars, normalizeIntentText } from '../../../core/orchestrator/promptNormalizer';
 import { isArabicReply } from '../../../shared/reply-language';
@@ -2529,7 +2529,7 @@ This is a correct answer, not a failure. Changing something the user did not ask
             }
             return criterion;
         });
-        editAcceptance = judgeAcceptance(criteria, { dir, built: buildVerified === true, audit }, isAr);
+        editAcceptance = judgeAcceptance(criteria, { dir, built: buildVerified === true, audit, source: await acceptanceSource(dir) }, isAr);
         const acceptanceBlocked = Number(editAcceptance?.unmet || 0) > 0;
         if (acceptanceBlocked) {
             const missing = (editAcceptance.criteria || []).filter((c: any) => c.verdict === 'unmet');
