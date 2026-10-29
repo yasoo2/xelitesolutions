@@ -13,7 +13,6 @@ import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definition
 
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
-import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
