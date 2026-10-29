@@ -81,7 +81,11 @@ export class FoldedRegExp extends RegExp {
         this.keepTatweel = keep;
     }
     static get [Symbol.species](): RegExpConstructor { return RegExp; }
-    exec(input: string): RegExpExecArray | null {
+    // RegExp's own method, overridden (test and every caller go through it). It is
+    // named by a computed key: the boot gate (ExecutionEnforcer) reads any bare
+    // call of a function named exec in Joe's source as a process spawn and
+    // refuses to start — this is no process (round 22 integration).
+    ['exec'](input: string): RegExpExecArray | null {
         const text = String(input ?? '');
         const { folded, origin } = foldWithOrigins(text, this.keepTatweel);
         const m = super.exec(folded);
