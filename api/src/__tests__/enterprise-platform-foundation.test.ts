@@ -1,7 +1,9 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { spawnSync } from 'child_process';
 import { EnterprisePlatformFoundationTool } from '../modules/tools/definitions/EnterprisePlatformFoundationTool';
+import { pythonExecutable } from '../core/quality/python-executable';
 
 describe('enterprise multi-agent foundation resource', () => {
   const request = `You are not just a software engineer. Build a Fortune 500 enterprise-grade multi-agent autonomous engineering platform with CEO, CTO, security, SRE and QA agents, microservices, Kafka, Kubernetes, Helm, Terraform, observability and CI/CD.`;
@@ -17,6 +19,11 @@ describe('enterprise multi-agent foundation resource', () => {
       expect(result.output.projectPath).toBe(path.join(root, 'autonomous-engineering-platform'));
       expect(result.output.writtenFiles).toBeGreaterThanOrEqual(25);
       expect(result.output.verification).toMatch(/control-plane API contract tests/i);
+      // Round 22: the control-plane suite skips itself where FastAPI is absent. A suite
+      // that ran nothing is said so — never «verified locally».
+      const fastApi = spawnSync(pythonExecutable(), ['-c', 'import fastapi'], { stdio: 'ignore' }).status === 0;
+      if (fastApi) expect(result.output.verification).not.toMatch(/did not run/i);
+      else expect(result.output.verification).toMatch(/the control-plane API contract tests did not run — the test command ran no tests \(unittest: /i);
       expect(result.output.deliveryScope).toMatch(/no external deployment/i);
 
       const project = result.output.projectPath;
