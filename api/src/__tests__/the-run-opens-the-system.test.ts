@@ -46,36 +46,36 @@ const EXPO_WEB_PKG = JSON.stringify({
 });
 
 describe('the port Joe announces is the port it binds', () => {
-    it('tells vite the port in the flag vite actually reads', () => {
-        const d = detectStart(project({ 'package.json': VITE_PKG }), 4321);
+    it('tells vite the port in the flag vite actually reads', async () => {
+        const d = await detectStart(project({ 'package.json': VITE_PKG }), 4321);
         expect(d.kind).toBe('dev-server');
         expect(d.command).toContain('--port 4321');
     });
 
-    it('and --strictPort, so it fails loudly instead of drifting to 5174', () => {
-        const d = detectStart(project({ 'package.json': VITE_PKG }), 4321);
+    it('and --strictPort, so it fails loudly instead of drifting to 5174', async () => {
+        const d = await detectStart(project({ 'package.json': VITE_PKG }), 4321);
         expect(d.command).toContain('--strictPort');
         expect(d.forced).toBe(true);
     });
 
-    it('recognises Expo projects with a declared web script and does not launch native expo start', () => {
-        const d = detectStart(project({ 'package.json': EXPO_WEB_PKG }), 4357);
+    it('recognises Expo projects with a declared web script and does not launch native expo start', async () => {
+        const d = await detectStart(project({ 'package.json': EXPO_WEB_PKG }), 4357);
         expect(d.kind).toBe('expo-web');
         expect(d.command).toBe('npm run web -- --port 4357');
         expect(d.forced).toBe(true);
         expect(d.command).not.toBe('npm start');
     });
 
-    it('recognises vite by its config file too, not only by package.json', () => {
-        const d = detectStart(project({
+    it('recognises vite by its config file too, not only by package.json', async () => {
+        const d = await detectStart(project({
             'package.json': JSON.stringify({ scripts: { dev: 'vite' } }),
             'vite.config.js': 'export default {};',
         }), 4400);
         expect(d.command).toContain('--port 4400');
     });
 
-    it('next gets its own flag spelling', () => {
-        const d = detectStart(project({
+    it('next gets its own flag spelling', async () => {
+        const d = await detectStart(project({
             'package.json': JSON.stringify({ scripts: { dev: 'next dev' }, dependencies: { next: '14' } }),
         }), 4500);
         expect(d.command).toContain('--port 4500');
@@ -87,8 +87,8 @@ describe('the port Joe announces is the port it binds', () => {
      * is NOT forced, and that distinction is what stops the readiness probe
      * from adopting somebody else's server.
      */
-    it('a PORT-reading server is left alone, and marked unforced', () => {
-        const d = detectStart(project({
+    it('a PORT-reading server is left alone, and marked unforced', async () => {
+        const d = await detectStart(project({
             'package.json': JSON.stringify({ scripts: { start: 'node server.js' } }),
         }), 4600);
         //  The property is «left alone and unforced», not the spelling of the
@@ -102,8 +102,8 @@ describe('the port Joe announces is the port it binds', () => {
         expect(d.forced).toBe(false);
     });
 
-    it('a static folder is served on OUR port, which is therefore forced', () => {
-        const d = detectStart(project({ 'index.html': '<h1>hi</h1>' }), 4700);
+    it('a static folder is served on OUR port, which is therefore forced', async () => {
+        const d = await detectStart(project({ 'index.html': '<h1>hi</h1>' }), 4700);
         expect(d.command).toContain('-l 4700');
         expect(d.forced).toBe(true);
     });
@@ -221,8 +221,8 @@ describe('what Joe opens is the system, not its source folder', () => {
         expect(RUNTOOL).toMatch(/📦 The interface is packaged inside the server/);
     });
 
-    it('a packaged server starts with npm start, not npm run dev', () => {
-        const d = detectStart(project({
+    it('a packaged server starts with npm start, not npm run dev', async () => {
+        const d = await detectStart(project({
             'package.json': JSON.stringify({ scripts: { start: 'node server.js', dev: 'vite' } }),
             'public/index.html': '<h1>packaged</h1>',
         }), 4800);

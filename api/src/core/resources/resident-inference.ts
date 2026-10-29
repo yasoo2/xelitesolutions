@@ -85,6 +85,19 @@ export async function residentInferenceBytes(): Promise<number> {
     return bytes;
 }
 
+/** What an unload did: the RAM the unloaded models held, how many, and whether the server confirmed they are gone. */
+export interface ResidentRelease {
+    releasedBytes: number;
+    unloadedModels: number;
+    /** The server stopped listing every unloaded model: its runner has exited and handed its memory back. */
+    confirmed: boolean;
+}
+
+const UNLOAD_CONFIRM_POLL_MS = 100;
+// The longest the server is given to drop an unloaded model (the old blind
+// wait); an unload normally confirms in well under a second.
+const UNLOAD_CONFIRM_MAX_MS = 10_000;
+
 /**
  * UNLOAD THE MODELS THE LOOPBACK SERVER HOLDS IN RAM, for heavy work that
  * allocates its own memory (RequestResourceManager decides when: only when
@@ -94,19 +107,29 @@ export async function residentInferenceBytes(): Promise<number> {
  * Ollama's own unload is a generate request with `keep_alive: 0`; the next
  * model call loads the model again. Only models with a RAM part are asked —
  * a model held in VRAM is not in the way of an install. Returns the RAM the
- * unloaded models held; 0 on any doubt, which leaves the caller's refusal as
- * it was.
+ * unloaded models held (0 on any doubt, which leaves the caller's refusal as
+ * it was), how many were unloaded, and whether the server confirmed it.
+ *
+ * ⛔ Second review of round 21: the caller used to wait a blind ten seconds
+ * for memory that, on some machines, never comes back (Linux maps the
+ * weights from the file, so they were already counted as available; a
+ * container's own limit does not see a host server's memory) — the heavy
+ * lane held ~10.4 s for nothing. Ollama drops a model from /api/ps only once
+ * its runner has exited, so the server's own listing says when the unload is
+ * done; the caller then reads memory and judges at once.
  */
-export async function releaseResidentInference(timeoutMs = 15_000): Promise<number> {
+export async function releaseResidentInference(timeoutMs = 15_000): Promise<ResidentRelease> {
+    const none: ResidentRelease = { releasedBytes: 0, unloadedModels: 0, confirmed: false };
     const ps = psUrl();
     const models = ps ? await loadedModels(ps) : null;
-    if (!ps || !models) return 0;
+    if (!ps || !models) return none;
     let released = 0;
+    const unloaded: string[] = [];
     for (const model of models) {
         const ram = residentRamBytes(model);
         const name = String((model as any)?.name || (model as any)?.model || '');
         if (!ram || !name) continue;
-        const unloaded = await new Promise<boolean>(resolve => {
+        const ok = await new Promise<boolean>(resolve => {
             const body = JSON.stringify({ model: name, keep_alive: 0 });
             const req = http.request(new URL('/api/generate', ps), {
                 method: 'POST', timeout: timeoutMs,
@@ -116,10 +139,25 @@ export async function releaseResidentInference(timeoutMs = 15_000): Promise<numb
             req.on('error', () => resolve(false));
             req.end(body);
         });
-        if (unloaded) released += ram;
+        if (ok) { released += ram; unloaded.push(name); }
     }
     // What the server holds has changed: the next reading asks it again.
     cached = null;
     lastGood = null;
-    return released;
+    if (!unloaded.length) return none;
+    const confirmed = await serverDropped(ps, unloaded, Math.min(timeoutMs, UNLOAD_CONFIRM_MAX_MS));
+    return { releasedBytes: released, unloadedModels: unloaded.length, confirmed };
+}
+
+/** True once the server's own listing no longer names any of `names`; false at the deadline or when it stops answering. */
+async function serverDropped(ps: URL, names: string[], timeoutMs: number): Promise<boolean> {
+    const until = Date.now() + Math.max(0, timeoutMs);
+    for (;;) {
+        const listed = await loadedModels(ps);
+        if (listed === null) return false;
+        const still = new Set(listed.map(m => String((m as any)?.name || (m as any)?.model || '')));
+        if (!names.some(name => still.has(name))) return true;
+        if (Date.now() >= until) return false;
+        await new Promise(resolve => setTimeout(resolve, UNLOAD_CONFIRM_POLL_MS));
+    }
 }

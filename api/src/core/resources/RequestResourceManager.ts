@@ -1,12 +1,17 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
-import { releaseResidentInference, residentInferenceBytes } from './resident-inference';
+import { releaseResidentInference, residentInferenceBytes, type ResidentRelease } from './resident-inference';
 import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
 import { CONTEXT_HARD_MAX_TOKENS, contextTierForMemory, localContextCeilingTokens } from './context-ceiling';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
 const MIN_FITTED_OUTPUT_TOKENS = 256;
+// After an unload: how long memory is given to show what the server handed
+// back (the server has already said its runner exited), in readings.
+const UNLOAD_SETTLE_READINGS = 8;
+const UNLOAD_SETTLE_MS = 250;
+const NO_RELEASE: ResidentRelease = { releasedBytes: 0, unloadedModels: 0, confirmed: false };
 
 export type ResourceAdmissionCode = 'RESOURCE_QUEUE_FULL' | 'RESOURCE_QUEUE_TIMEOUT'
     | 'RESOURCE_LOW_MEMORY' | 'RESOURCE_MEMORY_UNAVAILABLE' | 'RESOURCE_CONTEXT_OVERFLOW'
@@ -113,11 +118,11 @@ export interface RequestResourceManagerOptions {
      */
     sampleResidentInference?: () => Promise<number>;
     /**
-     * Unload the idle models the local server holds in RAM and return what they
-     * held (see admitBesideIdleModels). Defaults to the loopback server's own
+     * Unload the idle models the local server holds in RAM and say what that
+     * did (see admitBesideIdleModels). Defaults to the loopback server's own
      * unload; an injected memory reading with no unloader unloads nothing.
      */
-    releaseResidentInference?: () => Promise<number>;
+    releaseResidentInference?: () => Promise<ResidentRelease>;
     /** How often a running inference re-reads what the server holds (see withInference). */
     residencyRefreshMs?: number;
     now?: () => number;
@@ -233,7 +238,7 @@ export class RequestResourceManager {
     private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number };
     private readonly sampleMemory: () => MemoryReading;
     private readonly sampleResidentInference: () => Promise<number>;
-    private readonly releaseResidentInference: () => Promise<number>;
+    private readonly releaseResidentInference: () => Promise<ResidentRelease>;
     private readonly residencyRefreshMs: number;
     private readonly now: () => number;
     private lastMemory: MemorySnapshot | null = null;
@@ -263,7 +268,7 @@ export class RequestResourceManager {
         this.sampleResidentInference = options.sampleResidentInference
             || (options.sampleMemory ? async () => 0 : residentInferenceBytes);
         this.releaseResidentInference = options.releaseResidentInference
-            || (options.sampleMemory ? async () => 0 : releaseResidentInference);
+            || (options.sampleMemory ? async () => NO_RELEASE : () => releaseResidentInference());
         // 0: an injected memory reading with no residency reader asks no live server, so nothing is kept fresh.
         this.residencyRefreshMs = options.sampleMemory && !options.sampleResidentInference ? 0
             : boundedInteger(options.residencyRefreshMs, 20000, 10, 20000);
@@ -544,19 +549,44 @@ export class RequestResourceManager {
      * in VRAM — it has no RAM part to give and is never unloaded for an
      * install; a refusal that unloading cannot cure stays the refusal it was,
      * with its numbers.
+     *
+     * ⛔ AN UNLOAD THAT GAVE NOTHING BACK IS SAID AS ONE (second review of
+     * round 21). Some machines do not give the memory back where it is read:
+     * Linux maps the weights from the model file, so they were already
+     * counted as available and stay cached after the unload; a container's
+     * own limit does not see a host server's memory. Neither can be told
+     * apart beforehand from any reading Node offers — what the server holds
+     * and what is free are both true, and only the unload shows whether one
+     * becomes the other. So the judgement follows the unload at once: the
+     * server says when its runner has exited (resident-inference), memory
+     * gets a short settle to show it, and the step is admitted or refused
+     * then — not after a blind ten seconds of holding the heavy lane. A
+     * refusal after an unload carries what was unloaded (unloadedModels,
+     * releasedBytes), what came back (recoveredBytes) and whether the server
+     * confirmed, and its sentence says the model was asked to unload: the
+     * plain refusal's «no other application was stopped» alone hid that.
      */
     private async admitBesideIdleModels(signal: AbortSignal): Promise<MemorySnapshot> {
         try { return this.admitMemory(0); } catch (refusal) {
             if (!(refusal instanceof ResourceAdmissionError) || refusal.code !== 'RESOURCE_LOW_MEMORY') throw refusal;
             const held = await this.reclaimableBytes();
-            if (!held || !this.clearsFloor(this.measure().availableBytes + held)) throw refusal;
-            let released = 0;
-            try { released = nonnegative(await this.releaseResidentInference()) ?? 0; } catch { released = 0; }
-            if (!released) throw refusal;
-            for (let attempt = 0; ; attempt++) {
+            const before = this.measure();
+            if (!held || !this.clearsFloor(before.availableBytes + held)) throw refusal;
+            let release = NO_RELEASE;
+            try { release = await this.releaseResidentInference() || NO_RELEASE; } catch { release = NO_RELEASE; }
+            const releasedBytes = nonnegative(release.releasedBytes) ?? 0;
+            if (!releasedBytes) throw refusal;
+            for (let reading = 0; ; reading++) {
                 if (signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                if (this.clearsFloor(this.measure().availableBytes) || attempt >= 40) return this.admitMemory(0);
-                await new Promise(resolve => setTimeout(resolve, 250));
+                const now = this.measure();
+                if (this.clearsFloor(now.availableBytes)) return now;
+                if (reading >= UNLOAD_SETTLE_READINGS) {
+                    throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { ...refusal.details, availableBytes: now.availableBytes,
+                        unloadedModels: nonnegative(release.unloadedModels) ?? 0, releasedBytes,
+                        recoveredBytes: Math.max(0, now.availableBytes - before.availableBytes),
+                        unloadConfirmed: release.confirmed ? 1 : 0 });
+                }
+                await new Promise(resolve => setTimeout(resolve, UNLOAD_SETTLE_MS));
             }
         }
     }

@@ -25,6 +25,7 @@
 import { readModelJson } from '../../shared/utils/json';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
 import { localInferenceFetch } from './providers/loopback-fetch';
+import { admitLocalModelCall } from '../resources/local-model-call';
 
 export interface StructuredAsk {
     /** What to ask for, in the user's own words where possible. */
@@ -92,35 +93,47 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
             return undefined;
         }
     }
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-    try {
-        const res = await localInferenceFetch()(`${host}/api/generate`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            signal: ctrl.signal,
-            body: JSON.stringify({
-                model,
-                prompt: ask.prompt,
-                stream: false,
-                keep_alive: '5m',
-                // THE WHOLE POINT: the schema constrains the sampling itself.
-                format: ask.schema,
-                options: { temperature: 0 },
-            }),
-        });
-        if (!res.ok) return undefined;
-        const data: any = await res.json().catch(() => null);
-        const text = String(data?.response ?? '').trim();
-        if (!text) return undefined;
-        // A constrained decoder returns bare JSON; parse tolerantly anyway,
-        // because an older Ollama silently ignores `format` and answers prose.
-        return answerOfSchemaShape(text, ask.schema);
-    } catch {
-        return undefined;
-    } finally {
-        clearTimeout(timer);
-    }
+    // Another spelling of a server on this machine (OLLAMA_HOST=http://0.0.0.0:11434
+    // is Ollama's own Linux server value) is still a local model call: admitted
+    // for its whole run like the managed one above (second review of round 21).
+    // The deadline covers the wait for admission and the call together.
+    const deadlineAt = Date.now() + timeoutMs;
+    const generate = async (admitted?: AbortSignal): Promise<any | undefined> => {
+        const ctrl = new AbortController();
+        const abort = () => ctrl.abort();
+        if (admitted?.aborted) abort(); else admitted?.addEventListener('abort', abort, { once: true });
+        const timer = setTimeout(abort, Math.max(1, deadlineAt - Date.now()));
+        try {
+            const res = await localInferenceFetch()(`${host}/api/generate`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                signal: ctrl.signal,
+                body: JSON.stringify({
+                    model,
+                    prompt: ask.prompt,
+                    stream: false,
+                    keep_alive: '5m',
+                    // THE WHOLE POINT: the schema constrains the sampling itself.
+                    format: ask.schema,
+                    options: { temperature: 0 },
+                }),
+            });
+            if (!res.ok) return undefined;
+            const data: any = await res.json().catch(() => null);
+            const text = String(data?.response ?? '').trim();
+            if (!text) return undefined;
+            // A constrained decoder returns bare JSON; parse tolerantly anyway,
+            // because an older Ollama silently ignores `format` and answers prose.
+            return answerOfSchemaShape(text, ask.schema);
+        } catch {
+            return undefined;
+        } finally {
+            clearTimeout(timer);
+            admitted?.removeEventListener('abort', abort);
+        }
+    };
+    // A refusal to admit is a resource decision, as on the managed path: said, not swallowed.
+    return admitLocalModelCall(host, generate, { kind: 'structured-local-inference', queueTimeoutMs: timeoutMs });
 }
 
 /**

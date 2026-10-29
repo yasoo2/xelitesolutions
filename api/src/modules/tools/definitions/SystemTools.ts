@@ -1290,6 +1290,13 @@ export interface ReleaseProvidingBin {
     major?: number;
     /** One sentence: which release was chosen and why, naming what was skipped. */
     reason?: string;
+    /**
+     * True only when the registry was read and said the chosen release is not
+     * deprecated; false when that read failed. A sentence that calls the
+     * release «non-deprecated» is built from this, never assumed (second
+     * review of round 21: project_run said so even when the read had failed).
+     */
+    deprecationKnown?: boolean;
     error?: string;
     probed: string[];
     /** Releases seen declaring the executable but deprecated, newest first. */
@@ -1350,7 +1357,7 @@ export async function findReleaseProvidingBin(
         ];
         const reason = `${packageName}@${version} (major ${major}) is the newest stable${notice === null ? '' : ', non-deprecated'} release that declares "${executable}"`
             + `${notice === null ? ' (its deprecation status could not be read)' : ''}${skipped.length ? `; ${skipped.join('; ')}` : ''}`;
-        return { version, major, reason, probed, skippedDeprecated };
+        return { version, major, reason, deprecationKnown: notice !== null, probed, skippedDeprecated };
     };
     for (const major of majors) {
         const releases = releasesPerMajor.get(major) as string[];
@@ -1482,7 +1489,7 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
             let installArgs = args;
-            let binProvider: { version: string; major?: number; reason?: string; skippedDeprecated: string[] } | undefined;
+            let binProvider: { version: string; major?: number; reason?: string; deprecationKnown: boolean; skippedDeprecated: string[] } | undefined;
             // A repair that must run `npx <executable>` installs the release
             // that ships it — chosen from registry manifests, never assumed.
             const providesBin = typeof input?.providesBin === 'string' ? input.providesBin.trim() : '';
@@ -1497,7 +1504,8 @@ export class NpmManagerTool extends BaseTool {
                 const pinned = `${target}@^${provider.version}`;
                 installArgs = args.map(token => token === target ? pinned : token);
                 logs.push(`npm.bin_provider=${pinned} declares ${providesBin} — ${provider.reason}`);
-                binProvider = { version: provider.version, major: provider.major, reason: provider.reason, skippedDeprecated: provider.skippedDeprecated };
+                binProvider = { version: provider.version, major: provider.major, reason: provider.reason,
+                    deprecationKnown: provider.deprecationKnown === true, skippedDeprecated: provider.skippedDeprecated };
             }
             let r = await handleShellCommand('npm', installArgs, workDir, installLike ? installTimeoutMs : 5 * 60_000, false);
             if (!r.ok && installLike) {

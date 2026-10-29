@@ -63,6 +63,12 @@ export function resourceFaultCode(error: unknown): string | null {
 /** His sentence for a refusal code found in the text, or null when the text names none. */
 export function resourceRefusalSentence(text: string, isAr: boolean): string | null {
     const t = String(text || '');
+    // An idle local model was asked to unload for this step and the memory did
+    // not come back (RequestResourceManager.admitBesideIdleModels): «no other
+    // application was stopped» alone would hide that (second review of round 21).
+    if (/RESOURCE_LOW_MEMORY/.test(t) && /\breleasedBytes=[1-9]/.test(t)) return isAr
+        ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي. طلبتُ من خادم النموذج المحلي إفراغ نموذجه الخامل لإفساح المجال (يُحمَّل من جديد عند استدعائه التالي)، لكن الذاكرة لم تعد بما يكفي. لم أوقف أي برنامج آخر.'
+        : 'The heavy step could not start because available memory is insufficient. The local model server was asked to unload its idle model to make room (it loads again on its next call), but not enough memory came back. No other application was stopped.';
     if (/RESOURCE_(?:LOW_MEMORY|MEMORY_UNAVAILABLE)/.test(t)) return isAr
         ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي أو تعذّر قياسها. لم أوقف أي برنامج آخر.'
         : 'The heavy step could not start because available memory is insufficient or could not be measured. No other application was stopped.';
@@ -87,9 +93,11 @@ export function resourceRefusalSentence(text: string, isAr: boolean): string | n
 export function describeResourceRefusal(error: unknown, isAr: boolean): string | null {
     const code = resourceRefusalCode(error);
     if (!code) return null;
-    const sentence = resourceRefusalSentence(code, isAr)
+    const numbers = numbersOf(error);
+    // The sentence is chosen from the code and its numbers: what was done for the step is in them.
+    const sentence = resourceRefusalSentence(`${code}${numbers}`, isAr)
         || (isAr ? 'لم تبدأ الخطوة: رفضها حارس الموارد.' : 'The step did not start: the resource guard refused it.');
-    return `${code}: ${sentence}${numbersOf(error)}`;
+    return `${code}: ${sentence}${numbers}`;
 }
 
 function numbersOf(error: unknown): string {
@@ -113,9 +121,12 @@ export function describeResourceFault(error: unknown, isAr: boolean): string | n
     if (code === 'RESOURCE_CLEANUP_FAILED') sentence = isAr
         ? 'نُفّذت الخطوة، لكن تحرير ما حجزته من موارد فشل بعد انتهائها.'
         : 'The step ran, but releasing what it held failed after it finished.';
+    // Only a call the local server received: one whose deadline passed while it
+    // waited for its turn is RESOURCE_QUEUE_TIMEOUT, a refusal (second review
+    // of round 21).
     else if (code === 'RESOURCE_TIMEOUT') sentence = isAr
-        ? 'تجاوز استدعاء النموذج المحلي مهلته (ويشمل ذلك انتظاره في الطابور) فأُوقف؛ لم يُرفض لنقصٍ في الموارد، وقد يكون جزءٌ من العمل قد نُفّذ.'
-        : 'The local model call ran past its deadline (queue wait included) and was stopped; it was not refused for lack of resources, and part of the work may have run.';
+        ? 'تجاوز استدعاء النموذج المحلي مهلته بعد أن بدأ فأُوقف؛ لم يُرفض لنقصٍ في الموارد، وقد يكون جزءٌ من العمل قد نُفّذ.'
+        : 'The local model call ran past its deadline after it started and was stopped; it was not refused for lack of resources, and part of the work may have run.';
     else sentence = isAr
         ? 'فشل فحصٌ داخليّ في حارس الموارد — عطلٌ في ترتيب استدعاءات جو نفسه، لا نقصٌ في الذاكرة أو الطابور.'
         : 'An internal resource-guard check failed — a fault in the order of Joe\'s own calls, not a shortage of memory or queue room.';

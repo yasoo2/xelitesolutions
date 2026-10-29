@@ -25,6 +25,8 @@ import { Router, Request, Response } from 'express';
 import { authenticate, AuthenticatedRequest } from '../middleware/auth';
 import { getDynamicOpenAIKey } from '../../core/llm';
 import { config } from '../../shared/config';
+import { admitLocalModelCall } from '../../core/resources/local-model-call';
+import { describeResourceRefusal } from '../../shared/resource-refusal';
 
 const router = Router();
 
@@ -111,16 +113,25 @@ router.post('/speech', authenticate, async (req: Request, res: Response) => {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), TIMEOUT_MS);
     try {
-        const upstream = await fetch(engine.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${engine.key}` },
-            body: JSON.stringify({ model: engine.model, input: text, voice, response_format: format }),
-            signal: ctrl.signal,
-        });
-        clearTimeout(timer);
+        // A speech server on this machine (TTS_BASE_URL) runs a model: its call is
+        // admitted for its whole run, the audio read included, like every local
+        // model call (second review of round 21). The engine's deadline also bounds
+        // the wait for admission; OpenAI's servers are not this machine's.
+        const reply = await admitLocalModelCall(engine.kind === 'local' ? engine.url : '', async admission => {
+            if (admission?.aborted) ctrl.abort(); else admission?.addEventListener('abort', () => ctrl.abort(), { once: true });
+            const upstream = await fetch(engine.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${engine.key}` },
+                body: JSON.stringify({ model: engine.model, input: text, voice, response_format: format }),
+                signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!upstream.ok) return { upstream, detail: (await upstream.text().catch(() => '')).slice(0, 300), buf: Buffer.alloc(0) };
+            return { upstream, detail: '', buf: Buffer.from(await upstream.arrayBuffer()) };
+        }, { kind: 'local-speech', queueTimeoutMs: TIMEOUT_MS });
+        const { upstream, detail } = reply;
 
         if (!upstream.ok) {
-            const detail = (await upstream.text().catch(() => '')).slice(0, 300);
             return res.status(upstream.status === 401 ? 502 : 502).json({
                 ok: false,
                 error: 'tts_upstream_failed',
@@ -131,7 +142,7 @@ router.post('/speech', authenticate, async (req: Request, res: Response) => {
             });
         }
 
-        const buf = Buffer.from(await upstream.arrayBuffer());
+        const buf = reply.buf;
         if (!buf.length) {
             return res.status(502).json({ ok: false, error: 'tts_empty', message: 'the engine returned no audio' });
         }
@@ -141,6 +152,10 @@ router.post('/speech', authenticate, async (req: Request, res: Response) => {
         return res.end(buf);
     } catch (e: any) {
         clearTimeout(timer);
+        // Not admitted (the machine is busy with heavy work or short of memory):
+        // 503, so the client speaks with the browser's own voice at once.
+        const refusal = describeResourceRefusal(e, false);
+        if (refusal) return res.status(503).json({ ok: false, error: 'tts_not_admitted', message: refusal });
         const aborted = e?.name === 'AbortError';
         return res.status(aborted ? 504 : 502).json({
             ok: false,

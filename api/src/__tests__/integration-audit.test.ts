@@ -102,8 +102,8 @@ describe('greenfield runtime evidence binds the artifact before its manifest', (
         expect(canBindRuntimeProjectEvidence(project, tmp, '', true)).toBe(true);
     });
 
-    it('resolves the same source-entrypoint project by its explicit name', () => {
-        expect(resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
+    it('resolves the same source-entrypoint project by its explicit name', async () => {
+        expect(await resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
     });
 });
 

@@ -484,9 +484,9 @@ function isFrontendStartScript(script: string): boolean {
  * and it is under a conventional backend directory. A frontend-only project is
  * left on its declared start script, and ambiguous layouts are never guessed.
  */
-function backendEntrypointForFrontendScript(cwd: string, script: string): string | null {
+async function backendEntrypointForFrontendScript(cwd: string, script: string): Promise<string | null> {
     if (!isFrontendStartScript(script)) return null;
-    const candidates = serverEntrypointCandidates(cwd);
+    const candidates = await serverEntrypointCandidates(cwd);
     if (candidates.length !== 1) return null;
     const candidate = candidates[0].replace(/\\/g, '/');
     const parts = candidate.split('/');
@@ -503,7 +503,7 @@ function backendEntrypointForFrontendScript(cwd: string, script: string): string
  * framework must obey, or a static server we point ourselves. It decides
  * whether readiness may go looking on other ports (see below).
  */
-export function detectStart(cwd: string, port: number): { command: string; kind: string; expectPort: number; forced: boolean } {
+export async function detectStart(cwd: string, port: number): Promise<{ command: string; kind: string; expectPort: number; forced: boolean }> {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
         let manifest: Record<string, any> = {};
@@ -526,7 +526,7 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
         // visibly a frontend-only command but the project also contains exactly
         // one proven backend entrypoint, use that observed server instead of
         // launching a missing/irrelevant frontend dependency and hiding stderr.
-        const backendEntrypoint = backendEntrypointForFrontendScript(cwd, String(scripts.start || ''));
+        const backendEntrypoint = await backendEntrypointForFrontendScript(cwd, String(scripts.start || ''));
         if (backendEntrypoint) {
             return { command: `node ${backendEntrypoint}`, kind: 'node-entry', expectPort: port, forced: false };
         }
@@ -607,10 +607,48 @@ const TYPESCRIPT_ENTRYPOINTS = [
 const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
 const isIgnoredProjectDir = (name: string): boolean => isMachineStateDirectory(name) || BUILD_OUTPUT_DIRS.has(name);
 
-function hasProjectMarker(dir: string): boolean {
-    if (PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) return true;
-    return fs.existsSync(path.join(dir, 'tsconfig.json'))
-        && TYPESCRIPT_ENTRYPOINTS.some(entry => fs.existsSync(path.join(dir, entry)));
+/**
+ * ⛔ A PROJECT IS READ WITHOUT HOLDING THE EVENT LOOP (second review of round
+ * 21). project_run's preflight walked the project synchronously — the
+ * workspace's children, every source file to depth 3 for a server entry, the
+ * whole import graph for missing modules and packages — and while it read,
+ * nothing else in the process ran: no other user's request, no stream, no
+ * timer. Every walk below awaits its reads; folders are listed, and files
+ * read, side by side a bounded number at a time (as request-coverage does).
+ */
+const WALK_CONCURRENCY = 32;
+const fsp = fs.promises;
+
+async function pathExists(target: string): Promise<boolean> {
+    try { await fsp.access(target); return true; } catch { return false; }
+}
+
+async function statOf(target: string): Promise<fs.Stats | null> {
+    try { return await fsp.stat(target); } catch { return null; }
+}
+
+async function readTextFile(target: string): Promise<string | null> {
+    try { return await fsp.readFile(target, 'utf-8'); } catch { return null; }
+}
+
+async function listEntries(directory: string): Promise<fs.Dirent[] | null> {
+    try { return await fsp.readdir(directory, { withFileTypes: true }); } catch { return null; }
+}
+
+/** `work` over `items`, WALK_CONCURRENCY at a time, results in order. */
+async function mapBounded<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += WALK_CONCURRENCY) {
+        results.push(...await Promise.all(items.slice(i, i + WALK_CONCURRENCY).map(work)));
+    }
+    return results;
+}
+
+async function hasProjectMarker(dir: string): Promise<boolean> {
+    for (const marker of PROJECT_MARKERS) if (await pathExists(path.join(dir, marker))) return true;
+    if (!await pathExists(path.join(dir, 'tsconfig.json'))) return false;
+    for (const entry of TYPESCRIPT_ENTRYPOINTS) if (await pathExists(path.join(dir, entry))) return true;
+    return false;
 }
 
 /**
@@ -619,9 +657,9 @@ function hasProjectMarker(dir: string): boolean {
  * session project. A named request must be resolved against the workspace when
  * the active directory is still an incomplete scaffold.
  */
-export function shouldUseActiveProjectDirectly(activeProjectDir: string, projectQuery?: unknown): boolean {
+export async function shouldUseActiveProjectDirectly(activeProjectDir: string, projectQuery?: unknown): Promise<boolean> {
     const named = requestedProjectLabel(projectQuery);
-    return !!activeProjectDir && (hasProjectMarker(activeProjectDir) || !named);
+    return !!activeProjectDir && (!named || await hasProjectMarker(activeProjectDir));
 }
 
 function normalizeProjectLabel(value: unknown): string {
@@ -639,17 +677,17 @@ function projectLabel(dir: string): string {
     return normalizeProjectLabel(path.basename(dir));
 }
 
-function projectPackageLabel(dir: string): string {
+async function projectPackageLabel(dir: string): Promise<string> {
     try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+        const pkg = JSON.parse(String(await readTextFile(path.join(dir, 'package.json'))));
         return normalizeProjectLabel(pkg?.name || '');
     } catch {
         return '';
     }
 }
 
-function projectLabels(dir: string): string[] {
-    return Array.from(new Set([projectLabel(dir), projectPackageLabel(dir)].filter(Boolean)));
+async function projectLabels(dir: string): Promise<string[]> {
+    return Array.from(new Set([projectLabel(dir), await projectPackageLabel(dir)].filter(Boolean)));
 }
 
 function requestedProjectLabel(query: unknown): string {
@@ -668,28 +706,26 @@ function requestedProjectLabel(query: unknown): string {
 }
 
 /** Exported for direct regression tests; this function never starts a process. */
-export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): RunnableProjectResolution {
-    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
+export async function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): Promise<RunnableProjectResolution> {
+    if (!workspaceRoot || !await pathExists(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
 
     // A workspace may itself be runnable (for example Joe's own repository),
     // but an explicit project name is stronger evidence than that root marker.
     // Resolve the named child first; otherwise a request for a newly scaffolded
     // project silently started the agent repository that contains it.
     const requested = requestedProjectLabel(projectQuery);
-    const rootIsRunnable = hasProjectMarker(workspaceRoot);
+    const rootIsRunnable = await hasProjectMarker(workspaceRoot);
     if (!requested && rootIsRunnable) return { cwd: workspaceRoot, candidates: [workspaceRoot], matched: true };
 
     const candidates: string[] = [];
     if (rootIsRunnable) candidates.push(workspaceRoot);
-    try {
-        for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
-            if (!entry.isDirectory() || entry.name.startsWith('.') || isIgnoredProjectDir(entry.name)) continue;
-            const candidate = path.join(workspaceRoot, entry.name);
-            if (hasProjectMarker(candidate)) candidates.push(candidate);
-        }
-    } catch {
-        return { cwd: null, candidates: [], matched: false };
-    }
+    const entries = await listEntries(workspaceRoot);
+    if (!entries) return { cwd: null, candidates: [], matched: false };
+    const children = entries
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !isIgnoredProjectDir(entry.name))
+        .map(entry => path.join(workspaceRoot, entry.name));
+    const runnable = await mapBounded(children, hasProjectMarker);
+    children.forEach((candidate, index) => { if (runnable[index]) candidates.push(candidate); });
 
     candidates.sort((a, b) => a.localeCompare(b));
     if (!requested) {
@@ -711,7 +747,8 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
      * accepted — and only when the label is long enough to identify something.
      */
     const TRUNCATION_FLOOR = 8;
-    const matches = candidates.filter(candidate => projectLabels(candidate).some(label =>
+    const labels = await mapBounded(candidates, projectLabels);
+    const matches = candidates.filter((_candidate, index) => labels[index].some(label =>
         label === requested
         || label.includes(requested)
         || (label.length >= TRUNCATION_FLOOR && requested.startsWith(label))));
@@ -769,7 +806,7 @@ export function placeholderLifecycleScriptError(cwd: string): string | null {
  * JavaScript/TypeScript server with observable listen evidence. This stays
  * generic: it does not prescribe a framework or a project template.
  */
-export function launchabilityError(cwd: string, detected: { command: string; kind: string }): string | null {
+export async function launchabilityError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
 
     const placeholderError = placeholderLifecycleScriptError(cwd);
@@ -810,7 +847,7 @@ export function launchabilityError(cwd: string, detected: { command: string; kin
     } catch {
         return `launchability: runtime target cannot be read (${target})`;
     }
-    const missingLocal = missingLocalRuntimeImports(cwd, detected);
+    const missingLocal = await missingLocalRuntimeImports(cwd, detected);
     if (missingLocal.length) {
         return `launchability: local runtime imports missing (${missingLocal.join('; ')})`;
     }
@@ -826,32 +863,33 @@ function serverEntrypointScore(value: string): number {
     return 4;
 }
 
-function serverEntrypointCandidates(cwd: string): string[] {
+/** Source files to depth 3 that start a server, best-ranked first. Read level by level, never holding the event loop. */
+async function serverEntrypointCandidates(cwd: string): Promise<string[]> {
     const candidates: string[] = [];
     // Machine state comes from the shared list; the rest is this walker's own choice.
     const ignored = new Set(['dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
     const extensions = /\.(?:js|mjs|cjs|ts|tsx)$/iu;
-    const walk = (directory: string, depth: number): void => {
-        if (depth > 3) return;
-        let entries: fs.Dirent[] = [];
-        try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
-        for (const entry of entries) {
-            if (entry.name.startsWith('.') || ignored.has(entry.name) || (entry.isDirectory() && isMachineStateDirectory(entry.name))) continue;
-            const absolute = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                walk(absolute, depth + 1);
-                continue;
+    let level = [cwd];
+    for (let depth = 0; depth <= 3 && level.length; depth++) {
+        const listed = await mapBounded(level, listEntries);
+        const next: string[] = [];
+        const files: string[] = [];
+        level.forEach((directory, index) => {
+            for (const entry of listed[index] || []) {
+                if (entry.name.startsWith('.') || ignored.has(entry.name) || (entry.isDirectory() && isMachineStateDirectory(entry.name))) continue;
+                const absolute = path.join(directory, entry.name);
+                if (entry.isDirectory()) next.push(absolute);
+                else if (entry.isFile() && extensions.test(entry.name)) files.push(absolute);
             }
-            if (!entry.isFile() || !extensions.test(entry.name)) continue;
-            try {
-                const source = fs.readFileSync(absolute, 'utf-8');
-                if (hasServerStartEvidence(source)) {
-                    candidates.push(path.relative(cwd, absolute).replace(/\\/g, '/'));
-                }
-            } catch { /* unreadable files are not evidence */ }
-        }
-    };
-    walk(cwd, 0);
+        });
+        // Unreadable files are not evidence; a source is let go as soon as it is judged.
+        const starts = await mapBounded(files, async file => {
+            const source = await readTextFile(file);
+            return source !== null && hasServerStartEvidence(source);
+        });
+        files.forEach((file, index) => { if (starts[index]) candidates.push(path.relative(cwd, file).replace(/\\/g, '/')); });
+        level = next;
+    }
     return candidates.sort((a, b) => serverEntrypointScore(a) - serverEntrypointScore(b) || a.localeCompare(b));
 }
 
@@ -862,7 +900,7 @@ function serverEntrypointCandidates(cwd: string): string[] {
  * entrypoint already exists on disk. The implementation remains the user's
  * existing artifact; Joe merely reconciles the manifest with observed evidence.
  */
-export function reconcileMissingRuntimeTarget(cwd: string, failureText: string): { repaired: boolean; message: string } {
+export async function reconcileMissingRuntimeTarget(cwd: string, failureText: string): Promise<{ repaired: boolean; message: string }> {
     if (!/runtime target is missing/iu.test(String(failureText || ''))) {
         return { repaired: false, message: 'not an evidenced missing-runtime-target failure' };
     }
@@ -878,7 +916,7 @@ export function reconcileMissingRuntimeTarget(cwd: string, failureText: string):
         if (fs.existsSync(path.resolve(cwd, declaredTarget))) {
             return { repaired: false, message: `declared target already exists (${declaredTarget})` };
         }
-        const candidates = serverEntrypointCandidates(cwd);
+        const candidates = await serverEntrypointCandidates(cwd);
         if (!candidates.length) return { repaired: false, message: 'no existing server entrypoint evidence found' };
         const best = candidates[0];
         const bestScore = serverEntrypointScore(best);
@@ -903,13 +941,13 @@ function normalizedRuntimeStem(value: string): string {
     return stem.replace(/(?:routes?|controllers?|handlers?|services?|routers?|modules?)$/u, '');
 }
 
-function uniqueSiblingRuntimeCandidate(importerFile: string, specifier: string): string | null {
+async function uniqueSiblingRuntimeCandidate(importerFile: string, specifier: string): Promise<string | null> {
     if (!specifier.startsWith('.')) return null;
     const specifierPath = path.resolve(path.dirname(importerFile), specifier);
     const directory = path.dirname(specifierPath);
     const requestedStem = path.basename(specifierPath).replace(/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu, '');
-    let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return null; }
+    const entries = await listEntries(directory);
+    if (!entries) return null;
 
     const sourceFiles = entries
         .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name))
@@ -939,44 +977,42 @@ function replaceQuotedRuntimeSpecifier(source: string, specifier: string, replac
  * reachable, the replacement must be a single sibling source file, and the
  * normalized stem may differ only by a conventional suffix such as Routes.
  */
-export function reconcileMissingRuntimeImports(
+export async function reconcileMissingRuntimeImports(
     cwd: string,
     detected: { command: string; kind: string },
-): { repaired: boolean; message: string; changes: string[] } {
+): Promise<{ repaired: boolean; message: string; changes: string[] }> {
     if (detected.kind === 'static' || detected.kind === 'override') {
         return { repaired: false, message: 'local-import reconciliation is not applicable', changes: [] };
     }
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     const entrypoint = target ? path.resolve(cwd, target) : '';
-    if (!entrypoint || !fs.existsSync(entrypoint)) {
+    if (!entrypoint || !await pathExists(entrypoint)) {
         return { repaired: false, message: 'runtime entrypoint is unavailable for local-import reconciliation', changes: [] };
     }
 
+    // The whole reachable graph: the visited set ends the walk, not a depth.
     const visited = new Set<string>();
     const changes: string[] = [];
     const ambiguous: string[] = [];
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
         if (relative.split('/').some(part => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        if (source === null) return;
         let updated = source;
         for (const specifier of runtimeImportSpecifiers(source)) {
-            if (!specifier.startsWith('.') || resolveLocalRuntimeImport(file, specifier)) {
-                const local = resolveLocalRuntimeImport(file, specifier);
-                if (local) visit(local, depth + 1);
+            const local = specifier.startsWith('.') ? await resolveLocalRuntimeImport(file, specifier) : null;
+            if (!specifier.startsWith('.') || local) {
+                if (local) await visit(local);
                 continue;
             }
-            const candidate = uniqueSiblingRuntimeCandidate(file, specifier);
+            const candidate = await uniqueSiblingRuntimeCandidate(file, specifier);
             if (!candidate) {
                 const candidateDirectory = path.dirname(path.resolve(path.dirname(file), specifier));
-                let siblingCount = 0;
-                try {
-                    siblingCount = fs.readdirSync(candidateDirectory, { withFileTypes: true })
-                        .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name)).length;
-                } catch { /* no evidence */ }
+                const siblingCount = ((await listEntries(candidateDirectory)) || [])
+                    .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name)).length;
                 if (siblingCount > 1) ambiguous.push(`${relative} -> ${specifier}`);
                 continue;
             }
@@ -985,13 +1021,13 @@ export function reconcileMissingRuntimeImports(
             if (next === updated) continue;
             updated = next;
             changes.push(`${relative}: ${specifier} -> ${replacement}`);
-            visit(candidate, depth + 1);
+            await visit(candidate);
         }
         if (updated !== source) {
-            try { fs.writeFileSync(file, updated, 'utf-8'); } catch { /* leave the evidence for self-fix */ }
+            try { await fsp.writeFile(file, updated, 'utf-8'); } catch { /* leave the evidence for self-fix */ }
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
 
     if (changes.length) {
         return {
@@ -1022,7 +1058,14 @@ const RUNTIME_SOURCE_IGNORES = new Set(['.git', 'node_modules', 'dist', 'build',
  * not. Check every path segment against the directory's literal entry names so
  * an import of `./styles/app.css` cannot silently accept `styles/App.css`.
  */
-export function localFileExistsWithExactCase(filePath: string): boolean {
+type ExactCaseRequest = { op: 'realpath' | 'readdir' | 'stat'; at: string };
+
+/**
+ * The check written once, as the filesystem questions it asks; two drivers
+ * answer them (below). project_run's import walk awaits it; the synchronous
+ * callers elsewhere (the file writer, self-fix) keep their own driver.
+ */
+function* exactCaseSteps(filePath: string): Generator<ExactCaseRequest, boolean, any> {
     const absolute = path.resolve(filePath);
     const root = path.parse(absolute).root;
     const relative = path.relative(root, absolute);
@@ -1032,24 +1075,51 @@ export function localFileExistsWithExactCase(filePath: string): boolean {
     // even when the file itself is readable. realpath.native gives us the
     // filesystem's actual spelling without walking each parent directory.
     if (process.platform === 'win32') {
-        try {
-            const actual = path.relative(root, fs.realpathSync.native(absolute)).split(path.sep).filter(Boolean);
-            return actual.length === segments.length && actual.every((segment, index) => segment === segments[index]);
-        } catch { return false; }
+        const real = yield { op: 'realpath', at: absolute };
+        if (typeof real !== 'string') return false;
+        const actual = path.relative(root, real).split(path.sep).filter(Boolean);
+        return actual.length === segments.length && actual.every((segment, index) => segment === segments[index]);
     }
     let current = root;
-    try {
-        for (let index = 0; index < segments.length; index += 1) {
-            const segment = segments[index];
-            const entries = fs.readdirSync(current);
-            if (!entries.includes(segment)) return false;
-            current = path.join(current, segment);
-            if (index < segments.length - 1 && !fs.statSync(current).isDirectory()) return false;
-        }
-        return fs.statSync(current).isFile();
-    } catch {
-        return false;
+    for (let index = 0; index < segments.length; index += 1) {
+        const segment = segments[index];
+        const entries = yield { op: 'readdir', at: current };
+        if (!Array.isArray(entries) || !entries.includes(segment)) return false;
+        current = path.join(current, segment);
+        if (index < segments.length - 1 && !(yield { op: 'stat', at: current })?.isDirectory()) return false;
     }
+    return !!(yield { op: 'stat', at: current })?.isFile();
+}
+
+function answerExactCaseSync(request: ExactCaseRequest): unknown {
+    try {
+        if (request.op === 'realpath') return fs.realpathSync.native(request.at);
+        if (request.op === 'readdir') return fs.readdirSync(request.at);
+        return fs.statSync(request.at);
+    } catch { return null; }
+}
+
+async function answerExactCase(request: ExactCaseRequest): Promise<unknown> {
+    try {
+        if (request.op === 'realpath') return await fsp.realpath(request.at);
+        if (request.op === 'readdir') return await fsp.readdir(request.at);
+        return await fsp.stat(request.at);
+    } catch { return null; }
+}
+
+export function localFileExistsWithExactCase(filePath: string): boolean {
+    const steps = exactCaseSteps(filePath);
+    let step = steps.next();
+    while (!step.done) step = steps.next(answerExactCaseSync(step.value));
+    return step.value;
+}
+
+/** The same check, awaiting each answer: for walks on a request path. */
+export async function localFileExistsWithExactCaseAsync(filePath: string): Promise<boolean> {
+    const steps = exactCaseSteps(filePath);
+    let step = steps.next();
+    while (!step.done) step = steps.next(await answerExactCase(step.value));
+    return step.value;
 }
 
 function packageNameFromSpecifier(specifier: string): string {
@@ -1074,7 +1144,7 @@ function runtimeImportSpecifiers(source: string): string[] {
     return [...found];
 }
 
-function resolveLocalRuntimeImport(fromFile: string, specifier: string): string | null {
+async function resolveLocalRuntimeImport(fromFile: string, specifier: string): Promise<string | null> {
     if (!specifier.startsWith('.')) return null;
     const base = path.resolve(path.dirname(fromFile), specifier);
     const candidates = [
@@ -1082,10 +1152,13 @@ function resolveLocalRuntimeImport(fromFile: string, specifier: string): string 
         ...['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'].map((extension) => `${base}${extension}`),
         ...['index.js', 'index.mjs', 'index.cjs', 'index.ts', 'index.tsx', 'index.jsx'].map((entry) => path.join(base, entry)),
     ];
-    return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile() && RUNTIME_SOURCE_EXTENSIONS.test(candidate)) || null;
+    for (const candidate of candidates) {
+        if (RUNTIME_SOURCE_EXTENSIONS.test(candidate) && (await statOf(candidate))?.isFile()) return candidate;
+    }
+    return null;
 }
 
-function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
+async function isRuntimePackageAvailable(cwd: string, packageName: string): Promise<boolean> {
     try {
         require.resolve(packageName, { paths: [cwd] });
         return true;
@@ -1099,16 +1172,18 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
     for (let depth = 0; depth < 12; depth += 1) {
         const candidate = path.join(probe, 'node_modules', packageName);
         try {
-            if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+            if ((await statOf(candidate))?.isDirectory()) {
                 let packageManifest: any = {};
-                try { packageManifest = JSON.parse(fs.readFileSync(path.join(candidate, 'package.json'), 'utf-8')); } catch { }
+                try { packageManifest = JSON.parse(String(await readTextFile(path.join(candidate, 'package.json')))) || {}; } catch { }
                 const entryCandidates = [packageManifest.main, packageManifest.module, 'index.js', 'index.mjs', 'index.cjs', 'index.json']
                     .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
                     .map((entry) => path.resolve(candidate, entry));
                 //  `a || b && c` bound the existence check to the prefix branch alone:
                 //  an entry EQUAL to the directory returned true without ever being
                 //  looked for on disk. One reader, one precedence, one answer.
-                if (entryCandidates.some((entry) => isWithinRoot(entry, candidate) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
+                for (const entry of entryCandidates) {
+                    if (isWithinRoot(entry, candidate) && (await statOf(entry))?.isFile()) return true;
+                }
             }
         } catch { /* continue to the next trusted ancestor */ }
         const parent = path.dirname(probe);
@@ -1118,23 +1193,25 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
     return false;
 }
 
-function collectRuntimeSourceFiles(entrypoint: string): string[] {
+/** Every source file reachable from the entrypoint, each with the text it was read with (null: unreadable). */
+async function collectRuntimeSourceFiles(entrypoint: string): Promise<Array<{ file: string; source: string | null }>> {
+    // The whole reachable graph: the visited set ends the walk, not a depth.
     const visited = new Set<string>();
-    const files: string[] = [];
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const files: Array<{ file: string; source: string | null }> = [];
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(path.dirname(entrypoint), file);
         if (relative.split(path.sep).some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        files.push(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        files.push({ file, source });
+        if (source === null) return;
         for (const specifier of runtimeImportSpecifiers(source)) {
-            const local = resolveLocalRuntimeImport(file, specifier);
-            if (local) visit(local, depth + 1);
+            const local = await resolveLocalRuntimeImport(file, specifier);
+            if (local) await visit(local);
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
     return files;
 }
 
@@ -1146,22 +1223,24 @@ function collectRuntimeSourceFiles(entrypoint: string): string[] {
  * specifier. The bounded repair planner can then inspect the real layout rather
  * than inventing a route folder or copying a product-specific template.
  */
-export function missingLocalRuntimeImports(cwd: string, detected: { command: string; kind: string }): string[] {
+export async function missingLocalRuntimeImports(cwd: string, detected: { command: string; kind: string }): Promise<string[]> {
     if (detected.kind === 'static' || detected.kind === 'override') return [];
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target) return [];
     const entrypoint = path.resolve(cwd, target);
-    if (!fs.existsSync(entrypoint)) return [];
+    if (!await pathExists(entrypoint)) return [];
 
+    // The whole reachable graph: the visited set ends the walk, not a depth —
+    // a module missing ten imports deep fails the launch as surely as one at the top.
     const visited = new Set<string>();
     const missing = new Set<string>();
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
         if (relative.split('/').some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        if (source === null) return;
         for (const specifier of runtimeImportSpecifiers(source)) {
             if (!specifier.startsWith('.')) continue;
             // Frontend bundlers intentionally import local assets that are not
@@ -1169,17 +1248,17 @@ export function missingLocalRuntimeImports(cwd: string, detected: { command: str
             // report the edge when the declared asset is absent on disk.
             if (RUNTIME_ASSET_IMPORT_EXTENSIONS.test(specifier)) {
                 const assetPath = path.resolve(path.dirname(file), specifier);
-                if (localFileExistsWithExactCase(assetPath)) continue;
+                if (await localFileExistsWithExactCaseAsync(assetPath)) continue;
             }
-            const local = resolveLocalRuntimeImport(file, specifier);
+            const local = await resolveLocalRuntimeImport(file, specifier);
             if (local) {
-                visit(local, depth + 1);
+                await visit(local);
                 continue;
             }
             missing.add(`${relative} -> ${specifier}`);
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
     return [...missing].sort().slice(0, 24);
 }
 
@@ -1204,12 +1283,12 @@ function runtimeEntrypoint(cwd: string, detected: { command: string; kind: strin
  * after project_run discarded stderr. This is evidence, not a package guess;
  * the bounded repair planner still decides how to reconcile the manifest.
  */
-export function missingRuntimeDependencies(cwd: string, detected: { command: string; kind: string }): string[] {
+export async function missingRuntimeDependencies(cwd: string, detected: { command: string; kind: string }): Promise<string[]> {
     if (detected.kind === 'static' || detected.kind === 'override') return [];
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target) return [];
     const entrypoint = path.resolve(cwd, target);
-    if (!fs.existsSync(entrypoint)) return [];
+    if (!await pathExists(entrypoint)) return [];
     let pkg: any = {};
     try { pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8')); } catch { return []; }
     const declared = new Set<string>([
@@ -1218,9 +1297,10 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
         ...Object.keys(pkg?.optionalDependencies || {}),
     ]);
     const missing = new Set<string>();
-    for (const file of collectRuntimeSourceFiles(entrypoint)) {
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    // Each package is looked for once, however many files import it.
+    const available = new Map<string, Promise<boolean>>();
+    for (const { source } of await collectRuntimeSourceFiles(entrypoint)) {
+        if (source === null) continue;
         for (const specifier of runtimeImportSpecifiers(source)) {
             /**
              * `node:` IS the evidence. npm forbids «:» in package names, so a
@@ -1236,7 +1316,8 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
                 || specifier.startsWith('node:') || NODE_BUILTIN_MODULES.has(specifier)) continue;
             const packageName = packageNameFromSpecifier(specifier);
             if (!packageName || NODE_BUILTIN_MODULES.has(packageName)) continue;
-            const resolved = isRuntimePackageAvailable(cwd, packageName);
+            if (!available.has(packageName)) available.set(packageName, isRuntimePackageAvailable(cwd, packageName));
+            const resolved = await available.get(packageName)!;
             if (!declared.has(packageName) || !resolved) missing.add(packageName);
         }
     }
@@ -1274,7 +1355,7 @@ async function runtimeSyntaxError(cwd: string, detected: { command: string; kind
     return `launchability: runtime syntax check failed (${failure.file}): ${failure.error}`;
 }
 
-export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
+export async function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
     const pkgPath = path.join(cwd, 'package.json');
     //  THE GATE READS THE KIND, NOT THE SPELLING.
     //
@@ -1299,7 +1380,7 @@ export function launchPrerequisiteError(cwd: string, detected: { command: string
             || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
         const viteInstalled = fs.existsSync(path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite'));
         if (needsVite && !viteInstalled) return 'vite';
-        const missingRuntime = missingRuntimeDependencies(cwd, detected);
+        const missingRuntime = await missingRuntimeDependencies(cwd, detected);
         if (missingRuntime.length) return `runtime dependencies missing or undeclared: ${missingRuntime.join(', ')}`;
     } catch { /* The actual launcher will surface malformed package errors. */ }
     return null;
@@ -1417,7 +1498,7 @@ export class ProjectRunTool implements ToolDefinition {
          * match the runnable marker/package name there. Explicit cwd and a
          * packaged whole-system directory remain authoritative.
          */
-        const useActiveProjectDirectly = shouldUseActiveProjectDirectly(activeProjectDir, input?.projectQuery);
+        const useActiveProjectDirectly = await shouldUseActiveProjectDirectly(activeProjectDir, input?.projectQuery);
         const baseCwd = explicitCwd
             || (packagedIsWhole ? packagedInto : '')
             || (useActiveProjectDirectly ? activeProjectDir : '')
@@ -1426,7 +1507,7 @@ export class ProjectRunTool implements ToolDefinition {
         // authoritative. An incomplete active scaffold is a container lookup
         // case, not a runnable project, when the request names an artifact.
         const discovered = !explicitCwd && !packagedIsWhole && !useActiveProjectDirectly
-            ? resolveRunnableProject(workspaceRoot, input?.projectQuery)
+            ? await resolveRunnableProject(workspaceRoot, input?.projectQuery)
             : { cwd: baseCwd, candidates: [baseCwd], matched: true };
         // A quoted project identity is an assertion, not a hint. Never fall
         // through to the workspace root (which may be Joe itself) when that
@@ -1466,7 +1547,7 @@ export class ProjectRunTool implements ToolDefinition {
         // holds no project at all is not a project: without this, an empty
         // call spawned `npm start` in a folder with nothing to start, and
         // waited 45s for a server that was never coming.
-        if (!input?.command && !hasProjectMarker(cwd)) {
+        if (!input?.command && !await hasProjectMarker(cwd)) {
             return { ok: false, error: `لا يوجد مشروع قابل للتشغيل في ${cwd} — ابنِ مشروعاً أولاً أو مرّر cwd.`, logs };
         }
 
@@ -1565,27 +1646,27 @@ export class ProjectRunTool implements ToolDefinition {
         }
         let detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
-            : detectStart(cwd, port);
-        let launchability = launchabilityError(cwd, detected);
+            : await detectStart(cwd, port);
+        let launchability = await launchabilityError(cwd, detected);
         if (launchability && !input?.command && /runtime target is missing/iu.test(launchability)) {
-            const reconciliation = reconcileMissingRuntimeTarget(cwd, launchability);
+            const reconciliation = await reconcileMissingRuntimeTarget(cwd, launchability);
             logs.push(`project_run: ${reconciliation.message}`);
             if (reconciliation.repaired) {
                 say(pick(isAr,
                     `🔧 أصلحتُ target التشغيل من entrypoint مثبت على القرص قبل الإطلاق: ${reconciliation.message}`,
                     `🔧 Reconciled the missing runtime target from a verified on-disk entrypoint before launch: ${reconciliation.message}`));
-                detected = detectStart(cwd, port);
-                launchability = launchabilityError(cwd, detected);
+                detected = await detectStart(cwd, port);
+                launchability = await launchabilityError(cwd, detected);
             }
         }
         if (launchability && /local runtime imports missing/iu.test(launchability)) {
-            const reconciliation = reconcileMissingRuntimeImports(cwd, detected);
+            const reconciliation = await reconcileMissingRuntimeImports(cwd, detected);
             logs.push(`project_run: ${reconciliation.message}`);
             if (reconciliation.repaired) {
                 say(pick(isAr,
                     `🔧 وجدتُ ملفاً محلياً مطابقاً وأصلحتُ الاستيراد قبل التشغيل: ${reconciliation.changes.join('؛ ')}`,
                     `🔧 I found a unique matching local file and repaired the import before launch: ${reconciliation.changes.join('; ')}`));
-                launchability = launchabilityError(cwd, detected);
+                launchability = await launchabilityError(cwd, detected);
             }
         }
         if (launchability) {
@@ -1610,7 +1691,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        let missingPrerequisite = launchPrerequisiteError(cwd, detected);
+        let missingPrerequisite = await launchPrerequisiteError(cwd, detected);
         let prerequisiteRecovery = '';
         const installablePackages = missingPrerequisite
             ? declaredLaunchPrerequisitePackages(cwd, missingPrerequisite)
@@ -1626,7 +1707,7 @@ export class ProjectRunTool implements ToolDefinition {
                 installResult = { ok: false, error: String(error?.message || error) };
             }
             if (installResult?.ok) {
-                const missingAfterInstall = launchPrerequisiteError(cwd, detected);
+                const missingAfterInstall = await launchPrerequisiteError(cwd, detected);
                 if (!missingAfterInstall) {
                     missingPrerequisite = null;
                     logs.push(`project_run: auto npm install succeeded (${installablePackages.join(', ')})`);
@@ -1661,7 +1742,7 @@ export class ProjectRunTool implements ToolDefinition {
             } catch (error: any) {
                 installResult = { ok: false, error: String(error?.message || error) };
             }
-            const missingAfterInstall = installResult?.ok ? launchPrerequisiteError(cwd, detected) : missingPrerequisite;
+            const missingAfterInstall = installResult?.ok ? await launchPrerequisiteError(cwd, detected) : missingPrerequisite;
             if (installResult?.ok && !missingAfterInstall) {
                 missingPrerequisite = null;
                 logs.push(`project_run: installed imported ${binaryProvider.packageName} for ${binary} (${binaryProvider.importedBy.join(', ')})`);
@@ -1669,9 +1750,12 @@ export class ProjectRunTool implements ToolDefinition {
                 const chosen = installResult?.output?.binProvider;
                 if (chosen?.version) {
                     logs.push(`project_run: ${chosen.reason || `${binaryProvider.packageName}@${chosen.version}`}`);
+                    // «Non-deprecated» only when the registry said so: a failed read is
+                    // said as one (second review of round 21).
+                    const known = chosen.deprecationKnown === true;
                     say(pick(isAr,
-                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج ${binary}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
-                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable, non-deprecated release that declares ${binary}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
+                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): ${known ? 'أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج' : 'أحدث إصدار مستقرّ يعلن البرنامج'} ${binary}${known ? '' : '؛ تعذّرت قراءة ما إذا كان مُهمَلًا'}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
+                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable${known ? ', non-deprecated' : ''} release that declares ${binary}${known ? '' : '; whether it is deprecated could not be read'}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
                 }
             } else {
                 missingPrerequisite = missingAfterInstall;

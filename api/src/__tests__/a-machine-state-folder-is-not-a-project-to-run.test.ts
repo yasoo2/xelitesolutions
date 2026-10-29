@@ -17,7 +17,7 @@ const tmp = () => { const d = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-run-wal
 afterAll(() => { for (const r of roots) fs.rmSync(r, { recursive: true, force: true, maxRetries: 20, retryDelay: 250 }); });
 
 describe('a machine-state folder is not a project to run', () => {
-    it('the workspace scan skips every folder the shared list names', () => {
+    it('the workspace scan skips every folder the shared list names', async () => {
         const workspace = tmp();
         for (const name of MACHINE_STATE_DIRECTORIES) {
             fs.mkdirSync(path.join(workspace, name), { recursive: true });
@@ -26,17 +26,17 @@ describe('a machine-state folder is not a project to run', () => {
         const real = path.join(workspace, 'clinic-site');
         fs.mkdirSync(real);
         fs.writeFileSync(path.join(real, 'package.json'), JSON.stringify({ name: 'clinic-site', scripts: { start: 'node server.js' } }));
-        expect(resolveRunnableProject(workspace)).toEqual({ cwd: real, candidates: [real], matched: true });
+        expect(await resolveRunnableProject(workspace)).toEqual({ cwd: real, candidates: [real], matched: true });
     });
 
-    it('a server file inside machine state is never taken for the app\'s entry', () => {
+    it('a server file inside machine state is never taken for the app\'s entry', async () => {
         const cwd = tmp();
         fs.writeFileSync(path.join(cwd, 'package.json'), JSON.stringify({ name: 'api', scripts: { start: 'node app.js' } }));
         for (const name of [...MACHINE_STATE_DIRECTORIES].filter(n => !n.startsWith('.'))) {
             fs.mkdirSync(path.join(cwd, name), { recursive: true });
             fs.writeFileSync(path.join(cwd, name, 'server.js'), "require('http').createServer(() => {}).listen(3000);");
         }
-        const result = reconcileMissingRuntimeTarget(cwd, 'runtime target is missing: app.js');
+        const result = await reconcileMissingRuntimeTarget(cwd, 'runtime target is missing: app.js');
         expect(result).toEqual({ repaired: false, message: 'no existing server entrypoint evidence found' });
         expect(JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf8')).scripts.start).toBe('node app.js');
     });

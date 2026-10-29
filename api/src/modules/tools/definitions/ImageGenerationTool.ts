@@ -1,5 +1,6 @@
 import { ToolDefinition } from '../types';
 import { providerAllowedByCost } from '../../../core/llm/provider-continuity';
+import { admitLocalModelCall } from '../../../core/resources/local-model-call';
 
 export const ImageGenerationTool: ToolDefinition = {
     name: 'generate_image',
@@ -67,13 +68,15 @@ export const ImageGenerationTool: ToolDefinition = {
             try {
                 const { default: OpenAI } = await import('openai');
                 const openai = new OpenAI({ apiKey: openAiKey, baseURL: process.env.OPENAI_BASE_URL });
-                const response = await openai.images.generate({
+                // OPENAI_BASE_URL at an image server on this machine is a local model
+                // call, admitted for its whole run (second review of round 21).
+                const response = await admitLocalModelCall(process.env.OPENAI_BASE_URL, () => openai.images.generate({
                     model: "dall-e-3",
                     prompt,
                     n: 1,
                     size: `${width}x${height}` as any,
                     response_format: "url"
-                });
+                }), { kind: 'local-image-generation' });
 
                 const url = response.data?.[0]?.url;
                 if (url) {

@@ -257,7 +257,8 @@ describe('bounded native Ollama transport', () => {
             admission.signal.addEventListener('abort', abort, { once: true });
         }));
         const result = managedOllamaChat({ ...base, timeoutMs: 100 }, test.dependencies);
-        const rejected = expect(result).rejects.toMatchObject({ code: 'RESOURCE_TIMEOUT' });
+        // Nothing was sent: the deadline ended a wait, not a run (second review of round 21).
+        const rejected = expect(result).rejects.toMatchObject({ code: 'RESOURCE_QUEUE_TIMEOUT', details: { deadlineMs: 100 } });
         expect(queued).toBe(true);
         await jest.advanceTimersByTimeAsync(100);
         await rejected;
