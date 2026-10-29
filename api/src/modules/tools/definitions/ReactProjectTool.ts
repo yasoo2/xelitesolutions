@@ -1086,12 +1086,25 @@ function projectDisambiguator(runId: string, sessionKey: string): string {
  *  (landing, portfolio, «تعريفي»): no server claim, nothing to compute, no
  *  records to keep. Every one of those facts is read by the shared readers;
  *  only the computing verbs are read here, in folded form.
+ *
+ *  ⛔ AND THE QUESTION IS ASKED OF WHAT THE PATH WILL BUILD (round 22, W9).
+ *  «Build a landing page for an accounting firm that offers tax calculation
+ *  services» heard «I don't know this app type»: «calculation» named the
+ *  firm's service, and the list read it as an order to compute. Two things
+ *  were wrong. The section builder builds his named requirements, so the
+ *  question «does this page compute?» is asked of those — of his whole
+ *  sentence only when the reading could not name them. And a verbal noun
+ *  names a topic, not an order: «حساب» was never in the Arabic side, while
+ *  «calculation(s)» was in the English one. A page computes when it is told
+ *  to — a verb (calculates, «يحسب») — or carries the instrument that does
+ *  (a calculator, «حاسبة»), in both languages alike.
  */
-const ASKS_TO_COMPUTE = /\b(?:calculat(?:e|es|ed|ing|or|ors|ion|ions)|comput(?:e|es|ed|ing))\b|(?<![\p{L}\p{N}_])(?:[وف]?(?:[يتن]حسب|احسب)|(?:ال)?حاسب(?:ه|ات))(?![\p{L}\p{N}_])/u;
-function isPresentationSite(request: string): boolean {
+const ASKS_TO_COMPUTE = /\b(?:calculat(?:e|es|ed|ing|or|ors)|comput(?:e|es|ed|ing))\b|(?<![\p{L}\p{N}_])(?:[وف]?(?:[يتن]حسب|احسب)|(?:ال)?حاسب(?:ه|ات))(?![\p{L}\p{N}_])/u;
+function isPresentationSite(request: string, named?: Array<{ text: string }>): boolean {
     const artifact = requestedArtifact(request);
     if (artifact.kind !== 'page' || !artifact.evidence.presentation || artifact.needsServer) return false;
-    const program = requestedArtifactWithoutStockEngine(request) || ASKS_TO_COMPUTE.test(normaliseArabic(request));
+    const whatItBuilds = named && named.length ? named.map(r => r.text).join('\n') : request;
+    const program = requestedArtifactWithoutStockEngine(request) || ASKS_TO_COMPUTE.test(normaliseArabic(whatItBuilds));
     const records = hasExplicitRecordSchema(request) || statesManagingPurpose(request) || hasWorkflowApplicationContract(request);
     return !program && !records;
 }
@@ -1142,7 +1155,7 @@ export function earlyProjectDeclaration(input: {
      *  The deliverable he named decides which sentence is his; the unknown-app
      *  one stays for a request that names an app (or names nothing).
      */
-    if (isPresentationSite(request)) {
+    if (isPresentationSite(request, input.named)) {
         if (input.isArabic) {
             return `سأبني هذا الموقع من طلبك مباشرةً، من غير محرّك تطبيق جاهز. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً واضحاً'}.`;
         }
