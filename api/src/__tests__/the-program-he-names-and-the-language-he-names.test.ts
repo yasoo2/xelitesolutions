@@ -1,6 +1,6 @@
 import { namedTargetFile } from '../core/orchestrator/file-intent';
 import { deterministicPhasesFor } from '../modules/tools/definitions/ProjectPipelineTool';
-import { pythonExecutable } from '../core/quality/python-executable';
+import { pythonRunCommand } from '../core/quality/python-test-runner';
 
 /**
  * Round 21 review, group 1 #7:
@@ -29,20 +29,27 @@ describe('the program he names is the entry, whatever data files he names beside
     });
 
     it('the CLI scaffold makes validate.py the program', () => {
-        expect(entryOf(request)).toMatchObject({ main: 'validate.py', start: `${pythonExecutable()} validate.py` });
+        expect(entryOf(request)).toMatchObject({ main: 'validate.py', start: pythonRunCommand('validate.py') });
     });
 });
 
 describe('a language he names in Arabic is the language of the program', () => {
     it.each([
-        ['اكتب أداة سطر أوامر بلغة بايثون تقرأ ملف CSV وتطبع عدد الأسطر', 'main.py', `${pythonExecutable()} main.py`],
-        ['اكتب أداة سطر أوامر باللغة بايتون تعد الكلمات في ملف', 'main.py', `${pythonExecutable()} main.py`],
+        ['اكتب أداة سطر أوامر بلغة بايثون تقرأ ملف CSV وتطبع عدد الأسطر', 'main.py', pythonRunCommand('main.py')],
+        ['اكتب أداة سطر أوامر باللغة بايتون تعد الكلمات في ملف', 'main.py', pythonRunCommand('main.py')],
         ['اكتب أداة سطر أوامر بلغة جافاسكربت تعد الكلمات في ملف', 'index.js', 'node index.js'],
         ['اكتب أداة سطر أوامر بلغة جافا سكريبت تعد الكلمات في ملف', 'index.js', 'node index.js'],
         ['اكتب أداة سطر أوامر بلغة رست تعد الكلمات في ملف', 'src/main.rs', expect.stringMatching(/^\.\/target\/release\//u)],
         ['اكتب أداة سطر أوامر بلغة Go تعد الكلمات في ملف', 'main.go', './dist/main'],
         ['اكتب أداة سطر أوامر بلغة جو تعد الكلمات في ملف', 'main.go', './dist/main'],
         ['اكتب سكربت باش يعد الكلمات في ملف', 'main.sh', 'bash main.sh'],
+        // Round 22 (Q7): the name carries its clitics — «و/ف», «ب/ل/ك», the article.
+        ['اكتب أداة سطر أوامر بلغة البايثون تعد الكلمات في ملف', 'main.py', pythonRunCommand('main.py')],
+        ['اكتب أداة سطر أوامر بالبايثون تعد الكلمات في ملف', 'main.py', pythonRunCommand('main.py')],
+        ['اكتب أداة سطر أوامر باستخدام البايثون تعد الكلمات في ملف', 'main.py', pythonRunCommand('main.py')],
+        ['اكتب أداة سطر أوامر وبالبايثون تعد الكلمات في ملف', 'main.py', pythonRunCommand('main.py')],
+        ['اكتب أداة سطر أوامر بلغة الجافا سكريبت تعد الكلمات في ملف', 'index.js', 'node index.js'],
+        ['اكتب أداة سطر أوامر بلغة الرست تعد الكلمات في ملف', 'src/main.rs', expect.stringMatching(/^\.\/target\/release\//u)],
     ])('%s', (request, main, start) => {
         expect(entryOf(request)).toMatchObject({ main, start });
     });

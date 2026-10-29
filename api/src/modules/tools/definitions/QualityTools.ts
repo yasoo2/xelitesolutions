@@ -7,7 +7,7 @@ import path from 'path';
 
 import { resolveToolPath } from '../utils';
 import { checkJavaScriptSyntax } from '../../../core/quality/js-syntax-check';
-import { emptyTestRun } from '../../../core/quality/test-run-evidence';
+import { judgeTestRun } from '../../../core/quality/test-run-evidence';
 
 function getWorkspaceRoot() {
     return resolveToolPath('.');
@@ -244,10 +244,11 @@ export class QualityRunTool extends BaseTool {
                 const r = await runNpmScript('test', [], 15 * 60_000, testEnv);
                 // An exit code cannot tell «nothing failed» from «nothing ran»
                 // (unittest before 3.12, cargo with an uncompiled test file, go
-                // with no _test.go): the runner's own summary can (round 21).
-                const ranNothing = r.ok ? emptyTestRun(`${String(r.output || '')}\n${String((r as any).stderr ?? r.error ?? '')}`) : null;
-                if (ranNothing) results.push({ task, ok: false, skipped: false, error: `the test command ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`.slice(0, 4000) });
-                else if (r.ok) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
+                // with no _test.go): the runner's own summary can (round 21) —
+                // read by the one judge every test verdict asks.
+                const judged = judgeTestRun(r.ok, `${String(r.output || '')}\n${String((r as any).stderr ?? r.error ?? '')}`);
+                if (judged.ranNothing) results.push({ task, ok: false, skipped: false, error: judged.reason.slice(0, 4000) });
+                else if (judged.passed) results.push({ task, ok: true, skipped: false, output: String(r.output || '').slice(0, 4000) });
                 else results.push({ task, ok: false, skipped: false, error: String(r.error || '').slice(0, 4000) });
                 continue;
             }
@@ -279,12 +280,21 @@ export class QualityRunTool extends BaseTool {
 
         const executed = results.filter(r => r && r.skipped === false);
         const allOk = executed.length > 0 && results.every(r => r && r.ok === true);
-        const status = !executed.length ? 'incomplete' : allOk ? 'completed' : 'failed';
         const failed = executed.filter(r => r.ok !== true);
+        // A check that could not run (its parser never answered: queue full,
+        // timeout) judged nothing: when nothing else failed, the run did not
+        // conclude — 'incomplete', never 'failed', so no repair is sent to code
+        // that was never judged (round 21 review, Q10).
+        const judgedFailures = failed.filter(r => r.unchecked !== true);
+        const notRun = failed.filter(r => r.unchecked === true);
+        const status = !executed.length ? 'incomplete' : allOk ? 'completed' : judgedFailures.length ? 'failed' : 'incomplete';
         const error = !executed.length
             ? `No requested quality checks were available to execute (${tasks.join(', ')})`
             : failed.length
-                ? `Quality checks failed: ${failed.map(r => `${r.task}: ${String(r.error || 'command failed').slice(0, 500)}`).join('; ')}`
+                ? [
+                    judgedFailures.length ? `Quality checks failed: ${judgedFailures.map(r => `${r.task}: ${String(r.error || 'command failed').slice(0, 500)}`).join('; ')}` : '',
+                    notRun.length ? `Quality checks could not run: ${notRun.map(r => `${r.task}: ${String(r.error || 'the check did not run').slice(0, 500)}`).join('; ')}` : '',
+                ].filter(Boolean).join('. ')
                 : undefined;
         return {
             ok: allOk,
@@ -293,7 +303,7 @@ export class QualityRunTool extends BaseTool {
             logs: [
                 `quality_run path=${projectDir}`,
                 `quality_run requested=${tasks.join(',') || 'none'} scripts=${Object.keys(scripts).sort().join(',') || 'none'}`,
-                ...results.map(result => `quality_run ${result.task}=${result.skipped ? 'skipped' : result.ok ? 'passed' : 'failed'}`),
+                ...results.map(result => `quality_run ${result.task}=${result.skipped ? 'skipped' : result.ok ? 'passed' : result.unchecked ? 'not checked' : 'failed'}`),
             ],
         };
     }

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { resolveToolPath } from './utils';
+import { isPlaceholderScript } from '../../core/quality/placeholder-script';
 
 /**
  * What the phase's automatic build check needs to know before it may speak.
@@ -121,15 +122,27 @@ export function autoBuildManifests(
  * prints nothing and exits 0 — «Auto-build check passed» and a passed receipt
  * for a build that never ran (round 21 review). Only a manifest that cannot be
  * read keeps the build step, so npm reports the real error.
+ *
+ * ⛔ A PLACEHOLDER IS NOT A BUILD (round 21 review, Q9): `"build": "echo No
+ * build step required"` exits 0 having built nothing, and was logged «Auto-build
+ * check passed». The one placeholder reader (placeholder-script) decides, as it
+ * does for the delivery's quality contract and the record gate.
  */
-export function manifestDeclaresBuild(projectRoot: string): boolean {
+export function declaredBuild(projectRoot: string): { kind: 'real' | 'none' | 'placeholder' | 'unreadable'; script?: string } {
+  let manifest: any;
   try {
-    const manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
-    const build = manifest?.scripts?.build;
-    return typeof build === 'string' && build.trim().length > 0;
+    manifest = JSON.parse(fs.readFileSync(path.join(projectRoot, 'package.json'), 'utf8'));
   } catch {
-    return true;
+    return { kind: 'unreadable' };
   }
+  const build = manifest?.scripts?.build;
+  if (typeof build !== 'string' || !build.trim()) return { kind: 'none' };
+  return isPlaceholderScript(build) ? { kind: 'placeholder', script: build.trim() } : { kind: 'real', script: build.trim() };
+}
+
+export function manifestDeclaresBuild(projectRoot: string): boolean {
+  const build = declaredBuild(projectRoot);
+  return build.kind === 'real' || build.kind === 'unreadable';
 }
 
 /** Files the plan puts in this project that no phase has written yet. */

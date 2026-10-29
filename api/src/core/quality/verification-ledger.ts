@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { isTestRunCommand, judgeTestRun } from './test-run-evidence';
 
 export type VerificationMode = 'focused' | 'affected' | 'final';
 export type VerificationResult = 'passed' | 'failed' | 'cancelled' | 'timed_out' | 'incomplete';
@@ -653,6 +654,33 @@ export function verificationResultFrom(error: unknown, ok: boolean): Verificatio
     return text ? 'failed' : 'incomplete';
 }
 
+/**
+ * ⛔ A TEST COMMAND'S RESULT IS JUDGED BY THE ONE TEST-RUN JUDGE (round 21
+ * review, Q1). A plan's own step `shell_execute npm test` (or `node --test`,
+ * `npx jest`, `npx vitest run`) came back ok on exit 0 and was recorded as a
+ * passed verification and a completed task — with «ℹ tests 0» in its own
+ * output. The result is judged once, where the command ran: a test run that
+ * exited 0 while its runner's summary says nothing ran becomes a failed result
+ * that says so, and every reader after it (this ledger, the phase, self-fix)
+ * sees the same verdict. Any other tool, a command that is not a test run,
+ * and a run that already failed are returned as they are.
+ */
+export function judgedTestRunResult<T>(tool: string, args: Record<string, unknown> | undefined, result: T): T {
+    if (String(tool || '').trim().toLowerCase() !== 'shell_execute') return result;
+    const raw = result as any;
+    if (!raw || typeof raw !== 'object' || raw.ok !== true) return result;
+    if (!isTestRunCommand(String(args?.command || ''))) return result;
+    const output = raw.output && typeof raw.output === 'object' ? raw.output : { stdout: typeof raw.output === 'string' ? raw.output : '' };
+    const judged = judgeTestRun(true, `${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`);
+    if (judged.passed) return result;
+    return { ...raw, ok: false, error: judged.reason, output: { ...output, status: 'failed', ranNothing: judged.ranNothing } } as T;
+}
+
+/**
+ * A check that says it did not conclude («incomplete»: a lint whose parser
+ * never answered, a run with nothing it could execute) is not a failure of
+ * the code (round 21 review, Q10): its words do not make it 'failed'.
+ */
 export function verificationResultFromToolResult(value: unknown): VerificationResult {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return 'incomplete';
     const raw = value as Record<string, any>;
@@ -661,6 +689,7 @@ export function verificationResultFromToolResult(value: unknown): VerificationRe
     const error = output.error || raw.error || output.stderr || raw.stderr;
     if (/cancel(?:led|ation)|run_cancelled_by_owner/u.test(status) || output.cancelled === true) return 'cancelled';
     if (/timed?[_\s-]*out|timeout/u.test(status) || output.timedOut === true || raw.timedOut === true) return 'timed_out';
+    if (status === 'incomplete' && output.verificationFailed !== true) return 'incomplete';
     if (raw.ok !== true || output.verificationFailed === true || /^(?:failed|error|partial|incomplete|blocked|fatal_error)$/u.test(status)) {
         return verificationResultFrom(error || status, false);
     }

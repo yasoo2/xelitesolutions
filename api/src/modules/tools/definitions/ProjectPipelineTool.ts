@@ -32,7 +32,8 @@ import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-r
 import { namedTargetFile } from '../../../core/orchestrator/file-intent';
 import { foldChars } from '../../../core/orchestrator/promptNormalizer';
 import { AR_END, AR_START } from '../../../shared/arabic-word-boundary';
-import { pythonExecutable } from '../../../core/quality/python-executable';
+import { pythonRunCommand, pythonTestCommand } from '../../../core/quality/python-test-runner';
+import { isPlaceholderScript } from '../../../core/quality/placeholder-script';
 import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
 export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
@@ -666,12 +667,18 @@ const CLI_LANGUAGE_BY_EXTENSION: Record<string, ReturnType<typeof detectLanguage
     '.py': 'python', '.sh': 'bash', '.go': 'go', '.rs': 'rust',
 };
 /**
- * The interpreter each language is run with. Python's is the name the
- * platform ships (python-runtime): a Linux server has `python3`, and often no
- * `python` at all, so `python main.py` failed a finished program there.
+ * How each interpreted language's program is started in the scripts Joe
+ * delivers. ⛔ Python's is not a name (round 21 review, Q11): a delivered
+ * `python3 main.py`, written because the build machine was Linux, is the
+ * Microsoft Store stub on the Windows laptop he runs it on, and `python` is
+ * absent on many Linux boxes. The launcher (python-test-runner) finds the
+ * interpreter on the machine that runs the script.
  */
-const PYTHON = pythonExecutable();
-const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: PYTHON, bash: 'bash' };
+const CLI_START: Record<string, (entry: string) => string> = {
+    javascript: entry => `node ${entry}`, python: pythonRunCommand, bash: entry => `bash ${entry}`,
+};
+/** The interpreter as a brief names it to the file author — the language's own word, not the launcher. */
+const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: 'python', bash: 'bash' };
 
 function buildCliScaffold(request: string, projectName: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
@@ -693,7 +700,7 @@ function buildCliScaffold(request: string, projectName: string): {
     const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
 
     const scaffold = generateCliScaffold(lang, format, flat, projectName);
-    const { pkgJson, tsconfigJson, sampleFile } = scaffold;
+    const { pkgJson, tsconfigJson, sampleFile, sampleFileName, variant } = scaffold;
     let { entryPoint, entryPointContent, testFile, testFileName } = scaffold;
     let manifest = pkgJson;
     // A named entry replaces the default one wherever the manifest runs it.
@@ -704,11 +711,12 @@ function buildCliScaffold(request: string, projectName: string): {
     // then overwrote with its own output (eval round 19, P301). A named data
     // file reaches the program through the request text, never the structure.
     const runner = CLI_RUNNER[lang];
-    if (namedEntry && runner && namedEntry !== entryPoint) {
+    const start = CLI_START[lang];
+    if (namedEntry && start && namedEntry !== entryPoint) {
         try {
             const pkg = JSON.parse(manifest);
             pkg.main = namedEntry;
-            pkg.scripts = { ...(pkg.scripts || {}), start: `${runner} ${namedEntry}` };
+            pkg.scripts = { ...(pkg.scripts || {}), start: start(namedEntry) };
             manifest = JSON.stringify(pkg, null, 2);
             entryPoint = namedEntry;
         } catch { /* keep the default entry when the stock manifest is unreadable */ }
@@ -726,14 +734,25 @@ function buildCliScaffold(request: string, projectName: string): {
         } catch { /* keep the stock manifest */ }
     }
 
+    // ⛔ THE STOCK BODY AND ITS TEST ARE ONE VARIANT, AND IT IS KEPT ONLY WHEN
+    // IT IS THE PROGRAM HE ASKED FOR (round 21 review, Q2). The Go and Rust CSV
+    // entries shipped the JSON-filter test (`sample.json city=NYC` against a
+    // program that reads CSV) — once the test compiled, it failed every time;
+    // the JavaScript skeleton has no CSV body, so «CSV to JSON» got the JSON
+    // filter. Each template now says which program its entry is; the test is
+    // that program's own, and a request for anything else is authored from it.
     const asksForFilter = /\bfilter(?:s|ing)?\b|property\s*=\s*value|matching\s+entries|فلتر|تصفية|يصفي/i.test(request);
-    const asksForCsvToJson = format === 'csv' && /\bjson\b/i.test(request);
-    const templateServesRequest = asksForFilter || asksForCsvToJson;
+    // A tab-separated file is read as CSV by detectInputFormat, but the stock
+    // converter splits on commas: a TSV request is not that program.
+    const asksForCsvToJson = format === 'csv' && /\bjson\b/i.test(request) && !/\btsv\b|\btab.separated/i.test(request);
+    const templateServesRequest = variant === 'csv-to-json'
+        ? asksForCsvToJson && !asksForFilter
+        : asksForFilter && (format === 'json' || format === 'unknown');
 
     const structure: Record<string, string> = { 'package.json': manifest, [entryPoint]: entryPointContent };
     if (templateServesRequest) {
         structure[testFileName] = testFile;
-        structure['sample.json'] = sampleFile;
+        structure[sampleFileName] = sampleFile;
     }
     if (tsconfigJson) structure['tsconfig.json'] = tsconfigJson;
     // go.mod / Cargo.toml: the manifest the language's own toolchain reads.
@@ -789,14 +808,24 @@ function buildCliScaffold(request: string, projectName: string): {
  * through my notes»), Arabic «جو» (also Joe's own name, and «weather»), «باش»
  * (Maghrebi «in order to»), «شل», «رست».
  */
-const IN_LANGUAGE_AR = `${AR_START}(?:بال|ب|ال)?لغه\\s+`;
+/**
+ * ⛔ AND THE NAME CARRIES ITS CLITICS (round 21 review, Q7). Arabic glues
+ * «و/ف», then «ب/ل/ك», then the article «ال» to the noun: «بلغة البايثون»,
+ * «بالبايثون», «باستخدام البايثون», «بلغة الجافا سكريبت» all fell to the
+ * TypeScript default, because the name was matched bare. A name that is only
+ * a language (Python, TypeScript, JavaScript) is matched with any of them; a
+ * name that is also an everyday word keeps needing its language phrase, and
+ * there takes the article too («بلغة الرست»).
+ */
+const AR_NAME_CLITICS = '[وف]?(?:لل|[بلك]?(?:ال)?)';
+const IN_LANGUAGE_AR = `${AR_START}[وف]?(?:بال|ب|ال)?لغه\\s+(?:ال)?`;
 const ARABIC_LANGUAGE_NAMES: Array<[ReturnType<typeof detectLanguage>, RegExp]> = [
-    ['python', new RegExp(`${AR_START}با?ي(?:ث|ت)ون${AR_END}`, 'u')],
-    ['typescript', new RegExp(`${AR_START}تايب\\s*سكري?بت${AR_END}`, 'u')],
+    ['python', new RegExp(`${AR_START}${AR_NAME_CLITICS}با?ي(?:ث|ت)ون${AR_END}`, 'u')],
+    ['typescript', new RegExp(`${AR_START}${AR_NAME_CLITICS}تايب\\s*سكري?بت${AR_END}`, 'u')],
     ['bash', new RegExp(`${IN_LANGUAGE_AR}(?:باش|شل)${AR_END}|${AR_START}سكري?بت\\s+(?:باش|شل)${AR_END}|${AR_START}(?:باش|شل)\\s+سكري?بت${AR_END}`, 'u')],
     ['go', new RegExp(`${IN_LANGUAGE_AR}(?:جو|غو|قو|go)${AR_END}|${AR_START}(?:جو|غو|قو)لانج${AR_END}`, 'u')],
     ['rust', new RegExp(`${IN_LANGUAGE_AR}(?:رست|راست)${AR_END}`, 'u')],
-    ['javascript', new RegExp(`${AR_START}جافا\\s*سكري?بت${AR_END}`, 'u')],
+    ['javascript', new RegExp(`${AR_START}${AR_NAME_CLITICS}جافا\\s*سكري?بت${AR_END}`, 'u')],
 ];
 
 function detectLanguage(request: string): 'typescript' | 'python' | 'bash' | 'go' | 'rust' | 'javascript' | 'unknown' {
@@ -832,6 +861,16 @@ function detectInputFormat(request: string): 'csv' | 'json' | 'text' | 'unknown'
     return 'unknown';
 }
 
+/** Which stock program a template's entry is: the JSON filter, or the CSV → JSON converter. */
+type StockVariant = 'filter' | 'csv-to-json';
+
+/** The stock program's own fixture, by variant: the filter reads JSON records, the converter a CSV. */
+function stockSample(variant: StockVariant): { sampleFile: string; sampleFileName: string } {
+    return variant === 'csv-to-json'
+        ? { sampleFile: 'name,city\nAlice,NYC\nBob,LA\n', sampleFileName: 'sample.csv' }
+        : { sampleFile: generateSampleData(), sampleFileName: 'sample.json' };
+}
+
 function generateCliScaffold(lang: string, format: string, request: string, projectName: string): {
     pkgJson: string;
     tsconfigJson: string;
@@ -839,8 +878,11 @@ function generateCliScaffold(lang: string, format: string, request: string, proj
     entryPointContent: string;
     testFile: string;
     sampleFile: string;
+    sampleFileName: string;
     testFileName: string;
     toolchainFiles: Record<string, string>;
+    /** The program the entry IS; its test is that program's test (Q2). */
+    variant: StockVariant;
 } {
     const isCsv = format === 'csv';
     
@@ -885,11 +927,10 @@ function generateTypeScriptScaffold(request: string, projectName: string, isCsv:
         { build: 'tsc', start: 'node dist/index.js', test: 'node --test test.js' },
         { typescript: '^5.0.0', '@types/node': '^20.0.0', ...(isCsv ? { 'csv-parse': '^5.5.0' } : {}) });
     const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`;
-    const entryPoint = 'src/index.ts';
-    const entryPointContent = generateTypeScriptEntry(request);
-    const testFile = generateTypeScriptTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, sampleFile, testFileName: 'test.js', toolchainFiles: {} };
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generateTypeScriptEntry(request, isCsv);
+    const testFile = generateNodeCliTest('node dist/index.js', variant);
+    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, testFileName: 'test.js', toolchainFiles: {}, variant, ...stockSample(variant) };
 }
 
 function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -897,34 +938,32 @@ function generatePythonScaffold(request: string, projectName: string, isCsv: boo
     // after the program (eval P301: «No module named pytest» failed a finished
     // program at delivery). A Python library is not an npm package, so the
     // manifest only says how the program starts and how its tests run.
-    const pkgJson = npmManifest(projectName, request, 'main.py', { start: `${PYTHON} main.py`, test: `${PYTHON} -m unittest -v test_main.py` });
-    const entryPoint = 'main.py';
+    // Both scripts find the interpreter on the machine that runs them (Q11).
+    const pkgJson = npmManifest(projectName, request, 'main.py', { start: pythonRunCommand('main.py'), test: pythonTestCommand(['test_main.py'], true) });
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
     const entryPointContent = generatePythonEntry(request, isCsv);
     const testFile = generatePythonTest('main.py', isCsv);
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test_main.py', toolchainFiles: {} };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, testFileName: 'test_main.py', toolchainFiles: {}, variant, ...stockSample(variant) };
 }
 
 function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
     const pkgJson = npmManifest(projectName, request, 'main.sh', { start: 'bash main.sh', test: 'bash test.sh' });
-    const entryPoint = 'main.sh';
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
     const entryPointContent = generateBashEntry(request, isCsv);
-    const testFile = generateBashTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, sampleFile, testFileName: 'test.sh', toolchainFiles: {} };
+    const testFile = generateBashTest(variant);
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, testFileName: 'test.sh', toolchainFiles: {}, variant, ...stockSample(variant) };
 }
 
 function generateGoScaffold(request: string, projectName: string, isCsv: boolean) {
     // The CSV entry reads with encoding/csv, so the module requires nothing.
     const pkgJson = npmManifest(projectName, request, 'main.go', { build: 'go build -o dist/main .', start: './dist/main', test: 'go test ./...' });
     const goMod = `module ${toolchainPackageName(projectName)}\n\ngo 1.21\n`;
-    const entryPoint = 'main.go';
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
     const entryPointContent = generateGoEntry(request, isCsv);
-    const testFile = generateGoTest();
-    const sampleFile = generateSampleData();
+    const testFile = generateGoTest(variant);
     // `go test` compiles only files named *_test.go: a test in test.go is part
     // of the program and «[no test files]» passes (round 21 review).
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'main_test.go', toolchainFiles: { 'go.mod': goMod } };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, testFileName: 'main_test.go', toolchainFiles: { 'go.mod': goMod }, variant, ...stockSample(variant) };
 }
 
 function generateRustScaffold(request: string, projectName: string, isCsv: boolean) {
@@ -932,32 +971,32 @@ function generateRustScaffold(request: string, projectName: string, isCsv: boole
     const pkgJson = npmManifest(projectName, request, 'src/main.rs', { build: 'cargo build --release', start: `./target/release/${crate}`, test: 'cargo test' });
     // Both stock entries use serde_json; the CSV one also reads with the csv crate.
     const cargoToml = `[package]\nname = "${crate}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${isCsv ? 'csv = "1.3"\n' : ''}serde_json = "1.0"\n`;
-    const entryPoint = 'src/main.rs';
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
     const entryPointContent = generateRustEntry(request, isCsv);
-    const testFile = generateRustTest(crate);
-    const sampleFile = generateSampleData();
+    const testFile = generateRustTest(crate, variant);
     // src/test.rs is compiled only when main.rs declares `mod test;` — it did
     // not, so `cargo test` ran 0 tests and passed (round 21 review). A file in
     // tests/ is an integration test cargo builds by itself, against the binary.
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'tests/cli.rs', toolchainFiles: { 'Cargo.toml': cargoToml } };
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, testFileName: 'tests/cli.rs', toolchainFiles: { 'Cargo.toml': cargoToml }, variant, ...stockSample(variant) };
 }
 
 function generateJavaScriptScaffold(request: string, projectName: string, isCsv: boolean) {
     const pkgJson = npmManifest(projectName, request, 'index.js', { start: 'node index.js', test: 'node --test test.js' },
         isCsv ? { 'csv-parse': '^5.5.0' } : undefined);
-    const entryPoint = 'index.js';
+    // The JavaScript skeleton has one body, the JSON filter: a CSV request is
+    // not that program, so buildCliScaffold has it authored from the request.
+    const variant: StockVariant = 'filter';
     const entryPointContent = generateJavaScriptEntry(request);
-    const testFile = generateJavaScriptTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, sampleFile, testFileName: 'test.js', toolchainFiles: {} };
+    const testFile = generateNodeCliTest('node index.js', variant);
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, testFileName: 'test.js', toolchainFiles: {}, variant, ...stockSample(variant) };
 }
 
-function generateTypeScriptEntry(request: string): string {
-    const isCsv = /\bcsv\b|\bcomma.separated/i.test(request);
+/** The TypeScript entry of the variant generateCliScaffold chose (the same reading of the request, never a second guess). */
+function generateTypeScriptEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\nimport { parse } from 'csv-parse/sync';\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\n\nif (!filePath) {\n  console.error('Usage: node dist/index.js <csv-file>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const records = parse(content, { columns: true, skip_empty_lines: true });\n  console.log(JSON.stringify(records, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}`;
+        return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\nimport { parse } from 'csv-parse/sync';\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\n\nif (!filePath) {\n  console.error('Usage: node dist/index.js <csv-file>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const records = parse(content, { columns: true, skip_empty_lines: true });\n  console.log(JSON.stringify(records, null, 2));\n} catch (err) {\n  console.error('Error:', (err as Error).message);\n  process.exit(1);\n}`;
     }
-    return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\n\nfunction filterJson(data: any[], filter: string): any[] {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\nconst filter: string = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node dist/index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const data: any[] = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
+    return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\n\nfunction filterJson(data: any[], filter: string): any[] {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\nconst filter: string = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node dist/index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const data: any[] = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', (err as Error).message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
 }
 
 function generatePythonEntry(request: string, isCsv: boolean): string {
@@ -969,7 +1008,11 @@ function generatePythonEntry(request: string, isCsv: boolean): string {
 
 function generateBashEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 1 ]; then\n    echo "Usage: \$0 <csv-file>"\n    exit 1\nfi\n\nCSV_FILE="\$1"\n\n# Use csvtool or awk to convert CSV to JSON\nif command -v csvtool &> /dev/null; then\n    csvtool -u JSON "\$CSV_FILE"\nelif command -v python3 &> /dev/null; then\n    python3 -c \"\nimport csv, json, sys\nwith open(sys.argv[1]) as f:\n    reader = csv.DictReader(f)\n    print(json.dumps(list(reader), indent=2))\n\" \"\$CSV_FILE\"\nelse\n    echo \"Error: csvtool or python3 required\" >&2\n    exit 1\nfi`;
+        // `csvtool -u JSON` sets csvtool's output SEPARATOR to «JSON» and names
+        // no command — it failed wherever csvtool was installed — and
+        // `command -v python3` finds the Windows Store stub too. Python 3's own
+        // csv module reads it, run by the first name that really is Python 3.
+        return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 1 ]; then\n    echo "Usage: \$0 <csv-file>"\n    exit 1\nfi\n\n# Python 3 reads the CSV with its standard csv module: the first name on this\n# machine that really is Python 3 (a Store stub or a Python 2 is not).\nfor PY in python3 python; do\n    if "\$PY" -c 'import sys; sys.exit(sys.version_info[0] - 3)' >/dev/null 2>&1; then\n        exec "\$PY" -c '\nimport csv, json, sys\ntry:\n    with open(sys.argv[1], newline="", encoding="utf-8") as f:\n        print(json.dumps(list(csv.DictReader(f)), indent=2, ensure_ascii=False))\nexcept OSError as e:\n    print("Error: %s" % e, file=sys.stderr)\n    sys.exit(1)\n' "\$1"\n    fi\ndone\necho "Error: Python 3 is required to read the CSV file" >&2\nexit 1`;
     }
     return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 2 ]; then\n    echo "Usage: \$0 <json-file> <property=value>"\n    exit 1\nfi\n\nJSON_FILE="\$1"\nFILTER="\$2"\n\nif ! command -v jq &> /dev/null; then\n    echo "Error: jq required" >&2\n    exit 1\nfi\n\njq --arg filter "\$FILTER" 'map(select(.\$filter | split(\"=\") | .[0] as \$k | .[1] as \$v | .[\$k] == \$v))' "\$JSON_FILE"`;
 }
@@ -983,19 +1026,38 @@ function generateGoEntry(request: string, isCsv: boolean): string {
 
 function generateRustEntry(request: string, isCsv: boolean): string {
     if (isCsv) {
-        return `// ${request}\nuse std::env;\nuse std::fs::File;\nuse std::io::BufReader;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: {} <csv-file>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file = File::open(&args[1]).expect("Failed to open file");\n    let mut reader = csv::Reader::from_reader(BufReader::new(file));\n    \n    let mut results = Vec::new();\n    for result in reader.deserialize() {\n        let record: serde_json::Value = result.expect("CSV parse error");\n        results.push(record);\n    }\n    \n    println!("{}", serde_json::to_string_pretty(&results).unwrap());\n}\n\n// Cargo.toml needs:\n// [dependencies]\n// csv = "1.3"\n// serde = { version = "1.0", features = ["derive"] }\n// serde_json = "1.0"`;
+        // Each row is built from the header and the record, column by column:
+        // csv's deserialize into a serde_json::Value reads ONE field per row
+        // (its deserialize_any takes the next field), so «CSV to JSON» printed
+        // only the first column (read, round 22, Q2; no cargo on this machine).
+        return `// ${request}\nuse std::env;\nuse std::fs::File;\nuse std::io::BufReader;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: {} <csv-file>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file = match File::open(&args[1]) {\n        Ok(file) => file,\n        Err(err) => {\n            eprintln!("Error: {}", err);\n            std::process::exit(1);\n        }\n    };\n    let mut reader = csv::Reader::from_reader(BufReader::new(file));\n    let headers = match reader.headers() {\n        Ok(headers) => headers.clone(),\n        Err(err) => {\n            eprintln!("Error: {}", err);\n            std::process::exit(1);\n        }\n    };\n    let mut results = Vec::new();\n    for record in reader.records() {\n        let record = match record {\n            Ok(record) => record,\n            Err(err) => {\n                eprintln!("Error: {}", err);\n                std::process::exit(1);\n            }\n        };\n        // One JSON object per row, keyed by the header: every column, as text.\n        let mut row = serde_json::Map::new();\n        for (header, value) in headers.iter().zip(record.iter()) {\n            row.insert(header.to_string(), serde_json::Value::String(value.to_string()));\n        }\n        results.push(serde_json::Value::Object(row));\n    }\n\n    println!("{}", serde_json::to_string_pretty(&results).unwrap());\n}`;
     }
     return `// ${request}\nuse std::env;\nuse std::fs;\nuse serde_json::Value;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 3 {\n        eprintln!("Usage: {} <json-file> <property=value>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file_path = &args[1];\n    let filter = &args[2];\n    let parts: Vec<&str> = filter.split('=').collect();\n    if parts.len() != 2 {\n        eprintln!("Filter must be in format: property=value");\n        std::process::exit(1);\n    }\n    let (prop, value) = (parts[0], parts[1]);\n\n    let content = fs::read_to_string(file_path).expect("Failed to read file");\n    let data: Vec<Value> = serde_json::from_str(&content).expect("Invalid JSON");\n    \n    let filtered: Vec<Value> = data.into_iter()\n        .filter(|item| item.get(&prop).and_then(|v| v.as_str()) == Some(value))\n        .collect();\n    \n    println!("{}", serde_json::to_string_pretty(&filtered).unwrap());\n}`;
 }
 
+/**
+ * A CommonJS program: it requires its modules, so it exports with
+ * module.exports. Its `export { filterJson }` made Node read the file as an ES
+ * module, where `require` is not defined — the stock tool crashed on its
+ * first line and its own test failed every time (measured, round 22, Q2).
+ */
 function generateJavaScriptEntry(request: string): string {
-    return `// ${request}\nconst fs = require('fs');\nconst path = require('path');\n\nfunction filterJson(data, filter) {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args = process.argv.slice(2);\nconst filePath = args[0];\nconst filter = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content = fs.readFileSync(filePath, 'utf-8');\n  const data = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
+    return `// ${request}\nconst fs = require('fs');\nconst path = require('path');\n\nfunction filterJson(data, filter) {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args = process.argv.slice(2);\nconst filePath = args[0];\nconst filter = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content = fs.readFileSync(filePath, 'utf-8');\n  const data = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nmodule.exports = { filterJson };`;
 }
 
-function generateTypeScriptTest(): string {
+/**
+ * The stock program's own node test, for the variant its entry is (Q2): the
+ * filter's test filters, the converter's test converts. Both write their own
+ * fixture beside themselves and run the program from there.
+ */
+function generateNodeCliTest(command: string, variant: StockVariant): string {
     const cp = 'child_process';
     const ex = 'execSync';
-    return `// Test for CLI filter tool\nconst { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node dist/index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
+    const head = `const { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\n`;
+    if (variant === 'csv-to-json') {
+        return `// Test for the CSV to JSON tool\n${head}fs.writeFileSync(path.join(__dirname, 'sample.csv'), 'name,city\\nAlice,NYC\\nBob,LA\\n');\n\nconst output = ${ex}('${command} sample.csv', { encoding: 'utf-8', cwd: __dirname });\nconst rows = JSON.parse(output.trim());\nif (rows.length !== 2) throw new Error('Expected 2 rows, got ' + rows.length);\nif (rows[0].name !== 'Alice' || rows[0].city !== 'NYC') throw new Error('Unexpected first row: ' + JSON.stringify(rows[0]));\nif (rows[1].name !== 'Bob' || rows[1].city !== 'LA') throw new Error('Unexpected second row: ' + JSON.stringify(rows[1]));\nconsole.log('Test passed!');`;
+    }
+    return `// Test for CLI filter tool\n${head}const testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('${command} sample.json city=NYC', { encoding: 'utf-8', cwd: __dirname });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
 }
 
 /** The stock program's own test, as a standard-library unittest case run against its entry. */
@@ -1008,90 +1070,70 @@ function generatePythonTest(entry = 'main.py', isCsv = false): string {
 }
 
 /**
- * How a Python program's tests run — ⛔ AND THAT AN EMPTY RUN FAILS ON EVERY
- * PYTHON (round 21 review).
- *
- * `python -m unittest` exits 5 on «Ran 0 tests» only since Python 3.12; on
- * 3.11 and older it prints «OK» and exits 0. And a plan's tests are often
- * pytest-style — bare `def test_…():` functions — which unittest does not
- * collect, so on a machine without pytest such a file «passed» with nothing
- * run. So the tests are run by a small standard-library runner, the same on
- * every version, that:
- *   - imports each test file and collects unittest.TestCase tests, bare
- *     `test*` functions and plain `Test*` classes — what pytest collects
- *     without its plugins — so a pytest-style file is really run;
- *   - fails when no test ran, or when every test was skipped;
- *   - lets a test that needs a pytest fixture fail on the missing argument,
- *     by name, rather than be skipped.
- * Tests Joe authors use only this runner, so the verdict never depends on the
- * machine. Tests a plan wrote run under pytest where it is installed (its
- * fixtures and marks; it fails an empty collection itself, and a run whose
- * every test was skipped is refused by the delivery's reader of the runner's
- * summary, test-run-evidence); this runner is the fallback.
- *
- * One line: npm hands the script to cmd.exe on Windows and to sh elsewhere,
- * so it holds no double quote, `$`, backslash, `%` or backtick.
+ * How a Python program's tests run, and how it starts on any machine: one
+ * runner (python-test-runner), shared with the delivery's record gate. An
+ * empty run fails on every Python; pytest-style files, their xunit hooks and
+ * coroutine tests are really run; the interpreter is found where the script
+ * runs, never named for the machine that built it.
  */
-const PYTHON_TEST_IMPORTS = 'import importlib.util as u,inspect,os,subprocess,sys,unittest';
-const PYTEST_WHERE_INSTALLED = "sys.exit(subprocess.call([sys.executable,'-m','pytest','-v',*sys.argv[1:]])) if u.find_spec('pytest') else 0";
-const PYTHON_TEST_RUNNER = [
-    // Each test file's folder is importable, as pytest's rootdir insertion makes it.
-    'sys.path[:0]=[os.path.dirname(os.path.abspath(f)) for f in sys.argv[1:]]',
-    'ms=[u.module_from_spec(u.spec_from_file_location(os.path.splitext(os.path.basename(f))[0],f)) for f in sys.argv[1:]]',
-    '[(sys.modules.__setitem__(m.__name__,m),m.__spec__.loader.exec_module(m)) for m in ms]',
-    'S=unittest.TestSuite([unittest.defaultTestLoader.loadTestsFromModule(m) for m in ms])',
-    "S.addTests(unittest.FunctionTestCase(v) for m in ms for k,v in vars(m).items() if k.startswith('test') and inspect.isfunction(v) and v.__module__==m.__name__)",
-    "S.addTests(unittest.FunctionTestCase(getattr(c(),n)) for m in ms for k,c in vars(m).items() if k.startswith('Test') and inspect.isclass(c) and not issubclass(c,unittest.TestCase) and c.__module__==m.__name__ for n in dir(c) if n.startswith('test') and callable(getattr(c,n)))",
-    'r=unittest.TextTestRunner(verbosity=2).run(S)',
-    'n=r.testsRun-len(r.skipped)',
-    "n or print('FAILED (no test ran)',file=sys.stderr)",
-    'sys.exit(0 if n and r.wasSuccessful() else 1)',
-];
+export { pythonTestCommand };
 
-export function pythonTestCommand(files: string[], authoredByJoe: boolean): string {
-    const list = files.map(file => (/\s/u.test(file) ? `"${file}"` : file)).join(' ');
-    const program = [PYTHON_TEST_IMPORTS, ...(authoredByJoe ? [] : [PYTEST_WHERE_INSTALLED]), ...PYTHON_TEST_RUNNER].join(';');
-    return `${PYTHON} -c "${program}" ${list}`;
-}
-
-function generateBashTest(): string {
+/** The stock program's bash test, for the variant its entry is (Q2). */
+function generateBashTest(variant: StockVariant): string {
+    if (variant === 'csv-to-json') {
+        return `#!/bin/bash\n# Test for the CSV to JSON tool\n\nprintf 'name,city\\nAlice,NYC\\nBob,LA\\n' > sample.csv\nOUTPUT=$(bash main.sh sample.csv) || { echo "the program failed: $OUTPUT"; exit 1; }\nfor EXPECTED in '"name": "Alice"' '"city": "NYC"' '"name": "Bob"' '"city": "LA"'; do\n    if ! printf '%s' "$OUTPUT" | grep -qF "$EXPECTED"; then\n        echo "Expected $EXPECTED in the output, got: $OUTPUT"\n        exit 1\n    fi\ndone\n\necho "Test passed!"`;
+    }
     return `#!/bin/bash\n# Test for CLI filter tool\n\nTEST_FILE="sample.json"\nTEST_DATA='[\n  {"name": "Alice", "age": 30, "city": "NYC"},\n  {"name": "Bob", "age": 25, "city": "LA"},\n  {"name": "Charlie", "age": 35, "city": "NYC"}\n]'\necho "$TEST_DATA" > "$TEST_FILE"\n\nOUTPUT=$(bash main.sh "$TEST_FILE" 'city=NYC')\nRESULT_COUNT=$(echo "$OUTPUT" | jq length)\nif [ "$RESULT_COUNT" -ne 2 ]; then\n    echo "Expected 2 results, got $RESULT_COUNT"\n    exit 1\nfi\n\nNAME_0=$(echo "$OUTPUT" | jq -r '.[0].name')\nif [ "$NAME_0" != "Alice" ]; then\n    echo "Expected Alice, got $NAME_0"\n    exit 1\nfi\n\nNAME_1=$(echo "$OUTPUT" | jq -r '.[1].name')\nif [ "$NAME_1" != "Charlie" ]; then\n    echo "Expected Charlie, got $NAME_1"\n    exit 1\nfi\n\necho "Test passed!"`;
 }
 
-function generateGoTest(): string {
+/** The stock program's Go test, for the variant its entry is (Q2): the CSV entry is run on a CSV, never the filter's JSON. */
+function generateGoTest(variant: StockVariant): string {
+    if (variant === 'csv-to-json') {
+        return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"os/exec"\n\t"testing"\n)\n\nfunc TestCSVToJSON(t *testing.T) {\n\tif err := os.WriteFile("sample.csv", []byte("name,city\\nAlice,NYC\\nBob,LA\\n"), 0644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\toutput, err := exec.Command("go", "run", "main.go", "sample.csv").Output()\n\tif err != nil {\n\t\tt.Fatalf("the program failed: %v", err)\n\t}\n\tvar rows []map[string]string\n\tif err := json.Unmarshal(output, &rows); err != nil {\n\t\tt.Fatalf("not JSON: %v\\n%s", err, output)\n\t}\n\n\tif len(rows) != 2 {\n\t\tt.Fatalf("Expected 2 rows, got %d", len(rows))\n\t}\n\tif rows[0]["name"] != "Alice" || rows[0]["city"] != "NYC" {\n\t\tt.Fatalf("Unexpected first row: %v", rows[0])\n\t}\n\tif rows[1]["name"] != "Bob" || rows[1]["city"] != "LA" {\n\t\tt.Fatalf("Unexpected second row: %v", rows[1])\n\t}\n}\n`;
+    }
     return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"os/exec"\n\t"testing"\n)\n\nfunc TestCLIFilter(t *testing.T) {\n\ttestData := []map[string]interface{}{\n\t\t{"name": "Alice", "age": 30, "city": "NYC"},\n\t\t{"name": "Bob", "age": 25, "city": "LA"},\n\t\t{"name": "Charlie", "age": 35, "city": "NYC"},\n\t}\n\n\ttestFile := "sample.json"\n\tdata, _ := json.MarshalIndent(testData, "", "  ")\n\tos.WriteFile(testFile, data, 0644)\n\n\toutput, _ := exec.Command("go", "run", "main.go", "sample.json", "city=NYC").Output()\n\tvar result []map[string]interface{}\n\tjson.Unmarshal(output, &result)\n\n\tif len(result) != 2 {\n\t\tt.Fatalf("Expected 2 results, got %d", len(result))\n\t}\n\tif result[0]["name"] != "Alice" {\n\t\tt.Fatalf("Expected Alice, got %v", result[0]["name"])\n\t}\n\tif result[1]["name"] != "Charlie" {\n\t\tt.Fatalf("Expected Charlie, got %v", result[1]["name"])\n\t}\n}\n`;
 }
 
-/** The stock filter's test as a Cargo integration test: tests/ is compiled by cargo itself, and the binary is the program's own. */
-function generateRustTest(bin: string): string {
+/**
+ * The stock program's test as a Cargo integration test: tests/ is compiled by
+ * cargo itself, and the binary is the program's own — run on the input of the
+ * variant its entry is (Q2).
+ */
+function generateRustTest(bin: string, variant: StockVariant): string {
+    const csv = variant === 'csv-to-json';
     return [
         'use std::process::Command;',
         '',
         '#[test]',
-        'fn filters_by_property() {',
-        '    let sample = std::env::temp_dir().join(format!("{}-sample-{}.json", env!("CARGO_PKG_NAME"), std::process::id()));',
-        '    std::fs::write(&sample, r#"[{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}]"#).unwrap();',
+        csv ? 'fn converts_every_row() {' : 'fn filters_by_property() {',
+        `    let sample = std::env::temp_dir().join(format!("{}-sample-{}.${csv ? 'csv' : 'json'}", env!("CARGO_PKG_NAME"), std::process::id()));`,
+        csv
+            ? '    std::fs::write(&sample, "name,city\\nAlice,NYC\\nBob,LA\\n").unwrap();'
+            : '    std::fs::write(&sample, r#"[{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}]"#).unwrap();',
         '',
         `    let output = Command::new(env!("CARGO_BIN_EXE_${bin}"))`,
         '        .arg(&sample)',
-        '        .arg("city=NYC")',
+        ...(csv ? [] : ['        .arg("city=NYC")']),
         '        .output()',
         '        .expect("the program runs");',
         '    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));',
         '',
         '    let result: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();',
         '    assert_eq!(result.len(), 2);',
-        '    assert_eq!(result[0]["name"], "Alice");',
-        '    assert_eq!(result[1]["name"], "Charlie");',
+        ...(csv
+            ? [
+                '    assert_eq!(result[0]["name"], "Alice");',
+                '    assert_eq!(result[0]["city"], "NYC");',
+                '    assert_eq!(result[1]["name"], "Bob");',
+                '    assert_eq!(result[1]["city"], "LA");',
+            ]
+            : [
+                '    assert_eq!(result[0]["name"], "Alice");',
+                '    assert_eq!(result[1]["name"], "Charlie");',
+            ]),
         '}',
         '',
     ].join('\n');
-}
-
-function generateJavaScriptTest(): string {
-    const cp = 'child_process';
-    const ex = 'execSync';
-    return `const { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
 }
 
 function generateSampleData(): string {
@@ -1535,7 +1577,7 @@ function commonDirectory(files: string[]): string {
 /** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
 function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = '', binary = ''): string {
     const runner = lang === 'python'
-        ? `Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable as \`${PYTHON} -m unittest -v <this file>\`; run the program with sys.executable through subprocess. `
+        ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable by `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
         : lang === 'javascript' || lang === 'typescript'
             ? 'Write it with node:test and node:assert, runnable by `node --test`. '
             : lang === 'bash'
@@ -1549,7 +1591,11 @@ function cliTestBrief(entry: string, runCommand: string, testCommand: string, re
         + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
         + runner
         + 'Use only the standard library of the language; no placeholder assertions.'
-        + (testCommand ? ` The test is run as \`${testCommand}\`: it must itself run every check it defines and exit with a non-zero code when any fails.` : '');
+        // Python's test command is the launcher and the runner on one line
+        // (python-test-runner): what it does is said, not its two thousand characters.
+        + (lang === 'python'
+            ? ' The test is run by a standard-library runner that imports this file and runs every unittest test in it (an empty or all-skipped run fails): every check must be a test method that fails when its assertion fails.'
+            : testCommand ? ` The test is run as \`${testCommand}\`: it must itself run every check it defines and exit with a non-zero code when any fails.` : '');
 }
 
 /**
@@ -1611,7 +1657,8 @@ function paperPlanRunPhase(request: string, files: string[], tests: string[]): {
         tool: 'write_file',
         args: {
             path: projectDir === '.' ? 'package.json' : `${projectDir}/package.json`,
-            content: JSON.stringify({ name, version: '1.0.0', private: true, description: request.replace(/\s+/g, ' ').trim().slice(0, 300), main: entry, scripts: { start: runCommand, test: testCommand } }, null, 2),
+            // The start script finds its interpreter where it runs (CLI_START), never the build machine's name.
+            content: JSON.stringify({ name, version: '1.0.0', private: true, description: request.replace(/\s+/g, ' ').trim().slice(0, 300), main: entry, scripts: { start: CLI_START[lang](entry), test: testCommand } }, null, 2),
         },
     });
     return {
@@ -2008,8 +2055,6 @@ export function projectAuditDirectory(roots: string[]): string {
     return clean[0] || '';
 }
 
-const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|available)|no\s+tests?|placeholder|todo).*|(?:true|:|exit\s+0))$/iu;
-
 /**
  * A declared lifecycle check is part of the delivery contract. A script that
  * exits zero while saying "not implemented" is not evidence of a build or a
@@ -2061,8 +2106,10 @@ export function inspectProjectQualityContract(
     }
     const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
     const failures: string[] = [];
+    // What a placeholder is, the one reader decides (placeholder-script): a
+    // script whose every command only prints or exits — never a word list (Q9).
     for (const name of ['build', 'test']) {
-        if (typeof scripts[name] === 'string' && PLACEHOLDER_SCRIPT.test(scripts[name].trim())) {
+        if (typeof scripts[name] === 'string' && isPlaceholderScript(scripts[name])) {
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
     }
