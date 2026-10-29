@@ -8,7 +8,7 @@ import { workspaceService } from '../../services/WorkspaceService';
 
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { findImportedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
-import { autoBuildManifests, buildFailureEvidence, manifestAwaitsInstall, manifestDeclaresBuild, plannedFilesNotYetWritten, plannedTaskWrites } from '../auto-build-readiness';
+import { autoBuildManifests, buildFailureEvidence, declaredBuild, manifestAwaitsInstall, manifestDeclaresBuild, plannedFilesNotYetWritten, plannedTaskWrites } from '../auto-build-readiness';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
 import { elidedParts } from '../../../shared/utils/elided-content';
@@ -20,6 +20,7 @@ import { capabilityProfilesFor } from '../../../core/capabilities/decision-profi
 import {
     compactVerificationLedger,
     isVerificationTool,
+    judgedTestRunResult,
     recordVerification,
     selectVerification,
     verificationResultFrom,
@@ -1703,13 +1704,16 @@ delete toolArgs.verificationMode;
                 verificationStartedAt = Date.now();
                 verificationLastActivityAt = verificationStartedAt;
             }
-            const toolResult = await executeTool(toolName, toolArgs, {
+            // A test command that exited 0 while its runner ran nothing is not a
+            // pass: judged once here (judgedTestRunResult), for the ledger, the
+            // phase and self-fix alike (round 21 review, Q1).
+            const toolResult = judgedTestRunResult(toolName, toolArgs, await executeTool(toolName, toolArgs, {
                 ...liveExecutionContext(),
                 onProgress: (m: string) => {
                     if (verificationSelection) verificationLastActivityAt = Date.now();
                     context?.onProgress?.(`[${toolName}] ${m}`);
                 },
-            });
+            }));
             assertRunActive();
             const verificationOutcome = verificationSelection
                 ? verificationResultFromToolResult(toolResult)
@@ -1856,10 +1860,10 @@ delete toolArgs.verificationMode;
                         const launcherArgs = { ...toolArgs, ...launcher };
                         appendLog(`[PhaseExecutor] 🔎 Missing npm script detected; package evidence at ${launcher.manifest} selects npm run ${launcher.script}.`);
                         try {
-                            const launcherResult = await executeTool(toolName, launcherArgs, {
+                            const launcherResult = judgedTestRunResult(toolName, launcherArgs, await executeTool(toolName, launcherArgs, {
                                 ...liveExecutionContext(),
                                 onProgress: (m: string) => context?.onProgress?.(`[${toolName} MANIFEST RECOVERY] ${m}`),
-                            });
+                            }));
                             assertRunActive();
                             if (launcherResult.ok) {
                                 appendLog(`[PhaseExecutor] ✅ Manifest-aware launcher recovery succeeded: npm run ${launcher.script}`);
@@ -1888,6 +1892,7 @@ delete toolArgs.verificationMode;
                     ok: false,
                     execution: 'ran',
                     error: currentRunError,
+                    ...(verificationSelection && verificationOutcome === 'incomplete' ? { verificationUnavailable: true } : {}),
                     ...((toolResult as any)?.recoverable === true ? { recoverable: true } : {}),
                     ...(failedMessage ? { message: failedMessage.slice(0, 8000) } : {}),
                     ...(repairKind ? { repairKind } : {}),
@@ -1928,10 +1933,10 @@ delete toolArgs.verificationMode;
                     appendLog('[PhaseExecutor] ⚠️ High-priority task failed. Retrying once...');
                     try {
                         assertRunActive();
-                        const retryResult = await executeTool(toolName, toolArgs, {
+                        const retryResult = judgedTestRunResult(toolName, toolArgs, await executeTool(toolName, toolArgs, {
                             ...liveExecutionContext(),
                             onProgress: (m: string) => context?.onProgress?.(`[${toolName} RETRY] ${m}`),
-                        });
+                        }));
                         assertRunActive();
                         if (retryResult.ok) {
                             appendLog(`[PhaseExecutor] ✅ Retry succeeded for task ${taskIndex + 1}: ${toolName}`);
@@ -2072,6 +2077,8 @@ delete toolArgs.verificationMode;
             delivery?: PhaseDeliveryEvidence;
             acceptanceUnmet?: string[];
             fidelityMismatch?: boolean;
+            /** The task's own check did not conclude (quality_run «incomplete»). */
+            verificationUnavailable?: boolean;
         }> = [];
         let completedCount = { value: 0 };
         let phaseDelivery: PhaseDeliveryEvidence | undefined;
@@ -2360,6 +2367,10 @@ const skippedCount = taskResults.filter(r => r.execution === 'skipped').length;
             const phaseExecution = (reusedCount === totalTasks && executedCount === 0) ? 'reused' : 'ran';
 let verificationFailed = false;
             let verificationUnavailable = false;
+            // A task's own check that did not conclude (quality_run «incomplete»:
+            // its parser never answered) judged nothing about the code: the phase
+            // stops on it honestly instead of sending self-fix to repair it (Q10).
+            if (taskResults.some(r => r.verificationUnavailable === true)) verificationUnavailable = true;
             let proseObservationPassed = false;
 
             appendLog(`[PhaseExecutor] Phase ${phaseTag} ${status}: ${executedCount}/${totalTasks} executed · ${skippedCount} skipped · ${reusedCount} reused${failedCount ? ` · ${failedCount} failed` : ''}`);
@@ -2479,13 +2490,13 @@ let verificationFailed = false;
                             const startedAt = Date.now();
                             phaseVerificationStartedAt = startedAt;
                             phaseVerificationLastActivityAt = startedAt;
-                            const vResult = await executeTool(vToolName, verificationArgs, {
+                            const vResult = judgedTestRunResult(vToolName, verificationArgs, await executeTool(vToolName, verificationArgs, {
                                 ...executionContext,
                                 onProgress: (message: string) => {
                                     phaseVerificationLastActivityAt = Date.now();
                                     executionContext.onProgress?.(message);
                                 },
-                            });
+                            }));
 
                             const verificationOutcome = verificationResultFromToolResult(vResult);
                             const verificationPassed = vResult.ok && verificationOutcome === 'passed';
@@ -2531,8 +2542,12 @@ let verificationFailed = false;
                                 }
                             } else {
                                 const vErr = String(vResult.error || 'Verification failed');
-                                const checkerUnavailable = vToolName === 'browser_run'
-                                    && /^(?:browser_unavailable|unauthorized|forbidden|missing_secrets|login_2fa_required|login_not_completed)$/i.test(vErr.trim());
+                                // A check that says it did not conclude (a lint whose parser
+                                // never answered: queue full, timeout) judged nothing about
+                                // the code — it is not a failure to repair (round 21 review, Q10).
+                                const checkerUnavailable = (vToolName === 'browser_run'
+                                    && /^(?:browser_unavailable|unauthorized|forbidden|missing_secrets|login_2fa_required|login_not_completed)$/i.test(vErr.trim()))
+                                    || verificationOutcome === 'incomplete';
                                 appendLog(checkerUnavailable
                                     ? `[PhaseExecutor] ⚠️ Verification unavailable: ${vErr}`
                                     : `[PhaseExecutor] ⚠️ Verification failed: ${vErr}`);
@@ -2598,7 +2613,12 @@ let verificationFailed = false;
                     let manifestRoot = '';
                     try { manifestRoot = path.dirname(resolveToolPath(pkgPath, { workspaceId: executionContext.workspaceId })); } catch { /* the build reports it */ }
                     if (manifestRoot && !manifestDeclaresBuild(manifestRoot)) {
-                        appendLog(`[PhaseExecutor] ℹ️ Auto-build check skipped honestly: ${pkgPath} declares no build script, so there is no build to run (no receipt recorded).`);
+                        // A placeholder (`echo No build step required`) builds nothing
+                        // either: said as what it is, never «passed» (round 21 review, Q9).
+                        const build = declaredBuild(manifestRoot);
+                        appendLog(build.kind === 'placeholder'
+                            ? `[PhaseExecutor] ℹ️ Auto-build check skipped honestly: the build script in ${pkgPath} is a placeholder (${JSON.stringify(build.script).slice(0, 160)}) that builds nothing, so no build ran (no receipt recorded).`
+                            : `[PhaseExecutor] ℹ️ Auto-build check skipped honestly: ${pkgPath} declares no build script, so there is no build to run (no receipt recorded).`);
                         continue;
                     }
                     appendLog(`[PhaseExecutor] 🔍 Auto-running build check in ${projectDir || 'workspace root'}...`);

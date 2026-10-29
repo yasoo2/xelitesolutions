@@ -31,6 +31,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { isRunnerSummaryLine, judgeTestRun } from './test-run-evidence';
 
 export interface TerminalCheck {
     /** A stable name a report can point at: `deps_installed`, `health_answers`. */
@@ -146,10 +147,13 @@ export async function run(
     onLine?: (line: string) => void,
     idle = false,
     bounds: { ceilingMs?: number; cancel?: Promise<void> } = {},
-): Promise<{ ok: boolean; out: string; code: number | null; longestQuietMs: number }> {
+): Promise<{ ok: boolean; out: string; code: number | null; longestQuietMs: number; summary?: string }> {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { executionEngine } = require('../../kernel/ExecutionEngine');
     const lines: string[] = [];
+    // A test runner prints its summary LAST, past the 200 lines kept for
+    // display: its summary lines are kept whole, for the test-run judge (Q1).
+    const summary: string[] = [];
     let child: any = null;
     let timer: any = null;
     let fire: (() => void) | null = null;
@@ -180,6 +184,7 @@ export async function run(
                 sawLine = true;
                 if (idle) arm();
                 if (lines.length < 200) lines.push(l);
+                if (isRunnerSummaryLine(l)) summary.push(l);
                 // Indented, so his eye separates the command from its answer.
                 try { onLine?.(`    ${l.slice(0, 200)}`); } catch { /* logging is optional */ }
             },
@@ -202,7 +207,7 @@ export async function run(
             : res.error === 'cancelled'
                 ? [...lines, '(stopped: the run was cancelled)'].join('\n')
                 : lines.join('\n');
-    return { ok: !!res.ok && res.exitCode === 0, out, code: res.exitCode ?? null, longestQuietMs };
+    return { ok: !!res.ok && res.exitCode === 0, out, code: res.exitCode ?? null, longestQuietMs, summary: summary.join('\n') };
 }
 
 /**
@@ -448,10 +453,15 @@ export async function auditInTerminal(
                 const floor = Math.max(per, 45_000);
                 const r = await run(npm, ['test'], appDir, testQuietBoundMs(floor, appDir), say, true, { ceilingMs: testCeilingMs(floor), cancel: opts.cancel });
                 if (r.ok) noteTestQuietGap(r.longestQuietMs, appDir);
+                // Exit 0 with «ℹ tests 0» is a suite that proved nothing: the one
+                // test-run judge reads the runner's own summary (round 21 review, Q1).
+                const judged = judgeTestRun(r.ok, r.summary ?? r.out);
                 const last = String(r.out).trim().split('\n').filter(Boolean).pop() || '';
-                return r.ok
+                return judged.passed
                     ? { ok: true, detail: 'the generated application test suite passed' }
-                    : { ok: false, detail: last.slice(0, 180) || 'the generated application test suite failed' };
+                    : judged.ranNothing
+                        ? { ok: false, detail: judged.reason.slice(0, 180) }
+                        : { ok: false, detail: last.slice(0, 180) || 'the generated application test suite failed' };
             });
         }
         await add('app_deps_installed', `node -e "verify declared dependency packages" (${path.basename(appDir)})`, async () => {
