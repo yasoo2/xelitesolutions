@@ -32,7 +32,7 @@ import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
-import { isPossessivePhrase } from './request-lists';
+import { FoldedRegExp, isPossessivePhrase } from './request-lists';
 
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
@@ -937,8 +937,31 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
  *  أسجل فيه المواعيد» puts «أسجل» beside the container, and it is refused
  *  here even though the earlier reader is the one that saves it.
  */
+/**
+ *  AN OPENER IS WHERE THE LIST BEGINS, NOT PART OF THE NAME (round 21 review, R7).
+ *
+ *  «بدي قائمة الطلاب فيها: الاسم والعمر» named its table «الطلاب فيها»: the
+ *  subject ran up to the colon and took the opener with it. The openers are
+ *  the grammar that introduces a list (request-lists' openers), never a word
+ *  of what is listed.
+ */
+const TRAILING_OPENER = /\s+(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|يشمل|تشمل|with|containing|including|has|having)$/iu;
+const withoutTrailingOpener = (subject: string) => String(subject || '').trim().replace(TRAILING_OPENER, '').trim();
+
+/**
+ *  …AND A WORD OF GRAMMAR IS NO NAME EITHER (R3).
+ *
+ *  «My gym app should track: members, trainers, workouts» put «should» in
+ *  front of the recording verb, and the reader that looks there for the
+ *  table's name («بدي جدول للمواعيد أسجل فيه») built a `shoulds` table with
+ *  his three tables for columns. A modal, an auxiliary, a pronoun or the
+ *  infinitive's «to» stands in front of an English verb; none of them names
+ *  anything. A closed class of the language, not a vocabulary of domains.
+ */
+const ENGLISH_GRAMMAR_WORD = /^(?:should|would|will|shall|can|could|must|may|might|to|i|we|you|they|it|he|she|that|which|who|also|and|or|then|please|me|us)$/iu;
+
 function theNounBesideTheContainer(request: string): string | null {
-    const beside = String(subjectAfterContainer(request) || '').trim();
+    const beside = withoutTrailingOpener(String(subjectAfterContainer(request) || '').trim());
     //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
     //
     //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a
@@ -998,7 +1021,7 @@ export function recordedSubject(requestRaw: string): string | null {
     const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
     const tail = before.slice(-1)[0] || '';
     const bare = tail.replace(/^(?:لل|ال|ل)/, '');
-    return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
+    return bare.length >= 3 && !ENGLISH_GRAMMAR_WORD.test(bare) ? bare : theNounBesideTheContainer(request);
 }
 
 /**
@@ -2278,8 +2301,15 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  «قائمه» is «قائمة» typed the way most people type it (round 21): the
  *  informal «بدي قائمه الطلاب فيها: الاسم، العمر» missed the container,
  *  and its columns became the tables `asms` and `amrs`.
+ *
+ *  …and adding «قائمه» fixed one spelling of it (round 21 review, R5):
+ *  «قايمة» and «قايمه» — the hamza seat written as ي — still missed it, and
+ *  their columns were still tables. The container is matched FOLDED, on the
+ *  request folded the way every reader folds it, so it is the word that
+ *  matches, not one way of typing it; the match is mapped back to his text,
+ *  so every caller that slices by its index still reads his own words.
  */
-export const RECORD_CONTAINER = /(?:جدول|قائم[ةه]|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
+export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|سجل)(?:ا)?|جداول|\\btable\\b|\\blist\\b|\\bsheet\\b|\\bboard\\b|\\bqueue\\b|\\bledger\\b|\\bregister\\b|\\btracker\\b|\\bdirectory\\b|\\bregistry\\b|\\bcatalog(?:ue)?\\b', 'iu');
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.

@@ -225,8 +225,10 @@ describe('builders and the gate read one list: the actions come off before the r
         expect(ar.region || '').toMatch(/^الأعمال والعملاء والفواتير(?:[،,]|$)/u);
         expect(ar.actionLed).toBe(true);
         expect(namedEntities(ar.text).map(e => e.ar)).toEqual(['الأعمال', 'العملاء', 'الفواتير']);
-        // Read raw, «بحث في الأعمال» swallowed its record.
-        expect(namedEntities(P080).map(e => e.ar)).not.toContain('الأعمال');
+        // Read raw, «بحث في الأعمال» once swallowed its record. The one list
+        // reader now takes the actions off itself (round 22, R2), so a caller
+        // that hands it the raw request reads the same three records.
+        expect(namedEntities(P080).map(e => e.ar)).toEqual(['الأعمال', 'العملاء', 'الفواتير']);
         const en = normaliseListedRequest(P080_EN);
         expect(en.text).not.toMatch(/add, edit, delete and search/);
         expect(namedEntities(en.text).map(e => e.key)).toEqual(namedEntities(P080_EN).map(e => e.key));

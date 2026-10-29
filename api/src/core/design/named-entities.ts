@@ -24,10 +24,12 @@
  * nouns or it declines and lets the model try. It never invents a table.
  */
 import type { ModelEntity, ModelField } from './data-model';
-import { MAX_MODEL_ENTITIES, NEVER, englishFor, fieldsForKind, inferKind, isCapability, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
+import { MAX_MODEL_ENTITIES, NEVER, describedTable, englishFor, fieldsForKind, inferKind, isCapability, isRoleInContext, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
-import { isDeliverable, isInterfaceNoun, listRegion, splitListItems, type ListMarker } from './request-lists';
+import { ENGLISH_PREPOSITION, foldPattern, isDeliverable, isInterfaceNoun, isPossessivePhrase, splitListItems, type ListMarker } from './request-lists';
+import { isActionWord, isFeaturePhrase, normaliseListedRequest, withoutLeadingAction } from './listed-request';
 import { foldChars } from '../orchestrator/promptNormalizer';
+import { stripDeclaredOptions } from './requested-artifact';
 
 const T = (key: string, ar: string, en: string, required = false): ModelField =>
     ({ key, type: 'TEXT', required, ar, en });
@@ -113,7 +115,8 @@ const NOUNS: Noun[] = [
     { key: 'trainees', ar: 'المتدربون', en: 'trainees', kind: 'person', re: /^(ال)?متدرب(ين|ون)?$|^trainees?$/i },
     { key: 'readers', ar: 'القراء', en: 'readers', kind: 'person', re: /^(ال)?قراء$|^readers?$/i },
     { key: 'guests', ar: 'النزلاء', en: 'guests', kind: 'person', re: /^(ال)?نزلاء$|^(ال)?ضيوف$|^guests?$/i },
-    { key: 'owners', ar: 'المالكون', en: 'owners', kind: 'person', re: /^(ال)?مالك(ين|ون)$|^(ال)?ملاك$|^owners?$/i },
+    // «أصحاب» is the plural of «صاحب», the owner («أصحاب الحيوانات» are pet owners).
+    { key: 'owners', ar: 'المالكون', en: 'owners', kind: 'person', re: /^(ال)?مالك(ين|ون)$|^(ال)?ملاك$|^(ال)?[أا]صحاب$|^owners?$/i },
     { key: 'workers', ar: 'العمال', en: 'workers', kind: 'person', re: /^(ال)?عمال$|^(ال)?عاملات$|^workers?$|^cleaners?$/i },
     { key: 'donors', ar: 'المتبرعون', en: 'donors', kind: 'person', re: /^(ال)?متبرع(ين|ون)?$|^donors?$/i },
     { key: 'beneficiaries', ar: 'المستفيدون', en: 'beneficiaries', kind: 'person', re: /^(ال)?مستفيد(ين|ون)?$|^beneficiar(y|ies)$/i },
@@ -193,12 +196,9 @@ const NOUNS: Noun[] = [
  * that way matched none of the patterns above, which were written in one
  * spelling. Both sides are folded the way promptNormalizer.foldChars folds a
  * request (أ/إ/آ → ا, ة → ه, ى → ي, ئ → ي, ؤ → و, ء and marks dropped), so
- * a pattern is matched as the word, not as one way of typing it.
+ * a pattern is matched as the word, not as one way of typing it. The pattern
+ * folder is request-lists' (foldPattern), shared by every reader.
  */
-const foldPattern = (source: string) => source
-    .replace(/[ً-ْٰـ]/gu, '')
-    .replace(/[أإآٱ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ة/gu, 'ه')
-    .replace(/ئ/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ء/gu, '');
 const fold = (word: string) => foldChars(String(word || '').trim());
 const FOLDED_NOUNS: Array<{ noun: Noun; re: RegExp }> = NOUNS.map(noun =>
     ({ noun, re: new RegExp(foldPattern(noun.re.source), noun.re.flags) }));
@@ -234,24 +234,28 @@ export function curatedNounEnglish(word: string): string {
  * its delivery failed «customers (not built)». The same English request
  * («services, testimonials») read no table at all.
  *
- * A two-word item is read whole first («العملاء المحتملون» → leads), then by
- * its head: the first word in Arabic («المنتجات الرقمية» are products), the
- * last in English («customer reviews» are reviews).
+ * An item is read whole first («العملاء المحتملون» → leads), then by its
+ * head: the first word in Arabic («المنتجات الرقمية» are products), the last
+ * in English («customer reviews» are reviews).
  *
- * …AND THE HEAD SILENCES THE POSSESSOR ONLY WHEN IT SAYS WHAT IT IS.
+ * …AND ONLY A HEAD THAT HOLDS RECORDS HANDS THE ITEM TO ITS POSSESSOR.
  *
- * Round 21 review: the first version let the possessor speak only after a
- * head from a short list of record-keeping words («إدارة», «سجل», "records"),
- * so every other head silenced it. «Build a clinic backend with: doctor
- * profiles, appointment scheduling, patient history» read no table at all,
- * nor did «اداره المرضى، وقائمه المواعيد» (the list words written with ه),
- * and the delivery gate, handed nothing, required nothing. A doctor profile
- * IS the doctor's record; scheduling and history are things done to
- * appointments and patients. What the possessor must not name is CONTENT
- * ABOUT it — what people said («آراء العملاء», testimonials, feedback) or what
- * shows it («صور المنتجات», photos, a gallery, a logo). So the possessor names
- * the record unless the head is one of those words of the language. Matched
- * folded, like every noun here.
+ * Round 21 let the possessor name the record whenever the head was not
+ * content about it (testimonials, photos). Round 21 review (R1): that merged
+ * a different record into its possessor's table, and the delivery gate then
+ * counted it delivered — «ابن باك اند لشركة: الأقسام، الموظفين، رواتب الموظفين»
+ * built no salaries table and «رواتب الموظفين» passed as served by
+ * /api/employees; "member fees", "patient prescriptions", «وصفات المرضى»,
+ * «مخزون الأدوية», "patient lab results" the same. An unknown head is not
+ * evidence that the item is its possessor's record — salaries, fees and
+ * prescriptions are records of their own ABOUT the possessor. Only a head
+ * that says where the records are kept or how they are worked («سجل
+ * المرضى», «قائمة المواعيد», «إدارة الحاويات», "doctor profiles",
+ * "appointment scheduling", "patient history") names the possessor as the
+ * record. Every other head with a known possessor is its own record, keyed
+ * from all its words and linked to the possessor (ownRecordPossessor); content
+ * about a record (CONTENT_ABOUT) is not a table at all. Matched folded, like
+ * every noun here.
  */
 const CONTENT_ABOUT = new RegExp(foldPattern(`^(?:(?:ال)?(?:${[
     'آراء', 'رأي', 'شهادات', 'تجارب', 'انطباعات', 'قصص',
@@ -259,29 +263,59 @@ const CONTENT_ABOUT = new RegExp(foldPattern(`^(?:(?:ال)?(?:${[
 ].join('|')})|opinions?|testimonials?|feedback|stories|story|quotes?|impressions?`
     + '|photos?|images?|pictures?|gallery|galleries|videos?|clips?|logos?)$'), 'iu');
 
-/** The head and the other word of a two-word item: Arabic names the head first, English last. */
-function headOf(item: string): { head: string; other: string } | null {
+/**
+ * A WORD THAT HOLDS RECORDS IS NOT THE RECORD.
+ *
+ * «جدول الرواتب», «إدارة الحاويات», «سجل التطعيمات», "patient records" — the
+ * head says where the records are kept or how they are worked; what they ARE
+ * is the rest. A key or a table name read from the whole phrase named the
+ * holder, or needed a dictionary to know it. Folded, both scripts, and the
+ * two scripts hold the same class: a container («سجل» record/log/history,
+ * «ملف» file/profile, «جدول» table) or the work done on records («إدارة»
+ * management, «تتبع» tracking, «تسجيل» registration, «جدولة» scheduling).
+ */
+const RECORD_HOLDER = new RegExp(foldPattern('^(?:(?:ال)?(?:إدارة|تتبع|متابعة|تسجيل|جدولة|سجل|سجلات|جدول|جداول|قائمة|قوائم|كشف|بيانات|ملف|ملفات|أرشيف)'
+    + '|management|tracking|scheduling|registration|records?|lists?|data|database|directory|table|registry|files?|profiles?|history|histories|logs?)$'), 'iu');
+
+/**
+ * The head and the other words of an item: Arabic names the head first,
+ * English last — or, when a preposition follows it, right before the
+ * preposition ("appointments with doctors" is read by «appointments», never
+ * by «doctors», which would merge it into the doctors' table: R1).
+ */
+function headOf(item: string): { head: string; other: string; rest: string[] } | null {
     const token = String(item || '').trim().split(/\s+/).filter(Boolean);
     if (token.length < 2) return null;
     const arabic = /[\u0600-\u06FF]/u.test(token[0]);
-    return arabic
-        ? { head: token[0], other: token[token.length - 1] }
-        : { head: token[token.length - 1], other: token[0] };
+    if (arabic) return { head: token[0], other: token[token.length - 1], rest: token.slice(1) };
+    const at = token.findIndex((word, i) => i > 0 && ENGLISH_PREPOSITION.test(word));
+    const after = at > 0 ? token.slice(at + 1).filter(word => !ENGLISH_PREPOSITION.test(word)) : [];
+    if (at > 0 && after.length) {
+        const before = token.slice(0, at);
+        return { head: before[before.length - 1], other: after[after.length - 1], rest: [...before.slice(0, -1), ...after] };
+    }
+    return { head: token[token.length - 1], other: token[0], rest: token.slice(0, -1) };
 }
 
-function nounOfItem(item: string): Noun | undefined {
+const holdsRecords = (head: string) => RECORD_HOLDER.test(fold(head));
+const isContentHead = (head: string) => CONTENT_ABOUT.test(fold(head));
+
+function nounOfItem(item: string, depth = 0): Noun | undefined {
     const exact = nounFor(item);
     const parts = headOf(item);
     if (exact || !parts) return exact;
-    return nounFor(parts.head)
-        || (CONTENT_ABOUT.test(fold(parts.head)) ? undefined : nounFor(parts.other));
+    const head = nounFor(parts.head);
+    if (head) return head;
+    // «سجل مواعيد المرضى» holds appointments; "patient appointment list" too.
+    if (holdsRecords(parts.head) && depth < 3) return nounOfItem(parts.rest.join(' '), depth + 1);
+    return undefined;
 }
 
 /**
  * The key of the curated table a listed item names, read the way namedEntities
- * reads it (whole, head, then the possessor unless the head is content about
- * it), or ''. One rule for every reader of an item, so no reader keys «صور
- * المنتجات» as `products` that the list reader rightly did not read as a table.
+ * reads it (whole, head, then the record a holder holds), or ''. One rule for
+ * every reader of an item, so no reader keys «صور المنتجات» as `products`, or
+ * «رواتب الموظفين» as `employees`, that the list reader did not read so.
  */
 export function nounKeyOfItem(item: string): string {
     return nounOfItem(item)?.key || '';
@@ -293,23 +327,35 @@ export function nounEnglishOfItem(item: string): string {
 }
 
 /**
- * A WORD THAT HOLDS RECORDS IS NOT THE RECORD.
- *
- * «جدول الرواتب», «إدارة الحاويات», «سجل التطعيمات», "patient records" — the
- * head says where the records are kept or how they are worked; what they ARE
- * is the rest. A key or a table name read from the whole phrase named the
- * holder, or needed a dictionary to know it. Folded, both scripts.
+ * Content about a record — «صور المنتجات», «آراء العملاء», "book photos",
+ * «معرض الصور» — never a table of its own nor its possessor's (R4). One word
+ * alone («الصور», "photos") may still be a record of a photo app.
  */
-const RECORD_HOLDER = new RegExp(foldPattern('^(?:(?:ال)?(?:إدارة|تتبع|متابعة|تسجيل|سجل|سجلات|جدول|جداول|قائمة|قوائم|كشف|بيانات|ملف|ملفات|أرشيف)'
-    + '|management|tracking|records?|lists?|data|database|directory|table|registry|files?)$'), 'iu');
+export function isContentItem(item: string): boolean {
+    const parts = headOf(item);
+    return !!parts && !nounFor(item) && !nounFor(parts.head) && isContentHead(parts.head);
+}
+
+/**
+ * The record an item is ABOUT, when the item is a record of its own: a head
+ * that is no table we know, holds no records and is no content about them,
+ * beside a noun we do know — «رواتب الموظفين» (employees), "patient lab
+ * results" (patients). The item is then its own table, keyed from all its
+ * words and linked to this one; it is never this one's table.
+ */
+export function ownRecordPossessor(item: string): { key: string; ar: string; en: string } | null {
+    const parts = headOf(item);
+    if (!parts || nounOfItem(item) || holdsRecords(parts.head) || isContentHead(parts.head)) return null;
+    const noun = parts.rest.map(word => nounFor(word)).find(Boolean);
+    return noun ? { key: noun.key, ar: noun.ar, en: noun.en } : null;
+}
 
 /** The item without a head that only holds its records («جدول الرواتب» → «الرواتب»), else the item. */
 export function withoutRecordHolder(item: string): string {
     const text = String(item || '').trim();
     const parts = headOf(text);
-    if (!parts || !RECORD_HOLDER.test(fold(parts.head))) return text;
-    const token = text.split(/\s+/).filter(Boolean);
-    return (/[\u0600-\u06FF]/u.test(token[0]) ? token.slice(1) : token.slice(0, -1)).join(' ');
+    if (!parts || !holdsRecords(parts.head)) return text;
+    return parts.rest.join(' ');
 }
 
 /** The columns a table of this kind actually needs to be usable. */
@@ -339,26 +385,11 @@ function fieldsFor(n: Noun): ModelField[] {
     }
 }
 
-/**
- * The listed part of the sentence, and what introduced it.
- *
- * A colon is the strongest signal a person can give — «نظاماً لمشتل نباتات:
- * النباتات والموردون والطلبيات» — and after it comes a list, not prose. The
- * openers are the other way people write the same thing. And a software
- * request names its resources behind an interface head — «نقاط وصول لـالمرضى
- * والمواعيد والعلاجات», «endpoints for students, classes, grades» — which the
- * shared reader takes off first (request-lists.ts).
- */
-function listedPart(request: string): { part: string; marker: ListMarker } | null {
-    const found = listRegion(request);
-    return found ? { part: found.region, marker: found.marker } : null;
-}
-
 /** Everything after the list that is clearly not a table («مع صور … وثيم …»). */
-function trimTail(part: string): string {
+export function trimListTail(part: string): string {
     // «… والطلبيات مع صور نباتات وثيم اخضر جميل» — the design wishes are not
     // entities, and folding them in would create a table called «ثيم».
-    return part.split(/\s+(?:مع|وبتصميم|بتصميم|بثيم|وثيم|and with|with a)\s+/i)[0];
+    return String(part || '').split(/\s+(?:مع|وبتصميم|بتصميم|بثيم|وثيم|and with|with a)\s+/i)[0];
 }
 
 /*
@@ -377,29 +408,48 @@ function trimTail(part: string): string {
 
 const KIND_OF_SHAPE: Record<EntityKind, Kind> = { person: 'person', money: 'deal', when: 'event', grouping: 'plain', thing: 'thing' };
 
-interface Read { key: string; ar: string; en: string; kind: Kind; fields: ModelField[] }
+interface Read { key: string; ar: string; en: string; kind: Kind; fields: ModelField[]; item: string; belongsTo?: { entity: string; key: string } }
+
+const usableKey = (key: string) => !!key && key.length >= 3 && key.length <= 40 && !NEVER.has(key) && !RESERVED_TABLES.has(key);
+const CURATED_KEYS = new Set(NOUNS.map(noun => noun.key));
+/** The Arabic prepositions that stand as words of their own (folded). */
+const ARABIC_PREPOSITION = new RegExp(foldPattern('^(?:من|في|على|إلى|عن|مع|حسب|بين|لكل)$'), 'u');
 
 /**
  * A LISTED NOUN NOBODY WROTE DOWN IS STILL A TABLE HE NAMED.
  *
  * «نقاط وصول لـالمرضى والمواعيد والعلاجات» — «العلاجات» is on no curated list,
  * and dropping it built a clinic API with two of its three tables. Inside a
- * list the grammar already proved (an interface head, or two recognised nouns
+ * list the grammar already proved (an interface head, or recognised nouns
  * beside it) an unrecognised item gets the key and the columns the shape
  * reader would give it. Outside such a list it is a coincidence, not a table.
+ *
+ * …IN ONE WORD OR IN THE TWO OR THREE A RECORD IS NAMED IN (round 22, R2).
+ * «عقود الإيجار», «أولياء الأمور», «الحضور اليومي», "rental contracts", "leave
+ * requests": the shape reader built each of them as a table from the same
+ * list while this reader, wanting one word after a colon, left them unread —
+ * so the delivery gate could not check a table the build had made. A noun
+ * phrase of a proven list is read as the shape reader reads it, keyed by the
+ * same key reader; an Arabic one is a definite noun phrase (some word of it
+ * carries the article).
  */
-function unlistedNoun(item: string, marker: ListMarker, sells: boolean): Read | null {
+function unlistedNoun(item: string, marker: ListMarker, sells: boolean, request = ''): Read | null {
     const words = item.split(/\s+/).filter(Boolean);
-    if (!words.length || words.length > 2) return null;
+    if (!words.length || words.length > 3) return null;
     const arabic = /[ء-ي]/u.test(item);
     if (marker !== 'head') {
-        if (words.length > 1) return null;
-        // An Arabic item beside recognised nouns is a definite noun («الحيوانات»).
-        if (arabic && !/^ال/u.test(item)) return null;
+        // An Arabic item beside recognised nouns is a definite noun («الحيوانات»,
+        // «عقود الإيجار»).
+        if (arabic && !words.some(word => /^ال/u.test(word))) return null;
+    } else if (words.length > 2) {
+        return null;
     }
-    if (isCapability(item) || isInterfaceNoun(item)) return null;
+    // A noun phrase names a record; one with a preposition inside it is a
+    // phrase about something else ("sections for about", «مواعيد حسب الطبيب»).
+    if (words.length > 1 && words.some(word => ENGLISH_PREPOSITION.test(word) || ARABIC_PREPOSITION.test(fold(word)))) return null;
+    if (isCapability(item) || isInterfaceNoun(item) || isRoleInContext(item, request)) return null;
     const key = keyForPhrase(item);
-    if (!key || key.length < 3 || key.length > 40 || NEVER.has(key) || RESERVED_TABLES.has(key)) return null;
+    if (!usableKey(key)) return null;
     const shape = inferKind(item);
     return {
         key,
@@ -407,41 +457,128 @@ function unlistedNoun(item: string, marker: ListMarker, sells: boolean): Read | 
         en: arabic ? (englishFor(item) || item) : item,
         kind: KIND_OF_SHAPE[shape],
         fields: fieldsForKind(shape, { sells }),
+        item,
     };
 }
 
 /**
- * Read the tables the user named. Empty when it is not sure — a wrong table is
- * worse than no table, because the whole system is generated from it.
+ * A RECORD ABOUT ANOTHER RECORD IS A TABLE OF ITS OWN (R1).
+ *
+ * «رواتب الموظفين», "member fees", "patient lab results": keyed from all its
+ * words by the one key reader (keyForPhrase), shaped by its own head (a
+ * salary is not a person because an employee is), and linked to the record
+ * it is about when that record is one of his tables too.
  */
-export function namedEntities(request: string): ModelEntity[] {
-    const listed = listedPart(request);
-    if (!listed) return [];
-    const words = splitListItems(trimTail(listed.part));
-    if (words.length < 2) return [];
+function ownRecord(item: string, sells: boolean): Read | null {
+    const possessor = ownRecordPossessor(item);
+    if (!possessor || isCapability(item)) return null;
+    const key = keyForPhrase(item);
+    if (!usableKey(key) || key === possessor.key) return null;
+    const arabic = /[ء-ي]/u.test(item);
+    const words = item.split(/\s+/).filter(Boolean);
+    const shape = inferKind(arabic ? words[0] : words[words.length - 1]);
+    return {
+        key,
+        ar: item,
+        en: arabic ? (englishFor(item) || item) : item,
+        kind: KIND_OF_SHAPE[shape],
+        fields: fieldsForKind(shape, { sells }),
+        item,
+        belongsTo: { entity: possessor.key, key: `${possessor.key.replace(/ies$/, 'y').replace(/s$/, '')}_id` },
+    };
+}
 
-    const read: Read[] = [];
-    let recognised = 0;
-    // A listed noun the system already serves («الطلبات» → orders) is still
-    // one of his items: it counts toward proving the list, it is just not
-    // generated again.
-    let alreadyServed = 0;
+/** What one listed item names, read the one way every builder and the delivery gate read it. */
+export interface ListedEntry {
+    /** His words for the item, cleaned of conjunctions, prepositions and leading actions. */
+    item: string;
+    /**
+     * record — one of his tables; served — a table the system already owns;
+     * content — content about a record («صور المنتجات»), never a table;
+     * capability — what no table can hold (search, sign-in with roles), or a
+     * role of a request that names roles: judged by the instruments that
+     * measure it, never a record obligation;
+     * clause — five words or more, a sentence rather than a name;
+     * unread — no record could be read from it (said, never passed or failed).
+     */
+    as: 'record' | 'served' | 'content' | 'capability' | 'clause' | 'unread';
+    /** The table key the item names (record and served). */
+    key?: string;
+    /** The item names a table we know (curated or served), not a noun read by shape. */
+    named?: boolean;
+}
+
+export interface ListedReading {
+    marker: ListMarker | null;
+    /** The listed part, without its design tail — the text every list item comes from. */
+    region: string | null;
+    /** His tables, in his order, with their columns and links — empty unless the list is proven. */
+    entities: ModelEntity[];
+    /** Listed tables the system already serves («الطلبات» → orders): his words, never generated again. */
+    served: Array<{ key: string; ar: string; en: string; item: string }>;
+    entries: ListedEntry[];
+    /** The list is a list of records: proven by its head, its actions or its nouns, and at least two of them. */
+    proven: boolean;
+}
+
+const EMPTY_READING: ListedReading = { marker: null, region: null, entities: [], served: [], entries: [], proven: false };
+
+/**
+ * HIS LISTED RECORDS — ONE READING FOR EVERY BUILDER AND FOR THE DELIVERY GATE.
+ *
+ * Round 21 review (R2): the builders and the gate each read his list with
+ * their own floor. namedEntities wanted two curated nouns after a colon and
+ * did not count the tables the system serves, so «ابن باك اند لمكتب:
+ * الموظفين، الإجازات، الحضور» was read by nobody — api_project built a generic
+ * /api/items and the gate, handed nothing, never ran — while «Backend for my
+ * shop: products, product photos, customers, customer testimonials» made the
+ * gate require `customers` that no builder had read. One function now reads
+ * the list, item by item, and decides once whether it is a list of records:
+ *
+ *   - proven by an interface head («نقاط وصول لـ», "endpoints for"), by a run
+ *     of actions on its records («إضافة وتعديل وحذف … في»), by two items that
+ *     name tables we know (counting the tables the system serves and records
+ *     about a known one), or — in a request for a server — by one table of
+ *     his own we know, in a list that reads mostly as records;
+ *   - …and holding at least two records, served ones and unlisted nouns
+ *     counted — the same floor whatever introduced the list;
+ *   - except the columns of the one table he described («بدي جدول للموظفين
+ *     فيه الأسماء والرواتب»): those are columns, unless two of them are
+ *     tables we know.
+ *
+ * `backend` is whether the request is for a server: every builder that reads
+ * this builds one (api_project, the interface over its server), and the gate
+ * passes the delivery's own fact. `actionLed` carries a run of leading actions
+ * a caller already took off (normaliseListedRequest).
+ */
+export function listedRecords(request: string, opts: { backend?: boolean; actionLed?: boolean } = {}): ListedReading {
+    // «بفئات: طعام، مواصلات، فواتير» declares the options of one field, never tables.
+    const shaped = normaliseListedRequest(stripDeclaredOptions(String(request || '')));
+    // The list as normaliseListedRequest leaves it — its leading actions, its
+    // parentheses and its trailing rule taken off. Re-reading the rebuilt text
+    // would hand the rule («…، وكل موظف يرى سجلاته فقط») back as one more item.
+    if (!shaped.region || !shaped.marker) return EMPTY_READING;
+    const listed = { region: shaped.region, marker: shaped.marker };
+    const region = trimListTail(listed.region);
     const sells = requestSells(request);
-    for (const w of words) {
-        // THE FIFTH CEILING. Four constants in four other files were lifted
-        // before this one was found — by running an eleven-domain request and
-        // counting what came out, not by reading. This reader sits ahead of
-        // every other path, so its cap silently capped them all: the request
-        // named ten domains and delivered four.
-        if (read.length >= MAX_MODEL_ENTITIES) break;
-        // A phrase like «صور نباتات» must not match on its last word alone:
-        // the item names its head noun (nounOfItem), never its possessor.
-        const token = w.split(/\s+/);
-        if (token.length > 2) continue;
+    const read: Read[] = [];
+    const served: ListedReading['served'] = [];
+    const entries: ListedEntry[] = [];
+    // Items naming a table we know — curated, served, or a record about one.
+    let known = 0;
+    // Items naming a curated table of his own (not served, not about another).
+    let curated = 0;
+    // Items naming a record about a curated one («رواتب الموظفين»).
+    let about = 0;
+    for (const raw of splitListItems(region)) {
+        if (isActionWord(raw) || isFeaturePhrase(raw)) continue;
+        const item = withoutLeadingAction(raw);
         // «التحقق من المدخلات», «input validation», «automated tests» are
         // qualities the software must have — requirements, never tables.
-        if (isDeliverable(w)) continue;
-        const n = nounOfItem(w);
+        if (!item || isDeliverable(item) || isInterfaceNoun(item) || isPossessivePhrase(item) || isActionWord(item) || isFeaturePhrase(item)) continue;
+        // A record is named by a noun phrase; five words and more is a clause.
+        if (item.split(/\s+/).length > 4) { entries.push({ item, as: 'clause' }); continue; }
+        const n = nounOfItem(item);
         /**
          * …and never a name the system already serves.
          *
@@ -449,25 +586,70 @@ export function namedEntities(request: string): ModelEntity[] {
          * with a real foreign key, and the base server's own `POST /api/orders`
          * answered every write with «item_required» — a route the new entity
          * did not own. The system already HAS an orders table; naming a second
-         * one after it produces a table nobody can reach.
+         * one after it produces a table nobody can reach. It is still one of
+         * his items: it counts toward proving the list.
          */
-        if (n && RESERVED_TABLES.has(n.key)) { alreadyServed++; continue; }
-        if (n) {
-            if (!read.some(p => p.key === n.key)) {
-                read.push({ key: n.key, ar: n.ar, en: n.en, kind: n.kind, fields: fieldsFor(n) });
-                recognised++;
-            }
+        if (n && RESERVED_TABLES.has(n.key)) {
+            known++;
+            if (!served.some(s => s.key === n.key)) served.push({ key: n.key, ar: n.ar, en: n.en, item });
+            entries.push({ item, as: 'served', key: n.key, named: true });
             continue;
         }
-        const other = unlistedNoun(w, listed.marker, sells);
-        if (other && !read.some(p => p.key === other.key)) read.push(other);
+        // THE FIFTH CEILING is a guard rail, never a silent cut: an item past
+        // it is said («not verified»), never built half and passed whole.
+        if (read.length >= MAX_MODEL_ENTITIES) { entries.push({ item, as: 'unread' }); continue; }
+        if (n) {
+            known++;
+            curated++;
+            if (!read.some(p => p.key === n.key)) read.push({ key: n.key, ar: n.ar, en: n.en, kind: n.kind, fields: fieldsFor(n), item });
+            entries.push({ item, as: 'record', key: n.key, named: true });
+            continue;
+        }
+        // Behind an interface head every item is a resource he declared — «نقاط
+        // وصول لـالكتب وآراء العملاء» serves the opinions; in any other list,
+        // content about a record is no table (R4).
+        if (listed.marker !== 'head' && isContentItem(item)) { entries.push({ item, as: 'content' }); continue; }
+        const own = ownRecord(item, sells);
+        if (own) { known++; about++; }
+        // «جدول الرواتب», "payroll records": the record is what the holder holds.
+        const other = own || unlistedNoun(withoutRecordHolder(item), listed.marker, sells, request);
+        // Behind an interface head a capability is an endpoint he asked for
+        // ("endpoints for users, roles, permissions"): unread, never dropped.
+        // In any other list it is a feature of the app, judged by the
+        // instruments that measure features.
+        const capability = listed.marker !== 'head' && (isCapability(item) || isRoleInContext(item, request));
+        if (!other) { entries.push({ item, as: capability ? 'capability' : 'unread' }); continue; }
+        // «السواقين» is keyed `drivers` by the dictionary: a table we know, in
+        // the spelling he typed.
+        const knownKey = !own && CURATED_KEYS.has(other.key);
+        if (knownKey) { known++; curated++; }
+        if (!read.some(p => p.key === other.key)) read.push(other);
+        entries.push({ item, as: 'record', key: other.key, ...(knownKey ? { named: true } : {}) });
     }
-    // Two is the floor: one recognised word in a sentence is a coincidence,
-    // not a list — and the model deserves its turn on a coincidence. Behind
-    // an interface head the list is already proven, so two items of it are.
-    if (!read.length || (listed.marker === 'head' ? read.length + alreadyServed < 2 : recognised < 2)) return [];
+    const actionLed = opts.actionLed === true || shaped.actionLed;
+    // One table we know proves a list of a request for a server only when the
+    // list reads mostly as records: «الموظفين، الإجازات، الحضور» does; "secure
+    // sign-in, admin and receptionist roles, patients, status transitions,
+    // search, audit history…" is a list of features that names one record.
+    const unreadCount = entries.filter(e => e.as === 'unread' || e.as === 'clause' || e.as === 'capability').length;
+    const mostlyRecords = read.length + served.length > unreadCount;
+    // …and the one table must be his own: a table the system already serves
+    // beside "search, pagination, CSV export" proves nothing about the rest.
+    let proven = listed.marker === 'head' || actionLed || known >= 2
+        || (opts.backend === true && curated + about >= 1 && mostlyRecords);
+    // The columns of the one table he described are not tables (round 20 rule, kept).
+    if (proven && listed.marker !== 'head' && !actionLed && curated < 2 && describedTable(request)) proven = false;
+    proven = proven && read.length + served.length >= 2;
+    const base = { marker: listed.marker, region, served, entries, proven };
+    if (!proven || !read.length) return { ...base, entities: [] };
 
-    const out: ModelEntity[] = read.map(r => ({ key: r.key, ar: r.ar, en: r.en, fields: r.fields }));
+    const keys = new Set(read.map(r => r.key));
+    const out: ModelEntity[] = read.map(r => {
+        const link = r.belongsTo && keys.has(r.belongsTo.entity) ? r.belongsTo : undefined;
+        return link
+            ? { key: r.key, ar: r.ar, en: r.en, belongsTo: link, fields: [{ key: link.key, type: 'INT' }, ...r.fields] }
+            : { key: r.key, ar: r.ar, en: r.en, fields: r.fields };
+    });
 
     /**
      * And ONE real relation, when the list obviously contains one.
@@ -476,7 +658,7 @@ export function namedEntities(request: string): ModelEntity[] {
      * thing being ordered, an appointment to the person it is with. A link that
      * can dangle is not a relation, so only the clearest pairing is made.
      */
-    const dealIdx = out.findIndex((_, i) => read[i].kind === 'deal' || read[i].kind === 'event');
+    const dealIdx = out.findIndex((e, i) => !e.belongsTo && (read[i].kind === 'deal' || read[i].kind === 'event'));
     if (dealIdx >= 0) {
         const parentIdx = out.findIndex((_, i) =>
             i !== dealIdx && (read[i].kind === 'thing' || read[i].kind === 'person'));
@@ -490,20 +672,19 @@ export function namedEntities(request: string): ModelEntity[] {
             };
         }
     }
-    return out;
+    return { ...base, entities: out };
 }
 
-function listedReserved(request: string): Noun[] {
-    const listed = listedPart(request);
-    if (!listed) return [];
-    const out: Noun[] = [];
-    for (const w of splitListItems(trimTail(listed.part))) {
-        const token = w.split(/\s+/);
-        if (token.length > 2) continue;
-        const n = nounOfItem(w);
-        if (n && RESERVED_TABLES.has(n.key) && !out.includes(n)) out.push(n);
-    }
-    return out;
+/**
+ * Read the tables the user named. Empty when it is not sure — a wrong table is
+ * worse than no table, because the whole system is generated from it.
+ *
+ * This is the builders' reading of listedRecords: every caller builds a
+ * server (designDataModel for api_project, api_project's own selection, the
+ * interface over that server), so the list is read as a request for one.
+ */
+export function namedEntities(request: string): ModelEntity[] {
+    return listedRecords(request, { backend: true }).entities;
 }
 
 /**
@@ -511,12 +692,12 @@ function listedReserved(request: string): Noun[] {
  * can say «الطلبيات موجودة أصلاً» instead of silently dropping the word.
  */
 export function alreadyOwned(request: string): string[] {
-    return listedReserved(request).map(n => n.ar);
+    return listedRecords(request).served.map(n => n.ar);
 }
 
 /** The keys of those tables («الأصناف» → items): his words, served by a built-in table. */
 export function listedReservedKeys(request: string): string[] {
-    return listedReserved(request).map(n => n.key);
+    return listedRecords(request).served.map(n => n.key);
 }
 
 /** For the log line: what was read, and from which words. */

@@ -30,7 +30,7 @@ import { ModelEntity, ModelField } from './data-model';
 //  thing. Reading the same sentence a third way is how they drift.
 import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
 import { hisWordsOnly } from './page-head';
-import { CONJUNCTION_WAW_SOURCE, isDeliverable, isInterfaceNoun, listRegion, stripAttachedPreposition } from './request-lists';
+import { CONJUNCTION_WAW_SOURCE, ENGLISH_PREPOSITION, foldPattern, isDeliverable, isInterfaceNoun, listRegion, splitListItems, stripAttachedPreposition } from './request-lists';
 import { englishPhrase } from './subject-translation';
 import { foldChars } from '../orchestrator/promptNormalizer';
 
@@ -104,7 +104,22 @@ const GROUPING = [
 
 export type EntityKind = 'person' | 'money' | 'when' | 'grouping' | 'thing';
 
-const hits = (list: RegExp[], s: string) => list.some(re => re.test(s));
+/*
+ * The shapes are matched as written AND folded (round 22, R5): «اعضاء» is
+ * «أعضاء», «اقسام» is «أقسام» — one spelling of a word is every spelling of
+ * it, without writing it twice.
+ */
+const FOLDED_SHAPES = new WeakMap<RegExp[], RegExp[]>();
+const foldedShapes = (list: RegExp[]): RegExp[] => {
+    let folded = FOLDED_SHAPES.get(list);
+    if (!folded) {
+        folded = list.map(re => new RegExp(foldPattern(re.source), re.flags));
+        FOLDED_SHAPES.set(list, folded);
+    }
+    return folded;
+};
+const hits = (list: RegExp[], s: string) => list.some(re => re.test(s))
+    || (/[ء-ي]/u.test(s) && foldedShapes(list).some(re => re.test(foldChars(s))));
 
 /** What SHAPE is this word? Nothing here knows an industry. */
 export function inferKind(phrase: string): EntityKind {
@@ -180,12 +195,39 @@ function keyOf(phrase: string): string {
         .replace(/\b(platform|system|module|feature|management|manager|section|page of)\b/gi, ' ')
         .replace(/[^A-Za-z0-9 ]+/g, ' ')
         .trim().toLowerCase();
-    const word = bare.split(/\s+/).filter(Boolean).pop() || '';
+    // "fees for students" is keyed as "student fees" is: the words after a
+    // preposition modify the head in front of it.
+    let words = bare.split(/\s+/).filter(Boolean);
+    const at = words.findIndex((w, i) => i > 0 && ENGLISH_PREPOSITION.test(w));
+    if (at > 0 && words.slice(at + 1).some(w => !ENGLISH_PREPOSITION.test(w))) {
+        words = [...words.slice(at + 1).filter(w => !ENGLISH_PREPOSITION.test(w)), ...words.slice(0, at)];
+    }
+    const word = words.pop() || '';
     if (!word) return '';
-    if (/(s|x|z|ch|sh)$/.test(word)) return word.endsWith('s') ? word : `${word}es`;
-    if (/[^aeiou]y$/.test(word)) return `${word.slice(0, -1)}ies`;
-    return `${word}s`;
+    // «class», «address», «business» end in s and are singular: a sibilant gets
+    // -es; any other final s is already a plural.
+    const plural = /(?:ss|x|z|ch|sh)$/.test(word) ? `${word}es`
+        : /s$/.test(word) ? word
+        : /[^aeiou]y$/.test(word) ? `${word.slice(0, -1)}ies`
+            : `${word}s`;
+    /**
+     * A RECORD ABOUT A KNOWN ONE IS KEYED FROM ALL ITS WORDS (round 21 review, R1).
+     *
+     * "employee salaries" and "member fees" are tables of their own, never the
+     * employees' or the members' table. Keyed by the last word alone, "member
+     * fees" and "student fees" in one request would be one `fees` table; keyed
+     * by every word they are `member_fees` and `student_fees`, and never the
+     * key of the record they are about.
+     */
+    if (words.length && lists?.ownRecordPossessor?.(text)) {
+        const joined = [...words.map(singularOf), plural].join('_').slice(0, 31).replace(/_+$/u, '');
+        if (/^[a-z][a-z0-9_]{2,30}$/u.test(joined)) return joined;
+    }
+    return plural;
 }
+
+/** «employees» → «employee», «categories» → «category»: the possessor inside a compound key. */
+const singularOf = (word: string) => word.replace(/ies$/u, 'y').replace(/(ch|sh|ss|x)es$/u, '$1').replace(/([^s])s$/u, '$1');
 
 /**
  * An Arabic phrase has no Latin key of its own, and a SQL identifier cannot
@@ -229,8 +271,10 @@ function keyFromArabic(phrase: string): string {
     }
     // A record is named in one word or two; more is a clause, and spelling a
     // clause out as a key invents a table («وثيم اخضر جميل للنظام» is a wish
-    // about the theme, not `thym_akhdr_jmyl_llnzams`).
-    if (record.split(/\s+/).filter(Boolean).length > 2) return '';
+    // about the theme, not `thym_akhdr_jmyl_llnzams`) — unless it is a record
+    // about one we know, a chain of nouns («نتائج تحاليل المرضى», R1).
+    const about = !!lists?.ownRecordPossessor?.(text);
+    if (record.split(/\s+/).filter(Boolean).length > (about ? 4 : 2)) return '';
     return transliterated(record);
 }
 
@@ -296,8 +340,11 @@ function transliterated(phrase: string): string {
  */
 const SELLS = /\b(?:shop|store|stores|sell|sells|selling|sale|sales|price|prices|pricing|cart|checkout|catalog|catalogue|stock|inventory|products?|orders?|purchases?|buy|buying|e-?commerce)\b|متجر|متاجر|بيع|يبيع|تبيع|مبيعات|سعر|أسعار|اسعار|سلة|مخزون|مخزن|منتج|بضائع|بضاعة|شراء|كتالوج|طلبيات|الطلبات/iu;
 
+const FOLDED_SELLS = new RegExp(foldPattern(SELLS.source), SELLS.flags);
+
 export function requestSells(request: string): boolean {
-    return SELLS.test(String(request || ''));
+    const text = String(request || '');
+    return SELLS.test(text) || FOLDED_SELLS.test(foldChars(text));
 }
 
 /** The columns a table of this SHAPE needs to be usable. */
@@ -503,6 +550,16 @@ export function keyForPhrase(phrase: string): string {
     return /[A-Za-z]/.test(phrase) ? keyOf(phrase) : keyFromArabic(phrase);
 }
 
+/**
+ * «admin», «staff» in a request that names roles («admin and staff roles») are
+ * roles, never tables — the rule the shape reader always had, shared with the
+ * list reader so the two never disagree on one.
+ */
+export function isRoleInContext(phrase: string, request: string): boolean {
+    return /\broles?\b/i.test(String(request || ''))
+        && /^\s*(?:admins?|receptionists?|managers?|members?|reviewers?|operators?|staff)\s*$/i.test(String(phrase || ''));
+}
+
 /** Words that are never a table of their own, in any domain. */
 export const NEVER = new Set([
     'orders', 'users', 'products', 'items', 'health', 'auth', 'api', 'sqlite_master',
@@ -561,7 +618,9 @@ export function englishFor(phrase: string): string | null {
     const bare = text.replace(/^ال/, '').trim();
     if (!bare) return null;
     if (!/[\u0621-\u064A]/.test(bare)) return bare;
-    const english = englishPhrase(text);
+    // «قائمه الطلاب» is the students, not a "students menu" (R7): the word
+    // that holds the records is not part of their name.
+    const english = englishPhrase(recordWords(text));
     return english && !/[\u0621-\u064A]/.test(english) ? english : null;
 }
 
@@ -650,6 +709,25 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
      */
     const bareWord = (text: string) => foldChars(text).replace(/^ال/u, '');
     if (labels.some(label => RECORD_CONTAINER.test(label) && bareWord(label).includes(bareWord(subject)))) return null;
+    /**
+     *  …AND THE TABLE HE DESCRIBED IS NAMED OUTSIDE THE LIST — BY POSITION (R3).
+     *
+     *  Round 21 review: the guard above looks for the container in a column
+     *  label, and the FIRST item never becomes a label — the subject reader
+     *  consumes it. «HR backend with: employee directory, payroll records,
+     *  leave requests» became one `employees` table with payroll and leave for
+     *  columns; «سوي لي باك اند لمحل جوالات: الاجهزه، الزبائن، الفواتير،
+     *  الصيانه» one `customers` table, with no container at all. A table he
+     *  described stands in front of its columns: when the subject is itself
+     *  one of the listed items (or the record one of them holds), the list
+     *  names tables, not the columns of one.
+     */
+    const listed = listRegion(request);
+    if (listed) {
+        const plain = (text: string) => foldChars(String(text || '')).replace(/^(?:the|a|an)\s+/u, '').replace(/^ال/u, '').trim();
+        const named = plain(subject);
+        if (splitListItems(listed.region).some(item => plain(item) === named || plain(recordWords(item)) === named)) return null;
+    }
     const key = /[A-Za-z]/.test(subject) ? keyOf(subject) : keyFromArabic(subject);
     if (!key || key.length < 3 || key.length > 40 || NEVER.has(key)) return null;
     const english = tableEnglishFor(subject);
@@ -666,6 +744,15 @@ function theOneTableHeDescribed(request: string): ModelEntity | null {
             en: englishFor(labels[i]) || labels[i],
         })),
     };
+}
+
+/**
+ * The one table he described with its columns («بدي جدول للفواتير فيه رقم
+ * الفاتورة والمبلغ والتاريخ»), read on his words as inferModel reads it, or
+ * null — so the list reader never takes those columns for tables.
+ */
+export function describedTable(request: string): ModelEntity | null {
+    return theOneTableHeDescribed(hisSentenceWithoutJoesPaper(request));
 }
 
 /**
@@ -721,15 +808,47 @@ export function inferModel(request: string, limit = MAX_MODEL_ENTITIES): Inferen
     const structured = structuredEntityPhrases(request);
     const phrases = structured.length >= 2 ? structured : featurePhrases(request);
     const structuredKeys = new Set(structured.map(keyForPhrase));
+    const roleContextOf = (phrase: string) => isRoleInContext(phrase, request);
+    /**
+     * WHEN HIS LIST IS A LIST OF RECORDS, ITS ITEMS ARE THE TABLES (round 21 review, R4).
+     *
+     * This reader split the whole sentence, so the words in front of his list
+     * were read as one more item: «Library system: books, members, loans» gave
+     * `libraries` beside his three tables, and the designer's count vote then
+     * preferred the reading with the extra table («4 by shape beat 3 by
+     * name») — api_project built /api/libraries; «Backend for my shop:» gave
+     * `shops`, «An app to manage:» `manages`. When the shared list reader
+     * proves the list (named-entities.listedRecords), the tables are read from
+     * its items only, the items both readers read; capabilities are still read
+     * from the whole sentence. And an item that is content about a record
+     * («book photos», «صور الأطباق», «آراء الزبائن») is no table at all.
+     */
+    let lists: any = null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    try { lists = require('./named-entities'); } catch { lists = null; }
+    const listing = structured.length < 2 ? lists?.listedRecords?.(request, { backend: true }) : null;
+    // The items of his list it read as records, could not read, or read as a
+    // clause — never one it read as a feature, an action, content or a table
+    // already served.
+    const tablePhrases: string[] = listing?.proven
+        ? (listing.entries as Array<{ item: string; as: string }>).filter(e => e.as === 'record' || e.as === 'unread' || e.as === 'clause').map(e => e.item)
+        : phrases;
+    // An item the list reader read as a record stays one (behind an interface
+    // head «آراء العملاء» is a resource he declared); content elsewhere is not.
+    const listedAsRecord = new Set<string>(listing?.proven
+        ? (listing.entries as Array<{ item: string; as: string }>).filter(e => e.as === 'record').map(e => e.item) : []);
+    const isContent = (phrase: string) => !listedAsRecord.has(phrase) && !!lists?.isContentItem?.(phrase);
 
     for (const phrase of phrases) {
-        const roleContext = /\broles?\b/i.test(request)
-            && /^\s*(?:admins?|receptionists?|managers?|members?|reviewers?|operators?|staff)\s*$/i.test(phrase);
         const keyCandidate = keyForPhrase(phrase);
-        if (!structuredKeys.has(keyCandidate) && (roleContext || isCapability(phrase))) {
+        if (!structuredKeys.has(keyCandidate) && (roleContextOf(phrase) || isCapability(phrase))) {
             if (capabilities.length < 12 && !capabilities.includes(phrase)) capabilities.push(phrase);
-            continue;
         }
+    }
+    for (const phrase of tablePhrases) {
+        const keyCandidate = keyForPhrase(phrase);
+        if (!structuredKeys.has(keyCandidate) && (roleContextOf(phrase) || isCapability(phrase))) continue;
+        if (!structuredKeys.has(keyCandidate) && isContent(phrase)) continue;
         /**
          * A DELIVERABLE IS NOT A TABLE EITHER.
          *

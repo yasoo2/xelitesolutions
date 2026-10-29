@@ -13,20 +13,27 @@
  * own sentence. Verbs and verbal nouns of record work are a closed class of
  * the language, not a domain list.
  */
-import { listRegion, type ListMarker } from './request-lists';
+import { FoldedRegExp, listRegion, type ListMarker } from './request-lists';
 
-const AR_ACTION = '(?:إضافة|اضافة|إضافه|اضافه|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|انشاء|تصفح|فلترة|فلتره|تصفية|تصفيه|فرز|ترتيب|متابعة|متابعه|إدارة|ادارة|إداره|اداره)';
+/*
+ * Every Arabic pattern here is matched folded (round 21 review, R5): one
+ * spelling of a word is every spelling of it, so «اضافه», «إضافة» and
+ * «اضافة» are one word without being written three times.
+ */
+const AR_ACTION = '(?:إضافة|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|تصفح|فلترة|تصفية|فرز|ترتيب|متابعة|إدارة)';
 const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|delete(?:s)?|deleting|remove(?:s)?|removing|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
-const AR_ACTION_HEAD = new RegExp(`^و?${AR_ACTION}(?:\\s+(?:في|عن|على|ضمن|بين))?(?=\\s|[،,]|$)`, 'u');
+const AR_ACTION_HEAD = new FoldedRegExp(`^و?${AR_ACTION}(?:\\s+(?:في|عن|على|ضمن|بين))?(?=\\s|[،,]|$)`, 'u');
 const EN_ACTION_HEAD = new RegExp(`^(?:and\\s+|or\\s+|then\\s+)?${EN_ACTION}(?:\\s+(?:for|in|through|by))?(?=\\s|,|$)`, 'iu');
+const AR_ACTION_WORD = new FoldedRegExp(`^و?${AR_ACTION}$`, 'u');
+const EN_ACTION_WORD = new RegExp(`^${EN_ACTION}$`, 'iu');
 /** What an action-only clause ends with: «each one», «them», «كل منها». */
-const ACTION_FILLER = /^(?:(?:each|every|all)(?:\s+(?:one|of\s+them|item|record|entry))?|them|it|those|these|كل\s+(?:منها|واحد[ةه]?|منهم)|عليها|فيها|منها)?$/iu;
+const ACTION_FILLER = new FoldedRegExp('^(?:(?:each|every|all)(?:\\s+(?:one|of\\s+them|item|record|entry))?|them|it|those|these|كل\\s+(?:منها|واحدة?|منهم)|عليها|فيها|منها)?$', 'iu');
 
 /** Is this item nothing but an action word («إضافة», «وتعديل», «delete», «adds»)? */
 export function isActionWord(item: string): boolean {
     const t = String(item || '').trim();
     if (!t) return false;
-    return new RegExp(`^و?${AR_ACTION}$`, 'u').test(t) || new RegExp(`^${EN_ACTION}$`, 'iu').test(t);
+    return AR_ACTION_WORD.test(t) || EN_ACTION_WORD.test(t);
 }
 
 /** Take a leading run of actions off a list: «إضافة وتعديل وحذف وبحث في الطلاب…» → «الطلاب…». */
@@ -57,14 +64,18 @@ export function withoutLeadingAction(item: string): string {
  * sees their own records», «، وكل موظف يرى سجلاته فقط», «where …», «حيث …».
  * What follows is behaviour, never a record.
  */
-export const RULE_OPENER = /(?:,\s*|\s+)(?:and\s+)?(?:each|every|where|whereas|while|so\s+that|such\s+that|but)\s+|(?:،\s*|\s+)و?(?:كل|حيث|بحيث|لكن)\s+/iu;
+export const RULE_OPENER = new FoldedRegExp('(?:,\\s*|\\s+)(?:and\\s+)?(?:each|every|where|whereas|while|so\\s+that|such\\s+that|but)\\s+|(?:،\\s*|\\s+)و?(?:كل|حيث|بحيث|لكن)\\s+', 'iu');
 
 /**
  * UI or feature words that head a section, not a record: «زر إعادة»,
- * «شاشة نتيجة», «حساب النقاط», «آراء العملاء», «a summary page», «a timer».
+ * «شاشة نتيجة», «حساب النقاط», «a summary page», «a timer».
  * A closed class of interface nouns; «حسابات» (accounts) is plural and stays.
+ * Not «آراء» (round 22): «آراء العملاء» is content about a record, read as
+ * such by the list reader in both languages ("customer testimonials" too) —
+ * said, never skipped in silence. Not «رسوم»: it is fees as often as it is
+ * drawings, and «رسوم الطلاب» in a records list is the students' fees.
  */
-const FEATURE_HEAD_AR = /^و?(?:ال)?(?:زر|زرّ|أزرار|ازرار|شاشة|شاشه|صفحة|صفحه|قسم|نموذج|آراء|اراء|مؤقت|رسم|رسوم|رسماً|رسما|حساب|عرض|تقويم|لوحة|لوحه|خريطة|خريطه|ملخص|إحصائيات|احصائيات|واجهة|واجهه|خادم|سيرفر|تسجيل|باك|فرونت|سلة|سله)(?=\s|$)/u;
+const FEATURE_HEAD_AR = new FoldedRegExp('^و?(?:ال)?(?:زر|أزرار|شاشة|صفحة|قسم|نموذج|مؤقت|رسم|رسماً|حساب|عرض|تقويم|لوحة|خريطة|ملخص|إحصائيات|واجهة|خادم|سيرفر|تسجيل|باك|فرونت|سلة)(?=\\s|$)', 'u');
 /** Interface, stack and feature heads: «React frontend», «Node backend», «user login», «a summary page». */
 const FEATURE_HEADS_EN = new Set(['button', 'buttons', 'screen', 'screens', 'page', 'section', 'form', 'timer', 'chart', 'graph', 'calculation',
     'score', 'scoring', 'view', 'calendar', 'dashboard', 'map', 'summary', 'statistics', 'stats', 'frontend', 'front-end', 'backend', 'back-end',

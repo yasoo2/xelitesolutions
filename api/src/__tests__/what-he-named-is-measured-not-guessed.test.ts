@@ -18,9 +18,11 @@ import {
     requestedRecords,
     runRequestedTests,
     testsRequestedIn,
+    transliteratedOnly,
     type RequestCoverageReport,
     type RequestedRecords,
 } from '../core/quality/request-coverage';
+import { keyForPhrase } from '../core/design/entity-inference';
 import { deliveryVerdict } from '../core/quality/delivery-verdict';
 import { pythonExecutable } from '../core/quality/python-executable';
 
@@ -112,10 +114,16 @@ describe('what the request names is read in both languages, actions and rules ta
     it('P101 names patients, appointments and treatments — «العلاجات» has its English, not a transliteration', () => {
         expect(keys(read(P101))).toEqual(['appointments', 'patients', 'treatments']);
     });
-    it('stack and login words in a list are not records; a noun nobody can translate stays unread, honestly (P178)', () => {
+    it('stack and login words in a list are not records; a noun nobody can translate is keyed honestly and judged «not measured» (P178)', () => {
         const p178 = read('ابني نظام متكامل لـمسجد: واجهة React وخادم Node، تسجيل دخول بصلاحيات (مدير وموظف)، إدارة مواقيت الصلاة والدروس والتبرعات، وكل موظف يرى سجلاته فقط.');
-        expect(p178.unread).toEqual(['مواقيت الصلاة']);
-        expect(p178.entities.map(e => e.key).sort()).toEqual(['donations', 'lessons']);
+        // Round 22 (R2): a noun phrase of a proven list is one of his records
+        // for the builders and the gate alike — the shape reader built it while
+        // the gate called it unread. No dictionary translates it, so its key is
+        // a transliteration and its delivery is «not measured» unless the
+        // server shows his word; it is never failed, never passed in silence.
+        expect(p178.unread).toEqual([]);
+        expect(p178.entities.map(e => e.key).sort()).toEqual(['donations', 'lessons', keyForPhrase('مواقيت الصلاة')].sort());
+        expect(transliteratedOnly(p178.entities.find(e => e.ar === 'مواقيت الصلاة')!)).toBe(true);
     });
     it('a store\'s feature list and a quiz game\'s features are not records (P245, P445)', () => {
         expect(read(P245).unread).toEqual([]);
