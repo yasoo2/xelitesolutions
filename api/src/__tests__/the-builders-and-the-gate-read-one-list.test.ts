@@ -259,6 +259,13 @@ describe('R4 — the words in front of his list and content about a record are n
         expect(designed.find(e => e.key === 'doctors')?.ar).toBe('الأطباء');
     });
 
+    it('the stack words in front of the records and the rule after them are no tables (P151)', async () => {
+        const P151 = 'Build a complete full-stack system for a dental clinic: React frontend, Node backend, user login with roles (admin and staff), management of patients, appointments, treatments, and each staff member only sees their own records.';
+        expect(keys(inferModel(P151).entities)).toEqual(['patients', 'appointments', 'treatments']);
+        expect(keys(await designDataModel(P151, { timeoutMs: 1 }))).toEqual(['patients', 'appointments', 'treatments']);
+        expect(keys(gate(P151).entities)).toEqual(['patients', 'appointments', 'treatments']);
+    });
+
     it('Arabic content items are not tables either', () => {
         expect(keys(inferModel('ابن باك اند لمطعم: الأطباق، صور الأطباق، الطاولات، الحجوزات').entities)).toEqual(['dishes', 'tables', 'bookings']);
         expect(keys(inferModel('ابن نظام لجمعية خيرية: المتبرعين، التبرعات، قصص المستفيدين، معرض الصور').entities)).toEqual(['donors', 'donations']);

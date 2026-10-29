@@ -26,7 +26,7 @@
 import type { ModelEntity, ModelField } from './data-model';
 import { MAX_MODEL_ENTITIES, NEVER, describedTable, englishFor, fieldsForKind, inferKind, isCapability, isRoleInContext, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
-import { ENGLISH_PREPOSITION, foldPattern, isDeliverable, isInterfaceNoun, isPossessivePhrase, listRegion, splitListItems, type ListMarker } from './request-lists';
+import { ENGLISH_PREPOSITION, foldPattern, isDeliverable, isInterfaceNoun, isPossessivePhrase, splitListItems, type ListMarker } from './request-lists';
 import { isActionWord, isFeaturePhrase, normaliseListedRequest, withoutLeadingAction } from './listed-request';
 import { foldChars } from '../orchestrator/promptNormalizer';
 import { stripDeclaredOptions } from './requested-artifact';
@@ -554,8 +554,11 @@ const EMPTY_READING: ListedReading = { marker: null, region: null, entities: [],
 export function listedRecords(request: string, opts: { backend?: boolean; actionLed?: boolean } = {}): ListedReading {
     // «بفئات: طعام، مواصلات، فواتير» declares the options of one field, never tables.
     const shaped = normaliseListedRequest(stripDeclaredOptions(String(request || '')));
-    const listed = listRegion(shaped.text);
-    if (!listed) return EMPTY_READING;
+    // The list as normaliseListedRequest leaves it — its leading actions, its
+    // parentheses and its trailing rule taken off. Re-reading the rebuilt text
+    // would hand the rule («…، وكل موظف يرى سجلاته فقط») back as one more item.
+    if (!shaped.region || !shaped.marker) return EMPTY_READING;
+    const listed = { region: shaped.region, marker: shaped.marker };
     const region = trimListTail(listed.region);
     const sells = requestSells(request);
     const read: Read[] = [];
