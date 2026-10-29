@@ -32,7 +32,7 @@ import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
-import { isPossessivePhrase } from './request-lists';
+import { FoldedRegExp, isPossessivePhrase } from './request-lists';
 
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
@@ -2278,8 +2278,15 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  «قائمه» is «قائمة» typed the way most people type it (round 21): the
  *  informal «بدي قائمه الطلاب فيها: الاسم، العمر» missed the container,
  *  and its columns became the tables `asms` and `amrs`.
+ *
+ *  …and adding «قائمه» fixed one spelling of it (round 21 review, R5):
+ *  «قايمة» and «قايمه» — the hamza seat written as ي — still missed it, and
+ *  their columns were still tables. The container is matched FOLDED, on the
+ *  request folded the way every reader folds it, so it is the word that
+ *  matches, not one way of typing it; the match is mapped back to his text,
+ *  so every caller that slices by its index still reads his own words.
  */
-export const RECORD_CONTAINER = /(?:جدول|قائم[ةه]|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
+export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|سجل)(?:ا)?|جداول|\\btable\\b|\\blist\\b|\\bsheet\\b|\\bboard\\b|\\bqueue\\b|\\bledger\\b|\\bregister\\b|\\btracker\\b|\\bdirectory\\b|\\bregistry\\b|\\bcatalog(?:ue)?\\b', 'iu');
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.

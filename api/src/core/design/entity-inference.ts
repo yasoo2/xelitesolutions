@@ -30,7 +30,7 @@ import { ModelEntity, ModelField } from './data-model';
 //  thing. Reading the same sentence a third way is how they drift.
 import { derivedColumns, recordedSubject, RECORD_CONTAINER, columnsAnywhereInHisRequest } from './app-blueprints';
 import { hisWordsOnly } from './page-head';
-import { CONJUNCTION_WAW_SOURCE, isDeliverable, isInterfaceNoun, listRegion, stripAttachedPreposition } from './request-lists';
+import { CONJUNCTION_WAW_SOURCE, foldPattern, isDeliverable, isInterfaceNoun, listRegion, stripAttachedPreposition } from './request-lists';
 import { englishPhrase } from './subject-translation';
 import { foldChars } from '../orchestrator/promptNormalizer';
 
@@ -104,7 +104,22 @@ const GROUPING = [
 
 export type EntityKind = 'person' | 'money' | 'when' | 'grouping' | 'thing';
 
-const hits = (list: RegExp[], s: string) => list.some(re => re.test(s));
+/*
+ * The shapes are matched as written AND folded (round 22, R5): «اعضاء» is
+ * «أعضاء», «اقسام» is «أقسام» — one spelling of a word is every spelling of
+ * it, without writing it twice.
+ */
+const FOLDED_SHAPES = new WeakMap<RegExp[], RegExp[]>();
+const foldedShapes = (list: RegExp[]): RegExp[] => {
+    let folded = FOLDED_SHAPES.get(list);
+    if (!folded) {
+        folded = list.map(re => new RegExp(foldPattern(re.source), re.flags));
+        FOLDED_SHAPES.set(list, folded);
+    }
+    return folded;
+};
+const hits = (list: RegExp[], s: string) => list.some(re => re.test(s))
+    || (/[ء-ي]/u.test(s) && foldedShapes(list).some(re => re.test(foldChars(s))));
 
 /** What SHAPE is this word? Nothing here knows an industry. */
 export function inferKind(phrase: string): EntityKind {
@@ -296,8 +311,11 @@ function transliterated(phrase: string): string {
  */
 const SELLS = /\b(?:shop|store|stores|sell|sells|selling|sale|sales|price|prices|pricing|cart|checkout|catalog|catalogue|stock|inventory|products?|orders?|purchases?|buy|buying|e-?commerce)\b|متجر|متاجر|بيع|يبيع|تبيع|مبيعات|سعر|أسعار|اسعار|سلة|مخزون|مخزن|منتج|بضائع|بضاعة|شراء|كتالوج|طلبيات|الطلبات/iu;
 
+const FOLDED_SELLS = new RegExp(foldPattern(SELLS.source), SELLS.flags);
+
 export function requestSells(request: string): boolean {
-    return SELLS.test(String(request || ''));
+    const text = String(request || '');
+    return SELLS.test(text) || FOLDED_SELLS.test(foldChars(text));
 }
 
 /** The columns a table of this SHAPE needs to be usable. */

@@ -22,6 +22,82 @@
  * belongs to its word, a preposition glued to its noun, the noun phrases
  * software requests use to introduce their resources — never a domain.
  */
+import { foldChars } from '../orchestrator/promptNormalizer';
+
+/**
+ * ONE SPELLING OF A WORD IS EVERY SPELLING OF IT — in a pattern as in a request.
+ *
+ * A pattern source written in one spelling is folded the way
+ * promptNormalizer.foldChars folds a request (أ/إ/آ → ا, ة → ه, ى → ي,
+ * ئ → ي, ؤ → و, ء, marks and tatweel dropped), so both sides of a match are
+ * the same word whichever way he typed it.
+ */
+export const foldPattern = (source: string) => source
+    .replace(/[ً-ْٰـ]/gu, '')
+    .replace(/[أإآٱ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ة/gu, 'ه')
+    .replace(/ئ/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ء/gu, '');
+
+const TATWEEL = 'ـ';
+
+/** The request folded character by character, and where each folded character came from. */
+function foldWithOrigins(input: string, keepTatweel = false): { folded: string; origin: number[] } {
+    let folded = '';
+    const origin: number[] = [];
+    let at = 0;
+    for (const ch of input) {
+        const f = keepTatweel && ch === TATWEEL ? ch : foldChars(ch);
+        for (let k = 0; k < f.length; k++) origin.push(at);
+        folded += f;
+        at += ch.length;
+    }
+    origin.push(input.length);
+    return { folded, origin };
+}
+
+/**
+ * A PATTERN THAT MATCHES THE WORD, NOT ONE WAY OF TYPING IT.
+ *
+ * Round 21 review (R5): «قايمة الطلاب» and «اداره الحاويات» missed the
+ * readers written for «قائمة» and «إدارة», and each such miss was answered by
+ * adding the spelling to the pattern — one more spelling, until the next.
+ * A folded pattern runs on the folded request; the match it returns is
+ * mapped back to the request as he wrote it, so every caller that slices by
+ * `index` and `[0].length` keeps working on his own text. Non-global only:
+ * a folded match is a single match (never hand one to split or replace).
+ *
+ * `keepTatweel`: the tatweel is decoration in a word and grammar after a
+ * preposition — «لـعقود الإيجار» glues «ل» to an idafa noun that carries no
+ * article — so a pattern that reads that glue keeps it on both sides.
+ */
+export class FoldedRegExp extends RegExp {
+    private readonly keepTatweel: boolean;
+    constructor(source: string, flags = '', opts: { keepTatweel?: boolean } = {}) {
+        if (/[gy]/u.test(flags)) throw new Error('FoldedRegExp is a single match: no g or y flag');
+        const keep = opts.keepTatweel === true;
+        const folded = keep
+            ? source.split(TATWEEL).map(foldPattern).join(TATWEEL)
+            : foldPattern(source);
+        super(folded, flags.includes('d') ? flags : `${flags}d`);
+        this.keepTatweel = keep;
+    }
+    static get [Symbol.species](): RegExpConstructor { return RegExp; }
+    exec(input: string): RegExpExecArray | null {
+        const text = String(input ?? '');
+        const { folded, origin } = foldWithOrigins(text, this.keepTatweel);
+        const m = super.exec(folded);
+        if (!m) return null;
+        const spans: Array<[number, number] | undefined> = (m as any).indices || [];
+        const out: any = [];
+        for (let g = 0; g < m.length; g++) {
+            const span = spans[g];
+            out[g] = span ? text.slice(origin[span[0]], origin[span[1]]) : undefined;
+        }
+        out.index = origin[m.index];
+        out.input = text;
+        out.groups = undefined;
+        return out as RegExpExecArray;
+    }
+}
 
 /** A word ends here: the next character is not a letter or digit in ANY script (use with /u). */
 export const WORD_END = '(?![\\p{L}\\p{N}])';
@@ -62,15 +138,24 @@ export const LIST_SEPARATOR = new RegExp(`(?:\\s*(?:،|,|؛|;|\\/|\\+)\\s*)|(?:\
 // page's sections — those heads are not followed by a system's tables.
 const HEAD_NOUN = '(?:end-?points?|routes?|resources?|crud(?:\\s+operations?)?|management'
     + '|نقاط\\s+(?:ال)?وصول|نقاط\\s+(?:ال)?نهاية|مسارات|موارد)';
-const INTERFACE_HEAD = new RegExp(
+/*
+ * Matched folded (R5): «اداره الحاويات» is «إدارة الحاويات». The tatweel is
+ * kept: «لـعقود الإيجار» is a preposition glued to an idafa noun that carries
+ * no article, and only the tatweel says so.
+ */
+const INTERFACE_HEAD = new FoldedRegExp(
     `${WORD_START}${HEAD_NOUN}\\s+(?:for|of)\\s+`
     + `|${WORD_START}${HEAD_NOUN}\\s+(?=[لب]ـ|لل|ل(?=ال))`
-    + `|${WORD_START}(?:إدارة|ادارة)\\s+(?=ال|[لب]ـ|لل)`
+    + `|${WORD_START}إدارة\\s+(?=ال|[لب]ـ|لل)`
     + `|${WORD_START}manag(?:e|ing)\\s+(?!(?:the|a|an|to|it|them|this|that|their|your|my|our|all)\\b)`,
-    'iu');
+    'iu', { keepTatweel: true });
 
-/** The plain openers: «فيها», «يشمل», «including», «with» … */
-const OPENER = /(?:يشمل|تشمل|يحتوي(?: على)?|تحتوي(?: على)?|فيه|فيها|به|بها|مكوّ?ن من|يتكوّ?ن من|including|includes?|containing|contains?|with)\s+(.+)$/i;
+/**
+ * The plain openers: «فيها», «يشمل», «including», «with» … — a whole word,
+ * with the «و» that may join it («وفيه»), never the end of another word
+ * («ترفيه» holds no «فيه», «مكتبه» no «به»).
+ */
+const OPENER = new FoldedRegExp(`${WORD_START}و?(?:يشمل|تشمل|يحتوي(?: على)?|تحتوي(?: على)?|فيه|فيها|به|بها|مكوّ?ن من|يتكوّ?ن من|including|includes?|containing|contains?|with)\\s+(.+)$`, 'iu');
 
 export type ListMarker = 'head' | 'colon' | 'opener';
 
@@ -83,7 +168,7 @@ export type ListMarker = 'head' | 'colon' | 'opener';
 export function listRegion(text: string): { region: string; marker: ListMarker; head?: string } | null {
     const req = String(text || '').replace(/\s+/g, ' ').trim();
     if (!req) return null;
-    const head = req.match(INTERFACE_HEAD);
+    const head = INTERFACE_HEAD.exec(req);
     if (head && head.index !== undefined) {
         const after = req.slice(head.index + head[0].length);
         const region = after.split(/[:：.!?؟]/u)[0].trim();
@@ -145,8 +230,8 @@ export function splitListItems(region: string): string[] {
  * collections (almdkhlats, shyhas, testings); they are requirements, and the
  * requirement reader carries them.
  */
-export const DELIVERABLE = new RegExp(
-    `(?:^|\\s)(?:ال)?(?:تحقق|تحقّق|اختبار|رموز\\s+(?:ال)?أخطاء|أكواد\\s+(?:ال)?أخطاء|رسائل\\s+(?:ال)?أخطاء|معالجة\\s+(?:ال)?أخطاء|توثيق)`
+export const DELIVERABLE = new FoldedRegExp(
+    `(?:^|\\s)(?:ال)?(?:تحقق|اختبار|رموز\\s+(?:ال)?أخطاء|أكواد\\s+(?:ال)?أخطاء|رسائل\\s+(?:ال)?أخطاء|معالجة\\s+(?:ال)?أخطاء|توثيق)`
     + '|\\b(?:validat\\w*|tests?|testing|error\\s+(?:codes?|handling|messages?)|status\\s+codes?|documentation|docs)\\b',
     'iu');
 
@@ -154,9 +239,11 @@ export function isDeliverable(phrase: string): boolean {
     return DELIVERABLE.test(String(phrase || ''));
 }
 
+const INTERFACE_NOUN = new FoldedRegExp(`^${HEAD_NOUN}$`, 'iu');
+
 /** The head itself, standing alone («نقاط وصول», «endpoints») — the way in to the tables, never one of them. */
 export function isInterfaceNoun(phrase: string): boolean {
-    return new RegExp(`^${HEAD_NOUN}$`, 'iu').test(String(phrase || '').trim());
+    return INTERFACE_NOUN.test(String(phrase || '').trim());
 }
 
 /**
