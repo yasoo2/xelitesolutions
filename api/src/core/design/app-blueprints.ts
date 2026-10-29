@@ -938,6 +938,17 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
  *  here even though the earlier reader is the one that saves it.
  */
 /**
+ *  AN OPENER IS WHERE THE LIST BEGINS, NOT PART OF THE NAME (round 21 review, R7).
+ *
+ *  «بدي قائمة الطلاب فيها: الاسم والعمر» named its table «الطلاب فيها»: the
+ *  subject ran up to the colon and took the opener with it. The openers are
+ *  the grammar that introduces a list (request-lists' openers), never a word
+ *  of what is listed.
+ */
+const TRAILING_OPENER = /\s+(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|يشمل|تشمل|with|containing|including|has|having)$/iu;
+const withoutTrailingOpener = (subject: string) => String(subject || '').trim().replace(TRAILING_OPENER, '').trim();
+
+/**
  *  …AND A WORD OF GRAMMAR IS NO NAME EITHER (R3).
  *
  *  «My gym app should track: members, trainers, workouts» put «should» in
@@ -950,7 +961,7 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
 const ENGLISH_GRAMMAR_WORD = /^(?:should|would|will|shall|can|could|must|may|might|to|i|we|you|they|it|he|she|that|which|who|also|and|or|then|please|me|us)$/iu;
 
 function theNounBesideTheContainer(request: string): string | null {
-    const beside = String(subjectAfterContainer(request) || '').trim();
+    const beside = withoutTrailingOpener(String(subjectAfterContainer(request) || '').trim());
     //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
     //
     //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a

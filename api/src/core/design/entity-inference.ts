@@ -618,7 +618,9 @@ export function englishFor(phrase: string): string | null {
     const bare = text.replace(/^ال/, '').trim();
     if (!bare) return null;
     if (!/[\u0621-\u064A]/.test(bare)) return bare;
-    const english = englishPhrase(text);
+    // «قائمه الطلاب» is the students, not a "students menu" (R7): the word
+    // that holds the records is not part of their name.
+    const english = englishPhrase(recordWords(text));
     return english && !/[\u0621-\u064A]/.test(english) ? english : null;
 }
 

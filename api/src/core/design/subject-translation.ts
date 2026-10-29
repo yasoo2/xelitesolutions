@@ -248,6 +248,26 @@ const NUMBER_SUFFIX = new Set(['يات', 'ات', 'ون', 'ين', 'ان']);
 const pluralEnglish = (en: string) => /[^siu]s$/i.test(String(en || '').trim().split(/\s+/).pop() || '');
 const personEnglish = (en: string) => /(?:er|or|ist|ian|ant|ent|ee|ess)$/i.test(String(en || '').trim().split(/\s+/).pop() || '');
 
+/**
+ * …AND A PLURAL ENDING THAT CAME OFF IS PUT BACK ON (round 21 review, R7).
+ *
+ * «الاجتماعات» is meetings: ات came off a singular the dictionary knows,
+ * «اجتماع» → "meeting", and the label read "meeting" — one meeting for a
+ * table of them. A label is his word in his number, so the English is made
+ * plural when a plural or dual ending (ات, يات, ون, ين, ان) came off. English
+ * plural shape, not a word list: -y after a consonant → -ies, a sibilant →
+ * -es, else -s, on the last word.
+ */
+function pluralOf(en: string): string {
+    const words = String(en || '').trim().split(/\s+/);
+    const last = words.pop() || '';
+    if (!last || pluralEnglish(last)) return String(en || '').trim();
+    const plural = /[^aeiou]y$/i.test(last) ? `${last.slice(0, -1)}ies`
+        : /(?:s|x|z|ch|sh)$/i.test(last) ? `${last}es`
+            : `${last}s`;
+    return [...words, plural].join(' ');
+}
+
 /** The exact form, then suffix-stripped forms of it. */
 function lookupExact(n: string): string | null {
     if (AR_EN[n]) return AR_EN[n];
@@ -258,7 +278,7 @@ function lookupExact(n: string): string | null {
             if (!en) continue;
             if (NUMBER_SUFFIX.has(suf) && pluralEnglish(en)) continue;
             if (suf === 'ه' && (pluralEnglish(en) || !(personEnglish(en) || bare.endsWith('ي')))) continue;
-            return en;
+            return NUMBER_SUFFIX.has(suf) ? pluralOf(en) : en;
         }
     }
     return null;
