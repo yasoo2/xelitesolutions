@@ -52,11 +52,15 @@ const IGNORED_DIRS = new Set(['dist', 'build', 'out', ...MACHINE_STATE_DIRECTORI
 const PARSEABLE = /\.(?:js|mjs|cjs)$/iu;
 const PAGE = /\.html?$/iu;
 
-/** The grammar a parse is held to. */
-export type ParseGoal = 'commonjs' | 'module' | 'jsx' | 'tsx' | 'ts';
+/**
+ * The grammar a parse is held to. 'script' is a browser's classic script: a
+ * Script, not a CommonJS module — Node's CJS wrapper declares `module` and
+ * allows a top-level `return`, a browser does neither (round 21 review, Q5).
+ */
+export type ParseGoal = 'commonjs' | 'script' | 'module' | 'jsx' | 'tsx' | 'ts';
 
 const GOAL_NAME: Record<ParseGoal, string> = {
-    commonjs: 'CommonJS / classic script', module: 'ES module', jsx: 'JSX', tsx: 'TSX', ts: 'TypeScript',
+    commonjs: 'CommonJS', script: 'classic script', module: 'ES module', jsx: 'JSX', tsx: 'TSX', ts: 'TypeScript',
 };
 
 /**
@@ -190,7 +194,7 @@ function attributesOf(tag: string): Record<string, string> {
 /** What a `<script>` element makes of its source: a goal, or a data block nothing executes. */
 function scriptGoal(attrs: Record<string, string>): { goal: ParseGoal } | { data: string } {
     const type = String(attrs.type || '').split(';')[0].trim().toLowerCase();
-    if (!type || CLASSIC_SCRIPT_TYPE.test(type)) return { goal: 'commonjs' };
+    if (!type || CLASSIC_SCRIPT_TYPE.test(type)) return { goal: 'script' };
     if (type === 'module') return { goal: 'module' };
     // In-browser transpilers (Babel standalone reads text/babel and text/jsx).
     const presets = String(attrs['data-presets'] || '').toLowerCase();
@@ -225,6 +229,36 @@ function resolveReference(fromFile: string, reference: string, sources: Set<stri
 }
 
 /**
+ * The page's <script> elements in document order — never one inside an HTML
+ * comment (round 21 review, Q6): a commented-out `<script type="module"
+ * src="old.js">` decided old.js's goal as if the page loaded it. A comment
+ * ends at its first `-->` (`<!-->` and `<!--->` end at once, as HTML parses
+ * them); a script's text ends at its first `</script>`, so a `<!--` inside a
+ * script's own text is the script's, not a comment of the page.
+ */
+function scriptElements(html: string): Array<{ attributes: string; body: string }> {
+    const out: Array<{ attributes: string; body: string }> = [];
+    const token = /<!--|<script\b([^>]*)>/giu;
+    let m: RegExpExecArray | null;
+    while ((m = token.exec(html))) {
+        if (m[0] === '<!--') {
+            const after = m.index + 4;
+            const abrupt = html.startsWith('>', after) ? after + 1 : html.startsWith('->', after) ? after + 2 : -1;
+            const end = abrupt >= 0 ? abrupt : html.indexOf('-->', after);
+            if (end < 0) break;
+            token.lastIndex = abrupt >= 0 ? abrupt : end + 3;
+            continue;
+        }
+        const close = /<\/script\s*>/giu;
+        close.lastIndex = token.lastIndex;
+        const closed = close.exec(html);
+        out.push({ attributes: m[1], body: html.slice(token.lastIndex, closed ? closed.index : html.length) });
+        token.lastIndex = closed ? closed.index + closed[0].length : html.length;
+    }
+    return out;
+}
+
+/**
  * The goals the project's pages give the scripts they load. A module's own
  * static imports are modules in the browser too, so the module set is closed
  * over them. A file no page loads is absent from the map: Node decides it.
@@ -246,8 +280,8 @@ async function pageGoals(projectDir: string, pages: string[], sources: Set<strin
     for (const page of pages) {
         let html = '';
         try { html = await fs.promises.readFile(path.join(projectDir, page), 'utf-8'); } catch { continue; }
-        for (const m of html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script\s*>/giu)) {
-            const attrs = attributesOf(m[1]);
+        for (const element of scriptElements(html)) {
+            const attrs = attributesOf(element.attributes);
             const decided = scriptGoal(attrs);
             if (attrs.src !== undefined) {
                 const target = resolveReference(page, attrs.src, sources);
@@ -257,7 +291,7 @@ async function pageGoals(projectDir: string, pages: string[], sources: Set<strin
                     if (decided.goal === 'module') modules.push(target);
                 } else add(target, `data:${decided.data}`);
             } else if ('goal' in decided && decided.goal === 'module') {
-                importsOf(page, m[2]);
+                importsOf(page, element.body);
             }
         }
     }
@@ -282,8 +316,17 @@ type Outcome =
 /** The parser's error line: `SyntaxError: …`, `Error [ERR_X]: …`. */
 const ERROR_LINE = /^(?:[A-Z][A-Za-z]*)?Error(?: \[[A-Z0-9_]+\])?: /u;
 
+/**
+ * A classic script compiled as a Script — what a browser does with it, and
+ * what `node --check` cannot do: Node wraps a .js/.cjs file in its CommonJS
+ * function, where `const module = …` is a redeclaration (a false failure of a
+ * working page script) and a top-level `return` is legal (a false pass of one
+ * the browser refuses). vm.Script compiles without running a line.
+ */
+const SCRIPT_PARSE = "const f=process.argv[1];new (require('vm').Script)(require('fs').readFileSync(f,'utf8'),{filename:f})";
+
 // Through the sanctioned gateway, as ProjectRunTool's entry check runs.
-async function nodeCheck(probe: string, timeoutMs: number): Promise<Outcome> {
+async function nodeCheck(probe: string, timeoutMs: number, args: string[] = ['--check', probe]): Promise<Outcome> {
     let result: any;
     try {
         result = await ExecutionGateway.execute({
@@ -291,7 +334,7 @@ async function nodeCheck(probe: string, timeoutMs: number): Promise<Outcome> {
             type: 'shell',
             payload: {
                 command: process.execPath,
-                args: ['--check', probe],
+                args,
                 options: { cwd: path.dirname(probe), timeout: timeoutMs, shell: false, stdio: 'pipe' },
             },
             priority: 'high',
@@ -333,10 +376,10 @@ async function transpilerCheck(file: string, text: string, loader: 'jsx' | 'tsx'
 
 async function runGoal(tmp: string, probeName: string, file: string, text: string, goal: ParseGoal, timeoutMs: number): Promise<Outcome> {
     if (goal === 'jsx' || goal === 'tsx' || goal === 'ts') return transpilerCheck(file, text, goal);
-    const probe = path.join(tmp, `${probeName}-${goal}.${goal === 'module' ? 'mjs' : 'cjs'}`);
+    const probe = path.join(tmp, `${probeName}-${goal}.${goal === 'module' ? 'mjs' : goal === 'script' ? 'js' : 'cjs'}`);
     try { await fs.promises.writeFile(probe, text, 'utf-8'); }
     catch (error: any) { return { verdict: 'unchecked', reason: `cannot write the probe copy (${String(error?.code || error?.message || error)})` }; }
-    return nodeCheck(probe, timeoutMs);
+    return goal === 'script' ? nodeCheck(probe, timeoutMs, ['-e', SCRIPT_PARSE, probe]) : nodeCheck(probe, timeoutMs);
 }
 
 /** One file against its plan: null when every group passes. */
@@ -378,9 +421,20 @@ async function withProbeDir<T>(fn: (tmp: string) => Promise<T>): Promise<T> {
 export interface PlannedFile { file: string; plan: GoalPlan | null; notParsed?: string }
 
 /** Each file's plan: the pages that load it, else how Node runs it. */
-export async function planParseGoals(projectDir: string, files: string[], pages?: string[]): Promise<PlannedFile[]> {
-    const sources = new Set(files);
-    const loaded = await pageGoals(projectDir, pages ?? (await walkProject(projectDir)).pages, sources);
+/**
+ * ⛔ THE PAGES DECIDE OVER THE WHOLE PROJECT, THEN THE NAMED FILES ARE READ
+ * (round 21 review, Q4). The goals were computed over the named files alone,
+ * so checking util.js by itself lost what made it a module: index.html loads
+ * main.js as a module and main.js imports util.js — main.js was not in the
+ * set, so util.js fell to Node's reading of `"type": "commonjs"` and its
+ * `export` was «SyntaxError: Unexpected token 'export'», and self-fix went to
+ * repair a working module. The module closure is followed through every
+ * project source; only the plans of the named files are returned.
+ */
+export async function planParseGoals(projectDir: string, files: string[], tree?: { scripts: string[]; pages: string[] }): Promise<PlannedFile[]> {
+    const walked = tree ?? await walkProject(projectDir);
+    const sources = new Set([...walked.scripts, ...files]);
+    const loaded = await pageGoals(projectDir, walked.pages, sources);
     const scopes = new Map<string, Promise<string | null>>();
     const planned: PlannedFile[] = [];
     for (const file of files) {
@@ -425,9 +479,9 @@ async function checkPlanned(projectDir: string, planned: PlannedFile[], timeoutM
 }
 
 export async function checkJavaScriptSyntax(projectDir: string, timeoutMs = 15_000): Promise<JsSyntaxResult> {
-    const { scripts, pages } = await walkProject(projectDir);
-    if (!scripts.length) return { files: [], failure: null };
-    return checkPlanned(projectDir, await planParseGoals(projectDir, scripts, pages), timeoutMs);
+    const tree = await walkProject(projectDir);
+    if (!tree.scripts.length) return { files: [], failure: null };
+    return checkPlanned(projectDir, await planParseGoals(projectDir, tree.scripts, tree), timeoutMs);
 }
 
 /** The named files (absolute, or relative to the project), each held to the goal it is really parsed with. */
