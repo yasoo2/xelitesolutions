@@ -139,6 +139,36 @@ export function managedModel(choice: ModelChoice, vision: boolean): EngineModel 
     };
 }
 
+/**
+ * A plain text question to the same model, for the readers and judges the
+ * checks use (the requirement reader, the acceptance judge). Same route,
+ * same admission, no tools.
+ */
+export function textAsk(choice: ModelChoice, joe: any, signal: AbortSignal, deadlineAt: number): (prompt: string) => Promise<string> {
+    if (choice.provider === 'local') {
+        return async (prompt: string) => {
+            const result = await managedOllamaChat({
+                baseURL: choice.baseUrl!, model: choice.model,
+                messages: [{ role: 'user', content: prompt }],
+                signal, timeoutMs: Math.max(60_000, deadlineAt - Date.now()),
+                reasoningEffort: choice.reasoning,
+            });
+            return withoutReasoning(result.content || '');
+        };
+    }
+    return async (prompt: string) => {
+        const context: any = {
+            modelConfig: { provider: choice.provider, model: choice.model, apiKey: choice.apiKey, baseUrl: choice.baseUrl },
+            engineeringPipeline: true, strictProviderCheck: true, signal,
+            providerTimeoutMs: Math.max(30_000, deadlineAt - Date.now()),
+            runId: joe?.runId, sessionId: joe?.sessionId, userId: joe?.userId, workspaceId: joe?.workspaceId,
+        };
+        const raw = await routeToModel([{ role: 'user', content: prompt }], undefined, undefined, undefined, undefined, undefined, undefined, context);
+        if (isProviderFailure(raw)) throw Object.assign(new Error(String(raw).slice(0, 300)), { code: 'PROVIDER_FAILURE' });
+        return String(raw ?? '');
+    };
+}
+
 export function routedModel(choice: ModelChoice, joe: any): EngineModel {
     let calls = 0;
     return {
