@@ -1,0 +1,164 @@
+/**
+ * THE MODEL BEHIND THE LOOP.
+ *
+ * Two routes, both through code Joe already trusts:
+ *
+ *  - LOCAL (Ollama on this machine): `managedOllamaChat`, the only local
+ *    transport that carries tools, tool history and images. It is admitted
+ *    through the resource manager like every other local model call. It is
+ *    called directly rather than through routeToModel for two reasons. The
+ *    router drops the text the model writes next to its tool calls. And only
+ *    the transport reports `prompt_eval_count`, which shows whether the
+ *    server reused the conversation prefix from the step before. That is the
+ *    measurement that decides how fast a long loop runs.
+ *
+ *  - A NAMED PROVIDER (JOE_ENGINE_PROVIDER): routeToModel's custom route with
+ *    an explicit model and strict checking. Native tool calls work there, and
+ *    a failure is an error rather than a fall into the mesh, whose adapters
+ *    drop tool calls. Joe's cost policy still applies: the router enforces it.
+ *
+ * Nothing here names a model. The model is whatever the deployment
+ * configured: the laptop's 9B today, a large open model on the GPU server
+ * tomorrow.
+ */
+import { managedOllamaChat, managedContextCeilingTokens, isManagedOllamaEndpoint } from '../llm/providers/managed-ollama-chat';
+import { routeToModel, isProviderFailure } from '../llm/intelligent-router';
+import { readModelTurn, withoutReasoning } from './toolcalls';
+import type { ChatMessage, EngineModel, ModelStep, ToolSchema } from './types';
+
+export interface ModelChoice {
+    provider: string;          // 'local' or a provider name the router knows
+    model: string;
+    baseUrl?: string;
+    apiKey?: string;
+    /** Turn the model's thinking off ('none') or leave the model's default. */
+    reasoning?: 'none';
+    vision?: boolean;
+    contextTokens?: number;
+}
+
+const PROVIDER_KEY_ENV: Record<string, string> = {
+    groq: 'GROQ_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', cerebras: 'CEREBRAS_API_KEY',
+    mistral: 'MISTRAL_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openai: 'OPENAI_API_KEY',
+};
+
+function positiveInt(v: string | undefined): number | undefined {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n) : undefined;
+}
+
+/**
+ * The deployment's choice. JOE_ENGINE_PROVIDER/JOE_ENGINE_MODEL name a
+ * provider explicitly; otherwise the engine uses the local model Joe is
+ * configured with. Returns why it cannot choose, rather than guessing.
+ */
+export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelChoice | { error: string } {
+    const reasoning = /^(?:off|none|0|false)$/i.test(String(env.JOE_ENGINE_THINKING || '')) ? 'none' as const : undefined;
+    const vision = env.JOE_ENGINE_VISION == null ? undefined : /^(?:1|true|on|yes)$/i.test(env.JOE_ENGINE_VISION);
+    const contextTokens = positiveInt(env.JOE_ENGINE_CONTEXT_TOKENS);
+    const named = String(env.JOE_ENGINE_PROVIDER || '').trim().toLowerCase();
+    if (named && named !== 'local') {
+        const model = String(env.JOE_ENGINE_MODEL || '').trim();
+        if (!model) return { error: `JOE_ENGINE_PROVIDER is ${named} but JOE_ENGINE_MODEL is empty.` };
+        const keyName = PROVIDER_KEY_ENV[named];
+        const apiKey = keyName ? String(env[keyName] || '').trim() : '';
+        if (keyName && !apiKey) return { error: `JOE_ENGINE_PROVIDER is ${named} but ${keyName} is not set.` };
+        return { provider: named, model, apiKey: apiKey || undefined, baseUrl: env.JOE_ENGINE_BASE_URL || undefined, reasoning, vision: vision ?? false, contextTokens };
+    }
+    const model = String(env.JOE_ENGINE_MODEL || env.LOCAL_LLM_MODEL || '').trim();
+    const baseUrl = String(env.JOE_ENGINE_BASE_URL || env.LOCAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').trim();
+    if (!model) return { error: 'No model is configured: set LOCAL_LLM_MODEL (or JOE_ENGINE_PROVIDER and JOE_ENGINE_MODEL).' };
+    if (!isManagedOllamaEndpoint(baseUrl)) return { error: `The local model address ${baseUrl} is not the managed Ollama endpoint (http://127.0.0.1:11434).` };
+    return { provider: 'local', model, baseUrl, reasoning, vision, contextTokens };
+}
+
+/** Ask the local server whether the model takes images. One cheap metadata call, no inference. */
+export async function localModelHasVision(baseUrl: string, model: string, signal?: AbortSignal): Promise<boolean> {
+    try {
+        const root = baseUrl.replace(/\/v1\/?$/, '').replace(/\/$/, '');
+        const res = await fetch(`${root}/api/show`, {
+            method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ model }), signal: signal ?? AbortSignal.timeout(10_000),
+        });
+        if (!res.ok) return false;
+        const body: any = await res.json();
+        return Array.isArray(body?.capabilities) && body.capabilities.includes('vision');
+    } catch { return false; }
+}
+
+function toolNames(tools: ToolSchema[]): Set<string> {
+    return new Set(tools.map(t => t.function.name));
+}
+
+/** The transport accepts only these keys; anything else is refused as unsupported input. */
+function forManaged(messages: ChatMessage[]): unknown[] {
+    return messages.map(m => {
+        if (m.role === 'assistant') {
+            return m.tool_calls?.length
+                ? { role: 'assistant', content: m.content || '', tool_calls: m.tool_calls }
+                : { role: 'assistant', content: m.content || '' };
+        }
+        if (m.role === 'tool') return { role: 'tool', content: m.content || '(no output)', tool_call_id: m.tool_call_id };
+        return { role: m.role, content: m.content };
+    });
+}
+
+export function managedModel(choice: ModelChoice, vision: boolean): EngineModel {
+    let calls = 0;
+    return {
+        label: `local:${choice.model}`,
+        vision,
+        contextTokens: () => choice.contextTokens ?? managedContextCeilingTokens(),
+        async step(messages, tools, { signal, deadlineAt }): Promise<ModelStep> {
+            const started = Date.now();
+            calls++;
+            const result = await managedOllamaChat({
+                baseURL: choice.baseUrl!,
+                model: choice.model,
+                messages: forManaged(messages),
+                tools,
+                signal,
+                timeoutMs: Math.max(60_000, deadlineAt - Date.now()),
+                reasoningEffort: choice.reasoning,
+            });
+            const durationMs = Date.now() - started;
+            const usage = {
+                promptTokens: result.metrics.promptEstimatedTokens,
+                promptEvaluated: result.metrics.prompt_eval_count,
+                completionTokens: result.metrics.eval_count,
+            };
+            if (result.tool_calls?.length) {
+                return {
+                    text: withoutReasoning(result.content || ''),
+                    toolCalls: result.tool_calls.map(tc => ({ id: tc.id, name: tc.function.name, arguments: tc.function.arguments || '{}' })),
+                    usage, durationMs,
+                };
+            }
+            return { ...readModelTurn(result.content || '', toolNames(tools), calls, durationMs), usage };
+        },
+    };
+}
+
+export function routedModel(choice: ModelChoice, joe: any): EngineModel {
+    let calls = 0;
+    return {
+        label: `${choice.provider}:${choice.model}`,
+        vision: choice.vision ?? false,
+        contextTokens: () => choice.contextTokens ?? 32_768,
+        async step(messages, tools, { signal, deadlineAt }): Promise<ModelStep> {
+            const started = Date.now();
+            calls++;
+            const context: any = {
+                modelConfig: { provider: choice.provider, model: choice.model, apiKey: choice.apiKey, baseUrl: choice.baseUrl },
+                engineeringPipeline: true,
+                strictProviderCheck: true,
+                signal,
+                providerTimeoutMs: Math.max(30_000, deadlineAt - Date.now()),
+                runId: joe?.runId, traceId: joe?.traceId, sessionId: joe?.sessionId, userId: joe?.userId, workspaceId: joe?.workspaceId,
+            };
+            const raw = await routeToModel(messages as any[], undefined, undefined, undefined, undefined, undefined, tools, context);
+            if (isProviderFailure(raw)) throw Object.assign(new Error(String(raw).slice(0, 300)), { code: 'PROVIDER_FAILURE' });
+            return readModelTurn(String(raw ?? ''), toolNames(tools), calls, Date.now() - started);
+        },
+    };
+}
