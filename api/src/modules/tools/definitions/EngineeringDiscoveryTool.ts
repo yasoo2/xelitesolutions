@@ -6,7 +6,7 @@ import { isWithinRoot, resolveToolPath } from '../utils';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { isReadOnlyRequest } from '../../../core/orchestrator/buildIntent';
 import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence } from '../../services/AutonomousEngineeringPolicy';
-import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
+import { isMachineStateDirectory, listProjectFiles } from '../../../shared/utils/project-tree';
 import { pythonExecutable } from '../../../core/quality/python-executable';
 
 export type VerificationStatus = 'passed' | 'failed' | 'blocked' | 'not_run' | 'not_applicable';
@@ -399,12 +399,21 @@ export class EngineeringDiscoveryTool extends BaseTool {
 
         const candidates: Candidate[] = [];
         for (const root of [...roots].sort((a, b) => a.localeCompare(b))) {
-            // A greenfield request must never turn every historical project
-            // into a recursive source/test scan. Those projects are only
-            // read-only stack references; detailed evidence is required only
-            // for the selected project that Joe may actually change.
-            candidates.push(await this.inspectProject(root, !buildsSomethingNew, buildsSomethingNew));
+            // No candidate is turned into a recursive source/test scan here
+            // (round 22, W6): every candidate of an existing-workspace request
+            // used to be inventoried in full, though only the selected one is
+            // a planning input — a workspace of many projects read them all.
+            // Detailed evidence is gathered below, for the project selected.
+            candidates.push(await this.inspectProject(root, false, buildsSomethingNew));
             await yieldIfNeeded();
+        }
+        // A root with no manifest and no entrypoint is evidence only through the
+        // tests it holds; those few roots are inventoried for that fact alone.
+        if (!buildsSomethingNew) {
+            for (const candidate of candidates) {
+                if (candidate.manifests.length || candidate.likelyEntrypoints.length) continue;
+                Object.assign(candidate, await this.inspectInventory(candidate.root));
+            }
         }
         for (const candidate of candidates) {
             if (candidate.manifests.length === 0 && (candidate.likelyEntrypoints.length > 0 || (candidate.testFiles || []).length > 0)) {
@@ -515,6 +524,11 @@ export class EngineeringDiscoveryTool extends BaseTool {
                 source: 'workspace',
                 statement: `Detected ${candidates.length} existing projects; none of them is the target — this request creates a new one and will not modify them.`,
             });
+        }
+
+        // The selected project — and only it — carries its whole source and test inventory.
+        if (selectedProject && !buildsSomethingNew && !selectedProject.sourceFiles) {
+            Object.assign(selectedProject, await this.inspectInventory(selectedProject.root));
         }
 
         let mode: EngineeringEvidence['mode'];
@@ -665,14 +679,16 @@ export class EngineeringDiscoveryTool extends BaseTool {
                     : /^(?:lint)(?::|$)/u.test(name) ? 'lint' : /^(?:typecheck|type-check|check:types)(?::|$)/u.test(name) ? 'typecheck' : undefined;
                 if (kind) candidateChecks.push({ kind, command: `npm run ${name}`, source: 'package.json' });
             }
-            // The sealed inventory keeps its bounds; a list cut at a bound says
-            // so by the files it found, not by a count that happens to equal it.
-            const allSources = inventory.filter(item => DISCOVERY_SOURCE_EXTENSION.test(item.name)).map(item => item.relative);
-            const allTests = inventory.filter(item => DISCOVERY_TEST_FILE.test(item.relative)).map(item => item.relative);
-            const sourceFiles = allSources.slice(0, 120);
-            const testFiles = allTests.slice(0, 40);
-            if (allSources.length > sourceFiles.length || allTests.length > testFiles.length)
-                blockers.push({ code: 'discovery_file_inventory_limited', message: `Source/test inventories are bounded (${sourceFiles.length} of ${allSources.length} source files, ${testFiles.length} of ${allTests.length} test files); omitted files are not planning evidence.` });
+            // THE SEALED LISTING IS WHOLE (round 22, W10). It was cut at 120
+            // source and 40 test files with a blocker, and the pipeline stops on
+            // any blocker: a project of 121 sources had its scope repair halted.
+            // The listing is already bounded by the scan itself (depth 3, twelve
+            // folders, 512 entries — past that, discovery_coverage_limited says
+            // the scan is incomplete), and what a model is shown is a truncated
+            // excerpt that says so (ProjectPlannerTool's truncateEvidenceJsonText);
+            // a downstream reader with its own budget refuses by that budget's name.
+            const sourceFiles = inventory.filter(item => DISCOVERY_SOURCE_EXTENSION.test(item.name)).map(item => item.relative);
+            const testFiles = inventory.filter(item => DISCOVERY_TEST_FILE.test(item.relative)).map(item => item.relative);
             const entrypoints = new Set(DISCOVERY_ENTRYPOINTS);
             selectedProject = { root: scope.root, projectKinds: manifest ? ['node'] : ['other'],
                 manifests: manifest ? [{ path: 'package.json', kind: 'package.json', scripts }] : [],
@@ -754,33 +770,27 @@ export class EngineeringDiscoveryTool extends BaseTool {
      * repair of it. So the walk reads the whole project, skipping only folders
      * that are not anyone's source — dot folders, machine state, tool output —
      * and gives the event loop back as it goes, as the root scan does.
+     *
+     * ONE BOUNDED WALKER (round 22, W6). Sibling folders were read with one
+     * Promise.all per level, recursively — every folder of the project at
+     * once: on 4000 folders a readFile issued 30 ms in waited 495.5 ms (14.9
+     * alone), and every other user's fs, dns, crypto and zlib work waited with
+     * it. The walk is now the shared one (shared/utils/project-tree): a bounded
+     * number of folders at a time, the project's own .gitignore and installed
+     * environments honoured, the files in the same name order.
      */
     private async inspectInventory(root: string): Promise<{ sourceFiles: string[]; testFiles: string[] }> {
-        type Found = { file: string; source: boolean; test: boolean };
-        let directories = 0;
-        // Sibling folders are read concurrently (an awaited readdir per folder,
-        // one after another, waited on the I/O pool once per folder); their
-        // files are still returned in the sorted depth-first order.
-        const visit = async (dir: string): Promise<Found[]> => {
-            let entries: fs.Dirent[];
-            try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return []; }
-            if (++directories % DISCOVERY_YIELD_EVERY === 0) await yieldToDiscoveryScheduler();
-            const parts = await Promise.all(entries.sort((a, b) => a.name.localeCompare(b.name)).map(async (entry): Promise<Found[]> => {
-                const absolute = path.join(dir, entry.name);
-                if (entry.isDirectory()) {
-                    const walkable = !entry.name.startsWith('.') && !isMachineStateDirectory(entry.name) && !GENERATED_OUTPUT_DIRECTORIES.has(entry.name);
-                    return walkable ? visit(absolute) : [];
-                }
-                if (!entry.isFile()) return [];
-                const source = !entry.name.startsWith('.') && DISCOVERY_SOURCE_EXTENSION.test(entry.name);
-                const test = (!entry.name.startsWith('.') || entry.name === '.env.example')
-                    && DISCOVERY_TEST_FILE.test(path.relative(root, absolute).split(path.sep).join('/'));
-                return source || test ? [{ file: absolute, source, test }] : [];
-            }));
-            return parts.flat();
+        const isSource = (name: string) => !name.startsWith('.') && DISCOVERY_SOURCE_EXTENSION.test(name);
+        const isTest = (relative: string, name: string) => (!name.startsWith('.') || name === '.env.example') && DISCOVERY_TEST_FILE.test(relative);
+        const found = await listProjectFiles(root, {
+            skipDirectory: name => name.startsWith('.') || GENERATED_OUTPUT_DIRECTORIES.has(name),
+            keepFile: (relative, name) => isSource(name) || isTest(relative, name),
+        });
+        const absolute = (relative: string) => path.join(root, ...relative.split('/'));
+        return {
+            sourceFiles: found.filter(relative => isSource(path.posix.basename(relative))).map(absolute),
+            testFiles: found.filter(relative => isTest(relative, path.posix.basename(relative))).map(absolute),
         };
-        const found = await visit(root);
-        return { sourceFiles: found.filter(item => item.source).map(item => item.file), testFiles: found.filter(item => item.test).map(item => item.file) };
     }
 
     private inspectGit(root: string): Candidate['git'] {

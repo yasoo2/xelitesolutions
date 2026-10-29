@@ -91,13 +91,16 @@ describe('the sealed (scoped) inventory', () => {
         expect(mockExecuteTool.mock.calls.some(([name, args]) => name === 'inspect_directory' && /[\\/]out$/u.test(String(args.path)))).toBe(false);
     });
 
-    it('a list exactly at its bound is not reported as cut; one past it is, with the counts', async () => {
+    // Round 22 (W10): the sealed listing is whole — past 120 sources it used
+    // to be cut with a blocker, and the pipeline stops on any blocker, so a
+    // project of 121 sources had its scope repair halted. The scan's own bound
+    // (512 entries) is what discovery_coverage_limited reports.
+    it('a listing past the old 120-file cut is sealed whole, with no blocker', async () => {
         const root = path.resolve('D:/owned-node-site');
         const sources = (n: number) => Array.from({ length: n }, (_, i) => file(`m${String(i).padStart(3, '0')}.js`));
         const manifest = JSON.stringify({ name: 'site', scripts: { start: 'node m000.js' } });
-        const atBound = await discover(root, { '': [file('package.json'), ...sources(120)] }, manifest);
-        expect(atBound.blockers.map((b: any) => b.code)).not.toContain('discovery_file_inventory_limited');
-        const pastBound = await discover(root, { '': [file('package.json'), ...sources(121)] }, manifest);
-        expect(pastBound.blockers).toContainEqual(expect.objectContaining({ code: 'discovery_file_inventory_limited', message: expect.stringContaining('120 of 121 source files') }));
+        const pastOldCut = await discover(root, { '': [file('package.json'), ...sources(121)] }, manifest);
+        expect(pastOldCut.selectedProject.sourceFiles).toHaveLength(121);
+        expect(pastOldCut.blockers.map((b: any) => b.code)).not.toContain('discovery_file_inventory_limited');
     });
 });
