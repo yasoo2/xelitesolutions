@@ -718,7 +718,22 @@ export class AgentOrchestrator {
               // مخططة (خصوصاً browser_run وأدوات التحقق) بأداة مختلفة أو برد
               // نصي. ننفذ الاسم كما هو؛ الاسم غير المسجّل يفشل صراحة في بوابة
               // الأدوات بدلاً من اختراع بديل.
-              const plannedTool = node.tool.trim();
+              let plannedTool = node.tool.trim();
+              // The general agent engine (core/engine) builds the project when
+              // the run asks for it: JOE_ENGINE=agent, or the run's own `engine`
+              // field. It takes the BUILD nodes only. The read-only audits that
+              // also travel as project_pipeline, and every other node, stay on
+              // this path. node.tool is left as planned, so deadlines and the
+              // final-outcome rule below treat it as the build it is. Loaded on
+              // demand: this file's static imports are guarded.
+              const agentBuild = engineeringNode
+                && !['read_only_audit', 'workspace_overview'].includes(String(node.id || ''))
+                && (() => { try { return require('../core/engine/select').engineFor(goalContext) === 'agent'; } catch { return false; } })();
+              if (agentBuild) {
+                plannedTool = 'agent_engine';
+                nodeInput.request = goalText;
+                if (goalContext?.resumeProjectRoot) nodeInput.path = goalContext.resumeProjectRoot;
+              }
               if (!DETERMINISTIC_TOOLS.includes(plannedTool)) {
                 console.log(`[AgentOrchestrator] executing planned non-catalogued tool directly: ${plannedTool}`);
               }
