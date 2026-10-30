@@ -23,7 +23,6 @@
  * path in this system stays safe on a machine where every provider can fail.
  */
 import { parseFirstJson } from '../../shared/utils/json';
-import { isManagedOllamaEndpoint, managedOllamaChat } from './providers/managed-ollama-chat';
 
 export interface StructuredAsk {
     /** What to ask for, in the user's own words where possible. */
@@ -62,18 +61,6 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
     const model = localModel();
     if (!host || !model) return undefined;
     const timeoutMs = ask.timeoutMs ?? 120_000;
-    if (isManagedOllamaEndpoint(host)) {
-        try {
-            const completion = await managedOllamaChat({
-                baseURL: host, model, messages: [{ role: 'user', content: ask.prompt }],
-                format: ask.schema, temperature: 0, timeoutMs, maxCompletionTokens: 1024,
-            });
-            return parseFirstJson(completion.content) ?? undefined;
-        } catch (error: any) {
-            if (/^RESOURCE_/.test(String(error?.code || ''))) throw error;
-            return undefined;
-        }
-    }
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), timeoutMs);
     try {
@@ -85,7 +72,7 @@ export async function askLocalStructured(ask: StructuredAsk): Promise<any | unde
                 model,
                 prompt: ask.prompt,
                 stream: false,
-                keep_alive: '5m',
+                keep_alive: -1,
                 // THE WHOLE POINT: the schema constrains the sampling itself.
                 format: ask.schema,
                 options: { temperature: 0 },
@@ -144,10 +131,6 @@ export async function askStructured<T>(
         const ok = validate(local);
         if (ok) { ask.onNote?.('local brain answered, constrained by the schema'); return ok; }
         ask.onNote?.('the local brain answered something the validator refused');
-    }
-    if (String(process.env.LOCAL_LLM_STRICT || '').trim() === '1') {
-        ask.onNote?.('the selected local path did not produce a valid result; no other model was authorized');
-        return null;
     }
     const cloud = await askCloudStructured(ask);
     if (cloud !== undefined) {

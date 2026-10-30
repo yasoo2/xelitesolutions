@@ -28,11 +28,8 @@ export function panelEventKey(event: any): string {
     || event?.data?.data?.ts;
   if (id === undefined || id === null || id === '') return '';
   const sid = panelEventSessionId(event);
-  // Receipt counters may restart with the API; a distinct run owns new output.
-  const run = event?.runId || event?.data?.runId || event?.data?.data?.runId;
-  const runId = typeof run === 'string' ? run.trim() : '';
   const type = String(event?.type || event?.data?.type || event?.data?.data?.type || 'event');
-  return JSON.stringify([sid, runId, type, String(id)]);
+  return `${sid}:${type}:${String(id)}`;
 }
 
 export function acceptPanelEventOnce(

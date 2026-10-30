@@ -4,8 +4,6 @@ import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
-import { autonomousDevelopmentEnabled } from '../../services/AutonomousDevelopmentPolicy';
-import { inspectAutonomousWorkspaceDirectory } from '../../services/AutonomousWorkspacePolicy';
 
 function getWorkspaceRoot(workspaceId?: string) {
     try {
@@ -55,10 +53,6 @@ export class DirectoryInspectionTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any, context?: any) {
-        if (autonomousDevelopmentEnabled(process.env.JOE_AUTONOMOUS_DEVELOPMENT)) {
-            const { workspaceService } = require('../../services/WorkspaceService');
-            return inspectAutonomousWorkspaceDirectory(input.path, workspaceService.getActiveRoot(context?.workspaceId), workspaceService.externalRoot);
-        }
         const dirPath = resolveToolPath(String(input?.path ?? '.'), context?.workspaceId);
         const depth = Number(input.depth || 1);
 

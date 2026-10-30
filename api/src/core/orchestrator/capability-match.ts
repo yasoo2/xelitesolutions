@@ -24,7 +24,6 @@
  * is the property the old design could never have.
  */
 import { tools as registeredTools } from '../../modules/tools/registry';
-import { isContextOption, requestedPrimitiveOptions } from './requested-primitive-options';
 
 export interface Capable {
     name: string;
@@ -80,7 +79,6 @@ const BRIDGE: Array<[RegExp, string[]]> = [
     [/قاعدة بيانات|قواعد بيانات|استعلام|جدول/, ['database', 'sql', 'query', 'table']],
     [/متصفّ?ح|تصفّ?ح|افتح الموقع/, ['browser', 'page', 'navigate']],
     [/صور|صورة|تصميم صور/, ['image', 'photo', 'picture']],
-    [/التقط|لقطة|لقطه|سكرين/, ['capture', 'screenshot']],
     [/تنبيه|إنذار|أنذر|نبّ?ه/, ['alert', 'notify', 'monitoring']],
     [/خطّ?ط|خطة|مهام|تقسيم العمل/, ['plan', 'planner', 'project', 'tasks']],
     [/انشر|نشر|رفع|استضاف/, ['deploy', 'publish', 'pages']],
@@ -110,7 +108,6 @@ interface Profile {
     descTerms: Set<string>;
     /** Optional explicit evidence required for a write-capable tool to match. */
     matchAnyTerms: Set<string>;
-    inputProperties: Record<string, any>;
 }
 
 let cached: Profile[] | null = null;
@@ -125,7 +122,6 @@ export function toolProfiles(force = false): Profile[] {
         .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name))
         .map(t => ({
             name: t.name,
-            inputProperties: t.inputSchema?.properties || {},
             nameTerms: new Set(terms(String(t.name).replace(/[_-]+/g, ' '))),
             tagTerms: new Set((t.tags || []).flatMap((g: string) => terms(g))),
             descTerms: new Set(terms(String(t.description || '')).slice(0, 60)),
@@ -148,22 +144,8 @@ export function capableTools(request: string, limit = 4): Capable[] {
     // The words he wrote, and the words a tool would have written for them.
     const seen = new Set([...want, ...bridged(String(request || ''))]);
 
-    const profiles = toolProfiles();
-    // Only options declared somewhere in the registry can discriminate a
-    // candidate. Context fields never provide selection evidence or authority.
-    const properties: Record<string, any> = {};
-    for (const profile of profiles) for (const [key, schema] of Object.entries(profile.inputProperties)) {
-        if (!isContextOption(key) && (properties[key] === undefined
-            || /^(width|height)$/i.test(key) && ['number', 'integer'].includes((schema as any)?.type))) properties[key] = schema;
-    }
-    const requested = requestedPrimitiveOptions(request, properties).values;
-    const named = profiles.filter(p => {
-        const escaped = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp('`'+escaped+'`|\\b'+escaped+'\\s+tool\\b|\\btool\\s+'+escaped+'\\b', 'i').test(request)
-            || p.name.includes('_') && new RegExp('(?:^|[\\s`"\\\'])'+escaped+'(?=$|[\\s`"\\\',;.])', 'i').test(request);
-    });
     const scored: Capable[] = [];
-    for (const p of profiles) {
+    for (const p of toolProfiles()) {
         // Some write-capable workflows deliberately declare the precise evidence
         // they require. Their descriptive prose can mention "analysis" or
         // "verification", but those broad words must never infer a branch/commit.
@@ -171,16 +153,6 @@ export function capableTools(request: string, limit = 4): Capable[] {
         // not the language bridge. The bridge intentionally expands «مستودع» to
         // Git vocabulary, but that must not manufacture an intent to commit.
         if (p.matchAnyTerms.size && ![...p.matchAnyTerms].some(w => want.includes(w))) continue;
-        // A URL-only tool cannot fulfill an exact filename or viewport request.
-        // Keep lexical/safety requirements; ToolService still admits execution.
-        if (named.length && !named.some(n => n.name === p.name)) continue;
-        if (!named.length && Object.entries(requested).some(([key, value]) => {
-            const type = p.inputProperties[key]?.type;
-            return type === 'integer' ? typeof value !== 'number' || !Number.isInteger(value)
-                : type === 'number' ? typeof value !== 'number' || !Number.isFinite(value)
-                : type === 'string' ? typeof value !== 'string'
-                : type === 'boolean' ? typeof value !== 'boolean' : true;
-        })) continue;
         let score = 0;
         const why: string[] = [];
         let descHits = 0;
@@ -188,13 +160,6 @@ export function capableTools(request: string, limit = 4): Capable[] {
             if (p.nameTerms.has(w)) { score += 5; why.push(w); continue; }
             if (p.tagTerms.has(w)) { score += 3; why.push(w); continue; }
             if (p.descTerms.has(w) && descHits < 3) { score += 1; descHits++; why.push(w); }
-        }
-        // Supported explicit options add evidence only after a lexical hit.
-        // They cannot turn an unrelated tool into the requested capability.
-        if (score > 0) {
-            const supported = Object.keys(requested).filter(key => p.inputProperties[key] !== undefined);
-            score += supported.length * 3;
-            why.push(...supported);
         }
         if (score >= 5) scored.push({ name: p.name, score, why: [...new Set(why)].slice(0, 4) });
     }

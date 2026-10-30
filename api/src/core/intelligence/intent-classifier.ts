@@ -1,8 +1,6 @@
 import { stripArabicDiacritics, normalizeIntentText } from '../orchestrator/promptNormalizer';
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 import { routeToModel } from '../llm/intelligent-router';
-import { hasRequestedAction, unquotedIntentText } from './requested-action';
-import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
 
 export interface IntentClassification {
     isBuild: boolean;
@@ -32,10 +30,9 @@ const UI_INTERACTION_VERB = /(اضغط|انقر|اختر|اكتب|أدخل|مر[
 const UI_NOUN = /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i;
 
 function isKnowledgeQuestionPattern(text: string): boolean {
-    return /(?:^|[\s،:؛])(?:ما|ماذا|لماذا|كيف|متي|اين|أين|كم|اي|ايهما|اشرح|صف|قارن|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(text)
+    return /(?:^|[\s،:؛])(?:ما|ماذا|لماذا|كيف|متي|اين|أين|كم|اي|ايهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(text)
         || /^\s*هل(?=$|[\s،:؛])/i.test(text)
-        || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs|summari[sz]e|describe|translate)\b/i.test(text)
-        || /(?:^|[\s،:؛])(?:لخ[ّ]?ص|لخص|ترجم|اشرح|صف)(?=$|[\s،:؛؟])/u.test(text)
+        || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs)\b/i.test(text)
         || /[؟?]\s*$/i.test(text);
 }
 
@@ -45,42 +42,15 @@ function isReadOnlyPattern(text: string): boolean {
         || /(?:قراءة\s+فقط|للقراءة\s+فقط|(?:من\s+)?دون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)|بدون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف))/i.test(text);
 }
 
-const RESULTATIVE_MAKE_STATE_PATTERN = /\bmake\s+(it|this|that|them)\s+(?:\w+ly\s+)?(available|downloadable|visible|accessible|readable|printable)\b/gi;
-
-/**
- * Classification-only view: masks resultative "make it/this/that/them <state>"
- * (operation/exposure of an existing artifact) so BUILD detection does not
- * borrow that non-construction "make". All other clauses, quoted text,
- * denials and other clauses remain available in this classification view; the shared
- * authority predicate still receives the original request elsewhere. Never passed to tools/models.
- */
-function maskResultativeMakeForBuild(raw: string): string {
-    return String(raw || '').replace(RESULTATIVE_MAKE_STATE_PATTERN, '$1 $2');
-}
-
 const ENGINEERING_VERB_PATTERN = /\b(build|create|develop|implement|refactor|repair|debug|test|deploy|code|modify|build\s+out|بناء|ابن(?:ِ|ي|ى)|انش(?:ئ|ء|ي)|تطوير|طو[ّ]?ر|برمج|اختبر|اختبار|اصلح|إصلح|عد[ّ]?ل|نف[ّ]?ذ|تنفيذ)\b/i;
 const ENGINEERING_NOUN_PATTERN = /\b(repository|repo|codebase|project|system|platform|application|app|api|backend|frontend|database|software|code|tests?|نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعدة\s+بيانات|واجهة|اختبارات?)\b/i;
 
 function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: number; reason: string } {
-    const classificationGoal = maskResultativeMakeForBuild(String(goalRaw || ''));
-    const g = unquotedIntentText(classificationGoal);
+    const g = String(goalRaw || '');
     const bare = stripArabicDiacritics(g);
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
     const bareProbe = stripArabicDiacritics(probe);
-
-    // Delegate to canonical hasRequestedAction predicate
-    const requestedAction = hasRequestedAction(classificationGoal);
-    if (requestedAction.hasAffirmativeAction) {
-        return { isBuild: true, confidence: requestedAction.confidence, reason: requestedAction.reason };
-    }
-    if (requestedAction.hasDenial) {
-        return { isBuild: false, confidence: requestedAction.confidence, reason: requestedAction.reason };
-    }
-
-    if (isKnowledgeQuestionStructural(g)) {
-        return { isBuild: false, confidence: 0.9, reason: 'information question' };
-    }
 
     const derived = derivedColumns(g);
     if (derived && derived.length >= 2) {
@@ -88,8 +58,7 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     }
 
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(bareProbe);
-    const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe)
-        || /^\s*اعمل(?=[\s،:؛])/u.test(bare); // Unaccented leading imperative; questions and negations do not borrow it.
+    const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe);
     const hasContainer = CONTAINER_PATTERN.test(probe);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
     const describesContents = !!columnsAnywhereInHisRequest(g);
@@ -163,39 +132,11 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
 }
 
 export function isKnowledgeQuestionStructural(goalRaw: string): boolean {
-    // A complete read/report operation outranks incidental question words in its constraints.
-    if (parseExplicitFileReadRequest(goalRaw)) return false;
-    const g = unquotedIntentText(String(goalRaw || ''));
-    const action = hasRequestedAction(g);
+    const g = String(goalRaw || '');
     const bare = stripArabicDiacritics(g);
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
-    // Reading followed by an operational clause is a mixed request. Nouns
-    // such as "test counts" in the reading clause are not execution commands.
-    const readingLead = /^(?:\s*please\s+)?\s*(?:summari[sz]e|describe|translate|explain|compare)\b/i.test(bare)
-        || /^\s*(?:من\s+فضلك\s+)?(?:لخص|ترجم|اشرح|صف|قارن)(?=$|[\s،:؛؟])/u.test(bare);
-    const laterOperation = /(?:[.!?؟;،,:\n]|\b(?:and|then)\b)\s*(?:then\s+)?(?:please\s+)?(?:run|execute|build|create|develop|implement|modify|edit|delete|remove|install|open|save|append|export|overwrite|copy|rename|update|read|inspect|list|browse|search|navigate|click|capture|download|test(?!\s+(?:counts?|results?)\b))\b/i.test(bare)
-        || /(?:[.!?؟;،,:\n]|(?:^|\s)(?:ثم|وبعدها|وبعدين))\s*(?:ثم\s+)?(?:من\s+فضلك\s+)?(?:شغل|نفذ|ابن|ابني|انشئ|اكتب|عدل|احذف|افتح|احفظ|انسخ|انقل|اختبر)(?=$|[\s،:؛.!?؟])/u.test(bare);
-    if (readingLead && laterOperation) return false;
 
-    // A following answer-format instruction must not hide a yes/no question.
-    // A later execution command, however, remains an action for normal planning.
-    const questionEnd = g.search(/[?؟]/);
-    const yesNoLead = /^\s*(?:am|is|are|was|were|do|does|did|has|have|had|can|could|shall|should|will|would|may|might|must)(?:n['’]t)?\b/i.test(g);
-    if (yesNoLead && questionEnd >= 0) {
-        if (hasRequestedAction(g.slice(0, questionEnd + 1)).hasAffirmativeAction) return false;
-        if (/^\s*(?:can|could|would)\s+you\s+(?:please\s+)?(?:run|execute|open|install|delete|remove|save|append|export|overwrite)\b/i.test(g)) return false;
-        if (/^\s*do\s+(?:a|an|the|this|that|it)\b/i.test(g)) return false;
-        const remainder = g.slice(questionEnd + 1);
-        const outputWriteOnly = /^\s*(?:please\s+)?write\s+(?:one|two|three|\d+)\s+(?:\w+\s+)?(?:words?|sentences?)[.!?]?\s*$/i.test(remainder);
-        if (action.hasAffirmativeAction && !outputWriteOnly) return false;
-        const laterAction = /(?:^|[.!?؟;،,:\n])\s*(?:please\s+)?(?:run|execute|build|create|make|develop|implement|design|code|deploy|generate|scaffold|test|debug|repair|open|install|delete|modify|edit|save|append|export|overwrite|remove|copy|rename|update)\b/i.test(remainder)
-            || /(?:^|[.!?؟;،,:\n])\s*(?:من\s+فضلك\s+)?(?:أنشئ|انشئ|احذف|إحذف|اكتب|نفذ|نفّذ|ابن|ابني|صمم|صمّم|احفظ|انسخ|انقل|شغل|شغّل)(?=$|[\s،,:؛.!?؟])/u.test(remainder);
-        const laterWrite = !outputWriteOnly && /(?:^|[.!?؟;،,:\n])\s*(?:please\s+)?write\b/i.test(remainder);
-        if (laterAction || laterWrite) return false;
-        return true;
-    }
-    if (action.hasAffirmativeAction) return false;
     return isKnowledgeQuestionPattern(bare) || isKnowledgeQuestionPattern(probe);
 }
 
@@ -237,12 +178,9 @@ export async function classifyIntent(goalRaw: string): Promise<IntentClassificat
     const knowledge = isKnowledgeQuestionStructural(goalRaw);
     const engineering = isEngineeringBriefStructural(goalRaw);
 
-    // Also check requested action for denial/affirmative signals
-    const requestedAction = hasRequestedAction(goalRaw);
-
     let classification: IntentClassification;
 
-    if (engineering && !requestedAction.hasDenial) {
+    if (engineering) {
         classification = {
             isBuild: true,
             isBrowser: false,
@@ -252,40 +190,6 @@ export async function classifyIntent(goalRaw: string): Promise<IntentClassificat
             reason: 'engineering brief',
             hasExternalWebTarget: browser.hasExternalWebTarget,
         };
-    } else if (requestedAction.hasAffirmativeAction && build.isBuild) {
-        // Build request detected via hasRequestedAction (includes polite builds, explain-then-build, etc.)
-        classification = {
-            isBuild: true,
-            isBrowser: browser.hasExternalWebTarget,
-            isReadOnly: false,
-            isKnowledgeQuestion: false,
-            confidence: requestedAction.confidence,
-            reason: requestedAction.reason,
-            hasExternalWebTarget: browser.hasExternalWebTarget,
-        };
-    } else if (requestedAction.hasDenial) {
-        // Explicit denial (answer-only, no file changes, read-only)
-        if (requestedAction.isAnswerOnly || requestedAction.isNoFileChanges) {
-            classification = {
-                isBuild: false,
-                isBrowser: false,
-                isReadOnly: false,
-                isKnowledgeQuestion: true, // Route to central_answer for answer-only
-                confidence: requestedAction.confidence,
-                reason: requestedAction.reason,
-                hasExternalWebTarget: false,
-            };
-        } else {
-            classification = {
-                isBuild: false,
-                isBrowser: false,
-                isReadOnly: true,
-                isKnowledgeQuestion: false,
-                confidence: requestedAction.confidence,
-                reason: requestedAction.reason,
-                hasExternalWebTarget: false,
-            };
-        }
     } else if (readOnly) {
         classification = {
             isBuild: false,
@@ -353,15 +257,6 @@ export function clearIntentCache(): void {
 
 export function isBuildRequest(goalRaw: string): { isBuild: boolean; confidence: number; reason: string } {
     return hasBuildStructure(goalRaw);
-}
-
-/** Repair admission is separate from new construction and grants no tool authority. */
-export function isExistingSoftwareRepairRequest(goalRaw: string): boolean {
-    const g = unquotedIntentText(String(goalRaw || ''));
-    if (hasRequestedAction(goalRaw).hasDenial) return false;
-    const repairInstruction = /(?:^|[.!?؟;\n])\s*(?:(?:please|can you|could you|would you|من فضلك|هل يمكنك)\s+)?(?:fix|repair|debug|refactor|modify|edit|update|أصلح|اصلح|صلح|عدّل|عدل)\s+/i.test(g);
-    const softwareTarget = /\b(?:repository|repo|codebase|code|function|typescript|javascript|python|node(?:\.js)?)\b|(?:^|[\s،:؛.!?؟])(?:الكود|كود|الدالة|دالة|البرمجيات)(?=$|[\s،:؛.!?؟])/i.test(g);
-    return repairInstruction && softwareTarget;
 }
 
 export function isBrowserRequest(goalRaw: string): { isBrowser: boolean; confidence: number; reason: string; hasExternalWebTarget: boolean } {

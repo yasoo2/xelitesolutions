@@ -16,7 +16,6 @@
  */
 import path from 'path';
 import fs from 'fs';
-import { requestResourceManager } from '../core/resources/RequestResourceManager';
 
 /** OCR is skipped above this size — a 40MB photo is not a screenshot. */
 export const OCR_MAX_IMAGE_BYTES = 12_000_000;
@@ -147,18 +146,10 @@ export async function extractImageText(filePath: string): Promise<string> {
     try {
         const stat = fs.statSync(filePath);
         if (!stat.isFile() || stat.size > OCR_MAX_IMAGE_BYTES) return '';
-        let timer: ReturnType<typeof setTimeout> | undefined;
-        const timeout = new Promise<null>(resolve => { timer = setTimeout(() => resolve(null), OCR_TIMEOUT_MS); timer.unref?.(); });
-        // A timeout ends waiting, not the shared worker's actual recognition.
-        // Keep the heavy lease until recognition settles; never terminate a
-        // shared OCR worker just to release this request's accounting.
-        const recognition = requestResourceManager.withHeavy(async () => {
-            const worker = await getWorker();
-            return worker ? worker.recognize(filePath) : null;
-        }, { kind: 'image-ocr' });
-        let result: any;
-        try { result = await Promise.race([recognition, timeout]); }
-        finally { if (timer !== undefined) clearTimeout(timer); }
+        const worker = await getWorker();
+        if (!worker) return '';
+        const timeout = new Promise<null>(r => { const t = setTimeout(() => r(null), OCR_TIMEOUT_MS); (t as any).unref?.(); });
+        const result: any = await Promise.race([worker.recognize(filePath), timeout]);
         if (!result) { console.warn('[OCR] recognition timed out — continuing without verbatim text.'); return ''; }
         const text = tidy(String(result?.data?.text || ''));
         // A couple of stray characters is noise, not reading.
@@ -167,7 +158,6 @@ export async function extractImageText(filePath: string): Promise<string> {
         console.info(`[OCR] read ${text.length} chars from ${path.basename(filePath)} (confidence ${Math.round(result?.data?.confidence || 0)}%)`);
         return capped;
     } catch (e: any) {
-        if (/^RESOURCE_/.test(String(e?.code || ''))) throw e;
         console.warn(`[OCR] failed on ${path.basename(String(filePath))}: ${String(e?.message || e).slice(0, 120)}`);
         return '';
     }

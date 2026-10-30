@@ -1,5 +1,3 @@
-import { executeTool } from '../../modules/services/ToolService';
-import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { Request, Response } from 'express';
 import { persistChatStores, usesLocalChatStore } from '../chat-store';
 import mongoose from 'mongoose';
@@ -862,40 +860,4 @@ export async function sessionWorkspace(req: Request, res: Response) {
     //  session from sending a megabyte of text to draw four screens.
     const MAX = 500;
     return res.json({ preview, logs: logs.length > MAX ? logs.slice(-MAX) : logs });
-}
-
-async function executeScreenshotRead(context: { sessionId: string; workspaceId: string; userId: string }, input: { captureId?: string }) {
-    return executionFirewall.context.exit(() => executionFirewall.runInContext(undefined,
-        () => executeTool('screenshot_result', input, { ...context, artifactPresentation: true }),
-        { sessionId: context.sessionId, userId: context.userId }));
-}
-
-/** Private screenshot delivery: ownership is checked before resolving any file. */
-export async function sessionScreenshots(req: Request, res: Response) {
-    try {
-        const sessionId = String(req.params.id || '');
-        const owned = await requireOwnedSession(req, res, sessionId);
-        if (!owned) return;
-        const context = { sessionId, workspaceId: String(owned.workspaceId || ''), userId: requestUserId(req) };
-        const result = await executeScreenshotRead(context, {});
-        if (!result.ok) return res.status(404).json({ error: 'Screenshot unavailable' });
-        const captures = (result.output as any)?.captures || [];
-        res.setHeader('Cache-Control', 'private, no-store');
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        return res.json({ captures });
-    } catch { return res.status(404).json({ error: 'Screenshot unavailable' }); }
-}
-
-export async function sessionScreenshot(req: Request, res: Response) {
-    try {
-        const sessionId = String(req.params.id || '');
-        const owned = await requireOwnedSession(req, res, sessionId);
-        if (!owned) return;
-        const context = { sessionId, workspaceId: String(owned.workspaceId || ''), userId: requestUserId(req) };
-        const result = await executeScreenshotRead(context, { captureId: String(req.params.captureId || '') });
-        if (!result.ok) return res.status(404).json({ error: 'Screenshot unavailable' });
-        res.setHeader('Cache-Control', 'private, no-store');
-        res.setHeader('X-Content-Type-Options', 'nosniff');
-        return res.json(result.output);
-    } catch { return res.status(404).json({ error: 'Screenshot unavailable' }); }
 }

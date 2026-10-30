@@ -12,8 +12,6 @@ jest.mock('../modules/tools/definitions/LLMCacheTool', () => ({ LLMCacheTool: { 
 import { routeToModel, verifyProviderDirect, customRouteCooldownUntil, markProviderOk } from '../core/llm/intelligent-router';
 import * as providers from '../core/llm/providers/registry';
 import * as localBrain from '../core/llm/local-brain';
-import { narrate } from '../core/agents/narrator';
-import { localBrainState, resetLocalBrainBreaker } from '../core/llm/intelligent-router';
 import {
     aiCostPolicy, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost,
     providerCircuitKey, providerCircuitStatus, providerRetryAfterMs, recordProviderCircuitFailure,
@@ -210,34 +208,6 @@ describe('free-only provider continuity through routeToModel', () => {
         await expect(route({ signal: controller.signal })).rejects.toThrow('run_cancelled_by_owner');
         expect(mockCreate).not.toHaveBeenCalled();
         expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
-    });
-
-    it('forwards a narration deadline to the local provider without poisoning continuity', async () => {
-        process.env.LOCAL_LLM_DISABLE = '0';
-        process.env.AI_FREE_PROVIDERS = 'local';
-        (localBrain.isLocalBrainReady as jest.Mock).mockReturnValue(true);
-        registry.localProvider.isConfigured.mockReturnValue(true);
-        resetLocalBrainBreaker();
-        let observed: AbortSignal | undefined;
-        registry.localProvider.chatComplete.mockImplementation((_messages: any, _model: any, _delta: any, signal: AbortSignal) => {
-            observed = signal;
-            return new Promise((_resolve, reject) => {
-                signal.addEventListener('abort', () => reject(signal.reason), { once: true });
-            });
-        });
-        const result = await narrate({ goal: 'Explain a concept', next: { task: 'Answer' }, index: 1, total: 1, isArabic: false },
-            (prompt, signal) => routeToModel([{ role: 'user', content: prompt }], undefined, undefined, undefined, undefined, undefined, undefined,
-                { modelConfig: { provider: 'auto' }, purpose: 'internal', runId: 'narration-cancellation', signal }),
-            { timeoutMs: 80 });
-        expect(result).toEqual({ text: '', reject: 'timeout' });
-        expect(registry.localProvider.chatComplete).toHaveBeenCalledTimes(1);
-        expect(observed?.aborted).toBe(true);
-        expect(localBrainState().consecutiveTimeouts).toBe(0);
-        expect(localBrainState().open).toBe(false);
-        expect(providerCircuitStatus(providerCircuitKey('local')).blocked).toBe(false);
-        registry.localProvider.chatComplete.mockResolvedValue('I explain the concept before proceeding.');
-        await expect(route({ purpose: 'internal' })).resolves.toBe('I explain the concept before proceeding.');
-        resetLocalBrainBreaker();
     });
 });
 

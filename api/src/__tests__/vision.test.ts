@@ -10,20 +10,12 @@ import os from 'os';
 import path from 'path';
 import { describeImageAttachments, VISION_MAX_IMAGE_BYTES } from '../shared/vision';
 import { formatAttachmentsBlock, type AttachmentInput } from '../shared/attachments';
-// This suite verifies vision transport. Native OCR has a separate contract and
-// must not load guarded model assets while exercising image/provider fixtures.
-jest.mock('../shared/ocr', () => ({ extractImageText: jest.fn(async () => '') }));
-jest.mock('../core/resources/RequestResourceManager', () => ({ requestResourceManager: {
-    withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: admission.requestedOutputTokens }),
-    withHeavy: async (work: any) => work(),
-    currentSignal: () => undefined,
-} }));
 
 const PNG_1x1 = Buffer.from(
     'iVBORw0KGgoAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==', 'base64');
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-vision-'));
-// Preserve owned image fixtures as inspectable test evidence.
+afterAll(() => fs.rmSync(tmp, { recursive: true, force: true }));
 
 const realFetch = global.fetch;
 afterEach(() => { global.fetch = realFetch; delete process.env.JOE_VISION_BASE_URL; delete process.env.JOE_VISION_MODEL; delete process.env.LOCAL_LLM_BASE_URL; });
@@ -154,8 +146,7 @@ describe('vision — the image becomes a scene', () => {
             if (String(url).endsWith('/api/tags')) {
                 return { ok: true, json: async () => ({ models: [{ name: 'qwen2.5-coder:7b' }, { name: 'moondream:latest' }] }) } as any;
             }
-            return new Response(JSON.stringify({ done: true, done_reason: 'stop', eval_count: 10, prompt_eval_count: 1100,
-                message: { role: 'assistant', content: 'لقطة شاشة لواجهة جو مع زر أخضر' } }));
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'لقطة شاشة لواجهة جو مع زر أخضر' } }] }) } as any;
         }) as any;
         process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
         const savedKey = process.env.GROQ_API_KEY;
@@ -165,13 +156,10 @@ describe('vision — the image becomes a scene', () => {
             const r = await describeImageAttachments([att], { language: 'ar' });
             expect(r.described).toBe(1);
             expect(calls[0].url).toBe('http://127.0.0.1:11434/api/tags');
-            const chat = calls.find(c => c.url.endsWith('/api/chat'));
-            expect(chat?.url).toBe('http://127.0.0.1:11434/api/chat');
+            const chat = calls.find(c => c.url.endsWith('/chat/completions'));
+            expect(chat?.url).toBe('http://127.0.0.1:11434/v1/chat/completions');
             // The VISION model was chosen — never the coder model.
             expect(chat?.body?.model).toBe('moondream:latest');
-            expect(chat?.body?.messages[0].images[0]).toBe(PNG_1x1.toString('base64'));
-            expect(chat?.body?.options).toMatchObject({ num_ctx: 4096, num_predict: 900 });
-            expect(chat?.body?.keep_alive).toBe('5m');
             expect(att.visionDescribed).toBe(true);
         } finally { if (savedKey !== undefined) process.env.GROQ_API_KEY = savedKey; }
     });
@@ -224,8 +212,7 @@ describe('vision on a CPU laptop — the model that can finish goes first', () =
             if (String(url).endsWith('/api/tags')) {
                 return { ok: true, json: async () => ({ models: [{ name: 'llava:latest' }, { name: 'qwen2.5-coder:7b' }, { name: 'moondream:latest' }] }) } as any;
             }
-            return new Response(JSON.stringify({ done: true, done_reason: 'stop', eval_count: 10, prompt_eval_count: 1100,
-                message: { role: 'assistant', content: 'لقطة شاشة لصفحة هبوط داكنة بشعار ذهبي' } }));
+            return { ok: true, json: async () => ({ choices: [{ message: { content: 'لقطة شاشة لصفحة هبوط داكنة بشعار ذهبي' } }] }) } as any;
         }) as any;
         process.env.LOCAL_LLM_BASE_URL = 'http://127.0.0.1:11434/v1';
         const savedKey = process.env.GROQ_API_KEY;
@@ -234,7 +221,7 @@ describe('vision on a CPU laptop — the model that can finish goes first', () =
             const att = imageAtt('order.png');
             const r = await describeImageAttachments([att], { language: 'ar' });
             expect(r.described).toBe(1);
-            const chat = calls.find(c => c.url.endsWith('/api/chat'));
+            const chat = calls.find(c => c.url.endsWith('/chat/completions'));
             expect(chat?.body?.model).toBe('moondream:latest');   // NOT llava
         } finally { if (savedKey !== undefined) process.env.GROQ_API_KEY = savedKey; }
     });

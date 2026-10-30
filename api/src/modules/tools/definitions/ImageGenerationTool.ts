@@ -43,14 +43,8 @@ export const ImageGenerationTool: ToolDefinition = {
         // FREE-FIRST: Try Pollinations first (free provider)
         try {
             console.log(`🎨 Trying Pollinations (free provider)...`);
-            // Verify Pollinations URL is actually accessible via HEAD request
-            const verifyResponse = await fetch(pollinationsUrl, { method: 'HEAD', signal: AbortSignal.timeout(10000) });
-            if (verifyResponse.ok) {
-                console.log(`🎨 Pollinations URL verified accessible`);
-                return { ok: true, output: { url: pollinationsUrl }, logs: ['Generated via Pollinations (free, verified)'] };
-            } else {
-                console.error(`Pollinations returned HTTP ${verifyResponse.status}: ${verifyResponse.statusText}`);
-            }
+            // Pollinations doesn't require API key and is free
+            return { ok: true, output: { url: pollinationsUrl }, logs: ['Generated via Pollinations (free)'] };
         } catch (e: any) {
             console.error('Pollinations failed:', e);
         }

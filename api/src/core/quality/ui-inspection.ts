@@ -762,46 +762,6 @@ export async function inspectUi(
     const metrics: Record<string, any> = {};
     const eyes = opts?.eyes;
 
-    // Capture URL and viewport for QA evidence persistence (CRITICAL-REAL-JOE-UI-001)
-    const pageUrl = await page.url().catch(() => 'unknown');
-
-    /**
-     * Enrich a finding with URL and viewport metadata for QA evidence persistence.
-     * This addresses CRITICAL-REAL-JOE-UI-001: QA evidence persistence gap.
-     */
-    function enrichFinding(finding: BehaviourFinding, viewport?: { name: string; w: number; h: number; requested: number; actual: number }): BehaviourFinding {
-        const enriched = { ...finding } as BehaviourFinding;
-        const baseEvidence = finding.evidence;
-        const urlMetadata = { url: pageUrl };
-        const viewportMetadata = viewport ? {
-            name: viewport.name,
-            requestedWidth: viewport.requested,
-            actualWidth: viewport.actual,
-            height: viewport.h
-        } : undefined;
-
-        if (Array.isArray(baseEvidence)) {
-            enriched.evidence = baseEvidence.map((item: unknown) => {
-                if (item && typeof item === 'object') {
-                    return { ...(item as Record<string, any>), url: pageUrl, viewport: viewportMetadata } as any;
-                }
-                return { url: pageUrl, viewport: viewportMetadata, ...(item as Record<string, any>) } as any;
-            }) as any;
-        } else if (baseEvidence && typeof baseEvidence === 'object') {
-            enriched.evidence = {
-                ...(baseEvidence as Record<string, any>),
-                url: pageUrl,
-                viewport: viewportMetadata
-            } as any;
-        } else {
-            enriched.evidence = [{
-                url: pageUrl,
-                viewport: viewportMetadata
-            }] as any;
-        }
-        return enriched;
-    }
-
     /* ---- colours ------------------------------------------------------- */
     try {
         const raw: any = await evalInPage(page, measureContrast);
@@ -816,7 +776,7 @@ export async function inspectUi(
             await eyes?.mark(page, c.fails.map((f: any) => ({ x: f.x, y: f.y, width: f.width, height: f.height, label: `${f.ratio}:1` })), {
                 note: `تباين ضعيف: ${c.fails.length} عنصر`, tone: 'warn', holdMs: 1200,
             });
-            findings.push(enrichFinding({
+            findings.push({
                 code: 'low_contrast', severity: contrastSeverity(c.fails),
                 ar: `${c.fails.length} نص لا يجتاز تباين WCAG AA (الأسوأ ${c.fails[0].ratio}:1 والمطلوب ${c.fails[0].need}:1): «${c.fails[0].text}»`,
                 en: `${c.fails.length} text element(s) fail WCAG AA contrast (worst ${c.fails[0].ratio}:1, needs ${c.fails[0].need}:1): "${c.fails[0].text}"`,
@@ -825,7 +785,7 @@ export async function inspectUi(
                 // pair. Without this, Joe can describe the failure but cannot
                 // make the evidence-bound source change it promises.
                 evidence: c.fails.slice(0, 24),
-            }, undefined));
+            });
         }
     } catch { /* colours are one lens, never the whole check */ }
 
@@ -856,7 +816,7 @@ export async function inspectUi(
             if (!t) continue;
             const n = i.count ? ` (${i.count})` : '';
             const s = i.sample ? `: ${i.sample}` : '';
-            findings.push(enrichFinding({ code: `a11y_${i.code}`, severity: i.severity, ar: `${t.ar}${n}${s}`, en: `${t.en}${n}${s}`, hint: t.hint }, undefined));
+            findings.push({ code: `a11y_${i.code}`, severity: i.severity, ar: `${t.ar}${n}${s}`, en: `${t.en}${n}${s}`, hint: t.hint });
         }
     } catch { /* structure is one lens too */ }
 
@@ -865,13 +825,13 @@ export async function inspectUi(
         const composition: any = await evalInPage(page, measureContentComposition);
         metrics.composition = composition;
         if (composition.hasImageWorkflow && (!composition.hasImageLedWorkspace || !composition.hasGalleryContract)) {
-            findings.push(enrichFinding({
+            findings.push({
                 code: 'generic_image_composition', severity: 'major',
                 ar: 'واجهة الصور تستخدم تركيب السجلات العام بدل مساحة بصرية يقودها المعرض — تغيير الألوان وحده لا يصنع تصميماً جديداً',
                 en: 'The image workflow uses the generic records composition instead of a gallery-led visual workspace — changing colours alone is not a new design',
                 hint: 'use a media-specific editor/gallery composition and keep images as the primary visual hierarchy',
                 evidence: [{ hasImageLedWorkspace: composition.hasImageLedWorkspace, hasGalleryContract: composition.hasGalleryContract, panelCount: composition.panelCount }],
-            }, undefined));
+            });
         }
     } catch { /* composition is a quality lens, not permission to lose the rest */ }
 
@@ -950,67 +910,67 @@ export async function inspectUi(
     }
 
     if (!hasViewportMeta) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'no_viewport_meta', severity: 'critical',
             ar: 'لا يوجد وسم viewport — الصفحة لن تتكيّف مع الجوّال إطلاقاً',
             en: 'No <meta name="viewport"> — the page cannot adapt to a phone at all',
             hint: '<meta name="viewport" content="width=device-width, initial-scale=1">',
-        }, undefined));
+        });
     }
     if (viewportFailures.length) {
         const detail = viewportFailures.map(v => `${v.requested}px->${v.actual || '?'}px`).join(', ');
-        findings.push(enrichFinding({
+        findings.push({
             code: 'viewport_emulation_failed', severity: 'major',
             ar: `تعذر تطبيق مقاسات الاختبار فعلياً (${detail}) — لا أنسب نتائج الهاتف إلى التطبيق قبل إصلاح أداة القياس`,
             en: `Viewport emulation did not apply (${detail}) — mobile findings were not attributed to the app`,
             hint: 'repair the browser viewport instrumentation, then rerun the same responsive checks',
             evidence: viewportFailures,
-        }, undefined));
+        });
     }
     if (overflowAt) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'mobile_overflow', severity: 'major',
             ar: `تمرير أفقي على ${overflowAt} — المحتوى يخرج خارج الشاشة`,
             en: `Horizontal scrolling at ${overflowAt} — content spills off the screen`,
             hint: 'give the offending element max-width:100% and let the grid wrap',
             evidence: overflowEvidence,
-        }, undefined));
+        });
     }
     if (clippedCount > 0) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'text_clipped', severity: 'major',
             ar: `${clippedCount} عنصر نصّه مقصوص داخل صندوقه على عرض ${clippedAt} — الكلام موجود في الصفحة ولا يُرى${clippedEvidence[0]?.text ? `: «${clippedEvidence[0].text}»` : ''}`,
             en: `${clippedCount} element(s) have their text cut off by their own box at ${clippedAt} — the words are in the page and cannot be read${clippedEvidence[0]?.text ? `: "${clippedEvidence[0].text}"` : ''}`,
             hint: 'let the box grow, wrap the text, or add text-overflow: ellipsis so the cut is at least visible',
             evidence: clippedEvidence,
-        } as any, undefined));
+        } as any);
     }
     if (mobileTiny > 0) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'mobile_tap_targets', severity: mobileTiny >= 6 ? 'major' : 'minor',
             // Named, not counted: «6 targets» is a number nobody can act on.
             ar: `${mobileTiny} هدف لمس أصغر من ${TAP_TARGET_MIN_PX}px على الجوّال — يصعب ضغطه بالإصبع${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join('، ')}` : ''}`,
             en: `${mobileTiny} tap target(s) under ${TAP_TARGET_MIN_PX}px on a phone — hard to hit with a thumb${mobileTinyNames.length ? `: ${mobileTinyNames.slice(0, 3).join(', ')}` : ''}`,
             hint: 'min-height:44px and min-width:44px on buttons and nav links',
             evidence: mobileTinyEvidence,
-        }, undefined));
+        });
     }
     if (mobileFonts > 0) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'mobile_small_text', severity: 'minor',
             ar: `${mobileFonts} عنصر بخط أصغر من 12px على الجوّال`,
             en: `${mobileFonts} element(s) render below 12px on a phone`,
             hint: 'never go under 12px for body copy',
-        }, undefined));
+        });
     }
     if (fragmentedHeader) {
-        findings.push(enrichFinding({
+        findings.push({
             code: 'mobile_header_fragmented', severity: 'major',
             ar: `رأس الصفحة على الجوّال متشظٍ إلى ${fragmentedHeader.rows} صفوف وارتفاعه ${fragmentedHeader.h}px، وعناصره الخارجة عن العرض: ${fragmentedHeader.offscreenControls || 0}`,
             en: `The mobile header fragments into ${fragmentedHeader.rows} rows, is ${fragmentedHeader.h}px tall, and has ${fragmentedHeader.offscreenControls || 0} off-screen control(s)`,
             hint: 'keep brand and utility action on one row, and put navigation in one compact scrollable row',
             evidence: [fragmentedHeader],
-        }, undefined));
+        });
     }
     metrics.mobileTinyNames = mobileTinyNames;
     metrics.uiFindings = findings.length;

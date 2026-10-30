@@ -8,7 +8,6 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 export { recoverMissingNpmLauncher } from '../npm-launcher-recovery';
 import { executeTool } from '../../services/ToolService';
-import { engineeringExecution, issueEngineeringTask } from '../../services/AutonomousEngineeringPolicy';
 import { normalizeConceptualArtifactPath } from '../runtime-artifact-path';
 import { compactApiSelectionArtifact } from '../../../core/api-discovery/integration-profiles';
 import type { ApiSelectionArtifact } from '../../../core/api-discovery/types';
@@ -1953,20 +1952,6 @@ delete toolArgs.verificationMode;
 
     async execute(input: { phase: any; projectContext?: any; repairCriteria?: string[] }, context?: any) {
         const { phase, projectContext, repairCriteria } = input;
-        const isolatedLease = engineeringExecution(context);
-        if (isolatedLease) {
-            if (!isolatedLease.phases.includes(phase)) return { ok: false, error: 'isolated_phase_untrusted', output: { status: 'failed', results: [], completedTasks: 0, totalTasks: 0, phaseNumber: phase?.phaseNumber }, logs: [] };
-            const isolatedResults: any[] = [];
-            for (const task of phase.tasks) {
-                if (!engineeringExecution(context)) return { ok: false, error: 'isolated_execution_cancelled', output: { status: 'failed', results: isolatedResults }, logs: [] };
-                const result = await executeTool(task.tool, task.input, issueEngineeringTask(context, phase, task));
-                isolatedResults.push({ task: task.task, tool: task.tool, ok: result.ok === true, execution: 'ran', output: result.output, error: result.error });
-                if (result.ok !== true || result.output?.status !== 'completed') return { ok: false, error: result.error || 'isolated_task_failed',
-                    output: { phaseNumber: phase.phaseNumber, status: 'failed', results: isolatedResults, completedTasks: isolatedResults.length - 1, totalTasks: phase.tasks.length }, logs: [] };
-            }
-            return { ok: true, output: { phaseNumber: phase.phaseNumber, status: 'completed', results: isolatedResults,
-                completedTasks: isolatedResults.length, totalTasks: phase.tasks.length, verificationPassed: true }, logs: [] };
-        }
         const assertRunActive = () => {
             if (typeof context?.isCancelled === 'function' && context.isCancelled()) {
                 throw new Error('run_cancelled_by_owner');

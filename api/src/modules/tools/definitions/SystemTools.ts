@@ -13,7 +13,6 @@ import { handleShellCommand } from '../handlers';
 import { prepareArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
-import { AUTONOMOUS_FILE_BYTES } from '../../services/AutonomousFilePolicy';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
@@ -680,12 +679,10 @@ export class FileEditTool extends BaseTool {
         type: 'object' as const,
         properties: {
             filename: { type: 'string' },
-            path: { type: 'string', minLength: 1 },
             find: { type: 'string', description: 'Text to find (alias: search / old_string)' },
-            replace: { type: 'string', minLength: 0, description: 'Replacement text (alias: new_string); empty removes the match' }
+            replace: { type: 'string', description: 'Replacement text (alias: new_string)' }
         },
-        required: ['find', 'replace'],
-        requiredAny: [['filename', 'path']]
+        required: ['filename', 'find', 'replace']
     };
     outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
     permissions: ToolPermission[] = ['write', 'read'];
@@ -773,37 +770,14 @@ export class FileEditTool extends BaseTool {
                 : ` The file has ${lines.length} lines and none of them opens with that text.`;
             return { ok: false, error: `Text to replace not found in ${filename}. Looked for: ${wanted}.${hint}`, logs };
         }
-        if (typeof input.autonomousEditBefore === 'string' && typeof input.autonomousEditAfter === 'string') {
-            // The gateway prepared a unique literal edit. Recheck the same preimage
-            // on the writable descriptor; no await or path reopen occurs before writing.
-            const fd = fs.openSync(full, fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW ?? 0));
-            try {
-                const stat = fs.fstatSync(fd);
-                if (!stat.isFile() || stat.nlink !== 1 || stat.size > AUTONOMOUS_FILE_BYTES) {
-                    return { ok: false, error: 'invalid_file_target', logs };
-                }
-                const bytes = Buffer.alloc(AUTONOMOUS_FILE_BYTES + 1);
-                const length = fs.readSync(fd, bytes, 0, bytes.length, 0);
-                const before = Buffer.from(input.autonomousEditBefore, 'utf8');
-                if (length !== before.length || !bytes.subarray(0, length).equals(before)) {
-                    return { ok: false, error: 'file_changed', logs };
-                }
-                if (context?.isCancelled?.()) return { ok: false, error: 'cancelled', logs };
-                content = input.autonomousEditAfter;
-                fs.writeFileSync(fd, content, 'utf8');
-                fs.ftruncateSync(fd, Buffer.byteLength(content));
-            } finally { fs.closeSync(fd); }
-        } else {
-            content = content.replace(findInFile, replaceInFile);
-            fs.writeFileSync(full, content);
-        }
+        content = content.replace(findInFile, replaceInFile);
+        fs.writeFileSync(full, content);
         logs.push(`edit=${filename}`);
 
         const findLines = find.split('\n').length;
         const replaceLines = replace.split('\n').length;
         broadcast({
             type: 'diff',
-            sessionId: context?.sessionId,
             data: {
                 path: filename,
                 content: content,
@@ -890,7 +864,6 @@ export class WriteFileTool extends BaseTool {
             content: { type: 'string' },
             mode: { type: 'string', enum: ['overwrite', 'append'] },
             requireExisting: { type: 'boolean' },
-            createOnly: { type: 'boolean' },
             ensureSingleAppend: { type: 'boolean' },
             expectedFinalLineCount: { type: 'number' }
         },
@@ -961,7 +934,7 @@ export class WriteFileTool extends BaseTool {
             }
             logs.push(`${alreadySatisfied ? 'append_already_satisfied' : 'append'}=${rawPath}`);
         } else {
-            fs.writeFileSync(full, safeContent, input?.createOnly === true ? { flag: 'wx' } : undefined);
+            fs.writeFileSync(full, safeContent);
             logs.push(`write=${rawPath}`);
         }
 
@@ -969,7 +942,6 @@ export class WriteFileTool extends BaseTool {
         const lines = diffContent.split('\n');
         broadcast({
             type: 'diff',
-            sessionId: context?.sessionId,
             data: {
                 path: rawPath,
                 content: finalContent,

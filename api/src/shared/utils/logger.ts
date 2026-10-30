@@ -1,6 +1,5 @@
 import winston from 'winston';
 import 'winston-daily-rotate-file';
-import { logRotationPolicy } from './log-rotation-policy';
 
 const logFormat = winston.format.combine(
     winston.format.timestamp(),
@@ -10,8 +9,9 @@ const logFormat = winston.format.combine(
 const transport = new winston.transports.DailyRotateFile({
     filename: 'logs/application-%DATE%.log',
     datePattern: 'YYYY-MM-DD-HH',
+    zippedArchive: true,
     maxSize: '20m',
-    ...logRotationPolicy(process.env.NODE_ENV)
+    maxFiles: '14d'
 });
 
 export const logger = winston.createLogger({

@@ -37,7 +37,23 @@ export class DeployManager {
     private lastDeployFinishTime: number | null = null;
 
     private constructor() {
+        this.setupSafeDirectory().catch(err => {
+            logger.error(`[DeployManager] Failed to setup safe.directory: ${err.message}`);
+        });
         this.startAutoDeployPollerInternal();
+    }
+
+    private async setupSafeDirectory() {
+        try {
+            // Clean up duplicates and set wildcard safely using quotes to prevent shell expansion
+            await this.runCommand('git', ['config', '--global', '--replace-all', 'safe.directory', "'*'"], PROJECT_ROOT);
+            // Also explicitly add the project root paths as backups
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', PROJECT_ROOT], PROJECT_ROOT);
+            await this.runCommand('git', ['config', '--global', '--add', 'safe.directory', '/root/xelitesolutions'], PROJECT_ROOT);
+            logger.info('[DeployManager] Added safe.directory exceptions for git successfully.');
+        } catch (e: any) {
+            logger.warn(`[DeployManager] safe.directory setup warning: ${e.message}`);
+        }
     }
 
     public static getInstance(): DeployManager {

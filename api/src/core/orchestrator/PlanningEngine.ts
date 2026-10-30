@@ -1,9 +1,4 @@
-import { isCaptureResultInquiry } from '../intelligence/capture-result-inquiry';
 import { StructuredIntent } from '../intelligence/IntentParser';
-import { boundedNoFileTerminalCommands, hasTerminalExecutionDenial, parseRuntimeDiagnosticFacts } from './runtime-diagnostic-contract';
-import { boundedReadNavigationUnderFileConstraint } from '../intelligence/bounded-read-navigation';
-import { isReadOnlyWorkspaceOverviewRequest } from './workspace-overview';
-import { StructuredSpecification, Requirement, Constraint, ConstraintInteraction, PhasePlan, ExecutionTask, RequirementTraceabilityEntry, ImplicitRequirement, AcceptanceCriterion } from '../intelligence/specification';
 import { catalogueFor, registeredToolNames, capabilityRoute, inputForTool } from './toolCatalog';
 import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
@@ -13,11 +8,10 @@ import { findActiveBuiltProject } from './active-built-project';
 import { isBoundedTerminalDiagnosticRequest } from './buildIntent';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
-import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers, hasGlobalExplicitReadDenial } from './file-intent';
+import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers } from './file-intent';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
-import { hasRequestedAction } from '../intelligence/requested-action';
 import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
@@ -140,27 +134,6 @@ export interface ExecutionPlan {
         parallelGroups?: number;
         adaptiveAttempts?: number;
         confidence?: number;
-        /**
-         * Specification-driven planning metadata: ID of the structured specification
-         * this plan was generated from.
-         */
-        specificationId?: string;
-        /**
-         * Requirement traceability matrix linking requirements to phases, tasks, and verification.
-         */
-        requirementTraceability?: RequirementTraceabilityEntry[];
-        /**
-         * Constraint tensions identified in the specification.
-         */
-        constraintTensions?: ConstraintInteraction[];
-        /**
-         * Answer-only contract: the request explicitly asks for an answer without execution.
-         */
-        answerOnly?: boolean;
-        /**
-         * No file changes contract: the request explicitly forbids file modifications.
-         */
-        noFileChanges?: boolean;
     };
 }
 
@@ -303,7 +276,7 @@ export class PlanningEngine {
      *  instead of closed verb/noun vocabularies. Kept as a static so every
      *  existing call site and test keeps working unchanged. */
     static looksLikeBuild(goalRaw: string): boolean {
-        return !isCaptureResultInquiry(goalRaw) && isBuildRequest(goalRaw).isBuild;
+        return isBuildRequest(goalRaw).isBuild;
     }
 
     /**
@@ -345,7 +318,7 @@ export class PlanningEngine {
         return asksToRead && namesSource && asksToExecute;
     }
 
-static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
+    static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         // A declared category list is field OPTIONS, not scope evidence:
         // «بفئات: طعام، مواصلات، فواتير» made an expense app a billing
         // SYSTEM because the category word «فواتير» sat in dataSignals.
@@ -361,13 +334,11 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
          *
          * «بنِ نظاماً لمشتل نباتات: النباتات والموردون والطلبيات» — a system
          * with SUPPLIERS and ORDERS, which is a database by definition. The
-         * list carried «طلبات» and matched neither «الطلبيات» ولا «الموردون»,
+         * list carried «طلبات» and matched neither «الطلبيات» nor «الموردون»,
          * so the scope came back «app» and he would have received a front-end
          * with nowhere to put a supplier.
          */
-        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp\b)/i;
-        // Explicit CLI/utility/script recognition — these are NOT web systems
-        const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
+        const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp|pos)/i;
         // Consuming a public or third-party API is not the same as asking Joe
         // to own a backend.  Keep explicit API-building requests as systems,
         // while allowing browser apps to call services such as Open-Meteo.
@@ -389,10 +360,8 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
         // A single document, said outright.
         const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
-        
-        // A browser application may deliberately consume a public or third-party API and
+
+        // A browser application may deliberately consume a public API and
         // explicitly forbid an owned backend. A conditional "if authentication
         // is needed" with local/demo persistence is not evidence that Joe must
         // invent one. Keep this exception narrow: an explicit no-backend
@@ -402,34 +371,16 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const conditionalDemoAuth = /\bif\s+authentication\s+is\s+needed\b[^.!?\n]{0,160}\b(?:local|demo)\b[^.!?\n]{0,80}\bpersistence\b/i.test(g);
         const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
         const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
-        // CLI/utility/script requests are NOT web systems
-        const cli = cliSignals.test(g);
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInput = csvInputSignals.test(g);
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
-        const publicApi = publicApiWithoutBackend && conditionalDemoAuth;
-const ownsBackendEffective = ownsBackend && !cli && !csvInput;
-        const dataEffective = data && !cli && !csvInput && !publicApi;
-        const appEffective = app && !cli && !csvInput;
-        const pageEffective = page && !dataEffective;
- 
-        // Genuine POS (point of sale) systems are systems, not apps — detect before general app logic
-        const posSignals = /\b(?:pos|point[- ]?of[- ]?sale)\b/i;
-        const isPos = posSignals.test(g);
- 
+
         // «صفحة هبوط لتطبيق جوال» is a PAGE about an app, not an app: when the
         // request names the document it wants, that wins over the subject it is
         // about. Only owning data outranks it.
-        if (pageEffective && !dataEffective) return 'page';
-        if (cli) return 'page'; // CLI/utility/script → treat as page (file-level, not web system)
-        if (csvInput) return 'page'; // CSV/TSV input → treat as page (file-level, not web system)
-        if (isPos) return 'system'; // Genuine POS systems are systems, not apps
-        // Strong app signals with data signals → app (web app with data), not system
-        // System only when there are clear backend signals without strong app signals
-        if (dataEffective && !appEffective) return 'system';
-        if (appEffective) return 'app';
-return 'page';
+        if (page && !data) return 'page';
+        if (data) return 'system';
+        if (app) return 'app';
+        return 'page';
     }
 
     /** True when the request explicitly asks to SEARCH/look up something (a real
@@ -793,126 +744,6 @@ Rules:
             ? `${userGoal}\n${goalNorm}` : userGoal;
         const goalLower = probe.toLowerCase();
 
-        // [ANSWER-ONLY FRONT-DOOR GUARD] Check for explicit answer-only / no-execution contracts
-        // BEFORE any planning. This catches long quoted specifications that say
-        // "Explain this without executing" or "Answer only" before they reach
-        // the planner and get turned into a build task.
-        // Always run text-based analysis first — rawIntent metadata is supplementary,
-        // not a substitute for explicit user language. Explicit "Answer only" in text
-        // must always win over metadata flags.
-        let requestedAction = hasRequestedAction(userGoal);
-        
-        // Supplement with IntentParser metadata only when text analysis is inconclusive
-        const intentRaw = intent.rawIntent || {};
-        if (!requestedAction.hasDenial) {
-            // Text didn't detect denial; check if IntentParser found one
-            if (intentRaw.answerOnly === true) {
-                requestedAction = { ...requestedAction, isAnswerOnly: true, hasDenial: true };
-            } else if (intentRaw.noFileChanges === true) {
-                requestedAction = { ...requestedAction, isNoFileChanges: true, hasDenial: true };
-            }
-        } else if (requestedAction.isAnswerOnly && intentRaw.noFileChanges === true) {
-            // Text says "Answer only" but IntentParser also notes noFileChanges;
-            // Answer-only is stronger (no execution at all), so keep isAnswerOnly=true.
-            // Do NOT add isNoFileChanges — global execution denial must win over
-            // file-only metadata, otherwise the NO-FILE-CHANGES GUARD could allow
-            // browser navigation for a request that explicitly forbids ALL execution.
-            // requestedAction = { ...requestedAction, isNoFileChanges: true }; // REMOVED
-        }
-        
-        // [ANSWER-ONLY FRONT-DOOR GUARD] Check for explicit answer-only / no-execution contracts
-        // BEFORE any planning. This catches long quoted specifications that say
-        // "Explain this without executing" or "Answer only" before they reach
-        // the planner and get turned into a build task.
-        const boundedExplicitRead = parseExplicitFileReadRequest(userGoal);
-        if (hasGlobalExplicitReadDenial(userGoal) || requestedAction.isAnswerOnly && !boundedExplicitRead || hasTerminalExecutionDenial(userGoal)) {
-            console.log('[PlanningEngine] ⚡ Answer-only contract detected — returning answer-only plan.');
-            return {
-                id: `answer_only_${Date.now()}`,
-                goal: intent.goal,
-                steps: [{
-                    id: 'answer_only',
-                    description: 'Answer the question directly without executing any tools',
-                    tool: 'central_answer',
-                    agent: 'General',
-                    input: { question: intent.goal },
-                    dependsOn: [],
-                }],
-                metadata: {
-                    complexity: 'low',
-                    riskLevel: 'low',
-                    matchedBy: 'answer-only-contract',
-                    deterministic: true,
-                    answerOnly: true,
-                    noFileChanges: false,
-                },
-            };
-        }
-        
-
-        // A question about a saved result is not a new browser action.
-        // Derive this from the current user text, never client metadata alone.
-        if (isCaptureResultInquiry(userGoal)) return {
-            id: `capture_result_answer_${Date.now()}`, goal: intent.goal,
-            steps: [{ id: 'capture_result_answer', description: 'Answer from owned saved capture evidence',
-                tool: 'central_answer', agent: 'General', input: { question: intent.goal }, dependsOn: [] }],
-            metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'capture-result-inquiry', deterministic: true },
-        };
-        // [NO-FILE-CHANGES GUARD] Check for no-file-changes constraint.
-        // This should NOT block browser navigation requests (URL + browser verb).
-        // A "no file changes" request with an explicit browser navigation target
-        // should proceed with the constraint preserved, not be routed to central_answer.
-        if (requestedAction.isNoFileChanges && isReadOnlyWorkspaceOverviewRequest(userGoal)) {
-            return { id: `workspace_overview_${Date.now()}`, goal: intent.goal,
-                steps: [{ id: 'workspace_overview', description: 'Read the owned workspace root and README without changes',
-                    tool: 'project_pipeline', agent: 'Dev', input: { request: intent.goal }, dependsOn: [] }],
-                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'readonly-workspace-overview', deterministic: true, noFileChanges: true } };
-        }
-        const runtimeFacts = parseRuntimeDiagnosticFacts(userGoal);
-        if (runtimeFacts) return {
-            id: `runtime_diagnostics_${Date.now()}`, goal: intent.goal,
-            steps: [{ id: 'runtime_diagnostics', description: 'Observe Joe API runtime and authorized workspace facts',
-                tool: 'runtime_diagnostics', agent: 'Dev', input: { request: intent.goal, facts: runtimeFacts, path: '.' }, dependsOn: [] }],
-            metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'runtime-diagnostics', noFileChanges: true, deterministic: true },
-        };
-        const terminalCommands = requestedAction.isNoFileChanges ? boundedNoFileTerminalCommands(userGoal) : null;
-        if (terminalCommands) return {
-            id: `terminal_check_${Date.now()}`, goal: intent.goal,
-            steps: terminalCommands.map((command, index) => ({
-                id: `terminal_diagnostic_${index}`, description: `Read-only local diagnostic: ${command}`,
-                tool: 'shell_execute', agent: 'Dev', input: { command, request: intent.goal },
-                dependsOn: index ? [`terminal_diagnostic_${index - 1}`] : [],
-            })),
-            metadata: { complexity: 'low', riskLevel: 'low', terminalExecution: true, noFileChanges: true, deterministic: true },
-        };
-        if (requestedAction.isNoFileChanges && !boundedExplicitRead) {
-            if (boundedReadNavigationUnderFileConstraint(userGoal)) {
-                console.log('[PlanningEngine] ⚡ No file changes constraint with browser target — preserving constraint, allowing browser navigation.');
-            } else {
-                console.log('[PlanningEngine] ⚡ No file changes contract detected — returning answer-only plan.');
-                return {
-                    id: `answer_only_${Date.now()}`,
-                    goal: intent.goal,
-                    steps: [{
-                        id: 'answer_only',
-                        description: 'Provide explanation without making file changes',
-                        tool: 'central_answer',
-                        agent: 'General',
-                        input: { question: intent.goal },
-                        dependsOn: [],
-                    }],
-                    metadata: {
-                        complexity: 'low',
-                        riskLevel: 'low',
-                        matchedBy: 'no-file-changes-contract',
-                        deterministic: true,
-                        answerOnly: true,
-                        noFileChanges: true,
-                    },
-                };
-            }
-        }
-
         // IntentParser has already proven that this is a bounded route decision.
         // Honor its one-tool contract before broad build/read-only/capability routes
         // can reinterpret words from the example application as a new project.
@@ -958,13 +789,7 @@ Rules:
         // a model round. The returned plan still uses the normal ToolService
         // path; this merely gives a proven tool order its proper precedence.
         const capabilityCandidate = String((intent as any)?.rawIntent?.capabilityCandidate || '');
-        // Concrete literal arguments outrank an inferred capability label.
-        // Execution still uses the existing file plan and ToolService guards.
-        const explicitEdit = parseExplicitFileEditRequest(userGoal);
-        const explicitAppend = parseExplicitAppendFileRequest(userGoal);
-        const explicitFile = parseExplicitFileRequest(userGoal);
-        const explicitReadFile = parseExplicitFileReadRequest(userGoal);
-        if (capabilityCandidate && !explicitEdit && !explicitAppend && !explicitFile && !explicitReadFile) {
+        if (capabilityCandidate) {
             const capabilityPlan = PlanningEngine.capabilityPlan({ ...intent, goal: userGoal }, context);
             if (capabilityPlan?.metadata?.matchedBy === 'capability-input-needed'
                 || capabilityPlan?.steps?.some((step: ExecutionStep) => step.tool === capabilityCandidate)) {
@@ -972,24 +797,10 @@ Rules:
             }
         }
 
-        if (explicitEdit) {
-            const steps: ExecutionStep[] = [{
-                id: 'file_edit_literal', description: `تعديل النص المحدد في ${explicitEdit.path}`,
-                tool: 'file_edit', agent: 'Dev', dependsOn: [],
-                input: { path: explicitEdit.path, find: explicitEdit.find, replace: explicitEdit.replace, request: intent.goal },
-            }];
-            if (explicitEdit.readBack) steps.push({
-                id: 'file_read_back', description: `قراءة ${explicitEdit.path} بعد التعديل`,
-                tool: 'read_file', agent: 'Dev', dependsOn: ['file_edit_literal'],
-                input: { path: explicitEdit.path, request: intent.goal },
-            });
-            return { id: `file_edit_${Date.now()}`, goal: intent.goal, steps,
-                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-file-edit-contract', deterministic: true, localOnly: true } };
-        }
-
         // Appending literal content to an existing file is a deterministic
         // mutation contract. It must win before the broader create/write route
         // and must never ask a provider to guess how to preserve the file.
+        const explicitAppend = parseExplicitAppendFileRequest(userGoal);
         if (explicitAppend) {
             const appendAr = /[\u0600-\u06FF]/.test(userGoal);
             const steps: ExecutionStep[] = [{
@@ -1034,6 +845,7 @@ Rules:
         // An explicit named-file contract is a real filesystem task, not a
         // request to invent an application. Keep the plan deterministic and
         // pass concrete arguments to the policy gateway's file tools.
+        const explicitFile = parseExplicitFileRequest(userGoal);
         if (explicitFile) {
             const steps: ExecutionStep[] = [{
                 id: 'file_write',
@@ -1122,8 +934,8 @@ Rules:
         // project from a multi-project workspace. Read each safe relative path
         // through ToolService and let the normal result composer explain the
         // collected evidence in the chat.
-        const explicitReadFiles = explicitReadFile ? [explicitReadFile] : parseExplicitReadFilesRequest(userGoal);
-        if ((explicitReadFile || isReadOnlyStructural(userGoal)) && explicitReadFiles) {
+        const explicitReadFiles = parseExplicitReadFilesRequest(userGoal);
+        if (isReadOnlyStructural(userGoal) && explicitReadFiles) {
             const expectedMarkers = parseExpectedReadMarkers(userGoal);
             return {
                 id: `read_files_${Date.now()}`,
@@ -3685,9 +3497,7 @@ Return ONLY a JSON array of steps:
                 if (RUNTIME_SUPPLIED.has(key)) return true;
                 const v = (s.input as any)[key];
                 if (v === undefined || v === null) return false;
-                // An explicitly declared empty string is data (for example an
-                // edit that removes text). Omitted values are still missing.
-                if (typeof v === 'string' && !v.trim() && tool?.inputSchema?.properties?.[key]?.minLength !== 0) return false;
+                if (typeof v === 'string' && !v.trim()) return false;
                 if (Array.isArray(v) && !v.length) return false;
                 return true;
             };
@@ -3851,486 +3661,4 @@ Return ONLY a JSON array of steps:
 
         return steps;
     }
-
-    /**
-     * Generate an execution plan from a structured specification.
-     * Maps requirements → phases → tasks with full traceability.
-     * Handles constraint tensions, implicit requirements, and acceptance criteria.
-     */
-    static generatePlanFromSpecification(
-        spec: StructuredSpecification,
-        context?: any
-    ): ExecutionPlan {
-        const phasePlans = this.mapRequirementsToPhases(spec);
-        const verificationPhase = this.createSpecificationVerificationPhase(spec);
-
-        // Flatten phase tasks into steps
-        const allSteps: ExecutionStep[] = [];
-        for (const phase of phasePlans) {
-            for (const task of phase.tasks) {
-                allSteps.push({
-                    id: task.id,
-                    description: task.description,
-                    tool: task.tool,
-                    agent: task.agent,
-                    input: task.input,
-                    dependsOn: task.dependsOn,
-                    parallel: task.parallel,
-                    reasoning: task.reasoning,
-                });
-            }
-        }
-        allSteps.push(verificationPhase);
-
-        // Build traceability matrix
-        const traceability = this.buildTraceabilityMatrix(spec, phasePlans);
-
-        return {
-            id: `spec_${spec.specificationId}`,
-            goal: spec.sourceText.substring(0, 200),
-            steps: allSteps,
-            metadata: {
-                complexity: 'extreme',
-                riskLevel: 'high',
-                matchedBy: 'specification-driven',
-                specificationId: spec.specificationId,
-                requirementTraceability: traceability,
-                constraintTensions: spec.constraintInteractions,
-            },
-        };
-    }
-
-    /**
-     * Map requirements to logical phases based on dependency analysis and constraint types.
-     * Groups related requirements into phases: infrastructure, core services, features, verification.
-     */
-    private static mapRequirementsToPhases(spec: StructuredSpecification): PhasePlan[] {
-        // Separate requirements by type and priority
-        const functionalReqs = spec.requirements.filter(r => r.type === 'functional');
-        const nonFunctionalReqs = spec.requirements.filter(r => r.type === 'non-functional');
-        const constraintReqs = spec.requirements.filter(r => r.type === 'constraint');
-        const implicitReqs = spec.implicitRequirements;
-
-        // Group by constraint type for tension-aware ordering
-        const securityConstraints = spec.constraints.filter(c => c.type === 'security');
-        const performanceConstraints = spec.constraints.filter(c => c.type === 'performance');
-        const availabilityConstraints = spec.constraints.filter(c => c.type === 'availability');
-
-        const phases: PhasePlan[] = [];
-        let phaseNumber = 1;
-
-        // Phase 1: Infrastructure & Security Foundation
-        if (securityConstraints.length > 0 || constraintReqs.some(r => spec.constraints.some(c => c.relatedRequirements.includes(r.id) && c.type === 'security'))) {
-            const securityTasks = this.createTasksForConstraints(securityConstraints, spec, 'security_foundation');
-            if (securityTasks.length > 0) {
-                phases.push({
-                    phaseNumber: phaseNumber++,
-                    name: 'Security & Infrastructure Foundation',
-                    tasks: securityTasks,
-                    requirementsCovered: securityTasks.flatMap(t => t.requirementIds),
-                });
-            }
-        }
-
-        // Phase 2: Core Data & Storage Layer
-        const dataReqs = functionalReqs.filter(r => 
-            /database|storage|persist|schema|migration|data|model/i.test(r.description)
-        );
-        if (dataReqs.length > 0) {
-            phases.push({
-                phaseNumber: phaseNumber++,
-                name: 'Core Data & Storage Layer',
-                tasks: this.createTasksForRequirements(dataReqs, spec, 'data_layer'),
-                requirementsCovered: dataReqs.map(r => r.id),
-            });
-        }
-
-        // Phase 3: Business Logic & Services
-        const serviceReqs = functionalReqs.filter(r => 
-            /service|api|endpoint|business|logic|workflow|process/i.test(r.description)
-        );
-        if (serviceReqs.length > 0) {
-            phases.push({
-                phaseNumber: phaseNumber++,
-                name: 'Business Logic & Services',
-                tasks: this.createTasksForRequirements(serviceReqs, spec, 'services'),
-                requirementsCovered: serviceReqs.map(r => r.id),
-            });
-        }
-
-        // Phase 4: UI & Interaction Layer
-        const uiReqs = functionalReqs.filter(r => 
-            /ui|interface|frontend|component|page|screen|form|dashboard|display/i.test(r.description)
-        );
-        if (uiReqs.length > 0) {
-            phases.push({
-                phaseNumber: phaseNumber++,
-                name: 'UI & Interaction Layer',
-                tasks: this.createTasksForRequirements(uiReqs, spec, 'ui'),
-                requirementsCovered: uiReqs.map(r => r.id),
-            });
-        }
-
-        // Phase 5: Non-functional Requirements (Performance, Availability, etc.)
-        const nfReqs = nonFunctionalReqs.length > 0 ? nonFunctionalReqs : [];
-        const perfReqs = constraintReqs.filter(r => spec.constraints.some(c => c.relatedRequirements.includes(r.id) && c.type === 'performance'));
-        const availReqs = constraintReqs.filter(r => spec.constraints.some(c => c.relatedRequirements.includes(r.id) && c.type === 'availability'));
-        if (nfReqs.length > 0 || perfReqs.length > 0 || availReqs.length > 0) {
-            const nfTasks = [
-                ...this.createTasksForRequirements(nfReqs, spec, 'non_functional'),
-                ...this.createTasksForConstraints(performanceConstraints, spec, 'performance'),
-                ...this.createTasksForConstraints(availabilityConstraints, spec, 'availability'),
-            ];
-            if (nfTasks.length > 0) {
-                phases.push({
-                    phaseNumber: phaseNumber++,
-                    name: 'Non-Functional Requirements',
-                    tasks: nfTasks,
-                    requirementsCovered: [...nfReqs, ...perfReqs, ...availReqs].map(r => r.id),
-                });
-            }
-        }
-
-        // Phase 6: Implicit Requirements (inferred but not explicitly stated)
-        if (implicitReqs.length > 0) {
-            phases.push({
-                phaseNumber: phaseNumber++,
-                name: 'Implicit Requirements & Edge Cases',
-                tasks: this.createTasksForImplicitRequirements(implicitReqs, spec),
-                requirementsCovered: implicitReqs.map(r => r.id),
-            });
-        }
-
-        // Phase 7: Constraint Tension Resolution
-        if (spec.constraintInteractions.length > 0) {
-            phases.push({
-                phaseNumber: phaseNumber++,
-                name: 'Constraint Tension Resolution',
-                tasks: this.createTasksForConstraintTensions(spec.constraintInteractions, spec),
-                requirementsCovered: spec.constraintInteractions.flatMap(c => c.constraintIds),
-            });
-        }
-
-        // Add verification tasks for acceptance criteria to the last implementation phase
-        // or create a dedicated verification phase
-        const lastImplPhase = phases[phases.length - 1];
-        if (lastImplPhase && spec.acceptanceCriteria.length > 0) {
-            const verificationTasks = this.createVerificationTasks(spec.acceptanceCriteria, spec);
-            if (verificationTasks.length > 0) {
-                lastImplPhase.tasks.push(...verificationTasks);
-            }
-        }
-
-        return phases;
-    }
-
-    /**
-     * Create execution tasks for a set of requirements.
-     */
-    private static createTasksForRequirements(
-        reqs: Requirement[],
-        spec: StructuredSpecification,
-        category: string
-    ): ExecutionTask[] {
-        return reqs.map((req, i) => ({
-            id: `task_${category}_${req.id}`,
-            description: req.description,
-            tool: this.selectToolForRequirement(req, spec),
-            agent: 'Dev',
-            input: { request: req.description, requirementId: req.id },
-            dependsOn: req.relatedRequirements.map(id => `task_${category}_${id}`).filter(dep => 
-                reqs.some(r => r.id === dep.replace(`task_${category}_`, ''))
-            ),
-            requirementIds: [req.id],
-            parallel: req.priority !== 'critical' && i > 0,
-            reasoning: `Implements ${req.id} (${req.priority} priority ${req.type} requirement)`,
-        }));
-    }
-
-    /**
-     * Create execution tasks for constraints.
-     */
-    private static createTasksForConstraints(
-        constraints: Constraint[],
-        spec: StructuredSpecification,
-        category: string
-    ): ExecutionTask[] {
-        return constraints.map((constraint, i) => {
-            const dependsOn = constraint.relatedRequirements
-                .map(id => {
-                    // Find which phase/task this requirement belongs to
-                    const req = spec.requirements.find(r => r.id === id);
-                    if (req) {
-                        const cat = req.type === 'functional' ? 
-                            (req.description.includes('data') || req.description.includes('storage') ? 'data_layer' :
-                             req.description.includes('service') || req.description.includes('api') ? 'services' : 'ui') :
-                            'non_functional';
-                        return `task_${cat}_${id}`;
-                    }
-                    return undefined;
-                })
-                .filter((v): v is string => v !== undefined);
-
-            return {
-                id: `task_${category}_${constraint.id}`,
-                description: `Implement ${constraint.type} constraint: ${constraint.description}`,
-                tool: this.selectToolForConstraint(constraint),
-                agent: 'Dev',
-                input: { request: constraint.description, constraintId: constraint.id, constraintType: constraint.type },
-                dependsOn,
-                requirementIds: constraint.relatedRequirements,
-                parallel: false,
-                reasoning: `Enforces ${constraint.id} (${constraint.type} constraint with tension: ${constraint.tensionWith.join(', ') || 'none'})`,
-            };
-        });
-    }
-
-    /**
-     * Create tasks for implicit requirements.
-     */
-    private static createTasksForImplicitRequirements(
-        implicitReqs: ImplicitRequirement[],
-        spec: StructuredSpecification
-    ): ExecutionTask[] {
-        return implicitReqs.map((req, i) => {
-            const dependsOn = req.inferredFrom
-                .map(id => {
-                    const srcReq = spec.requirements.find(r => r.id === id);
-                    if (srcReq) {
-                        const category = srcReq.type === 'functional' ? 
-                            (srcReq.description.includes('data') || srcReq.description.includes('storage') ? 'data_layer' :
-                             srcReq.description.includes('service') || srcReq.description.includes('api') ? 'services' : 'ui') :
-                            'non_functional';
-                        return `task_${category}_${id}`;
-                    }
-                    return undefined;
-                })
-                .filter((v): v is string => v !== undefined);
-
-            return {
-                id: `task_implicit_${req.id}`,
-                description: `Address implicit requirement: ${req.description} (confidence: ${Math.round(req.confidence * 100)}%)`,
-                tool: this.selectToolForImplicitRequirement(req),
-                agent: 'Dev',
-                input: { request: req.description, implicitRequirementId: req.id, inferredFrom: req.inferredFrom },
-                dependsOn,
-                requirementIds: [req.id],
-                parallel: false,
-                reasoning: `Implicit requirement inferred from ${req.inferredFrom.join(', ')} (${req.type})`,
-            };
-        });
-    }
-
-    /**
-     * Create tasks for constraint tension resolution.
-     */
-    private static createTasksForConstraintTensions(
-        interactions: ConstraintInteraction[],
-        spec: StructuredSpecification
-    ): ExecutionTask[] {
-        return interactions.map((interaction, i) => {
-            // Build dependsOn array with proper null filtering
-            const dependsOn = interaction.constraintIds
-                .flatMap(id => {
-                    const constraint = spec.constraints.find(c => c.id === id);
-                    return constraint ? constraint.relatedRequirements : [];
-                })
-                .map(id => {
-                    const req = spec.requirements.find(r => r.id === id);
-                    if (req) {
-                        const category = req.type === 'functional' ? 'data_layer' : 
-                                       req.type === 'constraint' ? 'non_functional' : 'services';
-                        return `task_${category}_${id}`;
-                    }
-                    return undefined;
-                })
-                .filter((v): v is string => v !== undefined);
-
-            return {
-                id: `task_tension_${interaction.constraintIds.join('_')}`,
-                description: `Resolve ${interaction.tensionType} tension: ${interaction.description}. Strategy: ${interaction.resolutionStrategy}`,
-                tool: 'central_answer',
-                agent: 'Architect',
-                input: { 
-                    request: interaction.description, 
-                    tensionType: interaction.tensionType,
-                    constraintIds: interaction.constraintIds,
-                    resolutionStrategy: interaction.resolutionStrategy,
-                },
-                dependsOn,
-                requirementIds: interaction.constraintIds,
-                parallel: false,
-                reasoning: `Resolves tension between ${interaction.constraintIds.join(' and ')} (${interaction.tensionType})`,
-            };
-        });
-    }
-
-    /**
-     * Create verification tasks for acceptance criteria.
-     */
-    private static createVerificationTasks(
-        criteria: AcceptanceCriterion[],
-        spec: StructuredSpecification
-    ): ExecutionTask[] {
-        return criteria.map((criterion, i) => ({
-            id: `task_verify_${criterion.id}`,
-            description: `Verify acceptance criterion: ${criterion.description}`,
-            tool: this.selectToolForVerification(criterion),
-            agent: 'QA',
-            input: { 
-                request: criterion.description, 
-                acceptanceCriterionId: criterion.id,
-                requirementId: criterion.requirementId,
-                testType: criterion.testType,
-            },
-            dependsOn: [], // Will be resolved by wireDataFlow
-            requirementIds: [criterion.requirementId],
-            parallel: true,
-            reasoning: `Verifies ${criterion.id} for requirement ${criterion.requirementId} (${criterion.testType} test)`,
-        }));
-    }
-
-    /**
-     * Select appropriate tool for a requirement based on its description.
-     */
-    private static selectToolForRequirement(req: Requirement, spec: StructuredSpecification): string {
-        const desc = req.description.toLowerCase();
-        
-        if (/database|schema|migration|storage|persist/i.test(desc)) return 'project_pipeline';
-        if (/api|endpoint|service|rest|graphql/i.test(desc)) return 'project_pipeline';
-        if (/ui|frontend|component|page|screen|form|dashboard/i.test(desc)) return 'project_pipeline';
-        if (/auth|authentication|login|security|permission/i.test(desc)) return 'project_pipeline';
-        if (/test|verify|validate/i.test(desc)) return 'shell_execute';
-        
-        return 'project_pipeline'; // Default to the evidence-first pipeline
-    }
-
-    /**
-     * Select appropriate tool for a constraint.
-     */
-    private static selectToolForConstraint(constraint: Constraint): string {
-        switch (constraint.type) {
-            case 'security': return 'project_pipeline';
-            case 'performance': return 'project_pipeline';
-            case 'availability': return 'project_pipeline';
-            case 'compliance': return 'project_pipeline';
-            default: return 'project_pipeline';
-        }
-    }
-
-    /**
-     * Select appropriate tool for an implicit requirement.
-     */
-    private static selectToolForImplicitRequirement(req: ImplicitRequirement): string {
-        const desc = req.description.toLowerCase();
-        if (/test|verify|validate/i.test(desc)) return 'shell_execute';
-        if (/document|readme|comment/i.test(desc)) return 'write_file';
-        return 'project_pipeline';
-    }
-
-    /**
-     * Select appropriate tool for verification based on test type.
-     */
-    private static selectToolForVerification(criterion: AcceptanceCriterion): string {
-        switch (criterion.testType) {
-            case 'unit': return 'shell_execute';
-            case 'integration': return 'shell_execute';
-            case 'e2e': return 'browser_run';
-            case 'manual': return 'central_answer';
-            case 'observability': return 'shell_execute';
-            default: return 'shell_execute';
-        }
-    }
-
-    /**
-     * Create the final specification verification phase.
-     */
-    private static createSpecificationVerificationPhase(spec: StructuredSpecification): ExecutionStep {
-        return {
-            id: 'spec_verification',
-            description: 'Verify all specification requirements are satisfied',
-            tool: 'specification_verification',
-            agent: 'QA',
-            input: { specificationId: spec.specificationId },
-            dependsOn: [], // Will be resolved by wireDataFlow to depend on all implementation tasks
-            parallel: false,
-            reasoning: 'Final verification against all requirements, constraints, and acceptance criteria',
-        };
-    }
-
-    /**
-     * Build traceability matrix linking requirements to phases, tasks, and verification.
-     */
-    private static buildTraceabilityMatrix(
-        spec: StructuredSpecification,
-        phases: PhasePlan[]
-    ): RequirementTraceabilityEntry[] {
-        const matrix: RequirementTraceabilityEntry[] = [];
-
-        for (const req of spec.requirements) {
-            const entry: RequirementTraceabilityEntry = {
-                requirementId: req.id,
-                phaseNumber: 0,
-                taskIds: [],
-                acceptanceCriteriaIds: req.acceptanceCriteria,
-            };
-
-            // Find which phase and tasks cover this requirement
-            for (const phase of phases) {
-                if (phase.requirementsCovered.includes(req.id)) {
-                    entry.phaseNumber = phase.phaseNumber;
-                    entry.taskIds = phase.tasks
-                        .filter(t => t.requirementIds.includes(req.id))
-                        .map(t => t.id);
-                    break;
-                }
-            }
-
-            // Find verification task for acceptance criteria
-            for (const phase of phases) {
-                const verifyTask = phase.tasks.find(t => 
-                    t.tool === 'specification_verification' || 
-                    (t.id.startsWith('task_verify_') && t.requirementIds.includes(req.id))
-                );
-                if (verifyTask) {
-                    entry.verificationTaskId = verifyTask.id;
-                    break;
-                }
-            }
-
-            matrix.push(entry);
-        }
-
-        // Also add entries for implicit requirements
-        for (const imp of spec.implicitRequirements) {
-            matrix.push({
-                requirementId: imp.id,
-                phaseNumber: phases.find(p => p.requirementsCovered.includes(imp.id))?.phaseNumber || 0,
-                taskIds: phases.flatMap(p => p.tasks
-                    .filter(t => t.requirementIds.includes(imp.id))
-                    .map(t => t.id)),
-                verificationTaskId: undefined,
-                acceptanceCriteriaIds: [],
-            });
-        }
-
-        return matrix;
-    }
-}
-
-/**
- * Detects if the request is a CLI/utility/script request (not a web system).
- * Uses the same signals as classifyBuildScope for consistency.
- */
-export function isCliRequest(goalRaw: string): boolean {
-    const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
-    return cliSignals.test(goalRaw || '');
-}
-
-/**
- * Detects if the request is a CSV/TSV input with columns (input data, not a persistent record schema).
- */
-export function isCsvInputRequest(goalRaw: string): boolean {
-    const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
-    return csvInputSignals.test(goalRaw || '');
 }

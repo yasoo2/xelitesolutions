@@ -11,21 +11,8 @@ import { normalizeUrlForGoto } from '../../shared/utils/url';
 import { traceManager } from './TraceManager';
 import { isArabicReply, say } from '../../shared/reply-language';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
-import { requestResourceManager } from '../../core/resources/RequestResourceManager';
-import { bindRunCancellation } from '../../core/session/attended-run';
-
-// Admission follows policy checks and never executes a tool on its own.
-// File reads and orchestration remain responsive while process/browser jobs wait.
-const RESOURCE_HEAVY_TOOLS = new Set([
-    'shell_execute', 'npm_manager', 'docker_manager', 'project_edit', 'react_project',
-]);
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
 import { agentSearchUrl } from '../browser/challenge';
-import { autonomousDevelopmentEnabled, autonomousToolAdmitted, autonomousIdentity, autonomousContextMatches } from './AutonomousDevelopmentPolicy';
-import { autonomousFileTool, snapshotAutonomousFileInput, validateAutonomousFileOperation } from './AutonomousFilePolicy';
-import { autonomousWorkspaceTool, snapshotAutonomousWorkspaceInput, validateAutonomousWorkspaceDirectory } from './AutonomousWorkspacePolicy';
-import { exactEngineeringModel, engineeringRunId, engineeringScope, issueEngineeringContext, scopedEngineeringTool, snapshotEngineeringChild, snapshotEngineeringRequest } from './AutonomousEngineeringPolicy';
-import { engineeringExecution, engineeringExecutionTask, hasEngineeringExecutionToken, bindEngineeringExecutionGateway } from './AutonomousEngineeringPolicy';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -83,8 +70,7 @@ function containPath(p: string, workspaceId?: string): { ok: true; path: string 
     }
 }
 
-function rateLimitBucketKey(name: string, input: any, context?: any) {
-    if (name === 'screenshot_result') return `${name}:${context?.userId}:${context?.sessionId}`;
+function rateLimitBucketKey(name: string, input: any) {
     if (name === 'browser_run' || name === 'browser_open' || name === 'visual_qa') {
         return `${name}:${input?.sessionId || 'global'} `;
     }
@@ -109,8 +95,6 @@ function checkToolRateLimit(bucketKey: string, limitPerMinute?: number): { allow
 }
 
 export interface ToolContext {
-    /** Presentation-only for exact screenshot_result; never a policy or identity bypass. */
-    artifactPresentation?: boolean;
     /** معرف جلسة الدردشة/التشغيل؛ ليس بالضرورة جلسة المتصفح. */
     sessionId?: string;
     /** معرف جلسة لوحة المتصفح المخصص لهذا التشغيل. */
@@ -119,13 +103,9 @@ export interface ToolContext {
     userId?: string;
     language?: string;
     traceId?: string;
-    runId?: string;
     onProgress?: (msg: string) => void;
     onThought?: (msg: string) => void;
     modelConfig?: any;
-    /** Optional planner budget fields already consumed by ProjectPlannerTool. */
-    plannerTimeoutMs?: number;
-    plannerMaxCompletionTokens?: number;
     /** جذر المنتج الذي ثبته pipeline بالدليل، وليس workspace العام. */
     projectRoot?: string;
     projectRootRuntimeBound?: boolean;
@@ -271,150 +251,15 @@ export const TOOL_ALIASES: Record<string, string> = {
 export async function executeTool(name: string, input: any, context?: ToolContext) {
     // [FIREWALL] Strict Single Brain Enforcement
     executionFirewall.validateExecution(`ToolService:${name}`);
-    const autonomousMode = autonomousDevelopmentEnabled(process.env.JOE_AUTONOMOUS_DEVELOPMENT);
-    let autonomousCancellation: Promise<void> | undefined;
-    let autonomousFileInput: Record<string, any> | undefined;
-    let autonomousWorkspaceInput: Record<string, any> | undefined;
-    let engineeringRequest = false;
-    let engineeringChild = false;
-    let engineeringContext: any;
-    let autonomousEditExpectedContent: string | undefined;
-    let autonomousFileRoot: string | undefined;
-    let recheckAutonomousFileContext: (() => boolean) | undefined;
-    if (autonomousMode) {
-        const blocked = (reason: string) => ({
-            ok: false, error: 'policy_blocked', artifacts: undefined,
-            output: { status: 'failed', risk: 'high', reason },
-            logs: [`blocked=1 reason=${reason}`],
-        });
-        // This floor applies to SYSTEM/bypass and nested calls too, before any
-        // alias can create a directory, infer a workspace or access memory.
-        if (hasEngineeringExecutionToken(context) && !engineeringExecution(context)) return blocked('isolated_execution_expired');
-        if (hasEngineeringExecutionToken(context) && name !== 'phase_executor' && !engineeringExecutionTask(name, context)) return blocked('isolated_task_authority_required');
-        if (!autonomousToolAdmitted(name) && !scopedEngineeringTool(name, context)) return blocked('tool_not_admitted');
-        if (autonomousFileTool(name)) {
-            try { autonomousFileInput = snapshotAutonomousFileInput(name, input); }
-            catch (error: any) { return blocked(error.message); }
-        }
-        if (autonomousWorkspaceTool(name)) {
-            try { autonomousWorkspaceInput = snapshotAutonomousWorkspaceInput(name, input); }
-            catch (error: any) {
-                const ambient = executionFirewall.context.getStore();
-                if (name !== 'project_pipeline' || error.message !== 'autonomous_engineering_not_supported'
-                    || !engineeringRunId(context, ambient) || !exactEngineeringModel(context?.modelConfig)) return blocked(error.message);
-                try { autonomousWorkspaceInput = snapshotEngineeringRequest(input); engineeringRequest = true; }
-                catch (inner: any) { return blocked(inner.message); }
-            }
-        } else if (scopedEngineeringTool(name, context)) {
-            try {
-                const child = snapshotEngineeringChild(name, input, context);
-                const scope = engineeringScope(context)!;
-                autonomousWorkspaceInput = { ...child, path: scope.root };
-                engineeringChild = true;
-            } catch (error: any) { return blocked(error.message); }
-        }
-        const sid = autonomousIdentity(context?.sessionId);
-        const uid = autonomousIdentity(context?.userId);
-        const workspaceId = autonomousIdentity(context?.workspaceId);
-        if (!sid || !uid || !workspaceId) return blocked('trusted_context_required');
-        const signal = (context as any)?.signal;
-        if (signal != null && (typeof signal.aborted !== 'boolean'
-            || typeof signal.addEventListener !== 'function' || typeof signal.removeEventListener !== 'function')) {
-            return blocked('invalid_cancellation_context');
-        }
-        const isCancelled = (context as any)?.isCancelled;
-        const cancellation = (context as any)?.cancellation;
-        if (isCancelled != null && typeof isCancelled !== 'function') return blocked('invalid_cancellation_context');
-        const cancellationHandle = cancellation != null && !(cancellation instanceof Promise) ? cancellation : undefined;
-        if (cancellationHandle != null && (typeof cancellationHandle.cancelled !== 'boolean'
-            || !(cancellationHandle.whenCancelled instanceof Promise) || typeof cancellationHandle.cancel !== 'function')) {
-            return blocked('invalid_cancellation_context');
-        }
-        let cancellationSettled = false;
-        let cancellationInvalid = false;
-        const parentCancellation = cancellationHandle?.whenCancelled ?? cancellation;
-        if (parentCancellation) {
-            autonomousCancellation = parentCancellation.then(
-                () => { cancellationSettled = true; },
-                () => { cancellationSettled = true; },
-            );
-        }
-        const cancelled = () => {
-            try {
-                const callbackCancelled = isCancelled?.();
-                if (isCancelled != null && typeof callbackCancelled !== 'boolean') {
-                    cancellationInvalid = true;
-                    return true;
-                }
-                return cancellationSettled || signal?.aborted === true || cancellationHandle?.cancelled === true || callbackCancelled === true;
-            }
-            catch { cancellationInvalid = true; return true; }
-        };
-        if (cancelled()) return blocked(cancellationInvalid ? 'invalid_cancellation_context' : 'cancelled');
-        const snapshot = { userId: uid, sessionId: sid, workspaceId };
-        const ambientOwner = () => {
-            const store = executionFirewall.context.getStore();
-            return { userId: store?.userId, sessionId: store?.sessionId };
-        };
-        const ambient = ambientOwner();
-        if (uid !== autonomousIdentity(ambient.userId) || sid !== autonomousIdentity(ambient.sessionId)) {
-            return blocked('session_forbidden');
-        }
-        const { resolveAutonomousSessionIdentity } = await import('./session-identity');
-        const owner = await resolveAutonomousSessionIdentity(sid);
-        if (!owner || !autonomousContextMatches(snapshot, ambientOwner(), owner)
-            || autonomousIdentity(context?.userId) !== uid || autonomousIdentity(context?.sessionId) !== sid
-            || autonomousIdentity(context?.workspaceId) !== workspaceId
-            || (context as any)?.signal !== signal || (context as any)?.isCancelled !== isCancelled
-            || (context as any)?.cancellation !== cancellation
-            || !autonomousDevelopmentEnabled(process.env.JOE_AUTONOMOUS_DEVELOPMENT)) {
-            return blocked('session_forbidden');
-        }
-        if (cancelled()) return blocked(cancellationInvalid ? 'invalid_cancellation_context' : 'cancelled');
-        if (autonomousFileInput || autonomousWorkspaceInput) {
-            recheckAutonomousFileContext = () => autonomousContextMatches(context, ambientOwner(), owner)
-                && autonomousIdentity(context?.sessionId) === sid
-                && autonomousDevelopmentEnabled(process.env.JOE_AUTONOMOUS_DEVELOPMENT)
-                && (context as any)?.signal === signal && (context as any)?.isCancelled === isCancelled
-                && (context as any)?.cancellation === cancellation && !cancelled();
-            try {
-                const { workspaceService } = require('./WorkspaceService');
-                if (!await workspaceService.canAccessAutonomousFiles(workspaceId, uid, !!autonomousFileInput && name !== 'read_file')) return blocked('workspace_permission_denied');
-                if (!recheckAutonomousFileContext()) return blocked('cancelled_or_context_changed');
-                autonomousFileRoot = workspaceService.getActiveRoot(workspaceId);
-                if (autonomousFileInput) {
-                    const isolated = engineeringExecutionTask(name, context) && engineeringExecution(context);
-                    const selectedRoot = isolated ? validateAutonomousWorkspaceDirectory(isolated.scope.root, autonomousFileRoot!, workspaceService.externalRoot) : autonomousFileRoot!;
-                    const validated = isolated
-                        ? validateAutonomousFileOperation('read_file', { path: autonomousFileInput.path }, selectedRoot, workspaceService.externalRoot)
-                        : validateAutonomousFileOperation(name, autonomousFileInput, selectedRoot, workspaceService.externalRoot);
-                    if (!isolated && name === 'file_edit') autonomousEditExpectedContent = validated.autonomousEditBefore;
-                } else {
-                    const selectedRoot = validateAutonomousWorkspaceDirectory(autonomousWorkspaceInput!.path, autonomousFileRoot!, workspaceService.externalRoot);
-                    if (engineeringRequest) {
-                        const runId = engineeringRunId(context, executionFirewall.context.getStore());
-                        if (!runId || !recheckAutonomousFileContext()) throw Error('engineering_scope_invalid');
-                        engineeringContext = issueEngineeringContext(context, {
-                            userId: uid, sessionId: sid, workspaceId, runId, root: selectedRoot,
-                            request: autonomousWorkspaceInput!.request,
-                        }, cancelled);
-                    } else if (engineeringChild) {
-                        const scope = engineeringScope(context);
-                        if (!scope || scope.root !== selectedRoot || !engineeringRunId(context, executionFirewall.context.getStore())) throw Error('engineering_scope_invalid');
-                    }
-                }
-            } catch (error: any) { return blocked(error.message); }
-        }
-    }
     const logs: string[] = [];
     const t0 = Date.now();
     let effectiveName = name;
-    let effectiveInput = { ...(autonomousFileInput ?? autonomousWorkspaceInput ?? input) };
+    let effectiveInput = { ...input };
 
     if (context?.traceId) {
         traceManager.logEvent(context.traceId, 'tool', {
             name: effectiveName,
-            input: autonomousFileInput ? { ...effectiveInput } : effectiveInput,
+            input: effectiveInput,
             status: 'started'
         });
     }
@@ -437,16 +282,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         normalizeUserId(context?.userId) ||
         normalizeUserId((effectiveInput as any)?.userId) ||
         normalizeUserId((effectiveInput as any)?.__userId);
-    const effectiveContext: ToolContext = { ...(engineeringContext || context || {}), workspaceId: contextWorkspaceId, userId: contextUserId };
-    if (engineeringChild && name === 'project_planner') {
-        const scope = engineeringScope(effectiveContext);
-        if (!scope) return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: 'engineering_scope_invalid' }, logs: [] };
-        (effectiveContext as any).engineeringPipeline = false;
-        effectiveContext.plannerTimeoutMs = Math.max(1, Math.min(120_000, scope.expires - Date.now()));
-        effectiveContext.plannerMaxCompletionTokens = Number.isSafeInteger(context?.plannerMaxCompletionTokens)
-            ? Math.max(1, Math.min(12000, context!.plannerMaxCompletionTokens!)) : 12000;
-    }
-    if (autonomousCancellation) (effectiveContext as any).cancellation = autonomousCancellation;
+    const effectiveContext: ToolContext = { ...(context || {}), workspaceId: contextWorkspaceId, userId: contextUserId };
 
     /**
      * EVERY PIPELINE LINE IN HIS LOG WAS PRINTED TWICE.
@@ -775,7 +611,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     // reads the files in JavaScript, so a machine without grep — every stock
     // Windows box — can finally search its own code.
 
-    if (!autonomousMode && (effectiveName === 'inspect_directory' || effectiveName === 'search_files')) {
+    if (effectiveName === 'inspect_directory' || effectiveName === 'search_files') {
         const { BinaryService } = require('./BinaryService');
         const check = await BinaryService.checkBinary('find');
         if (!check.exists || !check.compatible) {
@@ -785,6 +621,55 @@ export async function executeTool(name: string, input: any, context?: ToolContex
     }
 
     logs.push(`[${new Date().toISOString()}] start ${effectiveName} (orig=${name})`);
+
+    // [ELITE SYNC] Broadcast tool-specific thinking status
+    if (contextSessionId) {
+        const { broadcastThinkingPhase } = require('../../api/ws');
+        /**
+         * AND IN THE LANGUAGE HE ASKED IN — «يجب ان تكون النتيجة والذكاء
+         * العصبي كلها انجليزية».
+         *
+         * Every line below was hardcoded Arabic, so an English prompt in
+         * English mode produced «جاري تنفيذ: api project…» directly above
+         * «🗄️ Building a real backend with a database» — two languages, one
+         * request. The rule the build tools already follow lives in one file
+         * now, and the trace follows it too.
+         */
+        const isAr = isArabicReply({
+            language: (context as any)?.language,
+            text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
+        });
+        let status = '';
+        if (effectiveName === 'browser_run') status = say(isAr, 'جاري استخدام المتصفح...', 'Using the browser…');
+        else if (effectiveName === 'web_search') status = say(isAr, 'جاري البحث في الويب...', 'Searching the web…');
+        else if (effectiveName === 'scaffold_project' || effectiveName === 'scaffold_full_stack') status = say(isAr, 'جاري إنشاء هيكل المشروع...', 'Scaffolding the project…');
+        else if (effectiveName === 'npm_manager') status = say(isAr, 'جاري معالجة المكتبات...', 'Working through the packages…');
+        else if (effectiveName === 'git_ops') status = say(isAr, 'جاري تحديث المستودع...', 'Updating the repository…');
+        else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = say(isAr, 'جاري كتابة الكود...', 'Writing the code…');
+        else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = say(isAr, 'جاري مراجعة الملفات...', 'Reading the files…');
+        else if (effectiveName === 'analyze_codebase') status = say(isAr, 'جاري تحليل بنية المشروع...', 'Analysing the project structure…');
+        else if (effectiveName === 'web_page_builder') status = say(isAr, 'جاري تصميم الصفحة وبناؤها...', 'Designing and building the page…');
+
+        /**
+         * EVERY tool announces itself, not eight of them.
+         *
+         * `status` was set from a hardcoded list of eight names, and
+         * `web_page_builder` — the single most common thing Joe does — was not
+         * on it. So building a page broadcast no phase at all, the frontend's
+         * phase never left 'idle', and the live thinking panel had nothing to
+         * turn on for. The user's words: «التفكير العصبي الحي لا يعمل».
+         *
+         * A tool with no bespoke sentence gets a truthful generic one built from
+         * its own name rather than being invisible.
+         */
+        if (!status) {
+            const pretty = String(effectiveName || '').replace(/[_-]+/g, ' ').trim();
+            status = pretty
+                ? say(isAr, `جاري تنفيذ: ${pretty}…`, `Running: ${pretty}…`)
+                : say(isAr, 'جاري التنفيذ…', 'Running…');
+        }
+        broadcastThinkingPhase(contextSessionId, 'executing', status);
+    }
 
     try {
         let tDef = tools.find(t => t.name === effectiveName);
@@ -835,7 +720,7 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         }
 
         const authBypass = process.env.ENABLE_AUTH_BYPASS === 'true' || executionFirewall.isSystemContext();
-        if (!autonomousMode && !authBypass) {
+        if (!authBypass) {
             const perms = Array.isArray((tDef as any).permissions) ? (tDef as any).permissions : [];
             const effects = Array.isArray((tDef as any).sideEffects) ? (tDef as any).sideEffects : [];
             const needsWorkspace = perms.length > 0 || effects.length > 0;
@@ -900,62 +785,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         }
 
         // Rate Limit Check
-        const bucketKey = rateLimitBucketKey(effectiveName, effectiveInput, effectiveContext);
+        const bucketKey = rateLimitBucketKey(effectiveName, effectiveInput);
         const rl = checkToolRateLimit(bucketKey, tDef.rateLimitPerMinute);
         if (!rl.allowed) {
             logs.push(`rate_limited=1 bucket=${bucketKey} retry_after_ms=${rl.retryAfterMs}`);
             return { ok: false, error: 'rate_limited', output: { retryAfterMs: rl.retryAfterMs }, logs };
-        }
-
-        const quietArtifactRead = effectiveName === 'screenshot_result' && (context as any)?.artifactPresentation === true;
-        // Publish progress only after identity, permission, risk and rate-limit checks.
-        // [ELITE SYNC] Broadcast tool-specific thinking status
-        if (contextSessionId && !quietArtifactRead) {
-            const { broadcastThinkingPhase } = require('../../api/ws');
-            /**
-             * AND IN THE LANGUAGE HE ASKED IN — «يجب ان تكون النتيجة والذكاء
-             * العصبي كلها انجليزية».
-             *
-             * Every line below was hardcoded Arabic, so an English prompt in
-             * English mode produced «جاري تنفيذ: api project…» directly above
-             * «🗄️ Building a real backend with a database» — two languages, one
-             * request. The rule the build tools already follow lives in one file
-             * now, and the trace follows it too.
-             */
-            const isAr = isArabicReply({
-                language: (context as any)?.language,
-                text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
-            });
-            let status = '';
-            if (effectiveName === 'browser_run') status = say(isAr, 'جاري استخدام المتصفح...', 'Using the browser…');
-            else if (effectiveName === 'web_search') status = say(isAr, 'جاري البحث في الويب...', 'Searching the web…');
-            else if (effectiveName === 'scaffold_project' || effectiveName === 'scaffold_full_stack') status = say(isAr, 'جاري إنشاء هيكل المشروع...', 'Scaffolding the project…');
-            else if (effectiveName === 'npm_manager') status = say(isAr, 'جاري معالجة المكتبات...', 'Working through the packages…');
-            else if (effectiveName === 'git_ops') status = say(isAr, 'جاري تحديث المستودع...', 'Updating the repository…');
-            else if (effectiveName === 'write_file' || effectiveName === 'file_edit') status = say(isAr, 'جاري كتابة الكود...', 'Writing the code…');
-            else if (effectiveName === 'read_file' || effectiveName === 'inspect_directory') status = say(isAr, 'جاري مراجعة الملفات...', 'Reading the files…');
-            else if (effectiveName === 'analyze_codebase') status = say(isAr, 'جاري تحليل بنية المشروع...', 'Analysing the project structure…');
-            else if (effectiveName === 'web_page_builder') status = say(isAr, 'جاري تصميم الصفحة وبناؤها...', 'Designing and building the page…');
-
-            /**
-             * EVERY tool announces itself, not eight of them.
-             *
-             * `status` was set from a hardcoded list of eight names, and
-             * `web_page_builder` — the single most common thing Joe does — was not
-             * on it. So building a page broadcast no phase at all, the frontend's
-             * phase never left 'idle', and the live thinking panel had nothing to
-             * turn on for. The user's words: «التفكير العصبي الحي لا يعمل».
-             *
-             * A tool with no bespoke sentence gets a truthful generic one built from
-             * its own name rather than being invisible.
-             */
-            if (!status) {
-                const pretty = String(effectiveName || '').replace(/[_-]+/g, ' ').trim();
-                status = pretty
-                    ? say(isAr, `جاري تنفيذ: ${pretty}…`, `Running: ${pretty}…`)
-                    : say(isAr, 'جاري التنفيذ…', 'Running…');
-            }
-            broadcastThinkingPhase(contextSessionId, 'executing', status);
         }
 
         // Execute
@@ -966,14 +800,14 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         if (typeof (tDef as any).execute === 'function') {
             const { broadcast, broadcastTerminalLine } = require('../../api/ws');
             
-            // The exact read-only presentation request must not restart the run indicator.
-            if (!quietArtifactRead) broadcast({
+            // [NEW] Broadcast tool start
+            broadcast({
                 type: 'tool_started',
                 id: 'panel-terminal',
                 // Without the session this event belongs to nobody, and an event
                 // that belongs to nobody is delivered to everybody.
                 sessionId: contextSessionId,
-                data: { tool: effectiveName, input: autonomousFileInput ? { ...effectiveInput } : effectiveInput, sessionId: contextSessionId }
+                data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }
             });
 
             const { attendRun, registerRun, releaseHandle } = require('../../core/session/attended-run');
@@ -999,90 +833,8 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 isCancelled: () => stopHandle.cancelled || !!(effectiveContext as any)?.isCancelled?.(),
             };
             const run = async () => {
-                if (engineeringExecutionTask(name, executionContext)) {
-                    const { workspaceService } = require('./WorkspaceService');
-                    const lease = engineeringExecution(executionContext);
-                    if (!lease || !engineeringRunId(executionContext, executionFirewall.context.getStore())
-                        || workspaceService.getActiveRoot(contextWorkspaceId) !== autonomousFileRoot
-                        || !recheckAutonomousFileContext?.() || executionContext.isCancelled()
-                        || !await workspaceService.canAccessAutonomousFiles(contextWorkspaceId, effectiveContext.userId, name !== 'read_file'))
-                        return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: 'isolated_execution_context_changed' }, logs: [] };
-                    const checkCurrent = async () => {
-                        if (!engineeringExecution(executionContext) || !recheckAutonomousFileContext?.()
-                            || workspaceService.getActiveRoot(contextWorkspaceId) !== autonomousFileRoot || executionContext.isCancelled()) return false;
-                        if (!await workspaceService.canAccessAutonomousFiles(contextWorkspaceId, effectiveContext.userId, name !== 'read_file')) return false;
-                        if (!engineeringExecution(executionContext) || !recheckAutonomousFileContext?.()
-                            || workspaceService.getActiveRoot(contextWorkspaceId) !== autonomousFileRoot || executionContext.isCancelled()) return false;
-                        validateAutonomousWorkspaceDirectory(lease.scope.root, autonomousFileRoot!, workspaceService.externalRoot);
-                        return true;
-                    };
-                    if (!await checkCurrent()) return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: 'isolated_execution_context_changed' }, logs: [] };
-                    bindEngineeringExecutionGateway(executionContext, checkCurrent);
-                    const { isolatedProjectRuntime } = require('./IsolatedProjectRuntimeService');
-                    return isolatedProjectRuntime.execute(name, engineeringExecutionTask(name, executionContext)!.input, executionContext);
-                }
-                if (autonomousWorkspaceInput) {
-                    try {
-                        const { workspaceService } = require('./WorkspaceService');
-                        if (!await workspaceService.canAccessAutonomousFiles(contextWorkspaceId, effectiveContext.userId, false)) throw new Error('workspace_permission_denied');
-                        if (!recheckAutonomousFileContext?.() || executionContext.isCancelled()) throw new Error('cancelled_or_context_changed');
-                        const root = workspaceService.getActiveRoot(contextWorkspaceId);
-                        if (root !== autonomousFileRoot) throw new Error('workspace_root_changed');
-                        if ((engineeringRequest || engineeringChild)
-                            && (!engineeringScope(executionContext) || !engineeringRunId(executionContext, executionFirewall.context.getStore()))) throw Error('engineering_scope_invalid');
-                        effectiveInput = { ...autonomousWorkspaceInput, path: validateAutonomousWorkspaceDirectory(autonomousWorkspaceInput.path, root, workspaceService.externalRoot) };
-                    } catch (error: any) {
-                        return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: error.message }, logs: [] };
-                    }
-                }
-                if (autonomousFileInput) {
-                    try {
-                        if (!recheckAutonomousFileContext?.() || executionContext.isCancelled()) throw new Error('cancelled_or_context_changed');
-                        const { workspaceService } = require('./WorkspaceService');
-                        const root = workspaceService.getActiveRoot(contextWorkspaceId);
-                        if (root !== autonomousFileRoot) throw new Error('workspace_root_changed');
-                        effectiveInput = validateAutonomousFileOperation(name, autonomousFileInput, root, workspaceService.externalRoot, autonomousEditExpectedContent);
-                    } catch (error: any) {
-                        return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: error.message }, logs: [] };
-                    }
-                }
                 if (effectiveContext.userId && typeof (effectiveInput as any).userId !== 'string') {
                     (effectiveInput as any).userId = effectiveContext.userId;
-                }
-                if (name === 'runtime_diagnostics') {
-                    try {
-                        if (!autonomousMode || !autonomousWorkspaceInput || !autonomousFileRoot || typeof contextSessionId !== 'string') throw Error('runtime_diagnostic_gateway_required');
-                        const diagnosticSessionId = contextSessionId;
-                        const { workspaceService } = require('./WorkspaceService');
-                        const { resolveAutonomousSessionIdentity } = await import('./session-identity');
-                        const { issueRuntimeDiagnosticContext } = require('./RuntimeDiagnosticsPolicy');
-                        const ambientIdentity = () => { const current = executionFirewall.context.getStore(); return { userId: current?.userId, sessionId: current?.sessionId }; };
-                        const stillAuthorized = () => recheckAutonomousFileContext?.() === true
-                            && executionContext.isCancelled() === false
-                            && workspaceService.getActiveRoot(contextWorkspaceId) === autonomousFileRoot;
-                        const validateAuthority = async () => {
-                            if (!stillAuthorized()) throw Error('runtime_diagnostic_authority_changed');
-                            const ownerNow = await resolveAutonomousSessionIdentity(diagnosticSessionId);
-                            if (!ownerNow || !stillAuthorized() || !autonomousContextMatches(context, ambientIdentity(), ownerNow)) throw Error('session_forbidden');
-                            const allowed = await workspaceService.canAccessAutonomousFiles(contextWorkspaceId, effectiveContext.userId, false);
-                            if (allowed !== true || !stillAuthorized()) throw Error('workspace_permission_denied');
-                            const finalOwner = await resolveAutonomousSessionIdentity(diagnosticSessionId);
-                            if (!finalOwner || !stillAuthorized() || !autonomousContextMatches(context, ambientIdentity(), finalOwner)) throw Error('session_forbidden');
-                            const finalAllowed = await workspaceService.canAccessAutonomousFiles(contextWorkspaceId, effectiveContext.userId, false);
-                            if (finalAllowed !== true || !stillAuthorized() || !autonomousContextMatches(context, ambientIdentity(), finalOwner)) throw Error('workspace_permission_denied');
-                            const root = workspaceService.getActiveRoot(contextWorkspaceId);
-                            if (root !== autonomousFileRoot || validateAutonomousWorkspaceDirectory('.', root, workspaceService.externalRoot) !== effectiveInput.path) throw Error('workspace_root_changed');
-                        };
-                        await validateAuthority();
-                        if (!stillAuthorized()) throw Error('runtime_diagnostic_authority_changed');
-                        const scoped = issueRuntimeDiagnosticContext(executionContext, autonomousWorkspaceInput, effectiveInput.path, stillAuthorized);
-                        const result = await (tDef as any).execute(effectiveInput, scoped);
-                        await validateAuthority();
-                        if (!stillAuthorized()) throw Error('runtime_diagnostic_authority_changed');
-                        return result;
-                    } catch (error: any) {
-                        return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: error.message }, logs: [] };
-                    }
                 }
                 return await (tDef as any).execute(effectiveInput, executionContext);
             };
@@ -1106,18 +858,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
              *  that works: the run registers here, so `/runs/stop` can find it.
              */
             let res: any;
-            const resourceCancellation = bindRunCancellation(stopHandle.whenCancelled);
             try {
                 res = await attendRun({
-                    work: () => {
-                        const executeScoped = () => (contextWorkspaceId
-                            ? workspaceService.runWithWorkspace(contextWorkspaceId, run)
-                            : run());
-                        return (RESOURCE_HEAVY_TOOLS.has(effectiveName) || effectiveName.startsWith('browser_')
-                            || !!engineeringExecutionTask(name, executionContext))
-                            ? requestResourceManager.withHeavy(executeScoped, { kind: `tool:${effectiveName}`, signal: resourceCancellation.signal })
-                            : executeScoped();
-                    },
+                    work: () => (contextWorkspaceId
+                        ? workspaceService.runWithWorkspace(contextWorkspaceId, run)
+                        : run()),
                     what: effectiveName,
                     handle: stopHandle,
                     say: (line: string) => {
@@ -1125,7 +870,6 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                     },
                 });
             } finally {
-                resourceCancellation.dispose();
                 //  ITS handle, not the key: a sibling tool in the same
                 //  `Promise.all` batch shares this sessionId and is still
                 //  running.
@@ -1205,11 +949,11 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                 // Terminal failures are user-visible work, too.  A raw event
                 // with only `panel-terminal` has no owner and is intentionally
                 // dropped by the socket privacy filter.
-                if (!quietArtifactRead) broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: ${error}\x1b[0m\r\n`);
+                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: ${error}\x1b[0m\r\n`);
             }
 
-            // Quiet private artifact reads keep all gateway checks and return values.
-            if (!quietArtifactRead) broadcast({
+            // [NEW] Broadcast tool completion
+            broadcast({
                 type: 'tool_done',
                 id: 'panel-terminal',
                 sessionId: contextSessionId,
