@@ -31,7 +31,6 @@
  * against every tool and the catalogue collapses back to the core.
  */
 import { tools } from '../../modules/tools/registry';
-import { requestedPrimitiveOptions } from './requested-primitive-options';
 
 /** Arabic (and common transliteration) → the English words tools describe themselves with. */
 /**
@@ -319,13 +318,6 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
             continue;
         }
     }
-    // Honor explicit declared primitive arguments instead of silently using
-    // tool defaults. This is schema driven; identity/authority are context,
-    // never arguments inferred from an untrusted request.
-    const options = requestedPrimitiveOptions(goal, props);
-    if (options.invalid) return null;
-    Object.assign(input, options.values);
-
     // Anything still required and still missing means this tool cannot serve
     // this sentence — and saying so is the point. Some tools expose aliases
     // for one semantic input (for example query/pattern), so a whole group is

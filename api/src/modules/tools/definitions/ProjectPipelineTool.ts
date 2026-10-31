@@ -12,21 +12,29 @@ import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
-import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
+import { hasExplicitRecordSchema } from '../../../core/design/app-blueprints';
 import { guardUnverifiedBuilderClaims } from '../../../core/api-discovery/reporting';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { integrationProfile } from '../../../core/api-discovery/integration-profiles';
-import { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
-import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
-import { engineeringExecution, issueEngineeringExecution } from '../../services/AutonomousEngineeringPolicy';
-import { autonomousFileTextIsSafe } from '../../services/AutonomousFilePolicy';
-import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
-export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
 const MAX_DELIVERY_FILES = 120;
 const MAX_DELIVERY_FILE_DEPTH = 6;
+
+/** A bounded workspace question can be answered without selecting a project. */
+export function isWorkspaceOverviewRequest(request: string): boolean {
+    const text = String(request || '').replace(/\s+/g, ' ').trim();
+    const asksForRootListing = /\b(?:list|show|inspect)\b[^.!?\n]{0,80}\b(?:top[- ]level|root)\b[^.!?\n]{0,40}\bfiles?\b/i.test(text)
+        || /(?:اعرض|اعطِني|أعطني|اذكر|استكشف|افحص)[^.!؟\n]{0,80}(?:ملفات|محتويات)[^.!؟\n]{0,40}(?:الجذر|المستوى\s+الأعلى|مساحة\s+العمل\s+(?:الرئيسية|الأساسية))/i.test(text);
+    const asksForReadme = /\b(?:readme|read\s+the\s+readme|summari[sz]e\s+(?:the\s+)?readme)\b/i.test(text)
+        || /(?:اقرأ|لخ[ّّ]ص|لخص|ملخص)[^.!؟\n]{0,40}(?:README|الملف\s+التعريفي)/i.test(text);
+    // Listing the workspace root and reading its README are each bounded,
+    // non-destructive questions. Requiring both made a plain "list the
+    // top-level files" request ask the user for a project path even though
+    // the active workspace is the exact safe target.
+    return asksForRootListing || asksForReadme;
+}
 
 function summarizeReadme(content: string): string {
     const lines = String(content || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -114,8 +122,6 @@ export function buildPipelineDecisionEvidence(input: {
     liveRunError?: string;
     scopeAudit?: { built?: number; requested?: number; missing?: string[] };
     phaseResults?: any[];
-    specVerificationFailed?: boolean;
-    specVerificationCoverage?: number;
 }): PipelineDecisionEvidence {
     const results = Array.isArray(input.phaseResults) ? input.phaseResults : [];
     const verificationUnavailable = input.verificationUnavailable === true || results.some((result: any) => (
@@ -139,8 +145,6 @@ export function buildPipelineDecisionEvidence(input: {
         honestBlocker = 'verification_unavailable';
     } else if (input.scopeCoverageFailed && input.scopeAudit?.requested) {
         honestBlocker = `scope_coverage: ${Number(input.scopeAudit.built || 0)}/${Number(input.scopeAudit.requested)}`;
-    } else if (input.specVerificationFailed) {
-        honestBlocker = `spec_verification: ${Math.round((input.specVerificationCoverage || 0) * 100)}% coverage`;
     } else if (phaseName || phaseError) {
         honestBlocker = [phaseName, phaseError].filter(Boolean).join(': ').slice(0, 520);
     } else if (input.verificationFailed || input.liveRunVerificationFailed) {
@@ -627,239 +631,6 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
     return plan;
 }
 
-function buildCliScaffold(request: string, projectName: string): {
-    projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
-} {
-    // Detect requested language from the request
-    const lang = detectLanguage(request);
-    // Detect input format (CSV, JSON, etc.)
-    const format = detectInputFormat(request);
-    
-    const { pkgJson, tsconfigJson, entryPoint, entryPointContent, testFile, sampleFile, testFileName } = generateCliScaffold(lang, format, request, projectName);
-    
-    const structure: Record<string, string> = {
-        'package.json': pkgJson,
-        [entryPoint]: entryPointContent,
-        [testFileName]: testFile,
-        'sample.json': sampleFile
-    };
-    
-    // Only include tsconfig.json for TypeScript projects
-    if (tsconfigJson) {
-        // For TypeScript, use tsconfig.json; for Go, it's a placeholder for go.mod
-        const tsconfigName = lang === 'go' ? 'go.mod' : 'tsconfig.json';
-        (structure as any)[tsconfigName] = tsconfigJson;
-    }
-    
-    return {
-        projectName,
-        reason: `a CLI/utility/script was asked for; file-level scaffolding with ${lang} structure`,
-        phases: [{
-            phaseNumber: 1,
-            name: 'CLI Scaffold',
-            tasks: [{
-                tool: 'scaffold_project',
-                description: `CLI tool scaffold for: ${request}`,
-                args: {
-                    request,
-                    structure
-                }
-            }]
-        }]
-    };
-}
-
-function detectLanguage(request: string): 'typescript' | 'python' | 'bash' | 'go' | 'rust' | 'javascript' | 'unknown' {
-    const req = request.toLowerCase();
-    
-    // Explicit language mentions (TypeScript first for specificity)
-    if (/\bpython\b/.test(req)) return 'python';
-    if (/\btypescript\b|\bts\b/.test(req)) return 'typescript';
-    if (/\bbash\b|\bshell\b|\bsh\b/.test(req)) return 'bash';
-    if (/\bgo\b|\bgolang\b/.test(req)) return 'go';
-    if (/\brust\b/.test(req)) return 'rust';
-    if (/\bjavascript\b/.test(req)) return 'javascript';
-    
-    // Framework/tool hints (Node.js ecosystem defaults to TypeScript)
-    if (/django|flask|fastapi|pandas|numpy|pip|conda|virtualenv/.test(req)) return 'python';
-    if (/node|npm|yarn|pnpm|express|fastify|nestjs|react|vue|next/.test(req)) return 'typescript';
-    if (/cargo|rustup|tokio|actix/.test(req)) return 'rust';
-    if (/go\.mod|gin|echo|fiber/.test(req)) return 'go';
-    
-    return 'typescript'; // default fallback
-}
-
-function detectInputFormat(request: string): 'csv' | 'json' | 'text' | 'unknown' {
-    const req = request.toLowerCase();
-    
-    if (/\bcsv\b|\bcomma.separated/.test(req)) return 'csv';
-    if (/\btsv\b|\btab.separated/.test(req)) return 'csv'; // treat TSV as CSV
-    if (/\bjson\b|\.json\b/.test(req)) return 'json';
-    if (/\bxml\b/.test(req)) return 'text';
-    if (/\btext\b|\.txt\b/.test(req)) return 'text';
-    
-    return 'unknown';
-}
-
-function generateCliScaffold(lang: string, format: string, request: string, projectName: string): {
-    pkgJson: string;
-    tsconfigJson: string;
-    entryPoint: string;
-    entryPointContent: string;
-    testFile: string;
-    sampleFile: string;
-    testFileName: string;
-} {
-    const isCsv = format === 'csv';
-    
-    switch (lang) {
-        case 'python':
-            return generatePythonScaffold(request, projectName, isCsv);
-        case 'bash':
-            return generateBashScaffold(request, projectName, isCsv);
-        case 'go':
-            return generateGoScaffold(request, projectName, isCsv);
-        case 'rust':
-            return generateRustScaffold(request, projectName, isCsv);
-        case 'javascript':
-            return generateJavaScriptScaffold(request, projectName, isCsv);
-        case 'typescript':
-        default:
-            return generateTypeScriptScaffold(request, projectName, isCsv);
-    }
-}
-
-function generateTypeScriptScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = `"typescript": "^5.0.0",\n    "@types/node": "^20.0.0"${isCsv ? ',\n    "csv-parse": "^5.5.0"' : ''}`;
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "dist/index.js",\n  "scripts": {\n    "build": "tsc",\n    "start": "node dist/index.js",\n    "test": "node --test test.js"\n  },\n  "devDependencies": {\n    ${deps}\n  }\n}`;
-    const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`;
-    const entryPoint = 'src/index.ts';
-    const entryPointContent = generateTypeScriptEntry(request);
-    const testFile = generateTypeScriptTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, sampleFile, testFileName: 'test.js' };
-}
-
-function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.py",\n  "scripts": {\n    "start": "python main.py",\n    "test": "python -m pytest test.py -v"\n  },\n  "dependencies": {\n    ${isCsv ? '"pandas": "^2.0.0"' : ''}\n  }\n}`;
-    const entryPoint = 'main.py';
-    const entryPointContent = generatePythonEntry(request, isCsv);
-    const testFile = generatePythonTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, sampleFile, testFileName: 'test.py' };
-}
-
-function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.sh",\n  "scripts": {\n    "start": "bash main.sh",\n    "test": "bash test.sh"\n  }\n}`;
-    const entryPoint = 'main.sh';
-    const entryPointContent = generateBashEntry(request, isCsv);
-    const testFile = generateBashTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, sampleFile, testFileName: 'test.sh' };
-}
-
-function generateGoScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = isCsv ? '"github.com/gocarina/gocsv": "^0.0.0"' : '';
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "main.go",\n  "scripts": {\n    "build": "go build -o dist/main .",\n    "start": "./dist/main",\n    "test": "go test ./..."\n  },\n  "dependencies": {\n    ${deps}\n  }\n}`;
-    const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`; // placeholder for go.mod
-    const entryPoint = 'main.go';
-    const entryPointContent = generateGoEntry(request, isCsv);
-    const testFile = generateGoTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: tsconfigJson, entryPoint: 'main.go', entryPointContent, testFile, sampleFile, testFileName: 'test.go' };
-}
-
-function generateRustScaffold(request: string, projectName: string, isCsv: boolean) {
-    const deps = isCsv ? '"csv": "1.3"' : '';
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "src/main.rs",\n  "scripts": {\n    "build": "cargo build --release",\n    "start": "./target/release/${projectName}",\n    "test": "cargo test"\n  },\n  "dependencies": {\n    ${deps}\n  }\n}`;
-    const entryPoint = 'src/main.rs';
-    const entryPointContent = generateRustEntry(request, isCsv);
-    const testFile = generateRustTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, sampleFile, testFileName: 'src/test.rs' };
-}
-
-function generateJavaScriptScaffold(request: string, projectName: string, isCsv: boolean) {
-    const pkgJson = `{\n  "name": "${projectName}",\n  "version": "1.0.0",\n  "description": "${request}",\n  "main": "index.js",\n  "scripts": {\n    "start": "node index.js",\n    "test": "node --test test.js"\n  },\n  "devDependencies": {\n    ${isCsv ? '"csv-parse": "^5.5.0",' : ''}\n  }\n}`;
-    const entryPoint = 'index.js';
-    const entryPointContent = generateJavaScriptEntry(request);
-    const testFile = generateJavaScriptTest();
-    const sampleFile = generateSampleData();
-    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, sampleFile, testFileName: 'test.js' };
-}
-
-function generateTypeScriptEntry(request: string): string {
-    const isCsv = /\bcsv\b|\bcomma.separated/i.test(request);
-    if (isCsv) {
-        return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\nimport { parse } from 'csv-parse/sync';\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\n\nif (!filePath) {\n  console.error('Usage: node dist/index.js <csv-file>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const records = parse(content, { columns: true, skip_empty_lines: true });\n  console.log(JSON.stringify(records, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}`;
-    }
-    return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\n\nfunction filterJson(data: any[], filter: string): any[] {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\nconst filter: string = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node dist/index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const data: any[] = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
-}
-
-function generatePythonEntry(request: string, isCsv: boolean): string {
-    if (isCsv) {
-        return `# ${request}\nimport pandas as pd\nimport sys\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    \n    try:\n        df = pd.read_csv(file_path)\n        print(df.to_json(orient='records', indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
-    }
-    return `# ${request}\nimport json\nimport sys\n\ndef filter_json(data, filter_str):\n    prop, value = filter_str.split('=')\n    if not prop or not value:\n        raise ValueError("Filter must be in format: property=value")\n    return [item for item in data if str(item.get(prop, '')) == value]\n\ndef main():\n    if len(sys.argv) < 3:\n        print("Usage: python main.py <json-file> <property=value>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    filter_str = sys.argv[2]\n    \n    try:\n        with open(file_path, 'r') as f:\n            data = json.load(f)\n        if not isinstance(data, list):\n            raise ValueError("JSON file must contain an array")\n        filtered = filter_json(data, filter_str)\n        print(json.dumps(filtered, indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
-}
-
-function generateBashEntry(request: string, isCsv: boolean): string {
-    if (isCsv) {
-        return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 1 ]; then\n    echo "Usage: \$0 <csv-file>"\n    exit 1\nfi\n\nCSV_FILE="\$1"\n\n# Use csvtool or awk to convert CSV to JSON\nif command -v csvtool &> /dev/null; then\n    csvtool -u JSON "\$CSV_FILE"\nelif command -v python3 &> /dev/null; then\n    python3 -c \"\nimport csv, json, sys\nwith open(sys.argv[1]) as f:\n    reader = csv.DictReader(f)\n    print(json.dumps(list(reader), indent=2))\n\" \"\$CSV_FILE\"\nelse\n    echo \"Error: csvtool or python3 required\" >&2\n    exit 1\nfi`;
-    }
-    return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 2 ]; then\n    echo "Usage: \$0 <json-file> <property=value>"\n    exit 1\nfi\n\nJSON_FILE="\$1"\nFILTER="\$2"\n\nif ! command -v jq &> /dev/null; then\n    echo "Error: jq required" >&2\n    exit 1\nfi\n\njq --arg filter "\$FILTER" 'map(select(.\$filter | split(\"=\") | .[0] as \$k | .[1] as \$v | .[\$k] == \$v))' "\$JSON_FILE"`;
-}
-
-function generateGoEntry(request: string, isCsv: boolean): string {
-    if (isCsv) {
-        return `// ${request}\npackage main\n\nimport (\n\t"encoding/csv"\n\t"encoding/json"\n\t"fmt"\n\t"os"\n)\n\nfunc main() {\n\tif len(os.Args) < 2 {\n\t\tfmt.Println("Usage: go run main.go <csv-file>")\n\t\tos.Exit(1)\n\t}\n\t\n\tfile, err := os.Open(os.Args[1])\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\tdefer file.Close()\n\n\treader := csv.NewReader(file)\n\trecords, err := reader.ReadAll()\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tif len(records) == 0 {\n\t\treturn\n\t}\n\n\theaders := records[0]\n\tvar results []map[string]string\n\tfor _, row := range records[1:] {\n\t\trecord := make(map[string]string)\n\t\tfor i, h := range headers {\n\t\t\trecord[h] = row[i]\n\t\t}\n\t\tresults = append(results, record)\n\t}\n\n\toutput, _ := json.MarshalIndent(results, "", "  ")\n\tfmt.Println(string(output))\n}`;
-    }
-    return `// ${request}\npackage main\n\nimport (\n\t"encoding/json"\n\t"os"\n)\n\nfunc main() {\n\tif len(os.Args) < 3 {\n\t\tfmt.Println("Usage: go run main.go <json-file> <property=value>")\n\t\tos.Exit(1)\n\t}\n\n\tfilePath := os.Args[1]\n\tfilter := os.Args[2]\n\n\tcontent, err := os.ReadFile(filePath)\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tvar data []map[string]interface{}\n\tif err := json.Unmarshal(content, &data); err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tprop, value, _ := strings.Cut(filter, "=")\n\tvar filtered []map[string]interface{}\n\tfor _, item := range data {\n\t\tif val, ok := item[prop].(string); ok && val == value {\n\t\t\tfiltered = append(filtered, item)\n\t\t}\n\t}\n\n\toutput, _ := json.MarshalIndent(filtered, "", "  ")\n\tfmt.Println(string(output))\n}`;
-}
-
-function generateRustEntry(request: string, isCsv: boolean): string {
-    if (isCsv) {
-        return `// ${request}\nuse std::env;\nuse std::fs::File;\nuse std::io::BufReader;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: {} <csv-file>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file = File::open(&args[1]).expect("Failed to open file");\n    let mut reader = csv::Reader::from_reader(BufReader::new(file));\n    \n    let mut results = Vec::new();\n    for result in reader.deserialize() {\n        let record: serde_json::Value = result.expect("CSV parse error");\n        results.push(record);\n    }\n    \n    println!("{}", serde_json::to_string_pretty(&results).unwrap());\n}\n\n// Cargo.toml needs:\n// [dependencies]\n// csv = "1.3"\n// serde = { version = "1.0", features = ["derive"] }\n// serde_json = "1.0"`;
-    }
-    return `// ${request}\nuse std::env;\nuse std::fs;\nuse serde_json::Value;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 3 {\n        eprintln!("Usage: {} <json-file> <property=value>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file_path = &args[1];\n    let filter = &args[2];\n    let parts: Vec<&str> = filter.split('=').collect();\n    if parts.len() != 2 {\n        eprintln!("Filter must be in format: property=value");\n        std::process::exit(1);\n    }\n    let (prop, value) = (parts[0], parts[1]);\n\n    let content = fs::read_to_string(file_path).expect("Failed to read file");\n    let data: Vec<Value> = serde_json::from_str(&content).expect("Invalid JSON");\n    \n    let filtered: Vec<Value> = data.into_iter()\n        .filter(|item| item.get(&prop).map(|v| v.as_str()) == Some(value))\n        .collect();\n    \n    println!("{}", serde_json::to_string_pretty(&filtered).unwrap());\n}`;
-}
-
-function generateJavaScriptEntry(request: string): string {
-    return `// ${request}\nconst fs = require('fs');\nconst path = require('path');\n\nfunction filterJson(data, filter) {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args = process.argv.slice(2);\nconst filePath = args[0];\nconst filter = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content = fs.readFileSync(filePath, 'utf-8');\n  const data = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
-}
-
-function generateTypeScriptTest(): string {
-    const cp = 'child_process';
-    const ex = 'execSync';
-    return `// Test for CLI filter tool\nconst { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node dist/index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
-}
-
-function generatePythonTest(): string {
-    return `# Test for CLI filter tool\nimport json\nimport subprocess\nimport os\n\ntest_file = os.path.join(os.path.dirname(__file__), 'sample.json')\ntest_data = [\n    {"name": "Alice", "age": 30, "city": "NYC"},\n    {"name": "Bob", "age": 25, "city": "LA"},\n    {"name": "Charlie", "age": 35, "city": "NYC"}\n]\nwith open(test_file, 'w') as f:\n    json.dump(test_data, f, indent=2)\n\nresult = subprocess.run(['python', 'main.py', 'sample.json', 'city=NYC'], capture_output=True, text=True)\nresult_data = json.loads(result.stdout.strip())\nassert len(result_data) == 2, f"Expected 2 results, got {len(result_data)}"\nassert result_data[0]['name'] == 'Alice', f"Expected Alice, got {result_data[0]['name']}"\nassert result_data[1]['name'] == 'Charlie', f"Expected Charlie, got {result_data[1]['name']}"\nprint("Test passed!")`;
-}
-
-function generateBashTest(): string {
-    return `#!/bin/bash\n# Test for CLI filter tool\n\nTEST_FILE="sample.json"\nTEST_DATA='[\n  {"name": "Alice", "age": 30, "city": "NYC"},\n  {"name": "Bob", "age": 25, "city": "LA"},\n  {"name": "Charlie", "age": 35, "city": "NYC"}\n]'\necho "$TEST_DATA" > "$TEST_FILE"\n\nOUTPUT=$(bash main.sh "$TEST_FILE" 'city=NYC')\nRESULT_COUNT=$(echo "$OUTPUT" | jq length)\nif [ "$RESULT_COUNT" -ne 2 ]; then\n    echo "Expected 2 results, got $RESULT_COUNT"\n    exit 1\nfi\n\nNAME_0=$(echo "$OUTPUT" | jq -r '.[0].name')\nif [ "$NAME_0" != "Alice" ]; then\n    echo "Expected Alice, got $NAME_0"\n    exit 1\nfi\n\nNAME_1=$(echo "$OUTPUT" | jq -r '.[1].name')\nif [ "$NAME_1" != "Charlie" ]; then\n    echo "Expected Charlie, got $NAME_1"\n    exit 1\nfi\n\necho "Test passed!"`;
-}
-
-function generateGoTest(): string {
-    return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"testing"\n)\n\nfunc TestCLIFilter(t *testing.T) {\n\ttestData := []map[string]interface{}{\n\t\t{"name": "Alice", "age": 30, "city": "NYC"},\n\t\t{"name": "Bob", "age": 25, "city": "LA"},\n\t\t{"name": "Charlie", "age": 35, "city": "NYC"},\n\t}\n\n\ttestFile := "sample.json"\n\tdata, _ := json.MarshalIndent(testData, "", "  ")\n\tos.WriteFile(testFile, data, 0644)\n\n\toutput, _ := exec.Command("go", "run", "main.go", "sample.json", "city=NYC").Output()\n\tvar result []map[string]interface{}\n\tjson.Unmarshal(output, &result)\n\n\tif len(result) != 2 {\n\t\tt.Fatalf("Expected 2 results, got %d", len(result))\n\t}\n\tif result[0]["name"] != "Alice" {\n\t\tt.Fatalf("Expected Alice, got %v", result[0]["name"])\n\t}\n\tif result[1]["name"] != "Charlie" {\n\t\tt.Fatalf("Expected Charlie, got %v", result[1]["name"])\n\t}\n}\n`;
-}
-
-function generateRustTest(): string {
-    return `#[cfg(test)]\nmod tests {\n    use std::process::Command;\n    \n    #[test]\n    fn test_cli_filter() {\n        let test_data = r#"[\n  {"name": "Alice", "age": 30, "city": "NYC"},\n  {"name": "Bob", "age": 25, "city": "LA"},\n  {"name": "Charlie", "age": 35, "city": "NYC"}\n]"#;\n    \n    std::fs::write("sample.json", test_data).unwrap();\n    \n    let output = Command::new("cargo")\n        .args(["run", "--", "sample.json", "city=NYC"])\n        .output()\n        .expect("Failed to execute command");\n    \n    let output = String::from_utf8_lossy(&output.stdout);\n    let result: Vec<serde_json::Value> = serde_json::from_str(&output).unwrap();\n    \n    assert_eq!(result.len(), 2);\n    assert_eq!(result[0]["name"], "Alice");\n    assert_eq!(result[1]["name"], "Charlie");\n}\n}`;
-}
-
-function generateJavaScriptTest(): string {
-    const cp = 'child_process';
-    const ex = 'execSync';
-    return `const { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\nconst testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('node index.js sample.json city=NYC', { encoding: 'utf-8' });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
-}
-
-function generateSampleData(): string {
-    return `[\n  { "name": "Alice", "age": 30, "city": "NYC" },\n  { "name": "Bob", "age": 25, "city": "LA" },\n  { "name": "Charlie", "age": 35, "city": "NYC" }\n]`;
-}
-
 export function deterministicPhasesFor(request: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
 } | null {
@@ -891,19 +662,6 @@ export function deterministicPhasesFor(request: string): {
             ],
         };
     }
-
-// CLI/utility/script requests are file-level projects, not web pages.
-    // They should use scaffold_project with a CLI-appropriate structure.
-    const isCli = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i.test(request);
-    const isCsvInput = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i.test(request);
-    const isCliOrCsv = isCli || isCsvInput;
-
-if (isCliOrCsv && scope === 'page') {
-        // CLI/utility/script requests are file-level projects, not web pages.
-        // Route to scaffold_project with CLI-appropriate structure.
-        return buildCliScaffold(request, projectName);
-    }
-
     return {
         projectName,
         reason: scope === 'page' ? 'a single page was asked for; no data service is implied' : 'an application was asked for with no declared data service',
@@ -1346,81 +1104,9 @@ export class ProjectPipelineTool implements ToolDefinition {
     mockSupported = false;
 
     async execute(input: { request: string; path?: string }, context?: any) {
-        const scopedFinal = (output: any) => ({ ...(output && typeof output === 'object' ? output : {}), pipelineFinal: true });
-        const planningScope = engineeringScope(context);
-        if (hasEngineeringToken(context) && !planningScope) return { ok: false, error: 'engineering_scope_invalid', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_invalid', executed: false }), logs: [] };
-        if (planningScope) {
-            if (input.request !== planningScope.request || input.path !== planningScope.root) return { ok: false, error: 'engineering_scope_mismatch', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_mismatch', executed: false }), logs: [] };
-            context?.onProgress?.('Inspecting the selected workspace through the guarded tools.');
-            const discovery = await executeTool('engineering_discovery', { request: planningScope.request, path: planningScope.root }, context);
-            if (!discovery.ok || !discovery.output?.evidence || !engineeringScope(context)) return { ok: false, error: 'engineering_discovery_failed', output: scopedFinal({ status: 'failed', reason: 'engineering_discovery_failed', executed: false, discoveryResult: discovery.output }), logs: discovery.logs || [] };
-            const productRequest = planningScope.request, evidence = discovery.output.evidence;
-            try { snapshotEngineeringChild('project_planner', { projectDescription: productRequest, evidence }, context); }
-            catch { return { ok: false, error: 'engineering_evidence_untrusted', output: scopedFinal({ status: 'failed',
-                reason: 'engineering_evidence_untrusted', executed: false }), logs: discovery.logs || [] }; }
-            const logs: string[] = [...(discovery.logs || [])];
-            const say = (message: string) => { appendBoundedPipelineLog(logs, message); context?.onProgress?.(message); };
-            const isAr = isArabicReply({ language: context?.language, text: productRequest });
-            const specification = await this.readRequestedSpecifications(productRequest, evidence, context, logs, say, isAr);
-            if (specification.error || !engineeringScope(context)) return { ok: false, error: 'engineering_specification_failed',
-                output: scopedFinal({ status: 'failed', reason: 'engineering_specification_failed', executed: false, message: specification.error || 'The scoped source read was cancelled.' }), logs };
-            // Literal edits cannot be planned from filenames alone. Read every
-            // admitted Node source/test completely through the same file gateway.
-            const sourceNames = evidence.mode === 'existing_workspace' && evidence.selectedProject?.projectKinds?.includes('node')
-                ? [...new Set<string>(['package.json', ...(evidence.selectedProject.sourceFiles || []), ...(evidence.selectedProject.testFiles || [])])] : [];
-            if (!sourceNames.length || sourceNames.length > 7) return { ok: false, error: 'isolated_source_context_budget',
-                output: scopedFinal({ status: 'failed', executed: false, reason: 'isolated_source_context_budget' }), logs };
-            const codeSources: Array<{ path: string; content: string; lineCount: number }> = [];
-            for (const relative of sourceNames) {
-                if (!engineeringScope(context) || !/^[A-Za-z0-9_-][A-Za-z0-9_./-]*$/u.test(relative)
-                    || relative.split('/').some(part => !part || part === '.' || part === '..')) return { ok: false, error: 'isolated_source_context_invalid', output: scopedFinal({ status: 'failed', executed: false }), logs };
-                const reads: any[] = [];
-                for (let snapshot = 0; snapshot < 2; snapshot++) {
-                    const read = await executeTool('read_file', { path: path.join(planningScope.root, relative), startLine: 1, endLine: 10000 }, context);
-                    if (!read.ok || typeof read.output?.content !== 'string' || read.output.truncated !== false
-                        || !Number.isInteger(read.output.totalLines) || read.output.totalLines < 1 || read.output.totalLines > 10000
-                        || read.output.content.split('\n').length !== read.output.totalLines
-                        || !autonomousFileTextIsSafe(read.output.content)) return { ok: false, error: 'isolated_source_context_incomplete', output: scopedFinal({ status: 'failed', executed: false }), logs };
-                    reads.push(read.output);
-                }
-                if (reads[0].content !== reads[1].content || reads[0].totalLines !== reads[1].totalLines) return { ok: false, error: 'isolated_source_context_changed', output: scopedFinal({ status: 'failed', executed: false }), logs };
-                codeSources.push({ path: relative, content: reads[0].content, lineCount: reads[0].totalLines });
-            }
-            const fullContext = [specification.content, ...codeSources.map(source => `COMPLETE SOURCE: ${source.path}\n${source.content}`)].filter(Boolean).join('\n\n');
-            const plannerEvidence = sealEngineeringEvidence(context, { ...evidence, sourceEvidence: { files: codeSources },
-                requiredSpecification: { content: fullContext, sources: [...specification.sources, ...codeSources.map(source => ({ path: source.path, lineCount: source.lineCount }))] } });
-            if (JSON.stringify(plannerEvidence, null, 2).length > DISCOVERY_EVIDENCE_MAX_CHARS)
-                return { ok: false, error: 'specification_planner_budget_exceeded', output: scopedFinal({ status: 'failed',
-                    reason: 'specification_planner_budget_exceeded', executed: false, message: 'Complete required-source evidence exceeds the bounded planner intake.' }), logs };
-            context?.onProgress?.('Planning the requested project with the selected local model.');
-            const plan = await executeTool('project_planner', { projectDescription: planningScope.request, evidence: plannerEvidence }, {
-                ...context, engineeringPipeline: false, plannerTimeoutMs: Math.min(120_000, Math.max(1, planningScope.expires - Date.now())),
-            });
-            if (!plan.ok || !Array.isArray(plan.output?.phases) || plan.output.phases.length === 0 || !engineeringScope(context)) return { ok: false, error: 'engineering_planning_failed', output: scopedFinal({ status: 'failed', reason: 'engineering_planning_failed', executed: false, evidence: discovery.output.evidence, plannerResult: plan.output }), logs: [...(discovery.logs || []), ...(plan.logs || [])] };
-            try {
-                const isolatedContext = issueEngineeringExecution(context, plannerEvidence, plan.output);
-                const sealed = engineeringExecution(isolatedContext)!;
-                const { AgentLoopService } = await import('../../services/AgentLoopService');
-                const result = await AgentLoopService.runPlannedPhasesIfPresent({
-                    sessionId: planningScope.sessionId, runId: planningScope.runId, userId: planningScope.userId,
-                    workspaceId: planningScope.workspaceId, request: planningScope.request, modelConfig: context.modelConfig,
-                    isCancelled: context.isCancelled, cancellation: context.cancellation, language: context.language,
-                    onProgress: context.onProgress, isolatedEngineeringContext: isolatedContext,
-                    plannerResult: { ok: true, output: { projectName: plan.output.projectName,
-                        projectRoot: planningScope.root, createsNewProject: false, phases: sealed.phases, totalPhases: sealed.phases.length } },
-                });
-                return { ok: result.ok === true, ...(result.ok === true ? {} : { error: (result as any).error || 'isolated_execution_failed' }),
-                    output: scopedFinal({ ...result, status: result.ok === true ? 'completed' : 'failed',
-                        executed: true, verified: result.ok === true, evidence: discovery.output.evidence }), logs };
-            } catch (error: any) {
-                return { ok: false, error: error.message || 'isolated_plan_not_supported',
-                    output: scopedFinal({ status: 'failed', executed: false, reason: error.message || 'isolated_plan_not_supported',
-                        evidence: discovery.output.evidence, plannerResult: plan.output }), logs };
-            }
-        }
         const logs: string[] = [];
         const request = String(input?.request || '').trim();
-        if (!request) return { ok: false, error: 'request is required', output: scopedFinal({ status: 'failed', executed: false, reason: 'request_required' }), logs };
+        if (!request) return { ok: false, error: 'request is required', logs };
 
         const say = (m: string) => { appendBoundedPipelineLog(logs, m); context?.onProgress?.(m); };
 
@@ -1465,8 +1151,8 @@ export class ProjectPipelineTool implements ToolDefinition {
             const listing = await executeTool('inspect_directory', {
                 path: projectPath || '.', depth: 1,
             }, context);
-            if (!listing?.ok || listing?.output?.truncated === true) {
-                const message = String(listing?.error || (listing?.output?.truncated ? 'directory_entry_limit' : 'The workspace root could not be read.'));
+            if (!listing?.ok) {
+                const message = String(listing?.error || 'The workspace root could not be read.');
                 return {
                     ok: false,
                     error: message,
@@ -1484,15 +1170,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             const rootReadme = tree.find((entry: any) => entry?.type === 'file' && /^readme(?:\.[a-z0-9_-]+)?$/i.test(String(entry?.name || '')));
             let readmeSummary = '';
             if (rootReadme?.name) {
-                const readme = await executeTool('read_file', { path: path.join(root, rootReadme.name) }, context);
-                if (!readme?.ok) {
-                    const message = String(readme?.output?.reason || readme?.error || 'README could not be read.');
-                    return { ok: false, error: message,
-                        output: { status: 'failed', verified: false, executionStatus: 'blocked', verificationStatus: 'not_run',
-                            deliveryStatus: 'blocked', pipelineFinal: true,
-                            summary: pick(isAr, `تعذر إكمال قراءة README: ${message}`, `README inspection could not complete: ${message}`) },
-                        logs: boundedPipelineLogs(logs, readme?.logs) };
-                }
+                const readme = await executeTool('read_file', { path: rootReadme.name }, context);
                 readmeSummary = summarizeReadme(String(readme?.output?.content || ''));
                 appendBoundedPipelineLogs(logs, readme?.logs);
             }
@@ -1508,16 +1186,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             logs.push(`workspace.overview.entries=${names.length} directories=${directoryCount} files=${fileCount}`);
             logs.push(`workspace.overview.top_level=${names.join(' | ').slice(0, MAX_PIPELINE_LOG_CHARS)}`);
             logs.push(`workspace.overview.readme=${rootReadme?.name || 'missing at workspace root'}`);
-            // Names are part of the requested result, even when UI log filters
-            // suppress structured discovery lines. Keep filenames literal.
-            const entryListing = names.map((name: string) => `- ${name.replace(/([\\`*_\[\]<>])/g, '\\$1')}`).join('\n');
             const summary = pick(isAr,
-                `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**الملفات والمجلدات:**\n\n${entryListing || 'الجذر فارغ.'}\n\n**README:** ${rootReadme?.name || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء.`,
-                `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**Files and directories:**\n\n${entryListing || 'The root is empty.'}\n\n**README:** ${rootReadme?.name || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed.`);
+                `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**README:** ${rootReadme?.name || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء. التفاصيل الكاملة موجودة في Logs.`,
+                `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**README:** ${rootReadme?.name || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed. Full discovery details are available in Logs.`);
             return {
                 ok: true,
                 output: {
-                    status: 'completed',
                     projectName: 'read-only-workspace-overview', completedPhases: 1, totalPhases: 1,
                     verified: true, executionStatus: 'completed', verificationStatus: 'verified', deliveryStatus: 'delivered',
                     pipelineFinal: true, stopReason: 'read_only_request', overview, summary,
@@ -1658,11 +1332,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             : null;
         const { hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
         const deterministicWorkflow = hasWorkflowApplicationContract(productRequest);
-        // CLI/CSV requests are file-level projects, not web apps. They should
-        // use the deterministic scaffold path even without an explicit schema.
-        const isCliOrCsv = isCliRequestFn(productRequest);
-        const hisOwnSchema = isGreenfield
-            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv)
+        // Discovery is authoritative about whether a project already exists,
+        // but older/newer discovery callers do not always populate the
+        // convenience `createsNewProject` flag consistently.
+        const confirmedGreenfield = isGreenfield;
+        const hisOwnSchema = confirmedGreenfield
+            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow)
             ? deterministicPhasesFor(productRequest)
             : null;
         // The provider is a prerequisite for model planning, not for an
@@ -2793,68 +2468,6 @@ export class ProjectPipelineTool implements ToolDefinition {
             }
         }
 
-        // 3.5 — Specification Verification: verify all requirements from the
-        // specification are satisfied in the built artifact. This runs after
-        // Browser QA passes and before the final delivery decision.
-        let specVerificationFailed = false;
-        let specVerificationCoverage = 0;
-        let specVerificationResults: any = null;
-        if (finalVerified && specification?.content) {
-            try {
-                say(pick(isAr,
-                    '📋 التحقق من متطلبات المواصفة...',
-                    '📋 Verifying specification requirements...'));
-                appendBoundedPipelineLog(logs, '[pipeline] Starting specification verification');
-
-                const specVerifyResult = await executeTool('specification_verification', {
-                    specificationId: specification.specificationId,
-                    projectRoot: String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim(),
-                    userId: context?.userId || 'anonymous',
-                }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
-
-                if (specVerifyResult?.ok && specVerifyResult?.output) {
-                    specVerificationResults = specVerifyResult.output;
-                    specVerificationCoverage = specVerifyResult.output.coverage || 0;
-                    if (!specVerifyResult.output.verified) {
-                        specVerificationFailed = true;
-                        finalVerified = false;
-                        finalHonestBlocker = true;
-                        liveRunVerificationFailed = true;
-                        liveRunError = `specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ') || 'requirements not met'}`;
-                        say(pick(isAr,
-                            `⛔ التحقق من المواصفة فشل: ${specVerifyResult.output.missingRequirements?.join(', ')}`,
-                            `⛔ Specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ')}`));
-                    } else {
-                        say(pick(isAr,
-                            `✅ التحقق من المواصفة نجح (${Math.round(specVerificationCoverage * 100)}% تغطية)`,
-                            `✅ Specification verification passed (${Math.round(specVerificationCoverage * 100)}% coverage)`));
-                    }
-                } else {
-                    specVerificationFailed = true;
-                    finalVerified = false;
-                    finalHonestBlocker = true;
-                    liveRunVerificationFailed = true;
-                    const msg = specVerifyResult?.error || 'specification verification tool failed';
-                    liveRunError = `specification verification error: ${msg}`;
-                    appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${msg}`);
-                    say(pick(isAr,
-                        `⛔ تعذّر التحقق من المواصفة: ${msg}`,
-                        `⛔ Specification verification error: ${msg}`));
-                }
-            } catch (specVerifyError: any) {
-                specVerificationFailed = true;
-                finalVerified = false;
-                finalHonestBlocker = true;
-                liveRunVerificationFailed = true;
-                const message = String(specVerifyError?.message || specVerifyError).slice(0, 420);
-                liveRunError = `specification verification error: ${message}`;
-                appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${message}`);
-                say(pick(isAr,
-                    `⛔ تعذّر التحقق من المواصفة: ${message}`,
-                    `⛔ Specification verification error: ${message}`));
-            }
-        }
-
         /**
          * A LIVE, QUALITY-TRUE, QA-PASSED SYSTEM MISSING SOME OF WHAT WAS
          * ASKED IS A PARTIAL DELIVERY — NOT A BLOCKED ONE.
@@ -2903,8 +2516,6 @@ export class ProjectPipelineTool implements ToolDefinition {
             liveRunError,
             scopeAudit,
             phaseResults: pipeline?.results,
-            specVerificationFailed,
-            specVerificationCoverage,
         });
 
         const summary = this.buildDeliveryReport({
@@ -2934,9 +2545,6 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(requestFidelityEvidenceUnavailable ? { fidelityUnverifiable: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(browserQaFailed ? { browserQaFailed: true } : {}),
-
-                ...(specVerificationFailed ? { specVerificationFailed: true } : {}),
-                ...(specVerificationResults ? { specVerificationResults } : {}),
                 ...(finalHonestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
@@ -2977,13 +2585,10 @@ export class ProjectPipelineTool implements ToolDefinition {
      * that discovery has actually observed, then read every page through Joe's
      * own read_file tool.  The planner receives the complete text or nothing.
      */
-    private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string; specificationId: string }> {
+    private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string }> {
         const asksToRead = requestRequiresLocalSpecification(request);
-        // The issued scope already admitted build/repair work. Its required
-        // sources remain binding even when the user says fix/edit rather than build.
-        if (asksToRead && hasEngineeringToken(context)) return this.readScopedSpecifications(request, evidence, context, logs, say, isAr);
         const asksToExecute = /(?:نف[ّذذ]|ابن|طو[ّو]ر|طبق|execute|implement|build|develop|create|run)/i.test(request);
-        if (!asksToRead || !asksToExecute) return { content: '', sources: [], specificationId: '' };
+        if (!asksToRead || !asksToExecute) return { content: '', sources: [] };
 
         const files = Array.isArray(evidence?.instructionFiles) ? evidence.instructionFiles : [];
         const named = files.filter((file: any) => /(?:spec|require|brief|مواصف|متطلبات)/i.test(String(file?.relativePath || '')));
@@ -2992,7 +2597,6 @@ export class ProjectPipelineTool implements ToolDefinition {
             return {
                 content: '',
                 sources: [],
-                specificationId: '',
                 error: pick(isAr,
                     'طلبتَ قراءة مواصفة محلية قبل التنفيذ، لكن الاستكشاف لم يثبت ملف مواصفة واحداً يمكن قراءته بأمان. حدّد اسم الملف أو ضعه في مساحة العمل ثم أعد الطلب.',
                     'You asked Joe to read a local specification before execution, but discovery did not establish one safe specification file. Name the file or place it in the workspace, then retry.'),
@@ -3009,7 +2613,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             const relativePath = this.safeWorkspaceRelativePath(suppliedPath, workspaceRoot);
             if (!relativePath) {
                 return {
-                    content: '', sources: [], specificationId: '',
+                    content: '', sources: [],
                     error: pick(isAr,
                         `رفض Joe مسار المواصفة «${suppliedPath}» لأنه ليس مساراً نسبياً آمناً داخل مساحة العمل المكتشفة.`,
                         `Joe refused specification path “${suppliedPath}” because it is not a safe workspace-relative path.`),
@@ -3025,7 +2629,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }, context);
                 if (!readResult?.ok || typeof readResult?.output?.content !== 'string') {
                     return {
-                        content: '', sources: [], specificationId: '',
+                        content: '', sources: [],
                         error: pick(isAr,
                             `تعذّر قراءة المواصفة المثبتة «${relativePath}» كاملة: ${readResult?.error || 'لم تُرجع أداة القراءة محتوى صالحاً'}.`,
                             `Joe could not fully read the established specification “${relativePath}”: ${readResult?.error || 'the read tool returned no valid content'}.`),
@@ -3040,76 +2644,9 @@ export class ProjectPipelineTool implements ToolDefinition {
             appendBoundedPipelineLog(logs, `pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
         }
         if (!sources.length) {
-            return { content: '', sources: [], specificationId: '', error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };
+            return { content: '', sources: [], error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };
         }
-        // Generate a specification ID from the first source
-        const specificationId = `spec_${Date.now()}_${sources[0]?.path?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
-        return { content: sections.join('\n\n'), sources, specificationId };
-    }
-
-    /** Complete, bounded source intake for the immutable current engineering owner. */
-    private async readScopedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string; specificationId: string }> {
-        const fail = (error: string) => ({ content: '', sources: [], specificationId: '', error });
-        const scope = engineeringScope(context);
-        if (!scope || evidence?.workspaceRoot !== scope.root) return fail('engineering_scope_invalid');
-        const documents = Array.isArray(evidence.documentFiles) ? evidence.documentFiles : [];
-        if (evidence.blockers?.some((item: any) => item.code === 'discovery_coverage_limited')) return fail('specification_discovery_incomplete');
-        const readingClauses = Array.from(request.matchAll(/(?:read|inspect|review|اقرأ|قراءة)[^\n;!?؟]*/giu), match => match[0]).join('\n');
-        const mentionedFiles = Array.from(readingClauses.matchAll(/[^\s"'`<>]+\.[A-Za-z0-9]{1,12}\b/gu), match => match[0]);
-        if (mentionedFiles.some(name => !/\.(?:txt|md)$/iu.test(name))) return fail('specification_extension_unsupported');
-        const mentions = mentionedFiles;
-        const cleanPath = (value: unknown): string => {
-            if (typeof value !== 'string' || !value || /[\\\u0000-\u001f\u007f:]/u.test(value) || value.startsWith('/')) return '';
-            const normalized = value.replace(/^\.\//u, '');
-            if (normalized.split('/').some(part => !part || part === '.' || part === '..') || !/\.(?:txt|md)$/iu.test(normalized)) return '';
-            return normalized;
-        };
-        if (mentions.some(name => !cleanPath(name))) return fail('specification_path_invalid');
-        const named = [...new Set(mentions.map(cleanPath))];
-        const selected = named.length ? named.map(relativePath => documents.find((file: any) => file.relativePath === relativePath))
-            : documents.filter((file: any) => /(?:spec|require|brief|prd|مواصف|متطلبات)/iu.test(file.relativePath));
-        if (!selected.length || selected.some((file: any) => !file) || !named.length && selected.length !== 1 || selected.length > 4)
-            return fail('specification_missing_or_ambiguous');
-        const sections: string[] = [], sources: Array<{ path: string; lineCount: number }> = [];
-        for (const file of selected) {
-            const relativePath = cleanPath(file.relativePath);
-            if (!relativePath || !Number.isInteger(file.size) || file.size < 0 || file.size > 128 * 1024) return fail('specification_file_limit');
-            const absolute = path.join(scope.root, relativePath);
-            if (!isWithinRoot(absolute, scope.root)) return fail('specification_path_invalid');
-            say(pick(isAr, `[pipeline] أقرأ المواصفة كاملة: ${relativePath}`, `[pipeline] Reading complete local specification: ${relativePath}`));
-            const snapshots: string[] = [];
-            let expectedLines = 0;
-            for (let pass = 0; pass < 2; pass++) {
-                const chunks: string[] = [];
-                let total = 0;
-                for (let startLine = 1; startLine <= (total || 1); startLine += 1000) {
-                    if (!engineeringScope(context)) return fail('engineering_scope_invalid');
-                    const read = await executeTool('read_file', { path: absolute, startLine, endLine: Math.min(startLine + 999, total || 1000) }, context);
-                    if (!engineeringScope(context)) return fail('engineering_scope_invalid');
-                    const output = read?.output;
-                    if (!read?.ok || !output || typeof output.content !== 'string' || !Number.isInteger(output.totalLines)
-                        || output.totalLines < 1 || output.totalLines > 10000 || typeof output.truncated !== 'boolean') return fail('specification_read_incomplete');
-                    if (total && output.totalLines !== total || expectedLines && output.totalLines !== expectedLines) return fail('specification_changed');
-                    total = output.totalLines;
-                    const end = Math.min(startLine + 999, total);
-                    if (output.truncated !== (total > end) || output.content.split('\n').length !== end - startLine + 1) return fail('specification_read_incomplete');
-                    chunks.push(output.content);
-                    if (Buffer.byteLength(chunks.join('\n'), 'utf8') > 128 * 1024 || JSON.stringify(chunks.join('\n')).length > DISCOVERY_EVIDENCE_MAX_CHARS)
-                        return fail('specification_planner_budget_exceeded');
-                    appendBoundedPipelineLogs(logs, read.logs);
-                }
-                const completeSnapshot = chunks.join('\n');
-                // Description/code-fence semantics require the whole document;
-                // a page must never forget a fence or JSON object opened earlier.
-                if (!autonomousFileTextIsSafe(completeSnapshot, { allowRequirementDescriptions: true })) return fail('specification_sensitive_content');
-                expectedLines = total; snapshots.push(completeSnapshot);
-            }
-            if (snapshots[0] !== snapshots[1] || Buffer.byteLength(snapshots[0], 'utf8') !== file.size) return fail('specification_changed');
-            sections.push(`SOURCE: ${relativePath}\n${snapshots[0]}`); sources.push({ path: relativePath, lineCount: expectedLines });
-            if (JSON.stringify({ content: sections.join('\n\n'), sources }).length > DISCOVERY_EVIDENCE_MAX_CHARS) return fail('specification_planner_budget_exceeded');
-            appendBoundedPipelineLog(logs, `pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
-        }
-        return { content: sections.join('\n\n'), sources, specificationId: 'scoped-current-source' };
+        return { content: sections.join('\n\n'), sources };
     }
 
     /**

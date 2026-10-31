@@ -519,22 +519,6 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
     const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
     const [expandedByPath, setExpandedByPath] = useState<Record<string, boolean>>({});
     const [tabs, setTabs] = useState<OpenTab[]>([]);
-    // Keep clean cached tabs aligned with completed edits from this session.
-    // Reopening a tab must not replace the live preview with its old contents.
-    useEffect(() => {
-        const handleCompletedContent = (event: Event) => {
-            const detail = (event as CustomEvent).detail;
-            if (!sessionId || viewMode !== 'local' || detail?.sessionId !== sessionId
-                || typeof detail.path !== 'string' || !detail.path.trim()
-                || typeof detail.content !== 'string') return;
-            setTabs(previous => previous.map(tab =>
-                tab.node.path === detail.path && !tab.isDirty && !tab.isLoading
-                    ? { ...tab, content: detail.content, isLoading: false, error: null }
-                    : tab));
-        };
-        window.addEventListener('preview:code_diff', handleCompletedContent);
-        return () => window.removeEventListener('preview:code_diff', handleCompletedContent);
-    }, [sessionId, viewMode]);
     const [activePath, setActivePath] = useState<string | null>(null);
     const [savingPath, setSavingPath] = useState<string | null>(null);
     const [savedPath, setSavedPath] = useState<string | null>(null);
