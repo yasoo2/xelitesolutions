@@ -2,7 +2,8 @@ import fs from 'fs';
 import path from 'path';
 import { composeAnswer, composeFailure } from '../core/orchestrator/answerComposer';
 
-const source = (...segments: string[]) => fs.readFileSync(path.join(__dirname, '..', ...segments), 'utf8');
+// Resolve the prospective source with the test runner, including isolated overlays.
+const source = (...segments: string[]) => fs.readFileSync(require.resolve('../'+segments.join('/')), 'utf8');
 
 /**
  * Regression: a user saw «تمّ التنفيذ: تشغيل المشروع ومعاينته حيّاً» after
@@ -42,7 +43,11 @@ describe('verified execution outcomes', () => {
 
     it('preserves a failed tool output so the orchestrator can compose its report', () => {
         const orchestrator = source('orchestration', 'AgentOrchestrator.ts');
-        const failed = orchestrator.indexOf('node.status = "failed";');
+        // Inspect the structured-repair failure branch; earlier terminal refusal
+        // branches legitimately return their already measured short explanation.
+        const payload = orchestrator.indexOf('node.result = this.sanitizeOutput(result.output ?? result.error);');
+        expect(payload).toBeGreaterThan(0);
+        const failed = orchestrator.lastIndexOf('node.status = "failed";', payload);
         const nextDecision = orchestrator.indexOf('const userActionMarker', failed);
         const block = orchestrator.slice(failed, nextDecision);
         expect(block).toContain('node.result = this.sanitizeOutput(result.output ?? result.error);');

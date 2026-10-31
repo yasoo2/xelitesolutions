@@ -27,6 +27,12 @@ export class ExecutionGateway {
         return executionEngine.runArgvStreaming(file, args, options);
     }
 
+    /** Only an owner-sealed, ToolService-authorized existing-project lease can open this finite SDK capability. */
+    static async openIsolatedNative(context: any, guestName: string) {
+        executionFirewall.validateExecution('ExecutionGateway:isolatedNative');
+        return executionEngine.createIsolatedNativeRunner(context, guestName);
+    }
+
     /**
      * Unified execute method.
      * Routes all system requests through ExecutionEngine.

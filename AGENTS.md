@@ -26,6 +26,52 @@ Joe is an autonomous, multi-agent software engineering platform. The target arch
 - Strong workspace/user isolation
 - No unsafe autonomous destructive actions
 
+## Mandatory research-first development and worker ownership
+
+These rules apply to every existing Joe tool as well as new capabilities. They
+are explicit user requirements from 2026-10-11, not optional suggestions.
+
+- Before implementing a capability, changing a tool, or replacing a dependency,
+  research the current official documentation, release notes, and the upstream
+  GitHub repository. Record the observation date, exact release/tag or commit,
+  links, breaking changes, license, platform and hardware requirements, and
+  the specific user outcome the update can improve. Search snippets alone do
+  not establish the latest release; verify the primary release page.
+- Maintain an inventory of ALL existing registered and defined tools. Record
+  research coverage per tool and its dependencies; an older tool is not exempt
+  because it already exists. Mark unresearched, unverified, and runtime-blocked
+  tools explicitly instead of claiming that every tool is current or working.
+- Compare the existing implementation with the researched alternatives before
+  choosing to keep, update, replace, or rebuild it. A new release or marketing
+  claim alone does not prove improved behavior. Rebuilding from scratch is
+  allowed when evidence supports it, with a preserved baseline, migration and
+  rollback plan, and all applicable verification gates.
+- Give Muse priority for bounded implementation tasks under the user's explicit
+  paid-Muse authorization. Give NVIDIA an independent bounded task or review
+  only through the exact account/model the user confirmed has free credits.
+  Do not purchase credits or enable Auto or a paid fallback. Codex owns direct
+  implementation, integration, independent review, and final verification too.
+- Each task requires an implementation owner, a distinct reviewer, an isolated
+  scope/branch, current source pins, acceptance criteria, deadline/step budget,
+  actual changed files and test evidence. Follow the existing task to completion
+  or diagnosed failure before rework or a next task; do not overlap ownership.
+- Review actual source, files, tests and the worker's real report. A proposal,
+  empty response, partial report, elapsed hour, or successful mock is not a
+  completed capability. Preserve rejected code and failed attempts as evidence.
+- After permissible integration, verify multiple fresh, relevant requests in
+  the real Joe UI on 5002, including visible outcomes and generated files/tests.
+  The owner supplies visual evidence when its browser is available; Codex must
+  independently verify it. An unavailable browser or desktop adapter is a
+  recorded acceptance blocker, never permission to fabricate a visual result.
+- Prioritize meaningful completion of substantial projects, agents/bots, and
+  Joe's own Windows capabilities. Increase difficulty only after the previous
+  level passes. Retain the canonical pipeline, identity/workspace isolation,
+  cancellation, cost limits, and destructive-action protections below.
+
+Local scheduled follow-ups require the machine and Codex app to remain running.
+Do not promise uninterrupted background work, universal request completion, or
+a competitive ranking without the corresponding execution evidence.
+
 ## Canonical execution pipeline
 
 The approved pipeline is:

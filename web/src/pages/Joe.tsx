@@ -12,7 +12,7 @@ import CommandComposer from '../components/CommandComposer';
 import { useSessionStore } from '../store/sessionStore';
 import { useSessionActions } from '../hooks/useSessionActions';
 import { SocketService } from '../services/socket';
-import { getRunningRunId, startTrackingRuns, subscribeRunningSessions } from '../services/runningSessions';
+import { startTrackingRuns, subscribeRunningSessions } from '../services/runningSessions';
 import { api } from '../services/apiClient';
 import SettingsDialog from '../components/SettingsDialog';
 import GitHubConnectDialog from '../components/GitHubConnectDialog';
@@ -24,6 +24,7 @@ import { API_URL } from '../config';
 import { applyAccent } from '../accents';
 import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../lib/preview-routing';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
+import { RunHistoryRecovery } from '../lib/run-history-recovery';
 
 interface Message {
     id: string;
@@ -72,7 +73,18 @@ export default function Joe() {
     // State
     // [WAKIL REFACTOR] Mode is always 'agent' now. Toggle removed.
     const [messages, setMessages] = useState<Message[]>([]);
+    const messagesRef = useRef(messages);
+    messagesRef.current = messages;
     const [historyRefreshTick, setHistoryRefreshTick] = useState(0);
+    const runHistoryRecoveryRef = useRef(new RunHistoryRecovery());
+    const pendingRunHistoryRef = useRef<{ sessionId: string; runId: string } | null>(null);
+    const refreshFinishedRunHistory = useCallback((sessionId: string, runId: string, finalEvent = false) => {
+        if (sessionId !== activeSessionIdRef.current) return;
+        if (runHistoryRecoveryRef.current.claim(sessionId, runId, finalEvent)) {
+            pendingRunHistoryRef.current = { sessionId, runId };
+            setHistoryRefreshTick(value => value + 1);
+        }
+    }, []);
     const loadedHistorySessionRef = useRef<string | undefined>(undefined);
     // Prompts echoed locally at send time, awaiting their server twin.
     const pendingEchoRef = useRef<Map<string, number>>(new Map());
@@ -120,6 +132,7 @@ export default function Joe() {
     const [userRole, setUserRole] = useState<string | undefined>(undefined);
     // Live "engineering company" department pipeline (BA -> Architect -> Dev -> QA -> Delivered)
     const [departmentStatus, setDepartmentStatus] = useState<any>(null);
+    const [screenshotRefreshKey, setScreenshotRefreshKey] = useState(0);
     // CommandComposer owns the live tool stream, while ChatPanel owns the
     // visible conversation. Keep a small receipt here so a completed pipeline
     // is visible in the same chat instead of disappearing with the hidden stream.
@@ -239,6 +252,15 @@ export default function Joe() {
             const active = String(activeSessionId || '');
             return !!active && sid === active;
         };
+        // A completed file stream proves a disk change, even if the run later fails.
+        // Refresh once per exact run, after completion, within this session only.
+        const pendingFileRefreshRunIds = new Set<string>();
+        let departmentClearTimer: ReturnType<typeof setTimeout> | undefined;
+        const cancelDepartmentClear = () => {
+            if (departmentClearTimer === undefined) return;
+            clearTimeout(departmentClearTimer);
+            departmentClearTimer = undefined;
+        };
         const unsub = SocketService.subscribe((msg: any) => {
             // Connection status
             if (msg.type === 'connected') setIsConnected(true);
@@ -246,6 +268,13 @@ export default function Joe() {
             // Everything below paints THIS conversation's panels — a run in
             // another session must never steal its tabs or its preview.
             if (!mine(msg)) return;
+              if (msg.suppressPresentation === true) return;
+            if (msg.type === 'run_finalized') {
+                // Presentation-only receipt: the matching run is already idle.
+                // Read its persisted answer without reopening tools or panels.
+                refreshFinishedRunHistory(String(msg.sessionId || ''), String(msg.runId || ''), true);
+                return;
+            }
             const messageRunId = String(msg?.runId || msg?.data?.runId || '').trim();
             const messageSessionId = String(msg?.sessionId || msg?.data?.sessionId || '').trim();
             const isTerminalRunEvent = ['run_finished', 'run_completed', 'run_cancelled', 'run_failed'].includes(msg?.type);
@@ -255,11 +284,32 @@ export default function Joe() {
                 if (terminalRunIdsRef.current.size > 128) terminalRunIdsRef.current.clear();
                 setDepartmentStatus(null);
             } else if (msg.type === 'user_input' && messageRunId && messageSessionId) {
+                cancelDepartmentClear();
                 terminalSessionIdsRef.current.delete(messageSessionId);
             } else if (terminalSessionIdsRef.current.has(messageSessionId) || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
                 // Never let delayed department/tool frames put a finished run
                 // back into the live state after the user has stopped it.
                 return;
+            }
+
+            if (msg.type === 'screenshot' && msg.data?.status === 'success' && msg.data?.capture?.id) {
+                setScreenshotRefreshKey(value => value + 1);
+            }
+
+            const fileData = msg?.data;
+            const completedFile = msg.type === 'file_stream' && fileData?.done === true
+                && typeof (fileData.file || fileData.path) === 'string'
+                && String(fileData.file || fileData.path).trim().length > 0;
+            const completedEdit = msg.type === 'diff' && typeof fileData?.path === 'string'
+                && fileData.path.trim().length > 0 && fileData.content !== undefined;
+            if (messageRunId && (completedFile || completedEdit)) {
+                if (pendingFileRefreshRunIds.size >= 32) pendingFileRefreshRunIds.clear();
+                pendingFileRefreshRunIds.add(messageRunId);
+            }
+            if (isTerminalRunEvent && messageRunId && pendingFileRefreshRunIds.delete(messageRunId)) {
+                window.dispatchEvent(new CustomEvent('workspace:updated', {
+                    detail: { sessionId: messageSessionId, runId: messageRunId },
+                }));
             }
 
             const triggerUncollapse = () => {
@@ -435,6 +485,7 @@ export default function Joe() {
             // [DEPARTMENTS] Live pipeline card (BA -> Architect -> Dev -> QA -> Delivered)
             if (msg.type === 'department_status' &&
                 (msg.sessionId === activeSessionId || msg.data?.sessionId === activeSessionId)) {
+                cancelDepartmentClear();
                 setDepartmentStatus(msg.data);
             }
 
@@ -448,10 +499,18 @@ export default function Joe() {
                 // last "working" line on screen forever.
                 const finishedSessionId = String(msg.sessionId || msg.data?.sessionId || '').trim();
                 if (finishedSessionId && finishedSessionId === activeSessionId) {
-                    setHistoryRefreshTick(value => value + 1);
+                    if (msg.type === 'run_finished' && messageRunId) {
+                        refreshFinishedRunHistory(finishedSessionId, messageRunId, true);
+                    } else {
+                        setHistoryRefreshTick(value => value + 1);
+                    }
                 }
                 // Clear the department card shortly after the run ends.
-                setTimeout(() => setDepartmentStatus(null), 4000);
+                cancelDepartmentClear();
+                departmentClearTimer = setTimeout(() => {
+                    departmentClearTimer = undefined;
+                    setDepartmentStatus(null);
+                }, 4000);
             }
 
             // Handle workspace root updates from the agent
@@ -528,7 +587,7 @@ export default function Joe() {
                 if (activeSessionId) setHistoryRefreshTick(value => value + 1);
             }
         });
-        return () => { unsub(); };
+        return () => { unsub(); cancelDepartmentClear(); };
     }, [activeSessionId, i18n.language]);
 
     // [AUTO-SWITCH] Listen for workspace tab switch from CommandComposer SSE events
@@ -551,12 +610,22 @@ export default function Joe() {
     useEffect(() => {
         const sessionId = activeSessionId;
         let cancelled = false;
+        let recoverySettled = false;
+        const recovery = pendingRunHistoryRef.current?.sessionId === sessionId ? pendingRunHistoryRef.current : null;
+        const settleRecovery = (answered: boolean) => {
+            if (!recovery || recoverySettled) return;
+            recoverySettled = true;
+            const retry = runHistoryRecoveryRef.current.settle(recovery.sessionId, recovery.runId, answered);
+            if (pendingRunHistoryRef.current === recovery) pendingRunHistoryRef.current = null;
+            if (retry && !cancelled) refreshFinishedRunHistory(recovery.sessionId, recovery.runId);
+        };
 
         const switchedSession = loadedHistorySessionRef.current !== sessionId;
         loadedHistorySessionRef.current = sessionId;
+        const historyBase: Message[] = switchedSession ? [] : messagesRef.current;
         // A title refresh must never erase the conversation it is renaming.
         // Clear only when the user actually selected a different session.
-        if (switchedSession) setMessages([]);
+        if (switchedSession) setMessages(historyBase);
         // Loading and department narration belong to the session that produced
         // them. A new chat must not inherit a disabled composer or a stale
         // "Joe is working" row from the conversation we just left. A genuinely
@@ -611,15 +680,22 @@ export default function Joe() {
                 // Only populate when this session actually has history; a brand-new
                 // session correctly stays empty (we cleared it above).
                 if (!cancelled && validMessages.length > 0) {
-                    setMessages(validMessages as Message[]);
+                    // A completion refresh must not overwrite a newer local
+                    // prompt or socket answer that arrived while it was loading.
+                    // Effect replay may clear to a different empty array before the ref updates.
+                    // Empty identity changes contain no newer prompt or answer to preserve.
+                    setMessages(prev => prev !== historyBase && (prev.length > 0 || historyBase.length > 0) ? prev : validMessages as Message[]);
                 }
+                settleRecovery((data.events || []).some((event: any) => event.type === 'text'
+                    && String(event.runId || event.data?.runId || '') === recovery?.runId));
             } catch {
                 // Silently handle message load failures
+                settleRecovery(false);
             }
         };
 
         loadMessages();
-        return () => { cancelled = true; };
+        return () => { cancelled = true; settleRecovery(false); };
     }, [activeSessionId, i18n.language, historyRefreshTick]);
 
     // Workspace Management
@@ -1051,11 +1127,23 @@ export default function Joe() {
      * fact about all of them. Without it a background run was invisible and
      * indistinguishable from a dead one.
      */
-    const [runningIds, setRunningIds] = useState<Set<string>>(new Set());
+    const [runningSnapshot, setRunningSnapshot] = useState<{ sessions: Set<string>; runIds: ReadonlyMap<string, string> }>({ sessions: new Set(), runIds: new Map() });
+    const runningIds = runningSnapshot.sessions;
     useEffect(() => {
         startTrackingRuns();
-        return subscribeRunningSessions(setRunningIds);
+        return subscribeRunningSessions((sessions, runIds) => setRunningSnapshot({ sessions, runIds }));
     }, []);
+
+    useEffect(() => {
+        const finished = runHistoryRecoveryRef.current.observe(activeSessionId, runningSnapshot.sessions, runningSnapshot.runIds);
+        // An early cancellation/failure may precede the persisted final reply.
+        // Exact successful history receipts dedupe, rather than terminal type.
+        if (!finished) return;
+        setIsLoading(false);
+        setDepartmentStatus(null);
+        keepBrowserVisibleRef.current = false;
+        refreshFinishedRunHistory(finished.sessionId, finished.runId);
+    }, [activeSessionId, runningSnapshot, refreshFinishedRunHistory]);
 
     // Transform sessions for SessionsBar (Unified)
     const isRunning = (id: string) => {
@@ -1089,6 +1177,7 @@ export default function Joe() {
                 userRole={userRole}
                 // ...rest of props...
                 messages={messages}
+                screenshotRefreshKey={screenshotRefreshKey}
                 inputValue={inputValue}
                 onInputChange={setInputValue}
                 onSend={handleSend}
@@ -1147,7 +1236,7 @@ export default function Joe() {
                             sessionId={activeSessionId}
                             sessionKind={activeSessionKind}
                             runActive={isRunning(activeSessionId || '')}
-                            serverRunId={getRunningRunId(activeSessionId || '') || undefined}
+                            serverRunId={runningSnapshot.runIds.get(activeSessionId || '') || undefined}
                             hideHistory={true}
                             workspaceId={workspaceId}
                             onSessionCreated={(id) => {

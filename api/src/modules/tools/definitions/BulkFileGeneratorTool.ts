@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolExecutionResult } from '../types';
 import fs from 'fs';
 import path from 'path';
+import { workspaceService } from '../../services/WorkspaceService';
 
 export const BulkFileGeneratorTool: ToolDefinition = {
     name: 'bulk_file_generator',
@@ -39,12 +40,23 @@ export const BulkFileGeneratorTool: ToolDefinition = {
     rateLimitPerMinute: 60,
     auditFields: ['cwd'],
     mockSupported: true,
-    execute: async (input) => {
+    execute: async (input, context) => {
         const files = input.files;
         const cwd = input.cwd || process.cwd();
         const created: string[] = [];
         const errors: string[] = [];
         const logs: string[] = [];
+
+        // Workspace containment: validate cwd is within workspace boundary
+        const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId) || '');
+        const resolvedCwd = path.resolve(cwd);
+        if (!resolvedCwd.startsWith(workspaceRoot + path.sep) && resolvedCwd !== workspaceRoot) {
+            return {
+                ok: false,
+                error: `cwd '${cwd}' escapes workspace boundary. Must be within workspace root: ${workspaceRoot}`,
+                logs: [`[BulkGen] SECURITY: cwd '${cwd}' rejected - outside workspace boundary`]
+            };
+        }
 
         const totalFiles = files.length;
         logs.push(`[BulkGen] Processing ${totalFiles} files in ${cwd}...`);
@@ -60,16 +72,21 @@ export const BulkFileGeneratorTool: ToolDefinition = {
                 try {
                     const targetPath = path.isAbsolute(file.path) ? file.path : path.resolve(cwd, file.path);
 
-                    // Security check: Ensure we are not writing outside allowed dirs
-                    // For "God Mode" we assume trusted agent for now, but in prod we restrict.
+                    // Workspace containment: validate targetPath is within workspace boundary
+                    const resolvedTargetPath = path.resolve(targetPath);
+                    if (!resolvedTargetPath.startsWith(workspaceRoot + path.sep) && resolvedTargetPath !== workspaceRoot) {
+                        errors.push(`Path '${file.path}' escapes workspace boundary`);
+                        logs.push(`[BulkGen] SECURITY: Path '${file.path}' rejected - outside workspace boundary`);
+                        continue;
+                    }
 
-                    const dir = path.dirname(targetPath);
+                    const dir = path.dirname(resolvedTargetPath);
                     if (!fs.existsSync(dir)) {
                         fs.mkdirSync(dir, { recursive: true });
                     }
 
-                    fs.writeFileSync(targetPath, file.content, 'utf-8');
-                    created.push(targetPath);
+                    fs.writeFileSync(resolvedTargetPath, file.content, 'utf-8');
+                    created.push(resolvedTargetPath);
                     processed++;
 
                     // Progress reporting every 10 files

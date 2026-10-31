@@ -3,6 +3,7 @@ import mongoose from 'mongoose';
 import path from 'path';
 import { mayUseRunSession } from '../api/routes/run';
 
+jest.mock('dotenv', () => ({ __esModule: true, default: { config: () => ({ parsed: {} }) } }));
 const RUN_ROUTE = fs.readFileSync(
     path.join(__dirname, '..', 'api', 'routes', 'run.ts'),
     'utf-8',
@@ -58,7 +59,7 @@ describe('run/start preserves browser ownership on the first message', () => {
         const resolved = RUN_ROUTE.indexOf('const runSessionId = String(sessionId || \'\').trim()');
         const attachmentMemory = RUN_ROUTE.indexOf('rememberSessionFiles(runSessionId, fileIds)');
         const persistedMessage = RUN_ROUTE.indexOf('sessionId: runSessionId, role: \'user\'');
-        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, text)');
+        const trace = RUN_ROUTE.indexOf('traceManager.startTrace(runSessionId, executionText)');
 
         expect(resolved).toBeGreaterThan(-1);
         expect(attachmentMemory).toBeGreaterThan(resolved);

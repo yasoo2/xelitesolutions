@@ -1857,8 +1857,9 @@ describe('a run keeps going while you read another conversation', () => {
         const fatal = S.slice(S.indexOf('Fatal runtime error'));
         expect(fatal).toContain("role: 'assistant'");
         expect(fatal).toContain('content: failText');
-        expect(fatal).toContain('persistChatStores()');
-        expect(fatal.indexOf('persistChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
+        expect(S).toContain("import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';");
+        expect(fatal).toContain('flushChatStores()');
+        expect(fatal.indexOf('flushChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
     });
 
     it('restores the last visible conversation after a reload', () => {
@@ -1880,11 +1881,17 @@ describe('a run keeps going while you read another conversation', () => {
 
     it('serves persisted chat history in explicit offline mode', () => {
         const S = SRC('api', 'controllers', 'sessionController.ts');
-        expect(S).toMatch(/readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/);
+        expect(S).toContain("import { persistChatStores, usesLocalChatStore } from '../chat-store';");
+        expect(S).toMatch(/function isOfflineSessionStore\(\): boolean \{\s*return usesLocalChatStore\(\);/);
+        const history = S.slice(S.indexOf('export async function listSessionMessages'));
+        expect(history).toContain('const isOffline = isOfflineSessionStore();');
+        const store = SRC('api', 'chat-store.ts');
+        expect(store).toMatch(/export function usesLocalChatStore\(\): boolean \{\s*return mongoose\.connection\.readyState !== 1\s*\|\| process\.env\.OFFLINE_MODE === 'true'\s*\|\| process\.env\.PERSISTENCE_MODE === 'JSON'/);
         expect(S).toContain("messages = mockMessages.filter((m: any) => m.sessionId === sessionId)");
-        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {
-            expect(file).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
-        }
+        const route = SRC('api', 'routes', 'run.ts');
+        expect(route).toMatch(/function usesJsonRunStore\(\): boolean \{[\s\S]{0,650}return mongoose\.connection\.readyState !== 1\s*\|\| process\.env\.OFFLINE_MODE === 'true'\s*\|\| process\.env\.PERSISTENCE_MODE === 'JSON'/);
+        expect(route).toMatch(/if \(usesJsonRunStore\(\)\)/);
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('usesLocalChatStore()');
     });
 
     it('the owner stop route broadcasts a session-scoped cancellation', () => {
@@ -1896,10 +1903,11 @@ describe('a run keeps going while you read another conversation', () => {
 
     it('the stop control clears its session immediately after a confirmed stop', () => {
         const C = WEB('components', 'CommandComposer.tsx');
-        expect(C).toContain("import { markRunning } from '../services/runningSessions';");
+        expect(C).toContain("import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';");
         expect(C).toMatch(/payload\?\.stopped === true/);
-        expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
-        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
+        expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false, stopTargetRunId, runningGenerationAtStop\)/);
+        expect(C).toMatch(/const requestStop = async \(runId: string\) => \{\s*const response = await fetch\(`\$\{API\}\/runs\/stop`/);
+        expect(C).toMatch(/if \(rid \|\| sid\) \{\s*reqs\.push\(\s*requestStop\(rid\)/);
         expect(C).toContain("fetch(`${API}/runs/active`, { headers })");
         const unconfirmed = C.indexOf('if (!serverConfirmedStop && (rid || sid))');
         const reset = C.indexOf("setStatus('idle');", unconfirmed);
@@ -1918,7 +1926,8 @@ describe('a run keeps going while you read another conversation', () => {
     it('the chip marks a working session, and only a working one', () => {
         const J = WEB('pages', 'Joe.tsx');
         expect(J).toMatch(/startTrackingRuns\(\)/);
-        expect(J).toMatch(/subscribeRunningSessions\(setRunningIds\)/);
+        expect(J).toContain('subscribeRunningSessions((sessions, runIds) => setRunningSnapshot({ sessions, runIds }))');
+        expect(J).toContain("serverRunId={runningSnapshot.runIds.get(activeSessionId || '') || undefined}");
         expect(J).toMatch(/isRunning: isRunning\(s\.id\)/);
         const B = WEB('components', 'SessionsBar.tsx');
         expect(B).toMatch(/isRunning\?: boolean/);
