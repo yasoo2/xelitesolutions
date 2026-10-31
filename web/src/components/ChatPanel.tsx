@@ -1,3 +1,4 @@
+import ScreenshotResults from './ScreenshotResults';
 import { stripPictographs } from '../lib/plainText';
 import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot, Copy, Check, Paperclip } from 'lucide-react';
@@ -48,6 +49,7 @@ interface ChatPanelProps {
     children?: React.ReactNode; // For CommandComposer
     isCollapsed?: boolean;
     sessionId?: string;
+    screenshotRefreshKey?: number;
 }
 
 export default function ChatPanel({
@@ -59,7 +61,8 @@ export default function ChatPanel({
     placeholder = 'Ask Joe or type a command...',
     children,
     isCollapsed = false,
-    sessionId
+    sessionId,
+    screenshotRefreshKey
 }: ChatPanelProps) {
     const { t, i18n } = useTranslation();
     const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -399,6 +402,7 @@ export default function ChatPanel({
                         </div>
                     </div>
                 )}
+                <ScreenshotResults sessionId={sessionId} refreshKey={screenshotRefreshKey} />
                 <div ref={messagesEndRef} />
 
             </div>

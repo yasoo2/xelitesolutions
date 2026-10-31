@@ -2,6 +2,8 @@ import { spawn } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import crypto from 'crypto';
+import { engineeringExecution, recheckEngineeringExecutionGateway } from '../modules/services/AutonomousEngineeringPolicy';
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
@@ -135,6 +137,25 @@ export interface ExecutionSession {
     onExit: (callback: (code: number) => void) => void;
     fallback?: boolean;
 }
+
+export type IsolatedNativeResult = { exit: number; stdout: string; stderr: string };
+export type IsolatedNativeHooks = { onPending?: () => void; onLateTerminal?: (result: IsolatedNativeResult) => void | Promise<void> };
+export type IsolatedNativeRunner = (args: readonly string[], stdin?: string, timeoutMs?: number, hooks?: IsolatedNativeHooks) => Promise<IsolatedNativeResult>;
+const ISOLATED_STORAGE = 'D:/AI/DockerSandboxes';
+const ISOLATED_CLI = 'C:/Users/home/AppData/Local/DockerSandboxes/bin/sbx.exe';
+const ISOLATED_CLI_HASH = '0d05cdb9e2480a59c4624a9e4135e3ac665495607533c659c8a13b9036e40986';
+const ISOLATED_KIT = `${ISOLATED_STORAGE}/joe-isolated-shell-kit-v1`;
+const ISOLATED_GUEST_ROOT = '/home/agent/workspace/joe-project';
+const ISOLATED_OUTPUT_CAP = 256 * 1024;
+const isolatedDigest = (bytes: Buffer | string) => crypto.createHash('sha256').update(bytes).digest('hex');
+
+/** This fixed program can run only in a run-owned mountless guest. */
+export const ISOLATED_GUEST_FILE_PROGRAM = `const fs=require('fs'),path=require('path');let input='';process.stdin.on('data',c=>input+=c);process.stdin.on('end',()=>{
+const p=JSON.parse(input),root=${JSON.stringify(ISOLATED_GUEST_ROOT)};fs.mkdirSync(root,{recursive:true});
+const target=name=>{if(!/^[A-Za-z0-9_-][A-Za-z0-9_.\\/-]*$/.test(name)||name.split('/').some(x=>!x||x==='.'||x==='..'))throw Error('path');let t=path.join(root,name),c=root;for(const s of name.split('/')){c=path.join(c,s);if(fs.existsSync(c)&&fs.lstatSync(c).isSymbolicLink())throw Error('link')}return t};
+if(p.kind==='stage'){for(const f of p.files){const t=target(f.name);if(fs.existsSync(t))throw Error('existing');fs.mkdirSync(path.dirname(t),{recursive:true});fs.writeFileSync(t,f.content,{flag:'wx'})}console.log(JSON.stringify({staged:p.files.length}));return}
+if(p.kind==='read'){const t=target(p.name),s=fs.lstatSync(t);if(!s.isFile()||s.nlink!==1||s.size>131072)throw Error('file');console.log(JSON.stringify({content:fs.readFileSync(t,'utf8')}));return}
+if(p.kind==='edit'){const t=target(p.name),s=fs.lstatSync(t);if(!s.isFile()||s.nlink!==1||s.size>131072)throw Error('file');let c=fs.readFileSync(t,'utf8');if(c!==p.before)throw Error('preimage');fs.writeFileSync(t,p.after);console.log(JSON.stringify({edited:true}));return}throw Error('operation')});`;
 
 /**
  * ExecutionEngine
@@ -571,6 +592,121 @@ export class ExecutionEngine {
             exitCode: result.data?.exitCode,
             pid: result.data?.pid,
             duration: result.duration
+        };
+    }
+
+    /**
+     * A sealed ToolService lease opens one SDK-specific capability. No command,
+     * executable, environment, shell, detached mode or kill option comes from
+     * tool input. Cleanup survives cancellation only for the positively created
+     * and subsequently ID-bound guest. Legacy process methods are unchanged.
+     */
+    async createIsolatedNativeRunner(context: any, name: string): Promise<IsolatedNativeRunner> {
+        executionFirewall.validateExecution('ExecutionEngine:isolatedNativeAdmission');
+        const lease = engineeringExecution(context);
+        const ownerMatches = () => {
+            const owner = executionFirewall.currentOwner();
+            return !!lease && owner.userId === lease.scope.userId && owner.sessionId === lease.scope.sessionId
+                && executionFirewall.currentRunId() === lease.scope.runId;
+        };
+        const prefix = lease && isolatedDigest(`${lease.scope.userId}/${lease.scope.workspaceId}/${lease.scope.runId}`).slice(0, 12);
+        if (!lease || !ownerMatches() || !new RegExp(`^joe-run-${prefix}-[a-f0-9]{8}$`, 'u').test(name)
+            || await recheckEngineeringExecutionGateway(context) !== true
+            || engineeringExecution(context)?.token !== lease.token || !ownerMatches()) throw Error('isolated_native_authority_required');
+        const manifest = lease.evidence.sourceEvidence?.files?.find((file: any) => file.path === 'package.json');
+        const script = manifest && JSON.parse(manifest.content).scripts?.test;
+        if (typeof script !== 'string' || !/^node --test(?: [A-Za-z0-9_./-]+)*$/u.test(script)) throw Error('isolated_declared_test_not_supported');
+        const testArgs = script.split(' ').slice(1);
+        let creationStarted = false, creationAcknowledged = false, guestId = '', closed = false;
+        const same = (args: readonly string[], expected: readonly string[]) => args.length === expected.length && args.every((value, index) => value === expected[index]);
+        return async (provided, stdin = '', timeoutMs = 30_000, hooks = {}) => {
+            executionFirewall.validateExecution('ExecutionEngine:isolatedNativeCommand');
+            if (!ownerMatches() || !Array.isArray(provided) || provided.length > 64
+                || provided.some(value => typeof value !== 'string' || value.length > 8192 || value.includes('\0'))
+                || typeof stdin !== 'string' || Buffer.byteLength(stdin) > 512 * 1024
+                || !Number.isInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 180_000) throw Error('isolated_native_route_rejected');
+            const args = Object.freeze([...provided]);
+            const list = same(args, ['ls','--format','json']);
+            const stop = same(args, ['stop',name,'--format','json']);
+            const create = same(args, ['create',ISOLATED_KIT,'--name',name,'--skills','off','--cpus','2','--memory','2g','--deny-network','**','--pull','missing','--no-progress']);
+            const file = same(args, ['exec','-i',name,'env','-i','PATH=/usr/local/bin:/usr/bin:/bin','HOME=/home/agent','LANG=C.UTF-8','node','-e',ISOLATED_GUEST_FILE_PROGRAM]);
+            const test = same(args, ['exec','-w',ISOLATED_GUEST_ROOT,name,'env','-i','PATH=/usr/local/bin:/usr/bin:/bin','HOME=/home/agent','LANG=C.UTF-8','node','--test-reporter=tap',...testArgs]);
+            const read = list || same(args, ['daemon','status','--format','json']) || same(args, ['settings','get','mcp.forceLocalGateway'])
+                || same(args, ['settings','get','ssh.agentForwardingEnabled']) || same(args, ['mcp','ls','--format','json'])
+                || same(args, ['policy','ls',name,'--type','network','--format','json']);
+            const cleanup = creationAcknowledged && (list || stop);
+            if ((!read && !create && !file && !test && !stop) || (stop && !guestId)
+                || ((file || test) && !guestId) || (create && creationStarted) || (!file && stdin !== '')) throw Error('isolated_native_route_rejected');
+            if (!cleanup && (closed || engineeringExecution(context)?.token !== lease.token
+                || await recheckEngineeringExecutionGateway(context) !== true
+                || closed || engineeringExecution(context)?.token !== lease.token || !ownerMatches())) throw Error('isolated_native_authority_expired');
+            if (isolatedDigest(fs.readFileSync(ISOLATED_CLI)) !== ISOLATED_CLI_HASH) throw Error('isolated_native_cli_pin_changed');
+            if (create) creationStarted = true;
+            const receiptRoot = path.resolve(ISOLATED_STORAGE, 'run-receipts', 'native');
+            let ancestor = path.parse(receiptRoot).root;
+            for (const part of receiptRoot.slice(ancestor.length).split(path.sep)) {
+                ancestor = path.join(ancestor, part);
+                if (fs.existsSync(ancestor)) { const stat = fs.lstatSync(ancestor); if (!stat.isDirectory() || stat.isSymbolicLink()) throw Error('isolated_receipt_link'); }
+            }
+            fs.mkdirSync(receiptRoot, { recursive: true });
+            const receipt = path.join(receiptRoot, `${crypto.randomUUID()}.json`);
+            const record: any = { atUTC: new Date().toISOString(), status: 'STARTING', owner: { userId: lease.scope.userId,
+                sessionId: lease.scope.sessionId, workspaceId: lease.scope.workspaceId, runId: lease.scope.runId }, name,
+                command: args[0], args: args.map(value => value === ISOLATED_GUEST_FILE_PROGRAM ? '[fixed guest file program]' : value),
+                stdinBytes: Buffer.byteLength(stdin), cliSHA256: ISOLATED_CLI_HASH };
+            fs.writeFileSync(receipt, JSON.stringify(record), { flag: 'wx' });
+            const environment: NodeJS.ProcessEnv = {};
+            for (const key of ['SystemRoot','WINDIR','SystemDrive','USERPROFILE','LOCALAPPDATA','APPDATA','PROGRAMDATA','COMSPEC','HOMEDRIVE','HOMEPATH'])
+                if (process.env[key]) environment[key] = process.env[key];
+            Object.assign(environment, { PATH: `${path.dirname(ISOLATED_CLI)};${process.env.SystemRoot}/System32`, SANDBOXES_STORAGE_ROOT: ISOLATED_STORAGE,
+                SBX_NO_TELEMETRY: '1', TEMP: `${ISOLATED_STORAGE}/tmp`, TMP: `${ISOLATED_STORAGE}/tmp` });
+            return new Promise<IsolatedNativeResult>((resolve, reject) => {
+                const output: Buffer[] = [], errors: Buffer[] = []; let bytes = 0, settled = false, terminal = false;
+                const save = () => fs.writeFileSync(receipt, JSON.stringify(record));
+                const pending = (reason: string) => {
+                    if (settled) return; settled = true; closed = true; clearTimeout(timer);
+                    record.status = 'PENDING_NO_KILL_NO_RETRY'; record.reason = reason; save(); hooks.onPending?.(); reject(Error(reason));
+                };
+                // This sole sanctioned owner creates the exact executable with
+                // literal argv and a REPLACEMENT environment, never the legacy merge.
+                const child = spawn(ISOLATED_CLI, [...args], { cwd: ISOLATED_STORAGE, env: environment, shell: false, windowsHide: true, stdio: ['pipe','pipe','pipe'] });
+                record.pid = child.pid; record.spawnObservedUTC = new Date().toISOString(); record.status = 'PENDING'; save();
+                const timer = setTimeout(() => pending('isolated_native_deadline_pending_no_kill'), timeoutMs);
+                const collect = (chunks: Buffer[]) => (chunk: Buffer) => {
+                    bytes += chunk.length; if (bytes > ISOLATED_OUTPUT_CAP) { pending('isolated_output_limit'); return; }
+                    chunks.push(Buffer.from(chunk));
+                };
+                child.stdout.on('data', collect(output)); child.stderr.on('data', collect(errors));
+                child.on('error', () => pending('isolated_native_start_failed'));
+                child.stdin.on('error', () => pending('isolated_stdin_failed'));
+                child.on('close', code => {
+                    terminal = true; clearTimeout(timer);
+                    const result = { exit: code ?? -1, stdout: Buffer.concat(output).toString('utf8'), stderr: Buffer.concat(errors).toString('utf8') };
+                    if (create && result.exit === 0 && result.stdout.includes(`Created sandbox ${name}`)) creationAcknowledged = true;
+                    if (list && creationAcknowledged && result.exit === 0) {
+                        try {
+                            const rows = JSON.parse(result.stdout), candidates = Array.isArray(rows) && rows.filter((row: any) => row.name === name);
+                            if (!candidates || candidates.length !== 1 || !/^[a-f0-9-]{36}$/u.test(candidates[0].id)
+                                || candidates[0].cpus !== 2 || candidates[0].memory_mib !== 2048 || guestId && guestId !== candidates[0].id) throw Error('identity');
+                            guestId = candidates[0].id;
+                        } catch { closed = true; result.exit = -1; result.stderr = 'isolated_guest_identity_changed'; }
+                    }
+                    record.status = settled ? 'LATE_TERMINAL_NO_EXECUTION_RESUME' : 'TERMINAL'; record.exit = result.exit;
+                    record.stdoutBytes = Buffer.byteLength(result.stdout); record.stderrBytes = Buffer.byteLength(result.stderr);
+                    record.stdoutSHA256 = isolatedDigest(result.stdout); record.stderrSHA256 = isolatedDigest(result.stderr); record.closedUTC = new Date().toISOString(); save();
+                    if (settled) {
+                        const cleanupResult = hooks.onLateTerminal?.(result);
+                        if (cleanupResult && typeof cleanupResult.then === 'function') {
+                            record.lateCleanup = 'PENDING'; save();
+                            void cleanupResult.then(() => { record.lateCleanup = 'VERIFIED_OWNED_GUEST_STOPPED'; save(); },
+                                () => { record.lateCleanup = 'UNVERIFIED_REQUIRES_OWNER_RECOVERY'; save(); });
+                        }
+                    } else { settled = true; resolve(result); }
+                });
+                if (!cleanup && context.cancellation && typeof context.cancellation.then === 'function')
+                    void context.cancellation.then(() => { if (!terminal) pending('isolated_native_cancelled_pending_no_kill'); });
+                child.stdin.end(stdin);
+            });
         };
     }
 

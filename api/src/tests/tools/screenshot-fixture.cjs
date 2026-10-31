@@ -1,0 +1,32 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),vm=require('node:vm'),crypto=require('node:crypto');
+const {createRequire}=require('node:module');
+const apiRoot=path.resolve(process.argv[4]||path.join(__dirname,'../../..'));
+const apiRequire=createRequire(path.join(apiRoot,'package.json'));
+const ts=apiRequire('typescript');
+const {PNG}=apiRequire('pngjs');
+const rootA=path.resolve('D:/fixture/workspace-A'),rootB=path.resolve('D:/fixture/workspace-B'),cwd=path.resolve('D:/fixture/api');
+function fixture(sourceFile,options={}){
+ const observations={launches:0,closes:0,contextCloses:0,closeOrder:[],writes:[],events:[],rootCalls:[],permissionCalls:[],screenshots:0,violations:[]};
+ const timers=new Map();let timerId=0;
+ const setTimer=(callback,ms)=>{const id=++timerId;timers.set(id,{callback,ms});return id;};
+ const clearTimer=id=>timers.delete(id);
+ const dirs=new Set([rootA,rootB,cwd]),files=new Map(),symlinks=new Map(),handles=new Map();let fd=20;
+ const resolve=x=>path.resolve(String(x));const stat=x=>{x=resolve(x);if(!dirs.has(x)&&!files.has(x)&&!symlinks.has(x)){const e=new Error('ENOENT');e.code='ENOENT';throw e;}return {isDirectory:()=>dirs.has(x),isFile:()=>files.has(x),isSymbolicLink:()=>symlinks.has(x),size:files.get(x)?.length||0};};
+ const mkdir=(x,opts)=>{x=resolve(x);if(dirs.has(x)){if(!opts?.recursive){const e=new Error('EEXIST');e.code='EEXIST';throw e;}return;}if(!dirs.has(path.dirname(x))){if(!opts?.recursive){const e=new Error('ENOENT');e.code='ENOENT';throw e;}mkdir(path.dirname(x),opts);}dirs.add(x);};
+ const realpath=x=>{x=resolve(x);for(const [from,to]of symlinks){if(x===from||x.startsWith(from+path.sep))return path.join(to,path.relative(from,x));}stat(x);return x;};
+ const write=(x,bytes,opts={})=>{x=resolve(x);if(!dirs.has(path.dirname(x))){const e=new Error('ENOENT');e.code='ENOENT';throw e;}if(String(opts.flag||'').includes('x')&&files.has(x)){const e=new Error('EEXIST');e.code='EEXIST';throw e;}files.set(x,Buffer.from(bytes));observations.writes.push({path:x,flag:opts.flag,bytes:Buffer.byteLength(bytes)});};
+ const fakeFs={constants:fs.constants,existsSync:x=>dirs.has(resolve(x))||files.has(resolve(x))||symlinks.has(resolve(x)),mkdirSync:mkdir,lstatSync:stat,statSync:stat,realpathSync:realpath,readFileSync:x=>{const b=files.get(resolve(x));if(!b)throw new Error('ENOENT');return b;},writeFileSync:write,openSync:(x,flags)=>{x=resolve(x);if(files.has(x)&&((typeof flags==='string'&&flags.includes('x'))||(typeof flags==='number'&&(flags&fs.constants.O_EXCL)))){const e=new Error('EEXIST');e.code='EEXIST';throw e;}handles.set(++fd,{path:x,flags});return fd;},writeSync:(id,b)=>{const h=handles.get(id);if(!h)throw new Error('EBADF');write(h.path,b,{flag:'wx'});return b.length;},closeSync:id=>handles.delete(id)};
+ fakeFs.promises={mkdir:async(x,o)=>mkdir(x,o),lstat:async x=>stat(x),stat:async x=>stat(x),realpath:async x=>realpath(x),writeFile:async(x,b,o)=>write(x,b,o),readFile:async x=>fakeFs.readFileSync(x),open:async(x,flag)=>{const id=fakeFs.openSync(x,flag);return {writeFile:async b=>fakeFs.writeSync(id,b),write:async b=>fakeFs.writeSync(id,b),close:async()=>fakeFs.closeSync(id)};}};
+ const png=new PNG({width:123,height:321});png.data.fill(255);const pngBytes=PNG.sync.write(png);
+ const page={goto:async()=>{if(options.onGoto)await options.onGoto();if(options.errorOnGoto)throw new Error('PRIVATE_CAPTURE_TOKEN');},waitForTimeout:async()=>{},screenshot:async args=>{observations.screenshots++;if(options.onScreenshot)await options.onScreenshot();const type=args?.type||(args?.path&&/\.webp$/i.test(args.path)?'webp':args?.path&&/\.jpe?g$/i.test(args.path)?'jpeg':'png');const bytes=options.badPng?Buffer.from('badPNG'):type==='png'?pngBytes:fs.readFileSync(path.join(__dirname,'fixtures',type==='jpeg'?'capture.jpg':'capture.webp'));if(args?.path)write(args.path,bytes);return bytes;},url:()=> 'https://example.com/'};
+ const browserContext={newPage:async()=>page,close:async()=>{observations.contextCloses++;observations.closeOrder.push('context');if(options.onContextClose)await options.onContextClose();if(options.errorOnContextClose)throw new Error('PRIVATE_CONTEXT_CLOSE_DETAIL');}};
+ const browser={newContext:async()=>{if(options.onContext)await options.onContext();return browserContext;},close:async()=>{observations.closes++;observations.closeOrder.push('browser');if(options.onClose)await options.onClose();if(options.errorOnClose)throw new Error('PRIVATE_CLOSE_DETAIL');}};
+ const workspaceService={getActiveRoot:wid=>{observations.rootCalls.push(wid);return options.rootFor?options.rootFor(wid):wid==='workspace-B'?rootB:rootA;},canAccessAutonomousFiles:async(wid,uid,write)=>{observations.permissionCalls.push({wid,uid,write});return options.permission?options.permission(observations.permissionCalls.length):!options.denyPermission;}};
+ const modules={fs:fakeFs,path,crypto:options.crypto||crypto,'node:fs':fakeFs,'node:path':path,'node:crypto':options.crypto||crypto,'../base':{BaseTool:class{}},'playwright':{chromium:{launch:async()=>{observations.launches++;if(options.onLaunch)await options.onLaunch();return browser;}}},'../../../api/ws':{broadcast:e=>observations.events.push(e)},'../../../modules/browser/manager':{getChromiumLaunchOptions:()=>({})},'../../services/WorkspaceService':{workspaceService},'../../../modules/services/WorkspaceService':{workspaceService},'../path-containment':{isWithinRoot:(candidate,root)=>{const rel=path.relative(root,candidate);return !rel.startsWith('..')&&!path.isAbsolute(rel);}},'pngjs':{PNG}};
+ const code=ts.transpileModule(fs.readFileSync(sourceFile,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022,esModuleInterop:true}}).outputText;
+ const box={module:{exports:{}},Buffer,URL,AbortController,Date,console:{log:()=>{},warn:()=>{},error:()=>{}},setTimeout:setTimer,clearTimeout:clearTimer,process:{cwd:()=>cwd,platform:'win32'},require:name=>{if(!Object.hasOwn(modules,name)){observations.violations.push(name);throw new Error('fixture_import_denied');}return modules[name];}};box.exports=box.module.exports;
+ vm.runInNewContext(code,box,{timeout:2000});const tool=new box.module.exports.ScreenshotTool();
+ return {tool,observations,files,dirs,symlinks,timers,pngBytes,rootA,rootB,cwd,fireTimeout:ms=>{const timer=[...timers.values()].find(t=>t.ms===ms);if(!timer)throw new Error('timer_missing');timer.callback();}};
+}
+module.exports={fixture,rootA,rootB,cwd};

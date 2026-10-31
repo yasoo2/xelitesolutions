@@ -64,7 +64,7 @@ class ApiClient {
         }
     }
 
-    async get(endpoint: string, query?: Record<string, string>) {
+    async get(endpoint: string, query?: Record<string, string>, options?: { signal?: AbortSignal }) {
         const url = new URL(this.buildUrl(endpoint));
         if (query) {
             Object.entries(query).forEach(([k, v]) => url.searchParams.append(k, v));
@@ -72,6 +72,7 @@ class ApiClient {
         const res = await fetch(url.toString(), {
             method: 'GET',
             headers: this.headers,
+            signal: options?.signal,
         });
         return this.handleResponse(res, endpoint);
     }
