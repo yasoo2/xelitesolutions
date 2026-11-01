@@ -778,6 +778,8 @@ interface ProviderConfig {
   // a live request. The status dot is green only when this is true — never by
   // default. Reset to false whenever the key changes.
   verified?: boolean;
+  // Claude: the user pressed «use the server's key». Only then is 'server-key' theirs to keep.
+  serverKeyChosen?: boolean;
 }
 
 // OpenRouter available models
@@ -1118,8 +1120,10 @@ export default function CommandComposer({
       }
       // Claude is paid, so the server's key is used only when the user asks for
       // it. The build of 2026-11-01 filled 'server-key' in by itself; that was
-      // never the user's choice, so it is not kept.
-      if (baseProviders.anthropic?.apiKey === 'server-key') baseProviders.anthropic = { ...baseProviders.anthropic, apiKey: '' };
+      // never the user's choice, so it is not kept. A choice the user made is.
+      if (baseProviders.anthropic?.apiKey === 'server-key' && !baseProviders.anthropic.serverKeyChosen) {
+        baseProviders.anthropic = { ...baseProviders.anthropic, apiKey: '' };
+      }
       // Never trust a persisted "verified/connected" flag across reloads — the dot
       // must reflect a REAL test in THIS session. Keep the saved key, but clear the
       // status so it shows grey ("not tested yet") until the user verifies again.
@@ -4130,7 +4134,7 @@ export default function CommandComposer({
 
                   {/* Auto is the pure keyless mesh — no key. */}
                   {selectedProvider === 'auto' && (
-                    <div className="info-box free">
+                    <div className="info-box free" dir="auto">
                       <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('provClaudeAutoTitle')}</div>
                       <div>{t('provClaudeAutoBody')}</div>
                     </div>
@@ -4257,23 +4261,23 @@ export default function CommandComposer({
                             </optgroup>
                           )}
                         </select>
-                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                        <div dir="auto" style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
                           {list?.loading ? t('modelsLoading', 'Fetching the models…')
                             : list?.source === 'live' && !list?.reason ? t('claudeModelsLive', { count: runnable.length })
                             : reasonKey ? t(reasonKey, { status: list?.reason?.status ?? '' }) : t('modelsCatalog')}
                         </div>
-                        <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12 }}>
+                        <div dir="auto" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12 }}>
                           💳 {t('provClaudePaid')}
                         </div>
                         {engineInfo?.claude?.serverKey && (
-                          <div style={{ marginTop: 8, fontSize: 12 }}>
+                          <div dir="auto" style={{ marginTop: 8, fontSize: 12 }}>
                             {usingServerKey ? (
                               <>
                                 {t('provClaudeServerNote', { spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2), total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0) })}{' '}
-                                <button type="button" className="link-button" onClick={() => setClaude({ apiKey: '' })}>{t('provClaudeUseOwnKey')}</button>
+                                <button type="button" className="link-button" onClick={() => setClaude({ apiKey: '', serverKeyChosen: false })}>{t('provClaudeUseOwnKey')}</button>
                               </>
                             ) : (
-                              <button type="button" className="link-button" onClick={() => setClaude({ apiKey: 'server-key' })}>{t('provClaudeUseServerKey')}</button>
+                              <button type="button" className="link-button" onClick={() => setClaude({ apiKey: 'server-key', serverKeyChosen: true })}>{t('provClaudeUseServerKey')}</button>
                             )}
                           </div>
                         )}
