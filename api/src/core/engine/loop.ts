@@ -46,6 +46,23 @@ export const REPEAT_LIMIT = 4;
 export const IDLE_LIMIT = 3;
 /** Model calls in a row that fail before the run ends. */
 export const MODEL_FAILURE_LIMIT = 3;
+/**
+ * Joe's checks refusing the same thing this many times in a row ends the run.
+ * Measured on 2026-11-01: a store whose every requirement worked was refused
+ * nine times on one check, and the model spent those turns trying to please
+ * the checker instead of building. Four identical refusals mean the model and
+ * the checks disagree; the run stops and says on what.
+ */
+export const REFUSAL_LIMIT = 4;
+
+/** What a refusal refused, with its counts folded, so «8 tap targets» and «12 tap targets» read alike. */
+export function refusalSignature(report: { checks?: { id: string; status: string; detail?: string }[] } | undefined): string {
+    return (report?.checks || [])
+        .filter(c => c.status === 'failed')
+        .map(c => `${c.id}:${String(c.detail || '').replace(/\d+/g, '#').slice(0, 200)}`)
+        .sort()
+        .join('|');
+}
 /** Recite the plan at least this often, even when it did not change. */
 export const RECITE_EVERY = 5;
 /**
@@ -155,6 +172,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     let cutReplies = 0;
     let quietSteps = 0;
     let warnings = 0;
+    let lastRefusal = '';
+    let sameRefusals = 0;
     let recitedRevision = state.plan.revision;
     let recitedAt = 0;
     let recitedRunning = '';
@@ -279,7 +298,18 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 req.emit({ type: 'tool_result', id: call.id, name: call.name, ok: outcome.ok, output: text, durationMs, facts: outcome.facts });
                 for (const img of outcome.images ?? []) images.push({ ...img, from: call.name });
 
-                if (call.name === 'task_finish' && outcome.facts?.verification?.passed) {
+                if (call.name === 'task_finish' && outcome.facts?.verification && !outcome.facts.verification.passed) {
+                    const signature = refusalSignature(outcome.facts.verification);
+                    sameRefusals = signature && signature === lastRefusal ? sameRefusals + 1 : 1;
+                    lastRefusal = signature;
+                    if (sameRefusals >= REFUSAL_LIMIT) {
+                        const failed = outcome.facts.verification.checks.filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                        ending = { status: 'failed', reason: `Joe's checks refused the same thing ${sameRefusals} times in a row: ${failed}` };
+                    }
+                }
+                if (ending) {
+                    //  Ended above: the rest of the turn is answered as not run.
+                } else if (call.name === 'task_finish' && outcome.facts?.verification?.passed) {
                     summary = (args as FinishArgs | undefined)?.summary || summary;
                     ending = { status: 'delivered' };
                 } else if (repeats >= REPEAT_LIMIT) {

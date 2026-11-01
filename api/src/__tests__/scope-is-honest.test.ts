@@ -27,6 +27,7 @@ import {
     requestedCapabilities,
     scopeReport,
     hasFormValidationEvidence,
+    capabilityEvidence,
 } from '../core/quality/scope-audit';
 
 const HIS_REQUEST = 'Build a world-class e-commerce platform similar to Shopify. Features: '
@@ -312,5 +313,19 @@ describe('and the message says it plainly', () => {
         expect(R).toMatch(/scopeReport\(request, dirs\)/);
         // Both languages carry it, and it comes before the path.
         expect((R.match(/\$\{scopeBlock\}\$\{fidelityBlock\}\$\{appBlock\}/g) || []).length).toBe(2);
+    });
+});
+
+describe('a catalogue is judged by what the code renders, not by a component name', () => {
+    const catalog = CAPABILITIES.find(c => c.id === 'catalog')!;
+    it('an Arabic store whose ProductCatalogue renders its filtered products is a catalogue', () => {
+        const source = `export default function ProductCatalogue({ products }) {
+  const filteredProducts = products.filter(p => p.category === category);
+  return <section className="catalogue">{filteredProducts.map(p => <article key={p.id}>{p.name} {p.price} ر.س</article>)}</section>;
+}`;
+        expect(capabilityEvidence(catalog, source)).toBe(true);
+    });
+    it('a page with no products rendered is not one', () => {
+        expect(capabilityEvidence(catalog, '<main><h1>متجر عيادة الأسنان</h1><p>قريباً</p></main>')).toBe(false);
     });
 });

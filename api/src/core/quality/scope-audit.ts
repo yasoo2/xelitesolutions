@@ -314,7 +314,11 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'catalog', ar: 'كتالوج المنتجات', en: 'product catalogue',
         ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|متجر/i,
-        evidence: /\/api\/products|products\s*\(|ProductCard|product-grid/i,
+        // A catalogue is products rendered as a list, whatever the component
+        // is called. Measured on 2026-11-01: an Arabic store's working
+        // `ProductCatalogue` (cards, prices, search, filters, all seen in the
+        // browser) was refused nine times because no name read ProductCard.
+        evidence: /\/api\/products|products\s*\(|\w*products?\s*\.\s*map\s*\(|Product(?:Card|Item|Tile|List|Grid|Catalog(?:ue)?)\b|product-(?:grid|list|card|catalog(?:ue)?)/i,
     },
     {
         id: 'orders', ar: 'الطلبات', en: 'orders',

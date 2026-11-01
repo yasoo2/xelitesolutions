@@ -13,7 +13,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { runEngine, REPEAT_LIMIT, IDLE_LIMIT, type EngineDeps } from '../core/engine/loop';
+import { runEngine, REPEAT_LIMIT, IDLE_LIMIT, REFUSAL_LIMIT, type EngineDeps } from '../core/engine/loop';
 import { planUpdateTool } from '../core/engine/plan';
 import { finishTool, type Verifier } from '../core/engine/finish';
 import type {
@@ -141,6 +141,44 @@ function deps(model: EngineModel, tools: EngineTool[], verifier: Verifier = file
     };
     return { d, registry: r.calls, browser: b.calls };
 }
+
+describe('the run stops when the checks keep refusing the same thing', () => {
+    const refusing = (detail: (n: number) => string): Verifier => {
+        let n = 0;
+        return async () => {
+            n++;
+            return { passed: false, checks: [{ id: 'scope', status: 'failed', detail: detail(n) }], unproven: [], at: 0 } as VerificationReport;
+        };
+    };
+    const finishes = (count: number) => Array.from({ length: count }, (_, i) => ({ calls: [{ name: 'task_finish', args: { summary: `attempt ${i + 1}` } }] }));
+
+    it('four identical refusals end the run, and the reason names what was refused', async () => {
+        const dir = projectDir();
+        const { model, turnsTaken } = scriptedModel(finishes(10));
+        const { d } = deps(model, [writeTool], refusing(() => 'artifact coverage 75% — missing: product catalogue'));
+        const result = await runEngine(request(dir, []), d);
+        expect(result.status).toBe('failed');
+        expect(result.reason).toMatch(new RegExp(`refused the same thing ${REFUSAL_LIMIT} times in a row: scope: artifact coverage 75% — missing: product catalogue`));
+        expect(turnsTaken()).toBe(REFUSAL_LIMIT);
+    });
+
+    it('refusals that change (the work moves) do not stop it; only counts are folded', async () => {
+        const dir = projectDir();
+        const { model, turnsTaken } = scriptedModel(finishes(6));
+        // Counts differ but read alike: still the same refusal.
+        const counts = refusing(n => `${12 - n} tap targets under 40px`);
+        const { d } = deps(model, [writeTool], counts);
+        const r1 = await runEngine(request(dir, []), d);
+        expect(r1.reason).toMatch(/refused the same thing/);
+        // Different findings each time: no stop from this rule.
+        const dir2 = projectDir();
+        const moving = scriptedModel(finishes(6));
+        const { d: d2 } = deps(moving.model, [writeTool], refusing(n => ['missing: catalogue, filtering', 'missing: catalogue', 'missing: filtering', 'missing: search', 'missing: cart', 'missing: totals'][n - 1]));
+        const r2 = await runEngine(request(dir2, []), d2);
+        expect(r2.reason || '').not.toMatch(/refused the same thing/);
+        expect(moving.turnsTaken()).toBeGreaterThan(REFUSAL_LIMIT);
+    });
+});
 
 describe('the receipt says what the run did to each file', () => {
     it('a file the run created and then edited is reported as created', async () => {
