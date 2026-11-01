@@ -280,18 +280,39 @@ interface CallResult {
 }
 
 /**
+ * What a call that broke mid-answer is charged. The answer's first event
+ * (message_start) states the prompt exactly: its tokens, cache reads and
+ * writes. Only the output is unknown, so it is charged in full (max_tokens),
+ * unless the final usage (message_delta) already arrived. Measured on
+ * 2026-11-01: a call stopped by the owner was charged its whole worst case,
+ * $0.28, where this charges about $0.02.
+ */
+export function brokenCallUsage(startUsage: any, finalUsage: any, maxTokens: number): BilledUsage | null {
+    if (!startUsage || typeof startUsage !== 'object') return null;
+    const prompt = billedUsage(startUsage);
+    const finalOut = Number(finalUsage?.output_tokens);
+    return { ...prompt, outputTokens: Number.isFinite(finalOut) && finalOut > 0 ? finalOut : Math.max(0, Number(maxTokens) || 0) };
+}
+
+/**
  * One streamed call behind the budget guard: hold the worst case, call,
  * charge what was billed. A call that broke after the API started answering
- * is charged its worst case, because what it billed is not known.
+ * is charged its known prompt and its whole output allowance (see
+ * brokenCallUsage), never less than it may have cost.
  */
 async function guardedCall(deps: AnthropicModelDeps, client: AnthropicClientLike, params: any, purpose: string, signal: AbortSignal, deadlineAt: number): Promise<CallResult> {
     const now = deps.now ?? Date.now;
     const worst = worstCaseCost(deps.settings.model, requestTokens(params), params.max_tokens);
     const hold = await deps.ledger.reserve(deps.runId, worst);
     let answered = false;
+    let startUsage: any = null;
+    let finalUsage: any = null;
     try {
         const stream = client.messages.stream(params, { signal, timeout: Math.max(60_000, Math.min(20 * 60_000, deadlineAt - now())) });
-        stream.on('streamEvent', (event: any) => { if (event?.type === 'message_start') answered = true; });
+        stream.on('streamEvent', (event: any) => {
+            if (event?.type === 'message_start') { answered = true; startUsage = event?.message?.usage ?? null; }
+            else if (event?.type === 'message_delta' && event?.usage) finalUsage = event.usage;
+        });
         const message = await stream.finalMessage();
         const usage = billedUsage(message?.usage);
         const priced = priceRule(String(message?.model || '')) ? String(message.model) : deps.settings.model;
@@ -300,7 +321,13 @@ async function guardedCall(deps: AnthropicModelDeps, client: AnthropicClientLike
         return { message, costUsd, usage };
     } catch (e: any) {
         if (answered) {
-            await hold.charge({ at: now(), model: deps.settings.model, costUsd: worst, usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0 }, purpose: `${purpose} (broke mid-answer; worst case charged)` }).catch(() => undefined);
+            const partial = brokenCallUsage(startUsage, finalUsage, params.max_tokens);
+            const charged = partial ? Math.min(worst, costOf(deps.settings.model, partial)) : worst;
+            await hold.charge({
+                at: now(), model: deps.settings.model, costUsd: charged,
+                usage: partial ?? { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0 },
+                purpose: `${purpose} (broke mid-answer; ${partial ? 'its prompt and full output allowance charged' : 'worst case charged'})`,
+            }).catch(() => undefined);
         } else {
             hold.release();
         }

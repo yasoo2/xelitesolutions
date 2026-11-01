@@ -41,7 +41,7 @@ const HAIKU = 'claude-haiku-5-5';
 
 /* ───────────── a fake SDK client that plays replies and records requests ───────────── */
 
-type Reply = { message?: any; error?: any; breakMidAnswer?: Error };
+type Reply = { message?: any; error?: any; breakMidAnswer?: Error; startUsage?: any };
 
 function fakeClient(replies: Reply[]) {
     const sent: any[] = [];
@@ -57,7 +57,7 @@ function fakeClient(replies: Reply[]) {
                     on(_event: 'streamEvent', fn: (e: any) => void) { listeners.push(fn); return this; },
                     async finalMessage() {
                         if (r.error) throw r.error;
-                        for (const fn of listeners) fn({ type: 'message_start' });
+                        for (const fn of listeners) fn({ type: 'message_start', message: { usage: r.startUsage ?? null } });
                         if (r.breakMidAnswer) throw r.breakMidAnswer;
                         return r.message;
                     },
@@ -322,6 +322,19 @@ describe('one engine step through the connector', () => {
         expect(afterBreak).toBeGreaterThan(0);
         await expect(model.step(base, tools, { signal, deadlineAt: later() })).rejects.toMatchObject({ code: 'PROVIDER_FAILURE', status: 529 });
         expect((await l.spent('run-a')).runUsd).toBe(afterBreak);
+    });
+
+    it('a call stopped mid-answer is charged its known prompt and full output allowance, not the worst case', async () => {
+        const l = ledger();
+        const startUsage = { input_tokens: 4, output_tokens: 1, cache_read_input_tokens: 60_000, cache_creation_input_tokens: 2_000 };
+        const { client } = fakeClient([{ breakMidAnswer: new Error('aborted'), startUsage }]);
+        const model = anthropicModel({ settings: settings({ maxTokens: 32_000 }), ledger: l, runId: 'run-stop', client });
+        // A long history, so the byte estimate is far above the real prompt.
+        const long: ChatMessage[] = [...base, { role: 'user', content: 'x'.repeat(400_000) }];
+        await expect(model.step(long, tools, { signal, deadlineAt: later() })).rejects.toBeDefined();
+        const expected = costOf(HAIKU, { inputTokens: 4, outputTokens: 32_000, cacheReadTokens: 60_000, cacheWrite5mTokens: 2_000, cacheWrite1hTokens: 0 });
+        expect((await l.spent('run-stop')).runUsd).toBeCloseTo(expected, 10);
+        expect(expected).toBeLessThan(0.02);
     });
 
     it('maps the API\'s refusals to codes the loop acts on', () => {
