@@ -356,6 +356,15 @@ const baseTools: ToolDefinition[] = [
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
 
+// ── engine: browser ──
+// The agent engine's browser (core/engine/tools/browser.ts reaches these
+// through executeTool). They are not named browser_*: ToolService rewrites
+// browser_open into browser_run and sends every browser_* name through the
+// one global heavy lane it shares with model calls.
+import { engineBrowserTools } from './definitions/EngineBrowserTools';
+baseTools.push(...engineBrowserTools);
+// ── end engine: browser ──
+
 /* ============================================================
    THE CONTRACT IS ENFORCED HERE, NOT HOPED FOR.
    ============================================================
