@@ -419,6 +419,34 @@ router.get('/active', authenticate as any, async (req, res) => {
     });
 });
 
+/**
+ * WHAT THE ENGINE REALLY RUNS ON, for the provider button. The button said
+ * «Auto (free)» while the engine ran on Claude (2026-11-01). It reads this:
+ * the engine in use, the model Auto means, whether Claude can run on the
+ * server's key (never the key itself), the Claude models it may choose, and
+ * the budget spent so far.
+ */
+router.get('/engine', authenticate as any, async (_req, res) => {
+    try {
+        const { engineFor } = require('../../core/engine/select');
+        const { engineModelChoice } = require('../../core/engine/model');
+        const { anthropicSettings, CLAUDE_MODELS } = require('../../core/engine/anthropic');
+        const { ledgerFromEnv } = require('../../core/engine/budget');
+        const choice = engineModelChoice();
+        const claude = await anthropicSettings({ ...process.env, JOE_ENGINE_MODEL: CLAUDE_MODELS[0] });
+        const ledger = ledgerFromEnv();
+        const spent = 'error' in ledger ? null : await ledger.spent().catch(() => null);
+        res.json({
+            engine: engineFor(),
+            auto: 'error' in choice ? null : { provider: choice.provider, model: choice.model },
+            claude: { serverKey: !('error' in claude), models: CLAUDE_MODELS },
+            budget: spent && !('error' in ledger) ? { totalUsd: ledger.totalBudgetUsd, perRunUsd: ledger.runBudgetUsd, spentUsd: spent.totalUsd } : null,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
+    }
+});
+
 router.get('/:id/receipt', authenticate as any, async (req, res) => {
     const evidence = await getRunEvidence(req.params.id);
     if (!evidence) return res.status(404).json({ error: 'No receipt for this run' });

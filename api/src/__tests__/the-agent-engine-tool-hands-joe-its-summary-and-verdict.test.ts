@@ -21,7 +21,7 @@ afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 let engineResult: any;
 jest.mock('../core/engine/loop', () => ({ runEngine: jest.fn(async () => engineResult) }));
 jest.mock('../core/engine/model', () => ({
-    engineModelChoice: () => ({ provider: 'local', model: 'test-model', baseUrl: 'http://127.0.0.1:11434/v1' }),
+    engineModelChoiceFor: () => ({ provider: 'local', model: 'test-model', baseUrl: 'http://127.0.0.1:11434/v1' }),
     engineBrain: async () => ({ model: { label: 'test', vision: false, contextTokens: () => 16_000, step: async () => { throw new Error('not used'); } }, ask: async () => '' }),
 }));
 jest.mock('../core/engine/run', () => ({

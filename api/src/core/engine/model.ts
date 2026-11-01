@@ -84,6 +84,53 @@ export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelCh
     return { provider: 'local', model, baseUrl, reasoning, vision, contextTokens };
 }
 
+/** Keys the interface sends when the user chose a provider without typing a key of their own. */
+const PLACEHOLDER_KEYS = new Set(['', 'auto-mode', 'free-mode', 'free', 'dummy', 'ollama', 'server-key']);
+
+/**
+ * THE MODEL THE USER CHOSE, OR THE HONEST REASON IT CANNOT RUN.
+ *
+ * The interface's provider button sends { provider, model, apiKey } with
+ * every run. Measured on 2026-11-01: the engine ignored it and ran on the
+ * deployment's model while the button said «Auto (free)»; and elsewhere in
+ * Joe a provider chosen without a key silently became whichever free
+ * provider answered. Here the choice binds:
+ *
+ *  - Auto (or nothing chosen): the deployment's own choice (JOE_ENGINE_*).
+ *  - Local: that local model, on the managed endpoint.
+ *  - Anthropic / Claude: that model through the native connector, with the
+ *    user's key or the server's key file, always behind the budget guard.
+ *  - Any other provider: that provider and model, through the router's
+ *    strict route, with the user's key or the server's key for it. Without
+ *    a key the run is refused and says which key is missing; it never runs
+ *    on a provider the user did not choose.
+ */
+export function engineModelChoiceFor(modelConfig: any, env: NodeJS.ProcessEnv = process.env): ModelChoice | { error: string } {
+    const provider = String(modelConfig?.provider || '').trim().toLowerCase();
+    const model = String(modelConfig?.model || '').trim();
+    if (!provider || provider === 'auto' || provider === 'default' || provider === 'free' || provider === 'mock' || model === 'auto') return engineModelChoice(env);
+    const base = engineModelChoice(env);
+    const reasoning = 'error' in base ? undefined : base.reasoning;
+    const userKey = String(modelConfig?.apiKey || '').trim();
+    const realKey = PLACEHOLDER_KEYS.has(userKey) || /[^\x00-\x7F]/.test(userKey) ? '' : userKey;
+    if (provider === 'local' || provider === 'ollama') {
+        const baseUrl = String(modelConfig?.baseUrl || env.LOCAL_LLM_BASE_URL || 'http://127.0.0.1:11434/v1').trim();
+        if (!model) return { error: 'The local provider was chosen without a model name.' };
+        if (!isManagedOllamaEndpoint(baseUrl)) return { error: `The local model address ${baseUrl} is not the managed Ollama endpoint (http://127.0.0.1:11434).` };
+        return { provider: 'local', model, baseUrl, reasoning };
+    }
+    if (provider === 'anthropic' || provider === 'claude') {
+        return { provider: 'anthropic', model: model || String(env.JOE_ENGINE_MODEL || '').trim(), apiKey: realKey || undefined, reasoning, vision: true };
+    }
+    const keyName = PROVIDER_KEY_ENV[provider];
+    const apiKey = realKey || (keyName ? String(env[keyName] || '').trim() : '');
+    if (!model) return { error: `${provider} was chosen without a model name.` };
+    if (!apiKey) {
+        return { error: `${provider} was chosen, but no key for it was given${keyName ? ` and the server has no ${keyName}` : ''}. Add the key in the provider settings, or choose Auto.` };
+    }
+    return { provider, model, apiKey, baseUrl: String(modelConfig?.baseUrl || '').trim() || undefined, reasoning, vision: false };
+}
+
 /** Ask the local server whether the model takes images. One cheap metadata call, no inference. */
 export async function localModelHasVision(baseUrl: string, model: string, signal?: AbortSignal): Promise<boolean> {
     try {
@@ -220,7 +267,11 @@ export async function engineBrain(
     choice: ModelChoice, joe: any, signal: AbortSignal, deadlineAt: number, env: NodeJS.ProcessEnv = process.env,
 ): Promise<EngineBrain | { error: string }> {
     if (choice.provider === 'anthropic') {
-        const settings = await anthropicSettings(env);
+        const settings = await anthropicSettings({
+            ...env,
+            ...(choice.model ? { JOE_ENGINE_MODEL: choice.model } : {}),
+            ...(choice.apiKey ? { JOE_ENGINE_ANTHROPIC_API_KEY: choice.apiKey } : {}),
+        });
         if ('error' in settings) return settings;
         const ledger = ledgerFromEnv(env);
         if ('error' in ledger) return ledger;

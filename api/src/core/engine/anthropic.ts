@@ -42,6 +42,9 @@ export interface AnthropicClientLike {
     };
 }
 
+/** The Claude models the interface offers, cheapest first; each has a checked price in budget.ts. */
+export const CLAUDE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;
+
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
 export interface AnthropicSettings {
@@ -451,4 +454,37 @@ export function anthropicTextAsk(deps: AnthropicModelDeps, signal: AbortSignal, 
         const content: any[] = Array.isArray(message?.content) ? message.content : [];
         return content.filter(b => b?.type === 'text').map(b => String(b.text || '')).join('\n').trim();
     };
+}
+
+/**
+ * Claude for the rest of Joe (the chat answer, the planner), when the user
+ * chose Claude in the interface without typing a key: the server's key file,
+ * the chosen model, and the same budget guard as the engine. A run's own id
+ * keeps its spend on that run's line in the ledger.
+ */
+export async function serverClaudeChat(
+    messages: Array<{ role: string; content: unknown }>,
+    model: string | undefined,
+    runId: string,
+    signal?: AbortSignal,
+    env: NodeJS.ProcessEnv = process.env,
+    client?: AnthropicClientLike,
+): Promise<string> {
+    const settings = await anthropicSettings({ ...env, ...(model ? { JOE_ENGINE_MODEL: model } : {}) });
+    if ('error' in settings) throw coded(`Claude was chosen, but the server cannot run it: ${settings.error}`, 'MODEL_AUTH');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { ledgerFromEnv } = require('./budget');
+    const ledger = ledgerFromEnv(env);
+    if ('error' in ledger) throw coded(`Claude was chosen, but the server has no budget for it: ${ledger.error}`, 'ENGINE_BUDGET_EXHAUSTED');
+    const deps: AnthropicModelDeps = { settings, ledger, runId: runId || 'chat', client };
+    const history = (messages || []).map(m => ({
+        role: m.role === 'system' || m.role === 'assistant' ? m.role : 'user',
+        content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
+    })) as ChatMessage[];
+    const req = toAnthropicRequest(history, { cacheTtl: settings.cacheTtl });
+    const params = { ...baseParams(settings, Math.min(settings.maxTokens, 16_000)), system: req.system, messages: req.messages };
+    const { message } = await guardedCall(deps, client ?? anthropicClient(settings.apiKey), params, 'chat', signal ?? new AbortController().signal, Date.now() + 10 * 60_000);
+    checkStop(message);
+    const content: any[] = Array.isArray(message?.content) ? message.content : [];
+    return content.filter(b => b?.type === 'text').map(b => String(b.text || '')).join('\n').trim();
 }

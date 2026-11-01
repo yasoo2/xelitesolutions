@@ -1703,7 +1703,12 @@ export async function routeToModel(
           const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
           const strictProviderCheck = context?.strictProviderCheck === true || isExplicitCanonicalLocal;
           const knownCustomEndpoint = ['openrouter', 'gemini', 'google', 'deepseek', 'grok', 'xai', 'groq', 'mistral', 'cerebras', 'openai', 'anthropic', 'claude'].includes(String(cfgProvider).toLowerCase()) || !!cfgBaseUrl;
-          if (!knownCustomEndpoint || !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl)) {
+          //  Claude on the server's key spends only through the engine's budget
+          //  guard, and that budget is the owner's consent: the free_only
+          //  policy, which guards keys found in the environment, does not apply.
+          const guardedServerClaude = (String(cfgProvider).toLowerCase() === 'anthropic' || String(cfgProvider).toLowerCase() === 'claude')
+            && String(cfgApiKey || '').trim() === 'server-key';
+          if (!knownCustomEndpoint || (!guardedServerClaude && !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl))) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: free_only excludes the selected provider, model or endpoint');
             recordProviderAttempt(cfgProvider, false, 'skipped: free_only policy excludes this provider, model or endpoint');
           } else if (failedCustomRoutes.has(routeKey) && providerCircuitStatus(circuitKey).blocked) {
@@ -1755,7 +1760,20 @@ export async function routeToModel(
              */
             if (cfgProvider === 'anthropic' || cfgProvider === 'claude') {
                 const { AnthropicProvider } = require('./providers/anthropic');
-                const key = String(cfgApiKey || '').trim() || process.env.ANTHROPIC_API_KEY || '';
+                const typedKey = String(cfgApiKey || '').trim();
+                //  Claude chosen without a key of the user's own: the server's
+                //  key, through the engine's connector and its budget guard,
+                //  never a key found in the environment (core/engine/anthropic.ts).
+                if (!typedKey || typedKey === 'server-key') {
+                    const { serverClaudeChat } = require('../engine/anthropic');
+                    const out = await serverClaudeChat(flatMessages as any, cfgModel || undefined,
+                        String((context as any)?.runId || (context as any)?.traceId || (context as any)?.sessionId || 'chat'),
+                        (context as any)?.signal);
+                    throwIfCallerAborted();
+                    if (isUsableAnswer(out)) return customAnswer(out);
+                    throw new Error('Anthropic returned empty response');
+                }
+                const key = typedKey;
                 try {
                 const out = await new AnthropicProvider(key).chatComplete(
                     flatMessages,

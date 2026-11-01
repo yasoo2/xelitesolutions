@@ -23,7 +23,7 @@ import { ToolDefinition } from '../types';
 import { runEngine } from '../../../core/engine/loop';
 import { planUpdateTool } from '../../../core/engine/plan';
 import { finishTool } from '../../../core/engine/finish';
-import { engineModelChoice, engineBrain } from '../../../core/engine/model';
+import { engineModelChoiceFor, engineBrain } from '../../../core/engine/model';
 import { projectFolderFor, registerProjectFolder, uiEmitter } from '../../../core/engine/run';
 import { fileTools } from '../../../core/engine/tools/files';
 import { shellTools, createProcessRegistry } from '../../../core/engine/tools/shell';
@@ -72,7 +72,8 @@ export const AgentEngineTool: ToolDefinition = {
             ok: false, error: why,
             output: deliveryOutput({ result: { status: 'failed', summary: why, reason: why, filesChanged: [], served: [], steps: 0, model: '' }, projectRoot, request }).output,
         });
-        const choice = engineModelChoice();
+        //  The provider the user chose in the interface binds the run.
+        const choice = engineModelChoiceFor(context.modelConfig);
         if ('error' in choice) return refused(`agent_engine cannot choose a model: ${choice.error}`);
 
         const cancellation = bindRunCancellation(context.cancellation);
