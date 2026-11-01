@@ -792,6 +792,29 @@ const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descri
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
 ];
 
+// The Claude models the server's agent engine runs, cheapest first. The server
+// keeps the same list (core/engine/anthropic.ts CLAUDE_MODELS) with a checked
+// price for each; a model outside it is refused there, never guessed.
+const ANTHROPIC_MODELS: Array<{ id: string; name: string; descriptionKey: string }> = [
+  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', descriptionKey: 'modelHaikuDesc' },
+  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', descriptionKey: 'modelSonnet55Desc' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', descriptionKey: 'modelOpusDesc' },
+];
+
+/** What the server's engine really runs on (GET /runs/engine). */
+interface EngineInfo {
+  engine: 'agent' | 'legacy';
+  auto: { provider: string; model: string } | null;
+  claude: { serverKey: boolean; models: string[] };
+  budget: { totalUsd: number; perRunUsd: number; spentUsd: number } | null;
+}
+
+/** A key the user really typed, as opposed to a placeholder the interface fills in. */
+const isTypedKey = (key: unknown) => {
+  const k = String(key || '').trim();
+  return !!k && !['auto-mode', 'free-mode', 'free', 'dummy', 'ollama', 'server-key'].includes(k);
+};
+
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
@@ -806,7 +829,7 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
   deepseek: { name: 'DeepSeek', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
   openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-4o' },
-  anthropic: { name: 'Anthropic', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  anthropic: { name: 'Claude', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-haiku-5-5' },
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
   grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
 };
@@ -1044,6 +1067,7 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
+  const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
@@ -1105,6 +1129,31 @@ export default function CommandComposer({
   }, []);
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+
+  // THE BUTTON SAYS WHAT REALLY RUNS. Measured on 2026-11-01: the button read
+  // «Auto (free)» while the engine ran on Claude. The server says what the
+  // engine runs on; when it can run Claude on its own key, Claude needs no key
+  // in the browser: it is sent as 'server-key' and every call goes through the
+  // server's budget guard. A key the user typed is kept as theirs.
+  useEffect(() => {
+    let alive = true;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    fetch(`${API}/runs/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((info: EngineInfo | null) => {
+        if (!alive || !info) return;
+        setEngineInfo(info);
+        if (!info.claude?.serverKey) return;
+        setProviders(prev => {
+          const cur = prev.anthropic;
+          if (!cur || isTypedKey(cur.apiKey)) return prev;
+          const model = ANTHROPIC_MODELS.some(m => m.id === cur.model) ? cur.model : ANTHROPIC_MODELS[0].id;
+          return { ...prev, anthropic: { ...cur, apiKey: 'server-key', model, isConnected: true, verified: true, isVerifying: false, lastError: undefined } };
+        });
+      })
+      .catch(() => { /* an older server without the endpoint: the button keeps its own state */ });
+    return () => { alive = false; };
+  }, []);
   const providerVerificationRevisionRef = useRef<Record<string, number>>({});
   const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
   const providerActivationRevisionRef = useRef(0);
@@ -3969,6 +4018,33 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[selectedProvider] && (
                 <>
+                  {/* Claude model selection: the models the server's engine runs. */}
+                  {selectedProvider === 'anthropic' && (
+                    <div style={{ marginBottom: 20 }}>
+                      <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                      <select
+                        className="model-select"
+                        value={ANTHROPIC_MODELS.some(m => m.id === providers.anthropic?.model) ? providers.anthropic?.model : ANTHROPIC_MODELS[0].id}
+                        onChange={(e) => {
+                          const model = e.target.value;
+                          setProviders(prev => ({ ...prev, anthropic: { ...prev.anthropic, model } }));
+                        }}
+                      >
+                        {ANTHROPIC_MODELS.map(m => (
+                          <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
+                        ))}
+                      </select>
+                      {engineInfo?.claude?.serverKey && !isTypedKey(providers.anthropic?.apiKey) && (
+                        <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: 12 }}>
+                          {t('provClaudeServerNote', {
+                            spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2),
+                            total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0),
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   {/* OpenRouter Model Selection */}
                   {selectedProvider === 'openrouter' && (
                     <div style={{ marginBottom: 20 }}>
@@ -4758,7 +4834,7 @@ export default function CommandComposer({
                         return st?.lastError ? 'is-disconnected' : 'is-unknown';
                       })()}`}
                       onClick={() => setShowProviders(true)}
-                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}${activeProvider === 'auto' && engineInfo?.engine === 'agent' && engineInfo.auto ? ` — ${t('provEngineRunsOn', { model: engineInfo.auto.model })}` : ''}`}
                     >
                       {/*
                         THE PROVIDER SAYS ITS NAME.
@@ -4796,9 +4872,17 @@ export default function CommandComposer({
                           />
                         );
                       })()}
-                      {providers[activeProvider]?.isFree ? (
-                        <span className="provider-free">free</span>
-                      ) : null}
+                      {(() => {
+                        // Auto is free only when the engine's own model is. When
+                        // the engine runs on a paid model, the button names it.
+                        const autoPaid = activeProvider === 'auto' && engineInfo?.engine === 'agent' && engineInfo.auto?.provider === 'anthropic';
+                        if (autoPaid) return <span className="provider-free">{engineInfo!.auto!.model.replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2')}</span>;
+                        if (activeProvider === 'anthropic') {
+                          const m = ANTHROPIC_MODELS.find(x => x.id === providers.anthropic?.model);
+                          return <span className="provider-free">{(m?.name || '').replace(/^Claude /, '')}{providers.anthropic?.apiKey === 'server-key' ? ` · ${t('provServerKey')}` : ''}</span>;
+                        }
+                        return providers[activeProvider]?.isFree ? <span className="provider-free">free</span> : null;
+                      })()}
                     </button>
                   );
                 })()}

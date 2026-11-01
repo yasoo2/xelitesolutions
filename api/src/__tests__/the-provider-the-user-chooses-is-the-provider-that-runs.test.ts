@@ -117,3 +117,33 @@ describe('Claude for the rest of Joe runs on the server key, behind the budget g
         }
     });
 });
+
+describe('the interface reads what really runs, and can verify Claude on the server key', () => {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const router = require('../api/routes/run').default;
+    const handler = (routePath: string, method: string) => {
+        const layer = router.stack.find((e: any) => e.route?.path === routePath && e.route?.methods?.[method]);
+        return layer.route.stack.at(-1).handle;
+    };
+    const response = () => ({ statusCode: 200, body: undefined as any, status(c: number) { this.statusCode = c; return this; }, json(b: any) { this.body = b; return this; } });
+    const saved: Record<string, string | undefined> = {};
+    const KEYS = ['JOE_ENGINE', 'JOE_ENGINE_PROVIDER', 'JOE_ENGINE_MODEL', 'JOE_ENGINE_ANTHROPIC_API_KEY', 'JOE_ENGINE_BUDGET_USD', 'JOE_ENGINE_LEDGER'];
+    beforeEach(() => { for (const k of KEYS) saved[k] = process.env[k]; Object.assign(process.env, { ...DEPLOY, JOE_ENGINE: 'agent', JOE_ENGINE_LEDGER: path.join(root, 'route-spend.json') }); });
+    afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
+
+    it('GET /engine says the engine runs Claude Haiku under Auto, that the server key works, and never shows the key', async () => {
+        const res = response();
+        await handler('/engine', 'get')({ auth: { sub: 'u1' } }, res);
+        expect(res.body).toMatchObject({ engine: 'agent', auto: { provider: 'anthropic', model: 'claude-haiku-5-5' }, claude: { serverKey: true, models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] }, budget: { totalUsd: 10 } });
+        expect(JSON.stringify(res.body)).not.toMatch(/sk-test-not-real/);
+    });
+
+    it('Verify on Claude with the server key is one real call through the guard', async () => {
+        (anthropic.serverClaudeChat as jest.Mock).mockResolvedValueOnce('OK');
+        const res = response();
+        await handler('/verify', 'post')({ auth: { sub: 'u1' }, body: { provider: 'anthropic', apiKey: 'server-key', model: 'claude-haiku-5-5' } }, res);
+        expect(res.body).toMatchObject({ ok: true, provider: 'anthropic' });
+        expect((anthropic.serverClaudeChat as jest.Mock).mock.calls.at(-1)?.[1]).toBe('claude-haiku-5-5');
+    });
+});
+

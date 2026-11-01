@@ -124,6 +124,14 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
         // with no key is reported as "needs a key" instead of borrowing another
         // provider's success (the old behaviour that made every free provider look
         // connected even when it wasn't).
+        //  Claude on the server's key is verified the same honest way: one
+        //  tiny real call, through the engine's connector and budget guard.
+        const p = String(provider || '').trim().toLowerCase();
+        if ((p === 'anthropic' || p === 'claude') && String(apiKey || '').trim() === 'server-key') {
+            const { serverClaudeChat } = require('../../core/engine/anthropic');
+            const answer = await serverClaudeChat([{ role: 'user', content: 'Reply with the single word OK.' }], String(model || '').trim() || undefined, `verify-${userId}`);
+            return answer ? res.json({ ok: true, provider, detail: 'server key' }) : res.status(200).json({ ok: false, error: 'empty_response', provider });
+        }
         const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
         const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model });
         if (!result.ok) {
