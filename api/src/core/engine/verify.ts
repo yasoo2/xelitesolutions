@@ -134,6 +134,18 @@ function panelSessionOf(ctx: ToolContext): string {
  * browser session warmed so the audit can borrow it, and given the wait to
  * attach. The audit is auditBuiltApp with the visible browser required.
  */
+/**
+ * One browser finding as the model and the owner read it. Its evidence is
+ * often a list of elements: written as JSON, not as «[object Object]».
+ */
+export function browserFindingLine(f: { id?: unknown; detailEn?: unknown; detail?: unknown; evidence?: unknown }): string {
+    const detail = String(f.detailEn || f.detail || '').trim();
+    const ev = f.evidence == null || f.evidence === '' ? ''
+        : typeof f.evidence === 'string' ? f.evidence
+        : (() => { try { return JSON.stringify(f.evidence); } catch { return ''; } })();
+    return `${String(f.id || 'finding')} — ${detail}${ev ? ` [${ev.slice(0, 160)}]` : ''}`;
+}
+
 export function panelBrowserQa(opts: { watchBudgetMs?: number } = {}): BrowserQa {
     const budgetMs = opts.watchBudgetMs ?? PANEL_WATCH_BUDGET_MS;
     return {
@@ -496,7 +508,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             if (audit.skipped) {
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${audit.skipped}` });
             } else if (audit.findings.length) {
-                const findings = audit.findings.map(f => `${f.id} — ${String(f.detailEn || f.detail || '').trim()}${f.evidence ? ` [${String(f.evidence).slice(0, 160)}]` : ''}`);
+                const findings = audit.findings.map(browserFindingLine);
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${audit.findings.length} blocking finding(s): ${findings.slice(0, 8).join(' | ')}${findings.length > 8 ? ` (+${findings.length - 8} more)` : ''}` });
             } else {
                 ledger.record({ instrument: 'browser', ok: true });

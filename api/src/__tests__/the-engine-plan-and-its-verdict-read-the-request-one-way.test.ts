@@ -15,7 +15,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { createVerifier, deliveryOutput, measureProjectSource, panelBrowserQa, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
+import { browserFindingLine, createVerifier, deliveryOutput, measureProjectSource, panelBrowserQa, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
 import { seedRequirementsFromRequest } from '../core/engine/seed';
 import { newPlan, seededRequirements } from '../core/engine/plan';
 import type { EngineEvent, ProcessRegistry, RunState, ToolContext } from '../core/engine/types';
@@ -461,5 +461,14 @@ describe('Joe\'s own panel, when nobody is watching it', () => {
         await expect(panelBrowserQa({ watchBudgetMs: 5_000 }).watcher(ctx)).resolves.toEqual({ sessionId: '', watching: false });
         expect(broadcast).not.toHaveBeenCalled();
         expect(warm).not.toHaveBeenCalled();
+    });
+});
+
+describe('a browser finding is read as words', () => {
+    it('its evidence is written out, never as [object Object]', () => {
+        const line = browserFindingLine({ id: 'small_targets', detailEn: '1 tap target(s) under 40px: احذف المنجزة', evidence: [{ selector: 'button#clear-done', height: 30 }] });
+        expect(line).toBe('small_targets — 1 tap target(s) under 40px: احذف المنجزة [[{"selector":"button#clear-done","height":30}]]');
+        expect(line).not.toMatch(/object Object/);
+        expect(browserFindingLine({ id: 'console_errors', detail: 'خطأ', evidence: 'TypeError: x' })).toBe('console_errors — خطأ [TypeError: x]');
     });
 });
