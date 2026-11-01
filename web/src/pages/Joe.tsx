@@ -25,6 +25,7 @@ import { applyAccent } from '../accents';
 import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../lib/preview-routing';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 import { RunHistoryRecovery } from '../lib/run-history-recovery';
+import { isEngineStepEvent } from '../lib/activity-feed';
 
 interface Message {
     id: string;
@@ -489,8 +490,11 @@ export default function Joe() {
                 setDepartmentStatus(msg.data);
             }
 
-            // Handle message finishing
-            if (msg.type === 'run_finished' || msg.type === 'step_failed') {
+            // Handle message finishing. A failed call of the agent engine is
+            // one step of its write, run, look and fix loop, not the end of
+            // the run: treating it as one reloaded the whole conversation on
+            // every failed command while the run went on.
+            if (msg.type === 'run_finished' || (msg.type === 'step_failed' && !isEngineStepEvent(msg))) {
                 setIsLoading(false);
                 keepBrowserVisibleRef.current = false;
                 // The final assistant answer is persisted before the closing
