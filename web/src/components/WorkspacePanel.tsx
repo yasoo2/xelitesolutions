@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import {
     Globe, Terminal as TerminalIcon, Eye, Loader, Maximize2,
     ChevronDown, ChevronUp, FileOutput, AlertTriangle,
-    Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
+    Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2, Activity
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
 
@@ -12,9 +12,10 @@ import { ErrorBoundary } from './ErrorBoundary';
 const EnterpriseTerminalPanel = lazy(() => import('./terminal/EnterpriseTerminalPanel'));
 const EmbeddedBrowser = lazy(() => import('./EmbeddedBrowser'));
 const PreviewPanel = lazy(() => import('./PreviewPanel'));
+const RunActivityPanel = lazy(() => import('./RunActivityPanel'));
 
 
-type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
+type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity';
 
 /**
  * A file Joe is building, streamed into the Logs panel as it truly grows.
@@ -629,6 +630,8 @@ export default function WorkspacePanel({
         { id: 'logs', label: 'Logs', icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
         // The Problems tab was removed at the owner's request — its findings
         // already reach the chat and the logs, so the extra tab was noise.
+        //  What the agent engine is doing, step by step.
+        { id: 'activity', label: t('act_title'), icon: <Activity size={16} /> },
     ];
 
     const LoadingFallback = () => (
@@ -725,6 +728,18 @@ export default function WorkspacePanel({
                                 key={browserSessionId || (sessionId ? `browser:${sessionId}` : 'browser:no-session')}
                                 sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')}
                             />
+                        </Suspense>
+                    </ErrorBoundary>
+                </div>
+
+                {/* The Activity panel stays mounted while another tab is shown:
+                    a step that happens while he watches the Preview is still
+                    recorded. It belongs to its session, so a new session is a
+                    new panel, keyed the way the Preview is. */}
+                <div style={{ display: activeTab === 'activity' ? 'contents' : 'none' }}>
+                    <ErrorBoundary fallbackTitle={t('act_loadFailed')}>
+                        <Suspense fallback={<LoadingFallback />}>
+                            <RunActivityPanel key={`activity:${sessionId || 'none'}`} sessionId={sessionId} active={activeTab === 'activity'} />
                         </Suspense>
                     </ErrorBoundary>
                 </div>

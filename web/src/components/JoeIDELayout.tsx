@@ -35,7 +35,7 @@ interface Message {
     timestamp?: Date;
 }
 
-type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
+type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity';
 
 interface JoeIDELayoutProps {
 
@@ -364,13 +364,15 @@ export default function JoeIDELayout({
     // settles into idle, a canvas that opened itself over a TRANSIENT work view
     // (logs/problems/terminal) folds away after a short grace period, giving
     // the chat back its full page. Result views (preview/browser) stay open:
-    // closing what Joe just delivered would hide the deliverable. Any resumed
-    // activity, tab change or manual collapse cancels the pending close.
+    // closing what Joe just delivered would hide the deliverable. Activity is
+    // one of them: when the run ends it holds the verdict of the final checks.
+    // Any resumed activity, tab change or manual collapse cancels the pending
+    // close.
     useEffect(() => {
         if (runBusy) return;
         if (isWorkspaceCollapsed) return;
         if (!autoOpenedRef.current) return;
-        if (activeWorkspaceTab === 'preview' || activeWorkspaceTab === 'browser') return;
+        if (activeWorkspaceTab === 'preview' || activeWorkspaceTab === 'browser' || activeWorkspaceTab === 'activity') return;
         const id = window.setTimeout(() => {
             autoOpenedRef.current = false;
             setIsWorkspaceCollapsed(true);
@@ -570,12 +572,16 @@ export default function JoeIDELayout({
                 // When a BROWSER tool runs, reveal the canvas AND switch to the
                 // browser tab so the user actually sees the live stream (otherwise it
                 // opens on the terminal and the browser work stays hidden).
+                //  The agent engine's own calls (`engine:<tool>`) are shown one by
+                //  one in the Activity tab its run opened; a word in a tool's
+                //  name is a guess, and it must not pull the tab away from them.
                 const toolName = String(
                     event?.data?.tool?.name || event?.data?.name || event?.tool || event?.data?.toolName || ''
                 ).toLowerCase();
                 if ((event.type === 'step_started' || event.type === 'tool_started'
                     || event.type === 'browser_screenshot' || event.type === 'stream_frame')
-                    && (toolName.includes('browser') || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
+                    && ((toolName.includes('browser') && !toolName.startsWith('engine:'))
+                        || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
                     window.dispatchEvent(new Event('joe:open-browser-tab'));
                 }
 
@@ -618,10 +624,13 @@ export default function JoeIDELayout({
                 }
 
                 // A fresh run starts with a clean slate — files from the last
-                // build would otherwise sit above the new ones forever.
+                // build would otherwise sit above the new ones forever. So does
+                // the panel the server asked for: a stated intent belongs to
+                // the run that stated it, and the next run states its own.
                 if (event.type === 'run_started' || event.type === 'user_input') {
                     setLiveFiles([]);
                     setBuildStatus(null);
+                    explicitPanel.current = null;
                 }
 
                 // The build's stage strip: each event is the structured form of
@@ -760,9 +769,18 @@ export default function JoeIDELayout({
     // the canvas ONLY after the initial settle window (so it doesn't fight the
     // full-page-chat default on load).
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
+        //  The Activity tab opens for the conversation on screen only: a run
+        //  in another chat must never take this one's workspace. The engine
+        //  names its session on every event, so one that names none is not
+        //  this one's either.
+        if (panel === 'activity') {
+            const sid = String(data?.sessionId || '').trim();
+            if (!sid || sid !== String(sessionRef.current || '').trim()) return;
+        }
         //  `panel_focus` always carries a reason; a tool-name guess does not.
         if (data?.reason) explicitPanel.current = (panel as WorkspaceTab);
-        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser' : panel === 'terminal' ? 'terminal' : null;
+        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser'
+            : panel === 'terminal' ? 'terminal' : panel === 'activity' ? 'activity' : null;
         if (!tab) return;
         if (onWorkspaceTabChange) onWorkspaceTabChange(tab); else setInternalWorkspaceTab(tab);
         if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
@@ -790,6 +808,7 @@ export default function JoeIDELayout({
         { id: 'tab-preview', label: 'فتح المعاينة', hint: 'Preview', icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
         { id: 'tab-terminal', label: 'فتح الطرفية', hint: 'Terminal', icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
         { id: 'tab-browser', label: 'فتح المتصفح', hint: 'Browser', icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
+        { id: 'tab-activity', label: 'فتح النشاط', hint: 'Activity', icon: '≡', keywords: 'activity steps engine نشاط خطوات محرك', run: () => handleWorkspaceTabChange('activity') },
         { id: 'toggle-canvas', label: 'إظهار/إخفاء مساحة العمل', hint: 'Canvas', icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
         { id: 'toggle-files', label: 'مستكشف الملفات', hint: 'Files', icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
         { id: 'git', label: 'تغييرات Git', hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },

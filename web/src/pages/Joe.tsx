@@ -99,7 +99,7 @@ export default function Joe() {
      * «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة اللوغز». Logs is the
      * tab a build streams into, and showing it starts no process at all.
      */
-    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
+    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity'>('logs');
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
