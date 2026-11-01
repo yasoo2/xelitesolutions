@@ -220,6 +220,7 @@ const FileTreeItem = ({
     gitStatusMap?: Record<string, string>;
     onMoveFile?: (sourcePath: string, targetDir: string) => void;
 }) => {
+    const { t } = useTranslation();
     const expanded = !!expandedByPath[node.path];
     const isSelected = selectedPath === node.path;
 
@@ -327,7 +328,7 @@ const FileTreeItem = ({
                     >
                         {!node.children && !node.loaded ? (
                             <div className="elite-loading-indicator">
-                                <Loader2 size={12} className="animate-spin" /> Loading...
+                                <Loader2 size={12} className="animate-spin" /> {t('efx_loading')}
                             </div>
                         ) : (
                             node.children?.map((child, i) => (
@@ -367,6 +368,7 @@ const ContextMenu = ({
     onClose: () => void;
     onAction: (action: string, node: FileNode) => void;
 }) => {
+    const { t } = useTranslation();
     const menuRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -386,17 +388,17 @@ const ContextMenu = ({
 
     const actions = node.type === 'directory'
         ? [
-            { icon: FolderPlus, label: 'New Folder', action: 'newFolder' },
-            { icon: FilePlus, label: 'New File', action: 'newFile' },
-            { icon: Edit3, label: 'Rename', action: 'rename' },
-            { icon: Trash2, label: 'Delete', action: 'delete', danger: true },
+            { icon: FolderPlus, labelKey: 'fx_newFolder', action: 'newFolder' },
+            { icon: FilePlus, labelKey: 'fx_newFile', action: 'newFile' },
+            { icon: Edit3, labelKey: 'efx_rename', action: 'rename' },
+            { icon: Trash2, labelKey: 'efx_delete', action: 'delete', danger: true },
         ]
         : [
-            { icon: Pin, label: 'Pin / Unpin', action: 'pin' },
-            { icon: Columns, label: 'Open in Split View', action: 'splitView' },
-            { icon: GitCompareArrows, label: 'Show Diff', action: 'showDiff' },
-            { icon: Edit3, label: 'Rename', action: 'rename' },
-            { icon: Trash2, label: 'Delete', action: 'delete', danger: true },
+            { icon: Pin, labelKey: 'efx_pinToggle', action: 'pin' },
+            { icon: Columns, labelKey: 'efx_openSplit', action: 'splitView' },
+            { icon: GitCompareArrows, labelKey: 'efx_showDiff', action: 'showDiff' },
+            { icon: Edit3, labelKey: 'efx_rename', action: 'rename' },
+            { icon: Trash2, labelKey: 'efx_delete', action: 'delete', danger: true },
         ];
 
     return (
@@ -424,7 +426,7 @@ const ContextMenu = ({
                     }}
                 >
                     <item.icon size={14} />
-                    <span>{item.label}</span>
+                    <span>{t(item.labelKey)}</span>
                 </button>
             ))}
         </motion.div>
@@ -450,6 +452,7 @@ const ModalInput = ({
     presets?: Array<{ label: string; value: string }>;
     loading?: boolean;
 }) => {
+    const { t } = useTranslation();
     const [val, setVal] = useState('');
     if (!isOpen) return null;
 
@@ -497,9 +500,9 @@ const ModalInput = ({
                     </div>
                 )}
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                    <button onClick={onClose} className="elite-btn-secondary" disabled={loading}>Cancel</button>
+                    <button onClick={onClose} className="elite-btn-secondary" disabled={loading}>{t('cancel')}</button>
                     <button onClick={() => onSubmit(val)} className="elite-btn-primary" disabled={loading || !val}>
-                        {loading ? <Loader2 size={16} className="animate-spin" /> : 'Confirm'}
+                        {loading ? <Loader2 size={16} className="animate-spin" /> : t('efx_confirm')}
                     </button>
                 </div>
             </motion.div>
@@ -890,10 +893,11 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
             setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, content, isLoading: false } : t));
             return content;
         } catch (e) {
-            setTabs(prev => prev.map(t => t.node.path === node.path ? { ...t, error: 'Failed', isLoading: false } : t));
+            const error = t('efx_openFailed');
+            setTabs(prev => prev.map(tab => tab.node.path === node.path ? { ...tab, error, isLoading: false } : tab));
             return '';
         }
-    }, [viewMode, activeRepo]);
+    }, [viewMode, activeRepo, t]);
 
     const openFile = useCallback(async (node: FileNode) => {
         let content = '';
@@ -952,7 +956,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
 
         switch (action) {
             case 'rename':
-                const newName = prompt('Enter new name:', node.name);
+                const newName = prompt(t('efx_promptRename'), node.name);
                 if (!newName || newName === node.name) return;
 
                 try {
@@ -975,15 +979,15 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 : t
                         ));
                     } else {
-                        alert('Failed to rename');
+                        alert(t('efx_renameFailed'));
                     }
                 } catch (err) {
-                    alert('Error renaming file');
+                    alert(t('efx_renameError'));
                 }
                 break;
 
             case 'delete':
-                if (!confirm(`Delete ${node.name}?`)) return;
+                if (!confirm(t('efx_confirmDelete', { name: node.name }))) return;
 
                 try {
                     const res = await fetch(`${API}/project/file/delete`, {
@@ -999,15 +1003,15 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                             closeTab(node.path);
                         }
                     } else {
-                        alert('Failed to delete');
+                        alert(t('efx_deleteFailed'));
                     }
                 } catch (err) {
-                    alert('Error deleting file');
+                    alert(t('efx_deleteError'));
                 }
                 break;
 
             case 'newFile':
-                const fileName = prompt('Enter file name:');
+                const fileName = prompt(t('efx_promptFileName'));
                 if (!fileName) return;
 
                 try {
@@ -1023,15 +1027,15 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                         // Expand parent directory
                         setExpandedByPath(p => ({ ...p, [node.path]: true }));
                     } else {
-                        alert('Failed to create file');
+                        alert(t('efx_createFileFailed'));
                     }
                 } catch (err) {
-                    alert('Error creating file');
+                    alert(t('efx_createFileError'));
                 }
                 break;
 
             case 'newFolder':
-                const folderName = prompt('Enter folder name:');
+                const folderName = prompt(t('efx_promptFolderName'));
                 if (!folderName) return;
 
                 try {
@@ -1047,10 +1051,10 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                         // Expand parent directory
                         setExpandedByPath(p => ({ ...p, [node.path]: true }));
                     } else {
-                        alert('Failed to create folder');
+                        alert(t('efx_createFolderFailed'));
                     }
                 } catch (err) {
-                    alert('Error creating folder');
+                    alert(t('efx_createFolderError'));
                 }
                 break;
 
@@ -1125,12 +1129,12 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 ));
                 if (activePath === sourcePath) setActivePath(newPath);
             } else {
-                alert('Failed to move file');
+                alert(t('efx_moveFailed'));
             }
         } catch {
-            alert('Error moving file');
+            alert(t('efx_moveError'));
         }
-    }, [activePath]);
+    }, [activePath, t]);
 
     // Quick-pick common folders. Derived from the current active path so it
     // matches the real machine (Windows C:\Users\<name> or POSIX /home/<name>),
@@ -1141,16 +1145,16 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
         if (win) {
             const home = win[1];
             return [
-                { label: t('fx_presetDesktop', 'سطح المكتب'), value: `${home}\\Desktop\\my-project` },
-                { label: t('fx_presetDocuments', 'المستندات'), value: `${home}\\Documents\\my-project` },
+                { label: t('fx_presetDesktop'), value: `${home}\\Desktop\\my-project` },
+                { label: t('fx_presetDocuments'), value: `${home}\\Documents\\my-project` },
             ];
         }
         const nix = p.match(/^(\/(?:home|Users)\/[^/]+)/);
         if (nix) {
             const home = nix[1];
             return [
-                { label: t('fx_presetDesktop', 'سطح المكتب'), value: `${home}/Desktop/my-project` },
-                { label: t('fx_presetDocuments', 'المستندات'), value: `${home}/Documents/my-project` },
+                { label: t('fx_presetDesktop'), value: `${home}/Desktop/my-project` },
+                { label: t('fx_presetDocuments'), value: `${home}/Documents/my-project` },
             ];
         }
         return [];
@@ -1174,7 +1178,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                     window.dispatchEvent(new Event('workspace:updated'));
                     setModalConfig({ open: false, type: null, loading: false });
                 } else {
-                    alert('Path not found');
+                    alert(t('efx_pathNotFound'));
                     setModalConfig(p => ({ ...p, loading: false }));
                 }
             } else if (type === 'clone') {
@@ -1188,12 +1192,13 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                     setModalConfig({ open: false, type: null, loading: false });
                 } else {
                     const error = await res.json();
-                    alert(error.error || 'Clone failed');
+                    // The server's reason stays as it sent it; the sentence around it is translated.
+                    alert(error.error ? t('efx_cloneFailedWith', { error: error.error }) : t('efx_cloneFailed'));
                     setModalConfig(p => ({ ...p, loading: false }));
                 }
             }
         } catch {
-            alert('Operation failed');
+            alert(t('efx_operationFailed'));
             setModalConfig(p => ({ ...p, loading: false }));
         }
     };
@@ -1206,8 +1211,8 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                 isOpen={modalConfig.open}
                 onClose={() => setModalConfig({ open: false, type: null, loading: false })}
                 onSubmit={handleModalSubmit}
-                title={modalConfig.type === 'folder' ? t('fx_chooseLocationTitle', 'اختر مكان حفظ ملفات المشروع') : 'Clone Repository'}
-                hint={modalConfig.type === 'folder' ? t('fx_chooseLocationHint', 'اكتب مساراً كاملاً على جهازك (مثال ويندوز: C:\\Users\\home\\Desktop\\my-app). سيُنشأ المجلد إن لم يكن موجوداً.') : undefined}
+                title={modalConfig.type === 'folder' ? t('fx_chooseLocationTitle') : t('efx_cloneTitle')}
+                hint={modalConfig.type === 'folder' ? t('fx_chooseLocationHint') : undefined}
                 // Windows-first placeholder — the old '/app/src/...' was a Linux
                 // path meaningless on the user's machine.
                 placeholder={modalConfig.type === 'folder' ? 'C:\\Users\\home\\Desktop\\my-app' : 'https://github.com/user/repo'}
@@ -1249,20 +1254,20 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                                 });
                                                 await loadRoot();
                                             } catch {
-                                                alert('Failed to reset');
+                                                alert(t('efx_resetFailed'));
                                             }
                                             setLoading(false);
                                         }
                                     }}
                                 >
-                                    <option value="local">📂 {activeWorkspace?.name || 'Local Project'}</option>
+                                    <option value="local">📂 {activeWorkspace?.name || t('efx_localProject')}</option>
                                     {activeRepo && <option value="github">🐙 {activeRepo.name}</option>}
-                                    <option value="system">🖥️ Local System</option>
-                                    <option value="folder">📁 Open Folder...</option>
+                                    <option value="system">🖥️ {t('efx_localSystem')}</option>
+                                    <option value="folder">📁 {t('efx_openFolder')}</option>
                                 </select>
                                 {viewMode === 'github' && activeRepo ? (
                                     <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeRepo.fullName}>
-                                        Connected: {activeRepo.fullName}
+                                        {t('efx_connected', { repo: activeRepo.fullName })}
                                     </div>
                                 ) : activeWorkspace && (
                                     <div style={{ fontSize: '10px', opacity: 0.6, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={activeWorkspace.path}>
@@ -1275,7 +1280,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 <button
                                     onClick={() => setShowMinimap(p => !p)}
                                     className="elite-icon-btn"
-                                    title={showMinimap ? 'Hide Minimap' : 'Show Minimap'}
+                                    title={showMinimap ? t('efx_hideMinimap') : t('efx_showMinimap')}
                                     style={{ color: showMinimap ? 'var(--accent-primary)' : undefined }}
                                 >
                                     <Map size={14} />
@@ -1283,7 +1288,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 <button
                                     onClick={() => setShowTerminal(p => !p)}
                                     className="elite-icon-btn"
-                                    title={showTerminal ? 'Hide Terminal' : 'Show Terminal'}
+                                    title={showTerminal ? t('efx_hideTerminal') : t('efx_showTerminal')}
                                     style={{ color: showTerminal ? 'var(--accent-primary)' : undefined }}
                                 >
                                     <TerminalSquare size={14} />
@@ -1291,15 +1296,15 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 <button
                                     onClick={() => setShowFindReplace(p => !p)}
                                     className="elite-icon-btn"
-                                    title="Find & Replace (Ctrl+H)"
+                                    title={t('efx_findReplaceTitle')}
                                     style={{ color: showFindReplace ? 'var(--accent-primary)' : undefined }}
                                 >
                                     <Replace size={14} />
                                 </button>
-                                <button onClick={() => loadRoot()} className="elite-icon-btn" title="Refresh">
+                                <button onClick={() => loadRoot()} className="elite-icon-btn" title={t('fx_refresh')}>
                                     <RefreshCw size={14} className={loading ? 'animate-spin' : ''} />
                                 </button>
-                                <button onClick={() => setTreeCollapsed(true)} className="elite-icon-btn" title="Collapse">
+                                <button onClick={() => setTreeCollapsed(true)} className="elite-icon-btn" title={t('efx_collapse')}>
                                     <PanelLeftClose size={14} />
                                 </button>
                             </div>
@@ -1313,7 +1318,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                 <input
                                     value={query}
                                     onChange={e => setQuery(e.target.value)}
-                                    placeholder="Search files..."
+                                    placeholder={t('efx_searchFiles')}
                                     className="elite-input"
                                 />
                                 {isSearching && <Loader2 size={12} className="animate-spin" />}
@@ -1341,7 +1346,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                             autoFocus
                                             value={findText}
                                             onChange={e => setFindText(e.target.value)}
-                                            placeholder="Find..."
+                                            placeholder={t('efx_findPlaceholder')}
                                             className="elite-input"
                                             style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
                                             onKeyDown={e => { if (e.key === 'Escape') setShowFindReplace(false); }}
@@ -1349,7 +1354,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         <button
                                             onClick={() => setFindRegex(p => !p)}
                                             className="elite-icon-btn"
-                                            title="Regex"
+                                            title={t('efx_regex')}
                                             style={{ opacity: findRegex ? 1 : 0.4, color: findRegex ? 'var(--accent-primary)' : undefined }}
                                         >
                                             <Regex size={12} />
@@ -1357,14 +1362,14 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         <button
                                             onClick={() => setFindCaseSensitive(p => !p)}
                                             className="elite-icon-btn"
-                                            title="Case Sensitive"
+                                            title={t('efx_caseSensitive')}
                                             style={{ opacity: findCaseSensitive ? 1 : 0.4, color: findCaseSensitive ? 'var(--accent-primary)' : undefined }}
                                         >
                                             <CaseSensitive size={12} />
                                         </button>
                                         {findMatchCount !== null && (
                                             <span style={{ fontSize: 10, opacity: 0.6, whiteSpace: 'nowrap' }}>
-                                                {findMatchCount} match{findMatchCount !== 1 ? 'es' : ''}
+                                                {t('efx_matches', { n: findMatchCount })}
                                             </span>
                                         )}
                                     </div>
@@ -1373,7 +1378,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         <input
                                             value={replaceText}
                                             onChange={e => setReplaceText(e.target.value)}
-                                            placeholder="Replace..."
+                                            placeholder={t('efx_replacePlaceholder')}
                                             className="elite-input"
                                             style={{ flex: 1, fontSize: 11, padding: '3px 6px' }}
                                             onKeyDown={e => { if (e.key === 'Enter') handleReplaceAll(); }}
@@ -1381,23 +1386,23 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         <button
                                             onClick={handleReplaceAll}
                                             className="elite-icon-btn"
-                                            title="Replace All"
+                                            title={t('efx_replaceAll')}
                                             disabled={findReplacing || !findText || !activePath}
                                             style={{ fontSize: 10, padding: '2px 6px', opacity: findReplacing ? 0.5 : 1 }}
                                         >
-                                            {findReplacing ? <Loader2 size={12} className="animate-spin" /> : 'All'}
+                                            {findReplacing ? <Loader2 size={12} className="animate-spin" /> : t('efx_replaceAllShort')}
                                         </button>
                                         <button
                                             onClick={() => setShowFindReplace(false)}
                                             className="elite-icon-btn"
-                                            title="Close"
+                                            title={t('close')}
                                         >
                                             <X size={12} />
                                         </button>
                                     </div>
                                     {!activePath && (
                                         <div style={{ fontSize: 10, opacity: 0.4, marginTop: 4 }}>
-                                            Open a file to use Find & Replace
+                                            {t('efx_findNeedsFile')}
                                         </div>
                                     )}
                                 </motion.div>
@@ -1459,7 +1464,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         </motion.div>
                                     ))}
                                     {searchResults.length === 0 && !isSearching && (
-                                        <div className="elite-no-results">No matches found</div>
+                                        <div className="elite-no-results">{t('efx_noMatches')}</div>
                                     )}
                                 </div>
                             ) : (
@@ -1471,7 +1476,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                                 padding: '4px 12px', fontSize: '10px', textTransform: 'uppercase',
                                                 letterSpacing: '0.5px', opacity: 0.5, display: 'flex', alignItems: 'center', gap: 4
                                             }}>
-                                                <Star size={10} fill="currentColor" /> Pinned
+                                                <Star size={10} fill="currentColor" /> {t('efx_pinned')}
                                             </div>
                                             {pinnedFiles.map((pf, i) => (
                                                 <motion.div
@@ -1488,7 +1493,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                                     <button
                                                         onClick={(e) => { e.stopPropagation(); togglePin(pf); }}
                                                         style={{ marginLeft: 'auto', background: 'none', border: 'none', cursor: 'pointer', padding: 2, opacity: 0.4 }}
-                                                        title="Unpin"
+                                                        title={t('efx_unpin')}
                                                     >
                                                         <X size={10} style={{ color: 'var(--text-muted)' }} />
                                                     </button>
@@ -1515,12 +1520,12 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                                         <div className="elite-empty-state" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '28px 16px', textAlign: 'center' }}>
                                             <FolderPlus size={26} style={{ opacity: 0.4 }} />
                                             <div style={{ fontWeight: 600, fontSize: 13 }}>
-                                                {t('fx_emptyTitle', 'لا توجد ملفات بعد')}
+                                                {t('fx_emptyTitle')}
                                             </div>
                                             <div style={{ fontSize: 12, opacity: 0.6, lineHeight: 1.6, maxWidth: 220 }}>
                                                 {viewMode === 'github'
-                                                    ? t('fx_emptyGithubDesc', 'هذا المستودع فارغ أو لم تُحمّل ملفاته بعد.')
-                                                    : t('fx_emptyLocalDesc', 'اطلب من جو أن يبني مشروعاً، أو أنشئ ملفاً، أو غيّر مكان المشروع.')}
+                                                    ? t('fx_emptyGithubDesc')
+                                                    : t('fx_emptyLocalDesc')}
                                             </div>
                                         </div>
                                     )}
@@ -1536,7 +1541,7 @@ const EliteFileExplorer = React.forwardRef<EliteFileExplorerRef, FileExplorerPro
                         exit={{ width: 0, opacity: 0 }}
                         transition={{ duration: 0.3 }}
                     >
-                        <button onClick={() => setTreeCollapsed(false)} className="elite-icon-btn" title="Expand">
+                        <button onClick={() => setTreeCollapsed(false)} className="elite-icon-btn" title={t('efx_expand')}>
                             <PanelLeftOpen size={16} />
                         </button>
                     </motion.div>

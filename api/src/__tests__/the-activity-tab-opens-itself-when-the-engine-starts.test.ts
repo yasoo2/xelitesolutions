@@ -280,6 +280,7 @@ async function mountWorkspace(sessionId: string) {
     const Workspace = evaluate(web('components', 'WorkspacePanel.tsx'), {
         react: React, 'react-i18next': i18n, 'lucide-react': icon, '../lib/plainText': plainText,
         './ErrorBoundary': { ErrorBoundary: pass },
+        './NeuralTraceView': { useUiDir: () => 'ltr' },
         './terminal/EnterpriseTerminalPanel': { __esModule: true, default: Null },
         './EmbeddedBrowser': { __esModule: true, default: Null },
         './PreviewPanel': { __esModule: true, default: Null },
@@ -318,7 +319,7 @@ describe('the workspace offers Activity and keeps its panel', () => {
             expect(ws.panels.map(p => [p.props.sessionId, p.props.active, p.mounted])).toEqual([['chat-1', true, true]]);
 
             //  Another tab hides it; it is the same panel, still mounted, when it comes back.
-            await ws.click(ws.tabButton('Logs')!);
+            await ws.click(ws.tabButton('wsp_tabLogs')!);
             await ws.click(ws.tabButton('act_title')!);
             expect(ws.panels).toHaveLength(1);
             expect(ws.panels[0]).toMatchObject({ mounted: true, props: { active: true } });

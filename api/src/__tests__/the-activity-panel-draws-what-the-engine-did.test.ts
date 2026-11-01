@@ -93,6 +93,7 @@ async function mountPanel(records: Record<string, any>, options: MountOptions = 
     const icon = new Proxy({}, { get: (_t, name) => (props: any) => React.createElement('i', { 'data-icon': String(name), className: props?.className }) });
     const screenshots = evaluate(web('components', 'ScreenshotResults.tsx'), {
         react: React, '../services/apiClient': { api }, '../lib/raster-download': { createRasterBlobUrl: () => '', revokeRasterBlobUrl() {} },
+        'react-i18next': { useTranslation: () => ({ t: (key: string, o?: any) => (o ? `${key}${JSON.stringify(o)}` : key), i18n: { language: 'ar' } }) },
     });
     const Panel = evaluate(web('components', 'RunActivityPanel.tsx'), {
         react: React,

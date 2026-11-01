@@ -77,7 +77,7 @@ export default function FileExplorerPanel({
             a.click();
             URL.revokeObjectURL(a.href);
         } catch (e: any) {
-            alert(t('exportFailed', 'تعذّر التصدير: ') + (e?.message || e));
+            alert(t('exportFailed', { error: String(e?.message || e) }));
         } finally { setTransferBusy(null); }
     };
     const handleImportFile = async (file: File) => {
@@ -90,10 +90,10 @@ export default function FileExplorerPanel({
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || !data?.ok) throw new Error(data?.error || `HTTP ${res.status}`);
-            alert(t('importDone', 'تم الاستيراد إلى مجلد جديد: ') + data.dir + ` (${data.files} ${t('filesWord', 'ملفاً')})`);
+            alert(`${t('importDone', { dir: data.dir })} (${t('filesWord', { n: data.files })})`);
             onRefresh?.();
         } catch (e: any) {
-            alert(t('importFailed', 'تعذّر الاستيراد: ') + (e?.message || e));
+            alert(t('importFailed', { error: String(e?.message || e) }));
         } finally { setTransferBusy(null); }
     };
 
@@ -112,7 +112,7 @@ export default function FileExplorerPanel({
                 they are looking at (local disk vs a connected GitHub repo). */}
             <div className="joe-files-header" style={{ flexWrap: 'wrap', gap: 8 }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                    <span className="joe-files-title">{t('fx_title', 'ملفات المشروع')}</span>
+                    <span className="joe-files-title">{t('fx_title')}</span>
                     <span title={isGithub ? activeRepo?.fullName : location?.path}
                         style={{
                             display: 'inline-flex', alignItems: 'center', gap: 5,
@@ -122,24 +122,24 @@ export default function FileExplorerPanel({
                             whiteSpace: 'nowrap'
                         }}>
                         {isGithub ? <Github size={12} /> : <HardDrive size={12} />}
-                        {isGithub ? t('fx_modeGithub', 'مستودع GitHub') : t('fx_modeLocal', 'قرص محلي')}
+                        {isGithub ? t('fx_modeGithub') : t('fx_modeLocal')}
                     </span>
                 </div>
                 <div className="joe-files-actions">
-                    <button className="joe-files-action-btn" onClick={onNewFile} title={t('fx_newFile', 'ملف جديد')}>
+                    <button className="joe-files-action-btn" onClick={onNewFile} title={t('fx_newFile')}>
                         <FilePlus size={16} />
                     </button>
-                    <button className="joe-files-action-btn" onClick={onNewFolder} title={t('fx_newFolder', 'مجلد جديد')}>
+                    <button className="joe-files-action-btn" onClick={onNewFolder} title={t('fx_newFolder')}>
                         <FolderPlus size={16} />
                     </button>
-                    <button className="joe-files-action-btn" onClick={() => { onRefresh?.(); loadLocation(); }} title={t('fx_refresh', 'تحديث القائمة')}>
+                    <button className="joe-files-action-btn" onClick={() => { onRefresh?.(); loadLocation(); }} title={t('fx_refresh')}>
                         <RefreshCw size={16} />
                     </button>
                     <div style={{ width: 1, height: 16, background: 'var(--border-color)', margin: '0 4px' }} />
-                    <button className="joe-files-action-btn" onClick={handleExport} disabled={transferBusy !== null} title={t('fx_export', 'تصدير المشروع كملف مضغوط (zip)')}>
+                    <button className="joe-files-action-btn" onClick={handleExport} disabled={transferBusy !== null} title={t('fx_export')}>
                         {transferBusy === 'export' ? <Loader2 size={16} className="spin" /> : <PackageCheck size={16} />}
                     </button>
-                    <button className="joe-files-action-btn" onClick={() => importInputRef.current?.click()} disabled={transferBusy !== null} title={t('fx_import', 'استيراد مشروع من ملف مضغوط (zip)')}>
+                    <button className="joe-files-action-btn" onClick={() => importInputRef.current?.click()} disabled={transferBusy !== null} title={t('fx_import')}>
                         {transferBusy === 'import' ? <Loader2 size={16} className="spin" /> : <PackageOpen size={16} />}
                     </button>
                     <input
@@ -166,8 +166,8 @@ export default function FileExplorerPanel({
                 }}>
                     <div style={{ minWidth: 0, flex: 1 }}>
                         <div style={{ fontSize: 10.5, opacity: 0.55, fontWeight: 600, marginBottom: 2 }}>
-                            {t('fx_locationLabel', 'مكان المشروع')}
-                            {location?.isDefault && ' — ' + t('fx_defaultHint', 'المكان الافتراضي — يمكنك تغييره')}
+                            {t('fx_locationLabel')}
+                            {location?.isDefault && ' — ' + t('fx_defaultHint')}
                         </div>
                         <div dir="ltr" style={{
                             fontSize: 11.5, fontFamily: 'monospace', opacity: 0.8,
@@ -179,11 +179,11 @@ export default function FileExplorerPanel({
                     <button
                         className="joe-files-action-btn"
                         onClick={() => (window as any)._triggerConnectWorkspace?.()}
-                        title={t('fx_changeLocation', 'تغيير المكان')}
+                        title={t('fx_changeLocation')}
                         style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5, width: 'auto', padding: '5px 10px', fontSize: 11.5, fontWeight: 600 }}
                     >
                         <FolderCog size={14} />
-                        {t('fx_changeLocation', 'تغيير المكان')}
+                        {t('fx_changeLocation')}
                     </button>
                 </div>
             )}
@@ -210,7 +210,7 @@ export default function FileExplorerPanel({
                     onClick={onGitChanges}
                 >
                     <GitBranch size={14} />
-                    <span>Git Changes</span>
+                    <span>{t('fxp_gitChanges')}</span>
                     {gitChangeCount > 0 && (
                         <span style={{
                             marginLeft: 'auto',
