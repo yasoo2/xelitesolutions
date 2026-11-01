@@ -58,7 +58,7 @@ export default function ChatPanel({
     onInputChange,
     onSend,
     isLoading = false,
-    placeholder = 'Ask Joe or type a command...',
+    placeholder,
     children,
     isCollapsed = false,
     sessionId,
@@ -230,12 +230,12 @@ export default function ChatPanel({
                                                 const rawUrl = f.id ? `/api/files/${encodeURIComponent(f.id)}/raw?token=${encodeURIComponent(token)}` : '';
                                                 return isImage && rawUrl ? (
                                                     <a key={i} href={rawUrl} target="_blank" rel="noopener noreferrer" className="joe-msg-file is-image" title={f.name || ''}>
-                                                        <img src={rawUrl} alt={f.name || 'image'} loading="lazy" />
+                                                        <img src={rawUrl} alt={f.name || t('artifacts.image')} loading="lazy" />
                                                     </a>
                                                 ) : (
                                                     <span key={i} className="joe-msg-file" title={f.name || ''}>
                                                         <Paperclip size={12} />
-                                                        <span className="joe-msg-file-name">{f.name || 'ملف'}</span>
+                                                        <span className="joe-msg-file-name">{f.name || t('artifacts.file')}</span>
                                                     </span>
                                                 );
                                             })}
@@ -320,7 +320,7 @@ export default function ChatPanel({
                                                                 borderBottom: '1px solid rgba(255,255,255,0.05)'
                                                             }}>
                                                                 <span style={{ color: 'var(--joe-gold-primary)', fontWeight: 600 }}>{filepath}</span>
-                                                                <span style={{ color: 'var(--joe-text-muted)' }}>Lines {startLine}-{endLine}</span>
+                                                                <span style={{ color: 'var(--joe-text-muted)' }}>{t('chat_lines', { from: startLine, to: endLine })}</span>
                                                             </div>
                                                             <div className="joe-citation-body" style={{ opacity: 0.9 }}>
                                                                 <SyntaxHighlighter
@@ -364,7 +364,7 @@ export default function ChatPanel({
                                     <div className="joe-msg-actions" style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px' }}>
                                         <button
                                             onClick={() => handleCopy(msg.id, msg.content)}
-                                            title="انسخ الرد"
+                                            title={t('chat_copyReply')}
                                             style={{
                                                 background: 'transparent', border: 'none', color: 'var(--joe-text-muted)',
                                                 cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', display: 'flex',
@@ -374,7 +374,7 @@ export default function ChatPanel({
                                             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--joe-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
                                         >
                                             {copiedId === msg.id ? <Check size={14} color="var(--joe-success, #4CAF50)" /> : <Copy size={14} />}
-                                            {copiedId === msg.id ? 'تم النسخ' : 'نسخ النص'}
+                                            {copiedId === msg.id ? t('chat_copied') : t('copy')}
                                         </button>
                                     </div>
                                 )}
@@ -423,7 +423,7 @@ export default function ChatPanel({
                             value={inputValue}
                             onChange={handleInput}
                             onKeyDown={handleKeyDown}
-                            placeholder={placeholder}
+                            placeholder={placeholder ?? t('chat_inputPlaceholder')}
                             className="joe-chat-input"
                             rows={1}
                             disabled={isLoading}
@@ -432,7 +432,7 @@ export default function ChatPanel({
                             className="joe-send-btn"
                             onClick={onSend}
                             disabled={!inputValue.trim() || isLoading}
-                            title="Send message"
+                            title={t('chat_sendMessage')}
                         >
                             <Send size={18} />
                         </button>

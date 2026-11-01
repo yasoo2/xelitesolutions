@@ -20,6 +20,13 @@ import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
 import './i18n';
+import { useTranslation } from 'react-i18next';
+
+/** The page-loading line, in the interface language. */
+function RouteLoading() {
+  const { t } = useTranslation();
+  return <div className="route-loading">{t('route_loading')}</div>;
+}
 
 const shouldIgnoreNoiseError = (val: any) => {
   const s = String(val?.stack || val?.message || val?.filename || val || '');
@@ -139,7 +146,7 @@ function RequireAuth({ children }: { children: React.ReactNode }) {
       .catch(() => { /* fall through to the existing paths below */ })
       .finally(() => setAsked(true));
   }, [mustAsk]);
-  if (mustAsk) return <div className="route-loading">Loading…</div>;
+  if (mustAsk) return <RouteLoading />;
 
   const getDevBypassToken = () => {
     //  The server's own word first, then the three client-side guesses that
@@ -244,16 +251,16 @@ createRoot(document.getElementById('root')!).render(
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<App />}>
-              <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
-              <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
-              <Route path="welcome" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
-              <Route path="landing" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
+              <Route index element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
+              <Route path="login" element={<Suspense fallback={<RouteLoading />}><Login /></Suspense>} />
+              <Route path="welcome" element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
+              <Route path="landing" element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
 
               <Route
                 path="joe"
                 element={
                   <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <Joe />
                     </Suspense>
                   </RequireAuth>
@@ -263,7 +270,7 @@ createRoot(document.getElementById('root')!).render(
                 path="workspace/:workspaceId/settings"
                 element={
                   <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading...</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <WorkspaceSettings />
                     </Suspense>
                   </RequireAuth>
@@ -277,7 +284,7 @@ createRoot(document.getElementById('root')!).render(
                 path="super-admin"
                 element={
                   <RequireSuperAdmin>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <SystemManagement />
                     </Suspense>
                   </RequireSuperAdmin>

@@ -668,13 +668,10 @@ export default function Joe() {
                         }];
                     }
                     if (e.type === 'run_interrupted') {
-                        const arabic = String(i18n.language || '').toLowerCase().startsWith('ar');
                         return [{
                             id: e.id || `interrupted-${e.runId || e.ts}`,
                             role: 'assistant',
-                            content: arabic
-                                ? 'توقف التنفيذ لأن خدمة جو أُعيد تشغيلها قبل اكتماله. أرسل «أكمل» للمتابعة من آخر حالة محفوظة.'
-                                : 'The run was interrupted because Joe restarted before it finished. Send “Continue” to resume from the last saved state.',
+                            content: t('joe_runInterrupted'),
                             timestamp: new Date(e.ts || Date.now())
                         }];
                     }
@@ -1172,7 +1169,7 @@ export default function Joe() {
     }));
 
     return (
-        <ErrorBoundary fallbackTitle="تعذر تحميل Joe IDE بالكامل">
+        <ErrorBoundary fallbackTitle={t('joe_ideLoadFailed')}>
             <JoeIDELayout
                 // ... props ...
                 userAvatar={userInfo.avatar}

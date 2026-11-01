@@ -18,6 +18,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
 import TodosPanel from './TodosPanel';
+import { useUiDir } from './NeuralTraceView';
 
 
 // Web Speech API types
@@ -168,9 +169,9 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
   const md = report.engineeringReportMarkdown || '';
   
   const generateSummaryFromJson = (r: any) => {
-    const ok = r.ok ? '✅ SUCCESS' : '❌ FAILED';
+    const ok = r.ok ? `✅ ${t('cc_reportSuccess')}` : `❌ ${t('cc_reportFailed')}`;
     const progress = `${r.completedPhases} / ${r.totalPlannedPhases || '?'}`;
-    return `### Pipeline Summary\n- **Status**: ${ok}\n- **Progress**: ${progress}\n\nDetailed orchestration data available.`;
+    return t('cc_reportSummary', { status: ok, progress });
   };
 
   const displayMd = md || (report.engineeringReport ? generateSummaryFromJson(report.engineeringReport) : '');
@@ -186,12 +187,12 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
       <div className="report-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ShieldCheck size={20} className="report-icon" />
-          <span>Joe Engineering Report</span>
+          <span>{t('cc_reportTitle')}</span>
         </div>
         <button 
           onClick={() => setShowRaw(!showRaw)}
           className="debug-toggle-btn"
-          title="Toggle Debug Info"
+          title={t('cc_reportToggleDebug')}
         >
           <Code size={14} />
         </button>
@@ -238,7 +239,7 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
           animate={{ opacity: 1, height: 'auto' }}
           className="report-debug-info"
         >
-          <div className="debug-header">RAW ORCHESTRATION DATA</div>
+          <div className="debug-header">{t('cc_reportRawData')}</div>
           <pre className="debug-content">
             {JSON.stringify(report.engineeringReport || report, null, 2)}
           </pre>
@@ -612,7 +613,7 @@ const ChatBubble = forwardRef(
         {showAvatar ? (
           <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
             {bubbleVariant === 'user' && userPicture ? (
-              <img src={userPicture} alt="User" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              <img src={userPicture} alt={t('you')} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : bubbleVariant === 'user' ? (
               <SenderIcon size={16} />
             ) : (
@@ -633,7 +634,7 @@ const ChatBubble = forwardRef(
                   <span>{fmtTime(ts)}</span>
                 </div>
                 {showCopy ? (
-                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title={t('copy')}>
                     {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                   </button>
                 ) : null}
@@ -654,14 +655,14 @@ const ChatBubble = forwardRef(
                     {/* An attached IMAGE shows itself, not a generic icon — the
                         composer already carries the data-URI preview it made. */}
                     {f.preview ? (
-                      <img src={f.preview} alt={f.name || 'image'} style={{
+                      <img src={f.preview} alt={f.name || t('artifacts.image')} style={{
                         width: 44, height: 44, objectFit: 'cover', borderRadius: 6, display: 'block'
                       }} />
                     ) : (
                       <FileText size={12} style={{ opacity: 0.7 }} />
                     )}
                     <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {f.name || 'File'}
+                      {f.name || t('artifacts.file')}
                     </span>
                   </div>
                 ))}
@@ -740,7 +741,7 @@ const ChatBubble = forwardRef(
             )}
 
             {isTyping && !streamingRef.current ? (
-              <div className="typing-dots" aria-label="Typing">
+              <div className="typing-dots" aria-label={t('cc_typing')}>
                 <span className="typing-dot" />
                 <span className="typing-dot" />
                 <span className="typing-dot" />
@@ -766,6 +767,9 @@ interface ProviderConfig {
   // untranslated — only the descriptor around them changes with the language.
   nameKey?: string;
   tagKey?: string;
+  // The short word the toolbar button writes when `name` is not a brand
+  // («Auto», «Local»): a brand stays as it is, a common word follows the language.
+  labelKey?: string;
   apiKey: string;
   isConnected: boolean;
   baseUrl?: string;
@@ -820,7 +824,7 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // available free provider automatically (see the router's free-first mesh).
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
   // The SDK requires a nonempty key; Ollama ignores this public sentinel.
-  local: { name: 'Local', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
+  local: { name: 'Local', nameKey: 'cc_provLocal', labelKey: 'cc_provLocal', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
   gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
   groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
@@ -889,6 +893,7 @@ export default function CommandComposer({
 
 }) {
   const { t } = useTranslation();
+  const uiDir = useUiDir();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
@@ -982,7 +987,7 @@ export default function CommandComposer({
       const token = localStorage.getItem('token');
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const name = payload.name || payload.email?.split('@')[0] || 'User';
+        const name = payload.name || payload.email?.split('@')[0] || t('cc_userFallback');
         const pic = payload.picture || '';
         setUserName(name);
         if (pic) setUserPicture(pic);
@@ -991,7 +996,7 @@ export default function CommandComposer({
         if (events.length === 0) {
           setEvents([{
             type: 'text',
-            data: { text: `👋 Welcome back, **${name}**! How can I help you today?` },
+            data: { text: t('cc_welcomeBack', { name }) },
             duration: 0
           }]);
         }
@@ -1393,7 +1398,7 @@ export default function CommandComposer({
         sessionId: String(detail?.sessionId || '').trim(),
         report: {
           ok: Boolean(report.ok),
-          title: String(report.title || 'فحص جودة المتصفح'),
+          title: String(report.title || t('cc_browserQualityTitle')),
           checks: report.checks.map(String),
         },
         ts: Date.now(),
@@ -2029,10 +2034,24 @@ export default function CommandComposer({
         setSelectedProvider(target);
         try { localStorage.setItem('active_provider', target); } catch { /* private mode */ }
         const noticeId = `quota:${d.provider || ''}:${d.until || Date.now()}`;
+        // The server's `message` is one fixed Arabic sentence; the same facts
+        // arrive as fields, so the sentence is said here in the user's language.
+        const quotaProvider = String(d.provider || '').trim();
+        const quotaModel = String(d.model || '').trim();
+        const quotaMinutes = Number(d.minutes);
+        const quotaText = quotaProvider && Number.isFinite(quotaMinutes) && quotaMinutes > 0
+          ? t('cc_quotaSwitchedFrom', {
+            provider: quotaProvider,
+            model: quotaModel ? ` (${quotaModel})` : '',
+            when: quotaMinutes >= 60
+              ? t('cc_quotaHours', { n: Math.round(quotaMinutes / 60) })
+              : t('cc_quotaMinutes', { n: Math.ceil(quotaMinutes) }),
+          })
+          : t('cc_quotaSwitched');
         setEvents((prev: any[]) => (
           prev.some((e: any) => e?.id === noticeId)
             ? prev
-            : [...prev, { type: 'text', id: noticeId, data: String(d.message || 'انتهت حصّة المزوّد — تم التحويل إلى الوضع التلقائي.') }]
+            : [...prev, { type: 'text', id: noticeId, data: quotaText }]
         ));
         return;
       }
@@ -2633,7 +2652,7 @@ export default function CommandComposer({
         lastGateSigRef.current.secret = undefined;
         setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء حفظ التوكن: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2654,7 +2673,7 @@ export default function CommandComposer({
         await approve(decision);
         lastGateSigRef.current.approval = undefined;
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء إرسال قرار الموافقة: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_approvalSendError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2690,9 +2709,11 @@ export default function CommandComposer({
       } catch (error: any) {
         if (submissionEpoch !== submissionEpochRef.current) return;
         awaitingRunIdentityRef.current = false;
+        // 'session_creation_failed' is this function's own code, not a sentence.
+        const createMessage = String(error?.message || '').trim();
         setEvents(prev => [...prev, {
           type: 'error',
-          data: String(error?.message || 'Unable to create a conversation for this task.'),
+          data: createMessage && createMessage !== 'session_creation_failed' ? createMessage : t('cc_sessionCreateFailed'),
           ts: Date.now(),
         }]);
         return;
@@ -2899,7 +2920,7 @@ export default function CommandComposer({
             body: JSON.stringify({ sessionId: opened.sessionId, instructionText: `افتح ${desiredUrl}`, mode: 'execute' }),
           }).catch(() => null);
         } catch (e: any) {
-          const msg = String(e?.message || e || 'فشل فتح المتصفح');
+          const msg = String(e?.message || e || t('cc_browserOpenFailed'));
           setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
           const sid = runSessionId;
           const looksLikeUnauthorizedWorker = /worker_error=401\b|unauthorized\b|غير مصرح/i.test(msg);
@@ -2920,7 +2941,7 @@ export default function CommandComposer({
       // and reports its failure without silently substituting another vendor.
       const providerToSend = activeProvider;
       const providerCfgToSend = providers[providerToSend];
-      if (!providerCfgToSend) throw new Error('Selected provider is unavailable. Open Providers and choose a provider.');
+      if (!providerCfgToSend) throw new Error(t('cc_providerUnavailable'));
 
       const payload: any = {
         type: 'run_start',
@@ -3150,7 +3171,7 @@ export default function CommandComposer({
     if (pendingQueue.length > 0) setQueuePaused(true);
     if (!target && awaitingRunIdentityRef.current && !activeRunIdentityRef.current) {
       pendingStopEpochRef.current = submissionEpochRef.current;
-      setActiveToolName('Stopping your request…');
+      setActiveToolName(t('cc_stoppingRequest'));
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3279,7 +3300,7 @@ export default function CommandComposer({
     // the owner retry or see the eventual terminal event instead of believing
     // a task vanished when it is still consuming tools in the background.
     if (!serverConfirmedStop && (rid || sid)) {
-      setActiveToolName('Unable to confirm that the requested run stopped.');
+      setActiveToolName(t('cc_stopUnconfirmed'));
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3359,7 +3380,7 @@ export default function CommandComposer({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
     } catch (e) {
-      setEvents(prev => [...prev, { type: 'error', data: `تعذّر متابعة المتصفح: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+      setEvents(prev => [...prev, { type: 'error', data: t('cc_browserResumeFailed', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
     } finally {
       setBrowserCred(null);
       setBrowserCredValue('');
@@ -3410,7 +3431,7 @@ export default function CommandComposer({
         handleUnauthorized();
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
-      const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+      const data = await res.json().catch(() => ({ ok: false, error: t('cc_badResponse') }));
       if (!currentVerification()) return false;
 
       if (data?.ok) {
@@ -3428,14 +3449,14 @@ export default function CommandComposer({
       // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
       setProviders(prev => ({
         ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (data?.error || 'فشل الاتصال') },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (data?.error || t('cc_connectionFailed')) },
       }));
       return false;
     } catch (err: any) {
       if (!currentVerification()) return false;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || 'فشل الاتصال') },
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || t('cc_connectionFailed')) },
       }));
       return false;
     }
@@ -3488,7 +3509,7 @@ export default function CommandComposer({
   }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
-    if (confirm('Are you sure you want to remove the API key?')) {
+    if (confirm(t('cc_confirmRemoveKey'))) {
       invalidateProviderVerification(key);
       // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
       // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
@@ -3502,7 +3523,7 @@ export default function CommandComposer({
   };
 
   const handleDisconnect = async (key: string) => {
-    if (!confirm('Are you sure you want to disconnect?')) return;
+    if (!confirm(t('cc_confirmDisconnect'))) return;
     invalidateProviderVerification(key);
 
     setProviders(prev => ({
@@ -4003,18 +4024,18 @@ export default function CommandComposer({
             {/* Left Sidebar */}
             <div className="providers-left">
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Cpu size={18} /> Providers
+                <Cpu size={18} /> {t('aiProviders')}
               </h3>
 
               <div className="provider-section">
-                <div className="section-header free">🆓 مجاني — Free</div>
+                <div className="section-header free">{t('cc_sectionFree')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('providerClickToView')}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToView', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -4028,14 +4049,14 @@ export default function CommandComposer({
               </div>
 
               <div className="provider-section">
-                <div className="section-header paid">💳 مدفوع — Paid</div>
+                <div className="section-header paid">{t('cc_sectionPaid')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، أدخل المفتاح، ثم Verify للتفعيل'}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToViewKey', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -4083,7 +4104,7 @@ export default function CommandComposer({
                   {/* OpenRouter Model Selection */}
                   {selectedProvider === 'openrouter' && (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">اختر النموذج</label>
+                      <label className="section-label">{t('chooseModel')}</label>
                       <select
                         className="model-select"
                         value={providers[selectedProvider].model || ''}
@@ -4128,9 +4149,9 @@ export default function CommandComposer({
                             fontSize: 12
                           }}>
                             {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني — يحتاج مفتاح API من OpenRouter</span>
+                              <span style={{ color: '#22c55e' }}>{t('cc_orModelFree')}</span>
                             ) : (
-                              <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
+                              <span style={{ color: '#3b82f6' }}>{t('cc_orModelPaid')}</span>
                             )}
                           </div>
                         );
@@ -4148,28 +4169,30 @@ export default function CommandComposer({
 
                   {selectedProvider === 'local' && (
                     <div className="info-box free">
-                      <div>Uses your existing local Ollama service. Enter an installed Model ID, then connect. No API key or model download is required.</div>
+                      <div>{t('cc_localBody')}</div>
                     </div>
                   )}
 
                   {/* Honest per-provider info box driven by PROVIDER_KEY_INFO. */}
                   {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
                     const info = PROVIDER_KEY_INFO[selectedProvider];
-                    const title = info.need === 'keyless' ? '🆓 مجاني بلا مفتاح — ويقبل مفتاحك (اختياري)'
-                      : info.need === 'optional' ? '⚡ مجاني — ويقبل مفتاحك الخاص (اختياري، لسرعة وحدود أعلى)'
-                        : info.need === 'required' ? '🔑 يحتاج مفتاح API'
-                          : '💳 مزوّد مدفوع — يحتاج مفتاحه';
+                    const title = info.need === 'keyless' ? t('cc_needKeyless')
+                      : info.need === 'optional' ? t('cc_needOptional')
+                        : info.need === 'required' ? t('cc_needRequired')
+                          : t('cc_needPaid');
+                    // The body names the button below by its own translated label.
+                    const action = t('cc_connectActivate');
                     const body = info.need === 'required'
-                      ? 'ألصق مفتاح API لهذا المزوّد بالأسفل، ثم اضغط «Connect & Activate» للتحقّق منه. يمكن أيضاً استعمال المفتاح المُعدّ للخدمة مسبقاً.'
+                      ? t('cc_bodyRequired', { action })
                       : info.need === 'paid'
-                        ? 'ألصق مفتاح المزوّد بالأسفل ثم اضغط «Connect & Activate» للتحقّق منه.'
-                        : 'يعمل مجاناً مباشرة. ولمزيد من السرعة والحدود يمكنك (اختياريّاً) لصق مفتاحك الخاص بالأسفل.';
+                        ? t('cc_bodyPaid', { action })
+                        : t('cc_bodyFree');
                     return (
                       <div className="info-box free">
                         <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
                         <div>{body}</div>
                         {info.getUrl && (
-                          <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح من <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
+                          <div style={{ marginTop: 6, fontSize: 12 }}>{t('cc_getKeyFrom')} <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
                         )}
                       </div>
                     );
@@ -4181,7 +4204,7 @@ export default function CommandComposer({
                     const keyOptional = info.need === 'keyless' || info.need === 'optional';
                     return (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">API Key{keyOptional ? ' (اختياري)' : ''}</label>
+                      <label className="section-label">{keyOptional ? t('cc_apiKeyLabelOptional') : t('cc_apiKeyLabel')}</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
@@ -4224,7 +4247,7 @@ export default function CommandComposer({
                               }).catch(err => console.error('Failed to clear API key on server:', err));
                             }
                           }}
-                          title="Clear Key"
+                          title={t('cc_clearKey')}
                           style={{
                             padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
                             background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
@@ -4289,7 +4312,7 @@ export default function CommandComposer({
                       </div>
                       {selectedProvider === 'grok' && (
                         <div>
-                          <label className="section-label">Base URL</label>
+                          <label className="section-label">{t('cc_baseUrl')}</label>
                           <input
                             type="text"
                             className="api-key-input"
@@ -4339,16 +4362,16 @@ export default function CommandComposer({
                     >
                       {providers[selectedProvider].isVerifying ? (
                         <>
-                          <Loader2 size={18} className="spin" /> Verifying...
+                          <Loader2 size={18} className="spin" /> {t('cc_verifying')}
                         </>
                       ) : providers[selectedProvider].isConnected && providers[selectedProvider].verified
                         && selectedProvider === activeProvider ? (
                         <>
-                          <CheckCircle2 size={18} /> Verified & Active
+                          <CheckCircle2 size={18} /> {t('cc_verifiedActive')}
                         </>
                       ) : (
                         <>
-                          <Zap size={18} /> Connect & Activate
+                          <Zap size={18} /> {t('cc_connectActivate')}
                         </>
                       )}
                     </button>
@@ -4360,7 +4383,7 @@ export default function CommandComposer({
                         handleDisconnect(selectedProvider);
                       }}
                       disabled={!providers[selectedProvider].isConnected}
-                      title="Disconnect Provider"
+                      title={t('cc_disconnectProvider')}
                       style={{
                         padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
                         background: 'var(--bg-secondary)',
@@ -4391,7 +4414,7 @@ export default function CommandComposer({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('cc_serviceToken')}</div>
                 </div>
               </div>
 
@@ -4417,7 +4440,7 @@ export default function CommandComposer({
                           const key = secretPrompt.key;
                           const provider = secretPrompt.provider;
                           setSecretPrompt(null);
-                          setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+                          setEvents(prev => [...prev, { type: 'user_input', data: t('secretSentMask'), ts: Date.now() }]);
 
                           const token = localStorage.getItem('token');
                           try {
@@ -4431,10 +4454,10 @@ export default function CommandComposer({
                               return;
                             }
                             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                            setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue')}`, ts: Date.now() }]);
                             pendingBrowserRetryRef.current = null;
                           } catch (err) {
-                            setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveFailed'), ts: Date.now() }]);
                           }
                         }
                       }
@@ -4449,7 +4472,7 @@ export default function CommandComposer({
                 </div>
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>Your token is sent securely and not stored permanently.</span>
+                  <span>{t('cc_tokenSecureNote')}</span>
                 </div>
               </div>
 
@@ -4458,7 +4481,7 @@ export default function CommandComposer({
                   onClick={() => setSecretPrompt(null)}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4470,16 +4493,16 @@ export default function CommandComposer({
         // Browser agent paused for a credential / 2FA code — answered HERE in the
         // chat (not inside the browser panel), then the same live browser resumes.
         browserCred && (
-          <div className="modal" dir="rtl">
+          <div className="modal" dir={uiDir}>
             <div className="panel" style={{ width: 420, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
                   <Lock size={24} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>المتصفح يحتاج بياناتك للمتابعة</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('cc_browserNeedsCreds')}</h3>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {/PASSWORD/i.test(browserCred.secretKey) ? 'كلمة المرور' : /EMAIL/i.test(browserCred.secretKey) ? 'البريد الإلكتروني' : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'رمز التحقّق' : 'بيانات الدخول'}
+                    {/PASSWORD/i.test(browserCred.secretKey) ? t('password') : /EMAIL/i.test(browserCred.secretKey) ? t('email') : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('cc_credCode') : t('cc_credLogin')}
                   </div>
                 </div>
               </div>
@@ -4492,7 +4515,7 @@ export default function CommandComposer({
                   <input
                     type={/PASSWORD/i.test(browserCred.secretKey) ? 'password' : 'text'}
                     autoFocus
-                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : 'rtl'}
+                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : uiDir}
                     value={browserCredValue}
                     onChange={(e) => setBrowserCredValue(e.target.value)}
                     placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('enter2faCode') : /EMAIL/i.test(browserCred.secretKey) ? t('enterEmail') : /PASSWORD/i.test(browserCred.secretKey) ? t('enterPassword') : t('enterRequiredValue')}
@@ -4527,7 +4550,7 @@ export default function CommandComposer({
                 )}
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>تُرسَل بأمان وتُخزَّن مشفّرة — لا تظهر في السجلّ ولا في اللقطات.</span>
+                  <span>{t('cc_credSecureNote')}</span>
                 </div>
               </div>
 
@@ -4544,7 +4567,7 @@ export default function CommandComposer({
                   disabled={browserCredBusy}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: browserCredBusy ? 'default' : 'pointer' }}
                 >
-                  إلغاء
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4573,12 +4596,12 @@ export default function CommandComposer({
             {pendingQueue.length > 0 && (
               <div className="pending-queue-strip">
                 <span className="pending-queue-title">
-                  <Clock size={12} /> {t('queueTitle', 'قيد الانتظار')} ({pendingQueue.length})
+                  <Clock size={12} /> {t('queueTitle')} ({pendingQueue.length})
                 </span>
                 {pendingQueue.map((item) => (
                   <div key={item.id} className="pending-queue-card">
                     <span className="pending-queue-text" dir="auto">
-                      {item.text || t('queueFilesOnly', 'مرفقات فقط')}
+                      {item.text || t('queueFilesOnly')}
                     </span>
                     {item.files.length > 0 && (
                       <span className="pending-queue-files"><Paperclip size={11} /> {item.files.length}</span>
@@ -4586,7 +4609,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn"
-                      title={t('queueSendNow', 'أرسل الآن')}
+                      title={t('queueSendNow')}
                       disabled={!composerIdle || isUploading}
                       onClick={() => dispatchQueuedItem(item.id)}
                     >
@@ -4595,7 +4618,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn pending-queue-remove"
-                      title={t('queueRemove', 'حذف من الانتظار')}
+                      title={t('queueRemove')}
                       onClick={() => setPendingQueue(prev => prev.filter(q => q.id !== item.id))}
                     >
                       <X size={12} />
@@ -4608,7 +4631,7 @@ export default function CommandComposer({
                     className="pending-queue-resume"
                     onClick={() => setQueuePaused(false)}
                   >
-                    {t('queueResume', 'استئناف الإرسال التلقائي')}
+                    {t('queueResume')}
                   </button>
                 )}
               </div>
@@ -4643,10 +4666,10 @@ export default function CommandComposer({
                       {file.size && (
                         <span className="file-size">
                           {file.size < 1024
-                            ? `${file.size} B`
+                            ? t('act_sizeBytes', { n: file.size })
                             : file.size < 1024 * 1024
-                              ? `${(file.size / 1024).toFixed(1)} KB`
-                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                              ? t('act_sizeKB', { n: (file.size / 1024).toFixed(1) })
+                              : t('act_sizeMB', { n: (file.size / (1024 * 1024)).toFixed(1) })
                           }
                         </span>
                       )}
@@ -4915,9 +4938,11 @@ export default function CommandComposer({
                         The ⚡ in «Groq ⚡» is stripped — a name, not decoration.
                       */}
                       <span className="provider-label">
-                        {String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
-                          .replace(/[^\p{L}\p{N} .+-]/gu, '')
-                          .trim() || activeProvider}
+                        {DEFAULT_PROVIDERS[activeProvider]?.labelKey
+                          ? t(String(DEFAULT_PROVIDERS[activeProvider].labelKey))
+                          : String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
+                            .replace(/[^\p{L}\p{N} .+-]/gu, '')
+                            .trim() || activeProvider}
                       </span>
                       {/*
                         A KEY, NOT A SENTENCE.
@@ -4936,7 +4961,7 @@ export default function CommandComposer({
                           <Key
                             size={10}
                             className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
-                            aria-label={need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
+                            aria-label={need === 'optional' ? t('provKeyOptional') : t('provKeyNeeded')}
                           />
                         );
                       })()}
@@ -4958,7 +4983,7 @@ export default function CommandComposer({
                 <button
                   className="action-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title={t('attachFile') || "Attach file"}
+                  title={t('attachFile')}
                   disabled={isUploading}
                 >
                   {isUploading ? (
@@ -4969,7 +4994,7 @@ export default function CommandComposer({
                 <button
                   className="action-btn"
                   onClick={onGitClick}
-                  title="GitHub Integration"
+                  title={t('cc_githubIntegration')}
                 >
                   <Github size={14} color={githubConnected ? "#10b981" : "#ef4444"} />
                 </button>
@@ -4979,7 +5004,7 @@ export default function CommandComposer({
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
-                  title="Voice Mode"
+                  title={t('cc_voiceMode')}
                 >
                   {isVoiceMode ? <Mic size={14} /> : <MicOff size={14} />}
                 </button>
@@ -4993,7 +5018,7 @@ export default function CommandComposer({
                   type="button"
                   className="action-btn queue-add-btn"
                   onClick={queueCurrentDraft}
-                  title={t('queueAdd', 'أضف إلى الانتظار — يُرسل بعد انتهاء المهمة الجارية')}
+                  title={t('queueAdd')}
                 >
                   <ListPlus size={14} />
                 </button>
@@ -5020,7 +5045,7 @@ export default function CommandComposer({
                   }
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                title={status !== 'idle' || !!approval || !!secretPrompt ? t('stop') : t('send')}
                 style={{ position: 'relative' }}
               >
                 {status !== 'idle' || !!approval || !!secretPrompt ? (
@@ -5041,11 +5066,11 @@ export default function CommandComposer({
                 {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
               </button>
               <div className="voice-info">
-                <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
-                <span className="voice-lang">Arabic (SA) / English (US)</span>
+                <span className="voice-status">{isListening ? t('cc_listening') : t('cc_tapToSpeak')}</span>
+                <span className="voice-lang">{t('cc_voiceLangs')}</span>
               </div>
 
-              <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+              <button className="action-btn" title={t('cc_stopSpeaking')} onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                 <Volume2 size={18} />
               </button>
             </div>

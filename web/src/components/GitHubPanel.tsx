@@ -87,7 +87,7 @@ export default function GitHubPanel({
                 <button
                     className="joe-files-action-btn"
                     onClick={onBackToFileExplorer}
-                    title="Back to Files"
+                    title={t('ghpanel_backToFiles')}
                 >
                     <ChevronLeft size={16} />
                 </button>
@@ -96,14 +96,14 @@ export default function GitHubPanel({
                     <button
                         className="joe-files-action-btn"
                         onClick={onCreateRepo}
-                        title="Create Repository"
+                        title={t('ghpanel_createRepo')}
                     >
                         <Plus size={16} />
                     </button>
                     <button
                         className={`joe-files-action-btn ${isLoading ? 'animate-spin' : ''}`}
                         onClick={handleRefresh}
-                        title="Refresh"
+                        title={t('ghpanel_refresh')}
                     >
                         <RefreshCw size={16} />
                     </button>
@@ -122,7 +122,7 @@ export default function GitHubPanel({
                                 </div>
                                 <div style={{ fontSize: '11px', opacity: 0.6 }}>@{user.username}</div>
                             </div>
-                            <button onClick={onDisconnect} style={logoutBtnStyle} title="Disconnect">
+                            <button onClick={onDisconnect} style={logoutBtnStyle} title={t('disconnect')}>
                                 <LogOut size={14} />
                             </button>
                         </>
@@ -156,13 +156,13 @@ export default function GitHubPanel({
                 {/* Repositories */}
                 <div style={sectionHeaderStyle}>
                     <FolderGit2 size={14} />
-                    <span>Repositories</span>
+                    <span>{t('ghpanel_repositories')}</span>
                     <span style={countBadgeStyle}>{repos.length}</span>
                 </div>
 
                 <div style={scrollAreaStyle}>
                     {repos.length === 0 ? (
-                        <div style={emptyStateStyle}>No repositories found</div>
+                        <div style={emptyStateStyle}>{t('noReposFound')}</div>
                     ) : (
                         repos.map(repo => (
                             <div
@@ -194,11 +194,11 @@ export default function GitHubPanel({
                     <>
                         <div style={sectionHeaderStyle}>
                             <GitCommit size={14} />
-                            <span>Commits: {activeRepo.name}</span>
+                            <span>{t('ghpanel_commitsOf', { name: activeRepo.name })}</span>
                         </div>
                         <div style={{ ...scrollAreaStyle, flex: 1.5 }}>
                             {commits.length === 0 ? (
-                                <div style={emptyStateStyle}>No recent commits</div>
+                                <div style={emptyStateStyle}>{t('ghpanel_noCommits')}</div>
                             ) : (
                                 commits.map(commit => (
                                     <div key={commit.sha} style={commitItemStyle}>
