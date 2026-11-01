@@ -218,6 +218,11 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
         }
         return 'medium';
     }
+    // The agent engine's file tools carry the risk of the tools they stand in for:
+    // reading, listing and searching is read_file's, writing and editing is
+    // write_file's. Never the words of a file they write or a pattern they seek.
+    if (/^engine_file_(?:read|list|search)$/.test(n)) return 'low';
+    if (/^engine_file_(?:write|edit)$/.test(n)) return 'medium';
     if (/(delete|deploy)/.test(n)) return 'high';
     if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';
     if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';
