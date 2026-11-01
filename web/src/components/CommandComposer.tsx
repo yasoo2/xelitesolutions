@@ -17,7 +17,6 @@ import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
-import TodosPanel from './TodosPanel';
 
 
 // Web Speech API types
@@ -4750,8 +4749,8 @@ export default function CommandComposer({
               </div>
             )}
 
-            <TodosPanel sessionId={sessionId} />
-
+            {/* The plan is not here: it lives inside Joe's reply (PlanCredits), so
+                nothing floats over what the user is typing (the owner, 2026-11-02). */}
 
             <textarea
               className="main-input"

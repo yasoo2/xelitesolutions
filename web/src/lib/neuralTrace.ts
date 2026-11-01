@@ -18,6 +18,7 @@
  * earlier is the trace that produced it.
  */
 
+import type { PlanItem } from './planCredits';
 export type TracePhase = 'analyzing' | 'synthesizing' | 'executing' | 'idle';
 
 /** The small, human-readable work model shown above the technical trace. */
@@ -98,6 +99,8 @@ export interface NeuralTrace {
     startedAt: number;
     endedAt: number;
     steps: TraceStep[];
+    /** The run's plan as it stood when the run ended (PlanCredits shows it on the reply). */
+    plan?: PlanItem[];
 }
 
 const KEY_PREFIX = 'joe:trace:';

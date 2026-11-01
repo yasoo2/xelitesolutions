@@ -13,7 +13,8 @@ import { attachTraces, loadTraces, type NeuralTrace } from '../lib/neuralTrace';
 import JoeMark from './JoeMark';
 import { composeGreeting } from '../lib/greetings';
 import { resolveIdentity } from '../lib/userIdentity';
-import TodosPanel from './TodosPanel';
+import PlanCredits from './PlanCredits';
+import WordReveal from './WordReveal';
 import ArtifactCard from './ArtifactCard';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 
@@ -66,6 +67,7 @@ export default function ChatPanel({
 }: ChatPanelProps) {
     const { t, i18n } = useTranslation();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesBoxRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // «مساء الخير يا يونس — ما الذي سنصنعه الليلة؟»: the welcome greets the user
@@ -124,6 +126,42 @@ export default function ChatPanel({
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
 
+    /**
+     * A REPLY THAT ARRIVES WHILE THE USER WATCHES UNFOLDS WORD BY WORD.
+     * The messages on screen when a conversation opens are its history and
+     * appear whole; a reply that arrives after that is new. A reply whose
+     * text is already on screen (the same reply saved again under a new id)
+     * is not new. Once it has unfolded it stays whole.
+     */
+    const seenRef = useRef<{ ids: Set<string>; texts: Set<string> } | null>(null);
+    const [revealIds, setRevealIds] = useState<Set<string>>(() => new Set());
+    useEffect(() => { seenRef.current = null; setRevealIds(new Set()); }, [sessionId]);
+    useEffect(() => {
+        if (!messages.length) return;
+        if (!seenRef.current) {
+            seenRef.current = { ids: new Set(messages.map(m => m.id)), texts: new Set(messages.map(m => `${m.role}:${m.content}`)) };
+            return;
+        }
+        const seen = seenRef.current;
+        const fresh: string[] = [];
+        for (const m of messages) {
+            const text = `${m.role}:${m.content}`;
+            if (!seen.ids.has(m.id) && !seen.texts.has(text) && m.role === 'assistant') fresh.push(m.id);
+            seen.ids.add(m.id);
+            seen.texts.add(text);
+        }
+        if (fresh.length) setRevealIds(prev => new Set([...prev, ...fresh]));
+    }, [messages]);
+    const revealDone = React.useCallback((id: string) => {
+        setRevealIds(prev => { const next = new Set(prev); next.delete(id); return next; });
+    }, []);
+    //  Follow the unfolding text down, unless the user scrolled up to read.
+    const followReveal = React.useCallback(() => {
+        const box = messagesBoxRef.current;
+        if (!box || box.scrollHeight - box.scrollTop - box.clientHeight > 160) return;
+        box.scrollTop = box.scrollHeight;
+    }, []);
+
     // Keep the live activity at the end of this same conversation stream when
     // it changes, without covering the messages above or the composer below.
     useEffect(() => {
@@ -156,7 +194,7 @@ export default function ChatPanel({
                 above it already carries the brand, and a second small "Joe"
                 right under it was pure repetition (removed at the owner's
                 request). */}
-            <div className="joe-chat-messages">
+            <div className="joe-chat-messages" ref={messagesBoxRef}>
                 {messages.length === 0 ? (
                     /**
                      * The welcome screen. Two measured defects fixed here:
@@ -207,6 +245,9 @@ export default function ChatPanel({
                                 {/* What Joe did before he answered — collapsed to one
                                     line, and kept. It sits ABOVE the reply because
                                     that is the order it happened in. */}
+                                {msg.role === 'assistant' && !!traceFor.get(msg.id)?.plan?.length && (
+                                    <PlanCredits mode="final" plan={traceFor.get(msg.id)!.plan} />
+                                )}
                                 {msg.role === 'assistant' && traceFor.has(msg.id) && (
                                     <NeuralTraceReceipt trace={traceFor.get(msg.id)!} />
                                 )}
@@ -241,6 +282,12 @@ export default function ChatPanel({
                                             })}
                                         </div>
                                     )}
+                                    <WordReveal
+                                        text={msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
+                                        animate={revealIds.has(msg.id)}
+                                        onGrow={followReveal}
+                                        onDone={() => revealDone(msg.id)}
+                                    >{(shown) => (
                                     <ReactMarkdown
                                         // A single newline IS a line break here.
                                         //
@@ -357,8 +404,9 @@ export default function ChatPanel({
                                             }
                                         }}
                                     >
-                                        {msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
+                                        {shown}
                                     </ReactMarkdown>
+                                    )}</WordReveal>
                                 </div>
                                 {msg.role === 'assistant' && (
                                     <div className="joe-msg-actions" style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px' }}>
@@ -398,6 +446,8 @@ export default function ChatPanel({
                                     variant="bubble"
                                     sessionId={sessionId}
                                 />
+                                {/* The plan, inside the reply: it rolls up like credits as each step finishes. */}
+                                <PlanCredits sessionId={sessionId} />
                             </div>
                         </div>
                     </div>
@@ -415,9 +465,6 @@ export default function ChatPanel({
             ) : (
                 <div className="joe-chat-input-area" style={{ position: 'relative' }}>
                     <div className="joe-chat-input-wrapper" style={{ position: 'relative' }}>
-                        <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', right: 0, zIndex: 100 }}>
-                            <TodosPanel />
-                        </div>
                         <textarea
                             ref={inputRef}
                             value={inputValue}

@@ -1,4 +1,5 @@
 import { API_URL, WS_URL } from '../config';
+import { normalizePlan } from '../lib/planCredits';
 import { AutoOpenManager } from './AutoOpenManager';
 import { saveTrace, type NeuralTrace, type TraceStep } from '../lib/neuralTrace';
 
@@ -223,12 +224,14 @@ function sealTrace(sessionId = '') {
     state.runSessionId = '';
     forSession(thinkingStepsListeners, sid, cb => cb([], sid));
     if (!steps.length || !traceSid) return;
+    const plan = normalizePlan(state.taskTrackerData);
     const trace: NeuralTrace = {
         id: `tr_${traceSid}_${startedAt || steps[0].at}`,
         sessionId: traceSid,
         startedAt: startedAt || steps[0].at,
         endedAt: Date.now(),
         steps,
+        ...(plan.length ? { plan } : {}),
     };
     saveTrace(trace);
     forSession(traceSealedListeners, traceSid, cb => cb(trace));
