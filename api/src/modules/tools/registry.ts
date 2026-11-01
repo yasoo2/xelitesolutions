@@ -346,6 +346,13 @@ const baseTools: ToolDefinition[] = [
   new SafeReadFileTool(),
   new AskUserTool(),
 
+  // ── engine: shell ──
+  // The agent engine's shell and background-process tools (core/engine/tools/shell.ts
+  // calls them through executeTool). Loaded here so this block is the whole edit.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineShellTools').ENGINE_SHELL_TOOLS as ToolDefinition[]),
+  // ── end engine: shell ──
+
   // Revived tools (defensively instantiated above)
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
