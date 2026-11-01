@@ -48,6 +48,15 @@ export const IDLE_LIMIT = 3;
 export const MODEL_FAILURE_LIMIT = 3;
 /** Recite the plan at least this often, even when it did not change. */
 export const RECITE_EVERY = 5;
+/**
+ * Model failures that asking again cannot fix: the budget is spent, the key
+ * or the account was refused, the model does not exist, or the model
+ * declined. The run ends at once and says which.
+ */
+const FINAL_MODEL_FAILURES = new Set([
+    'ENGINE_BUDGET_EXHAUSTED', 'ENGINE_BUDGET_LEDGER', 'ENGINE_PRICE_UNKNOWN',
+    'MODEL_AUTH', 'MODEL_BILLING', 'MODEL_NOT_FOUND', 'MODEL_REFUSAL',
+]);
 
 function message(e: unknown): string {
     return String((e as any)?.message ?? e ?? 'unknown error').slice(0, 400);
@@ -177,7 +186,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     const c = conv.compact(state, lastErrors);
                     if (c.removed) { req.emit({ type: 'compacted', removedMessages: c.removed, summaryChars: c.summaryChars }); continue; }
                 }
-                if (code === 'LOCAL_COMPLETION_LIMIT') {
+                if (FINAL_MODEL_FAILURES.has(code)) { ending = { status: 'failed', reason: `the model call cannot go on (${code}): ${message(e)}` }; break; }
+                if (code === 'LOCAL_COMPLETION_LIMIT' || code === 'COMPLETION_LIMIT') {
                     cutReplies++;
                     if (cutReplies >= MODEL_FAILURE_LIMIT) { ending = { status: 'failed', reason: 'the model\'s reply was cut off by the output limit three times in a row' }; break; }
                     conv.push({ role: 'user', content: 'Your last reply was cut off: it was longer than the room left for an answer, so none of it was used. Make smaller calls: write a big file as a short skeleton with file_write, then add each part with file_edit.' });
@@ -201,6 +211,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 ...(turn.toolCalls.length ? {
                     tool_calls: turn.toolCalls.map(tc => ({ id: tc.id, type: 'function' as const, function: { name: tc.name, arguments: tc.arguments } })),
                 } : {}),
+                ...(turn.native ? { native: turn.native } : {}),
             });
             if (turn.text) { req.emit({ type: 'thought', text: turn.text }); summary = turn.text; }
 
@@ -330,6 +341,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         await fsp.writeFile(path.join(stateDir, 'result.json'), JSON.stringify({
             ...result, plan: state.plan, modelMs: state.modelMs, toolMs: state.toolMs,
             compactions: conv.compactions, usage,
+            ...(deps.model.spentUsd != null ? { costUsd: deps.model.spentUsd } : {}),
         }, null, 2), 'utf8');
     } catch { /* the result is still returned */ }
     req.emit({ type: 'final', result });

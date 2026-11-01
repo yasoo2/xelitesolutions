@@ -23,7 +23,9 @@ A run is delivered only when Joe's delivery checks pass.
 | `context.ts` | The conversation. Append-only, observations bounded with the full text saved, deterministic compaction. |
 | `plan.ts` | `plan_update` and the run's requirement ledger. Seeded from the request; an item the request named can never be dropped. |
 | `finish.ts` | `task_finish`: a claim handed to the verifier. A refuted claim goes back to the model. |
-| `model.ts` | The local model through the managed Ollama transport, or a named provider through the router's strict custom route. |
+| `model.ts` | The local model through the managed Ollama transport, a named provider through the router's strict custom route, or Claude through `anthropic.ts`. `engineBrain` builds the run's model and the reader its checks use. |
+| `anthropic.ts` | Claude through the official SDK: native tool use, prompt caching, thinking replayed unchanged, every call behind the budget guard. |
+| `budget.ts` | The money guard: published prices, a spend ledger on disk, a total and a per-run budget. |
 | `toolcalls.ts` | Reads native tool calls, and calls a small model writes as text. |
 | `prompt.ts` | The standing instructions. Byte-stable, so a server can reuse the prefix. |
 | `workspace.ts` | Containment: every model-given path is resolved inside the run's project folder. |
@@ -74,3 +76,15 @@ Model selection:
 - `JOE_ENGINE_THINKING=off` turns the model's thinking off.
 - `JOE_ENGINE_VISION` forces screenshots on or off. Without it, the local model is asked once whether it takes images.
 - `JOE_ENGINE_CONTEXT_TOKENS` overrides the window the engine budgets for.
+
+### Claude (a paid model)
+
+`JOE_ENGINE_PROVIDER=anthropic` with `JOE_ENGINE_MODEL` (`claude-haiku-5-5`, `claude-sonnet-5-5` or `claude-opus-5-5`). The run does not start without all of:
+
+- `JOE_ENGINE_ANTHROPIC_KEY_FILE`: a file outside the repository holding `ANTHROPIC_API_KEY=...` (or `JOE_ENGINE_ANTHROPIC_API_KEY` itself). The connector never reads `ANTHROPIC_API_KEY` from the environment, and the deployment must not set it: the router and other paid paths read that name, and they spend outside this budget. For the same reason the engine does not need `AI_COST_POLICY=allow_paid`, which opens every paid path in Joe.
+- `JOE_ENGINE_BUDGET_USD`: dollars for all runs together, kept in `<JOE_DATA_DIR>/engine-spend.json` (or `JOE_ENGINE_LEDGER`). The ledger survives restarts; a ledger that exists but cannot be read stops spending.
+- a published price for the model in `budget.ts`.
+
+Optional: `JOE_ENGINE_RUN_BUDGET_USD` (default 3), `JOE_ENGINE_MAX_TOKENS` (default 32000), `JOE_ENGINE_EFFORT` (low … max), `JOE_ENGINE_CACHE_TTL=1h`, `JOE_ENGINE_THINKING=off`.
+
+Before each call the guard holds the call's worst case (the whole prompt at the dearest input rate plus every output token allowed). The call is made only if that fits what is left of both budgets; afterwards the held amount is replaced by what the API billed. A run that cannot afford its next call ends with `ENGINE_BUDGET_EXHAUSTED`, and its `result.json` records `costUsd`. Haiku 5.5's window defaults to 90,000 tokens because a request over 100,000 prompt tokens is billed at five times the price.

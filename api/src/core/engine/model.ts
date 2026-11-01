@@ -17,6 +17,10 @@
  *    a failure is an error rather than a fall into the mesh, whose adapters
  *    drop tool calls. Joe's cost policy still applies: the router enforces it.
  *
+ *  - CLAUDE (JOE_ENGINE_PROVIDER=anthropic): the native connector in
+ *    anthropic.ts, never the router, and only behind the budget guard in
+ *    budget.ts. It needs JOE_ENGINE_MODEL, a key file and a budget.
+ *
  * Nothing here names a model. The model is whatever the deployment
  * configured: the laptop's 9B today, a large open model on the GPU server
  * tomorrow.
@@ -24,6 +28,8 @@
 import { managedOllamaChat, managedContextCeilingTokens, isManagedOllamaEndpoint } from '../llm/providers/managed-ollama-chat';
 import { routeToModel, isProviderFailure } from '../llm/intelligent-router';
 import { readModelTurn, withoutReasoning } from './toolcalls';
+import { anthropicModel, anthropicSettings, anthropicTextAsk } from './anthropic';
+import { ledgerFromEnv } from './budget';
 import type { ChatMessage, EngineModel, ModelStep, ToolSchema } from './types';
 
 export interface ModelChoice {
@@ -57,6 +63,12 @@ export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelCh
     const vision = env.JOE_ENGINE_VISION == null ? undefined : /^(?:1|true|on|yes)$/i.test(env.JOE_ENGINE_VISION);
     const contextTokens = positiveInt(env.JOE_ENGINE_CONTEXT_TOKENS);
     const named = String(env.JOE_ENGINE_PROVIDER || '').trim().toLowerCase();
+    if (named === 'anthropic' || named === 'claude') {
+        //  The key and the budget are read when the run starts (engineBrain).
+        const model = String(env.JOE_ENGINE_MODEL || '').trim();
+        if (!model) return { error: `JOE_ENGINE_PROVIDER is ${named} but JOE_ENGINE_MODEL is empty.` };
+        return { provider: 'anthropic', model, reasoning, vision: vision ?? true, contextTokens };
+    }
     if (named && named !== 'local') {
         const model = String(env.JOE_ENGINE_MODEL || '').trim();
         if (!model) return { error: `JOE_ENGINE_PROVIDER is ${named} but JOE_ENGINE_MODEL is empty.` };
@@ -191,4 +203,33 @@ export function routedModel(choice: ModelChoice, joe: any): EngineModel {
             return readModelTurn(String(raw ?? ''), toolNames(tools), calls, Date.now() - started);
         },
     };
+}
+
+/** The model a run drives and the plain-question reader its checks use, on the same route. */
+export interface EngineBrain {
+    model: EngineModel;
+    ask: (prompt: string) => Promise<string>;
+}
+
+/**
+ * Build the run's model from the deployment's choice. A paid model is built
+ * only with a budget; the reader shares the model's budget, so the checks
+ * cannot spend around it.
+ */
+export async function engineBrain(
+    choice: ModelChoice, joe: any, signal: AbortSignal, deadlineAt: number, env: NodeJS.ProcessEnv = process.env,
+): Promise<EngineBrain | { error: string }> {
+    if (choice.provider === 'anthropic') {
+        const settings = await anthropicSettings(env);
+        if ('error' in settings) return settings;
+        const ledger = ledgerFromEnv(env);
+        if ('error' in ledger) return ledger;
+        const deps = { settings, ledger, runId: String(joe?.runId || 'run') };
+        return { model: anthropicModel(deps), ask: anthropicTextAsk(deps, signal, deadlineAt) };
+    }
+    if (choice.provider === 'local') {
+        const vision = choice.vision ?? await localModelHasVision(choice.baseUrl!, choice.model, signal);
+        return { model: managedModel(choice, vision), ask: textAsk(choice, joe, signal, deadlineAt) };
+    }
+    return { model: routedModel(choice, joe), ask: textAsk(choice, joe, signal, deadlineAt) };
 }

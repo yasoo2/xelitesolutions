@@ -35,7 +35,15 @@ export type ContentPart =
 export type ChatMessage =
     | { role: 'system'; content: string }
     | { role: 'user'; content: string | ContentPart[] }
-    | { role: 'assistant'; content: string; tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[] }
+    | {
+        role: 'assistant'; content: string; tool_calls?: { id: string; type: 'function'; function: { name: string; arguments: string } }[];
+        /**
+         * The turn exactly as a native provider returned it (Claude's content
+         * blocks, thinking included), replayed unchanged on the next call.
+         * Opaque to everything but that provider's connector.
+         */
+        native?: unknown[];
+    }
     | { role: 'tool'; tool_call_id: string; content: string };
 
 /** The function schema sent with every step. Built once per run. */
@@ -55,8 +63,10 @@ export interface ModelStep {
      * promptTokens is the size of the prompt; promptEvaluated is how much of it
      * the server actually computed. The difference is the prefix it reused.
      */
-    usage?: { promptTokens?: number; promptEvaluated?: number; completionTokens?: number };
+    usage?: { promptTokens?: number; promptEvaluated?: number; completionTokens?: number; cacheReadTokens?: number; costUsd?: number };
     durationMs: number;
+    /** The turn as the provider returned it, when the provider needs it replayed (see ChatMessage). */
+    native?: unknown[];
 }
 
 /** The model as the loop sees it, so a test can drive the loop with a script. */
@@ -68,6 +78,8 @@ export interface EngineModel {
     readonly vision: boolean;
     /** A label for the receipt: provider and model. */
     readonly label: string;
+    /** Dollars this model has been billed in this run, for a paid model. */
+    readonly spentUsd?: number;
 }
 
 /* ───────────────────────── tools ───────────────────────── */
