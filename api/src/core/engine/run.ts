@@ -78,7 +78,18 @@ function clip(value: unknown): string {
  *    hides narration that contains Latin letters, and the model writes in
  *    English.
  */
-export function uiEmitter(sessionId: string | undefined, runId: string): (e: EngineEvent) => void {
+/** The few sentences the emitter writes itself, in each language Joe's interface offers. */
+const NOTES: Record<string, { passed: string; failed: (ids: string) => string; folded: (n: number) => string }> = {
+    ar: { passed: '✅ نجحت الفحوص', failed: ids => `❌ فشلت الفحوص: ${ids}`, folded: n => `… طُويت ${n} رسالة سابقة في ملخص` },
+    en: { passed: '✅ checks passed', failed: ids => `❌ checks failed: ${ids}`, folded: n => `… folded ${n} earlier messages into a summary` },
+    es: { passed: '✅ las comprobaciones pasaron', failed: ids => `❌ fallaron las comprobaciones: ${ids}`, folded: n => `… ${n} mensajes anteriores resumidos` },
+    fr: { passed: '✅ vérifications réussies', failed: ids => `❌ vérifications échouées : ${ids}`, folded: n => `… ${n} messages précédents résumés` },
+    de: { passed: '✅ Prüfungen bestanden', failed: ids => `❌ Prüfungen fehlgeschlagen: ${ids}`, folded: n => `… ${n} frühere Nachrichten zusammengefasst` },
+    ru: { passed: '✅ проверки пройдены', failed: ids => `❌ проверки не пройдены: ${ids}`, folded: n => `… ${n} предыдущих сообщений свёрнуты в сводку` },
+};
+
+export function uiEmitter(sessionId: string | undefined, runId: string, language = 'en'): (e: EngineEvent) => void {
+    const words = NOTES[String(language || '').toLowerCase().split('-')[0]] || NOTES.en;
     if (!sessionId) return () => { /* nobody to tell */ };
     let ws: any;
     try { ws = require('../../api/ws'); } catch { return () => { /* no live wire */ }; }
@@ -115,12 +126,12 @@ export function uiEmitter(sessionId: string | undefined, runId: string): (e: Eng
                     break;
                 case 'verification': {
                     const failed = e.report.checks.filter(c => c.status === 'failed').map(c => c.id);
-                    note('verification', e.report.passed ? '✅ checks passed' : `❌ checks failed: ${failed.join(', ') || 'see report'}`);
+                    note('verification', e.report.passed ? words.passed : words.failed(failed.join(', ') || '…'));
                     send('engine_verification', { passed: e.report.passed, checks: e.report.checks, unproven: e.report.unproven });
                     break;
                 }
                 case 'compacted':
-                    note('compacted', `… folded ${e.removedMessages} earlier messages into a summary`);
+                    note('compacted', words.folded(e.removedMessages));
                     break;
                 case 'final':
                     send('engine_final', { status: e.result.status, steps: e.result.steps, model: e.result.model, reason: e.result.reason ?? null });

@@ -41,7 +41,7 @@ import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from 
 import { runPython } from '../quality/python-runtime';
 import { auditBuiltApp, type AppAudit } from '../quality/app-audit';
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
-import { isArabicReply, say as pick } from '../../shared/reply-language';
+import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { detectStart } from '../../modules/tools/definitions/ProjectRunTool';
 import {
@@ -882,15 +882,63 @@ export interface DeliveryOutputInput {
  * fields the receipt needs (verified, deliveryStatus, partialDelivery,
  * firstError) sit at the top of the output.
  */
+/**
+ * The delivery's own sentences, in each language Joe's interface offers. Joe
+ * speaks the language the user set (replyLanguageCode); the app keeps the
+ * request's language.
+ */
+const DELIVERY_WORDS: Record<string, {
+    notDelivered: (why: string) => string;
+    verified: (checks: string[], liveUrl: string) => string;
+    unproven: string;
+    stopped: (why: string) => string;
+}> = {
+    ar: {
+        notDelivered: why => `⚠️ لم يُسلَّم المشروع: لم تُثبت فحوص جو التسليم — ${why}`,
+        verified: (c, url) => `✅ تحقّقت فحوص جو من التسليم (${c.join('، ')})${url ? ` — المعاينة الحية: ${url}` : ''}`,
+        unproven: 'ما لم يثبت من طلبك:',
+        stopped: why => `توقّف التشغيل: ${why}`,
+    },
+    en: {
+        notDelivered: why => `⚠️ Not delivered: Joe's delivery checks did not verify it — ${why}`,
+        verified: (c, url) => `✅ Joe's delivery checks verified it (${c.join(', ')})${url ? ` — live preview: ${url}` : ''}`,
+        unproven: 'What your request asked that is not proven:',
+        stopped: why => `The run stopped: ${why}`,
+    },
+    es: {
+        notDelivered: why => `⚠️ No entregado: las comprobaciones de Joe no lo verificaron — ${why}`,
+        verified: (c, url) => `✅ Las comprobaciones de Joe lo verificaron (${c.join(', ')})${url ? ` — vista previa: ${url}` : ''}`,
+        unproven: 'Lo que pediste y no está probado:',
+        stopped: why => `La ejecución se detuvo: ${why}`,
+    },
+    fr: {
+        notDelivered: why => `⚠️ Non livré : les vérifications de Joe ne l'ont pas validé — ${why}`,
+        verified: (c, url) => `✅ Les vérifications de Joe l'ont validé (${c.join(', ')})${url ? ` — aperçu : ${url}` : ''}`,
+        unproven: "Ce que vous avez demandé et qui n'est pas prouvé :",
+        stopped: why => `L'exécution s'est arrêtée : ${why}`,
+    },
+    de: {
+        notDelivered: why => `⚠️ Nicht geliefert: Joes Prüfungen haben es nicht bestätigt — ${why}`,
+        verified: (c, url) => `✅ Joes Prüfungen haben es bestätigt (${c.join(', ')})${url ? ` — Vorschau: ${url}` : ''}`,
+        unproven: 'Was du verlangt hast und nicht bewiesen ist:',
+        stopped: why => `Der Lauf wurde beendet: ${why}`,
+    },
+    ru: {
+        notDelivered: why => `⚠️ Не сдано: проверки Joe не подтвердили результат — ${why}`,
+        verified: (c, url) => `✅ Проверки Joe подтвердили результат (${c.join(', ')})${url ? ` — предпросмотр: ${url}` : ''}`,
+        unproven: 'Что вы просили и что не доказано:',
+        stopped: why => `Запуск остановлен: ${why}`,
+    },
+};
+
 export function deliveryOutput(input: DeliveryOutputInput): { ok: boolean; error?: string; output: Record<string, any> } {
     const result = input?.result || undefined;
     const projectRoot = String(input?.projectRoot || '');
-    const isAr = isArabicReply({ language: input?.language, text: String(input?.request || '') });
+    const lang = replyLanguageCode(input?.language, String(input?.request || ''));
+    const words = DELIVERY_WORDS[lang] || DELIVERY_WORDS.en;
     const verification = result?.verification as DeliveryVerification | undefined;
     const record = verification?.delivery;
-    const headline = (why: string) => pick(isAr,
-        `⚠️ لم يُسلَّم المشروع: لم تُثبت فحوص جو التسليم — ${why}`,
-        `⚠️ Not delivered: Joe's delivery checks did not verify it — ${why}`);
+    const headline = (why: string) => words.notDelivered(why);
 
     if (!record || !record.verdict) {
         const why = String(result?.reason || '').trim()
@@ -966,14 +1014,12 @@ export function deliveryOutput(input: DeliveryOutputInput): { ok: boolean; error
     const summary = verified
         ? [
             String(result!.summary || '').trim(),
-            pick(isAr,
-                `✅ تحقّقت فحوص جو من التسليم (${taskReceipts.map(r => r.tool.replace(/^delivery:/u, '')).join('، ')})${record.liveUrl ? ` — المعاينة الحية: ${record.liveUrl}` : ''}`,
-                `✅ Joe's delivery checks verified it (${taskReceipts.map(r => r.tool.replace(/^delivery:/u, '')).join(', ')})${record.liveUrl ? ` — live preview: ${record.liveUrl}` : ''}`),
+            words.verified(taskReceipts.map(r => r.tool.replace(/^delivery:/u, '')), record.liveUrl || ''),
         ].filter(Boolean).join('\n\n')
         : [
             headline(firstError),
-            unprovenLines.length ? [pick(isAr, 'ما لم يثبت من طلبك:', 'What your request asked that is not proven:'), ...unprovenLines].join('\n') : '',
-            result!.reason ? pick(isAr, `توقّف التشغيل: ${result!.reason}`, `The run stopped: ${result!.reason}`) : '',
+            unprovenLines.length ? [words.unproven, ...unprovenLines].join('\n') : '',
+            result!.reason ? words.stopped(String(result!.reason)) : '',
         ].filter(Boolean).join('\n\n');
     return {
         ok: verified,

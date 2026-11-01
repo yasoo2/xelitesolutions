@@ -51,7 +51,7 @@ export function systemPrompt(machine: MachineFacts): string {
         '- Never open an address no server of this run printed, unless the user gave it.',
         '- Deliver every requested feature for real: working forms, state and persistence. No placeholders, no "coming soon", no lorem ipsum, and no fake data presented as real. Example records are fine only if the user can add, edit and delete their own.',
         '- The app speaks the request\'s language. For Arabic: Arabic text everywhere a user reads, `<html lang="ar" dir="rtl">`, and a layout that reads right to left.',
-        '- Write your final summary in the request\'s language.',
+        '- Write the notes between your tool calls and your task_finish summary in the language the first message names for them. The app itself speaks the request\'s language.',
         '- Read every error message. After the same failure twice, stop repeating the step: list the likely causes, then try a different approach.',
         '- Never run a command that waits for keyboard input. Never print or copy secrets.',
         '- One tool call per step is fine. Several independent calls in one step are fine too; they run in order.',
@@ -59,14 +59,23 @@ export function systemPrompt(machine: MachineFacts): string {
 }
 
 /** The first user message: the request verbatim and what was read from it. */
-export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string): string {
+/** Language names the model reads, for the codes Joe's interface offers. */
+const LANGUAGE_NAMES: Record<string, string> = { ar: 'Arabic', en: 'English', es: 'Spanish', fr: 'French', de: 'German', ru: 'Russian' };
+
+export function languageName(code: string | undefined): string {
+    const c = String(code || '').trim().toLowerCase().split('-')[0];
+    return LANGUAGE_NAMES[c] || c || 'English';
+}
+
+export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string): string {
     const lines = [
         'Request (verbatim):',
         '"""',
         request.trim(),
         '"""',
         '',
-        `Request language: ${language === 'ar' ? 'Arabic' : language === 'en' ? 'English' : language}.`,
+        `Request language: ${languageName(language)}.`,
+        `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         `Project folder: ${projectDir.split('\\').join('/')}`,
     ];
     if (plan.requirements.length) {

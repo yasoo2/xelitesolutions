@@ -149,7 +149,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const ctx: ToolContext = {
         runId: req.runId, projectDir: req.projectDir, stateDir,
         signal: req.signal, cancelled, deadlineAt: req.deadlineAt,
-        language: req.language, request: req.request,
+        language: req.language, replyLanguage: req.replyLanguage, request: req.request,
         processes: deps.processes,
         browser: () => (browser ??= deps.browser()),
         state, emit: req.emit, joe: req.joe,
@@ -162,7 +162,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: systemPrompt(deps.machine) });
-    conv.push({ role: 'user', content: firstMessage(req.request, req.language, state.plan, req.projectDir) });
+    conv.push({ role: 'user', content: firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage) });
     req.emit({ type: 'plan', plan: state.plan });
 
     const lastErrors: string[] = [];

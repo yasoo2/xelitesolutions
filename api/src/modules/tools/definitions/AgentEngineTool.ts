@@ -32,6 +32,7 @@ import { machineFacts } from './EngineShellTools';
 import { createVerifier, deliveryOutput } from '../../../core/engine/verify';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
 import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
+import { replyLanguageCode } from '../../../shared/reply-language';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 
@@ -61,9 +62,11 @@ export const AgentEngineTool: ToolDefinition = {
         const request = String(input?.request || '').trim();
         if (!request) return { ok: false, error: 'agent_engine needs the request.' };
         const runId = String(context.runId || context.traceId || `engine-${Date.now()}`);
-        //  The request's own language: an Arabic request is answered and built
-        //  in Arabic even when the interface is set to English.
+        //  Two languages, each with its owner. The app Joe builds speaks the
+        //  request's language. Joe himself speaks the language the user set
+        //  in the interface (replyLanguageCode), the one rule all of Joe uses.
         const language = /[؀-ۿ]/u.test(request) ? 'ar' : String(context.language || 'en');
+        const replyLanguage = replyLanguageCode(context.language, request);
 
         //  A run that cannot start says why in the delivery shape, so the
         //  orchestrator takes it as the build's final, honest answer instead
@@ -106,7 +109,8 @@ export const AgentEngineTool: ToolDefinition = {
         try {
             const result = await runEngine({
                 runId, request, language, projectDir: folder.dir, deadlineAt,
-                signal: cancellation.signal, emit: uiEmitter(context.sessionId, runId),
+                replyLanguage,
+                signal: cancellation.signal, emit: uiEmitter(context.sessionId, runId, replyLanguage),
                 joe: { toolContext, runId, sessionId: context.sessionId, userId: context.userId, workspaceId: context.workspaceId },
             }, {
                 model,
@@ -120,7 +124,7 @@ export const AgentEngineTool: ToolDefinition = {
             //  its `output`, so the summary, the verdict and pipelineFinal sit
             //  at the top, where the answer composer and the final-outcome
             //  rule read them.
-            const delivery = deliveryOutput({ result, projectRoot: folder.dir, request, language });
+            const delivery = deliveryOutput({ result, projectRoot: folder.dir, request, language: replyLanguage });
             const delivered = result.status === 'delivered' && delivery.ok;
             return {
                 ok: delivered,

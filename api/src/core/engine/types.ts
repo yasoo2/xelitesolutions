@@ -287,8 +287,14 @@ export interface ToolContext {
     /** Settles when the run is cancelled: ExecutionEngine's `cancel` option. */
     cancelled: Promise<void>;
     deadlineAt: number;
-    /** The request's language, as Joe read it: the app and the final answer use it. */
+    /** The request's language, as Joe read it: the app speaks it. */
     language: string;
+    /**
+     * The language Joe speaks to the user in: the language set in Joe's
+     * interface (replyLanguageCode). The notes, the summary and the verdict
+     * use it; the app keeps the request's language.
+     */
+    replyLanguage?: string;
     request: string;
     processes: ProcessRegistry;
     /** Created on first use. */
@@ -303,6 +309,8 @@ export interface EngineRequest {
     runId: string;
     request: string;
     language: string;
+    /** The interface's language: what Joe says is said in it (see ToolContext.replyLanguage). */
+    replyLanguage?: string;
     projectDir: string;
     deadlineAt: number;
     signal: AbortSignal;

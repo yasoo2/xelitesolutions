@@ -65,8 +65,19 @@ describe('agent_engine hands Joe what the run proved', () => {
         expect(answer).toMatch(/تطبيق قائمة مهام بالعربية/);
         expect(answer).toMatch(/http:\/\/127\.0\.0\.1:4301\//);
         expect(answer).not.toMatch(/^Done:/);
-        // An Arabic request is answered in Arabic even with the interface in English.
-        expect(answer).toMatch(/تحقّقت فحوص جو من التسليم/);
+        // Joe speaks the interface's language (English here); the app keeps the request's.
+        expect(answer).toMatch(/Joe's delivery checks verified it/);
+        const runEngine = require('../core/engine/loop').runEngine as jest.Mock;
+        expect(runEngine.mock.calls.at(-1)[0]).toMatchObject({ language: 'ar', replyLanguage: 'en' });
+    });
+
+    it('with the interface in Arabic, Joe answers in Arabic; in Spanish, in Spanish', async () => {
+        engineResult = verifiedRun('A to-do app.');
+        const ar: any = await AgentEngineTool.execute!({ request: 'Build a to-do app' }, { runId: 'run-h3', sessionId: 's1', language: 'ar' });
+        expect(String(ar.output.summary)).toMatch(/تحقّقت فحوص جو من التسليم/);
+        engineResult = verifiedRun('Una app de tareas.');
+        const es: any = await AgentEngineTool.execute!({ request: 'Build a to-do app' }, { runId: 'run-h4', sessionId: 's1', language: 'es' });
+        expect(String(es.output.summary)).toMatch(/Las comprobaciones de Joe lo verificaron/);
     });
 
     it('a refused delivery is final for the orchestrator, and says why', async () => {
