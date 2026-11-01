@@ -1068,6 +1068,10 @@ export default function CommandComposer({
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
   const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
+  // The models each provider really offers (POST /runs/models), and which
+  // provider's model the user chose to type by hand.
+  const [modelLists, setModelLists] = useState<Record<string, { models: string[]; source: 'live' | 'catalog'; note?: string; loading?: boolean }>>({});
+  const [customModel, setCustomModel] = useState<Record<string, boolean>>({});
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
@@ -1154,6 +1158,7 @@ export default function CommandComposer({
       .catch(() => { /* an older server without the endpoint: the button keeps its own state */ });
     return () => { alive = false; };
   }, []);
+
   const providerVerificationRevisionRef = useRef<Record<string, number>>({});
   const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
   const providerActivationRevisionRef = useRef(0);
@@ -1168,6 +1173,36 @@ export default function CommandComposer({
   // configuring in the panel (changing it does NOT switch the runtime provider).
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
   const [selectedProvider, setSelectedProvider] = useState(initialProviderState.activeProvider);
+
+  // EVERY PROVIDER OFFERS ITS MODELS. The panel had one free-text «Model ID»
+  // (Claude's held claude-3-opus-20240229). The server asks the provider for
+  // its own list with the key (the key stays on the server) and says when the
+  // list is only suggestions. Asked again when the provider or its key changes.
+  const pickerProvider = showProviders && selectedProvider && !['auto', 'openrouter', 'anthropic'].includes(selectedProvider) ? selectedProvider : '';
+  const pickerKey = pickerProvider ? String(providers[pickerProvider]?.apiKey || '') : '';
+  const pickerBaseUrl = pickerProvider ? String(providers[pickerProvider]?.baseUrl || '') : '';
+  useEffect(() => {
+    if (!pickerProvider) return;
+    let alive = true;
+    setModelLists(prev => ({ ...prev, [pickerProvider]: { ...(prev[pickerProvider] || { models: [], source: 'catalog' }), loading: true } }));
+    const timer = setTimeout(() => {
+      const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+      fetch(`${API}/runs/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ provider: pickerProvider, apiKey: pickerKey, baseUrl: pickerBaseUrl || undefined }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(list => {
+          if (!alive) return;
+          setModelLists(prev => ({ ...prev, [pickerProvider]: list && Array.isArray(list.models)
+            ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false }
+            : { models: [], source: 'catalog', note: undefined, loading: false } }));
+        })
+        .catch(() => { if (alive) setModelLists(prev => ({ ...prev, [pickerProvider]: { models: [], source: 'catalog', loading: false } })); });
+    }, 500);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [pickerProvider, pickerKey, pickerBaseUrl]);
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunIdState] = useState<string | null>(null);
   // The session-scoped socket callback outlives a render. Read the current
@@ -4203,21 +4238,54 @@ export default function CommandComposer({
                   })()}
 
 
-                  {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
-                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
+                  {/* The model: a list of what the provider offers (Auto, OpenRouter and Claude have their own). */}
+                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && selectedProvider !== 'anthropic' && (
                     <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                       <div>
-                        <label className="section-label">Model ID</label>
-                        <input
-                          type="text"
-                          className="api-key-input"
-                          value={providers[selectedProvider].model || ''}
-                          onChange={(e) => {
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        {(() => {
+                          const list = modelLists[selectedProvider];
+                          const current = String(providers[selectedProvider].model || '');
+                          const options = list?.models || [];
+                          const typing = customModel[selectedProvider] === true;
+                          const setModel = (model: string) => {
                             invalidateProviderVerification(selectedProvider);
-                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
-                          }}
-                          placeholder="gpt-4o"
-                        />
+                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                          };
+                          return (
+                            <>
+                              <select
+                                className="model-select"
+                                value={typing ? '__custom__' : current}
+                                onChange={(e) => {
+                                  if (e.target.value === '__custom__') { setCustomModel(prev => ({ ...prev, [selectedProvider]: true })); return; }
+                                  setCustomModel(prev => ({ ...prev, [selectedProvider]: false }));
+                                  setModel(e.target.value);
+                                }}
+                              >
+                                {current && !options.includes(current) && <option value={current}>{current}</option>}
+                                {options.map(m => <option key={m} value={m}>{m}</option>)}
+                                <option value="__custom__">{t('modelOther', 'Another model…')}</option>
+                              </select>
+                              {typing && (
+                                <input
+                                  type="text"
+                                  className="api-key-input"
+                                  style={{ marginTop: 8 }}
+                                  value={current}
+                                  onChange={(e) => setModel(e.target.value)}
+                                  placeholder={options[0] || ''}
+                                />
+                              )}
+                              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                                  : list?.source === 'live' ? t('modelsLive', { count: options.length })
+                                  : t('modelsCatalog')}
+                                {!list?.loading && list?.note ? ` — ${list.note}` : ''}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                       {selectedProvider === 'grok' && (
                         <div>

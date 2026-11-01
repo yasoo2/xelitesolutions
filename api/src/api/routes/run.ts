@@ -455,6 +455,20 @@ router.get('/engine', authenticate as any, async (_req, res) => {
     }
 });
 
+/**
+ * The models a provider really offers, for the provider panel's list
+ * (core/engine/provider-models.ts). The key stays on the server.
+ */
+router.post('/models', authenticate as any, async (req, res) => {
+    try {
+        const { providerModels } = require('../../core/engine/provider-models');
+        const { provider, apiKey, baseUrl } = req.body || {};
+        res.json(await providerModels({ provider, apiKey, baseUrl }));
+    } catch (e: any) {
+        res.status(200).json({ models: [], source: 'catalog', note: String(e?.message || e).slice(0, 200) });
+    }
+});
+
 router.get('/:id/receipt', authenticate as any, async (req, res) => {
     const evidence = await getRunEvidence(req.params.id);
     if (!evidence) return res.status(404).json({ error: 'No receipt for this run' });
