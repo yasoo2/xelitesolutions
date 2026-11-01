@@ -61,7 +61,9 @@ export const AgentEngineTool: ToolDefinition = {
         const request = String(input?.request || '').trim();
         if (!request) return { ok: false, error: 'agent_engine needs the request.' };
         const runId = String(context.runId || context.traceId || `engine-${Date.now()}`);
-        const language = String(context.language || (/[؀-ۿ]/.test(request) ? 'ar' : 'en'));
+        //  The request's own language: an Arabic request is answered and built
+        //  in Arabic even when the interface is set to English.
+        const language = /[؀-ۿ]/u.test(request) ? 'ar' : String(context.language || 'en');
 
         //  A run that cannot start says why in the delivery shape, so the
         //  orchestrator takes it as the build's final, honest answer instead
@@ -113,11 +115,16 @@ export const AgentEngineTool: ToolDefinition = {
                 machine: await machineFacts(),
                 seedRequirements: (req, lang) => seedRequirementsFromRequest(req, lang, ask),
             });
-            const output = deliveryOutput({ result, projectRoot: folder.dir, request });
+            //  deliveryOutput returns { ok, error, output }: the tool's output is
+            //  its `output`, so the summary, the verdict and pipelineFinal sit
+            //  at the top, where the answer composer and the final-outcome
+            //  rule read them.
+            const delivery = deliveryOutput({ result, projectRoot: folder.dir, request, language });
+            const delivered = result.status === 'delivered' && delivery.ok;
             return {
-                ok: result.status === 'delivered',
-                ...(result.status === 'delivered' ? {} : { error: result.reason || result.summary }),
-                output,
+                ok: delivered,
+                ...(delivered ? {} : { error: delivery.error || result.reason || result.summary }),
+                output: delivery.output,
                 logs: [`agent engine: ${result.status} after ${result.steps} steps (${result.model}${model.spentUsd != null ? `, $${model.spentUsd.toFixed(4)}` : ''})`],
             };
         } finally {
