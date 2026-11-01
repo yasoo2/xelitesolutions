@@ -297,8 +297,19 @@ export function hasServiceSortingEvidence(source: string): boolean {
 
 /** Filtering must change the rendered collection from one or more controls. */
 export function hasFilterEvidence(source: string, ctx?: ScopeEvidenceContext): boolean {
-    const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source);
-    const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source);
+    //  Measured on 2026-11-01: an Arabic store's category chips
+    //  (`onClick={() => setCategory(c.id)}` over `products.filter(...)`),
+    //  seen working in the browser, were refused because only a <select>
+    //  or an <input> counted as a filter control. A filter is a state the
+    //  user's control sets and the list is filtered by, whatever the control is.
+    const FILTER_NAME = '(?:Filter|Categor(?:y|ies)|Tags?|Status|Types?|Brands?|Range|Price)';
+    const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source)
+        || new RegExp(`\\bset[A-Za-z0-9_]*${FILTER_NAME}\\b`).test(source)
+        || new RegExp(`\\b(?:current|active|selected)${FILTER_NAME}\\b`).test(source);
+    const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source)
+        || new RegExp(`onClick\\s*=\\s*\\{\\s*\\(\\s*\\)\\s*=>\\s*set[A-Za-z0-9_]*${FILTER_NAME}\\s*\\(`).test(source)
+        || (/addEventListener\(\s*['"](?:click|change|input)['"]/.test(source)
+            && new RegExp(`\\b(?:current|active|selected)${FILTER_NAME}\\s*=(?!=)`).test(source));
     return (hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source))
         || (ctx?.serviceOnly === true && hasServiceFilterEvidence(source));
 }
