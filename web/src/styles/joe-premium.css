@@ -831,6 +831,13 @@ body:not(.rtl) .joe-user-info {
     white-space: nowrap;
 }
 
+/* A paid model says so in the button itself: amber, not the free badge's grey. */
+.joe-chat-input-area .provider-btn .provider-free.provider-paid {
+    color: #f59e0b;
+    opacity: .9;
+    text-transform: none;
+}
+
 /* Modern, calm status — a subtle static border, NO infinite neon pulse (that
    glowing pulse looked garish). Green = connected, muted = not connected. */
 .joe-chat-input-area .provider-btn.is-connected {
@@ -1158,6 +1165,17 @@ body:not(.rtl) .joe-user-info {
     font-size: 14px !important;
     cursor: pointer !important;
     appearance: none !important;
+}
+
+/* A quiet text button inside the panel (Claude: use the server's key / my own key). */
+.providers-modal .link-button {
+    background: none;
+    border: none;
+    padding: 0;
+    color: var(--accent-primary, #38bdf8);
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: inherit;
 }
 
 .providers-modal .api-key-input {

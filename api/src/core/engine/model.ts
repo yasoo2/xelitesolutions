@@ -17,9 +17,9 @@
  *    a failure is an error rather than a fall into the mesh, whose adapters
  *    drop tool calls. Joe's cost policy still applies: the router enforces it.
  *
- *  - CLAUDE (JOE_ENGINE_PROVIDER=anthropic): the native connector in
+ *  - CLAUDE, when the user chooses it: the native connector in
  *    anthropic.ts, never the router, and only behind the budget guard in
- *    budget.ts. It needs JOE_ENGINE_MODEL, a key file and a budget.
+ *    budget.ts. Claude is paid, so it is never what Auto means.
  *
  * Nothing here names a model. The model is whatever the deployment
  * configured: the laptop's 9B today, a large open model on the GPU server
@@ -28,8 +28,7 @@
 import { managedOllamaChat, managedContextCeilingTokens, isManagedOllamaEndpoint } from '../llm/providers/managed-ollama-chat';
 import { routeToModel, isProviderFailure } from '../llm/intelligent-router';
 import { readModelTurn, withoutReasoning } from './toolcalls';
-import { anthropicModel, anthropicSettings, anthropicTextAsk } from './anthropic';
-import { ledgerFromEnv } from './budget';
+import { anthropicModel, anthropicSettings, anthropicTextAsk, claudeAccount, CLAUDE_MODELS } from './anthropic';
 import type { ChatMessage, EngineModel, ModelStep, ToolSchema } from './types';
 
 export interface ModelChoice {
@@ -54,9 +53,17 @@ function positiveInt(v: string | undefined): number | undefined {
 }
 
 /**
- * The deployment's choice. JOE_ENGINE_PROVIDER/JOE_ENGINE_MODEL name a
- * provider explicitly; otherwise the engine uses the local model Joe is
- * configured with. Returns why it cannot choose, rather than guessing.
+ * What Auto means: the deployment's choice. JOE_ENGINE_PROVIDER and
+ * JOE_ENGINE_MODEL name a provider explicitly; otherwise the engine uses the
+ * local model Joe is configured with. Returns why it cannot choose, rather
+ * than guessing.
+ *
+ * Auto sits with the free providers, so it is never Claude. Measured on
+ * 2026-11-01: JOE_ENGINE_PROVIDER=anthropic made Auto run on Claude while the
+ * button showed it under «free», and the owner said so: Claude needs credit
+ * bought for the key. Claude runs only when the user chooses it
+ * (engineModelChoiceFor); a deployment that names it here gets its local
+ * model for Auto.
  */
 export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelChoice | { error: string } {
     const reasoning = /^(?:off|none|0|false)$/i.test(String(env.JOE_ENGINE_THINKING || '')) ? 'none' as const : undefined;
@@ -64,10 +71,7 @@ export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelCh
     const contextTokens = positiveInt(env.JOE_ENGINE_CONTEXT_TOKENS);
     const named = String(env.JOE_ENGINE_PROVIDER || '').trim().toLowerCase();
     if (named === 'anthropic' || named === 'claude') {
-        //  The key and the budget are read when the run starts (engineBrain).
-        const model = String(env.JOE_ENGINE_MODEL || '').trim();
-        if (!model) return { error: `JOE_ENGINE_PROVIDER is ${named} but JOE_ENGINE_MODEL is empty.` };
-        return { provider: 'anthropic', model, reasoning, vision: vision ?? true, contextTokens };
+        return engineModelChoice({ ...env, JOE_ENGINE_PROVIDER: '', JOE_ENGINE_MODEL: '' });
     }
     if (named && named !== 'local') {
         const model = String(env.JOE_ENGINE_MODEL || '').trim();
@@ -96,10 +100,13 @@ const PLACEHOLDER_KEYS = new Set(['', 'auto-mode', 'free-mode', 'free', 'dummy',
  * Joe a provider chosen without a key silently became whichever free
  * provider answered. Here the choice binds:
  *
- *  - Auto (or nothing chosen): the deployment's own choice (JOE_ENGINE_*).
+ *  - Auto (or nothing chosen): the deployment's own choice (JOE_ENGINE_*),
+ *    which is never a paid Claude.
  *  - Local: that local model, on the managed endpoint.
- *  - Anthropic / Claude: that model through the native connector, with the
- *    user's key or the server's key file, always behind the budget guard.
+ *  - Anthropic / Claude: that model through the native connector, always
+ *    behind the budget guard, on the key the user typed, or on the server's
+ *    key when the user asked for it by name ('server-key'). Claude is paid,
+ *    so without either the run is refused and says to add the key.
  *  - Any other provider: that provider and model, through the router's
  *    strict route, with the user's key or the server's key for it. Without
  *    a key the run is refused and says which key is missing; it never runs
@@ -120,7 +127,10 @@ export function engineModelChoiceFor(modelConfig: any, env: NodeJS.ProcessEnv = 
         return { provider: 'local', model, baseUrl, reasoning };
     }
     if (provider === 'anthropic' || provider === 'claude') {
-        return { provider: 'anthropic', model: model || String(env.JOE_ENGINE_MODEL || '').trim(), apiKey: realKey || undefined, reasoning, vision: true };
+        if (!realKey && userKey !== 'server-key') {
+            return { error: 'Claude was chosen without a key. Claude is paid: add your Claude API key in the provider settings, or choose Auto, which is free.' };
+        }
+        return { provider: 'anthropic', model: model || CLAUDE_MODELS[0], apiKey: realKey || 'server-key', reasoning, vision: true };
     }
     const keyName = PROVIDER_KEY_ENV[provider];
     const apiKey = realKey || (keyName ? String(env[keyName] || '').trim() : '');
@@ -267,15 +277,16 @@ export async function engineBrain(
     choice: ModelChoice, joe: any, signal: AbortSignal, deadlineAt: number, env: NodeJS.ProcessEnv = process.env,
 ): Promise<EngineBrain | { error: string }> {
     if (choice.provider === 'anthropic') {
+        //  Whose key, and which ledger guards it: the user's own, or the server's budget.
+        const account = await claudeAccount(choice.apiKey, env);
+        if ('error' in account) return account;
         const settings = await anthropicSettings({
             ...env,
             ...(choice.model ? { JOE_ENGINE_MODEL: choice.model } : {}),
-            ...(choice.apiKey ? { JOE_ENGINE_ANTHROPIC_API_KEY: choice.apiKey } : {}),
+            JOE_ENGINE_ANTHROPIC_API_KEY: account.apiKey,
         });
         if ('error' in settings) return settings;
-        const ledger = ledgerFromEnv(env);
-        if ('error' in ledger) return ledger;
-        const deps = { settings, ledger, runId: String(joe?.runId || 'run') };
+        const deps = { settings, ledger: account.ledger, runId: String(joe?.runId || 'run') };
         return { model: anthropicModel(deps), ask: anthropicTextAsk(deps, signal, deadlineAt) };
     }
     if (choice.provider === 'local') {

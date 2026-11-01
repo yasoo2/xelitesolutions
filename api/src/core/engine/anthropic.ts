@@ -29,7 +29,7 @@
 import { promises as fsp } from 'fs';
 import Anthropic from '@anthropic-ai/sdk';
 import { estimateTokens } from './context';
-import { costOf, priceRule, promptTokensOf, worstCaseCost, type BilledUsage, type SpendLedger } from './budget';
+import { costOf, keyLedger, ledgerFromEnv, priceRule, promptTokensOf, worstCaseCost, type BilledUsage, type SpendLedger } from './budget';
 import type { ChatMessage, ContentPart, EngineModel, ModelStep, ToolCall, ToolSchema } from './types';
 
 /** The part of the SDK client this file uses, so a test can hand in a fake. */
@@ -42,8 +42,19 @@ export interface AnthropicClientLike {
     };
 }
 
-/** The Claude models the interface offers, cheapest first; each has a checked price in budget.ts. */
-export const CLAUDE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] as const;
+/**
+ * The Claude models this connector runs, cheapest first. Each has a checked
+ * price in budget.ts, and takes the request this file builds: adaptive
+ * thinking, no forced tool choice, no prefill, no sampling parameters. A
+ * model the account offers outside this list is shown but not run.
+ */
+export const CLAUDE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] as const;
+
+/** The model id, or its dated form, is one this connector runs. */
+export function claudeModelRuns(id: string): boolean {
+    const m = String(id || '').trim();
+    return CLAUDE_MODELS.some(c => m === c || (m.startsWith(`${c}-`) && /^\d{8}$/.test(m.slice(c.length + 1))));
+}
 
 export type Effort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -95,14 +106,8 @@ export async function anthropicSettings(env: NodeJS.ProcessEnv = process.env): P
     const model = String(env.JOE_ENGINE_MODEL || '').trim();
     if (!model) return { error: 'JOE_ENGINE_PROVIDER is anthropic but JOE_ENGINE_MODEL is empty.' };
     if (!priceRule(model)) return { error: `No price is known for ${model}, so its spending cannot be guarded. Add it to the price table in budget.ts first.` };
-    let apiKey = String(env.JOE_ENGINE_ANTHROPIC_API_KEY || '').trim();
-    const keyFile = String(env.JOE_ENGINE_ANTHROPIC_KEY_FILE || '').trim();
-    if (!apiKey && keyFile) {
-        try { apiKey = keyFromFileText(await fsp.readFile(keyFile, 'utf8')); }
-        catch (e: any) { return { error: `The key file ${keyFile} cannot be read (${e?.code || 'error'}).` }; }
-        if (!apiKey) return { error: `The key file ${keyFile} holds no key. It needs one line: ANTHROPIC_API_KEY=...` };
-    }
-    if (!apiKey) return { error: 'JOE_ENGINE_PROVIDER is anthropic but no key is given: set JOE_ENGINE_ANTHROPIC_KEY_FILE.' };
+    const apiKey = await serverClaudeKey(env);
+    if (typeof apiKey !== 'string') return apiKey;
     const effortRaw = String(env.JOE_ENGINE_EFFORT || '').trim().toLowerCase();
     const effort = (['low', 'medium', 'high', 'xhigh', 'max'] as const).find(e => e === effortRaw);
     if (effortRaw && !effort) return { error: `JOE_ENGINE_EFFORT is ${effortRaw}; it takes low, medium, high, xhigh or max.` };
@@ -117,6 +122,57 @@ export async function anthropicSettings(env: NodeJS.ProcessEnv = process.env): P
         cacheTtl: /^1h$/i.test(String(env.JOE_ENGINE_CACHE_TTL || '').trim()) ? '1h' : '5m',
         vision: env.JOE_ENGINE_VISION == null ? true : /^(?:1|true|on|yes)$/i.test(env.JOE_ENGINE_VISION),
     };
+}
+
+/**
+ * The server's own Claude key: JOE_ENGINE_ANTHROPIC_API_KEY, or the key file
+ * JOE_ENGINE_ANTHROPIC_KEY_FILE names. Never ANTHROPIC_API_KEY, which the
+ * router would spend outside the budget guard.
+ */
+export async function serverClaudeKey(env: NodeJS.ProcessEnv = process.env): Promise<string | { error: string }> {
+    const direct = String(env.JOE_ENGINE_ANTHROPIC_API_KEY || '').trim();
+    if (direct) return direct;
+    const keyFile = String(env.JOE_ENGINE_ANTHROPIC_KEY_FILE || '').trim();
+    if (!keyFile) return { error: 'The server has no Claude key (JOE_ENGINE_ANTHROPIC_KEY_FILE is not set).' };
+    let key = '';
+    try { key = keyFromFileText(await fsp.readFile(keyFile, 'utf8')); }
+    catch (e: any) { return { error: `The key file ${keyFile} cannot be read (${e?.code || 'error'}).` }; }
+    return key || { error: `The key file ${keyFile} holds no key. It needs one line: ANTHROPIC_API_KEY=...` };
+}
+
+/** What the interface sends when no key was typed: none of these is a key. */
+const NOT_A_KEY = new Set(['', 'auto-mode', 'free-mode', 'free', 'dummy', 'ollama']);
+
+/** Whose key a Claude call spends, and the ledger that guards it. */
+export interface ClaudeAccount {
+    apiKey: string;
+    ledger: SpendLedger;
+    whose: 'server' | 'user';
+}
+
+/**
+ * THE KEY AND THE BUDGET FOR ONE CLAUDE CHOICE.
+ *
+ * Claude is paid: every call spends credit someone bought. So a call is made
+ * only on a key someone chose to spend, and always through a ledger:
+ *  - the key the user typed: their consent and their credit, on a ledger of
+ *    its own (budget.ts keyLedger);
+ *  - the server's key, only when asked for by name ('server-key'), on the
+ *    deployment's budget, which is the owner's consent (ledgerFromEnv).
+ * A typed key that IS the server's key is the server's, so the owner's
+ * total holds whichever way it arrives.
+ */
+export async function claudeAccount(typedKey: string | undefined, env: NodeJS.ProcessEnv = process.env): Promise<ClaudeAccount | { error: string }> {
+    const typed = String(typedKey || '').trim();
+    const noKey = 'Claude was chosen without a key. Claude is paid: add your Claude API key in the provider settings.';
+    if (typed !== 'server-key' && (NOT_A_KEY.has(typed) || /[^\x21-\x7E]/.test(typed))) return { error: noKey };
+    const server = await serverClaudeKey(env);
+    const serverKey = typeof server === 'string' ? server : '';
+    if (typed !== 'server-key' && typed !== serverKey) return { apiKey: typed, ledger: keyLedger(typed, env), whose: 'user' };
+    if (!serverKey) return { error: `${noKey} (${(server as { error: string }).error})` };
+    const ledger = ledgerFromEnv(env);
+    if ('error' in ledger) return { error: `Claude on the server's key needs the server's budget: ${ledger.error}` };
+    return { apiKey: serverKey, ledger, whose: 'server' };
 }
 
 /**
@@ -458,9 +514,9 @@ export function anthropicTextAsk(deps: AnthropicModelDeps, signal: AbortSignal, 
 
 /**
  * Claude for the rest of Joe (the chat answer, the planner), when the user
- * chose Claude in the interface without typing a key: the server's key file,
- * the chosen model, and the same budget guard as the engine. A run's own id
- * keeps its spend on that run's line in the ledger.
+ * chose Claude in the interface: the key they typed (or the server's key,
+ * asked for by name), the chosen model, and the same budget guard as the
+ * engine. A run's own id keeps its spend on that run's line in the ledger.
  */
 export async function serverClaudeChat(
     messages: Array<{ role: string; content: unknown }>,
@@ -469,14 +525,13 @@ export async function serverClaudeChat(
     signal?: AbortSignal,
     env: NodeJS.ProcessEnv = process.env,
     client?: AnthropicClientLike,
+    typedKey?: string,
 ): Promise<string> {
-    const settings = await anthropicSettings({ ...env, ...(model ? { JOE_ENGINE_MODEL: model } : {}) });
-    if ('error' in settings) throw coded(`Claude was chosen, but the server cannot run it: ${settings.error}`, 'MODEL_AUTH');
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { ledgerFromEnv } = require('./budget');
-    const ledger = ledgerFromEnv(env);
-    if ('error' in ledger) throw coded(`Claude was chosen, but the server has no budget for it: ${ledger.error}`, 'ENGINE_BUDGET_EXHAUSTED');
-    const deps: AnthropicModelDeps = { settings, ledger, runId: runId || 'chat', client };
+    const account = await claudeAccount(typedKey ?? 'server-key', env);
+    if ('error' in account) throw coded(account.error, /budget/i.test(account.error) ? 'ENGINE_BUDGET_EXHAUSTED' : 'MODEL_AUTH');
+    const settings = await anthropicSettings({ ...env, ...(model ? { JOE_ENGINE_MODEL: model } : {}), JOE_ENGINE_ANTHROPIC_API_KEY: account.apiKey });
+    if ('error' in settings) throw coded(`Claude was chosen, but it cannot run: ${settings.error}`, 'MODEL_AUTH');
+    const deps: AnthropicModelDeps = { settings, ledger: account.ledger, runId: runId || 'chat', client };
     const history = (messages || []).map(m => ({
         role: m.role === 'system' || m.role === 'assistant' ? m.role : 'user',
         content: typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? ''),
@@ -487,4 +542,37 @@ export async function serverClaudeChat(
     checkStop(message);
     const content: any[] = Array.isArray(message?.content) ? message.content : [];
     return content.filter(b => b?.type === 'text').map(b => String(b.text || '')).join('\n').trim();
+}
+
+/** One model the Claude account offers. `runs`: this connector runs it (CLAUDE_MODELS). */
+export interface ClaudeModelInfo {
+    id: string;
+    name: string;
+    runs: boolean;
+    lifecycle: string;
+}
+
+/** The part of the SDK client that lists models, so a test can hand in a fake. */
+export interface ModelsClientLike {
+    models: { list(params?: any, options?: any): AsyncIterable<any> };
+}
+
+/**
+ * THE MODELS THE USER'S CLAUDE ACCOUNT OFFERS, asked of Anthropic with the
+ * key (the Models API; listing spends nothing). Retired models are left out.
+ * The models this connector runs come first, cheapest first; the others
+ * follow, newest first, marked as not run.
+ */
+export async function listClaudeModels(apiKey: string, client?: ModelsClientLike): Promise<ClaudeModelInfo[]> {
+    const c = client ?? (new Anthropic({ apiKey, maxRetries: 1, timeout: 10_000 }) as unknown as ModelsClientLike);
+    const all: Array<ClaudeModelInfo & { createdAt: string }> = [];
+    for await (const m of c.models.list()) {
+        const id = String(m?.id || '').trim();
+        if (!id || m?.lifecycle === 'retired') continue;
+        all.push({ id, name: String(m?.display_name || id), runs: claudeModelRuns(id), lifecycle: String(m?.lifecycle || 'active'), createdAt: String(m?.created_at || '') });
+    }
+    const rank = (id: string) => CLAUDE_MODELS.findIndex(c => id === c || id.startsWith(`${c}-`));
+    const runs = all.filter(m => m.runs).sort((a, b) => rank(a.id) - rank(b.id));
+    const others = all.filter(m => !m.runs).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return [...runs, ...others].map(({ createdAt: _c, ...m }) => m);
 }

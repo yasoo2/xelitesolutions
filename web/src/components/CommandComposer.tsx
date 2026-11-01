@@ -792,14 +792,29 @@ const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descri
   { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
 ];
 
-// The Claude models the server's agent engine runs, cheapest first. The server
-// keeps the same list (core/engine/anthropic.ts CLAUDE_MODELS) with a checked
-// price for each; a model outside it is refused there, never guessed.
+// The Claude models Joe runs, cheapest first: the server keeps the same list
+// (core/engine/anthropic.ts CLAUDE_MODELS) with a checked price for each. The
+// panel shows the models the user's own account offers (POST /runs/models,
+// asked of Anthropic with the key); this list names and describes them, and
+// stands in until the key is added.
 const ANTHROPIC_MODELS: Array<{ id: string; name: string; descriptionKey: string }> = [
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', descriptionKey: 'modelHaikuDesc' },
   { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', descriptionKey: 'modelSonnet55Desc' },
   { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', descriptionKey: 'modelOpusDesc' },
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', descriptionKey: 'modelFableDesc' },
 ];
+
+// Why a model list is only suggestions, in the user's language (provider-models.ts reason codes).
+const MODELS_REASON_KEYS: Record<string, string> = {
+  needs_key: 'modelsNeedsKey', refused: 'modelsRefused', unreachable: 'modelsUnreachable', empty: 'modelsEmpty',
+  no_address: 'modelsNoAddress', local_down: 'modelsLocalDown', local_empty: 'modelsLocalEmpty', none_runnable: 'claudeModelsNoneRun',
+};
+
+// Why Claude did not connect, in the user's language (the codes /runs/verify returns).
+const CLAUDE_ERROR_KEYS: Record<string, string> = {
+  MODEL_AUTH: 'provClaudeErrAuth', MODEL_BILLING: 'provClaudeErrBilling', MODEL_NOT_FOUND: 'provClaudeErrModel',
+  MODEL_NOT_RUN: 'provClaudeErrModel', ENGINE_BUDGET_EXHAUSTED: 'provClaudeErrBudget', PROVIDER_FAILURE: 'provClaudeErrDown',
+};
 
 /** What the server's engine really runs on (GET /runs/engine). */
 interface EngineInfo {
@@ -808,12 +823,6 @@ interface EngineInfo {
   claude: { serverKey: boolean; models: string[] };
   budget: { totalUsd: number; perRunUsd: number; spentUsd: number } | null;
 }
-
-/** A key the user really typed, as opposed to a placeholder the interface fills in. */
-const isTypedKey = (key: unknown) => {
-  const k = String(key || '').trim();
-  return !!k && !['auto-mode', 'free-mode', 'free', 'dummy', 'ollama', 'server-key'].includes(k);
-};
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
@@ -1070,7 +1079,10 @@ export default function CommandComposer({
   const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
   // The models each provider really offers (POST /runs/models), and which
   // provider's model the user chose to type by hand.
-  const [modelLists, setModelLists] = useState<Record<string, { models: string[]; source: 'live' | 'catalog'; note?: string; loading?: boolean }>>({});
+  const [modelLists, setModelLists] = useState<Record<string, {
+    models: string[]; source: 'live' | 'catalog'; note?: string; loading?: boolean;
+    reason?: { code: string; status?: number }; names?: Record<string, string>; unsupported?: string[];
+  }>>({});
   const [customModel, setCustomModel] = useState<Record<string, boolean>>({});
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
@@ -1104,6 +1116,10 @@ export default function CommandComposer({
           };
         });
       }
+      // Claude is paid, so the server's key is used only when the user asks for
+      // it. The build of 2026-11-01 filled 'server-key' in by itself; that was
+      // never the user's choice, so it is not kept.
+      if (baseProviders.anthropic?.apiKey === 'server-key') baseProviders.anthropic = { ...baseProviders.anthropic, apiKey: '' };
       // Never trust a persisted "verified/connected" flag across reloads — the dot
       // must reflect a REAL test in THIS session. Keep the saved key, but clear the
       // status so it shows grey ("not tested yet") until the user verifies again.
@@ -1135,26 +1151,16 @@ export default function CommandComposer({
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
 
   // THE BUTTON SAYS WHAT REALLY RUNS. Measured on 2026-11-01: the button read
-  // «Auto (free)» while the engine ran on Claude. The server says what the
-  // engine runs on; when it can run Claude on its own key, Claude needs no key
-  // in the browser: it is sent as 'server-key' and every call goes through the
-  // server's budget guard. A key the user typed is kept as theirs.
+  // «Auto (free)» while the engine ran on Claude. The server says what Auto
+  // runs on (free, never Claude) and whether it offers its own Claude key.
+  // Claude is paid: it is connected only by the user, with their key (or the
+  // server's key when they ask for it), never filled in for them.
   useEffect(() => {
     let alive = true;
     const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
     fetch(`${API}/runs/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
       .then(r => (r.ok ? r.json() : null))
-      .then((info: EngineInfo | null) => {
-        if (!alive || !info) return;
-        setEngineInfo(info);
-        if (!info.claude?.serverKey) return;
-        setProviders(prev => {
-          const cur = prev.anthropic;
-          if (!cur || isTypedKey(cur.apiKey)) return prev;
-          const model = ANTHROPIC_MODELS.some(m => m.id === cur.model) ? cur.model : ANTHROPIC_MODELS[0].id;
-          return { ...prev, anthropic: { ...cur, apiKey: 'server-key', model, isConnected: true, verified: true, isVerifying: false, lastError: undefined } };
-        });
-      })
+      .then((info: EngineInfo | null) => { if (alive && info) setEngineInfo(info); })
       .catch(() => { /* an older server without the endpoint: the button keeps its own state */ });
     return () => { alive = false; };
   }, []);
@@ -1177,8 +1183,9 @@ export default function CommandComposer({
   // EVERY PROVIDER OFFERS ITS MODELS. The panel had one free-text «Model ID»
   // (Claude's held claude-3-opus-20240229). The server asks the provider for
   // its own list with the key (the key stays on the server) and says when the
-  // list is only suggestions. Asked again when the provider or its key changes.
-  const pickerProvider = showProviders && selectedProvider && !['auto', 'openrouter', 'anthropic'].includes(selectedProvider) ? selectedProvider : '';
+  // list is only suggestions. Asked again when the provider or its key changes:
+  // pasting a Claude key lists the models that account offers.
+  const pickerProvider = showProviders && selectedProvider && !['auto', 'openrouter'].includes(selectedProvider) ? selectedProvider : '';
   const pickerKey = pickerProvider ? String(providers[pickerProvider]?.apiKey || '') : '';
   const pickerBaseUrl = pickerProvider ? String(providers[pickerProvider]?.baseUrl || '') : '';
   useEffect(() => {
@@ -1196,8 +1203,13 @@ export default function CommandComposer({
         .then(list => {
           if (!alive) return;
           setModelLists(prev => ({ ...prev, [pickerProvider]: list && Array.isArray(list.models)
-            ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false }
+            ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false, reason: list.reason, names: list.names, unsupported: list.unsupported }
             : { models: [], source: 'catalog', note: undefined, loading: false } }));
+          // A Claude model the account does not offer is replaced by the first it does.
+          if (pickerProvider === 'anthropic' && list?.source === 'live' && list.models?.length) {
+            setProviders(prev => (list.models.includes(String(prev.anthropic?.model || '')) ? prev
+              : { ...prev, anthropic: { ...prev.anthropic, model: list.models[0], isConnected: false, verified: false, lastError: undefined } }));
+          }
         })
         .catch(() => { if (alive) setModelLists(prev => ({ ...prev, [pickerProvider]: { models: [], source: 'catalog', loading: false } })); });
     }, 500);
@@ -3402,6 +3414,9 @@ export default function CommandComposer({
           apiKey: p.apiKey || (p.isFree ? 'free-mode' : ''),
           baseUrl: p.baseUrl,
           model: p.model,
+          // The check on every page load must not spend: for Claude it asks
+          // whether the key lists the model (free); Connect makes one real call.
+          light: !!opts?.background,
         }),
       });
 
@@ -3428,7 +3443,8 @@ export default function CommandComposer({
       // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
       setProviders(prev => ({
         ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (data?.error || 'فشل الاتصال') },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined
+            : (key === 'anthropic' && CLAUDE_ERROR_KEYS[data?.code] ? t(CLAUDE_ERROR_KEYS[data.code]) : (data?.error || 'فشل الاتصال')) },
       }));
       return false;
     } catch (err: any) {
@@ -3497,7 +3513,8 @@ export default function CommandComposer({
         ...prev,
         [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, isVerifying: false, verified: false, lastError: undefined }
       }));
-      if (!isFree) setActiveProvider('openai');
+      // A paid provider without its key cannot run: Joe goes back to Auto, which is free.
+      if (!isFree && activeProvider === key) setActiveProvider('auto');
     }
   };
 
@@ -4053,33 +4070,6 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[selectedProvider] && (
                 <>
-                  {/* Claude model selection: the models the server's engine runs. */}
-                  {selectedProvider === 'anthropic' && (
-                    <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
-                      <select
-                        className="model-select"
-                        value={ANTHROPIC_MODELS.some(m => m.id === providers.anthropic?.model) ? providers.anthropic?.model : ANTHROPIC_MODELS[0].id}
-                        onChange={(e) => {
-                          const model = e.target.value;
-                          setProviders(prev => ({ ...prev, anthropic: { ...prev.anthropic, model } }));
-                        }}
-                      >
-                        {ANTHROPIC_MODELS.map(m => (
-                          <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                        ))}
-                      </select>
-                      {engineInfo?.claude?.serverKey && !isTypedKey(providers.anthropic?.apiKey) && (
-                        <div style={{ marginTop: 8, padding: '8px 12px', borderRadius: 8, background: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)', fontSize: 12 }}>
-                          {t('provClaudeServerNote', {
-                            spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2),
-                            total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0),
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
                   {/* OpenRouter Model Selection */}
                   {selectedProvider === 'openrouter' && (
                     <div style={{ marginBottom: 20 }}>
@@ -4141,8 +4131,8 @@ export default function CommandComposer({
                   {/* Auto is the pure keyless mesh — no key. */}
                   {selectedProvider === 'auto' && (
                     <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ تلقائي — بلا مفتاح</div>
-                      <div>يختار أفضل مزوّد مجاني متاح تلقائياً (محلي + مجاني). لا يحتاج أي مفتاح.</div>
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('provClaudeAutoTitle')}</div>
+                      <div>{t('provClaudeAutoBody')}</div>
                     </div>
                   )}
 
@@ -4188,7 +4178,7 @@ export default function CommandComposer({
                             type={showKey[selectedProvider] ? "text" : "password"}
                             className="api-key-input"
                             dir="ltr"
-                            value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
+                            value={/^(free-mode|auto-mode|server-key)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               invalidateProviderVerification(selectedProvider);
                               const newKey = e.target.value;
@@ -4238,6 +4228,59 @@ export default function CommandComposer({
                   })()}
 
 
+                  {/* CLAUDE: paste the key, the account's models appear, pick one, Connect. Claude is paid. */}
+                  {selectedProvider === 'anthropic' && (() => {
+                    const list = modelLists.anthropic;
+                    const current = String(providers.anthropic?.model || '');
+                    const runnable = list?.models?.length ? list.models : ANTHROPIC_MODELS.map(m => m.id);
+                    const known = (id: string) => ANTHROPIC_MODELS.find(m => m.id === id);
+                    const nameOf = (id: string) => list?.names?.[id] || known(id)?.name || id;
+                    const descOf = (id: string) => (known(id) ? ` — ${t(known(id)!.descriptionKey)}` : '');
+                    const usingServerKey = providers.anthropic?.apiKey === 'server-key';
+                    const setClaude = (patch: Partial<ProviderConfig>) => {
+                      invalidateProviderVerification('anthropic');
+                      setProviders(prev => ({ ...prev, anthropic: { ...prev.anthropic, ...patch, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                    };
+                    const reasonKey = list?.reason?.code === 'needs_key' ? 'claudeModelsNeedKey' : MODELS_REASON_KEYS[String(list?.reason?.code || '')];
+                    return (
+                      <div style={{ marginBottom: 20 }}>
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        <select
+                          className="model-select"
+                          value={runnable.includes(current) ? current : runnable[0]}
+                          onChange={(e) => setClaude({ model: e.target.value })}
+                        >
+                          {runnable.map(id => <option key={id} value={id}>{nameOf(id)}{descOf(id)}</option>)}
+                          {!!list?.unsupported?.length && (
+                            <optgroup label={t('claudeModelsNotRun')}>
+                              {list.unsupported.map(id => <option key={id} value={id} disabled>{nameOf(id)}</option>)}
+                            </optgroup>
+                          )}
+                        </select>
+                        <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                          {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                            : list?.source === 'live' && !list?.reason ? t('claudeModelsLive', { count: runnable.length })
+                            : reasonKey ? t(reasonKey, { status: list?.reason?.status ?? '' }) : t('modelsCatalog')}
+                        </div>
+                        <div style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12 }}>
+                          💳 {t('provClaudePaid')}
+                        </div>
+                        {engineInfo?.claude?.serverKey && (
+                          <div style={{ marginTop: 8, fontSize: 12 }}>
+                            {usingServerKey ? (
+                              <>
+                                {t('provClaudeServerNote', { spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2), total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0) })}{' '}
+                                <button type="button" className="link-button" onClick={() => setClaude({ apiKey: '' })}>{t('provClaudeUseOwnKey')}</button>
+                              </>
+                            ) : (
+                              <button type="button" className="link-button" onClick={() => setClaude({ apiKey: 'server-key' })}>{t('provClaudeUseServerKey')}</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* The model: a list of what the provider offers (Auto, OpenRouter and Claude have their own). */}
                   {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && selectedProvider !== 'anthropic' && (
                     <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
@@ -4281,7 +4324,7 @@ export default function CommandComposer({
                                 {list?.loading ? t('modelsLoading', 'Fetching the models…')
                                   : list?.source === 'live' ? t('modelsLive', { count: options.length })
                                   : t('modelsCatalog')}
-                                {!list?.loading && list?.note ? ` — ${list.note}` : ''}
+                                {!list?.loading && list?.reason && MODELS_REASON_KEYS[list.reason.code] ? ` — ${t(MODELS_REASON_KEYS[list.reason.code], { status: list.reason.status ?? '' })}` : ''}
                               </div>
                             </>
                           );
@@ -4941,13 +4984,12 @@ export default function CommandComposer({
                         );
                       })()}
                       {(() => {
-                        // Auto is free only when the engine's own model is. When
-                        // the engine runs on a paid model, the button names it.
-                        const autoPaid = activeProvider === 'auto' && engineInfo?.engine === 'agent' && engineInfo.auto?.provider === 'anthropic';
-                        if (autoPaid) return <span className="provider-free">{engineInfo!.auto!.model.replace(/^claude-/, '').replace(/-(\d+)-(\d+)$/, ' $1.$2')}</span>;
+                        // Auto is free (it never runs Claude). Claude names its
+                        // model and says it is paid, so the cost is never hidden.
                         if (activeProvider === 'anthropic') {
-                          const m = ANTHROPIC_MODELS.find(x => x.id === providers.anthropic?.model);
-                          return <span className="provider-free">{(m?.name || '').replace(/^Claude /, '')}{providers.anthropic?.apiKey === 'server-key' ? ` · ${t('provServerKey')}` : ''}</span>;
+                          const id = String(providers.anthropic?.model || '');
+                          const name = (modelLists.anthropic?.names?.[id] || ANTHROPIC_MODELS.find(x => x.id === id)?.name || id).replace(/^Claude /, '');
+                          return <span className="provider-free provider-paid">{name} · {t('provClaudePaidBadge')}{providers.anthropic?.apiKey === 'server-key' ? ` · ${t('provServerKey')}` : ''}</span>;
                         }
                         return providers[activeProvider]?.isFree ? <span className="provider-free">free</span> : null;
                       })()}

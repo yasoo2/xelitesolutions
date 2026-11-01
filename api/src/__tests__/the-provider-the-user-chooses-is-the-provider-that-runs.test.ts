@@ -7,9 +7,10 @@
  * a key silently became whichever free provider answered.
  *
  * The owner's rule: whatever provider the user chooses, Joe runs on that
- * provider correctly, or says plainly why it cannot. Claude runs on the
- * server's key when the user typed none, and every Claude call, in the
- * engine and in the rest of Joe, goes through the budget guard.
+ * provider correctly, or says plainly why it cannot. Claude is paid: it runs
+ * on the key the user typed, or on the server's key asked for by name, never
+ * as Auto; and every Claude call, in the engine and in the rest of Joe, goes
+ * through the budget guard.
  */
 import fs from 'fs';
 import os from 'os';
@@ -31,19 +32,25 @@ afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 const DEPLOY = {
     JOE_ENGINE_PROVIDER: 'anthropic', JOE_ENGINE_MODEL: 'claude-haiku-5-5',
     JOE_ENGINE_ANTHROPIC_API_KEY: 'sk-test-not-real', JOE_ENGINE_BUDGET_USD: '10',
+    LOCAL_LLM_MODEL: 'qwen3.5:9b',
 } as NodeJS.ProcessEnv;
 
 describe('the engine runs on the provider the user chose', () => {
-    it('Auto keeps the deployment\'s own model', () => {
-        expect(engineModelChoiceFor({ provider: 'auto', model: 'auto', apiKey: 'auto-mode' }, DEPLOY)).toMatchObject({ provider: 'anthropic', model: 'claude-haiku-5-5' });
-        expect(engineModelChoiceFor(undefined, DEPLOY)).toMatchObject({ provider: 'anthropic', model: 'claude-haiku-5-5' });
+    it('Auto is the deployment\'s free model, never Claude, even where the deployment names Claude', () => {
+        expect(engineModelChoiceFor({ provider: 'auto', model: 'auto', apiKey: 'auto-mode' }, DEPLOY)).toMatchObject({ provider: 'local', model: 'qwen3.5:9b' });
+        expect(engineModelChoiceFor(undefined, DEPLOY)).toMatchObject({ provider: 'local', model: 'qwen3.5:9b' });
     });
 
-    it('a chosen Claude model is the model, on the server key when none was typed', () => {
-        const choice: any = engineModelChoiceFor({ provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: 'server-key' }, DEPLOY);
-        expect(choice).toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5-5' });
-        expect(choice.apiKey).toBeUndefined();
+    it('a chosen Claude model is the model, on the key the user typed or the server key asked for by name', () => {
+        expect(engineModelChoiceFor({ provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: 'server-key' }, DEPLOY))
+            .toMatchObject({ provider: 'anthropic', model: 'claude-sonnet-5-5', apiKey: 'server-key' });
         expect(engineModelChoiceFor({ provider: 'anthropic', model: 'claude-opus-5-5', apiKey: 'sk-ant-users-own' }, DEPLOY)).toMatchObject({ apiKey: 'sk-ant-users-own' });
+    });
+
+    it('Claude chosen with no key is refused: it is paid, and the server key is never borrowed unasked', () => {
+        for (const apiKey of ['', 'free-mode', 'auto-mode', undefined]) {
+            expect(engineModelChoiceFor({ provider: 'anthropic', model: 'claude-haiku-5-5', apiKey }, DEPLOY)).toMatchObject({ error: expect.stringMatching(/without a key\. Claude is paid/) });
+        }
     });
 
     it('a chosen local model is that model, on the managed endpoint only', () => {
@@ -105,13 +112,16 @@ describe('Claude for the rest of Joe runs on the server key, behind the budget g
         expect((anthropic.serverClaudeChat as jest.Mock).mock.calls.at(-1)?.slice(1, 3)).toEqual(['claude-haiku-5-5', 'run-router-1']);
     });
 
-    it('a Claude key typed in the browser still obeys the free_only policy', async () => {
+    it('a Claude key the user typed runs, under free_only too, and only through the guard with that key', async () => {
         const saved = process.env.AI_COST_POLICY;
         process.env.AI_COST_POLICY = 'free_only';
         try {
-            await expect(routeToModel([{ role: 'user', content: 'hi' }], undefined, undefined, undefined, undefined, undefined, undefined, {
+            (anthropic.serverClaudeChat as jest.Mock).mockResolvedValueOnce('Claude answered on the typed key.');
+            const out = await routeToModel([{ role: 'user', content: 'hi' }], undefined, undefined, undefined, undefined, undefined, undefined, {
                 modelConfig: { provider: 'anthropic', model: 'claude-haiku-5-5', apiKey: 'sk-ant-typed-in-browser' }, strictProviderCheck: true, runId: 'run-router-2',
-            } as any)).rejects.toThrow(/free_only excludes/);
+            } as any);
+            expect(String(out)).toBe('Claude answered on the typed key.');
+            expect((anthropic.serverClaudeChat as jest.Mock).mock.calls.at(-1)?.[6]).toBe('sk-ant-typed-in-browser');
         } finally {
             if (saved === undefined) delete process.env.AI_COST_POLICY; else process.env.AI_COST_POLICY = saved;
         }
@@ -127,14 +137,14 @@ describe('the interface reads what really runs, and can verify Claude on the ser
     };
     const response = () => ({ statusCode: 200, body: undefined as any, status(c: number) { this.statusCode = c; return this; }, json(b: any) { this.body = b; return this; } });
     const saved: Record<string, string | undefined> = {};
-    const KEYS = ['JOE_ENGINE', 'JOE_ENGINE_PROVIDER', 'JOE_ENGINE_MODEL', 'JOE_ENGINE_ANTHROPIC_API_KEY', 'JOE_ENGINE_BUDGET_USD', 'JOE_ENGINE_LEDGER'];
+    const KEYS = ['JOE_ENGINE', 'JOE_ENGINE_PROVIDER', 'JOE_ENGINE_MODEL', 'JOE_ENGINE_ANTHROPIC_API_KEY', 'JOE_ENGINE_BUDGET_USD', 'JOE_ENGINE_LEDGER', 'LOCAL_LLM_MODEL'];
     beforeEach(() => { for (const k of KEYS) saved[k] = process.env[k]; Object.assign(process.env, { ...DEPLOY, JOE_ENGINE: 'agent', JOE_ENGINE_LEDGER: path.join(root, 'route-spend.json') }); });
     afterEach(() => { for (const k of KEYS) { if (saved[k] === undefined) delete process.env[k]; else process.env[k] = saved[k]; } });
 
-    it('GET /engine says the engine runs Claude Haiku under Auto, that the server key works, and never shows the key', async () => {
+    it('GET /engine says Auto is the free local model, that the server key works, and never shows the key', async () => {
         const res = response();
         await handler('/engine', 'get')({ auth: { sub: 'u1' } }, res);
-        expect(res.body).toMatchObject({ engine: 'agent', auto: { provider: 'anthropic', model: 'claude-haiku-5-5' }, claude: { serverKey: true, models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5'] }, budget: { totalUsd: 10 } });
+        expect(res.body).toMatchObject({ engine: 'agent', auto: { provider: 'local', model: 'qwen3.5:9b' }, claude: { serverKey: true, models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] }, budget: { totalUsd: 10 } });
         expect(JSON.stringify(res.body)).not.toMatch(/sk-test-not-real/);
     });
 
@@ -144,6 +154,7 @@ describe('the interface reads what really runs, and can verify Claude on the ser
         await handler('/verify', 'post')({ auth: { sub: 'u1' }, body: { provider: 'anthropic', apiKey: 'server-key', model: 'claude-haiku-5-5' } }, res);
         expect(res.body).toMatchObject({ ok: true, provider: 'anthropic' });
         expect((anthropic.serverClaudeChat as jest.Mock).mock.calls.at(-1)?.[1]).toBe('claude-haiku-5-5');
+        expect((anthropic.serverClaudeChat as jest.Mock).mock.calls.at(-1)?.[6]).toBe('server-key');
     });
 });
 

@@ -124,13 +124,39 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
         // with no key is reported as "needs a key" instead of borrowing another
         // provider's success (the old behaviour that made every free provider look
         // connected even when it wasn't).
-        //  Claude on the server's key is verified the same honest way: one
-        //  tiny real call, through the engine's connector and budget guard.
+        //  Claude is verified the same honest way: one tiny real call with the
+        //  chosen model, through the engine's connector and budget guard, on
+        //  the key the user typed (or the server's key asked for by name).
+        //  Green means that key, with credit, ran that model. A refusal says
+        //  why with a code the interface words in the user's language.
         const p = String(provider || '').trim().toLowerCase();
-        if ((p === 'anthropic' || p === 'claude') && String(apiKey || '').trim() === 'server-key') {
-            const { serverClaudeChat } = require('../../core/engine/anthropic');
-            const answer = await serverClaudeChat([{ role: 'user', content: 'Reply with the single word OK.' }], String(model || '').trim() || undefined, `verify-${userId}`);
-            return answer ? res.json({ ok: true, provider, detail: 'server key' }) : res.status(200).json({ ok: false, error: 'empty_response', provider });
+        if (p === 'anthropic' || p === 'claude') {
+            const { serverClaudeChat, claudeModelRuns, claudeAccount, listClaudeModels } = require('../../core/engine/anthropic');
+            const chosen = String(model || '').trim();
+            if (chosen && !claudeModelRuns(chosen)) return res.status(200).json({ ok: false, code: 'MODEL_NOT_RUN', error: `Joe does not run ${chosen}.`, provider });
+            //  The check the interface makes on every page load spends nothing:
+            //  the key must list the chosen model (Anthropic's Models API).
+            //  Credit is proved by the real call Connect makes, and a run that
+            //  finds none says so (MODEL_BILLING).
+            if (req.body?.light === true) {
+                const account = await claudeAccount(String(apiKey || '').trim());
+                if ('error' in account) return res.status(200).json({ ok: false, code: 'MODEL_AUTH', error: account.error, provider });
+                try {
+                    const offered = (await listClaudeModels(account.apiKey)).some((m: any) => m.runs && m.id === (chosen || 'claude-haiku-5-5'));
+                    return offered ? res.json({ ok: true, provider, model: chosen || undefined, detail: 'listed' })
+                        : res.status(200).json({ ok: false, code: 'MODEL_NOT_FOUND', error: `The key does not list ${chosen}.`, provider });
+                } catch (e: any) {
+                    const status = Number(e?.status) || 0;
+                    return res.status(200).json({ ok: false, code: status === 401 || status === 403 ? 'MODEL_AUTH' : 'PROVIDER_FAILURE', error: String(e?.message || e).slice(0, 300), provider });
+                }
+            }
+            try {
+                const answer = await serverClaudeChat([{ role: 'user', content: 'Reply with the single word OK.' }], chosen || undefined,
+                    `verify-${userId}`, undefined, process.env, undefined, String(apiKey || '').trim());
+                return answer ? res.json({ ok: true, provider, model: chosen || undefined }) : res.status(200).json({ ok: false, code: 'EMPTY', error: 'empty_response', provider });
+            } catch (e: any) {
+                return res.status(200).json({ ok: false, code: String(e?.code || 'PROVIDER_FAILURE'), error: String(e?.message || e).slice(0, 300), provider });
+            }
         }
         const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
         const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model });
@@ -430,9 +456,9 @@ router.get('/active', authenticate as any, async (req, res) => {
 /**
  * WHAT THE ENGINE REALLY RUNS ON, for the provider button. The button said
  * «Auto (free)» while the engine ran on Claude (2026-11-01). It reads this:
- * the engine in use, the model Auto means, whether Claude can run on the
- * server's key (never the key itself), the Claude models it may choose, and
- * the budget spent so far.
+ * the engine in use, the model Auto means (free, never Claude), whether the
+ * server offers its own Claude key (never the key itself), the Claude models
+ * Joe runs, and the server key's budget spent so far.
  */
 router.get('/engine', authenticate as any, async (_req, res) => {
     try {

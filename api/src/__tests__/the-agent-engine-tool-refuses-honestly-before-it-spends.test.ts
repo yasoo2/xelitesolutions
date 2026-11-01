@@ -26,12 +26,13 @@ describe('agent_engine refuses before it spends or writes', () => {
         expect(tools.find(t => t.name === 'agent_engine')).toBe(AgentEngineTool);
     });
 
-    it('a paid model with no budget ends the run with that reason, makes no folder, and is final', async () => {
-        process.env.JOE_ENGINE_PROVIDER = 'anthropic';
-        process.env.JOE_ENGINE_MODEL = 'claude-haiku-5-5';
+    it('Claude on the server key with no budget ends the run with that reason, makes no folder, and is final', async () => {
         process.env.JOE_ENGINE_ANTHROPIC_API_KEY = 'sk-test-not-real';
         const activeRoot = jest.spyOn(workspaceService, 'getActiveRoot');
-        const result: any = await AgentEngineTool.execute!({ request: 'ابنِ صفحة حجز لعيادة أسنان' }, { runId: 'run-no-budget', sessionId: 's1', workspaceId: 'w1' });
+        const result: any = await AgentEngineTool.execute!({ request: 'ابنِ صفحة حجز لعيادة أسنان' }, {
+            runId: 'run-no-budget', sessionId: 's1', workspaceId: 'w1',
+            modelConfig: { provider: 'anthropic', model: 'claude-haiku-5-5', apiKey: 'server-key' },
+        } as any);
 
         expect(result.ok).toBe(false);
         expect(result.error).toMatch(/JOE_ENGINE_BUDGET_USD/);

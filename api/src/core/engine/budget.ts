@@ -20,6 +20,7 @@
  * read 2026-11-01), in dollars per million tokens. A model with no price
  * here is refused: spending on a price nobody checked is not allowed.
  */
+import { createHash } from 'crypto';
 import { promises as fsp } from 'fs';
 import path from 'path';
 
@@ -47,6 +48,7 @@ const PRICES: PriceRule[] = [
     },
     { pattern: /^claude-sonnet-5-5(?:$|[-@])/, base: { input: 2, output: 10, cacheWrite5m: 2.50, cacheWrite1h: 4, cacheRead: 0.10 } },
     { pattern: /^claude-opus-5-5(?:$|[-@])/, base: { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.20 } },
+    { pattern: /^claude-fable-5-1(?:$|[-@])/, base: { input: 10, output: 50, cacheWrite5m: 12.50, cacheWrite1h: 20, cacheRead: 0.25 } },
 ];
 
 export function priceRule(model: string): PriceRule | undefined {
@@ -225,9 +227,31 @@ export function ledgerFromEnv(env: NodeJS.ProcessEnv = process.env): SpendLedger
     const total = dollars(env.JOE_ENGINE_BUDGET_USD);
     if (!total) return { error: 'A paid model needs a budget: set JOE_ENGINE_BUDGET_USD (dollars, for all runs together).' };
     const perRun = dollars(env.JOE_ENGINE_RUN_BUDGET_USD) ?? 3;
-    const dataDir = String(env.JOE_DATA_DIR || '').trim() || path.join(process.cwd(), 'data');
-    const file = path.resolve(String(env.JOE_ENGINE_LEDGER || '').trim() || path.join(dataDir, 'engine-spend.json'));
-    //  One ledger per file, so every run in this process charges the same total.
+    const file = path.resolve(String(env.JOE_ENGINE_LEDGER || '').trim() || path.join(dataDirOf(env), 'engine-spend.json'));
+    return ledgerAt(file, total, perRun);
+}
+
+/**
+ * The ledger for a key the user typed in the provider settings, not the
+ * server's. Typing a paid key and choosing its model is the user's consent
+ * to spend their own credit, and that credit is the limit: Anthropic refuses
+ * a call once it runs out, and the run says so (MODEL_BILLING). The budget
+ * per run still applies, so one prompt that loops cannot eat the credit; a
+ * deployment may also cap every typed key's total (JOE_ENGINE_KEY_BUDGET_USD).
+ * The file is named by a hash of the key, never by the key.
+ */
+export function keyLedger(apiKey: string, env: NodeJS.ProcessEnv = process.env): SpendLedger {
+    const id = createHash('sha256').update(String(apiKey)).digest('hex').slice(0, 16);
+    const file = path.resolve(path.join(dataDirOf(env), 'engine-spend-keys', `${id}.json`));
+    return ledgerAt(file, dollars(env.JOE_ENGINE_KEY_BUDGET_USD) ?? Number.POSITIVE_INFINITY, dollars(env.JOE_ENGINE_RUN_BUDGET_USD) ?? 3);
+}
+
+function dataDirOf(env: NodeJS.ProcessEnv): string {
+    return String(env.JOE_DATA_DIR || '').trim() || path.join(process.cwd(), 'data');
+}
+
+/** One ledger per file, so every run in this process charges the same total. */
+function ledgerAt(file: string, total: number, perRun: number): SpendLedger {
     let ledger = ledgers.get(file);
     if (!ledger) { ledger = new SpendLedger(file, total, perRun); ledgers.set(file, ledger); }
     else { ledger.totalBudgetUsd = total; ledger.runBudgetUsd = perRun; }

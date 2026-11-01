@@ -1703,12 +1703,13 @@ export async function routeToModel(
           const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
           const strictProviderCheck = context?.strictProviderCheck === true || isExplicitCanonicalLocal;
           const knownCustomEndpoint = ['openrouter', 'gemini', 'google', 'deepseek', 'grok', 'xai', 'groq', 'mistral', 'cerebras', 'openai', 'anthropic', 'claude'].includes(String(cfgProvider).toLowerCase()) || !!cfgBaseUrl;
-          //  Claude on the server's key spends only through the engine's budget
-          //  guard, and that budget is the owner's consent: the free_only
-          //  policy, which guards keys found in the environment, does not apply.
-          const guardedServerClaude = (String(cfgProvider).toLowerCase() === 'anthropic' || String(cfgProvider).toLowerCase() === 'claude')
-            && String(cfgApiKey || '').trim() === 'server-key';
-          if (!knownCustomEndpoint || (!guardedServerClaude && !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl))) {
+          //  Claude spends only through the engine's budget guard, on a key
+          //  someone chose to spend: the key the user typed (their consent,
+          //  their credit) or the server's key asked for by name (the owner's
+          //  budget). The free_only policy guards keys found in the
+          //  environment; it does not refuse a paid model the user chose.
+          const guardedClaude = String(cfgProvider).toLowerCase() === 'anthropic' || String(cfgProvider).toLowerCase() === 'claude';
+          if (!knownCustomEndpoint || (!guardedClaude && !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl))) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: free_only excludes the selected provider, model or endpoint');
             recordProviderAttempt(cfgProvider, false, 'skipped: free_only policy excludes this provider, model or endpoint');
           } else if (failedCustomRoutes.has(routeKey) && providerCircuitStatus(circuitKey).blocked) {
@@ -1759,31 +1760,15 @@ export async function routeToModel(
              *  gateway in the middle, and his key never leaves his machine.
              */
             if (cfgProvider === 'anthropic' || cfgProvider === 'claude') {
-                const { AnthropicProvider } = require('./providers/anthropic');
+                //  The engine's connector and its budget guard, on the key the
+                //  user typed or the server's key asked for by name, never a
+                //  key found in the environment (core/engine/anthropic.ts).
                 const typedKey = String(cfgApiKey || '').trim();
-                //  Claude chosen without a key of the user's own: the server's
-                //  key, through the engine's connector and its budget guard,
-                //  never a key found in the environment (core/engine/anthropic.ts).
-                if (!typedKey || typedKey === 'server-key') {
-                    const { serverClaudeChat } = require('../engine/anthropic');
-                    const out = await serverClaudeChat(flatMessages as any, cfgModel || undefined,
-                        String((context as any)?.runId || (context as any)?.traceId || (context as any)?.sessionId || 'chat'),
-                        (context as any)?.signal);
-                    throwIfCallerAborted();
-                    if (isUsableAnswer(out)) return customAnswer(out);
-                    throw new Error('Anthropic returned empty response');
-                }
-                const key = typedKey;
                 try {
-                const out = await new AnthropicProvider(key).chatComplete(
-                    flatMessages,
-                    cfgModel || undefined,
-                    //  Its own bound: `providerTimeoutMs` is declared further
-                    //  down for the OpenAI client, and reaching backwards for
-                    //  it would be a use-before-declaration that tsc catches
-                    //  and a reader would not.
-                    { timeoutMs: circuitClaim.probe ? PROVIDER_RECOVERY_TIMEOUT_MS : 120_000 },
-                );
+                const { serverClaudeChat } = require('../engine/anthropic');
+                const out = await serverClaudeChat(flatMessages as any, cfgModel || undefined,
+                    String((context as any)?.runId || (context as any)?.traceId || (context as any)?.sessionId || 'chat'),
+                    (context as any)?.signal, process.env, undefined, typedKey);
                 throwIfCallerAborted();
                 if (isUsableAnswer(out)) return customAnswer(out);
                 //  An unusable answer is not a silent fall-through: the mesh

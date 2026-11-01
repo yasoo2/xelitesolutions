@@ -23,7 +23,7 @@ import {
     anthropicModel, anthropicSettings, keyFromFileText, toAnthropicRequest, thinkingFor, mapApiError,
     type AnthropicClientLike, type AnthropicSettings,
 } from '../core/engine/anthropic';
-import { engineModelChoice, engineBrain } from '../core/engine/model';
+import { engineModelChoice, engineModelChoiceFor, engineBrain } from '../core/engine/model';
 import { runEngine, type EngineDeps } from '../core/engine/loop';
 import { planUpdateTool } from '../core/engine/plan';
 import { finishTool, type Verifier } from '../core/engine/finish';
@@ -162,12 +162,14 @@ describe('the ledger holds the budget across calls, runs and restarts', () => {
         await expect(new SpendLedger(file, 10, 3).reserve('run-a', 0.01)).rejects.toMatchObject({ code: 'ENGINE_BUDGET_LEDGER' });
     });
 
-    it('a paid model without a total budget is not started', async () => {
+    it('the server\'s key without a total budget is not started', async () => {
         expect(ledgerFromEnv({})).toMatchObject({ error: expect.stringMatching(/JOE_ENGINE_BUDGET_USD/) });
-        const choice = engineModelChoice({ JOE_ENGINE_PROVIDER: 'anthropic', JOE_ENGINE_MODEL: HAIKU });
-        expect(choice).toMatchObject({ provider: 'anthropic', model: HAIKU });
-        const brain = await engineBrain(choice as any, { runId: 'r' }, signal, later(), { JOE_ENGINE_PROVIDER: 'anthropic', JOE_ENGINE_MODEL: HAIKU, JOE_ENGINE_ANTHROPIC_API_KEY: 'sk-test-not-real' });
+        const choice = engineModelChoiceFor({ provider: 'anthropic', model: HAIKU, apiKey: 'server-key' }, {});
+        expect(choice).toMatchObject({ provider: 'anthropic', model: HAIKU, apiKey: 'server-key' });
+        const brain = await engineBrain(choice as any, { runId: 'r' }, signal, later(), { JOE_ENGINE_ANTHROPIC_API_KEY: 'sk-test-not-real' });
         expect(brain).toMatchObject({ error: expect.stringMatching(/JOE_ENGINE_BUDGET_USD/) });
+        //  A deployment that names Claude does not make Auto paid.
+        expect(engineModelChoice({ JOE_ENGINE_PROVIDER: 'anthropic', JOE_ENGINE_MODEL: HAIKU, LOCAL_LLM_MODEL: 'qwen3.5:9b' })).toMatchObject({ provider: 'local', model: 'qwen3.5:9b' });
     });
 });
 
