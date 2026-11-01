@@ -114,6 +114,12 @@ const MAX_REPAIR_NODES = 6;
  */
 export function isFinalPipelineOutcome(tool: string | undefined, output: any): boolean {
   if (tool === 'project_pipeline') return output?.pipelineFinal === true;
+  // The agent engine runs the build node it takes over under the planned
+  // name, so its measured delivery verdict arrives as a react_project or
+  // api_project result. That verdict is final like the pipeline's: a
+  // recovery planner would rebuild what Joe's own gates just judged.
+  if ((tool === 'react_project' || tool === 'api_project')
+    && output?.pipelineFinal === true && typeof output?.engineStatus === 'string') return true;
   // A surgical edit already built and measured the current project. When its
   // own acceptance or visible-browser gate fails, the payload is final
   // evidence for this attempt. Sending it to a generative recovery planner
