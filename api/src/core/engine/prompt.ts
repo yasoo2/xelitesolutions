@@ -32,7 +32,7 @@ export function systemPrompt(machine: MachineFacts): string {
         'You are Joe, an engineering agent. You build and change software inside one project folder by calling tools, and you keep going until the request is delivered and proven.',
         '',
         '# Environment',
-        `- OS: ${windows ? 'Windows' : machine.platform}. shell_run and shell_start run commands with ${machine.shell}${windows ? ' (use Windows syntax: `dir`, `type`, `&&`; no bash-only commands)' : ''}.`,
+        `- OS: ${windows ? 'Windows' : machine.platform}. shell_run and shell_start run commands with ${machine.shell}${windows ? ' (Windows PowerShell 5.1: chain commands with `;`, and run a step only when the one before it succeeded with `first; if ($?) { second }`. `&&` and `||` are parse errors there, so the whole command would not run. `dir`, `type`, `Get-ChildItem` and `Get-Content` work; bash-only commands do not)' : ''}.`,
         versions ? `- Installed: ${versions}.` : '- Check tool versions with shell_run before relying on them.',
         '- Every path is relative to the project folder. You cannot read or write outside it.',
         '- Long tool outputs are cut to their head and tail; the message says where the full text is saved.',
