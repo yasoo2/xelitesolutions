@@ -344,6 +344,26 @@ export class AgentOrchestrator {
    */
   public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
     this.throwIfCancelled();
+    // With the agent engine on, a request to build software, or to change the
+    // project this chat already has, goes to the engine as one build node
+    // (core/engine/select.ts agentEngineRoute). The first planner never picks
+    // a tool for it: on 2026-11-01 it turned «عدّل نفس التطبيق…» into a
+    // question to the user and nothing changed. Loaded on demand: this
+    // file's static imports are guarded.
+    const agentRoute = await (async () => {
+      try { return await require('../core/engine/select').agentEngineRoute(goalText, this.context); } catch { return null; }
+    })();
+    if (agentRoute) {
+      return {
+        id: randomUUID(),
+        status: 'idle',
+        nodes: [{
+          id: 'agent_build', traceId, agent: 'Dev' as AgentType, task: String(goalText || '').slice(0, 300), tool: 'project_pipeline',
+          input: { request: goalText, ...(agentRoute.kind === 'change' ? { path: agentRoute.path } : {}) },
+          dependencies: [], status: 'pending',
+        }],
+      };
+    }
     const context = IntentParser.createContext('orchestrator', 'global', [], this.context, this.context?.signal);
     const intent = await IntentParser.parse(goalText, context);
     this.throwIfCancelled();
