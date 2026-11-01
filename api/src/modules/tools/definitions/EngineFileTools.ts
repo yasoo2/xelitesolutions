@@ -599,15 +599,30 @@ async function renameWithRetry(from: string, to: string): Promise<void> {
     }
 }
 
-/** A temporary file beside the target, renamed over it. The target keeps its permission bits. */
+/**
+ * A temporary file beside the target, renamed over it. The target keeps its permission bits.
+ *
+ * Measured on 2026-11-02 (a to-do page over an existing index.html): the
+ * rename failed with EPERM through every retry, while writing into the same
+ * file worked a moment later. On Windows a program that keeps a file open
+ * for reading and writing but not for deleting (a preview server, a scanner)
+ * blocks REPLACING it, never writing INTO it. So when the rename is still
+ * refused after the retries and the target exists, the same bytes are
+ * written in place. A program that refuses writes too still gets the error.
+ */
 export async function writeAtomic(abs: string, data: string, mode?: number): Promise<void> {
     const temp = path.join(path.dirname(abs), `.${path.basename(abs)}.${process.pid}-${randomBytes(4).toString('hex')}.joe-tmp`);
     await fsp.writeFile(temp, data, { encoding: 'utf8', flag: 'wx' });
     try {
         if (mode !== undefined && process.platform !== 'win32') await fsp.chmod(temp, mode & 0o7777);
         await renameWithRetry(temp, abs);
-    } catch (error) {
+    } catch (error: any) {
         await fsp.rm(temp, { force: true }).catch(() => undefined);
+        const held = process.platform === 'win32' && ['EPERM', 'EACCES', 'EBUSY'].includes(error?.code);
+        if (held && await fsp.stat(abs).then(s => s.isFile(), () => false)) {
+            await fsp.writeFile(abs, data, 'utf8');
+            return;
+        }
         throw error;
     }
 }
