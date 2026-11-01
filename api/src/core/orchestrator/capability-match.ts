@@ -25,6 +25,7 @@
  */
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isContextOption, requestedPrimitiveOptions } from './requested-primitive-options';
+import { isEngineTool } from '../../modules/tools/engine-tools';
 
 export interface Capable {
     name: string;
@@ -122,7 +123,8 @@ let cached: Profile[] | null = null;
 export function toolProfiles(force = false): Profile[] {
     if (cached && !force) return cached;
     cached = (registeredTools as any[])
-        .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name))
+        // The agent engine's own tools are its alone (modules/tools/engine-tools.ts).
+        .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name) && !isEngineTool(t.name))
         .map(t => ({
             name: t.name,
             inputProperties: t.inputSchema?.properties || {},
