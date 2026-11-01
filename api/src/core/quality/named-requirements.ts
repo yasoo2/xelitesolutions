@@ -1177,6 +1177,32 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
                     && /View changes|Show changes|Audit history|<details|<summary|عرض التغييرات|سجل التدقيق/iu.test(src),
                 'the interface renders each record audit history as inspectable change details'],
         ];
+        // Measured on 2026-11-01: the agent engine built a clinic system with
+        // a real login and admin/staff roles, and both were judged unmet
+        // because the source had no name from Joe's first templates
+        // (apiLogin, TOKEN_KEY, CustomApp). Login and roles are judged by
+        // what the code does, whatever it is named:
+        //  - a login: a server route for it, a password check that is not a
+        //    plain comparison, and a session or token it issues;
+        //  - roles: a role on the user, a check of it, and a 403 for the rest.
+        const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
+            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src);
+        const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
+        const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
+            //  A random token the server keeps as the session (randomBytes or randomUUID).
+            || (/\b(?:randomBytes\s*\(\s*\d+\s*\)|randomUUID\s*\(\s*\)|secrets\.token_(?:hex|urlsafe)\s*\()/u.test(src)
+                && /\bsessions?\s*(?:\[|\.set\s*\(|\.insert|\.push\s*\()|INSERT\s+INTO\s+sessions/iu.test(src));
+        const roleOnUser = /\brole\s*[:=]\s*['"`]?(?:admin|staff|manager|user|receptionist|doctor)\b|\broles?\s*:\s*\[|\brole\b[^\n]{0,40}\b(?:TEXT|VARCHAR|String|enum)\b/iu.test(src);
+        const roleChecked = /\brole\s*(?:!==|===|!=|==)\s*['"`](?:admin|staff|manager|receptionist|doctor)['"`]|\b(?:requireRole|requireAdmin|authorize|hasRole|checkRole|isAdmin|roleRequired|requiresRole)\s*\(|\.includes\(\s*(?:req\.)?user\.role\s*\)/iu.test(src);
+        const forbidden = /status\s*\(\s*403\s*\)|\b403\b|Forbidden|abort\(\s*403\s*\)/iu.test(src);
+        workflowEvidence.push(
+            [/\bsign[- ]?in\b|\blog[- ]?in\b|\bauth(?:entication)?\b|\baccounts?\b|تسجيل\s*(?:الدخول|دخول)|دخول/iu,
+                serverLoginRoute && passwordChecked && sessionIssued,
+                'the server has a login route that checks a hashed password and issues a session or token'],
+            [/\badmin\b|\broles?\b|\bpermissions?\b|\bstaff\b|صلاحيات|أدوار|مدير|موظف/iu,
+                roleOnUser && roleChecked && forbidden,
+                'users carry a role, the server checks it, and refuses the others with 403'],
+        );
         const proven = workflowEvidence.find(([asked, present]) => asked.test(fieldPhrase) && present);
         if (proven) return { ...r, verdict: 'met', why: proven[2] };
         if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
