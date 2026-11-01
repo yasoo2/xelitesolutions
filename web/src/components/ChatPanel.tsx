@@ -128,33 +128,32 @@ export default function ChatPanel({
 
     /**
      * A REPLY THAT ARRIVES WHILE THE USER WATCHES UNFOLDS WORD BY WORD.
-     * The messages on screen when a conversation opens are its history and
-     * appear whole; a reply that arrives after that is new. A reply whose
-     * text is already on screen (the same reply saved again under a new id)
-     * is not new. Once it has unfolded it stays whole.
+     *
+     * Decided while drawing, not after: deciding in an effect drew the whole
+     * reply once before the reveal began (measured: 96 words, then 1). And by
+     * the reply's TEXT, not its id: the same reply is saved again under a new
+     * id a moment later, and an id-keyed reveal stopped there (measured: back
+     * to 96 words after 120 ms).
+     *
+     * The messages on screen when the conversation is first drawn are its
+     * history and appear whole. A reply is new when its text was not there
+     * then, and it is dated after that moment, so a history that loads late
+     * (after a session switch) is not replayed. Once unfolded it stays whole.
      */
-    const seenRef = useRef<{ ids: Set<string>; texts: Set<string> } | null>(null);
-    const [revealIds, setRevealIds] = useState<Set<string>>(() => new Set());
-    useEffect(() => { seenRef.current = null; setRevealIds(new Set()); }, [sessionId]);
-    useEffect(() => {
-        if (!messages.length) return;
-        if (!seenRef.current) {
-            seenRef.current = { ids: new Set(messages.map(m => m.id)), texts: new Set(messages.map(m => `${m.role}:${m.content}`)) };
-            return;
-        }
-        const seen = seenRef.current;
-        const fresh: string[] = [];
-        for (const m of messages) {
-            const text = `${m.role}:${m.content}`;
-            if (!seen.ids.has(m.id) && !seen.texts.has(text) && m.role === 'assistant') fresh.push(m.id);
-            seen.ids.add(m.id);
-            seen.texts.add(text);
-        }
-        if (fresh.length) setRevealIds(prev => new Set([...prev, ...fresh]));
-    }, [messages]);
-    const revealDone = React.useCallback((id: string) => {
-        setRevealIds(prev => { const next = new Set(prev); next.delete(id); return next; });
-    }, []);
+    const revealRef = useRef<{ session?: string; baseline: Set<string> | null; since: number; done: Set<string> }>({ baseline: null, since: 0, done: new Set() });
+    if (revealRef.current.session !== sessionId) revealRef.current = { session: sessionId, baseline: null, since: 0, done: new Set() };
+    if (!revealRef.current.baseline && messages.length) {
+        revealRef.current.baseline = new Set(messages.map(m => `${m.role}:${m.content}`));
+        revealRef.current.since = Date.now();
+    }
+    const shouldReveal = (m: Message): boolean => {
+        const r = revealRef.current;
+        const key = `${m.role}:${m.content}`;
+        if (m.role !== 'assistant' || !r.baseline || r.baseline.has(key) || r.done.has(key)) return false;
+        const at = m.timestamp ? new Date(m.timestamp).getTime() : NaN;
+        return !Number.isFinite(at) || at >= r.since - 5_000;
+    };
+    const revealDone = React.useCallback((m: Message) => { revealRef.current.done.add(`${m.role}:${m.content}`); }, []);
     //  Follow the unfolding text down, unless the user scrolled up to read.
     const followReveal = React.useCallback(() => {
         const box = messagesBoxRef.current;
@@ -284,9 +283,9 @@ export default function ChatPanel({
                                     )}
                                     <WordReveal
                                         text={msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
-                                        animate={revealIds.has(msg.id)}
+                                        animate={shouldReveal(msg)}
                                         onGrow={followReveal}
-                                        onDone={() => revealDone(msg.id)}
+                                        onDone={() => revealDone(msg)}
                                     >{(shown) => (
                                     <ReactMarkdown
                                         // A single newline IS a line break here.

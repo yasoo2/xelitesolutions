@@ -105,8 +105,11 @@ describe('the interface puts them where the owner asked', () => {
 
     it('a reply arriving while the user watches unfolds; history appears whole', () => {
         const chat = read('components', 'ChatPanel.tsx');
-        expect(chat).toMatch(/<WordReveal[\s\S]{0,200}animate=\{revealIds\.has\(msg\.id\)\}/);
-        expect(chat).toMatch(/if \(!seenRef\.current\) \{\s*seenRef\.current = \{ ids: new Set\(messages\.map/);
+        //  Decided while drawing (an effect drew the whole reply first), by the text (the id changes when it is saved).
+        expect(chat).toMatch(/<WordReveal[\s\S]{0,200}animate=\{shouldReveal\(msg\)\}/);
+        expect(chat).not.toMatch(/animate=\{revealIds\.has\(msg\.id\)\}/);
+        expect(chat).toMatch(/if \(!revealRef\.current\.baseline && messages\.length\) \{\s*revealRef\.current\.baseline = new Set\(messages\.map\(m => `\$\{m\.role\}:\$\{m\.content\}`\)\)/);
+        expect(chat).toMatch(/return !Number\.isFinite\(at\) \|\| at >= r\.since - 5_000;/);
     });
 
     it('the credits move with CSS, and stay still for anyone who asked for less motion', () => {
