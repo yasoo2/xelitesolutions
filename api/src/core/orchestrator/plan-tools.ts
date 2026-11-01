@@ -32,6 +32,7 @@
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
 import { isVerificationTool } from '../quality/verification-ledger';
+import { isEngineTool } from '../../modules/tools/engine-tools';
 
 /**
  * Runtime-bound fields are the small, explicit exception to the planner's
@@ -61,7 +62,8 @@ function registered(): Set<string> {
     if (registeredCache) return registeredCache;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { tools } = require('../../modules/tools/registry');
-    const set = new Set<string>((tools || []).map((t: any) => String(t.name)));
+    // A plan never names the agent engine's own tools (modules/tools/engine-tools.ts).
+    const set = new Set<string>((tools || []).filter((t: any) => !isEngineTool(t?.name)).map((t: any) => String(t.name)));
     if (set.size > 0) registeredCache = set;   // don't cache a half-initialised registry
     return set;
 }

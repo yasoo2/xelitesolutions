@@ -411,6 +411,14 @@ function enforceContract(t: any): void {
   }
 }
 
+// ── engine: files ──
+// The agent engine's file tools: core/engine/tools/files.ts reaches them
+// through executeTool, and they act only inside the run's project folder.
+// The first planner never offers or routes to them (modules/tools/engine-tools.ts).
+import { engineFileTools } from './definitions/EngineFileTools';
+baseTools.push(...engineFileTools);
+// ── end engine: files ──
+
 // Duplicate registrations are architecture errors. Fail during startup and in
 // registry tests instead of silently hiding an ambiguous execution path.
 export const tools: ToolDefinition[] = (() => {
