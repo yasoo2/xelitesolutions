@@ -125,6 +125,7 @@ async function mountJoe() {
         '../lib/preview-routing': { belongsToActiveSession: () => false, shouldOpenPreviewOnReady: () => false },
         '../lib/engineeringReportSummary': { isEngineeringReport: () => false, summarizeEngineeringReport: (text: string) => text },
         '../lib/run-history-recovery': helper(),
+        '../lib/activity-feed': evaluate(path.join(repository, 'web/src/lib/activity-feed.ts'), {}),
     };
     for (const child of ['CommandComposer', 'SettingsDialog', 'GitHubConnectDialog', 'DepartmentStatusCard']) {
         imports[`../components/${child}`] = { default: Null, __esModule: true };
@@ -310,6 +311,19 @@ describe('Joe recovers its visible saved reply after deliberate final socket fra
             await joe.resolveHistory(0);
             expect(joe.text()).toContain('Newer prompt');
             expect(joe.text()).not.toContain('Saved reply B');
+        } finally { await joe.close(); }
+    });
+
+    it('a failed call of the agent engine is one step of its run, not the end of it', async () => {
+        const joe = await mountJoe();
+        try {
+            const before = joe.historyReads.length;
+            await joe.event({ type: 'step_failed', sessionId: 'A', runId: 'run-A', id: 'engine-run-A-7',
+                data: { name: 'engine:shell_run', callId: 'c1', result: { ok: false, output: 'exit 1' }, sessionId: 'A', runId: 'run-A' } });
+            expect(joe.historyReads.slice(before)).toEqual([]);
+            //  Any other failed step still closes the run on screen, as before.
+            await joe.event({ type: 'step_failed', sessionId: 'A', runId: 'run-A', data: { name: 'execute:shell_execute', sessionId: 'A' } });
+            expect(joe.historyReads.slice(before)).toEqual(['A']);
         } finally { await joe.close(); }
     });
 

@@ -25,6 +25,7 @@ import { applyAccent } from '../accents';
 import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../lib/preview-routing';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 import { RunHistoryRecovery } from '../lib/run-history-recovery';
+import { isEngineStepEvent } from '../lib/activity-feed';
 
 interface Message {
     id: string;
@@ -99,7 +100,7 @@ export default function Joe() {
      * «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة اللوغز». Logs is the
      * tab a build streams into, and showing it starts no process at all.
      */
-    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
+    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity'>('logs');
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
@@ -489,8 +490,11 @@ export default function Joe() {
                 setDepartmentStatus(msg.data);
             }
 
-            // Handle message finishing
-            if (msg.type === 'run_finished' || msg.type === 'step_failed') {
+            // Handle message finishing. A failed call of the agent engine is
+            // one step of its write, run, look and fix loop, not the end of
+            // the run: treating it as one reloaded the whole conversation on
+            // every failed command while the run went on.
+            if (msg.type === 'run_finished' || (msg.type === 'step_failed' && !isEngineStepEvent(msg))) {
                 setIsLoading(false);
                 keepBrowserVisibleRef.current = false;
                 // The final assistant answer is persisted before the closing
