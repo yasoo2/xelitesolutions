@@ -885,7 +885,9 @@ describe('THE WIRING: the build is judged before it is delivered', () => {
         //  The rule moved into acceptanceBlocksDelivery (eval round 15: an
         //  unread request blocks too); an unaccepted ledger still blocks.
         expect(REACT).toMatch(/const acceptanceBlocked = acceptanceBlocksDelivery\(\{\s*criteria: acceptance\.criteria\.length,\s*accepted: acceptance\.accepted,/);
-        expect(REACT).toMatch(/export function acceptanceBlocksDelivery[\s\S]{0,400}return a\.criteria > 0\s*&& \(!a\.accepted/);
+        // The rule moved, unchanged, to the acceptance gate both engines share.
+        expect(fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'acceptance-gate.ts'), 'utf8'))
+            .toMatch(/export function acceptanceBlocksDelivery[\s\S]{0,400}return a\.criteria > 0\s*&& \(!a\.accepted/);
         expect(REACT).toMatch(/output: \{ message, acceptance,/);
     });
 

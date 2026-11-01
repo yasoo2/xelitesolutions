@@ -119,7 +119,10 @@ describe('what he named is what gets counted', () => {
         const chosen = REACT.indexOf('const appBp: AppBlueprint | null = appKind ? blueprintFor(');
         expect({ read: read > 0, beforeTheAnnouncement: read < declared, beforeTheJudgement: read < judged, beforeTheChoice: chosen < 0 || read < chosen })
             .toEqual({ read: true, beforeTheAnnouncement: true, beforeTheJudgement: true, beforeTheChoice: true });
-        expect(REACT).toMatch(/reader: typeof namedRequirements = namedRequirements,[\s\S]{0,600}const read = await reader\(request, isArabic, ask\);/);
+        // The reader moved, unchanged, to the acceptance gate both engines share; the React builder imports it from there.
+        expect(REACT).toContain("import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements } from '../../../core/quality/acceptance-gate';");
+        expect(fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'acceptance-gate.ts'), 'utf-8'))
+            .toMatch(/reader: typeof namedRequirements = namedRequirements,[\s\S]{0,600}const read = await reader\(request, isArabic, ask\);/);
     });
 
     it('⛔ NEGATIVE — a fall back to the catalogue is ANNOUNCED, never silent', () => {

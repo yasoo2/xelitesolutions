@@ -101,7 +101,10 @@ describe('the pipeline is wired to the parts and roles', () => {
     });
     it('every bound root is recorded as a delivered part, and quality and records read them all', () => {
         expect(executor).toMatch(/projectContext\.deliveryParts = recordDeliveryPart\(key, pipelineRunId, \{ root: candidate, tool: toolName \}\);/);
-        expect(src).toMatch(/await measureRequestedRecords\(runRes, deliveredRoots\(auditRoots\)\);/);
-        expect(src).toMatch(/const otherRoots = deliveredRoots\(/);
+        // The measurements live in the delivery run the pipeline hands its roots to.
+        const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf8');
+        expect(src).toMatch(/const delivery = deliveryRun\(\{[^}]*\bdeliveredRoots,/);
+        expect(shared).toMatch(/await measureRequestedRecords\(runRes, deliveredRoots\(auditRoots\)\);/);
+        expect(shared).toMatch(/const otherRoots = deliveredRoots\(/);
     });
 });

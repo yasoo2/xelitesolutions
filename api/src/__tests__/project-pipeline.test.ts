@@ -458,8 +458,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             // The live run's scope is measured on its own artifact roots and recorded
             // as its own instrument, so a later Browser QA pass cannot clear it.
             expect(src).toMatch(/recordLiveAcceptance\(runRes, liveSourceRoot \|\| liveRuntimeRoot, liveAuditRoots/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, auditRoots, \{ verified: true/);
-            expect(src).toMatch(/ledger\.record\(\{ instrument: 'scope', ok: scoped\.verified/);
+            // …by the delivery run both engines share (core/quality/delivery-run), which the pipeline records through.
+            const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf-8');
+            expect(src).toMatch(/await delivery\.recordLiveAcceptance\(runRes, qualityRoot, auditRoots\);/);
+            expect(shared).toMatch(/applyScopeAuditOutcome\(productRequest, auditRoots, \{ verified: true/);
+            expect(shared).toMatch(/ledger\.record\(\{ instrument: 'scope', ok: scoped\.verified/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });

@@ -186,8 +186,11 @@ describe('R2 — one reading of his list for the builders and the gate', () => {
         expect(gate(SYSTEM, false).entities).toEqual([]);
         expect(keys(gate(SYSTEM, true).entities)).toEqual(keys(namedEntities(SYSTEM)));
         const pipeline = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
-        expect(pipeline).toMatch(/part\.tool === 'api_project'/);
-        expect(pipeline).toMatch(/requestedRecords\(productRequest, \{ backendRequested: backendRequested \|\| builtAServer \}\)/);
+        // The gate reads the list in the delivery run the pipeline hands its parts to.
+        const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf-8');
+        expect(pipeline).toMatch(/deliveryParts: \(\) => deliveryPartsForRun\(sessionPartsKey, phaseIds\.runId\)/);
+        expect(shared).toMatch(/part\.tool === 'api_project'/);
+        expect(shared).toMatch(/requestedRecords\(productRequest, \{ backendRequested: backendRequested \|\| builtAServer \}\)/);
     });
 
     it('api_project keeps the tables designed from his own list, whatever script keys them', async () => {

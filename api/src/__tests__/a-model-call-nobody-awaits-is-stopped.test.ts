@@ -138,7 +138,9 @@ describe('the wiring in react_project', () => {
     });
     it('the reader\'s outcome reaches the gate', () => {
         expect(source).toContain('requestUnread = reading.requestUnread;');
-        expect(source).toContain('return { named, whyNotRead, requestUnread: !readerAnswered && !named.length, modelUnavailable };');
+        // The reader moved, unchanged, to the acceptance gate both engines share.
+        const gate = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'acceptance-gate.ts'), 'utf8');
+        expect(gate).toContain('return { named, whyNotRead, requestUnread: !readerAnswered && !named.length, modelUnavailable };');
         expect(source).toMatch(/const acceptanceBlocked = acceptanceBlocksDelivery\(\{[\s\S]{0,260}requestUnread,\s*\}\);/);
         expect(source).toMatch(/requestUnread\s*\?\s*deliveryErrorForUnreadRequest\(whyNotRead\)/);
     });

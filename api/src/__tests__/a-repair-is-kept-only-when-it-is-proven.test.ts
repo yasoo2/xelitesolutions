@@ -311,7 +311,10 @@ describe('the wiring', () => {
         expect(src).toMatch(/if \(!remeasured\) staleBuilderProof = \{ file: task\.repairFile, root: serverRoot \};/);
     });
     it('static files are not live when the delivery needs a server', () => {
-        expect(src).toMatch(/if \(servedByStaticFallback\(runRes\)\) \{[\s\S]{0,400}deliveryRoles\.service \? 1 : \(await collectServerEvidence\(runRoots, \[\]\)\)\.routes\.length/);
+        // The live acceptance moved, unchanged, to the delivery run both engines share; the pipeline records through it.
+        const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf8');
+        expect(src).toMatch(/await delivery\.recordLiveAcceptance\(runRes, qualityRoot, auditRoots\);/);
+        expect(shared).toMatch(/if \(servedByStaticFallback\(runRes\)\) \{[\s\S]{0,400}deliveryRoles\.service \? 1 : \(await collectServerEvidence\(runRoots, \[\]\)\)\.routes\.length/);
     });
     it('the first delivery run after phases that edited the tree restarts, never adopts', () => {
         expect(src).toMatch(/const phasesEditedTree = pipelineExecutedTasks\(pipeline\);\s*if \(phasesEditedTree\) \(runInput as Record<string, unknown>\)\.restart = true;/);

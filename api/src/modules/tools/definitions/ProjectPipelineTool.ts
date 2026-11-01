@@ -1,6 +1,7 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
-import { backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage, probePathsFor, probeServedResources, requestCoverageRepairTask, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun } from '../../../core/quality/request-coverage';
+import { collectServerEvidence, requestCoverageRepairTask, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { deliveryRun } from '../../../core/quality/delivery-run';
 import { RepairTicketService } from '../../services/RepairTicketService';
 import { clearDeliveryParts, deliveryPartsForRun } from '../../../core/quality/delivery-parts';
 import { builderClaimsRemeasured, markUnremeasuredBuilderClaims, measureBuilderProofs, regressedBuilderProofs, servedByStaticFallback, type BuilderProofs } from '../../../core/quality/builder-proofs';
@@ -2063,7 +2064,7 @@ export function projectAuditDirectory(roots: string[]): string {
  * explicit placeholders or missing checks when the request asks for them.
  */
 /** A build step this part really has: a bundler/framework config, or TypeScript it compiles. */
-function rootHasBuildStep(root: string, manifest: any): boolean {
+export function rootHasBuildStep(root: string, manifest: any): boolean {
     const configs = /^(?:vite|webpack|next|nuxt|svelte|astro|rollup|remix|vue)\.config\.[cm]?[jt]s$|^angular\.json$/iu;
     let names: string[] = [];
     try { names = fs.readdirSync(root); } catch { return false; }
@@ -2073,7 +2074,7 @@ function rootHasBuildStep(root: string, manifest: any): boolean {
 }
 
 /** The request names a build as a step to run — never the imperative «Build …» or the noun in «بناء نظام». */
-const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
+export const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
 
 /**
  * ONE CONTRACT FOR EVERY DELIVERED ROOT — THE PRIMARY ONE INCLUDED.
@@ -3285,152 +3286,38 @@ export class ProjectPipelineTool implements ToolDefinition {
         const measured = (instrument: DeliveryInstrument, ok: boolean) =>
             ledger.all().some(m => m.instrument === instrument && m.ok === ok);
         /**
-         * The records the request named, measured on the delivered tree and the
-         * live server: served (a backend was asked for or the tree has one),
-         * tested (tests were asked for), present (a static build). Judged
-         * whenever project_run confirmed a live URL — even when the quality or
-         * scope gate already failed — so missing records are always named.
+         * live, quality, scope and records for one project_run result —
+         * measured separately, never folded into one flag. The measurements
+         * are core/quality/delivery-run's, the same ones the general agent
+         * engine's verifier makes: this run gives them its ledger and its
+         * facts, and keeps what they establish for its report.
          */
-        /** One executed run of his tests per unchanged tree: a re-measurement after an edit re-runs them, an idle one does not. */
-        const requestedTestRuns = new Map<string, RequestedTestsRun>();
-        const measureRequestedRecords = async (runRes: any, roots: string[]) => {
-            ledger.forget('coverage');
-            ledger.forget('tests');
-            // The gate's own fact — a server the request asks for (a backend, a
-            // database, sign-in, accounts, roles, an API) — not every claim the
-            // router reads as needing a server (round 20: an invoice in a list of
-            // records made P080's actions «unread records»).
-            const backendRequested = backendRequestedFor(productRequest);
-            // His list is read the way the builders read it (R2): api_project
-            // reads it as a request for a server, so when this run built one
-            // the gate reads the same list the same way — never a list one side
-            // proved and the other dropped.
-            const builtAServer = deliveryPartsForRun(sessionPartsKey, phaseIds.runId).some(part => part.tool === 'api_project');
-            const records = requestedRecords(productRequest, { backendRequested: backendRequested || builtAServer });
-            if (!records.entities.length && !records.unread.length && !(records.capabilities || []).length && !records.testsRequested) {
-                requestCoverage = undefined;
-                return;
-            }
-            const runRoot = String(runRes?.output?.cwd || '').trim();
-            const deliveredRoots = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
-            const evidence = await collectServerEvidence(deliveredRoots, records.entities);
-            const servedApplies = backendRequested || evidence.routes.length > 0;
-            let probe: Record<string, ProbeResult> | undefined;
-            const probeDetails: Record<string, string[]> = {};
-            const base = verifiedLiveUrl(ledger.all());
-            if (servedApplies && base && records.entities.length) {
-                const bound = bindRunCancellation(context?.cancellation, context?.signal);
-                try {
-                    // project_run's own bound for one HTTP answer — no new constant.
-                    const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
-                    probe = await probeServedResources(base, evidence.prefixes,
-                        records.entities.map(record => {
-                            const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
-                            // The exact path each record's own route registers — never a guessed prefix.
-                            return { key: record.key, ids, paths: probePathsFor(evidence, ids) };
-                        }),
-                        { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
-                } finally {
-                    bound.dispose();
-                }
-            }
-            // «Tested» means his tests RAN and passed (round 20: a word in a
-            // skipped test, or a file no test script collects, counted as tested).
-            let testsRun: RequestedTestsRun | undefined;
-            if (records.testsRequested) {
-                const testsRoot = requestedTestsRoot(evidence, runRoot, deliveredRoots);
-                const fingerprint = `${testsRoot}|${testTreeFingerprint(testsRoot, evidence)}`;
-                testsRun = requestedTestRuns.get(fingerprint);
-                if (!testsRun) {
-                    say(pick(isAr, '▶️ أشغّل الاختبارات التي طلبتها لأثبت أنها تنجح…', '▶️ Running the tests you asked for, to prove they pass…'));
-                    testsRun = await runRequestedTests(testsRoot, (tool, input) =>
-                        executeTool(tool, input, { ...(context || {}), language: isAr ? 'ar' : 'en' }));
-                    requestedTestRuns.set(fingerprint, testsRun);
-                }
-                deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, 'tests']));
-                // No runner Joe knows: 'tests' stays required and unmeasured — not verified, never passed.
-                if (!testsRun.noRunner) {
-                    ledger.record({
-                        instrument: 'tests',
-                        target: testsRun.root,
-                        ok: testsRun.passed,
-                        error: testsRun.passed ? undefined
-                            : `the requested tests ${testsRun.ran ? 'did not pass' : 'could not run'} in ${path.basename(testsRun.root || '.')}: ${String(testsRun.error || '').slice(0, 400)}`,
-                    });
-                }
-            }
-            requestCoverage = judgeRequestCoverage({ records, evidence, probe, probeDetails, backendRequested, testsRun });
-            const unverified = coverageUnverified(requestCoverage);
-            ledger.record({
-                instrument: 'coverage',
-                ok: requestCoverage.missing.length === 0,
-                error: requestCoverage.missing.length ? coverageError(requestCoverage) : undefined,
-                unread: requestCoverage.unread,
-                unverified,
-            });
-            appendBoundedPipelineLog(logs, `[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} unverified=${unverified.length} capabilities=${(requestCoverage.capabilities || []).length} tests=${testsRun ? (testsRun.passed ? 'passed' : testsRun.ran ? 'failed' : testsRun.noRunner ? 'no runner' : 'not run') : 'not requested'}`);
-        };
-        /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
+        const delivery = deliveryRun({
+            productRequest,
+            ledger,
+            deliveryRoles,
+            deliveredRoots,
+            deliveryParts: () => deliveryPartsForRun(sessionPartsKey, phaseIds.runId),
+            runTool: (tool, input) => executeTool(tool, input, { ...(context || {}), language: isAr ? 'ar' : 'en' }),
+            requireInstrument: instrument => { deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, instrument])); },
+            cancellation: context?.cancellation,
+            signal: context?.signal,
+            isAr,
+            say,
+            log: line => appendBoundedPipelineLog(logs, line),
+        });
         let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
         const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
             lastAcceptanceRoots = { qualityRoot, auditRoots };
-            // Static files are not a live SYSTEM when the delivery needs a
-            // server: a requested service, or server routes in the run's own
-            // tree. A landing page whose bogus start script fell back to its
-            // static site keeps the fallback (round 15 review, finding 28).
-            if (servedByStaticFallback(runRes)) {
-                const runRoots = Array.from(new Set([String(runRes?.output?.cwd || '').trim(), qualityRoot, ...auditRoots].filter(Boolean)));
-                const serverRoutes = deliveryRoles.service ? 1 : (await collectServerEvidence(runRoots, [])).routes.length;
-                if (serverRoutes > 0) {
-                    runRes = {
-                        ...runRes,
-                        ok: false,
-                        error: `the server did not start; only static files were served (${String(runRes?.output?.fallbackFrom || runRes?.output?.kind || 'static fallback').slice(0, 200)})`,
-                    };
-                }
+            try {
+                await delivery.recordLiveAcceptance(runRes, qualityRoot, auditRoots);
+            } finally {
+                // What the measurement established, kept even when it raised —
+                // at the points the closures used to set it.
+                liveUrl = delivery.state.liveUrl;
+                scopeAudit = delivery.state.scopeAudit;
+                requestCoverage = delivery.state.requestCoverage;
             }
-            const live = applyLiveRunOutcome(true, runRes);
-            ledger.record({ instrument: 'live', ok: live.verified, url: live.liveUrl, error: live.error });
-            liveUrl = live.verified ? live.liveUrl : '';
-            if (!live.verified) {
-                ledger.forget('quality');
-                ledger.forget('scope');
-                ledger.forget('coverage');
-                scopeAudit = { requested: 0, built: 0, coverage: 0, missing: [] };
-                return syncFromLedger();
-            }
-            ledger.forget('quality');
-            const quality = inspectProjectQualityContract(qualityRoot, productRequest);
-            ledger.record({
-                instrument: 'quality',
-                ok: quality.ok,
-                error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
-            });
-            // Every other delivered part with a manifest answers for what the
-            // request asks of it — never the primary root's broad contract.
-            const testsAsked = !!testsRequestedIn(productRequest);
-            const primary = path.resolve(String(qualityRoot || '.'));
-            const otherRoots = deliveredRoots([String(runRes?.output?.cwd || '').trim(), ...auditRoots])
-                .filter(root => root !== primary && fs.existsSync(path.join(root, 'package.json')));
-            for (const root of otherRoots) {
-                const part = inspectProjectQualityContract(root, productRequest, { additionalRoot: true, testsRequested: testsAsked });
-                ledger.record({
-                    instrument: 'quality',
-                    target: root,
-                    ok: part.ok,
-                    error: part.ok ? undefined : `project quality contract failed in ${path.basename(root)} — ${part.failures.slice(0, 4).join('; ')}`,
-                });
-            }
-            const scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
-            scopeAudit = scoped.scopeAudit;
-            if (scoped.verified || scoped.scopeCoverageFailed === true) {
-                ledger.record({ instrument: 'scope', ok: scoped.verified, error: scoped.error });
-            } else {
-                // No artifact root to audit is a live-acceptance gap, not missing scope.
-                ledger.forget('scope');
-                ledger.record({ instrument: 'live', ok: false, url: live.liveUrl, error: scoped.error });
-            }
-            await measureRequestedRecords(runRes, deliveredRoots(auditRoots));
             return syncFromLedger();
         };
         /** A program's proof: its own tests, run through quality_run on the project root. */

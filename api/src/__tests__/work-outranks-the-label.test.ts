@@ -89,7 +89,9 @@ describe('INVARIANT: described work chooses the engine, not a category noun', ()
         //  unprovable count reaches it, and an unprovable line or a blind judge
         //  over named requirements still blocks the catalogue's verdict.
         expect(source).toContain('unprovable: acceptance.unprovable,');
-        expect(source).toMatch(/return a\.criteria > 0\s*&& \(!a\.accepted \|\| \(a\.named > 0 && \(a\.judgeWasBlind \|\| a\.unprovable > 0\)\)\);/);
+        // The rule moved, unchanged, to the acceptance gate both engines share.
+        expect(fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'acceptance-gate.ts'), 'utf8'))
+            .toMatch(/return a\.criteria > 0\s*&& \(!a\.accepted \|\| \(a\.named > 0 && \(a\.judgeWasBlind \|\| a\.unprovable > 0\)\)\);/);
         const catalogue = { criteria: 3, accepted: true, unprovable: 0, named: 2, judgeWasBlind: false, requestUnread: false };
         expect(acceptanceBlocksDelivery({ ...catalogue, judgeWasBlind: true })).toBe(true);
         expect(acceptanceBlocksDelivery({ ...catalogue, unprovable: 1 })).toBe(true);
