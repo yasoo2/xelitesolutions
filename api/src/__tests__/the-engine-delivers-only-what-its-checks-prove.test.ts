@@ -142,6 +142,21 @@ function deps(model: EngineModel, tools: EngineTool[], verifier: Verifier = file
     return { d, registry: r.calls, browser: b.calls };
 }
 
+describe('the receipt says what the run did to each file', () => {
+    it('a file the run created and then edited is reported as created', async () => {
+        const dir = projectDir();
+        const { model } = scriptedModel([
+            { calls: [{ name: 'file_write', args: { path: 'index.html', content: '<h1>Hello</h1>' } }] },
+            { calls: [{ name: 'file_write', args: { path: 'index.html', content: '<h1>Hello</h1><button>Book</button>' } }] },
+            { calls: [{ name: 'task_finish', args: { summary: 'done' } }] },
+        ]);
+        const { d } = deps(model, [writeTool]);
+        const result = await runEngine(request(dir, []), d);
+        expect(result.status).toBe('delivered');
+        expect(result.filesChanged).toEqual([expect.objectContaining({ path: 'index.html', change: 'created' })]);
+    });
+});
+
 describe('the loop is done only when the checks pass', () => {
     it('a claim the checks refute goes back to the model, and the corrected work is delivered', async () => {
         const dir = projectDir();

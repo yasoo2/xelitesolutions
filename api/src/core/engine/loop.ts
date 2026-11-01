@@ -75,7 +75,12 @@ function firstLine(s: string): string {
 
 function absorbFacts(state: RunState, facts?: ToolFacts): void {
     if (!facts) return;
-    for (const f of facts.filesChanged ?? []) state.files.set(f.path, f);
+    for (const f of facts.filesChanged ?? []) {
+        //  A file this run created is still new to the project after later
+        //  edits; the receipt says created, not modified.
+        const before = state.files.get(f.path);
+        state.files.set(f.path, before?.change === 'created' && f.change === 'modified' ? { ...f, change: 'created' } : f);
+    }
     if (facts.command) state.commands.push(facts.command);
     if (facts.served) {
         const i = state.served.findIndex(p => p.name === facts.served!.name);
