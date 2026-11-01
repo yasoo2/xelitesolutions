@@ -262,6 +262,11 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
     const completedSource = objects.find(value => Number.isFinite(Number(value.completedPhases)));
     const honestBlocker = objects.some(value => value.honestBlocker === true || value.requiresUserDecision === true);
     const reviewerFindingsLost = taskReceipts.some((receipt: any) => receipt?.tool === 'code_reviewer' && receipt?.reviewerFindingsLost === true);
+    // The delivery verdict, from whichever engine measured it (the pipeline
+    // and the agent engine both state it at the top of their output), so
+    // the receipt says whether Joe's own checks verified the delivery.
+    const deliverySource = objects.find(value => typeof value.deliveryStatus === 'string' && typeof value.verified === 'boolean');
+    const firstError = String(deliverySource?.firstError || '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
     const extractionMiss = taskReceipts.length === 0 && !root && fidelityVerdict === null;
     const envelopeKeys = extractionMiss && source && typeof source === 'object'
         ? Object.keys(source).slice(0, 20)
@@ -276,6 +281,12 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
         selfFixReason: selfFixReason || undefined,
         completedPhases: completedSource?.completedPhases,
         honestBlocker,
+        ...(deliverySource ? {
+            verified: deliverySource.verified,
+            deliveryStatus: String(deliverySource.deliveryStatus).slice(0, 120),
+            partialDelivery: deliverySource.partialDelivery === true,
+            ...(firstError ? { firstError } : {}),
+        } : {}),
         ...(reviewerFindingsLost ? { reviewerFindingsLost: true, reportingDefect: 'reviewer_findings_lost' } : {}),
         ...(extractionMiss ? { extractionMiss: true, envelopeKeys } : {}),
         ...extra,

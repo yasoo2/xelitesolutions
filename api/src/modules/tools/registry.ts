@@ -365,6 +365,14 @@ import { engineBrowserTools } from './definitions/EngineBrowserTools';
 baseTools.push(...engineBrowserTools);
 // ── end engine: browser ──
 
+// ── engine: agent ──
+// The general agent engine's entry. AgentOrchestrator hands a build node
+// here when the run asks for the agent engine (core/engine/select.ts); the
+// tool assembles one run of core/engine/loop.ts over the engine_* tools.
+import { AgentEngineTool } from './definitions/AgentEngineTool';
+baseTools.push(AgentEngineTool);
+// ── end engine: agent ──
+
 /* ============================================================
    THE CONTRACT IS ENFORCED HERE, NOT HOPED FOR.
    ============================================================
