@@ -27,7 +27,8 @@ import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract, hasExplicitRecordSchema, requestedArtifactWithoutStockEngine } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor, type JudgedCriterion } from '../../../core/quality/acceptance';
 import { CAPABILITIES } from '../../../core/quality/scope-audit';
-import { namedRequirements, requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
+import { requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
+import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements } from '../../../core/quality/acceptance-gate';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
 import { askToAuthor, askForTheContract } from '../model-call-race';
 import { servedByLocalModel } from '../../../core/llm/served-local-selection';
@@ -316,66 +317,12 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
  *  follows a colon, readable by him and still parseable by them.
  */
 /**
- *  «acceptance_criteria_unmet» — AND WHICH ONES?
- *
- *  Measured on his screen one round after the visual-audit blocker was made
- *  to speak. The build got further, and stopped at:
- *
- *      Error: acceptance_criteria_unmet
- *
- *  The ledger knows exactly which criteria are unmet — it holds each one with
- *  its id and the evidence it could not find — and the error carried none of
- *  them. So he is told a judgement was made against him and not what it was,
- *  and the only way to learn it is to read a message that may be off-screen.
- *
- *  This is the same defect as the visual audit's, in the next layer down: a
- *  report that names the MECHANISM instead of the FINDING. Fixing one and
- *  leaving the other would be fixing the instance and not the class, which
- *  the third law forbids.
- *
- *  The ids come first because layers match on them, and a cap keeps a long
- *  ledger from turning one line into a page — with the remainder counted, so
- *  the number never lies about how much was left out.
+ *  The request reader and the acceptance blocking rule moved, unchanged, to
+ *  core/quality/acceptance-gate: the general agent engine judges a request by
+ *  the same reader and the same rule (map R5, C11). Every caller that imports
+ *  them from this file still can.
  */
-export function deliveryErrorForAcceptance(
-    criteria: Array<{ id: string; verdict: string }>,
-    max = 6,
-): string {
-    const id = 'acceptance_criteria_unmet';
-    const unmet = (criteria || []).filter(c => c && c.verdict === 'unmet').map(c => String(c.id));
-    if (!unmet.length) return id;
-    const shown = unmet.slice(0, max).join(', ');
-    const rest = unmet.length - Math.min(unmet.length, max);
-    return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
-}
-
-/**
- *  ⛔ NOTHING READ IS NOT NOTHING ASKED.
- *
- *  Eval round 15 (2026-10-24, P101): the request reader timed out, no clause
- *  survived, the catalogue knew no feature of «a REST API for a dental clinic
- *  with patients, appointments and treatments», and the ledger came back with
- *  ZERO criteria — which this gate read as nothing to block. A stock bookings
- *  API was delivered green for a request no one had read.
- *
- *  The two empty ledgers are told apart by the READER's own outcome, never by
- *  the text: the model answered and his sentence named nothing judgeable
- *  (today's behaviour), or no reading happened at all (`requestUnread`). The
- *  second is unverified, whatever the catalogue says — a known-features count
- *  over an unread request is diagnostic, not his contract.
- */
-export function acceptanceBlocksDelivery(a: {
-    criteria: number;
-    accepted: boolean;
-    unprovable: number;
-    named: number;
-    judgeWasBlind: boolean;
-    requestUnread: boolean;
-}): boolean {
-    if (a.requestUnread) return true;
-    return a.criteria > 0
-        && (!a.accepted || (a.named > 0 && (a.judgeWasBlind || a.unprovable > 0)));
-}
+export { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements };
 
 /**
  *  ⛔ ONE REQUIREMENT, TWO READERS, ONE VERDICT.
@@ -403,12 +350,6 @@ export function namedClauseCoversRule(named: { text: string }, ruleText: string)
     return rule.length >= 6 && clause.length >= 6 && (clause.includes(rule) || rule.includes(clause));
 }
 
-/** The delivery error when the request itself could not be read. */
-export function deliveryErrorForUnreadRequest(why: string): string {
-    const reason = String(why || '').trim();
-    return `acceptance_unverified: request_not_read${reason ? ` — ${reason.slice(0, 160)}` : ''}`;
-}
-
 /**
  *  The delivery error for capabilities the gate could not prove — carrying
  *  their names, as every blocker here does. A bare code reached the repair
@@ -417,65 +358,6 @@ export function deliveryErrorForUnreadRequest(why: string): string {
 export function deliveryErrorForMissingFeatures(features: string[]): string {
     const named = (features || []).map(f => String(f || '').trim()).filter(Boolean);
     return named.length ? `requested_features_not_proven: ${named.join(', ')}` : 'requested_features_not_proven';
-}
-
-/**
- *  READING HIS REQUEST — AND WHAT IS STILL READ WHEN THE READER FAILS.
- *
- *  The model reads the requirements. When it gets no answer, or the reader
- *  itself throws, the explicit clauses of his own sentence are still read
- *  deterministically before anything is called unread: a thrown reader used to
- *  skip that floor and go straight to «unread» (eval round 15).
- *  `requestUnread` is true only when no reading happened AND nothing was
- *  retained from his words — see acceptanceBlocksDelivery.
- */
-export async function readRequestRequirements(
-    request: string,
-    isArabic: boolean,
-    ask: (prompt: string) => Promise<string>,
-    term: (line: string) => void,
-    reader: typeof namedRequirements = namedRequirements,
-): Promise<{ named: NamedRequirement[]; whyNotRead: string; requestUnread: boolean; modelUnavailable: boolean }> {
-    let named: NamedRequirement[] = [];
-    let whyNotRead = '';
-    let modelUnavailable = false;
-    // The reader counts the passes the model actually answered.
-    let readerAnswered = false;
-    try {
-        const read = await reader(request, isArabic, ask);
-        readerAnswered = Number(read.passes) > 0;
-        named = read.requirements;
-        for (const r of read.rejected) {
-            term(`  refused «${r.text}»: ${r.reason}`);
-        }
-        if (read.rejected.some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
-            modelUnavailable = true;
-        }
-        if (!named.length) {
-            whyNotRead = !readerAnswered
-                ? String(read.rejected[0]?.reason || 'the model did not answer')
-                : read.rejected.length
-                    ? `the model named ${read.rejected.length}, and none survived the filters`
-                    : 'the model named nothing in this request';
-        }
-    } catch (e: any) {
-        modelUnavailable = true;
-        named = [];
-        whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
-        term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`);
-    }
-    if (!named.length) {
-        const deterministic = requirementsFromRequestClauses(request);
-        if (deterministic.length) {
-            named = deterministic;
-            whyNotRead = '';
-            term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
-        }
-    }
-    term(named.length
-        ? `read from your request: ${named.length} named — ${named.map(r => r.text).join(' · ')}`
-        : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
-    return { named, whyNotRead, requestUnread: !readerAnswered && !named.length, modelUnavailable };
 }
 
 /** What the install/build step actually did — the evidence the reporter needs. */

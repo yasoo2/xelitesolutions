@@ -325,12 +325,16 @@ describe('the repair stays inside the server it repairs', () => {
 
 describe('the pipeline measures the tests it was asked for', () => {
     const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf8');
-    const body = src.slice(src.indexOf('const measureRequestedRecords = async'), src.indexOf('const recordLiveAcceptance = async'));
+    // The measurement moved to the delivery run both engines share (core/quality/delivery-run).
+    const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf8');
+    const body = shared.slice(shared.indexOf('const measureRequestedRecords = async'), shared.indexOf('const recordLiveAcceptance = async'));
     it('reads the declared backend, probes exact paths, runs and requires the tests, and records what it could not measure', () => {
         expect(body).toContain('const backendRequested = backendRequestedFor(productRequest);');
         expect(body).toContain('paths: probePathsFor(evidence, ids)');
         expect(body).toMatch(/testsRun = await runRequestedTests\(testsRoot,/);
-        expect(body).toMatch(/deliveryRequired = Array\.from\(new Set<DeliveryInstrument>\(\[\.\.\.deliveryRequired, 'tests'\]\)\);/);
+        // The run asks for 'tests' to be required; the pipeline adds it to what its verdict requires.
+        expect(body).toMatch(/requireInstrument\('tests'\);/);
+        expect(src).toMatch(/requireInstrument: instrument => \{ deliveryRequired = Array\.from\(new Set<DeliveryInstrument>\(\[\.\.\.deliveryRequired, instrument\]\)\); \}/);
         expect(body).toMatch(/instrument: 'tests',/);
         expect(body).toMatch(/judgeRequestCoverage\(\{ records, evidence, probe, probeDetails, backendRequested, testsRun \}\)/);
         expect(body).toMatch(/unread: requestCoverage\.unread,\s+unverified,/);

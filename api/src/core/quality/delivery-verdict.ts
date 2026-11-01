@@ -21,8 +21,17 @@
  * tests: the project's own tests, RUN — required when the request asks for
  * tests («tested» used to be a word found in a test file, even in a skipped
  * one, and nothing ever executed the suite). Both round 20.
+ *
+ * The general agent engine's verifier (core/engine/verify.ts) judges projects
+ * no template wrote, and records three more — each under its own name, so no
+ * other instrument's forget() can erase it (recordLiveAcceptance forgets
+ * 'quality' when the live run fails):
+ * source: the source parses, and its JSX components and names are declared.
+ * build: the build the project owes ran and passed.
+ * acceptance: every requirement the request named was judged on the source,
+ * and the judgement does not block (core/quality/acceptance-gate).
  */
-export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'tests' | 'browser' | 'spec' | 'program' | 'service';
+export type DeliveryInstrument = 'live' | 'quality' | 'scope' | 'coverage' | 'tests' | 'browser' | 'spec' | 'program' | 'service' | 'source' | 'build' | 'acceptance';
 
 export interface DeliveryMeasurement {
     instrument: DeliveryInstrument;
@@ -102,7 +111,10 @@ export interface DeliveryVerdict {
     firstError: string;
 }
 
-const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'service', 'quality', 'coverage', 'tests', 'scope', 'browser', 'spec'];
+const PRIORITY: DeliveryInstrument[] = ['live', 'program', 'source', 'build', 'service', 'quality', 'coverage', 'tests', 'acceptance', 'scope', 'browser', 'spec'];
+
+/** The order failures are named in: the first failure in this order is the verdict's firstError. */
+export const DELIVERY_PRIORITY: readonly DeliveryInstrument[] = PRIORITY;
 
 export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const measurements = Array.isArray(input.measurements) ? input.measurements : [];

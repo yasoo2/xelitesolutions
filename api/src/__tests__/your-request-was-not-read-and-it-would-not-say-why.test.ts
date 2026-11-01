@@ -37,9 +37,11 @@ import { readRequestRequirements } from '../modules/tools/definitions/ReactProje
 const REACT = fs.readFileSync(
     path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf-8',
 );
+/** The reader moved, unchanged, to the acceptance gate both engines share (map R5, C11). */
+const GATE = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'acceptance-gate.ts'), 'utf-8');
 
 /** Code only — a guard must never match the comment that explains it. */
-const CODE = REACT.split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+const CODE = [REACT, GATE].join('\n').split('\n').filter(l => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
 
 /**
  * The model reading lives in one function since eval round 15 (a thrown reader
