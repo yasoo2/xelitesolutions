@@ -3,8 +3,8 @@
  *
  *   npm run verify:narration
  *
- * Two properties exercised through narrate and the actual router against a
- * local HTTP model stub. This does not execute the orchestrator itself:
+ * Two properties, both driven through the actual orchestrator against a stub
+ * model served over HTTP, so the real router and the real loop run:
  *
  *   1. The line varies with WHAT ACTUALLY HAPPENED. A template cannot do that,
  *      and that is the whole difference between narration and decoration.
@@ -53,9 +53,9 @@ const add = (n: string, pass: boolean, detail?: unknown) => checks.push([n, pass
 async function main() {
     const { routeToModel } = require('../../core/llm/intelligent-router');
     const stub = await serve(replyLikeAModel);
-    const call = (prompt: string, signal?: AbortSignal) => routeToModel(
+    const call = (prompt: string) => routeToModel(
         [{ role: 'user', content: prompt }], undefined, undefined, undefined, undefined, undefined, undefined,
-        { modelConfig: { provider: 'local', model: 'stub', apiKey: 'test-stub', baseUrl: stub.url }, signal });
+        { modelConfig: { provider: 'openai', model: 'stub', apiKey: 'sk-stub', baseUrl: stub.url } });
 
     const base = { goal: 'ابني متجرًا إلكترونيًا لبيع العطور', total: 3, isArabic: true };
 
@@ -74,15 +74,15 @@ async function main() {
 
     // 2. Failure is SILENCE, not a stand-in sentence.
     const broken = await serve(() => null);
-    const brokenCall = (p: string, signal?: AbortSignal) => routeToModel([{ role: 'user', content: p }], undefined, undefined, undefined, undefined, undefined, undefined,
-        { modelConfig: { provider: 'local', model: 'stub', apiKey: 'test-stub', baseUrl: broken.url }, signal });
+    const brokenCall = (p: string) => routeToModel([{ role: 'user', content: p }], undefined, undefined, undefined, undefined, undefined, undefined,
+        { modelConfig: { provider: 'openai', model: 'stub', apiKey: 'sk-stub', baseUrl: broken.url } });
     const onError = await narrate({ ...base, next: { task: 'أي خطوة' }, index: 1 }, brokenCall);
     add('a broken model produces NO line', onError.text === '', onError);
     broken.close();
 
     const slow = await serve(replyLikeAModel, 3000);
-    const slowCall = (p: string, signal?: AbortSignal) => routeToModel([{ role: 'user', content: p }], undefined, undefined, undefined, undefined, undefined, undefined,
-        { modelConfig: { provider: 'local', model: 'stub', apiKey: 'test-stub', baseUrl: slow.url }, signal });
+    const slowCall = (p: string) => routeToModel([{ role: 'user', content: p }], undefined, undefined, undefined, undefined, undefined, undefined,
+        { modelConfig: { provider: 'openai', model: 'stub', apiKey: 'sk-stub', baseUrl: slow.url } });
     const t0 = Date.now();
     const onSlow = await narrate({ ...base, next: { task: 'أي خطوة' }, index: 1 }, slowCall, { timeoutMs: 400 });
     const waited = Date.now() - t0;

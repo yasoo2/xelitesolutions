@@ -114,9 +114,6 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'project_run', purpose: 'start the built project and get a live URL' },
     { tool: 'deploy_project', purpose: 'build, start, or package the project locally for verification; use action build_static, start_server, or package by default. Never use expose_port or publish externally unless the user explicitly requests and approves an external deployment.' },
     { tool: 'mobile_builder', purpose: 'build the mobile application' },
-    { tool: 'visual_qa', purpose: 'analyze a screenshot or image file to provide UI/UX critique and code fixes using vision model' },
-    { tool: 'generate_image', purpose: 'generate an image from a text prompt using image generation model' },
-    { tool: 'bulk_file_generator', purpose: 'generate multiple files at once from a structured description' },
 ];
 
 /**
@@ -162,9 +159,6 @@ const MEANS: Record<string, string> = {
     documentation: 'doc_generator', readme: 'doc_generator', docs: 'doc_generator',
     'file system': 'write_file', fs: 'write_file', editor: 'file_edit', ide: 'file_edit',
     browser: 'browser_run', lighthouse: 'browser_ui_audit', accessibility: 'browser_ui_audit',
-    qa: 'visual_qa', screenshot: 'visual_qa', image: 'visual_qa', 'ui critique': 'visual_qa',
-    'generate image': 'generate_image', image_gen: 'generate_image', art: 'generate_image',
-    'bulk files': 'bulk_file_generator', scaffold: 'bulk_file_generator',
 };
 
 /**

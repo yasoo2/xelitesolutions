@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react';
+import React, { useState, useCallback, useEffect, useRef, Suspense, lazy } from 'react';
 import { logStamp, logTextFor } from '../lib/plainText';
 import { api } from '../services/apiClient';
 import { useTranslation } from 'react-i18next';
@@ -99,7 +99,6 @@ interface JoeIDELayoutProps {
     branch?: string;
 
     // Custom content
-    screenshotRefreshKey?: number;
     chatChildren?: React.ReactNode; // For CommandComposer
     workspaceChildren?: React.ReactNode;
     children?: React.ReactNode;
@@ -155,7 +154,6 @@ export default function JoeIDELayout({
     branch = 'main',
 
     // Custom content
-    screenshotRefreshKey,
     chatChildren,
     workspaceChildren,
     children,
@@ -191,34 +189,6 @@ export default function JoeIDELayout({
     // Handle initial mobile state for chat
     const [wasMobileInitChecked, setWasMobileInitChecked] = useState(false);
     const [isMobile, setIsMobile] = useState(() => typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
-    const layoutRef = useRef<HTMLDivElement>(null);
-    const [commandClearance, setCommandClearance] = useState(0);
-    // The mobile canvas must leave the existing composer (including Stop)
-    // reachable. Measure its real height instead of assuming one input line.
-    useLayoutEffect(() => {
-        const layout = layoutRef.current;
-        const composer = layout?.querySelector<HTMLElement>('.joe-chat-input-area');
-        if (!isMobile || isChatCollapsed || !layout || !composer) {
-            setCommandClearance(0);
-            return;
-        }
-        const measure = () => {
-            const rect = composer.getBoundingClientRect();
-            const clearance = rect.height > 0 ? Math.max(0, Math.ceil(window.innerHeight - rect.top)) : 0;
-            setCommandClearance(previous => previous === clearance ? previous : clearance);
-        };
-        measure();
-        const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
-        observer?.observe(composer);
-        observer?.observe(layout);
-        window.addEventListener('resize', measure);
-        window.visualViewport?.addEventListener('resize', measure);
-        return () => {
-            observer?.disconnect();
-            window.removeEventListener('resize', measure);
-            window.visualViewport?.removeEventListener('resize', measure);
-        };
-    }, [isMobile, isChatCollapsed, sessionId]);
 
     useEffect(() => {
         if (!wasMobileInitChecked && typeof window !== 'undefined') {
@@ -802,8 +772,7 @@ export default function JoeIDELayout({
     const activeBrowserSessionId = browserSessionId; // Assuming browserSessionId is the active one
 
     return (
-        <div ref={layoutRef} className="joe-ide-layout" data-theme={theme}
-            style={{ '--joe-command-clearance': `${commandClearance}px` } as React.CSSProperties}>
+        <div className="joe-ide-layout" data-theme={theme}>
             {/* Header */}
             <JoeHeader
 
@@ -842,7 +811,6 @@ export default function JoeIDELayout({
                         isLoading={isLoading}
                         isCollapsed={isChatCollapsed}
                         sessionId={sessionId}
-                        screenshotRefreshKey={screenshotRefreshKey}
                     >
                         {chatChildren}
                     </ChatPanel>
@@ -913,7 +881,6 @@ export default function JoeIDELayout({
                     <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
                         {sidebarView === 'explorer' ? (
                             <FileExplorerPanel
-                                sessionId={sessionId}
                                 onNewFile={onNewFile}
                                 onNewFolder={onNewFolder}
                                 onGitChanges={handleGitChanges}

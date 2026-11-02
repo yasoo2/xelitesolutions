@@ -7,7 +7,6 @@ import { API_URL } from '../config';
 import { GitHubRepo, GitHubUser } from '../services/githubService';
 
 interface FileExplorerPanelProps {
-    sessionId?: string;
     onNewFile?: () => void;
     onNewFolder?: () => void;
     onGitChanges?: () => void;
@@ -19,7 +18,6 @@ interface FileExplorerPanelProps {
 }
 
 export default function FileExplorerPanel({
-    sessionId,
     onNewFile,
     onNewFolder,
     onGitChanges,
@@ -191,7 +189,6 @@ export default function FileExplorerPanel({
             {/* File Tree */}
             <div className="joe-files-content" style={{ position: 'relative' }}>
                 <EliteFileExplorer
-                    sessionId={sessionId}
                     activeRepo={activeRepo}
                     githubUser={githubUser}
                     ref={(ref: any) => {

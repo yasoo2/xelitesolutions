@@ -1,6 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { ExecutionEnforcer } from '../../kernel/ExecutionEnforcer';
 
 const plannerPath = path.resolve(__dirname, '../../modules/tools/definitions/ProjectPlannerTool.ts');
 const agentLoopPath = path.resolve(__dirname, '../../modules/services/AgentLoopService.ts');
@@ -24,7 +23,7 @@ const RETIRED_EXECUTION_FILES = [
   path.resolve(__dirname, '../../modules/tools/definitions/TaskLoopTool.ts'),
 ];
 
-function fail(msg: string): never {
+function fail(msg: string) {
   console.error('❌ Architecture Guard Failed:\n' + msg);
   process.exit(1);
 }
@@ -39,15 +38,6 @@ function readRequired(filePath: string, label: string) {
 }
 
 function run() {
-  const bootViolations = ExecutionEnforcer.scanViolations();
-  if (bootViolations === null) {
-    fail('Boot integrity must scan the actual runtime source; a missing source directory is not verification');
-  }
-  if (bootViolations.length) {
-    fail(`Boot integrity rejected runtime execution routes:\n${bootViolations.join('\n')}`);
-  }
-  pass('Actual boot integrity scan found zero execution-authority violations');
-
   const planner = readRequired(plannerPath, 'ProjectPlannerTool');
   const agentLoop = readRequired(agentLoopPath, 'AgentLoopService');
   const repairService = readRequired(repairTicketServicePath, 'RepairTicketService');

@@ -1,29 +1,6 @@
 import OpenAI from 'openai';
-import { isManagedOllamaEndpoint, managedOllamaChat } from './managed-ollama-chat';
-import { requestResourceManager } from '../../resources/RequestResourceManager';
-
-export function localReasoningOptions(model: string, baseUrl: string, effort?: 'none'): { reasoning_effort?: 'none' } {
-    const noThinking = effort === 'none' || (effort === undefined && String(process.env.LOCAL_LLM_REASONING_EFFORT || '').trim() === 'none');
-    if (!noThinking || !/^qwen3(?:\.5)?(?::[a-z0-9][a-z0-9._-]*)?$/i.test(model)) return {};
-    const raw = String(baseUrl || '').trim();
-    // Only the explicit canonical local Ollama endpoint supports this opt-in.
-    if (!/^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\]):11434(?:\/(?:v1\/?)?)?$/i.test(raw)) return {};
-    try {
-        const endpoint = new URL(raw);
-        if (endpoint.protocol !== 'http:' || endpoint.port !== '11434'
-            || endpoint.username || endpoint.password || endpoint.search || endpoint.hash
-            || !['/', '/v1', '/v1/'].includes(endpoint.pathname)) return {};
-        return { reasoning_effort: 'none' };
-    } catch { return {}; }
-}
 
 export class LocalProvider {
-    private assertComplete(reason: unknown): void {
-        if (reason === 'length') {
-            throw Object.assign(new Error('local_completion_limit_exceeded'), { code: 'LOCAL_COMPLETION_LIMIT' });
-        }
-    }
-
     private baseUrl(): string | null {
         const raw = String(process.env.LOCAL_LLM_BASE_URL || '').trim();
         if (!raw) return null;
@@ -51,10 +28,6 @@ export class LocalProvider {
         return k || 'dummy';
     }
 
-    private reasoningOptions(model: string, effort?: 'none'): { reasoning_effort?: 'none' } {
-        return localReasoningOptions(model, String(process.env.LOCAL_LLM_BASE_URL || '').trim(), effort);
-    }
-
     isConfigured(): boolean {
         return !!this.baseUrl();
     }
@@ -64,43 +37,19 @@ export class LocalProvider {
         model?: string,
         onDelta?: (delta: string) => void,
         signal?: AbortSignal,
-        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none' },
+        options?: { maxCompletionTokens?: number },
     ): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
-        if (isManagedOllamaEndpoint(baseURL)) {
-            const result = await managedOllamaChat({
-                baseURL, model: model || this.model(), messages, onDelta, signal,
-                timeoutMs: this.timeoutMs(), maxCompletionTokens: options?.maxCompletionTokens,
-                reasoningEffort: options?.reasoningEffort === 'none'
-                    || (options?.reasoningEffort === undefined && String(process.env.LOCAL_LLM_REASONING_EFFORT || '').trim() === 'none') ? 'none' : undefined,
-            });
-            return result.content;
-        }
-        // Generic compatible servers have no portable context-size parameter.
-        // Admission serializes their work without pretending to resize the model.
-        return requestResourceManager.withHeavy(
-            () => this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options),
-            { kind: 'compatible-local-inference', signal },
-        );
-    }
-
-    private timeoutMs(): number {
-        const timeout = Number.parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
-        return Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 300_000) : 180_000;
-    }
-
-    private async chatCompleteCompatible(
-        messages: any[], model?: string, onDelta?: (delta: string) => void, signal?: AbortSignal,
-        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none' },
-    ): Promise<string> {
-        const baseURL = this.baseUrl()!;
 
         // Local CPU inference of a 7-8B model — especially the first (cold) request
         // that loads the model into RAM — easily exceeds 20s. Use a generous timeout
         // (override with LOCAL_LLM_TIMEOUT ms) and no retries so Joe waits for the
         // local brain instead of aborting and falling back to a weaker provider.
-        const timeoutMs = this.timeoutMs();
+        const timeoutMs = (() => {
+            const t = parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
+            return Number.isFinite(t) && t > 0 ? t : 180000;
+        })();
         const maxCompletionTokens = Number(options?.maxCompletionTokens) > 0
             ? Math.min(12000, Math.floor(Number(options?.maxCompletionTokens)))
             : undefined;
@@ -113,6 +62,10 @@ export class LocalProvider {
         });
 
         const mapped = messages.map(m => ({ role: m.role, content: m.content })) as any;
+        // keep_alive: -1 tells Ollama to keep the model resident in RAM instead of
+        // unloading it after ~5 min idle — so the SECOND and later requests skip the
+        // slow cold-load. Harmless on non-Ollama OpenAI servers (ignored).
+
         // STREAMING PATH: when a delta callback is given, stream tokens as the model
         // produces them (Ollama/OpenAI-compatible `stream:true`) so the panel shows the
         // agent "thinking" live. We still return the full accumulated text at the end,
@@ -122,13 +75,12 @@ export class LocalProvider {
                 const stream = await client.chat.completions.create({
                     model: model || this.model(),
                     messages: mapped,
-                    ...this.reasoningOptions(model || this.model(), options?.reasoningEffort),
+                    keep_alive: -1,
                     ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
                     stream: true,
                 } as any, { timeout: timeoutMs, signal }) as any;
                 let full = '';
                 for await (const chunk of stream) {
-                    this.assertComplete(chunk?.choices?.[0]?.finish_reason);
                     const piece = chunk?.choices?.[0]?.delta?.content || '';
                     if (piece) { full += piece; try { onDelta(piece); } catch { /* panel optional */ } }
                 }
@@ -138,18 +90,17 @@ export class LocalProvider {
                 // Streaming unsupported/failed — fall back to a single blocking call below.
                 // An aborted request must not fall through to a second request: that
                 // is how cancelled local calls accumulated behind a slow Ollama model.
-                if (signal?.aborted || (error as any)?.code === 'LOCAL_COMPLETION_LIMIT') throw error;
+                if (signal?.aborted) throw error;
             }
         }
 
         const completion = await client.chat.completions.create({
             model: model || this.model(),
             messages: mapped,
-            ...this.reasoningOptions(model || this.model(), options?.reasoningEffort),
+            keep_alive: -1,
             ...(maxCompletionTokens ? { max_tokens: maxCompletionTokens } : {}),
         } as any, { timeout: timeoutMs, signal });
 
-        this.assertComplete(completion.choices[0]?.finish_reason);
         return completion.choices[0]?.message?.content || '';
     }
 }
