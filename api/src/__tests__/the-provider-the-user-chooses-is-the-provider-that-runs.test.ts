@@ -61,14 +61,23 @@ describe('the engine runs on the provider the user chose', () => {
 
     it('a provider chosen without any key is refused, naming the key, never swapped for another', () => {
         const refused: any = engineModelChoiceFor({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'free-mode' }, DEPLOY);
-        expect(refused.error).toMatch(/groq was chosen, but no key for it was given and the server has no GROQ_API_KEY/);
+        expect(refused.error).toMatch(/groq was chosen, but no key for it was given\. groq serves its models only with a key/);
     });
 
     it('a provider chosen with a key, the user\'s or the server\'s, runs on that provider and model', () => {
         expect(engineModelChoiceFor({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'gsk_users_own' }, DEPLOY))
             .toMatchObject({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'gsk_users_own' });
-        expect(engineModelChoiceFor({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'free-mode' }, { ...DEPLOY, GROQ_API_KEY: 'gsk_server' }))
-            .toMatchObject({ provider: 'groq', apiKey: 'gsk_server' });
+        //  The server's own key is the operator's money: it runs only where the
+        //  cost policy lets the server spend it (the router's rule, 2026-11-02).
+        const policy = process.env.AI_FREE_PROVIDERS;
+        try {
+            delete process.env.AI_FREE_PROVIDERS;
+            expect(engineModelChoiceFor({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'free-mode' }, { ...DEPLOY, GROQ_API_KEY: 'gsk_server' }))
+                .toMatchObject({ error: expect.stringContaining('serves its models only with a key') });
+            process.env.AI_FREE_PROVIDERS = 'groq';
+            expect(engineModelChoiceFor({ provider: 'groq', model: 'llama-3.3-70b-versatile', apiKey: 'free-mode' }, { ...DEPLOY, GROQ_API_KEY: 'gsk_server' }))
+                .toMatchObject({ provider: 'groq', apiKey: 'gsk_server' });
+        } finally { if (policy === undefined) delete process.env.AI_FREE_PROVIDERS; else process.env.AI_FREE_PROVIDERS = policy; }
     });
 });
 

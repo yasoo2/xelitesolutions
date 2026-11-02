@@ -27,6 +27,7 @@
  */
 import { managedOllamaChat, managedContextCeilingTokens, isManagedOllamaEndpoint } from '../llm/providers/managed-ollama-chat';
 import { routeToModel, isProviderFailure } from '../llm/intelligent-router';
+import { isKeyedVendor, providerAllowedByCost, serverKeyFor } from '../llm/provider-continuity';
 import { readModelTurn, withoutReasoning } from './toolcalls';
 import { anthropicModel, anthropicSettings, anthropicTextAsk, claudeAccount, CLAUDE_MODELS } from './anthropic';
 import type { ChatMessage, EngineModel, ModelStep, ToolSchema } from './types';
@@ -42,10 +43,6 @@ export interface ModelChoice {
     contextTokens?: number;
 }
 
-const PROVIDER_KEY_ENV: Record<string, string> = {
-    groq: 'GROQ_API_KEY', gemini: 'GEMINI_API_KEY', openrouter: 'OPENROUTER_API_KEY', cerebras: 'CEREBRAS_API_KEY',
-    mistral: 'MISTRAL_API_KEY', deepseek: 'DEEPSEEK_API_KEY', openai: 'OPENAI_API_KEY',
-};
 
 function positiveInt(v: string | undefined): number | undefined {
     const n = Number(v);
@@ -76,9 +73,8 @@ export function engineModelChoice(env: NodeJS.ProcessEnv = process.env): ModelCh
     if (named && named !== 'local') {
         const model = String(env.JOE_ENGINE_MODEL || '').trim();
         if (!model) return { error: `JOE_ENGINE_PROVIDER is ${named} but JOE_ENGINE_MODEL is empty.` };
-        const keyName = PROVIDER_KEY_ENV[named];
-        const apiKey = keyName ? String(env[keyName] || '').trim() : '';
-        if (keyName && !apiKey) return { error: `JOE_ENGINE_PROVIDER is ${named} but ${keyName} is not set.` };
+        const apiKey = isKeyedVendor(named) ? serverKeyFor(named, env) : '';
+        if (isKeyedVendor(named) && !apiKey) return { error: `JOE_ENGINE_PROVIDER is ${named} but the server has no key for it.` };
         return { provider: named, model, apiKey: apiKey || undefined, baseUrl: env.JOE_ENGINE_BASE_URL || undefined, reasoning, vision: vision ?? false, contextTokens };
     }
     const model = String(env.JOE_ENGINE_MODEL || env.LOCAL_LLM_MODEL || '').trim();
@@ -132,11 +128,14 @@ export function engineModelChoiceFor(modelConfig: any, env: NodeJS.ProcessEnv = 
         }
         return { provider: 'anthropic', model: model || CLAUDE_MODELS[0], apiKey: realKey || 'server-key', reasoning, vision: true };
     }
-    const keyName = PROVIDER_KEY_ENV[provider];
-    const apiKey = realKey || (keyName ? String(env[keyName] || '').trim() : '');
+    //  The server's own key for the vendor, only where the cost policy lets
+    //  the server spend it: the router's rule (provider-continuity.ts).
+    const baseUrl = String(modelConfig?.baseUrl || '').trim();
+    const serverKey = !realKey && providerAllowedByCost(provider, model, baseUrl) ? serverKeyFor(provider, env) : '';
+    const apiKey = realKey || serverKey;
     if (!model) return { error: `${provider} was chosen without a model name.` };
     if (!apiKey) {
-        return { error: `${provider} was chosen, but no key for it was given${keyName ? ` and the server has no ${keyName}` : ''}. Add the key in the provider settings, or choose Auto.` };
+        return { error: `${provider} was chosen, but no key for it was given. ${provider} serves its models only with a key: add yours in the provider settings, or choose Auto, which is free.` };
     }
     return { provider, model, apiKey, baseUrl: String(modelConfig?.baseUrl || '').trim() || undefined, reasoning, vision: false };
 }

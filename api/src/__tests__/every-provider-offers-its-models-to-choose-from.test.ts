@@ -38,7 +38,8 @@ describe('the models each provider offers', () => {
     it('a provider with a key is asked for its own list, and the key stays on the server', async () => {
         const { fn, seen } = fakeFetch({ 'https://api.groq.com/openai/v1/models': { body: { data: [{ id: 'llama-3.3-70b-versatile' }, { id: 'gemma2-9b-it' }] } } });
         const out = await providerModels({ provider: 'groq', apiKey: 'gsk_typed_by_user' }, { fetch: fn, env: {} });
-        expect(out).toEqual({ models: ['gemma2-9b-it', 'llama-3.3-70b-versatile'], source: 'live' });
+        //  The vendor's recommended models come first (provider-models.ts SUGGESTED), the rest after.
+        expect(out).toEqual({ models: ['llama-3.3-70b-versatile', 'gemma2-9b-it'], source: 'live' });
         expect(seen[0].auth).toBe('Bearer gsk_typed_by_user');
         expect(JSON.stringify(out)).not.toMatch(/gsk_typed_by_user/);
     });

@@ -117,7 +117,8 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
     if (typeof userId !== 'string' || !userId.trim()) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const { provider, apiKey, baseUrl, model } = req.body || {};
+    //  The body is read once: `light` travels with the rest.
+    const { provider, apiKey, baseUrl, model, light } = req.body || {};
     try {
         // HONEST verify: test the SPECIFIC provider, never the whole free mesh — so a
         // green dot means THAT provider actually answered, and a key-required provider
@@ -138,7 +139,7 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
             //  the key must list the chosen model (Anthropic's Models API).
             //  Credit is proved by the real call Connect makes, and a run that
             //  finds none says so (MODEL_BILLING).
-            if (req.body?.light === true) {
+            if (light === true) {
                 const account = await claudeAccount(String(apiKey || '').trim());
                 if ('error' in account) return res.status(200).json({ ok: false, code: 'MODEL_AUTH', error: account.error, provider });
                 try {
@@ -159,9 +160,11 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
             }
         }
         const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
-        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model });
+        //  `light`: the check every page load makes lists the models (free);
+        //  Connect makes one real call. The code is what the interface words.
+        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model, ...(light === true ? { light: true } : {}) });
         if (!result.ok) {
-            return res.status(200).json({ ok: false, error: result.detail || 'empty_response', provider });
+            return res.status(200).json({ ok: false, ...(result.code ? { code: result.code } : {}), error: result.detail || 'empty_response', provider });
         }
         return res.json({ ok: true, provider, detail: result.detail });
     } catch (e: any) {

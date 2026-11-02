@@ -896,21 +896,20 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             .toContain('if (isDirectAnswer && !isProviderFailure(result.error))');
     });
 
-    it('a spent daily quota is announced, and the button really moves', () => {
-        // Joe already survived a spent quota by moving to the free/local mesh —
-        // silently. The provider button went on showing the dead provider, so
-        // the user could not tell why answers changed, and every new run asked
-        // for a quota that was gone. Proven live against a real 429 in
-        // verify_quota_switch.ts; locked here so the three halves stay together.
+    it('a spent quota on the chosen provider is said in his session, and his choice stays', () => {
+        // 2026-11-02, the owner: Joe runs on the model he chose. A spent quota
+        // used to move Joe to the free mesh and broadcast `provider_quota`
+        // with no session, so every connected user's button moved to Auto.
+        // Now the light in HIS session turns red with the reason and the time
+        // it returns, and nothing swaps the brain (behaviour proven in
+        // the-chosen-provider-is-the-brain-of-the-whole-run.test.ts).
         const router = SRC('core', 'llm', 'intelligent-router.ts');
-        expect(router).toContain('announceQuotaSwitch(routeKey, cfgProvider, cfgModel, waitMs)');
-        expect(router).toContain("type: 'provider_quota'");
-        expect(router).toMatch(/const last = quotaAnnounced\.get\(routeKey\)/);   // once per window
+        expect(router).not.toContain("type: 'provider_quota'");
+        expect(router).toContain("refuseChosen('PROVIDER_QUOTA'");
+        expect(SRC('core', 'llm', 'run-model-choice.ts')).toContain("type: 'provider_status', sessionId");
         const composer = WEB('components', 'CommandComposer.tsx');
-        expect(composer).toContain("msg.type === 'provider_quota'");
-        expect(composer).toContain('setActiveProvider(target)');
-        expect(composer).toContain('setSelectedProvider(target)');
-        expect(composer).toContain("localStorage.setItem('active_provider', target)");
+        expect(composer).toContain("msg.type === 'provider_status'");
+        expect(composer).not.toContain("msg.type === 'provider_quota'");
     });
 
     it('independent steps run together — but never the ones sharing a live resource', () => {
@@ -1668,8 +1667,10 @@ describe('the provider button says its name', () => {
         // An older build wrote a translated HINT into `name`; the saved blob was
         // merged over the defaults, so «ضع مفتاح gsk هنا Groq» survived every
         // update. Settings are the user's; identity is the code's.
-        expect(C).toMatch(/const \{ name, nameKey, tagKey, \.\.\.userOwned \}/);
+        //  2026-11-02: free or paid is identity too — DeepSeek was cached «free».
+        expect(C).toMatch(/const \{ name, nameKey, tagKey, isFree, \.\.\.userOwned \}/);
         expect(C).toMatch(/name: DEFAULT_PROVIDERS\[k\]\.name/);
+        expect(C).toMatch(/isFree: DEFAULT_PROVIDERS\[k\]\.isFree/);
         expect(C).toMatch(/DEFAULT_PROVIDERS\[activeProvider\]\?\.name/);
     });
 

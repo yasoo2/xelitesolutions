@@ -785,18 +785,6 @@ interface ProviderConfig {
   serverKeyChosen?: boolean;
 }
 
-// OpenRouter available models
-const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descriptionKey: string }> = [
-  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, descriptionKey: 'modelKimiDesc' },
-  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, descriptionKey: 'modelLlamaDesc' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, descriptionKey: 'modelGemmaDesc' },
-  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, descriptionKey: 'modelMinimaxDesc' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, descriptionKey: 'modelDeepseekDesc' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, descriptionKey: 'modelGpt4oMiniDesc' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, descriptionKey: 'modelGpt4oDesc' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
-];
-
 // The Claude models Joe runs, cheapest first: the server keeps the same list
 // (core/engine/anthropic.ts CLAUDE_MODELS) with a checked price for each. The
 // panel shows the models the user's own account offers (POST /runs/models,
@@ -821,6 +809,16 @@ const CLAUDE_ERROR_KEYS: Record<string, string> = {
   MODEL_NOT_RUN: 'provClaudeErrModel', ENGINE_BUDGET_EXHAUSTED: 'provClaudeErrBudget', PROVIDER_FAILURE: 'provClaudeErrDown',
 };
 
+// Why the chosen provider stopped a run, in the user's language (run-model-choice.ts codes).
+const PROVIDER_STATUS_REASON: Record<string, string> = {
+  PROVIDER_NEEDS_KEY: 'cc_provReasonNeedsKey',
+  PROVIDER_AUTH: 'cc_provReasonAuth', PROVIDER_BILLING: 'cc_provReasonBilling', PROVIDER_QUOTA: 'cc_provReasonQuota',
+  PROVIDER_MODEL: 'cc_provReasonModel', PROVIDER_DOWN: 'cc_provReasonDown', PROVIDER_COOLING: 'cc_provReasonDown',
+  PROVIDER_BUDGET: 'cc_provReasonBudget', PROVIDER_UNSUPPORTED: 'cc_provReasonUnsupported',
+};
+// The router's spellings of a provider, as the panel's keys.
+const PROVIDER_STATUS_KEY: Record<string, string> = { claude: 'anthropic', google: 'gemini', xai: 'grok' };
+
 /** What the server's engine really runs on (GET /runs/engine). */
 interface EngineInfo {
   engine: 'agent' | 'legacy';
@@ -835,21 +833,39 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
   // The SDK requires a nonempty key; Ollama ignores this public sentinel.
   local: { name: 'Local', nameKey: 'cc_provLocal', labelKey: 'cc_provLocal', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
-  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
+  // ⛔ NO VENDOR IS «CONNECTED» WITHOUT A KEY. These six were marked connected
+  // with the placeholder 'free-mode', and the server ran a placeholder as Auto:
+  // «DeepSeek» answered from the free mesh. Measured 2026-11-02 against the
+  // vendors, every one answers 401/400/403 without a key. The «free» ones give
+  // a FREE key (the panel links to it); Auto is the only thing that needs none.
+  // The default models are the vendors' current ones: the old defaults
+  // (gemini-2.0-flash, Cerebras' llama-3.3-70b, kimi-k2:free, deepseek-chat,
+  // grok-beta) are retired, and a retired model never turns green.
+  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: '', isConnected: false, model: 'gemini-3.8-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
-  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
-  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
-  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
-  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
-  deepseek: { name: 'DeepSeek', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-4o' },
+  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: '', isConnected: false, baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', isFree: true },
+  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: '', isConnected: false, baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b', isFree: true },
+  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-4-31b-it:free', isFree: true },
+  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
+  deepseek: { name: 'DeepSeek', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'deepseek-flash', isCustom: true },
+  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-6-luna' },
   anthropic: { name: 'Claude', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-haiku-5-5' },
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
-  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-4.7' },
 };
 
+/** Defaults the vendors have retired: a saved one is moved to the current default. */
+const RETIRED_DEFAULT_MODELS: Record<string, string[]> = {
+  gemini: ['gemini-2.0-flash'], groq: ['qwen/qwen3-32b'],
+  cerebras: ['llama-3.3-70b', 'llama3.1-8b', 'qwen-3-32b'], openrouter: ['moonshotai/kimi-k2:free', 'google/gemma-2-9b-it:free', 'meta-llama/llama-3-8b-instruct:free'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'], grok: ['grok-beta', 'grok-3', 'grok-3-mini'],
+};
+/** What the panel once stored where no key was typed. It is not a key. */
+const PLACEHOLDER_KEY = /^(?:free-mode|auto-mode|free|dummy)$/;
+
 // Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
-//  - 'keyless'  : works with NO key at all (DeepSeek via the Pollinations proxy).
+//  - 'keyless'  : works with NO key at all. No vendor in the menu does (measured
+//                 2026-11-02); DeepSeek was labelled so while another model answered.
 //  - 'optional' : keyless-capable but a personal key raises speed/limits.
 //  - 'required' : the FREE tier still needs a FREE key to work — the earlier UI
 //                 wrongly said "no key needed", which is why these felt "fake".
@@ -857,7 +873,7 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
 type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
 const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder?: string; placeholderKey?: string }> = {
   groq: { need: 'required', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
-  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
+  deepseek: { need: 'paid', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholder: 'sk-...' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
   mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholderKey: 'keyPlaceholderMistral' },
@@ -1090,6 +1106,8 @@ export default function CommandComposer({
     reason?: { code: string; status?: number }; names?: Record<string, string>; unsupported?: string[];
   }>>({});
   const [customModel, setCustomModel] = useState<Record<string, boolean>>({});
+  const customModelRef = useRef(customModel);
+  customModelRef.current = customModel;
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
@@ -1113,13 +1131,21 @@ export default function CommandComposer({
            * The user's own settings (key, model, baseUrl) are theirs to keep;
            * identity is ours, and it is restored on every load.
            */
-          const { name, nameKey, tagKey, ...userOwned } = (parsed[k] || {}) as any;
+          const { name, nameKey, tagKey, isFree, ...userOwned } = (parsed[k] || {}) as any;
           baseProviders[k] = {
             ...baseProviders[k], ...userOwned,
             name: DEFAULT_PROVIDERS[k].name,
             nameKey: DEFAULT_PROVIDERS[k].nameKey,
             tagKey: DEFAULT_PROVIDERS[k].tagKey,
+            // Free or paid is the vendor's, not the cache's: DeepSeek was saved «free».
+            isFree: DEFAULT_PROVIDERS[k].isFree,
           };
+          if (k !== 'auto' && k !== 'local' && PLACEHOLDER_KEY.test(String(baseProviders[k].apiKey || ''))) {
+            baseProviders[k] = { ...baseProviders[k], apiKey: '' };
+          }
+          if ((RETIRED_DEFAULT_MODELS[k] || []).includes(String(baseProviders[k].model || ''))) {
+            baseProviders[k] = { ...baseProviders[k], model: DEFAULT_PROVIDERS[k].model };
+          }
         });
       }
       // Claude is paid, so the server's key is used only when the user asks for
@@ -1147,7 +1173,11 @@ export default function CommandComposer({
       const savedActive = localStorage.getItem('active_provider');
       console.log('[ProviderDebug] Loaded active_provider:', savedActive);
 
-      if (savedActive && baseProviders[savedActive]) {
+      // A vendor saved as active with no key ran on the free mesh all along,
+      // under its name. It is Auto now, honestly; his key brings it back.
+      const keyOf = (k: string) => String(baseProviders[k]?.apiKey || '').trim();
+      const runnable = (k: string) => k === 'auto' || k === 'local' || !!keyOf(k);
+      if (savedActive && baseProviders[savedActive] && runnable(savedActive)) {
         return { providers: baseProviders, activeProvider: savedActive };
       }
       return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
@@ -1193,7 +1223,7 @@ export default function CommandComposer({
   // its own list with the key (the key stays on the server) and says when the
   // list is only suggestions. Asked again when the provider or its key changes:
   // pasting a Claude key lists the models that account offers.
-  const pickerProvider = showProviders && selectedProvider && !['auto', 'openrouter'].includes(selectedProvider) ? selectedProvider : '';
+  const pickerProvider = showProviders && selectedProvider && selectedProvider !== 'auto' ? selectedProvider : '';
   const pickerKey = pickerProvider ? String(providers[pickerProvider]?.apiKey || '') : '';
   const pickerBaseUrl = pickerProvider ? String(providers[pickerProvider]?.baseUrl || '') : '';
   useEffect(() => {
@@ -1213,10 +1243,12 @@ export default function CommandComposer({
           setModelLists(prev => ({ ...prev, [pickerProvider]: list && Array.isArray(list.models)
             ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false, reason: list.reason, names: list.names, unsupported: list.unsupported }
             : { models: [], source: 'catalog', note: undefined, loading: false } }));
-          // A Claude model the account does not offer is replaced by the first it does.
-          if (pickerProvider === 'anthropic' && list?.source === 'live' && list.models?.length) {
-            setProviders(prev => (list.models.includes(String(prev.anthropic?.model || '')) ? prev
-              : { ...prev, anthropic: { ...prev.anthropic, model: list.models[0], isConnected: false, verified: false, lastError: undefined } }));
+          // A model the provider does not offer is replaced by the first it does
+          // (its recommended one: the server lists those first). A model typed
+          // by hand is his to keep.
+          if (list?.source === 'live' && list.models?.length) {
+            setProviders(prev => (list.models.includes(String(prev[pickerProvider]?.model || '')) || customModelRef.current[pickerProvider] ? prev
+              : { ...prev, [pickerProvider]: { ...prev[pickerProvider], model: list.models[0], isConnected: false, verified: false, lastError: undefined } }));
           }
         })
         .catch(() => { if (alive) setModelLists(prev => ({ ...prev, [pickerProvider]: { models: [], source: 'catalog', loading: false } })); });
@@ -2035,38 +2067,32 @@ export default function CommandComposer({
         }
       }
 
-      // THE DAY'S QUOTA RAN OUT — AND THE BUTTON STILL SAID OTHERWISE.
-      // When the chosen provider hits its daily limit Joe keeps working on the
-      // free/local mesh, but the provider button went on showing the dead
-      // provider: the user could not tell why answers changed character, and
-      // every new run still asked for a quota that was gone. The switch is made
-      // HERE, for real — the button moves to «تلقائي» and the reason is said
-      // once, in the conversation, in the user's own language.
-      if (msg.type === 'provider_quota') {
+      // THE PROVIDER HE CHOSE DID NOT ANSWER — AND IT STAYS HIS CHOICE.
+      // Joe no longer swaps in another model (the server waits a short limit
+      // out on the same provider, or stops). The light turns red with the
+      // reason, the button keeps his choice, and the reason is said once in
+      // the conversation, in his language. The old `provider_quota` event
+      // moved the button to Auto, and it reached every connected user.
+      if (msg.type === 'provider_status') {
         const d: any = msg?.data || {};
-        const target = String(d.switchTo || 'auto');
-        setActiveProvider(target);
-        setSelectedProvider(target);
-        try { localStorage.setItem('active_provider', target); } catch { /* private mode */ }
-        const noticeId = `quota:${d.provider || ''}:${d.until || Date.now()}`;
-        // The server's `message` is one fixed Arabic sentence; the same facts
-        // arrive as fields, so the sentence is said here in the user's language.
-        const quotaProvider = String(d.provider || '').trim();
-        const quotaModel = String(d.model || '').trim();
-        const quotaMinutes = Number(d.minutes);
-        const quotaText = quotaProvider && Number.isFinite(quotaMinutes) && quotaMinutes > 0
-          ? t('cc_quotaSwitchedFrom', {
-            provider: quotaProvider,
-            model: quotaModel ? ` (${quotaModel})` : '',
-            when: quotaMinutes >= 60
-              ? t('cc_quotaHours', { n: Math.round(quotaMinutes / 60) })
-              : t('cc_quotaMinutes', { n: Math.ceil(quotaMinutes) }),
-          })
-          : t('cc_quotaSwitched');
+        if (d.ok !== false) return;
+        const key = PROVIDER_STATUS_KEY[String(d.provider || '').toLowerCase()] || String(d.provider || '').toLowerCase();
+        const minutes = Number(d.minutes);
+        const when = Number.isFinite(minutes) && minutes > 0
+          ? (minutes >= 60 ? t('cc_quotaHours', { n: Math.round(minutes / 60) }) : t('cc_quotaMinutes', { n: Math.ceil(minutes) }))
+          : '';
+        const reasonKey = PROVIDER_STATUS_REASON[String(d.code || '')] || 'cc_provReasonDown';
+        const reason = reasonKey === 'cc_provReasonQuota' && !when ? t('cc_provReasonQuotaNow') : t(reasonKey, { when });
+        setProviders(prev => prev[key]
+          ? { ...prev, [key]: { ...prev[key], isConnected: false, isVerifying: false, verified: false, lastError: reason } }
+          : prev);
+        const name = providersRef.current?.[key]?.name || String(d.provider || '');
+        const noticeId = `provider:${key}:${d.code || ''}:${msg?.runId || d.until || ''}`;
+        const text = t('cc_provStopped', { provider: name, model: d.model ? ` (${d.model})` : '', reason });
         setEvents((prev: any[]) => (
           prev.some((e: any) => e?.id === noticeId)
             ? prev
-            : [...prev, { type: 'text', id: noticeId, data: quotaText }]
+            : [...prev, { type: 'text', id: noticeId, data: text }]
         ));
         return;
       }
@@ -3435,7 +3461,7 @@ export default function CommandComposer({
         },
         body: JSON.stringify({
           provider: key,
-          apiKey: p.apiKey || (p.isFree ? 'free-mode' : ''),
+          apiKey: p.apiKey || '',
           baseUrl: p.baseUrl,
           model: p.model,
           // The check on every page load must not spend: for Claude it asks
@@ -3458,7 +3484,7 @@ export default function CommandComposer({
         if (!opts?.background && activationRevision === providerActivationRevisionRef.current) setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined },
         }));
         if (opts?.closeOnSuccess && !opts?.background
           && activationRevision === providerActivationRevisionRef.current) setShowProviders(false);
@@ -3468,7 +3494,9 @@ export default function CommandComposer({
       setProviders(prev => ({
         ...prev,
           [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined
-            : (key === 'anthropic' && CLAUDE_ERROR_KEYS[data?.code] ? t(CLAUDE_ERROR_KEYS[data.code]) : (data?.error || t('cc_connectionFailed'))) },
+            : (key === 'anthropic' && CLAUDE_ERROR_KEYS[data?.code] ? t(CLAUDE_ERROR_KEYS[data.code])
+              : PROVIDER_STATUS_REASON[data?.code] ? t('cc_provNotConnected', { reason: t(PROVIDER_STATUS_REASON[data.code], { when: '' }) })
+                : (data?.error || t('cc_connectionFailed'))) },
       }));
       return false;
     } catch (err: any) {
@@ -3530,15 +3558,14 @@ export default function CommandComposer({
   const deleteProviderKey = (key: string) => {
     if (confirm(t('cc_confirmRemoveKey'))) {
       invalidateProviderVerification(key);
-      // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
-      // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
-      const isFree = !!providers[key]?.isFree;
+      // A vendor without its key cannot run, free tier or paid: the 'free-mode'
+      // placeholder this used to leave behind ran the free mesh under its name.
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, isVerifying: false, verified: false, lastError: undefined }
+        [key]: { ...prev[key], apiKey: '', isConnected: false, isVerifying: false, verified: false, lastError: undefined }
       }));
-      // A paid provider without its key cannot run: Joe goes back to Auto, which is free.
-      if (!isFree && activeProvider === key) setActiveProvider('auto');
+      // Joe goes back to Auto, which needs no key.
+      if (activeProvider === key) setActiveProvider('auto');
     }
   };
 
@@ -4094,64 +4121,6 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[selectedProvider] && (
                 <>
-                  {/* OpenRouter Model Selection */}
-                  {selectedProvider === 'openrouter' && (
-                    <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">{t('chooseModel')}</label>
-                      <select
-                        className="model-select"
-                        value={providers[selectedProvider].model || ''}
-                        onChange={(e) => {
-                          invalidateProviderVerification(selectedProvider);
-                          const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
-                          const isFreeModel = selectedModel?.free ?? true;
-                          setProviders(prev => ({
-                            ...prev,
-                            [selectedProvider]: {
-                              ...prev[selectedProvider],
-                              model: e.target.value,
-                              isFree: isFreeModel,
-                              isConnected: false,
-                              isVerifying: false,
-                              verified: false,
-                              lastError: undefined
-                            }
-                          }));
-                        }}
-                      >
-                        <optgroup label={t('modelsFree')}>
-                          {OPENROUTER_MODELS.filter(m => m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label={t('modelsPaid')}>
-                          {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                      </select>
-                      {/* Show selected model info */}
-                      {(() => {
-                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[selectedProvider].model);
-                        if (!selected) return null;
-                        return (
-                          <div style={{
-                            marginTop: 8, padding: '8px 12px', borderRadius: 8,
-                            background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                            border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                            fontSize: 12
-                          }}>
-                            {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>{t('cc_orModelFree')}</span>
-                            ) : (
-                              <span style={{ color: '#3b82f6' }}>{t('cc_orModelPaid')}</span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
                   {/* Auto is the pure keyless mesh — no key. */}
                   {selectedProvider === 'auto' && (
                     <div className="info-box free" dir="auto">
@@ -4207,18 +4176,9 @@ export default function CommandComposer({
                             value={/^(free-mode|auto-mode|server-key)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               invalidateProviderVerification(selectedProvider);
-                              const newKey = e.target.value;
-                              // Keyless/optional providers fall back to the free mesh when the
-                              // box is empty; required/paid providers stay empty until a key.
-                              const emptyVal = keyOptional ? 'free-mode' : '';
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
-                              if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                fetch(`${API}/providers/openai/key`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ apiKey: newKey.trim() })
-                                }).catch(err => console.error('Failed to send API key to server:', err));
-                              }
+                              // The key travels with each request; an empty box is no key.
+                              const newKey = e.target.value.trim();
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
                             }}
                             placeholder={info.placeholderKey ? t(info.placeholderKey) : info.placeholder}
                           />
@@ -4307,8 +4267,8 @@ export default function CommandComposer({
                     );
                   })()}
 
-                  {/* The model: a list of what the provider offers (Auto, OpenRouter and Claude have their own). */}
-                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && selectedProvider !== 'anthropic' && (
+                  {/* The model: a list of what the provider offers (Auto and Claude have their own). */}
+                  {selectedProvider !== 'auto' && selectedProvider !== 'anthropic' && (
                     <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                       <div>
                         <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
@@ -4350,7 +4310,9 @@ export default function CommandComposer({
                                 {list?.loading ? t('modelsLoading', 'Fetching the models…')
                                   : list?.source === 'live' ? t('modelsLive', { count: options.length })
                                   : t('modelsCatalog')}
-                                {!list?.loading && list?.reason && MODELS_REASON_KEYS[list.reason.code] ? ` — ${t(MODELS_REASON_KEYS[list.reason.code], { status: list.reason.status ?? '' })}` : ''}
+                                {/* A public list (OpenRouter) is the provider's own; only chatting needs the key. */}
+                                {!list?.loading && list?.source === 'live' && list?.reason?.code === 'needs_key' ? ` — ${t('modelsPublicNeedsKey')}`
+                                  : !list?.loading && list?.reason && MODELS_REASON_KEYS[list.reason.code] ? ` — ${t(MODELS_REASON_KEYS[list.reason.code], { status: list.reason.status ?? '' })}` : ''}
                               </div>
                             </>
                           );

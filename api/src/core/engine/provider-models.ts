@@ -55,22 +55,50 @@ const BASE_URL: Record<string, string> = {
     gemini: 'https://generativelanguage.googleapis.com/v1beta/openai',
 };
 
-const KEY_ENV: Record<string, string> = {
-    openai: 'OPENAI_API_KEY', groq: 'GROQ_API_KEY', cerebras: 'CEREBRAS_API_KEY', mistral: 'MISTRAL_API_KEY',
-    deepseek: 'DEEPSEEK_API_KEY', openrouter: 'OPENROUTER_API_KEY', grok: 'XAI_API_KEY', gemini: 'GEMINI_API_KEY',
+const KEY_ENV: Record<string, string[]> = {
+    openai: ['OPENAI_API_KEY'], groq: ['GROQ_API_KEY'], cerebras: ['CEREBRAS_API_KEY'], mistral: ['MISTRAL_API_KEY'],
+    deepseek: ['DEEPSEEK_API_KEY'], openrouter: ['OPENROUTER_API_KEY'], grok: ['XAI_API_KEY'], gemini: ['GOOGLE_API_KEY', 'GEMINI_API_KEY'],
 };
 
-/** Suggestions when the provider cannot be asked. The provider's own list replaces them whenever it answers. */
+/**
+ * Suggestions when the provider cannot be asked, and the order a live list is
+ * shown in (these first, when the provider still serves them). The provider's
+ * own list replaces them whenever it answers.
+ *
+ * ⛔ The previous list named models the vendors had retired, and the menu's
+ * defaults were among them: grok-beta, kimi-k2:free, gemini-2.0-flash,
+ * Cerebras' llama-3.3-70b, deepseek-chat
+ * (audited 2026-11-02 against each vendor's models and deprecation pages, and
+ * OpenRouter's live catalog). A model the vendor no longer serves cannot turn
+ * green, whatever the key.
+ */
 const SUGGESTED: Record<string, string[]> = {
-    openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini'],
-    groq: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'qwen/qwen3-32b'],
-    cerebras: ['llama-3.3-70b', 'llama3.1-8b', 'gpt-oss-120b', 'qwen-3-32b'],
+    openai: ['gpt-6-luna', 'gpt-6.1-sol', 'gpt-6-astra', 'gpt-6.1-terra'],
+    groq: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'llama-3.3-70b-versatile', 'qwen/qwen3.8-27b'],
+    cerebras: ['gpt-oss-120b', 'qwen-3.8-27b'],
     mistral: ['mistral-small-latest', 'mistral-medium-latest', 'mistral-large-latest', 'codestral-latest'],
-    deepseek: ['deepseek-chat', 'deepseek-reasoner'],
-    openrouter: ['moonshotai/kimi-k2:free', 'deepseek/deepseek-chat', 'openai/gpt-4o-mini'],
-    grok: ['grok-3', 'grok-3-mini'],
-    gemini: ['gemini-2.5-flash', 'gemini-2.5-pro', 'gemini-2.0-flash'],
+    deepseek: ['deepseek-flash', 'deepseek-v4-pro'],
+    openrouter: ['google/gemma-4-31b-it:free', 'nvidia/nemotron-3-ultra-550b-a55b:free'],
+    grok: ['grok-4.7', 'grok-4.6', 'grok-4.3'],
+    gemini: ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-3.5-flash-lite', 'gemini-4-argon'],
 };
+
+/**
+ * Models a chat cannot run on: speech, images, video, embeddings, safety
+ * classifiers. A vendor's models endpoint lists them beside its chat models
+ * (Groq's whisper and tts, OpenAI's embeddings and dall-e, Gemini's imagen and
+ * veo, Mistral's ocr); chosen, they could only fail.
+ */
+const NOT_CHAT = /embed|whisper|tts\b|-tts|dall-e|gpt-image|imagen|-image|image-|veo-|\bveo\b|audio|transcribe|moderation|guard|rerank|speech|realtime|sora|\baqa\b|ocr|lyria|playai|orpheus|voxtral|babbage|davinci/i;
+
+/** A live list in the order the panel shows it: chat models only, the recommended first. */
+function chatModelsFirst(provider: string, ids: string[]): string[] {
+    const chat = [...new Set(ids)].filter(id => !NOT_CHAT.test(id)).sort((a, b) => a.localeCompare(b));
+    const preferred = (SUGGESTED[provider] || []).filter(id => chat.includes(id));
+    //  OpenRouter serves hundreds; its free ones come first after the recommended.
+    const free = provider === 'openrouter' ? chat.filter(id => /:free$/.test(id) && !preferred.includes(id)) : [];
+    return [...preferred, ...free, ...chat.filter(id => !preferred.includes(id) && !free.includes(id))];
+}
 
 const PLACEHOLDER_KEYS = new Set(['', 'auto-mode', 'free-mode', 'free', 'dummy', 'ollama', 'server-key']);
 
@@ -147,17 +175,22 @@ export async function providerModels(
 
     const base = String(input?.baseUrl || '').trim().replace(/\/+$/, '') || BASE_URL[provider];
     if (!base) return { models: [], source: 'catalog', note: `no models address is known for ${provider || 'this provider'}`, reason: { code: 'no_address' } };
-    const key = typedKeyOf(input?.apiKey) || String(env[KEY_ENV[provider]] || '').trim();
-    if (!key) return catalog(provider, `${provider} needs its key to list its models; these are suggestions`, { code: 'needs_key' });
+    const key = typedKeyOf(input?.apiKey) || (KEY_ENV[provider] || []).map(name => String(env[name] || '').trim()).find(Boolean) || '';
+    //  OpenRouter lists its models to anyone (measured: 452, with or without a
+    //  key); chatting needs a key, free models included, and the note says so.
+    const publicList = provider === 'openrouter';
+    if (!key && !publicList) return catalog(provider, `${provider} needs its key to list its models; these are suggestions`, { code: 'needs_key' });
     try {
-        const res = await doFetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` }, signal: AbortSignal.timeout(timeoutMs) });
+        const res = await doFetch(`${base}/models`, { headers: key ? { Authorization: `Bearer ${key}` } : {}, signal: AbortSignal.timeout(timeoutMs) });
         if (!res.ok) return catalog(provider, `${provider} refused the list (${res.status}); these are suggestions`, { code: 'refused', status: res.status });
         const body: any = await res.json();
         const ids = (Array.isArray(body?.data) ? body.data : Array.isArray(body?.models) ? body.models : [])
             .map((m: any) => String(m?.id || m?.name || '').replace(/^models\//, '').trim())
             .filter(Boolean);
-        const unique = [...new Set<string>(ids)].sort((a, b) => a.localeCompare(b));
-        return unique.length ? { models: unique, source: 'live' } : catalog(provider, `${provider} listed no models; these are suggestions`, { code: 'empty' });
+        const models = chatModelsFirst(provider, ids);
+        if (!models.length) return catalog(provider, `${provider} listed no chat models; these are suggestions`, { code: 'empty' });
+        return key ? { models, source: 'live' }
+            : { models, source: 'live', note: `${provider} lists its models to anyone; chatting needs its key, free models too`, reason: { code: 'needs_key' } };
     } catch (e: any) {
         return catalog(provider, `${provider} could not be reached (${String(e?.name || e?.message || e).slice(0, 80)}); these are suggestions`, { code: 'unreachable' });
     }

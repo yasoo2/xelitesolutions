@@ -213,15 +213,18 @@ export class LLM7Provider {
         };
 
         if (available.length > 0) {
-            const byId = new Map(available.map(model => [model.id, model]));
+            //  The catalogue's ids are mixed-case (measured: «DeepSeek-V4-Flash-0731»)
+            //  and the preferred list is lower-case, so an exact lookup found
+            //  none of them and the first preferred model was never tried.
+            const byId = new Map(available.map(model => [model.id.toLowerCase(), model]));
             // A configured model is an explicit user choice, but it still must
             // exist in the live catalogue. This prevents stale defaults such as
             // gpt-4.1-mini from consuming the whole timeout before a real model
             // is attempted. Explicit paid models remain opt-in only.
-            for (const modelId of explicit) pushDescriptor(byId.get(modelId), true);
+            for (const modelId of explicit) pushDescriptor(byId.get(modelId.toLowerCase()), true);
 
             for (const preferred of PREFERRED_MODELS) {
-                pushDescriptor(byId.get(preferred), false);
+                pushDescriptor(byId.get(preferred.toLowerCase()), false);
             }
 
             // Prefer models advertising tool calling because Joe's engineering
@@ -328,6 +331,16 @@ export class LLM7Provider {
                     saveBlockedModels(this.blocked);
                 }
                 if (status === 429) {
+                    //  A model's own day is spent (measured: codestral-latest, 429
+                    //  with Retry-After 89455 s) while the next model still answers
+                    //  (mistral-Nemo-Instruct-2407 said «ok» in 2.1 s). A wait of
+                    //  hours is that model's; it is skipped, and the next is tried.
+                    const retryHeader = Number(error?.headers?.get?.('retry-after') ?? error?.headers?.['retry-after']);
+                    if (Number.isFinite(retryHeader) && retryHeader > 900) {
+                        this.blocked.add(m);
+                        console.warn(`[LLM7] model "${m}" spent its daily quota; trying the next model.`);
+                        continue;
+                    }
                     // Global rate limit — remember the cooldown so the router skips
                     // LLM7 entirely (via isAvailable) instead of retrying every model.
                     const retry = /retry after (\d+)/i.exec(String(error?.message || ''));

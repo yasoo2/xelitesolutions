@@ -35,6 +35,7 @@ import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } fro
 import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
+import { withRunModelChoice } from '../../core/llm/run-model-choice';
 import { resourceRefusalSentence } from '../../shared/resource-refusal';
 import { planWrites } from '../tools/auto-build-readiness';
 
@@ -406,8 +407,10 @@ export class AgentLoopService {
                     }
                 },
             }, () => {
-                return AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
-                    resourceSignal: cancellation.signal, resourceLifecycle });
+                //  The provider the user chose is the brain of every model call
+                //  this run makes, the helpers' too (core/llm/run-model-choice.ts).
+                return withRunModelChoice(options.modelConfig, () => AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
+                    resourceSignal: cancellation.signal, resourceLifecycle }), { sessionId, runId, language });
             });
         } catch (error: any) {
             // A measurement failure can happen before the ordinary executor has

@@ -374,8 +374,10 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         expect(router).toMatch(/providerProbeSucceeded[\s\S]*!isProviderFailure/);
         //  97fa9f0d wrapped `usable` to mark a healthy circuit on success. The
-        //  verdict it returns must still be the probe check, unchanged.
-        expect(router).toMatch(/const usable = \(s: any\) => \{\s*const ok = providerProbeSucceeded\(s\);[^}]*\breturn ok;\s*\};/);
+        //  verdict it returns must still be the probe check, unchanged. Since
+        //  2026-11-02 the vendor's own route keeps its circuit, so `usable` is
+        //  the probe check alone.
+        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\);/);
     });
 
     test('Auto preflight gives a measured local Ollama brain enough time before fallback', () => {

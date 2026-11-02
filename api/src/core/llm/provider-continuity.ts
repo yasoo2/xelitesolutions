@@ -35,6 +35,49 @@ export function aiCostPolicy(): 'free_only' | 'allow_paid' {
     return String(process.env.AI_COST_POLICY || '').trim().toLowerCase() === 'allow_paid' ? 'allow_paid' : 'free_only';
 }
 
+/**
+ * ⛔ A KEY THE USER TYPED IS HIS CONSENT TO SPEND HIS OWN CREDIT.
+ *
+ * free_only guards the server's money: keys found in the environment, and
+ * keyless or unknown endpoints. Applied to a key the user typed, it refused
+ * every vendor in his menu except two the operator had listed. DeepSeek,
+ * OpenAI and xAI never ran on his key, and Groq and Gemini ran only where
+ * AI_FREE_PROVIDERS named them; the router then answered from the free mesh
+ * under the name he chose. Claude on a typed key was already exempt. The owner,
+ * 2026-11-02: «إذا غير مجاني أو لازم يستخدم API key حطّ API key».
+ *
+ * The key still goes only to that vendor's own host, over https: a typed
+ * address elsewhere stays under the operator's policy.
+ */
+export function usersOwnKeyAllowed(provider: string, apiKey = '', baseUrl = ''): boolean {
+    const name = canonicalProvider(String(provider || ''));
+    const host = hosts[name];
+    const key = String(apiKey || '').trim();
+    if (!host || !key || /[^\x21-\x7E]/.test(key)) return false;
+    if (['auto-mode', 'free-mode', 'free', 'dummy', 'ollama', 'server-key'].includes(key)) return false;
+    if ((envKeys[name] || []).some(env => String(process.env[env] || '').trim() === key)) return false;
+    if (!baseUrl) return true;
+    try {
+        const url = new URL(baseUrl);
+        return url.protocol === 'https:' && url.hostname === host && !url.username && !url.password && !url.search && !url.hash;
+    } catch { return false; }
+}
+
+/** A vendor that serves its models only with a key: every entry in the menu but Auto and Local. */
+export function isKeyedVendor(provider: string): boolean {
+    return !!hosts[canonicalProvider(String(provider || '').trim())];
+}
+
+/**
+ * The server's own key for a vendor, from the environment. Claude's is never
+ * read here: it lives in its key file and is used only when asked for by name.
+ */
+export function serverKeyFor(provider: string, env: NodeJS.ProcessEnv = process.env): string {
+    const name = canonicalProvider(String(provider || '').trim());
+    if (name === 'anthropic') return '';
+    return (envKeys[name] || []).map(variable => String(env[variable] || '').trim()).find(Boolean) || '';
+}
+
 /** Unknown endpoints and paid model variants need the operator's explicit paid policy. */
 export function providerAllowedByCost(provider: string, model = '', baseUrl = ''): boolean {
     if (aiCostPolicy() === 'allow_paid') return true;
