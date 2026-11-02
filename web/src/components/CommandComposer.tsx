@@ -12,7 +12,7 @@ import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
 import { setRunBusy } from '../lib/run-activity';
-import { markRunning } from '../services/runningSessions';
+import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -796,6 +796,8 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
+  // The SDK requires a nonempty key; Ollama ignores this public sentinel.
+  local: { name: 'Local', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
   gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
   groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
@@ -811,13 +813,13 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
 
 // Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
 //  - 'keyless'  : works with NO key at all (DeepSeek via the Pollinations proxy).
-//  - 'optional' : keyless-capable but a personal key raises speed/limits (Groq).
+//  - 'optional' : keyless-capable but a personal key raises speed/limits.
 //  - 'required' : the FREE tier still needs a FREE key to work — the earlier UI
 //                 wrongly said "no key needed", which is why these felt "fake".
 //  - 'paid'     : needs a paid key.
 type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
 const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder?: string; placeholderKey?: string }> = {
-  groq: { need: 'optional', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
+  groq: { need: 'required', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
   deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
@@ -1030,6 +1032,8 @@ export default function CommandComposer({
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const terminalRunIdsRef = useRef<Set<string>>(new Set());
   const terminalSessionRef = useRef(false);
+  const terminalRevisionRef = useRef(0);
+  const lastUserInputRunRef = useRef<{ runId: string } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
 
@@ -1043,22 +1047,10 @@ export default function CommandComposer({
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
-    // Display order: Auto first, then the free providers (Groq/Gemini/Cerebras/
-    // Mistral/DeepSeek/OpenRouter), then the paid ones. IMPORTANT: every provider
-    // in DEFAULT_PROVIDERS must be listed here — the panel renders from this state,
-    // so a provider omitted here (Groq/Cerebras/Mistral used to be) never appears.
-    const baseProviders: { [key: string]: ProviderConfig } = {
-      auto: { ...DEFAULT_PROVIDERS.auto },
-      groq: { ...DEFAULT_PROVIDERS.groq },
-      gemini: { ...DEFAULT_PROVIDERS.gemini },
-      cerebras: { ...DEFAULT_PROVIDERS.cerebras },
-      mistral: { ...DEFAULT_PROVIDERS.mistral },
-      deepseek: { ...DEFAULT_PROVIDERS.deepseek },
-      openrouter: { ...DEFAULT_PROVIDERS.openrouter },
-      openai: { ...DEFAULT_PROVIDERS.openai },
-      anthropic: { ...DEFAULT_PROVIDERS.anthropic },
-      grok: { ...DEFAULT_PROVIDERS.grok },
-    };
+    // Clone the entire catalog so a registered provider cannot disappear here.
+    const baseProviders: { [key: string]: ProviderConfig } = Object.fromEntries(
+      Object.entries(DEFAULT_PROVIDERS).map(([key, provider]) => [key, { ...provider }])
+    );
 
     try {
       const saved = localStorage.getItem('ai_providers');
@@ -1113,13 +1105,66 @@ export default function CommandComposer({
   }, []);
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+  const providerVerificationRevisionRef = useRef<Record<string, number>>({});
+  const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
+  const providerActivationRevisionRef = useRef(0);
+  const providersRef = useRef(providers);
+  providersRef.current = providers;
+  function invalidateProviderVerification(key: string, configurationChanged = true) {
+    providerVerificationRevisionRef.current[key] = (providerVerificationRevisionRef.current[key] || 0) + 1;
+    if (configurationChanged) providerConfigurationRevisionRef.current[key] = (providerConfigurationRevisionRef.current[key] || 0) + 1;
+  }
   // activeProvider = the one ACTUALLY used at runtime (only changes after a
   // successful Verify). selectedProvider = the one you're currently viewing/
   // configuring in the panel (changing it does NOT switch the runtime provider).
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
   const [selectedProvider, setSelectedProvider] = useState(initialProviderState.activeProvider);
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunIdState] = useState<string | null>(null);
+  // The session-scoped socket callback outlives a render. Read the current
+  // identity synchronously instead of capturing an old React state value.
+  const activeRunIdentityRef = useRef<string | null>(null);
+  const submissionEpochRef = useRef(0);
+  const awaitingRunIdentityRef = useRef(false);
+  const pendingStopEpochRef = useRef<number | null>(null);
+  function setActiveRunId(id: string | null) {
+    activeRunIdentityRef.current = id;
+    if (id && lastUserInputRunRef.current?.runId !== id) {
+      lastUserInputRunRef.current = { runId: id };
+    }
+    setActiveRunIdState(id);
+  }
+  function beginRunSubmission() {
+    SocketService.invalidateRunPresentation(String(sessionId || ''));
+    const epoch = ++submissionEpochRef.current;
+    pendingStopEpochRef.current = null;
+    awaitingRunIdentityRef.current = true;
+    setActiveRunId(null);
+    lastUserInputRunRef.current = null;
+    terminalSessionRef.current = false;
+    return epoch;
+  }
+  function adoptRunStartResponse(id: string, epoch: number) {
+    if (epoch !== submissionEpochRef.current) return false;
+    if (activeRunIdentityRef.current && activeRunIdentityRef.current !== id) return false;
+    awaitingRunIdentityRef.current = false;
+    if (terminalRunIdsRef.current.has(id)) {
+      // Its terminal frame arrived while HTTP was pending. Do not reopen it.
+      terminalRevisionRef.current += 1;
+      terminalSessionRef.current = true;
+      setActiveRunId(null);
+      clearToolTimers();
+      setStatus('idle');
+      setIsThinking(false);
+      setThinkingPhase('idle');
+      setActiveToolName(null);
+      setToolVisible(false);
+      return false;
+    }
+    terminalSessionRef.current = false;
+    setActiveRunId(id);
+    return true;
+  }
 
 
   const derived = useMemo(() => {
@@ -1644,9 +1689,16 @@ export default function CommandComposer({
         terminalRunIdsRef.current.add(messageRunId);
         // Keep this bounded: run ids are unique, but a long-lived Joe tab
         // must not accumulate an unbounded event tombstone list.
-        if (terminalRunIdsRef.current.size > 128) terminalRunIdsRef.current.clear();
+        if (terminalRunIdsRef.current.size > 128) {
+          const oldestId = terminalRunIdsRef.current.values().next().value;
+          if (oldestId) terminalRunIdsRef.current.delete(oldestId);
+        }
+        const knownRunId = activeRunIdentityRef.current;
+        if ((knownRunId && messageRunId !== knownRunId)
+          || (!knownRunId && awaitingRunIdentityRef.current)) return;
       } else if (msg.type === 'user_input' && messageRunId) {
         // A fresh, identified user request opens the next run for this session.
+        lastUserInputRunRef.current = { runId: messageRunId };
         terminalSessionRef.current = false;
       } else if (terminalSessionRef.current || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
         // An executor can finish its cancellation race after the user-facing
@@ -1655,6 +1707,15 @@ export default function CommandComposer({
         return;
       }
       if (messageRunId) {
+        // While our HTTP start is pending, an unidentified socket frame may
+        // belong to the previous run. Wait for HTTP or identified user_input
+        // rather than letting a delayed run_started poison the admission.
+        if (!isTerminalRunEvent && msg.type !== 'user_input'
+          && !activeRunIdentityRef.current && awaitingRunIdentityRef.current) return;
+        // Only an identified user request can replace a known live run.
+        // Delayed tool/start frames from the prior run cannot retarget Stop.
+        if (!isTerminalRunEvent && msg.type !== 'user_input'
+          && activeRunIdentityRef.current && messageRunId !== activeRunIdentityRef.current) return;
         setActiveRunId(messageRunId);
       }
       if (msg.type === 'user_input') {
@@ -1667,6 +1728,9 @@ export default function CommandComposer({
       }
 
       if (isTerminalRunEvent) {
+        // Retain the transition even when legacy events lack a run id or
+        // the bounded run-id set rolls over during an awaited Stop request.
+        terminalRevisionRef.current += 1;
         terminalSessionRef.current = true;
         window.dispatchEvent(new CustomEvent('sessions:refresh'));
         setActiveRunId(null);
@@ -2491,6 +2555,7 @@ export default function CommandComposer({
     // the API mint one during /runs/start means user_input, run_started, and
     // an early Stop can be emitted before this component knows what chat owns
     // them. Create and adopt the session at the client boundary instead.
+    const submissionEpoch = beginRunSubmission();
     let runSessionId = String(sessionId || '').trim();
     if (!runSessionId) {
       try {
@@ -2515,6 +2580,8 @@ export default function CommandComposer({
         // before the run route broadcasts its first event.
         await new Promise(resolve => window.setTimeout(resolve, 0));
       } catch (error: any) {
+        if (submissionEpoch !== submissionEpochRef.current) return;
+        awaitingRunIdentityRef.current = false;
         setEvents(prev => [...prev, {
           type: 'error',
           data: String(error?.message || 'Unable to create a conversation for this task.'),
@@ -2524,6 +2591,7 @@ export default function CommandComposer({
       }
     }
 
+    if (submissionEpoch !== submissionEpochRef.current) return;
     clearToolTimers();
     setStatus('thinking');
     setIsThinking(true);
@@ -2645,6 +2713,8 @@ export default function CommandComposer({
     // Optimistic update removed (duplicate)
 
     const token = localStorage.getItem('token');
+    const registryAdmission = captureRunningAdmission(runSessionId);
+    const presentationRevision = SocketService.beginRunPresentation(runSessionId);
     try {
       /**
        *  A RUN CARRIES ITS BROWSER, EVEN WHEN THE MESSAGE DOES NOT MENTION ONE.
@@ -2737,28 +2807,12 @@ export default function CommandComposer({
         }
       }
 
-      const pickFirstValidProvider = () => {
-        for (const [k, p] of Object.entries(providers)) {
-          if (String(p?.apiKey || '').trim() && p?.isConnected) return k;
-        }
-        return 'openai';
-      };
-
-      let providerToSend = activeProvider;
-      let providerCfgToSend = providers[providerToSend];
-
-      // [FIX] Allow all free providers to proceed without API key check
-      const isFreeProvider = !!providerCfgToSend?.isFree;
-
-      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isFree=${isFreeProvider}`);
-
-      if (!isFreeProvider && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
-        console.log('[ProviderDebug] Provider invalid, falling back...');
-        const valid = pickFirstValidProvider();
-        providerToSend = valid;
-        providerCfgToSend = providers[valid];
-        console.log('[ProviderDebug] Fallback provider:', valid);
-      }
+      // Verification/status cannot authorize a different brain. Preserve the
+      // user's selected provider; the backend resolves its credentials/policy
+      // and reports its failure without silently substituting another vendor.
+      const providerToSend = activeProvider;
+      const providerCfgToSend = providers[providerToSend];
+      if (!providerCfgToSend) throw new Error('Selected provider is unavailable. Open Providers and choose a provider.');
 
       const payload: any = {
         type: 'run_start',
@@ -2814,6 +2868,7 @@ export default function CommandComposer({
       });
       console.log(`[JOE] /runs/start Response Status: ${res.status}`);
       const raw = await res.text();
+      if (submissionEpoch !== submissionEpochRef.current) return;
       let data: any = null;
       try {
         data = raw ? JSON.parse(raw) : null;
@@ -2839,7 +2894,20 @@ export default function CommandComposer({
 
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         const rid = data.runId.trim();
-        setActiveRunId(rid);
+        if (!registryAdmission.canStart(rid)) return;
+        if (!adoptRunStartResponse(rid, submissionEpoch)) return;
+        // An early Stop belongs to this submission, even before HTTP gives it
+        // an id. Cancel only the id acknowledged for that same submission.
+        if (pendingStopEpochRef.current === submissionEpoch) {
+          pendingStopEpochRef.current = null;
+          await stopCurrentRun({ runId: rid, sessionId: runSessionId, submissionEpoch });
+          return;
+        }
+        if (registryAdmission.markStarted(rid)) {
+          // HTTP can identify a run whose socket opener was missed. Permit its
+          // final persisted-answer receipt without reopening socket live state.
+          SocketService.registerRunPresentation(runSessionId, rid, presentationRevision);
+        }
       }
       if (data?.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
@@ -2888,6 +2956,8 @@ export default function CommandComposer({
       }
       if (!overrideFiles) setAttachedFiles([]);
     } catch (e) {
+      if (submissionEpoch !== submissionEpochRef.current) return;
+      awaitingRunIdentityRef.current = false;
       console.error(e);
       const msg = String((e as any)?.message || e || '').trim();
       const finalMsg = msg ? `${t('error')}: ${msg}` : t('error');
@@ -2906,6 +2976,9 @@ export default function CommandComposer({
       setIsThinking(false);
       setActiveToolName(null);
       setToolVisible(false);
+    } finally {
+      registryAdmission.release();
+      SocketService.endRunPresentation(runSessionId, presentationRevision);
     }
   }
 
@@ -2961,10 +3034,20 @@ export default function CommandComposer({
     if (pendingQueue.length === 0 && queuePaused) setQueuePaused(false);
   }, [pendingQueue.length, queuePaused]);
 
-  async function stopCurrentRun() {
+  async function stopCurrentRun(target?: { runId: string; sessionId: string; submissionEpoch: number }) {
+    if (target && (target.submissionEpoch !== submissionEpochRef.current
+      || target.runId !== activeRunIdentityRef.current)) return;
     // Interrupting a run by hand is a statement that the plan changed —
     // whatever was queued behind it must wait for an explicit resume.
     if (pendingQueue.length > 0) setQueuePaused(true);
+    if (!target && awaitingRunIdentityRef.current && !activeRunIdentityRef.current) {
+      pendingStopEpochRef.current = submissionEpochRef.current;
+      setActiveToolName('Stopping your request…');
+      setToolVisible(true);
+      setStatus('thinking');
+      setIsThinking(true);
+      return;
+    }
     const token = (() => {
       try {
         return localStorage.getItem('token');
@@ -2977,10 +3060,30 @@ export default function CommandComposer({
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    const rid = String(activeRunId || '').trim();
-    const sid = String(sessionId || '').trim();
+    const rid = String(target?.runId || activeRunId || '').trim();
+    const sid = String(target?.sessionId || sessionId || '').trim();
+    const runningGenerationAtStop = getRunningGeneration(sid);
     const bid = String(browserSessionId || '').trim();
     const pendingBid = String(pendingBrowserRetryRef.current?.sessionId || '').trim();
+    const terminalRevisionAtStop = terminalRevisionRef.current;
+    const submissionEpochAtStop = submissionEpochRef.current;
+    const userInputAtStop = lastUserInputRunRef.current;
+    let stopTargetRunId = rid;
+    const stopReplyIsStale = () => terminalRevisionRef.current !== terminalRevisionAtStop
+      || getRunningGeneration(sid) !== runningGenerationAtStop
+      || submissionEpochRef.current !== submissionEpochAtStop
+      // An unidentified session Stop cannot safely adopt an identity which
+      // appeared after the request. Its own terminal frame may still settle it.
+      || (!stopTargetRunId && lastUserInputRunRef.current !== userInputAtStop
+        && Boolean(lastUserInputRunRef.current?.runId))
+      // A successor can arrive without a terminal frame for the old run.
+      // Its identity must also fence the old reply and active-run recovery.
+      || (Boolean(stopTargetRunId) && lastUserInputRunRef.current !== userInputAtStop
+        && Boolean(lastUserInputRunRef.current?.runId)
+        && lastUserInputRunRef.current?.runId !== stopTargetRunId)
+      || (stopTargetRunId
+        ? terminalRunIdsRef.current.has(stopTargetRunId)
+        : terminalSessionRef.current);
 
     let serverConfirmedStop = false;
     const requestStop = async (runId: string) => {
@@ -3030,26 +3133,37 @@ export default function CommandComposer({
       } catch { }
     }
 
+    // A terminal event can win while Stop waits for HTTP. Its late response
+    // must neither resurrect this run nor recover and stop a newer one.
+    if (stopReplyIsStale()) return;
+
     // A websocket reconnect or a session switch can leave the composer without
     // its run id even though the server still has one. Resolve it from the
     // active-run registry and retry before changing the visible state. A Stop
     // control is a command with a real effect, never a client-side disguise.
-    if (!serverConfirmedStop && sid) {
+    if (!serverConfirmedStop && sid && !rid) {
       try {
         const response = await fetch(`${API}/runs/active`, { headers });
         const active = await response.json().catch(() => null);
+        if (stopReplyIsStale()) return;
         const recoveredRunId = Array.isArray(active?.runs)
           ? String(active.runs.find((run: any) => String(run?.sessionId || '') === sid)?.runId || '').trim()
           : '';
-        if (recoveredRunId && recoveredRunId !== rid) await requestStop(recoveredRunId);
+        if (recoveredRunId && recoveredRunId !== rid) {
+          stopTargetRunId = recoveredRunId;
+          await requestStop(recoveredRunId);
+        }
       } catch { }
     }
+
+    // The recovery request has the same race as the original stop request.
+    if (stopReplyIsStale()) return;
 
     // The stop response is authoritative for this exact user action. Clear
     // the cross-session registry immediately instead of waiting for its 2.5s
     // recovery poll; the server's run_cancelled event remains the second wire
     // for other tabs and a remounted composer.
-    if (serverConfirmedStop && sid) markRunning(sid, false);
+    if (serverConfirmedStop && sid) markRunning(sid, false, stopTargetRunId, runningGenerationAtStop);
     if (serverConfirmedStop) terminalSessionRef.current = true;
 
     // Do not clear a visibly active conversation until the server has said
@@ -3057,7 +3171,7 @@ export default function CommandComposer({
     // the owner retry or see the eventual terminal event instead of believing
     // a task vanished when it is still consuming tools in the background.
     if (!serverConfirmedStop && (rid || sid)) {
-      setActiveToolName('Unable to confirm that the run stopped; it is still active.');
+      setActiveToolName('Unable to confirm that the requested run stopped.');
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3154,8 +3268,13 @@ export default function CommandComposer({
   // startup auto-check: it must not steal the panel selection, and a failure on
   // an early attempt (API still booting) must not paint the button red before
   // the retries are exhausted.
-  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean; background?: boolean }): Promise<boolean> => {
-    const p = providers[key];
+  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean; background?: boolean; reportError?: boolean; isCurrent?: () => boolean }): Promise<boolean> => {
+    if (opts?.isCurrent?.() === false) return false;
+    const p = providersRef.current[key];
+    invalidateProviderVerification(key, false);
+    const revision = providerVerificationRevisionRef.current[key];
+    const activationRevision = opts?.background ? providerActivationRevisionRef.current : ++providerActivationRevisionRef.current;
+    const currentVerification = () => providerVerificationRevisionRef.current[key] === revision && opts?.isCurrent?.() !== false;
 
     // Show it in the panel + start verifying — but do NOT make it the runtime
     // provider yet. It becomes active ONLY if the verify below succeeds.
@@ -3178,33 +3297,37 @@ export default function CommandComposer({
         }),
       });
 
+      if (!currentVerification()) return false;
       if (res.status === 401) {
         handleUnauthorized();
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
       const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+      if (!currentVerification()) return false;
 
       if (data?.ok) {
         // SUCCESS: a live request actually returned. Mark REALLY verified and make
         // it the active runtime provider.
-        setActiveProvider(key);
+        if (!opts?.background && activationRevision === providerActivationRevisionRef.current) setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
           [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
         }));
-        if (opts?.closeOnSuccess) setShowProviders(false); // green → switch & close
+        if (opts?.closeOnSuccess && !opts?.background
+          && activationRevision === providerActivationRevisionRef.current) setShowProviders(false);
         return true;
       }
       // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (data?.error || 'فشل الاتصال') },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (data?.error || 'فشل الاتصال') },
       }));
       return false;
     } catch (err: any) {
+      if (!currentVerification()) return false;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (err.message || 'فشل الاتصال') },
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || 'فشل الاتصال') },
       }));
       return false;
     }
@@ -3219,6 +3342,17 @@ export default function CommandComposer({
     const ap = String(activeProvider || '').trim();
     if (!ap || didAutoVerifyRef.current) return;
     let cancelled = false;
+    const configurationRevision = providerConfigurationRevisionRef.current[ap] || 0;
+    const activationRevision = providerActivationRevisionRef.current;
+    const currentStartup = () => !cancelled
+      && (providerConfigurationRevisionRef.current[ap] || 0) === configurationRevision
+      && providerActivationRevisionRef.current === activationRevision;
+    let startupProbeRevision: number | undefined;
+    const retireStartupProbe = () => {
+      if (startupProbeRevision === undefined || providerVerificationRevisionRef.current[ap] !== startupProbeRevision) return;
+      invalidateProviderVerification(ap, false);
+      setProviders(prev => ({ ...prev, [ap]: { ...prev[ap], isVerifying: false } }));
+    };
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
     // Joe must open READY: the provider verifies itself the moment the panel
     // appears, with no click. The first attempt is immediate (the check itself
@@ -3233,24 +3367,27 @@ export default function CommandComposer({
         // The guard is claimed on SUCCESS, never at schedule time: claiming it
         // early let a StrictMode/remount cleanup cancel the only attempt while
         // the ref already read "done", so the check never ran at all.
-        if (cancelled || didAutoVerifyRef.current) return;
+        if (!currentStartup() || didAutoVerifyRef.current) return;
         const isLast = i === attempts.length - 1;
-        const ok = await checkConnection(ap, { closeOnSuccess: false, background: !isLast });
-        if (cancelled) return;
+        const verification = checkConnection(ap, { closeOnSuccess: false, background: true, reportError: isLast, isCurrent: currentStartup });
+        startupProbeRevision = providerVerificationRevisionRef.current[ap];
+        const ok = await verification;
+        if (!currentStartup()) { retireStartupProbe(); return; }
         if (ok) { didAutoVerifyRef.current = true; return; }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; retireStartupProbe(); };
   }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
     if (confirm('Are you sure you want to remove the API key?')) {
+      invalidateProviderVerification(key);
       // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
       // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
       const isFree = !!providers[key]?.isFree;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, verified: false, lastError: undefined }
+        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, isVerifying: false, verified: false, lastError: undefined }
       }));
       if (!isFree) setActiveProvider('openai');
     }
@@ -3258,10 +3395,11 @@ export default function CommandComposer({
 
   const handleDisconnect = async (key: string) => {
     if (!confirm('Are you sure you want to disconnect?')) return;
+    invalidateProviderVerification(key);
 
     setProviders(prev => ({
       ...prev,
-      [key]: { ...prev[key], isConnected: false, isVerifying: false }
+      [key]: { ...prev[key], isConnected: false, isVerifying: false, verified: false }
     }));
 
     try {
@@ -3815,6 +3953,7 @@ export default function CommandComposer({
                         className="model-select"
                         value={providers[selectedProvider].model || ''}
                         onChange={(e) => {
+                          invalidateProviderVerification(selectedProvider);
                           const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
                           const isFreeModel = selectedModel?.free ?? true;
                           setProviders(prev => ({
@@ -3823,7 +3962,10 @@ export default function CommandComposer({
                               ...prev[selectedProvider],
                               model: e.target.value,
                               isFree: isFreeModel,
-                              isConnected: isFreeModel || !!prev[selectedProvider].apiKey
+                              isConnected: false,
+                              isVerifying: false,
+                              verified: false,
+                              lastError: undefined
                             }
                           }));
                         }}
@@ -3851,7 +3993,7 @@ export default function CommandComposer({
                             fontSize: 12
                           }}>
                             {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
+                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني — يحتاج مفتاح API من OpenRouter</span>
                             ) : (
                               <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
                             )}
@@ -3869,15 +4011,21 @@ export default function CommandComposer({
                     </div>
                   )}
 
+                  {selectedProvider === 'local' && (
+                    <div className="info-box free">
+                      <div>Uses your existing local Ollama service. Enter an installed Model ID, then connect. No API key or model download is required.</div>
+                    </div>
+                  )}
+
                   {/* Honest per-provider info box driven by PROVIDER_KEY_INFO. */}
                   {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
                     const info = PROVIDER_KEY_INFO[selectedProvider];
                     const title = info.need === 'keyless' ? '🆓 مجاني بلا مفتاح — ويقبل مفتاحك (اختياري)'
                       : info.need === 'optional' ? '⚡ مجاني — ويقبل مفتاحك الخاص (اختياري، لسرعة وحدود أعلى)'
-                        : info.need === 'required' ? '🔑 مجاني — لكنه يحتاج مفتاحاً مجانياً لتفعيله'
+                        : info.need === 'required' ? '🔑 يحتاج مفتاح API'
                           : '💳 مزوّد مدفوع — يحتاج مفتاحه';
                     const body = info.need === 'required'
-                      ? 'هذا المزوّد مجاني، لكنه يتطلّب مفتاح API مجانياً من موقعه. أنشئ مفتاحاً مجانياً، ألصقه بالأسفل، ثم اضغط «Connect & Activate» للتحقّق الحقيقي منه.'
+                      ? 'ألصق مفتاح API لهذا المزوّد بالأسفل، ثم اضغط «Connect & Activate» للتحقّق منه. يمكن أيضاً استعمال المفتاح المُعدّ للخدمة مسبقاً.'
                       : info.need === 'paid'
                         ? 'ألصق مفتاح المزوّد بالأسفل ثم اضغط «Connect & Activate» للتحقّق منه.'
                         : 'يعمل مجاناً مباشرة. ولمزيد من السرعة والحدود يمكنك (اختياريّاً) لصق مفتاحك الخاص بالأسفل.';
@@ -3907,11 +4055,12 @@ export default function CommandComposer({
                             dir="ltr"
                             value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
+                              invalidateProviderVerification(selectedProvider);
                               const newKey = e.target.value;
                               // Keyless/optional providers fall back to the free mesh when the
                               // box is empty; required/paid providers stay empty until a key.
                               const emptyVal = keyOptional ? 'free-mode' : '';
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, verified: false, lastError: undefined } }));
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
                               if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
                                 fetch(`${API}/providers/openai/key`, {
                                   method: 'POST',
@@ -3963,7 +4112,10 @@ export default function CommandComposer({
                           type="text"
                           className="api-key-input"
                           value={providers[selectedProvider].model || ''}
-                          onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value } }))}
+                          onChange={(e) => {
+                            invalidateProviderVerification(selectedProvider);
+                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                          }}
                           placeholder="gpt-4o"
                         />
                       </div>
@@ -3974,7 +4126,10 @@ export default function CommandComposer({
                             type="text"
                             className="api-key-input"
                             value={providers[selectedProvider].baseUrl || ''}
-                            onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], baseUrl: e.target.value } }))}
+                            onChange={(e) => {
+                              invalidateProviderVerification(selectedProvider);
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], baseUrl: e.target.value, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                            }}
                             placeholder="https://api..."
                             style={{
                               width: '100%', padding: '10px 12px', borderRadius: 8,
@@ -4007,7 +4162,8 @@ export default function CommandComposer({
                       disabled={providers[selectedProvider].isVerifying}
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                        background: providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
+                        background: providers[selectedProvider].isConnected && providers[selectedProvider].verified
+                          && selectedProvider === activeProvider ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
                         color: 'var(--joe-on-accent, #fff)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: providers[selectedProvider].isVerifying ? 0.7 : 1
@@ -4017,7 +4173,8 @@ export default function CommandComposer({
                         <>
                           <Loader2 size={18} className="spin" /> Verifying...
                         </>
-                      ) : providers[selectedProvider].isConnected ? (
+                      ) : providers[selectedProvider].isConnected && providers[selectedProvider].verified
+                        && selectedProvider === activeProvider ? (
                         <>
                           <CheckCircle2 size={18} /> Verified & Active
                         </>

@@ -36,6 +36,15 @@ type SessionRuntimeState = {
   activeRunId: string;
   /** Ignore late tool/builder events after a cancelled or finished run. */
   closedAt: number;
+  /** One presentation receipt may follow an early cancellation/failure. */
+  pendingFinalRunId: string;
+  presentedRunId: string;
+  lastFinalizedRunId: string;
+  presentationSuppressed: boolean;
+  blockedPresentationRunId: string;
+  presentationRevision: number;
+  awaitingPresentation: boolean;
+  earlyFinalRunIds: string[];
 };
 
 const DEFAULT_SCOPE = '__unscoped__';
@@ -80,10 +89,75 @@ function getSessionRuntime(sessionId?: string): SessionRuntimeState {
       lastPreviewUrl: '',
       activeRunId: '',
       closedAt: 0,
+      pendingFinalRunId: '',
+      presentedRunId: '',
+      lastFinalizedRunId: '',
+      presentationSuppressed: false,
+      blockedPresentationRunId: '',
+      presentationRevision: 0,
+      awaitingPresentation: false,
+      earlyFinalRunIds: [],
     };
     sessionRuntime.set(key, state);
   }
   return state;
+}
+
+/** Called after exact HTTP admission; an observed early finish also settles it. */
+function registerRunPresentation(sessionId: string, runId: string, revision?: number): boolean {
+  const sid = normalizeSessionId(sessionId);
+  const id = normalizeSessionId(runId);
+  if (!sid || !id) return false;
+  const runtime = getSessionRuntime(sid);
+  if (revision !== undefined && runtime.presentationRevision !== revision) return false;
+  if ((runtime.activeRunId && runtime.activeRunId !== id) || runtime.lastFinalizedRunId === id
+    || runtime.blockedPresentationRunId === id) return false;
+  const completedBeforeAdmission = revision !== undefined && runtime.awaitingPresentation
+    && runtime.earlyFinalRunIds.includes(id);
+  runtime.awaitingPresentation = false;
+  runtime.earlyFinalRunIds = [];
+  runtime.pendingFinalRunId = '';
+  runtime.presentationSuppressed = false;
+  runtime.blockedPresentationRunId = '';
+  runtime.presentedRunId = id;
+  if (completedBeforeAdmission) {
+    runtime.presentedRunId = '';
+    runtime.lastFinalizedRunId = id;
+    runtime.closedAt = runtime.closedAt || Date.now();
+    // This is an observed native completion, released only after the current
+    // HTTP admission. Settle registry/composer as well as persisted chat history.
+    forSession(listeners, sid, cb => cb({ type: 'run_finished', sessionId: sid, runId: id }));
+  }
+  return true;
+}
+
+function invalidateRunPresentation(sessionId: string) {
+  const runtime = sessionRuntime.get(normalizeSessionId(sessionId));
+  if (!runtime) return;
+  runtime.presentationRevision += 1;
+  runtime.awaitingPresentation = false;
+  runtime.earlyFinalRunIds = [];
+  runtime.blockedPresentationRunId = runtime.activeRunId || runtime.presentedRunId
+    || runtime.pendingFinalRunId || runtime.blockedPresentationRunId || runtime.lastFinalizedRunId;
+  runtime.presentationSuppressed = true;
+  runtime.presentedRunId = '';
+  runtime.pendingFinalRunId = '';
+}
+
+function beginRunPresentation(sessionId: string): number {
+  const sid = normalizeSessionId(sessionId);
+  if (!sid) return 0;
+  const runtime = getSessionRuntime(sid);
+  invalidateRunPresentation(sid);
+  runtime.awaitingPresentation = true;
+  return runtime.presentationRevision;
+}
+
+function endRunPresentation(sessionId: string, revision: number) {
+  const runtime = sessionRuntime.get(normalizeSessionId(sessionId));
+  if (!runtime || runtime.presentationRevision !== revision) return;
+  runtime.awaitingPresentation = false;
+  runtime.earlyFinalRunIds = [];
 }
 
 type SessionListener<T> = { cb: T; sessionId?: string };
@@ -361,9 +435,18 @@ async function connect() {
       // chunk — so deduping by it swallowed all output after the first chunk
       // and made the manual terminal look dead. Streams are never deduped.
       const isStream = data.type === 'terminal_output' || data.type === 'terminal_input' || data.type === 'terminal_resize';
-      const id = isStream ? null : (data.id || data.seq || (data.ts && data.type ? `${data.type}:${data.ts}` : null));
-      if (id) {
-        const key = String(id);
+      // Event counters restart with the API. Scope receipts to their actual
+      // session/run/type so a new run cannot borrow an old duplicate receipt.
+      const discriminator = isStream ? null :
+        (typeof data.id === 'string' && data.id.trim() ? ['id', 'string', data.id] :
+          typeof data.id === 'number' && Number.isFinite(data.id) ? ['id', 'number', data.id] :
+          typeof data.seq === 'number' && Number.isFinite(data.seq) ? ['seq', 'number', data.seq] :
+          typeof data.seq === 'string' && data.seq.trim() ? ['seq', 'string', data.seq] :
+          typeof data.ts === 'number' && Number.isFinite(data.ts) ? ['ts', 'number', data.ts] :
+          typeof data.ts === 'string' && data.ts.trim() ? ['ts', 'string', data.ts] : null);
+      if (discriminator) {
+        const key = JSON.stringify([eventSessionId(data),
+          normalizeSessionId(data?.runId || data?.data?.runId), String(data.type || ''), ...discriminator]);
         if (seenMessageIds.has(key)) {
           // Silently skip duplicate (reduced from verbose logging)
           return;
@@ -387,25 +470,66 @@ async function connect() {
       // into a named session by the frontend.
       const evSid = eventSessionId(data);
       const runtime = getSessionRuntime(evSid);
+      const evRunId = normalizeSessionId(data?.runId || data?.data?.runId);
+      const isRunOpener = msgType === 'run_started' || msgType === 'user_input';
+      const isRunTerminal = msgType === 'run_finished'
+        || msgType === 'run_cancelled'
+        || msgType === 'run_failed'
+        || msgType === 'run_completed';
+      // A newer local submission owns presentation now. Even a delayed opener
+      // from the displaced run must not reopen its stream or refresh history.
+      const suppressPresentation = runtime.presentationSuppressed && !!evRunId
+        && evRunId === runtime.blockedPresentationRunId;
+      if (suppressPresentation && !isRunTerminal) return;
+      // A native final frame may beat the HTTP identity response. Keep only a
+      // bounded set of exact scoped IDs while that submission owns admission.
+      if (runtime.awaitingPresentation && msgType === 'run_finished' && evSid && evRunId
+        && !suppressPresentation && runtime.lastFinalizedRunId !== evRunId
+        && !runtime.earlyFinalRunIds.includes(evRunId) && runtime.earlyFinalRunIds.length < 4) {
+        runtime.earlyFinalRunIds.push(evRunId);
+      }
+      // The server persists the final answer before run_finished, which may
+      // follow an earlier cancellation. Recover presentation without entering
+      // any live runtime branch or delivering late text/tool output.
+      if (!runtime.presentationSuppressed && runtime.closedAt > 0 && msgType === 'run_finished' && evSid
+        && evRunId && runtime.lastFinalizedRunId !== evRunId
+        && (evRunId === runtime.pendingFinalRunId || evRunId === runtime.presentedRunId)) {
+        runtime.pendingFinalRunId = '';
+        runtime.presentedRunId = '';
+        runtime.lastFinalizedRunId = evRunId;
+        forSession(listeners, evSid, cb => cb({ type: 'run_finalized', sessionId: evSid, runId: evRunId }));
+        return;
+      }
+      // Completion belongs to one run. A stale or unidentified terminal must
+      // never close a known successor in the same session.
+      if (isRunTerminal && runtime.activeRunId && evRunId !== runtime.activeRunId) return;
+      if (isRunTerminal && runtime.runStartedAt === 0
+        && runtime.thinkingPhase === 'idle' && !runtime.activeRunId) return;
       // A cancelled tool may finish its current child process and emit a few
       // late lines. Those lines are evidence for Logs, not a new live run. If
       // they re-enter the live state here, the Stop button and neural row can
-      // resurrect seconds after the user stopped the task. A new run_started
-      // explicitly opens the session again.
-      if (runtime.closedAt > 0 && msgType !== 'run_started') {
-        const lateRunId = normalizeSessionId(data?.runId || data?.data?.runId);
-        const closedRunId = runtime.activeRunId;
-        const isClosingEvent = msgType === 'run_finished'
-          || msgType === 'run_cancelled'
-          || msgType === 'run_failed'
-          || msgType === 'run_completed';
-        if (!isClosingEvent || (lateRunId && closedRunId && lateRunId !== closedRunId)) return;
+      // resurrect seconds after the user stopped the task. Only explicit run
+      // openers may reopen it; repeated terminals do not emit idle again.
+      if (runtime.closedAt > 0 && !isRunOpener) return;
+      // Recover a missing identity, but only explicit openers can replace a
+      // known run. Late tool/step frames cannot retarget the restored Stop.
+      if (evRunId && msgTypeIsLive(msgType)) {
+        if (runtime.activeRunId && runtime.activeRunId !== evRunId && !isRunOpener) return;
+        runtime.activeRunId = evRunId;
       }
-      // Any event of a live run names it; the first one that does adopts the id
-      // for the session, so a chat switched away from and back to still knows
-      // which run to stop.
-      const evRunId = normalizeSessionId(data?.runId || data?.data?.runId);
-      if (evRunId && msgTypeIsLive(String(data?.type || ''))) runtime.activeRunId = evRunId;
+      if (isRunOpener) {
+        if (evRunId) {
+          runtime.awaitingPresentation = false;
+          runtime.earlyFinalRunIds = [];
+        }
+        runtime.pendingFinalRunId = '';
+        if (!evRunId || runtime.presentedRunId !== evRunId) runtime.presentedRunId = '';
+        if (evRunId && evRunId !== runtime.blockedPresentationRunId) {
+          runtime.presentationSuppressed = false;
+          runtime.blockedPresentationRunId = '';
+        }
+      }
+      if (msgType === 'user_input') runtime.closedAt = 0;
       if (msgType === 'terminal_output' && typeof data?.data === 'string') {
         runtime.terminalHistory += data.data;
         if (runtime.terminalHistory.length > TERMINAL_HISTORY_CAP) {
@@ -469,7 +593,7 @@ async function connect() {
         || msgType === 'run_cancelled'
         || msgType === 'run_failed'
         || msgType === 'run_completed'
-        || msgType === 'text'
+        || (msgType === 'text' && !runtime.activeRunId)
       ) {
         // A finished run is not a thinking run — whether or not quiet mode was
         // ever entered. Returning to idle used to be conditional on `quietMode`,
@@ -479,6 +603,11 @@ async function connect() {
         runtime.quietMode = false;
         runtime.thinkingStatus = '';
         runtime.closedAt = Date.now();
+        runtime.pendingFinalRunId = !runtime.presentationSuppressed && isRunTerminal && msgType !== 'run_finished' ? evRunId : '';
+        if (msgType === 'run_finished') {
+          runtime.presentedRunId = '';
+          runtime.lastFinalizedRunId = evRunId;
+        }
         runtime.activeRunId = '';
         emitPhase('idle');
         forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
@@ -579,7 +708,10 @@ async function connect() {
         AutoOpenManager.processStepEvent(data);
       } catch { }
 
-      forSession(listeners, evSid, cb => cb(data));
+      // Keep terminal delivery for the global running registry, while the chat
+      // must not repaint the displaced run over a newer local submission.
+      forSession(listeners, evSid, cb => cb(suppressPresentation
+        ? { ...data, suppressPresentation: true } : data));
     } catch (e) {
     }
   };
@@ -776,6 +908,10 @@ export const SocketService = {
       ts: Date.now()
     });
   },
+  registerRunPresentation,
+  invalidateRunPresentation,
+  beginRunPresentation,
+  endRunPresentation,
   /** Bounded scrollback used when the visible Terminal panel remounts. */
   getTerminalHistory(sessionId?: string) {
     return getSessionRuntime(sessionId).terminalHistory;

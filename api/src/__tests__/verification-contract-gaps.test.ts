@@ -16,7 +16,7 @@
  *   - A dropped final verifier (no observed output) completes on tasks exactly like a genuinely absent verifier
  *   - Downstream acceptance gates still bite, but this is not a structural guarantee
  *
- * These tests MUST FAIL until the gaps are fixed, then PASS when fixed.
+ * These regression tests guard the repaired verification gaps and must stay passing.
  */
 
 import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
@@ -57,13 +57,13 @@ describe('Gap A: Intermediate prose verification must NOT advance phase without 
         // Mock task execution to succeed
         mockedExecuteTool.mockImplementation(async (toolName: string, input: any) => {
             if (toolName === 'ai_write_file') {
-                return { ok: true, output: { path: input.path, message: 'File written' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: input.path, message: 'File written' } };
             }
             if (toolName === 'read_file') {
                 // read_file succeeds (file exists) but this is a prose-origin observation
-                return { ok: true, output: { content: 'file content' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { content: 'file content' } };
             }
-            return { ok: true, output: {} };
+            return { ok: true, logs: [], artifacts: [], error: undefined, output: {} };
         });
 
         // Create a plan with intermediate phase that has prose verificationTask
@@ -92,9 +92,9 @@ describe('Gap A: Intermediate prose verification must NOT advance phase without 
         // The verification should be recorded as observation only
         const verificationResult = result.output.results.find((r: any) => r.tool === 'read_file');
         expect(verificationResult).toBeDefined();
-        expect(verificationResult.message).toContain('not a behavioral check');
+        expect(verificationResult?.message).toContain('not a behavioral check');
         // verificationNote should be preserved in output
-        expect(result.output.verificationNote).toBe('Verify implementation works');
+        expect(result.output).toHaveProperty('verificationNote', 'Verify implementation works');
     });
 
     it('should advance intermediate phase when structured verificationTask passes behavioral check', async () => {
@@ -103,13 +103,13 @@ describe('Gap A: Intermediate prose verification must NOT advance phase without 
 
         mockedExecuteTool.mockImplementation(async (toolName: string, input: any) => {
             if (toolName === 'ai_write_file') {
-                return { ok: true, output: { path: input.path, message: 'File written' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: input.path, message: 'File written' } };
             }
             if (toolName === 'auto_tester') {
                 // Structured verification that passes
-                return { ok: true, output: { passed: true, message: 'Tests passed' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { passed: true, message: 'Tests passed' } };
             }
-            return { ok: true, output: {} };
+            return { ok: true, logs: [], artifacts: [], error: undefined, output: {} };
         });
 
         const plan = {
@@ -148,18 +148,18 @@ describe('Gap B: Non-React final plans must NOT complete without final verificat
 
         mockedExecuteTool.mockImplementation(async (toolName: string, input: any) => {
             if (toolName === 'scaffold_project') {
-                return { ok: true, output: { path: 'my-cli', message: 'Project scaffolded' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: 'my-cli', message: 'Project scaffolded' } };
             }
             if (toolName === 'ai_write_file') {
-                return { ok: true, output: { path: input.path, message: 'File written' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: input.path, message: 'File written' } };
             }
             if (toolName === 'read_file') {
-                return { ok: true, output: { content: 'file content' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { content: 'file content' } };
             }
             if (toolName === 'project_detect') {
-                return { ok: true, output: { detected: true } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { detected: true } };
             }
-            return { ok: true, output: {} };
+            return { ok: true, logs: [], artifacts: [], error: undefined, output: {} };
         });
 
         const plan = {
@@ -194,7 +194,7 @@ describe('Gap B: Non-React final plans must NOT complete without final verificat
         // Should be 'partial' because tasks succeeded but verification was only observation
         expect(result.output.status).toBe('partial');
         // verificationNote should be preserved in output
-        expect(result.output.verificationNote).toBe('Run the CLI and verify it works');
+        expect(result.output).toHaveProperty('verificationNote', 'Run the CLI and verify it works');
     });
 
     it('should complete non-React final phase when structured verificationTask passes', async () => {
@@ -203,17 +203,17 @@ describe('Gap B: Non-React final plans must NOT complete without final verificat
 
         mockedExecuteTool.mockImplementation(async (toolName: string, input: any) => {
             if (toolName === 'scaffold_project') {
-                return { ok: true, output: { path: 'my-cli', message: 'Project scaffolded' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: 'my-cli', message: 'Project scaffolded' } };
             }
             if (toolName === 'ai_write_file') {
-                return { ok: true, output: { path: input.path, message: 'File written' } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { path: input.path, message: 'File written' } };
             }
             if (toolName === 'shell_execute') {
                 // Structured verification that runs a test command (npm test)
                 // This matches the isVerificationTool patterns for shell_execute
-                return { ok: true, output: { stdout: 'Tests passed', exitCode: 0 } };
+                return { ok: true, logs: [], artifacts: [], error: undefined, output: { stdout: 'Tests passed', exitCode: 0 } };
             }
-            return { ok: true, output: {} };
+            return { ok: true, logs: [], artifacts: [], error: undefined, output: {} };
         });
 
         const plan = {
@@ -310,28 +310,41 @@ describe('Compact receipt provenance: verificationNote must appear in compactPha
     });
 });
 
-describe('QA evidence persistence: URL/viewport/selector/child boxes', () => {
-    it('should persist sanitized URL + requested/actual viewport + selector + header/child boxes', async () => {
-        // This test verifies that responsive QA findings persist the
-        // raw geometry data (URL, viewport, selector, child boxes)
-        // not just the prose summary (e.g., "154px")
-
-        // The enrichFinding function in ui-inspection.ts already adds
-        // URL and viewport metadata to findings. This test documents
-        // that the functionality exists and works.
-
-        const { enrichFinding } = await import('../core/quality/ui-inspection');
-
-        // We can't easily test the internal enrichFinding function directly
-        // because it's not exported. But we can verify the inspectUi function
-        // produces findings with evidence that includes URL and viewport.
-
-        // For now, this test documents the expected behavior.
-        // The implementation in ui-inspection.ts lines 772-803 adds:
-        // - url: pageUrl (captured from page.url())
-        // - viewport: { name, requestedWidth, actualWidth, height }
-
-        expect(true).toBe(true); // Implementation verified in ui-inspection.ts
+describe('QA evidence persistence: measured URL and geometry', () => {
+    it('retains defect targets and geometry in inspectUi results at measured widths', async () => {
+        // Controlled measurements test the public report boundary, not browser accuracy.
+        const { inspectUi, VIEWPORTS } = await import('../core/quality/ui-inspection');
+        let viewport = { width: 1280, height: 900 };
+        const target = { sel: 'header nav', x: 12, y: 20, w: 420, h: 180,
+            children: [{ sel: 'header button', x: 370, y: 30, w: 64, h: 40 }] };
+        const header = { sel: 'header', w: 390, h: 180, rows: 3, offscreenControls: 1 };
+        const page = {
+            url: jest.fn(async () => 'https://example.test/calculator'),
+            setViewportSize: jest.fn(async (size: { width: number; height: number }) => { viewport = size; }),
+            waitForTimeout: jest.fn(async () => {}),
+            evaluate: jest.fn(async (fn: Function) => {
+                if (fn.name === 'measureContrast') return { checked: 0, skipped: 0, samples: [] };
+                if (fn.name === 'measureA11y') return { focusables: 1, hasNav: true, issues: [] };
+                if (fn.name === 'measureContentComposition') return { hasImageWorkflow: false };
+                if (fn.name === 'measureResponsive') return {
+                    actualVw: viewport.width, overflowX: viewport.width === 390,
+                    wide: ['header nav'], wideEvidence: [target], boxes: [],
+                    tiny: 0, smallFonts: 0, clipped: 0, hasViewportMeta: true,
+                    fragmentedHeader: viewport.width === 390 ? header : null,
+                };
+                return viewport;
+            }),
+        };
+        const report = await inspectUi(page);
+        expect(report.metrics.viewports).toEqual(VIEWPORTS.map(vp => `${vp.w}x${vp.h}`));
+        expect(page.setViewportSize).toHaveBeenCalledTimes(VIEWPORTS.length);
+        expect(report.metrics.perWidth.mobile).toMatchObject({ requested: 390, actual: 390, overflowX: true });
+        expect(report.findings.find(f => f.code === 'mobile_overflow')).toMatchObject({
+            evidence: [{ ...target, url: 'https://example.test/calculator' }],
+        });
+        expect(report.findings.find(f => f.code === 'mobile_header_fragmented')).toMatchObject({
+            evidence: [{ ...header, url: 'https://example.test/calculator' }],
+        });
     });
 });
 
