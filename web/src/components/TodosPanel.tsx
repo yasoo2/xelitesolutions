@@ -19,7 +19,7 @@ interface TodosPanelProps {
 export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCollapse }: TodosPanelProps) {
     //  The time is shown to a person, so it is written in the language he set
     //  the app to — not the one Windows happens to be in.
-    const { i18n } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [todos, setTodos] = useState<TodoItem[]>([]);
     const [lastUpdated, setLastUpdated] = useState<string | null>(null);
 
@@ -78,8 +78,8 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
         }
     };
 
-    const activeCount = todos.filter(t => t.status === 'in_progress').length;
-    const completedCount = todos.filter(t => t.status === 'completed').length;
+    const activeCount = todos.filter(todo => todo.status === 'in_progress').length;
+    const completedCount = todos.filter(todo => todo.status === 'completed').length;
     const totalCount = todos.length;
     const isAllDone = completedCount === totalCount && totalCount > 0;
 
@@ -88,9 +88,9 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
             <div className="joe-todos-header" onClick={onToggleCollapse}>
                 <div className="joe-todos-title-group">
                     {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                    <h3 className="joe-todos-title">Agent Tasks</h3>
+                    <h3 className="joe-todos-title">{t('todo_title')}</h3>
                     {activeCount > 0 && (
-                        <span className="joe-todos-badge active">{activeCount} Active</span>
+                        <span className="joe-todos-badge active">{t('todo_activeCount', { n: activeCount })}</span>
                     )}
                 </div>
                 <div className="joe-todos-progress">
@@ -113,7 +113,7 @@ export default function TodosPanel({ sessionId, isCollapsed = false, onToggleCol
                     {lastUpdated && (
                         <div className="joe-todos-footer">
                             <Clock size={12} />
-                            <span>Updated {uiTime(lastUpdated, i18n.language)}</span>
+                            <span>{t('todo_updatedAt', { time: uiTime(lastUpdated, i18n.language) })}</span>
                         </div>
                     )}
                 </div>

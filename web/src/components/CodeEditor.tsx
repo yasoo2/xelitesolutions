@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useMonacoReady } from '../monaco-setup';
 import Editor, { loader } from '@monaco-editor/react';
+import { useTranslation } from 'react-i18next';
 
 // Configure loader to use local files or CDN properly if needed
 // For now default CDN is fine
@@ -15,6 +16,7 @@ interface CodeEditorProps {
 }
 
 export default function CodeEditor({ code, language = 'javascript', onChange, readOnly = false, theme: initialTheme = 'vs-dark', showMinimap = true }: CodeEditorProps) {
+  const { t } = useTranslation();
   const [theme, setTheme] = useState(initialTheme);
   // Monaco arrives with this component, not with the page — see monaco-setup.
   const monacoReady = useMonacoReady();
@@ -83,7 +85,7 @@ export default function CodeEditor({ code, language = 'javascript', onChange, re
           automaticLayout: true,
           minimap: { enabled: showMinimap, scale: 1, showSlider: 'mouseover' },
         }}
-        loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>Loading Editor...</div>}
+        loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>{t('editor_loading')}</div>}
       />
     </div>
   );

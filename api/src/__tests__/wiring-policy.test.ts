@@ -2067,9 +2067,14 @@ it('the updater speaks where the interface can hear it', () => {
         expect(S).toMatch(/running: !!startedAt && !finished && !failed && !stalled/);
         expect(S).toMatch(/stalled = 'never_started'/);
         const U = WEB('components', 'UpdateJoeItem.tsx');
-        expect(U).toMatch(/لم يصل أول سطر بعد/);
+        // The words live in the dictionary now (every language the user can
+        // choose); the card must still ask for them, and Arabic must still say them.
+        const I18N = WEB('i18n.ts');
+        expect(U).toMatch(/t\('upd_noLinesYet'\)/);
+        expect(I18N).toMatch(/\bupd_noLinesYet['"]?:\s*['"`][^'"`\n]*لم يصل أول سطر بعد/);
         expect(U).toMatch(/joe-update-clock/);
-        expect(U).toMatch(/التحديث متوقّف/);
+        expect(U).toMatch(/t\('upd_titleStalled'\)/);
+        expect(I18N).toMatch(/\bupd_titleStalled['"]?:\s*['"`]التحديث متوقّف['"`]/);
     });
 
         it('and the overlay lives outside the menu that opened it', () => {
@@ -2516,8 +2521,14 @@ it('the row says which of the three states it is in', () => {
         const S = SRC('api', 'routes', 'system.ts');
         expect(S).toMatch(/if \(!lastCheck\.at \|\| String\(req\.query\.force \|\| ''\) === '1'\) await refreshUpdateCheck\(true\)/);
         const U = WEB('components', 'UpdateJoeItem.tsx');
-        expect(U).toMatch(/تحديث متاح/);
-        expect(U).toMatch(/جو محدَّث/);
+        // Each of the three states has its own words, asked of the dictionary
+        // so they follow the language the user chose.
+        const I18N = WEB('i18n.ts');
+        expect(U).toMatch(/t\('upd_available'\)/);
+        expect(U).toMatch(/t\('upd_upToDateRebuild'\)/);
+        expect(U).toMatch(/t\('upd_updateJoe'\)/);
+        expect(I18N).toMatch(/\bupd_available['"]?:\s*['"`]تحديث متاح['"`]/);
+        expect(I18N).toMatch(/\bupd_upToDateRebuild['"]?:\s*['"`]جو محدَّث/);
     });
 
     it('and a running update is a card, not a wall of log', () => {

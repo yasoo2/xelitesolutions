@@ -306,8 +306,8 @@ function SessionChip({
             {session.isRunning ? (
                 <span
                     className="session-live-dot"
-                    aria-label="working"
-                    title="Joe is working here"
+                    aria-label={t('sess_working')}
+                    title={t('sess_joeWorkingHere')}
                     style={{
                         width: 6, height: 6, borderRadius: 999, flex: 'none',
                         background: '#10b981',

@@ -97,6 +97,44 @@ interface EnvCustomVar {
 
 type Tab = 'dashboard' | 'deployments' | 'admins' | 'settings' | 'sentinel';
 
+/**
+ * The registry's labels and hints arrive from the server in the owner's
+ * Arabic (api/src/core/config/envRegistry.ts). The screen speaks the
+ * interface language, so every name the registry knows maps to its keys
+ * here; a name this table does not know yet shows the server's own text.
+ */
+const ENV_TEXT: Record<string, { labelKey: string; hintKey?: string }> = {
+    SUPER_ADMIN_EMAILS: { labelKey: 'sm_envSuperAdminEmails', hintKey: 'sm_envSuperAdminEmailsHint' },
+    ADMIN_EMAIL: { labelKey: 'sm_envAdminEmail', hintKey: 'sm_envAdminEmailHint' },
+    REGISTRATION_OPEN: { labelKey: 'sm_envRegistrationOpen', hintKey: 'sm_envRegistrationOpenHint' },
+    ENABLE_AUTH_BYPASS: { labelKey: 'sm_envAuthBypass', hintKey: 'sm_envAuthBypassHint' },
+    JWT_SECRET: { labelKey: 'sm_envJwtSecret', hintKey: 'sm_envJwtSecretHint' },
+    GROQ_API_KEY: { labelKey: 'sm_envGroqKey', hintKey: 'sm_envGroqKeyHint' },
+    OPENAI_API_KEY: { labelKey: 'sm_envOpenaiKey', hintKey: 'sm_envOpenaiKeyHint' },
+    OPENROUTER_API_KEY: { labelKey: 'sm_envOpenrouterKey', hintKey: 'sm_envOpenrouterKeyHint' },
+    GOOGLE_API_KEY: { labelKey: 'sm_envGoogleKey', hintKey: 'sm_envOptionalHint' },
+    CEREBRAS_API_KEY: { labelKey: 'sm_envCerebrasKey', hintKey: 'sm_envCerebrasKeyHint' },
+    MISTRAL_API_KEY: { labelKey: 'sm_envMistralKey', hintKey: 'sm_envOptionalHint' },
+    GOOGLE_CLIENT_ID: { labelKey: 'sm_envGoogleClientId', hintKey: 'sm_envGoogleClientIdHint' },
+    GOOGLE_CLIENT_SECRET: { labelKey: 'sm_envGoogleClientSecret', hintKey: 'sm_envGoogleClientSecretHint' },
+    GOOGLE_REDIRECT_URI: { labelKey: 'sm_envGoogleRedirect', hintKey: 'sm_envGoogleRedirectHint' },
+    LOCAL_LLM_BASE_URL: { labelKey: 'sm_envLocalLlmUrl', hintKey: 'sm_envLocalLlmUrlHint' },
+    LOCAL_LLM_MODEL: { labelKey: 'sm_envLocalLlmModel', hintKey: 'sm_envLocalLlmModelHint' },
+    JOE_VISION_BASE_URL: { labelKey: 'sm_envVisionUrl', hintKey: 'sm_envVisionUrlHint' },
+    JOE_VISION_MODEL: { labelKey: 'sm_envVisionModel' },
+    PERSISTENCE_MODE: { labelKey: 'sm_envPersistence', hintKey: 'sm_envPersistenceHint' },
+    MONGO_URI: { labelKey: 'sm_envMongoUri', hintKey: 'sm_envMongoUriHint' },
+    EXTERNAL_PROJECTS_DIR: { labelKey: 'sm_envProjectsDir', hintKey: 'sm_envProjectsDirHint' },
+    ARTIFACT_DIR: { labelKey: 'sm_envArtifactDir', hintKey: 'sm_envArtifactDirHint' },
+    BACKUP_DIR: { labelKey: 'sm_envBackupDir', hintKey: 'sm_envBackupDirHint' },
+    PORT: { labelKey: 'sm_envPort', hintKey: 'sm_envPortHint' },
+    PUBLIC_URL: { labelKey: 'sm_envPublicUrl', hintKey: 'sm_envPublicUrlHint' },
+    NODE_ENV: { labelKey: 'sm_envNodeEnv', hintKey: 'sm_envNodeEnvHint' },
+    BROWSER_EXECUTABLE_PATH: { labelKey: 'sm_envBrowserPath', hintKey: 'sm_envBrowserPathHint' },
+    OFFLINE_MODE: { labelKey: 'sm_envOfflineMode', hintKey: 'sm_envOfflineModeHint' },
+    TTS_BASE_URL: { labelKey: 'sm_envTtsUrl', hintKey: 'sm_envTtsUrlHint' },
+};
+
 export default function SystemManagement() {
     const { t } = useTranslation();
     const navigate = useNavigate();
@@ -157,6 +195,71 @@ export default function SystemManagement() {
         isDeploying: boolean;
     } | null>(null);
     const logEndRef = useRef<HTMLDivElement>(null);
+
+    // ── What the screen says, in the interface language ──────────────────
+    const envLabel = (r: EnvSetting) => (ENV_TEXT[r.key] ? t(ENV_TEXT[r.key].labelKey) : r.label);
+    const envHint = (r: EnvSetting) => {
+        const hintKey = ENV_TEXT[r.key]?.hintKey;
+        return hintKey ? t(hintKey) : (ENV_TEXT[r.key] ? '' : r.hint);
+    };
+    const envLabelOf = (key: string) => {
+        const r = (envSettings || []).find(x => x.key === key);
+        return r ? envLabel(r) : key;
+    };
+    /** The save answer carries counts; the sentence around them is ours. */
+    const envSavedText = (data: any) => {
+        if (Array.isArray(data?.needsRestart) && data.needsRestart.length) {
+            return t('sm_envSavedNeedsRestart', { now: Array.isArray(data.appliedNow) ? data.appliedNow.length : 0, restart: data.needsRestart.length });
+        }
+        return Array.isArray(data?.appliedNow) ? t('sm_envSavedLive') : t('sm_envSaved');
+    };
+    /**
+     * A refusal names itself by `error`; the fixed ones are said here. The
+     * rest carry the server's own reason (a validation message) as sent.
+     */
+    const envErrorText = (data: any, status: number) => {
+        switch (data?.error) {
+            case 'no_changes': return t('sm_envNoChanges');
+            case 'owner_only': return t('sm_envOwnerOnly');
+            case 'unsafe_in_production': return t('sm_envErrAuthBypassProd');
+            case 'confirmation_required': if (data.key) return t('sm_envErrConfirm', { label: envLabelOf(String(data.key)) }); break;
+            case 'registry_key_not_removable': if (data.key) return t('sm_envErrNotRemovable', { key: String(data.key) }); break;
+            case 'would_lock_you_out': {
+                const email = resolveIdentity().email;
+                if (email) return t('sm_envErrLockout', { email });
+                break;
+            }
+        }
+        return data?.message || t('sm_envSaveFailed', { status });
+    };
+    const depStatusLabel = (s: Deployment['status']) => {
+        switch (s) {
+            case 'PENDING': return t('sm_stPending');
+            case 'STARTED': return t('sm_stStarted');
+            case 'BUILDING': return t('sm_stBuilding');
+            case 'SUCCESS': return t('sm_stSuccess');
+            case 'FAILED': return t('sm_stFailed');
+            case 'ROLLBACK': return t('sm_stRollback');
+            default: return s;
+        }
+    };
+    const triggerLabel = (by: string) => {
+        switch (by) {
+            case 'manual': return t('sm_trigManual');
+            case 'webhook': return t('sm_trigWebhook');
+            case 'rollback': return t('sm_trigRollback');
+            default: return by;
+        }
+    };
+    const roleLabel = (role: string) => {
+        switch (role) {
+            case 'OWNER': return t('roleOwner');
+            case 'SUPER_ADMIN': return t('roleSuperAdmin');
+            case 'ADMIN': return t('roleAdmin');
+            case 'USER': return t('roleUser');
+            default: return role;
+        }
+    };
 
     /**
      * The settings tab is for OWNERs. The server enforces that (403 for anyone
@@ -321,9 +424,9 @@ export default function SystemManagement() {
         }
         const remove = envRemovals;
         for (const k of remove) delete changes[k];   // a deleted row's edits die with it
-        if (!Object.keys(changes).length && !remove.length) { setEnvMsg({ ok: false, text: 'لا تغييرات لحفظها.' }); return; }
+        if (!Object.keys(changes).length && !remove.length) { setEnvMsg({ ok: false, text: t('sm_envNoChanges') }); return; }
         const needs = (envSettings || []).find(r => r.confirm && r.key in changes && changes[r.key]);
-        if (needs && !window.confirm(`${needs.label}: ${needs.hint}\n\nهل تريد المتابعة؟`)) return;
+        if (needs && !window.confirm(`${envLabel(needs)}: ${envHint(needs)}\n\n${t('sm_envConfirmContinue')}`)) return;
         setEnvSaving(true);
         setEnvMsg(null);
         try {
@@ -339,25 +442,26 @@ export default function SystemManagement() {
                 await fetchEnv();
                 if (redeploy) {
                     setEnvRedeploying(true);
-                    setEnvMsg({ ok: true, text: `${data?.message || 'حُفظ.'} تبدأ الآن إعادة النشر…` });
+                    setEnvMsg({ ok: true, text: `${envSavedText(data)} ${t('sm_envRedeployStarting')}` });
                     const up = await fetch(`${API_URL}/system/update`, {
                         method: 'POST',
                         headers: { Authorization: `Bearer ${token}` },
                     }).catch(() => null);
                     if (up && up.ok) {
-                        setEnvMsg({ ok: true, text: 'حُفظ وبدأت إعادة النشر — سيتوقف جو لحظات ثم يعود بالقيم الجديدة. حدّث الصفحة بعد عودته (Ctrl+Shift+R).' });
+                        setEnvMsg({ ok: true, text: t('sm_envSavedRedeploying') });
                     } else {
                         const ud = up ? await up.json().catch(() => null) : null;
-                        setEnvMsg({ ok: false, text: `حُفظ، لكن تعذّر بدء إعادة النشر${ud?.message ? `: ${ud.message}` : up ? ` (${up.status})` : ''} — أعد تشغيل جو يدوياً.` });
+                        const reason = ud?.error === 'local_only' ? t('sm_updateLocalOnly') : ud?.message;
+                        setEnvMsg({ ok: false, text: t('sm_envSavedRedeployFailed', { detail: reason ? `: ${reason}` : up ? ` (${up.status})` : '' }) });
                     }
                     setEnvRedeploying(false);
                 } else {
-                    setEnvMsg({ ok: true, text: data?.message || 'حُفظ.' });
+                    setEnvMsg({ ok: true, text: envSavedText(data) });
                 }
             } else {
-                setEnvMsg({ ok: false, text: data?.message || `تعذّر الحفظ (${res.status}).` });
+                setEnvMsg({ ok: false, text: envErrorText(data, res.status) });
             }
-        } catch (e: any) { setEnvMsg({ ok: false, text: `خطأ في الشبكة: ${e.message}` }); }
+        } catch (e: any) { setEnvMsg({ ok: false, text: t('sm_networkError', { error: e.message }) }); }
         setEnvSaving(false);
     };
 
@@ -428,7 +532,7 @@ export default function SystemManagement() {
                         status: 'STARTED',
                         triggeredBy: 'manual',
                         startTime: new Date().toISOString(),
-                        logs: ['=== Deployment Initiated ===']
+                        logs: [`=== ${t('sm_logDeployInitiated')} ===`]
                     };
                     setSelectedDep(newDep);
                     // Also add to the list immediately
@@ -436,18 +540,18 @@ export default function SystemManagement() {
                 }
             } else {
                 const errorData = await res.text();
-                alert(`Deployment failed to start: ${res.status} ${errorData}`);
+                alert(t('sm_deployStartFailed', { detail: `${res.status} ${errorData}` }));
             }
-        } catch (e: any) { 
-            console.error(e); 
-            alert(`Network Error: ${e.message}`);
+        } catch (e: any) {
+            console.error(e);
+            alert(t('sm_networkError', { error: e.message }));
         } finally {
             setIsDeploying(false);
         }
     };
 
     const handleClearHistory = async () => {
-        if (!window.confirm('Are you sure you want to clear all deployment history? This cannot be undone.')) return;
+        if (!window.confirm(t('sm_confirmClearHistory'))) return;
         try {
             const res = await fetch(`${API_URL}/admin/deployments`, {
                 method: 'DELETE',
@@ -466,7 +570,7 @@ export default function SystemManagement() {
      * capability you do not have.
      */
     const handleRollback = async (dep: Deployment) => {
-        if (!window.confirm(`الرجوع إلى النشرة #${dep.commit?.slice(0, 7)}؟ سيبدأ نشر جديد بهذا الإصدار.`)) return;
+        if (!window.confirm(t('sm_confirmRollback', { commit: dep.commit?.slice(0, 7) }))) return;
         setIsDeploying(true);
         try {
             const res = await fetch(`${API_URL}/admin/rollback/${dep._id}`, {
@@ -478,18 +582,18 @@ export default function SystemManagement() {
                 await fetchDeployments();
                 if (data?.id) setSelectedDep({
                     _id: data.id, commit: dep.commit, status: 'STARTED', triggeredBy: 'rollback',
-                    startTime: new Date().toISOString(), logs: [`=== Rollback to ${dep.commit?.slice(0, 7)} ===`],
+                    startTime: new Date().toISOString(), logs: [`=== ${t('sm_logRollbackTo', { commit: dep.commit?.slice(0, 7) })} ===`],
                 });
             } else {
-                alert(`تعذّر الرجوع: ${data?.error || res.status}`);
+                alert(t('sm_rollbackFailed', { error: data?.error || res.status }));
             }
-        } catch (e: any) { alert(`خطأ في الشبكة: ${e.message}`); }
+        } catch (e: any) { alert(t('sm_networkError', { error: e.message })); }
         finally { setIsDeploying(false); }
     };
 
     /** DELETE /admin/deployments/:id — likewise reachable now, one record at a time. */
     const handleDeleteDeployment = async (dep: Deployment) => {
-        if (!window.confirm(`حذف سجلّ النشرة #${dep.commit?.slice(0, 7)}؟`)) return;
+        if (!window.confirm(t('sm_confirmDeleteDeployment', { commit: dep.commit?.slice(0, 7) }))) return;
         try {
             const res = await fetch(`${API_URL}/admin/deployments/${dep._id}`, {
                 method: 'DELETE',
@@ -548,7 +652,7 @@ export default function SystemManagement() {
                         <div className="stat-card cpu">
                             <div className="stat-icon">
                                 <Activity size={18} color="#60a5fa" />
-                                <span className="stat-label">المعالج (الآن)</span>
+                                <span className="stat-label">{t('sm_cpuNow')}</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.cpu)) }}>
                                 {health.system.cpu}
@@ -566,12 +670,12 @@ export default function SystemManagement() {
                         <div className="stat-card memory">
                             <div className="stat-icon">
                                 <Clock size={18} color="#a78bfa" />
-                                <span className="stat-label">الذاكرة</span>
+                                <span className="stat-label">{t('sm_memory')}</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.memory)) }}>
                                 {health.system.memory}
                             </div>
-                            <div className="stat-sub">ذاكرة النظام المستعملة (لا العمليات وحدها)</div>
+                            <div className="stat-sub">{t('sm_memorySub')}</div>
                             <div className="progress-bar">
                                 <div className="progress-fill" style={{
                                     width: `${parsePercent(health.system.memory)}%`,
@@ -584,12 +688,12 @@ export default function SystemManagement() {
                         <div className="stat-card disk">
                             <div className="stat-icon">
                                 <Hash size={18} color="#f59e0b" />
-                                <span className="stat-label">القرص</span>
+                                <span className="stat-label">{t('sm_disk')}</span>
                             </div>
                             <div className="stat-value" style={{ color: getHealthColor(parsePercent(health.system.disk)) }}>
                                 {health.system.disk}
                             </div>
-                            <div className="stat-sub">القرص الذي يعمل عليه جو</div>
+                            <div className="stat-sub">{t('sm_diskSub')}</div>
                             <div className="progress-bar">
                                 <div className="progress-fill" style={{
                                     width: `${parsePercent(health.system.disk)}%`,
@@ -603,18 +707,18 @@ export default function SystemManagement() {
                         <div className="stat-card db">
                             <div className="stat-icon">
                                 <Server size={18} color={health.database.connected ? '#10b981' : '#f59e0b'} />
-                                <span className="stat-label">قاعدة البيانات</span>
+                                <span className="stat-label">{t('sm_database')}</span>
                             </div>
                             <div className="stat-value" style={{
                                 color: health.database.connected ? '#10b981' : '#f59e0b',
                                 fontSize: health.database.connected ? undefined : '22px',
                             }}>
-                                {health.database.connected ? (health.database.dataSize || '—') : 'غير متصلة'}
+                                {health.database.connected ? (health.database.dataSize || '—') : t('sm_dbDisconnected')}
                             </div>
                             <div className="stat-sub">
                                 {health.database.connected
-                                    ? `${health.database.documents ?? 0} مستند • ${health.database.collections ?? 0} مجموعة`
-                                    : 'جو يعمل محلياً بتخزين على القرص — MongoDB تلزم لسجلّ النشر والمستخدمين'}
+                                    ? t('sm_dbCounts', { docs: health.database.documents ?? 0, collections: health.database.collections ?? 0 })
+                                    : t('sm_dbLocalNote')}
                             </div>
                         </div>
                     </>
@@ -630,9 +734,9 @@ export default function SystemManagement() {
                     onClick={() => setExpandedSection(expandedSection === 'containers' ? null : 'containers')}>
                     <div className="section-header-left">
                         <Server size={18} color="#60a5fa" />
-                        <span className="section-title">حاويات Docker</span>
+                        <span className="section-title">{t('sm_dockerContainers')}</span>
                         <span className="section-badge">
-                            {health?.dockerAvailable === false ? 'Docker غير مثبّت' : `${health?.containers?.length || 0} تعمل`}
+                            {health?.dockerAvailable === false ? t('sm_dockerMissing') : t('sm_containersRunning', { n: health?.containers?.length || 0 })}
                         </span>
                         {health?.apiService && (
                             <span className="section-badge" style={{
@@ -660,8 +764,8 @@ export default function SystemManagement() {
                         ) : (
                             <div style={{ color: 'var(--text-muted)', fontSize: '14px' }}>
                                 {health?.dockerAvailable === false
-                                    ? 'Docker غير مثبّت على هذا الجهاز — وهذا طبيعي محلياً؛ جو يعمل مباشرة بلا حاويات.'
-                                    : 'لا حاويات تعمل الآن.'}
+                                    ? t('sm_dockerMissingNote')
+                                    : t('sm_noContainers')}
                             </div>
                         )}
                     </div>
@@ -675,8 +779,8 @@ export default function SystemManagement() {
         <div className="db-offline-banner">
             <AlertTriangle size={18} />
             <div>
-                <strong>MongoDB غير متصلة على هذا الجهاز.</strong>
-                <div>سجلّ النشر والمستخدمون والإعدادات تحتاجها؛ أمّا لوحة النظام (المعالج والذاكرة والقرص والنسخ الاحتياطية) فتعمل كما هي.</div>
+                <strong>{t('sm_dbOfflineTitle')}</strong>
+                <div>{t('sm_dbOfflineBody')}</div>
             </div>
         </div>
     ) : null);
@@ -686,13 +790,13 @@ export default function SystemManagement() {
             {renderDbBanner()}
             <div className="deploy-actions" style={{ display: 'flex', gap: '12px' }}>
                 <button className="btn-deploy-refined" onClick={handleDeploy} disabled={isDeploying || dbOffline}
-                    title={dbOffline ? 'يحتاج قاعدة بيانات لتسجيل النشرة' : 'Deploy Production'}>
+                    title={dbOffline ? t('sm_deployNeedsDb') : t('sm_deployProduction')}>
                     {isDeploying ? <Loader2 size={20} className="spinning" /> : <Rocket size={20} />}
-                    {isDeploying ? 'Processing Deployment...' : 'Deploy Production'}
+                    {isDeploying ? t('sm_deployProcessing') : t('sm_deployProduction')}
                 </button>
                 <button className="btn-clear-refined" onClick={handleClearHistory} disabled={deployments.length === 0}>
                     <Trash2 size={20} />
-                    Clear History
+                    {t('sm_clearHistory')}
                 </button>
             </div>
 
@@ -726,7 +830,7 @@ export default function SystemManagement() {
                             boxShadow: (autoDeployStatus?.pollerEnabled ?? true) ? '0 0 8px #10b981' : '0 0 8px #ef4444',
                             animation: autoDeployStatus?.pollerActive ? 'pulse-glow 2s infinite' : 'none'
                         }} />
-                        <span>{!(autoDeployStatus?.pollerEnabled ?? true) ? '🔴 Auto-Deploy Disabled' : autoDeployStatus?.pollerActive ? '🟢 Auto-Deploy Fetching...' : '🟢 Auto-Deploy Standby'}</span>
+                        <span>{!(autoDeployStatus?.pollerEnabled ?? true) ? `🔴 ${t('sm_autoDeployDisabled')}` : autoDeployStatus?.pollerActive ? `🟢 ${t('sm_autoDeployFetching')}` : `🟢 ${t('sm_autoDeployStandby')}`}</span>
                     </div>
                     {autoDeployStatus && (
                         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' as const }}>
@@ -734,27 +838,27 @@ export default function SystemManagement() {
                                 fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
                                 background: 'var(--sm-tint-2)', color: 'var(--text-muted)',
                                 fontFamily: 'monospace'
-                            }}>Poll #{autoDeployStatus.pollCount || 0}</span>
+                            }}>{t('sm_pollCount', { n: autoDeployStatus.pollCount || 0 })}</span>
                             {autoDeployStatus.lastPollTime && (
                                 <span style={{
                                     fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
                                     background: 'var(--sm-tint-2)', color: 'var(--text-muted)',
                                     fontFamily: 'monospace'
-                                }}>Last: {new Date(autoDeployStatus.lastPollTime).toLocaleTimeString()}</span>
+                                }}>{t('sm_lastPoll', { time: new Date(autoDeployStatus.lastPollTime).toLocaleTimeString() })}</span>
                             )}
                             {autoDeployStatus.lastLocalCommit && (
                                 <span style={{
                                     fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
                                     background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
                                     fontFamily: 'monospace'
-                                }}>Local: {autoDeployStatus.lastLocalCommit}</span>
+                                }}>{t('sm_localCommit', { commit: autoDeployStatus.lastLocalCommit })}</span>
                             )}
                             {autoDeployStatus.lastRemoteCommit && (
                                 <span style={{
                                     fontSize: '11px', padding: '3px 8px', borderRadius: '6px',
                                     background: 'rgba(59,130,246,0.1)', color: '#3b82f6',
                                     fontFamily: 'monospace'
-                                }}>Remote: {autoDeployStatus.lastRemoteCommit}</span>
+                                }}>{t('sm_remoteCommit', { commit: autoDeployStatus.lastRemoteCommit })}</span>
                             )}
                             {autoDeployStatus.lastPollError && (
                                 <span style={{
@@ -798,7 +902,7 @@ export default function SystemManagement() {
                         flexShrink: 0
                     }}
                 >
-                    {(autoDeployStatus?.pollerEnabled ?? true) ? '⏸ Disable' : '▶ Enable'}
+                    {(autoDeployStatus?.pollerEnabled ?? true) ? `⏸ ${t('sm_disable')}` : `▶ ${t('sm_enable')}`}
                 </button>
             </div>
 
@@ -806,24 +910,24 @@ export default function SystemManagement() {
                 <div className="section-header">
                     <div style={{ display: 'flex', alignItems: 'center' }}>
                         <Clock size={20} color="var(--accent-primary)" />
-                        <span className="section-title">Deployment Pipeline</span>
+                        <span className="section-title">{t('sm_deployPipeline')}</span>
                     </div>
                     <span className="section-badge" style={{ background: 'rgba(52, 196, 139,0.1)', color: 'var(--accent-primary)' }}>
-                        {deployments.length} Total Logs
+                        {t('sm_depTotal', { n: deployments.length })}
                     </span>
                 </div>
                 <div style={{ padding: '16px' }}>
                     {deployments.length > 0 ? deployments.map(dep => (
                         <div key={dep._id} className={`dep-item`}>
                             <div style={{ display: 'flex', alignItems: 'center' }}>
-                                <span className={`dep-badge ${dep.status.toLowerCase()}`}>{dep.status}</span>
+                                <span className={`dep-badge ${dep.status.toLowerCase()}`}>{depStatusLabel(dep.status)}</span>
                                 <div style={{ display: 'flex', flexDirection: 'column' }}>
                                     <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                                         <span className="dep-commit">#{dep.commit.slice(0, 7)}</span>
                                         <span className="dep-time">{new Date(dep.startTime).toLocaleString()}</span>
                                     </div>
                                     <div className="dep-meta">
-                                        Triggered by <span style={{ color: 'var(--text-primary)' }}>{dep.triggeredBy}</span> • Duration: {dep.duration?.toFixed(1) || '?'}s
+                                        {t('sm_trigger')} <span style={{ color: 'var(--text-primary)' }}>{triggerLabel(dep.triggeredBy)}</span> • {t('sm_duration', { s: dep.duration?.toFixed(1) || '?' })}
                                     </div>
                                     {/* The server stores `error` on every failure; nothing ever showed it,
                                         so a red FAILED badge was the whole explanation. */}
@@ -836,16 +940,16 @@ export default function SystemManagement() {
                             </div>
                             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                                 <button className="dep-log-btn" onClick={() => setSelectedDep(dep)}>
-                                    <Terminal size={14} /> View Logs
+                                    <Terminal size={14} /> {t('sm_viewLogs')}
                                 </button>
                                 {/* Rollback: reachable at last, and only where it means something. */}
                                 {dep.status === 'SUCCESS' && (
-                                    <button className="dep-log-btn" title="ارجع إلى هذا الإصدار"
+                                    <button className="dep-log-btn" title={t('sm_rollbackTitle')}
                                         onClick={() => handleRollback(dep)} disabled={isDeploying}>
-                                        <RotateCcw size={14} /> Rollback
+                                        <RotateCcw size={14} /> {t('sm_rollback')}
                                     </button>
                                 )}
-                                <button className="dep-log-btn danger" title="احذف هذا السجلّ"
+                                <button className="dep-log-btn danger" title={t('sm_deleteRecord')}
                                     onClick={() => handleDeleteDeployment(dep)}>
                                     <Trash2 size={14} />
                                 </button>
@@ -854,7 +958,7 @@ export default function SystemManagement() {
                     )) : (
                         <div className="empty-state" style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>
                             <Rocket size={48} style={{ opacity: 0.1, marginBottom: '16px' }} />
-                            <p>No deployment history available.</p>
+                            <p>{t('sm_noDeployments')}</p>
                         </div>
                     )}
                 </div>
@@ -869,7 +973,7 @@ export default function SystemManagement() {
                 <Search size={20} className="search-icon" />
                 <input
                     type="text"
-                    placeholder="Search administrators by name or email..."
+                    placeholder={t('sm_searchAdmins')}
                     value={userSearch}
                     onChange={(e) => setUserSearch(e.target.value)}
                     onKeyUp={(e) => e.key === 'Enter' && fetchUsers()}
@@ -887,12 +991,12 @@ export default function SystemManagement() {
                             )}
                         </div>
                         <div className="user-info">
-                            <div className="user-name">{user.name || 'Anonymous Operator'}</div>
+                            <div className="user-name">{user.name || t('sm_anonymousOperator')}</div>
                             <div className="user-email">{user.email}</div>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
                             <div className="user-role-badge">
-                                {user.role}
+                                {roleLabel(user.role)}
                             </div>
                             <button
                                 className={`role-toggle-btn ${user.role === 'SUPER_ADMIN' ? 'is-admin' : ''}`}
@@ -902,9 +1006,9 @@ export default function SystemManagement() {
                                 {updatingUser === user._id ? (
                                     <RefreshCw size={14} className="spinning" />
                                 ) : user.role === 'SUPER_ADMIN' ? (
-                                    <><UserMinus size={14} /> Revoke Access</>
+                                    <><UserMinus size={14} /> {t('sm_revokeAccess')}</>
                                 ) : (
-                                    <><UserPlus size={14} /> Promote to Admin</>
+                                    <><UserPlus size={14} /> {t('sm_promoteAdmin')}</>
                                 )}
                             </button>
                         </div>
@@ -913,7 +1017,7 @@ export default function SystemManagement() {
                 {users.length === 0 && !loading && (
                     <div className="section-card" style={{ padding: '80px', textAlign: 'center', color: 'var(--text-muted)' }}>
                         <Shield size={48} style={{ opacity: 0.1, marginBottom: '16px' }} />
-                        <p>No matching personnel records found.</p>
+                        <p>{t('sm_noUsers')}</p>
                     </div>
                 )}
             </div>
@@ -935,12 +1039,12 @@ export default function SystemManagement() {
      * validated, custom names behind the strict gate, secrets write-only.
      */
     const GROUP_TITLES: Record<string, string> = {
-        ownership: 'الملكية والأمان',
-        ai: 'مفاتيح الذكاء',
-        google: 'ربط Google (OAuth) — يسري فوراً بلا إعادة تشغيل',
-        'local-brain': 'الدماغ المحلّي',
-        storage: 'التخزين',
-        runtime: 'التشغيل',
+        ownership: t('sm_grpOwnership'),
+        ai: t('sm_grpAi'),
+        google: t('sm_grpGoogle'),
+        'local-brain': t('sm_grpLocalBrain'),
+        storage: t('sm_grpStorage'),
+        runtime: t('sm_grpRuntime'),
     };
 
     const renderSettings = () => {
@@ -950,8 +1054,8 @@ export default function SystemManagement() {
                     <div className="db-offline-banner">
                         <AlertTriangle size={18} />
                         <div>
-                            <strong>هذه الشاشة للمالك وحده.</strong>
-                            <div>يمكنك إدارة النظام، لكن تعديل بيئة تشغيل جو محصور بمن عرّفه المشغّل في SUPER_ADMIN_EMAILS.</div>
+                            <strong>{t('sm_envOwnerOnly')}</strong>
+                            <div>{t('sm_envOwnerOnlyBody')}</div>
                         </div>
                     </div>
                 </motion.div>
@@ -965,13 +1069,13 @@ export default function SystemManagement() {
         const busy = envSaving || envRedeploying;
 
         const undoBtn = (key: string) => (
-            <button className="envx-icon" title="تراجع عن التعديل"
+            <button className="envx-icon" title={t('sm_undoEdit')}
                 onClick={() => setEnvDrafts(prev => { const n = { ...prev }; delete n[key]; return n; })}>
                 <RotateCcw size={14} />
             </button>
         );
         const eyeBtn = (key: string) => (
-            <button className="envx-icon" title={envReveal[key] ? 'إخفاء' : 'إظهار'}
+            <button className="envx-icon" title={envReveal[key] ? t('hide') : t('sm_show')}
                 onClick={() => setEnvReveal(prev => ({ ...prev, [key]: !prev[key] }))}>
                 {envReveal[key] ? <EyeOff size={14} /> : <Eye size={14} />}
             </button>
@@ -984,11 +1088,11 @@ export default function SystemManagement() {
                 <div className="envx-row" key={r.key}>
                     <div className="envx-name">
                         <code>{r.key}</code>
-                        <span className="envx-label" title={r.hint}>{r.label} {r.hint ? <Info size={11} /> : null}</span>
+                        <span className="envx-label" title={envHint(r)}>{envLabel(r)} {envHint(r) ? <Info size={11} /> : null}</span>
                         <span className="envx-chips">
-                            {r.secret && <span className="env-badge secret">سرّي</span>}
-                            {!r.live && <span className="env-badge restart">إعادة تشغيل</span>}
-                            {r.set && !dirty && <span className="env-badge set">مضبوط</span>}
+                            {r.secret && <span className="env-badge secret">{t('sm_badgeSecret')}</span>}
+                            {!r.live && <span className="env-badge restart">{t('sm_badgeRestart')}</span>}
+                            {r.set && !dirty && <span className="env-badge set">{t('sm_badgeSet')}</span>}
                         </span>
                     </div>
                     <div className="envx-value">
@@ -996,7 +1100,7 @@ export default function SystemManagement() {
                             <select value={shown} onChange={e => setEnvDrafts(p => ({ ...p, [r.key]: e.target.value }))}>
                                 <option value="">—</option>
                                 {r.kind === 'boolean'
-                                    ? [<option key="t" value="true">مفعّل (true)</option>, <option key="f" value="false">معطّل (false)</option>]
+                                    ? [<option key="t" value="true">{t('sm_optTrue')}</option>, <option key="f" value="false">{t('sm_optFalse')}</option>]
                                     : (r.choices || []).map(c => <option key={c} value={c}>{c}</option>)}
                             </select>
                         ) : (
@@ -1012,7 +1116,7 @@ export default function SystemManagement() {
                     <div className="envx-actions">
                         {r.secret && r.kind !== 'choice' && eyeBtn(r.key)}
                         {dirty ? undoBtn(r.key) : (r.set ? (
-                            <button className="envx-icon" title="مسح القيمة (تصبح فارغة عند الحفظ)"
+                            <button className="envx-icon" title={t('sm_clearValue')}
                                 onClick={() => setEnvDrafts(p => ({ ...p, [r.key]: '' }))}>
                                 <XCircle size={14} />
                             </button>
@@ -1031,8 +1135,8 @@ export default function SystemManagement() {
                     <div className="envx-name">
                         <code>{r.key}</code>
                         <span className="envx-chips">
-                            {r.secret && <span className="env-badge secret">سرّي</span>}
-                            {removed && <span className="env-badge remove">سيُحذف</span>}
+                            {r.secret && <span className="env-badge secret">{t('sm_badgeSecret')}</span>}
+                            {removed && <span className="env-badge remove">{t('sm_badgeRemove')}</span>}
                         </span>
                     </div>
                     <div className="envx-value">
@@ -1049,7 +1153,7 @@ export default function SystemManagement() {
                         {r.secret && !removed && eyeBtn(r.key)}
                         {dirty && !removed && undoBtn(r.key)}
                         <button className={`envx-icon${removed ? '' : ' danger'}`}
-                            title={removed ? 'تراجع عن الحذف' : 'حذف المتغير من الملف'}
+                            title={removed ? t('sm_undoRemove') : t('sm_removeVar')}
                             onClick={() => setEnvRemovals(prev => removed
                                 ? prev.filter(k => k !== r.key)
                                 : [...prev, r.key])}>
@@ -1064,33 +1168,33 @@ export default function SystemManagement() {
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="tab-pane">
                 <div className="env-intro">
                     <div>
-                        <strong>إعدادات البيئة</strong>
-                        <div>تُكتب في <code>{envFile || '.env'}</code> بصلاحية 0600، مع نسخة احتياطية قبل كل تعديل. التعليقات وبقيّة الملف لا تُمَسّ، والقيم السرّية تُكتب ولا تُقرأ.</div>
+                        <strong>{t('sm_envTitle')}</strong>
+                        <div>{t('sm_envWrittenTo')} <code dir="ltr">{envFile || '.env'}</code> {t('sm_envWrittenToRest')}</div>
                     </div>
                     <div className="envx-toolbar">
                         <div className="envx-search">
                             <Search size={14} />
-                            <input value={envSearch} placeholder="ابحث عن متغيّر…" onChange={e => setEnvSearch(e.target.value)} />
+                            <input value={envSearch} placeholder={t('sm_envSearch')} onChange={e => setEnvSearch(e.target.value)} />
                         </div>
-                        <button className="dep-log-btn" title="إعادة تحميل من الملف" onClick={fetchEnv}><RefreshCw size={14} /></button>
+                        <button className="dep-log-btn" title={t('sm_envReload')} onClick={fetchEnv}><RefreshCw size={14} /></button>
                         <div className="envx-savewrap">
                             <button className="btn-deploy-refined envx-save" disabled={!dirtyCount || busy} onClick={() => saveEnv(false)}>
                                 {busy ? <Loader2 size={15} className="spinning" /> : null}
-                                حفظ{dirtyCount ? ` (${dirtyCount})` : ''}
+                                {t('sm_save')}{dirtyCount ? ` (${dirtyCount})` : ''}
                             </button>
                             <button className="btn-deploy-refined envx-caret" disabled={!dirtyCount || busy}
-                                onClick={() => setEnvMenuOpen(o => !o)} title="خيارات الحفظ">
+                                onClick={() => setEnvMenuOpen(o => !o)} title={t('sm_saveOptions')}>
                                 <ChevronDown size={15} />
                             </button>
                             {envMenuOpen && !busy && (
                                 <div className="envx-menu" onMouseLeave={() => setEnvMenuOpen(false)}>
                                     <button onClick={() => { setEnvMenuOpen(false); saveEnv(false); }}>
-                                        حفظ فقط
-                                        <span>يكتب الملف ويسري ما يقبل السريان فوراً.</span>
+                                        {t('sm_saveOnly')}
+                                        <span>{t('sm_saveOnlyDesc')}</span>
                                     </button>
                                     <button onClick={() => { setEnvMenuOpen(false); saveEnv(true); }}>
-                                        حفظ ثم إعادة نشر
-                                        <span>يحفظ ثم يعيد تشغيل جو كاملاً بالقيم الجديدة.</span>
+                                        {t('sm_saveRedeploy')}
+                                        <span>{t('sm_saveRedeployDesc')}</span>
                                     </button>
                                 </div>
                             )}
@@ -1106,12 +1210,12 @@ export default function SystemManagement() {
 
                 {envSettings === null ? (
                     <div className="section-card" style={{ padding: 40, textAlign: 'center', color: 'var(--text-muted)' }}>
-                        <Loader2 size={20} className="spinning" /> يُحمَّل…
+                        <Loader2 size={20} className="spinning" /> {t('sm_loading')}
                     </div>
                 ) : (
                     <div className="section-card envx-table">
                         {groups.map(g => {
-                            const rows = envSettings.filter(x => x.group === g && rowMatches(x.key, x.label, x.hint));
+                            const rows = envSettings.filter(x => x.group === g && rowMatches(x.key, envLabel(x), envHint(x)));
                             if (!rows.length) return null;
                             return (
                                 <div key={g}>
@@ -1122,7 +1226,7 @@ export default function SystemManagement() {
                         })}
                         {(envCustom.filter(c => rowMatches(c.key)).length > 0 || envAdds.length > 0 || !q) && (
                             <div>
-                                <div className="envx-group">متغيرات إضافية <span className="envx-group-note">كل ما في الملف خارج القائمة المعروفة — ولك أن تضيف غيرها.</span></div>
+                                <div className="envx-group">{t('sm_customVars')} <span className="envx-group-note">{t('sm_customVarsNote')}</span></div>
                                 {envCustom.filter(c => rowMatches(c.key)).map(customRow)}
                                 {envAdds.map(a => (
                                     <div className="envx-row envx-new" key={a.id}>
@@ -1143,16 +1247,16 @@ export default function SystemManagement() {
                                                 type={a.show ? 'text' : 'password'}
                                                 dir="ltr"
                                                 value={a.value}
-                                                placeholder="القيمة"
+                                                placeholder={t('sm_value')}
                                                 onChange={e => setEnvAdds(prev => prev.map(x => x.id === a.id ? { ...x, value: e.target.value } : x))}
                                             />
                                         </div>
                                         <div className="envx-actions">
-                                            <button className="envx-icon" title={a.show ? 'إخفاء' : 'إظهار'}
+                                            <button className="envx-icon" title={a.show ? t('hide') : t('sm_show')}
                                                 onClick={() => setEnvAdds(prev => prev.map(x => x.id === a.id ? { ...x, show: !x.show } : x))}>
                                                 {a.show ? <EyeOff size={14} /> : <Eye size={14} />}
                                             </button>
-                                            <button className="envx-icon danger" title="إلغاء هذا السطر"
+                                            <button className="envx-icon danger" title={t('sm_cancelRow')}
                                                 onClick={() => setEnvAdds(prev => prev.filter(x => x.id !== a.id))}>
                                                 <XCircle size={14} />
                                             </button>
@@ -1161,7 +1265,7 @@ export default function SystemManagement() {
                                 ))}
                                 <button className="envx-add"
                                     onClick={() => setEnvAdds(prev => [...prev, { id: envAddSeq.current++, key: '', value: '', show: true }])}>
-                                    <Plus size={14} /> إضافة متغيّر
+                                    <Plus size={14} /> {t('sm_addVar')}
                                 </button>
                             </div>
                         )}
@@ -1774,13 +1878,13 @@ export default function SystemManagement() {
                 <div className="mgmt-title-row">
                     <div className="joe-logo-badge">J</div>
                     <div className="mgmt-title">
-                        <h1>⚙️ System Management</h1>
-                        <p className="mgmt-subtitle">Joe Autonomous Infrastructure Control</p>
+                        <h1>⚙️ {t('systemManagement')}</h1>
+                        <p className="mgmt-subtitle">{t('sm_subtitle')}</p>
                     </div>
                 </div>
                 <div className="mgmt-tabs">
                     <button className={`tab-btn ${activeTab === 'dashboard' ? 'active' : ''}`} onClick={() => setActiveTab('dashboard')}>
-                        <Activity size={16} /> Dashboard
+                        <Activity size={16} /> {t('sm_tabDashboard')}
                     </button>
                     <button className={`tab-btn ${activeTab === 'deployments' ? 'active' : ''}`} onClick={() => setActiveTab('deployments')}>
                         {deployments.some(d => d.status === 'STARTED' || d.status === 'BUILDING') ? (
@@ -1790,24 +1894,24 @@ export default function SystemManagement() {
                             </div>
                         ) : (
                             <Rocket size={16} />
-                        )} 
-                        Deployments
+                        )}
+                        {t('sm_tabDeployments')}
                     </button>
                     <button className={`tab-btn ${activeTab === 'admins' ? 'active' : ''}`} onClick={() => setActiveTab('admins')}>
-                        <Shield size={16} /> Admins
+                        <Shield size={16} /> {t('sm_tabAdmins')}
                     </button>
                     {isOwner && (
                         <button className={`tab-btn ${activeTab === 'settings' ? 'active' : ''}`} onClick={() => setActiveTab('settings')}>
-                            <Shield size={16} /> الإعدادات
+                            <Shield size={16} /> {t('settings')}
                         </button>
                     )}
                     <button className={`tab-btn ${activeTab === 'sentinel' ? 'active' : ''}`} onClick={() => setActiveTab('sentinel')}>
-                        <ShieldAlert size={16} /> Sentinel <span style={{ padding: '2px 6px', background: '#ef4444', color: 'white', fontSize: '10px', borderRadius: '4px', marginLeft: '6px' }}>NEW</span>
+                        <ShieldAlert size={16} /> Sentinel <span style={{ padding: '2px 6px', background: '#ef4444', color: 'white', fontSize: '10px', borderRadius: '4px', marginLeft: '6px' }}>{t('sm_new')}</span>
                     </button>
                 </div>
                 <div className="mgmt-back-container">
                     <button className="btn-back" onClick={() => navigate('/joe')} title={t('backToWorkspace')}>
-                        <ArrowRight size={18} style={{ marginRight: 6 }} /> رجوع للخلف
+                        <ArrowRight size={18} style={{ marginRight: 6 }} /> {t('sm_back')}
                     </button>
                 </div>
             </div>
@@ -1850,8 +1954,8 @@ export default function SystemManagement() {
                                     <Terminal size={20} color="var(--accent-primary)" />
                                 </div>
                                 <div>
-                                    <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontWeight: 700 }}>Deployment Logs</h3>
-                                    <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'monospace' }}>Commit #{selectedDep.commit?.slice(0, 7) || '??'}</span>
+                                    <h3 style={{ margin: 0, fontSize: '18px', color: 'var(--text-primary)', fontWeight: 700 }}>{t('sm_deployLogs')}</h3>
+                                    <span style={{ color: 'var(--text-muted)', fontSize: '13px', fontFamily: 'monospace' }}>{t('sm_commitHash', { hash: selectedDep.commit?.slice(0, 7) || '??' })}</span>
                                 </div>
                             </div>
                             <div style={{ display: 'flex', gap: '12px' }}>
@@ -1859,7 +1963,7 @@ export default function SystemManagement() {
                                     onClick={() => {
                                         const text = (selectedDep.logs || []).join('\n');
                                         navigator.clipboard.writeText(text);
-                                        alert('Logs copied successfully!');
+                                        alert(t('sm_logsCopied'));
                                     }}
                                     style={{
                                         background: 'var(--bg-secondary)',
@@ -1878,7 +1982,7 @@ export default function SystemManagement() {
                                     onMouseOver={(e: any) => { e.currentTarget.style.background = 'var(--sm-tint-3)'; e.currentTarget.style.borderColor = 'var(--accent-primary)'; }}
                                     onMouseOut={(e: any) => { e.currentTarget.style.background = 'var(--bg-secondary)'; e.currentTarget.style.borderColor = 'var(--border-color)'; }}
                                 >
-                                    <Copy size={16} /> Copy Logs
+                                    <Copy size={16} /> {t('sm_copyLogs')}
                                 </button>
                                 <button
                                     onClick={() => setSelectedDep(null)}
@@ -1905,7 +2009,7 @@ export default function SystemManagement() {
                                     </div>
                                 ))
                             ) : (
-                                <div style={{ textAlign: 'center', padding: '80px', color: '#334155', fontStyle: 'italic' }}>No deployment trace recorded.</div>
+                                <div style={{ textAlign: 'center', padding: '80px', color: '#334155', fontStyle: 'italic' }}>{t('sm_noTrace')}</div>
                             )}
                             <div ref={logEndRef} />
                         </div>

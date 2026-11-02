@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { API_URL, WS_URL } from '../config';
 import { isValidToken } from '../utils/auth';
 import { projectionMatchesFrame, viewportStampOrFallback } from '../lib/browserFrameProjection';
+import { useUiDir } from './NeuralTraceView';
 
 type WsEvent =
   | { type: 'stream_frame'; ts: number; jpegBase64: string; w: number; h: number }
@@ -32,6 +33,32 @@ type HighlightLayer = { boxes: HighlightBox[]; ts: number; viewportWidth?: numbe
 type BrowserFrame = { image: HTMLImageElement; w: number; h: number; ts: number };
 
 type Props = { sessionId: string; showBoxes?: boolean };
+
+/**
+ * The state words this panel shows are closed sets: the socket's own state and
+ * the server's browser telemetry enums (api/src/modules/browser/types.ts and
+ * telemetry.ts). Each is named in the interface language; a value the list
+ * does not know is shown as the server sent it.
+ */
+const STATE_WORD: Record<string, { labelKey: string }> = {
+  connecting: { labelKey: 'mbs_stateConnecting' },
+  connected: { labelKey: 'mbs_stateConnected' },
+  error: { labelKey: 'mbs_stateError' },
+  good: { labelKey: 'mbs_stateGood' },
+  degraded: { labelKey: 'mbs_stateDegraded' },
+  blocked: { labelKey: 'mbs_stateBlocked' },
+  unknown: { labelKey: 'mbs_stateUnknown' },
+  loading: { labelKey: 'mbs_stateLoading' },
+  ready: { labelKey: 'mbs_stateReady' },
+  idle: { labelKey: 'mbs_stateIdle' },
+  running: { labelKey: 'mbs_stateRunning' },
+};
+const QUALITY_REASON: Record<string, { labelKey: string }> = {
+  no_loaded_page: { labelKey: 'mbs_reasonNoLoadedPage' },
+  runtime_or_action_errors: { labelKey: 'mbs_reasonRuntimeErrors' },
+  stale_stream_frame: { labelKey: 'mbs_reasonStaleFrame' },
+  stream_not_measured: { labelKey: 'mbs_reasonNotMeasured' },
+};
 
 export function fittedFrameRect(viewW: number, viewH: number, frameW: number, frameH: number) {
   const safeViewW = Math.max(1, viewW);
@@ -68,6 +95,10 @@ function paintBrowserFrame(canvas: HTMLCanvasElement, frame: BrowserFrame, layer
 
 export default function ModernBrowserStream({ sessionId, showBoxes = true }: Props) {
   const { t } = useTranslation();
+  const uiDir = useUiDir();
+  const stateWord = (value: string) => (STATE_WORD[value] ? t(STATE_WORD[value].labelKey) : value);
+  const reasonWord = (value: string) => (QUALITY_REASON[value] ? t(QUALITY_REASON[value].labelKey) : value);
+  const ms = (value: number) => t('mbs_ms', { n: Math.round(value) });
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const cursorElRef = useRef<HTMLDivElement>(null);
@@ -586,7 +617,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
         throw new Error(String(payload?.detail || payload?.error || `HTTP ${response.status}`));
       }
     } catch (error: any) {
-      setStartError(`تعذر بدء جلسة المتصفح: ${String(error?.message || error || 'خطأ غير معروف')}`);
+      setStartError(t('mbs_startFailed', { error: String(error?.message || error || t('ide_unknownError')) }));
     } finally {
       setStartPending(false);
     }
@@ -749,7 +780,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
             data-testid="browser-empty-state"
             role="status"
             aria-live="polite"
-            dir="rtl"
+            dir={uiDir}
             style={{
               position: 'absolute',
               inset: 0,
@@ -762,10 +793,10 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           >
             <div style={{ maxWidth: 420, padding: '18px 20px', borderRadius: 14, border: '1px solid rgba(255,255,255,0.14)', background: 'rgba(18,18,18,0.86)', color: '#fff', textAlign: 'center', boxShadow: '0 14px 42px rgba(0,0,0,0.28)' }}>
               <strong style={{ display: 'block', fontSize: 14, marginBottom: 8 }}>
-                تعذر الاتصال ببث المتصفح
+                {t('mbs_connectFailed')}
               </strong>
               <span style={{ display: 'block', color: 'rgba(255,255,255,0.72)', fontSize: 12, lineHeight: 1.6 }}>
-                تحقق من تشغيل API وWebSocket ثم أعد المحاولة.
+                {t('mbs_checkApi')}
               </span>
               {startError ? <div style={{ marginTop: 10, color: '#fca5a5', fontSize: 11, lineHeight: 1.5 }}>{startError}</div> : null}
             </div>
@@ -780,7 +811,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
       <div style={{ padding: 10, borderTop: '1px solid rgba(255,255,255,0.08)', background: 'rgba(0,0,0,0.35)' }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
           <div style={{ color: '#fff', fontSize: 12, opacity: 0.95, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {status} · stream={qualityMetrics?.status || 'unknown'} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· busy` : ''} {queueLen ? `· queue=${queueLen}` : ''}
+            {stateWord(status)} · {t('mbs_streamLabel')} {stateWord(qualityMetrics?.status || 'unknown')} · {w}×{h} {pageSnapshot?.title ? `· ${pageSnapshot.title.slice(0, 48)}` : ''} {lastStep ? `· ${lastStep}` : ''} {busy ? `· ${t('mbs_busy')}` : ''} {queueLen ? `· ${t('mbs_queueCount', { n: queueLen })}` : ''}
           </div>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', flex: '0 0 auto' }}>
             {busy || queueLen ? (
@@ -796,7 +827,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                   cursor: 'pointer',
                 }}
               >
-                إلغاء
+                {t('cancel')}
               </button>
             ) : null}
             {actions.length || browserActions.length || final || debug ? (
@@ -821,24 +852,24 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
           <div style={{ marginTop: 10, display: 'flex', gap: 10, alignItems: 'stretch', flexWrap: 'wrap' }}>
             {pageSnapshot ? (
               <div style={{ flex: '1 1 320px', minWidth: 260, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(59,130,246,0.12)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
-                <strong>الصفحة الحالية</strong><br />
-                الحالة: {pageSnapshot.state} · العامل: {pageSnapshot.workerStatus || 'unknown'}<br />
-                العنوان: {pageSnapshot.title || 'بدون عنوان'}<br />
-                <span style={{ opacity: 0.78, wordBreak: 'break-all' }}>{pageSnapshot.url || 'لا يوجد URL'}</span>
+                <strong>{t('mbs_currentPage')}</strong><br />
+                {t('mbs_stateLabel')} {stateWord(pageSnapshot.state)} · {t('mbs_workerLabel')} {stateWord(pageSnapshot.workerStatus || 'unknown')}<br />
+                {t('mbs_titleLabel')} {pageSnapshot.title || t('mbs_untitled')}<br />
+                <span style={{ opacity: 0.78, wordBreak: 'break-all' }}>{pageSnapshot.url || t('mbs_noUrl')}</span>
               </div>
             ) : null}
             {qualityMetrics ? (
               <div style={{ flex: '1 1 260px', minWidth: 240, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: qualityMetrics.status === 'good' ? 'rgba(16,185,129,0.12)' : 'rgba(245,158,11,0.12)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
-                <strong>القياس الحي: {qualityMetrics.status}</strong><br />
-                FPS: {qualityMetrics.fps.toFixed(1)} · jitter: {qualityMetrics.jitterMs == null ? '—' : `${Math.round(qualityMetrics.jitterMs)}ms`}<br />
-                latency: {qualityMetrics.lastActionLatencyMs == null ? '—' : `${Math.round(qualityMetrics.lastActionLatencyMs)}ms`} · queue: {qualityMetrics.queueLength}<br />
-                JS: {qualityMetrics.jsErrors} · network: {qualityMetrics.networkErrors}{qualityMetrics.reason ? ` · ${qualityMetrics.reason}` : ''}
+                <strong>{t('mbs_liveMetrics', { status: stateWord(qualityMetrics.status) })}</strong><br />
+                FPS: {qualityMetrics.fps.toFixed(1)} · {t('mbs_jitterLabel')} {qualityMetrics.jitterMs == null ? '—' : ms(qualityMetrics.jitterMs)}<br />
+                {t('mbs_latencyLabel')} {qualityMetrics.lastActionLatencyMs == null ? '—' : ms(qualityMetrics.lastActionLatencyMs)} · {t('mbs_queueLabel')} {qualityMetrics.queueLength}<br />
+                JS: {qualityMetrics.jsErrors} · {t('mbs_networkLabel')} {qualityMetrics.networkErrors}{qualityMetrics.reason ? ` · ${reasonWord(qualityMetrics.reason)}` : ''}
               </div>
             ) : null}
             {diagnostics ? (
               <div style={{ flex: '1 1 260px', minWidth: 240, padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: diagnostics.jsErrors || diagnostics.networkErrors ? 'rgba(239,68,68,0.14)' : 'rgba(255,255,255,0.05)', color: '#fff', fontSize: 12, lineHeight: 1.45 }}>
-                <strong>تشخيص الصفحة</strong><br />
-                JavaScript: {diagnostics.jsErrors} · console: {diagnostics.consoleErrors} · network: {diagnostics.networkErrors}
+                <strong>{t('mbs_pageDiagnostics')}</strong><br />
+                {t('mbs_javascriptLabel')} {diagnostics.jsErrors} · {t('mbs_consoleLabel')} {diagnostics.consoleErrors} · {t('mbs_networkLabel')} {diagnostics.networkErrors}
                 {diagnostics.recent?.length ? <div style={{ marginTop: 4, opacity: 0.78 }}>{diagnostics.recent.slice(-3).map((item, index) => <div key={`${item.ts}-${index}`}>{item.kind}: {item.message}</div>)}</div> : null}
               </div>
             ) : null}
@@ -848,21 +879,21 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
               </div>
             ) : null}
             {(browserActions.length || actions.length) ? (
-              <div className="browser-action-filters" data-testid="browser-action-filters" dir="rtl">
-                <strong>سجل الأفعال</strong>
-                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value as ActionFilter)} aria-label="تصفية سجل الأفعال">
-                  <option value="all">الكل</option>
-                  <option value="success">الناجحة فقط</option>
-                  <option value="failed">الفاشلة فقط</option>
+              <div className="browser-action-filters" data-testid="browser-action-filters" dir={uiDir}>
+                <strong>{t('mbs_actionLog')}</strong>
+                <select value={actionFilter} onChange={(event) => setActionFilter(event.target.value as ActionFilter)} aria-label={t('mbs_filterActionLog')}>
+                  <option value="all">{t('mbs_filterAll')}</option>
+                  <option value="success">{t('mbs_filterSuccess')}</option>
+                  <option value="failed">{t('mbs_filterFailed')}</option>
                 </select>
-                <input value={actionQuery} onChange={(event) => setActionQuery(event.target.value)} placeholder="بحث في الأفعال" aria-label="بحث في سجل الأفعال" />
-                <button type="button" onClick={() => { setActionFilter('all'); setActionQuery(''); }}>مسح التصفية</button>
-                <span>{filteredBrowserActions.length + filteredActions.length} نتيجة</span>
+                <input value={actionQuery} onChange={(event) => setActionQuery(event.target.value)} placeholder={t('mbs_searchActions')} aria-label={t('mbs_searchActionLog')} />
+                <button type="button" onClick={() => { setActionFilter('all'); setActionQuery(''); }}>{t('mbs_clearFilter')}</button>
+                <span>{t('mbs_resultCount', { n: filteredBrowserActions.length + filteredActions.length })}</span>
               </div>
             ) : null}
             {browserActions.length ? (
               <div style={{ flex: '2 1 520px', minWidth: 320, maxHeight: 180, overflow: 'auto', padding: '8px 10px', borderRadius: 10, border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(37,99,235,0.10)', color: '#fff', fontSize: 12, lineHeight: 1.35, whiteSpace: 'pre-wrap' }}>
-                {filteredBrowserActions.length ? filteredBrowserActions.slice(-30).map((a) => `${a.phase} · ${a.actionType} · ${a.actionId}${a.durationMs == null ? '' : ` · ${Math.round(a.durationMs)}ms`}${a.reason ? ` · ${a.reason}` : ''}`).join('\n') : 'لا توجد أفعال تطابق التصفية الحالية.'}
+                {filteredBrowserActions.length ? filteredBrowserActions.slice(-30).map((a) => `${a.phase} · ${a.actionType} · ${a.actionId}${a.durationMs == null ? '' : ` · ${ms(a.durationMs)}`}${a.reason ? ` · ${a.reason}` : ''}`).join('\n') : t('mbs_noMatchingActions')}
               </div>
             ) : null}
             {actions.length ? (
@@ -871,7 +902,7 @@ export default function ModernBrowserStream({ sessionId, showBoxes = true }: Pro
                   const label = a.summary ? `${a.actionType} · ${a.summary}` : a.actionType;
                   const tail = a.type === 'action_error' ? ` · ${String(a.reason || a.error || '').slice(0, 160)}` : '';
                   return `${a.type} · ${a.actionId} · ${label}${tail}`;
-                }).join('\n') : 'لا توجد أحداث قديمة تطابق التصفية الحالية.'}
+                }).join('\n') : t('mbs_noMatchingEarlier')}
               </div>
             ) : null}
             {debug ? (

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Shield, AlertCircle, CheckCircle, Crosshair, Terminal, Loader2, ArrowRight } from 'lucide-react';
 import { API_URL } from '../../../config';
 
@@ -15,10 +16,33 @@ interface Incident {
 }
 
 export default function LiveIncidents() {
+    const { t } = useTranslation();
     const [incidents, setIncidents] = useState<Incident[]>([]);
     const [loading, setLoading] = useState(true);
     const [executingMap, setExecutingMap] = useState<Record<string, boolean>>({});
     const token = localStorage.getItem('token');
+
+    /** Severity and status arrive as model enums; the badge says them in the interface language. */
+    const severityLabel = (s: string) => {
+        switch (s) {
+            case 'critical': return t('sn_sevCritical');
+            case 'high': return t('sn_sevHigh');
+            case 'medium': return t('sn_sevMedium');
+            case 'low': return t('sn_sevLow');
+            case 'info': return t('sn_sevInfo');
+            default: return s;
+        }
+    };
+    const statusLabel = (s: string) => {
+        switch (s) {
+            case 'open': return t('sn_stOpen');
+            case 'acknowledged': return t('sn_stAcknowledged');
+            case 'contained': return t('sn_stContained');
+            case 'resolved': return t('sn_stResolved');
+            case 'false_positive': return t('sn_stFalsePositive');
+            default: return s;
+        }
+    };
 
     const fetchIncidents = async () => {
         try {
@@ -40,7 +64,7 @@ export default function LiveIncidents() {
      * Executes a playbook action against an incident target.
      */
     const executePlaybook = async (incidentId: string, serverId: any, actionType: string, targetValue: string) => {
-        if (!window.confirm(`Are you sure you want to execute [${actionType}] on [${targetValue}]?`)) return;
+        if (!window.confirm(t('sn_confirmExecute', { action: actionType, target: targetValue }))) return;
 
         setExecutingMap(prev => ({ ...prev, [incidentId]: true }));
         try {
@@ -55,10 +79,10 @@ export default function LiveIncidents() {
             });
             const data = await res.json();
             if (data.success) {
-                alert('Action enqueued for Agent Execution! Threat will be neutralized within 10s.');
+                alert(t('sn_actionQueued'));
                 fetchIncidents();
             } else {
-                alert(`Action Failed: ${data.error}`);
+                alert(t('sn_actionFailed', { error: data.error }));
             }
         } catch (e) {
             console.error(e);
@@ -78,8 +102,8 @@ export default function LiveIncidents() {
         return (
             <div style={{ padding: '60px', textAlign: 'center', background: 'var(--bg-card)', borderRadius: '20px', border: '1px solid var(--border-color)' }}>
                 <CheckCircle size={48} color="#10b981" style={{ marginBottom: '16px' }} />
-                <h3 style={{ color: 'var(--text-primary)', margin: '0 0 8px' }}>Zero Open Incidents</h3>
-                <p style={{ color: 'var(--text-muted)' }}>No threats detected across your infrastructure.</p>
+                <h3 style={{ color: 'var(--text-primary)', margin: '0 0 8px' }}>{t('sn_zeroIncidents')}</h3>
+                <p style={{ color: 'var(--text-muted)' }}>{t('sn_noThreats')}</p>
             </div>
         );
     }
@@ -111,14 +135,14 @@ export default function LiveIncidents() {
                                     background: inc.severity === 'critical' ? 'rgba(239,68,68,0.2)' : 'rgba(249,115,22,0.2)',
                                     color: inc.severity === 'critical' ? '#ef4444' : '#f97316'
                                 }}>
-                                    {inc.severity}
+                                    {severityLabel(inc.severity)}
                                 </span>
                                 <span style={{
                                     padding: '4px 10px', borderRadius: '8px', fontSize: '11px', fontWeight: 800, textTransform: 'uppercase',
                                     background: inc.status === 'open' ? 'rgba(239,68,68,0.1)' : 'rgba(16,185,129,0.1)',
                                     color: inc.status === 'open' ? '#ef4444' : '#10b981'
                                 }}>
-                                    {inc.status}
+                                    {statusLabel(inc.status)}
                                 </span>
                                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>
                                     {new Date(inc.createdAt).toLocaleString()}
@@ -126,13 +150,13 @@ export default function LiveIncidents() {
                             </div>
                             <h3 style={{ margin: '0 0 4px', fontSize: '20px', color: 'var(--text-primary)' }}>{inc.title}</h3>
                             <p style={{ margin: 0, fontSize: '14px', color: 'var(--text-secondary)' }}>
-                                Detected on <strong>{inc.serverId?.name}</strong> ({inc.serverId?.host})
+                                {t('sn_detectedOn')} <strong>{inc.serverId?.name}</strong> ({inc.serverId?.host})
                             </p>
                         </div>
                     </div>
 
                     <div style={{ background: '#050505', borderRadius: '12px', padding: '16px', marginBottom: '20px', border: '1px solid rgba(255,255,255,0.05)' }}>
-                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 700 }}>Evidence Forensics</div>
+                        <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '8px', textTransform: 'uppercase', fontWeight: 700 }}>{t('sn_evidence')}</div>
                         <pre style={{ margin: 0, fontFamily: 'monospace', fontSize: '12px', color: '#cbd5e1', whiteSpace: 'pre-wrap' }}>
                             {JSON.stringify(inc.evidence, null, 2)}
                         </pre>
@@ -140,27 +164,27 @@ export default function LiveIncidents() {
 
                     {inc.status === 'open' && inc.recommendedActions?.length > 0 && (
                         <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: '20px' }}>
-                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', fontWeight: 700 }}>Recommended One-Click Mitigations</div>
+                            <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginBottom: '12px', textTransform: 'uppercase', fontWeight: 700 }}>{t('sn_mitigations')}</div>
                             <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                                 {inc.recommendedActions.map(action => {
                                     // Parse targets from evidence to prepopulate buttons
-                                    let targetStr = 'Select Target...';
+                                    let targetStr = t('sn_selectTarget');
                                     let finalTarget = '';
-                                    
+
                                     if (action === 'kill_process_tree' && inc.evidence.suspicious_processes) {
-                                        targetStr = `Kill PID ${inc.evidence.suspicious_processes[0]?.pid}`;
+                                        targetStr = t('sn_killPid', { pid: inc.evidence.suspicious_processes[0]?.pid });
                                         finalTarget = inc.evidence.suspicious_processes[0]?.pid;
                                     } else if (action === 'quarantine_file' && inc.evidence.fim_changes) {
                                         const file = inc.evidence.fim_changes[0]?.path;
-                                        targetStr = `Quarantine ${file?.split('/').pop()}`;
+                                        targetStr = t('sn_quarantineFile', { file: file?.split('/').pop() });
                                         finalTarget = file;
                                     } else if (action === 'KILL_PROCESS' && inc.evidence.unauthorized_users) {
                                         const u = inc.evidence.unauthorized_users[0]?.user;
-                                        targetStr = `Kick User: ${u}`;
+                                        targetStr = t('sn_kickUserTarget', { user: u });
                                         finalTarget = `-u ${u}`;
                                     } else if (action === 'KILL_PROCESS' && inc.evidence.suspicious_processes) {
                                         const pid = inc.evidence.suspicious_processes[0]?.pid;
-                                        targetStr = `Kill PID ${pid}`;
+                                        targetStr = t('sn_killPid', { pid });
                                         finalTarget = pid;
                                     }
 

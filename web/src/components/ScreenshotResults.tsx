@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/apiClient';
 import { createRasterBlobUrl, revokeRasterBlobUrl } from '../lib/raster-download';
 
@@ -217,6 +218,7 @@ interface ScreenshotResultsProps {
 }
 
 export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotResultsProps) {
+  const { t } = useTranslation();
   const [ownerSid, setOwnerSid] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [items, setItems] = useState<ScreenshotItem[]>([]);
@@ -286,12 +288,12 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
   if (status === 'loading') {
     return (
       <div role="status" aria-live="polite">
-        Loading screenshots…
+        {t('shot_loading')}
       </div>
     );
   }
   if (status === 'error') {
-    return <div role="status">Screenshots unavailable.</div>;
+    return <div role="status">{t('shot_unavailable')}</div>;
   }
   if (status !== 'ready') return null;
   if (items.length === 0) return null;
@@ -301,14 +303,14 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
   };
 
   return (
-    <section aria-label="Screenshots" style={{ marginTop: 12 }}>
+    <section aria-label={t('shot_sectionLabel')} style={{ marginTop: 12 }}>
       <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
         {items.map((item) => (
           <li key={item.meta.id} style={{ marginBottom: 12 }}>
             <figure style={{ margin: 0 }}>
               {failed[item.meta.id] ? (
-                <div role="img" aria-label={`${item.meta.filename} – image unavailable`}>
-                  Image unavailable
+                <div role="img" aria-label={t('shot_imageUnavailableFor', { name: item.meta.filename })}>
+                  {t('shot_imageUnavailable')}
                 </div>
               ) : (
                 <img
@@ -324,10 +326,10 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
             </figure>
             {downloadState?.sid === sessionId && downloadState.items === items && downloadState.urls[item.meta.id] && !failed[item.meta.id] ? (
               <a href={downloadState.urls[item.meta.id]} download={item.meta.filename}>
-                Download {item.meta.filename}
+                {t('shot_download', { name: item.meta.filename })}
               </a>
             ) : (
-              <span role="status">Export unavailable.</span>
+              <span role="status">{t('shot_exportUnavailable')}</span>
             )}
           </li>
         ))}

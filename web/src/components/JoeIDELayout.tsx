@@ -669,19 +669,19 @@ export default function JoeIDELayout({
 
                 // Problems
                 if (event.type === 'step_failed') {
-                    let errorMsg = 'Unknown error';
+                    let errorMsg = t('ide_unknownError');
                     if (typeof event.data === 'string') errorMsg = event.data;
                     else if (event.data) {
-                        errorMsg = event.data.result?.error || event.data.result?.message || event.data.error || event.data.message || 'Unknown error';
+                        errorMsg = event.data.result?.error || event.data.result?.message || event.data.error || event.data.message || t('ide_unknownError');
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
                     //  The log line for this event is written once, above, by the shared table.
                 } else if (event.type === 'error') {
-                    let errorMsg = 'System error';
+                    let errorMsg = t('ide_systemError');
                     if (typeof event.data === 'string') errorMsg = event.data;
                     else if (event.data) {
-                        errorMsg = event.data.message || event.data.error || 'System error';
+                        errorMsg = event.data.message || event.data.error || t('ide_systemError');
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
@@ -804,17 +804,17 @@ export default function JoeIDELayout({
 
     // Command Palette actions — wired to the real app actions in scope.
     const paletteCommands: Command[] = React.useMemo(() => [
-        { id: 'new-chat', label: 'محادثة جديدة', hint: 'New chat', icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
-        { id: 'tab-preview', label: 'فتح المعاينة', hint: 'Preview', icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
-        { id: 'tab-terminal', label: 'فتح الطرفية', hint: 'Terminal', icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
-        { id: 'tab-browser', label: 'فتح المتصفح', hint: 'Browser', icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
-        { id: 'tab-activity', label: 'فتح النشاط', hint: 'Activity', icon: '≡', keywords: 'activity steps engine نشاط خطوات محرك', run: () => handleWorkspaceTabChange('activity') },
-        { id: 'toggle-canvas', label: 'إظهار/إخفاء مساحة العمل', hint: 'Canvas', icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
-        { id: 'toggle-files', label: 'مستكشف الملفات', hint: 'Files', icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
-        { id: 'git', label: 'تغييرات Git', hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
-        { id: 'theme', label: 'تبديل المظهر (فاتح/داكن)', hint: 'Theme', icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
-        { id: 'settings', label: 'الإعدادات', hint: 'Settings', icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
-    ], [onNewSession, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
+        { id: 'new-chat', label: t('ide_cmdNewChat'), hint: t('ide_hintChat'), icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
+        { id: 'tab-preview', label: t('ide_cmdOpenPreview'), hint: t('panelPreview'), icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
+        { id: 'tab-terminal', label: t('ide_cmdOpenTerminal'), hint: t('panelTerminal'), icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
+        { id: 'tab-browser', label: t('ide_cmdOpenBrowser'), hint: t('panelBrowser'), icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
+        { id: 'tab-activity', label: t('ide_cmdOpenActivity'), hint: t('act_title'), icon: '≡', keywords: 'activity steps engine نشاط خطوات محرك', run: () => handleWorkspaceTabChange('activity') },
+        { id: 'toggle-canvas', label: t('ide_cmdToggleWorkspace'), hint: t('ide_hintCanvas'), icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
+        { id: 'toggle-files', label: t('ide_cmdFileExplorer'), hint: t('ide_hintFiles'), icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
+        { id: 'git', label: t('ide_cmdGitChanges'), hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
+        { id: 'theme', label: t('ide_cmdToggleTheme'), hint: t('ide_hintTheme'), icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
+        { id: 'settings', label: t('settings'), hint: t('ide_hintSettings'), icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
+    ], [t, onNewSession, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
 
     // For CommandComposer, we need an active session ID and browser session ID
     const activeSessionId = sessionId; // Assuming sessionId is the active one
@@ -852,7 +852,7 @@ export default function JoeIDELayout({
                 it. Neither state was what the button promised. */}
             <div className={`joe-main ${isChatCollapsed ? 'chat-collapsed' : ''}`}>
                 {/* Left: Chat Panel */}
-                <ErrorBoundary fallbackTitle="تعذّر تحميل المحادثة">
+                <ErrorBoundary fallbackTitle={t('ide_chatLoadFailed')}>
                     <ChatPanel
                         messages={messages}
                         inputValue={inputValue}
@@ -868,14 +868,14 @@ export default function JoeIDELayout({
                 </ErrorBoundary>
 
                 {/* Center: Workspace CANVAS (collapsible, overlay on mobile) */}
-                <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
+                <ErrorBoundary fallbackTitle={t('ide_workspaceLoadFailed')}>
                     <div className={`joe-workspace-container relative h-full ${isWorkspaceCollapsed ? 'canvas-collapsed' : ''}`}>
                         {/* Manual close button (always available while the canvas is open) */}
                         <button
                             className="joe-canvas-close"
                             onClick={toggleWorkspace}
-                            title="إغلاق مساحة العمل"
-                            aria-label="close workspace canvas"
+                            title={t('ide_closeWorkspace')}
+                            aria-label={t('ide_closeWorkspace')}
                         >✕</button>
                         {/*  A BOOLEAN THAT MEANS TWO THINGS CANNOT BE GUARDED.
 
@@ -929,7 +929,7 @@ export default function JoeIDELayout({
                     className={`joe-files-drawer ${isExplorerCollapsed ? 'collapsed' : 'open'} ${isMobile ? 'mobile' : 'desktop'}`}
                     aria-hidden={isExplorerCollapsed}
                 >
-                    <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
+                    <ErrorBoundary fallbackTitle={t('ide_sidebarLoadFailed')}>
                         {sidebarView === 'explorer' ? (
                             <FileExplorerPanel
                                 sessionId={sessionId}
@@ -1032,7 +1032,6 @@ export default function JoeIDELayout({
                 open={isPaletteOpen}
                 onClose={() => setIsPaletteOpen(false)}
                 commands={paletteCommands}
-                isArabic
             />
         </div>
     );
