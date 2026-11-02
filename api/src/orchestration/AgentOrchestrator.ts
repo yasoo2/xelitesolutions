@@ -364,7 +364,13 @@ export class AgentOrchestrator {
         }],
       };
     }
-    const context = IntentParser.createContext('orchestrator', 'global', [], this.context, this.context?.signal);
+    //  The provider the user chose, not the whole run context: given the whole
+    //  context as its modelConfig, the parser's call found no provider in it and
+    //  ran on the default (measured 2026-11-02: Claude chosen, the request read
+    //  by the local model on the CPU for minutes). The run id keeps a paid
+    //  call's spend on the run's line in the ledger.
+    const context = IntentParser.createContext('orchestrator', 'global', [], this.context?.modelConfig, this.context?.signal);
+    (context as any).runId = this.context?.runId;
     const intent = await IntentParser.parse(goalText, context);
     this.throwIfCancelled();
 
