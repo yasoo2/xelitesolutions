@@ -513,6 +513,31 @@ export function anthropicTextAsk(deps: AnthropicModelDeps, signal: AbortSignal, 
 }
 
 /**
+ * One question about one picture (a screenshot of the built page), on the
+ * run's model and the same budget: the eyes of the acceptance judge for a
+ * requirement about how the page looks (core/quality/appearance.ts).
+ */
+export function anthropicLook(deps: AnthropicModelDeps, signal: AbortSignal, deadlineAt: number): (prompt: string, image: { mime: string; data: string }) => Promise<string> {
+    const client = deps.client ?? anthropicClient(deps.settings.apiKey);
+    return async (prompt, image) => {
+        const params = {
+            ...baseParams(deps.settings, Math.min(deps.settings.maxTokens, 16_000)),
+            messages: [{
+                role: 'user',
+                content: [
+                    { type: 'image', source: { type: 'base64', media_type: image.mime, data: image.data } },
+                    { type: 'text', text: prompt },
+                ],
+            }],
+        };
+        const { message } = await guardedCall(deps, client, params, 'look', signal, deadlineAt);
+        checkStop(message);
+        const content: any[] = Array.isArray(message?.content) ? message.content : [];
+        return content.filter(b => b?.type === 'text').map(b => String(b.text || '')).join('\n').trim();
+    };
+}
+
+/**
  * Claude for the rest of Joe (the chat answer, the planner), when the user
  * chose Claude in the interface: the key they typed (or the server's key,
  * asked for by name), the chosen model, and the same budget guard as the

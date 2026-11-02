@@ -97,14 +97,14 @@ export const AgentEngineTool: ToolDefinition = {
             ...context, runId, language, projectRoot: folder.dir, projectRootRuntimeBound: true,
             isCancelled: () => cancellation.signal.aborted || (typeof context.isCancelled === 'function' && context.isCancelled() === true),
         };
-        const { model, ask } = brain;
+        const { model, ask, look } = brain;
         //  ToolService is read when the run starts: it imports the registry,
         //  which imports this file, so a top-level import would register
         //  agent_engine as undefined whenever this file loads first.
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { executeTool } = require('../../services/ToolService');
         const runTool = (name: string, args: any) => executeTool(name, args, toolContext);
-        const verifier = createVerifier({ ask, runTool });
+        const verifier = createVerifier({ ask, runTool, ...(look ? { look } : {}) });
 
         try {
             const result = await runEngine({

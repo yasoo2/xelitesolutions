@@ -674,3 +674,78 @@ describe('a command-line program', () => {
         expect(report.delivery.verdict.verified).toBe(false);
     });
 });
+
+/* ───────────────────────── a requirement about the look ───────────────────────── */
+
+const LOOK_REQUEST = 'Build a one-page website for Maple Coffee House with an elegant design that shows the opening hours, a menu of drinks with prices, and the phone number.';
+const LOOK_WANTED: Wanted[] = [...SITE_WANTED, { text: 'an elegant design', quote: 'an elegant design', line: 'NOT_A_LINE_OF_ANY_SOURCE' }];
+
+/** The watched panel, saving the landing screenshot where the verifier asked. */
+function panelWithEyes(): BrowserQa & { audits: Array<{ dir: string; opts: any }> } {
+    const audits: Array<{ dir: string; opts: any }> = [];
+    return {
+        audits,
+        async watcher() { return { sessionId: 'joe-eng-verify-panel', watching: true }; },
+        async audit(dir, auditOpts) {
+            audits.push({ dir, opts: auditOpts });
+            if (!auditOpts.lookPath) return { score: 100, findings: [] };
+            fs.mkdirSync(path.dirname(auditOpts.lookPath), { recursive: true });
+            fs.writeFileSync(auditOpts.lookPath, Buffer.from('the landing view'));
+            return { score: 100, findings: [], look: { path: auditOpts.lookPath, url: String(auditOpts.serveUrl) } };
+        },
+    };
+}
+
+async function verifyLook(answer: { verdict: string; why: string } | null) {
+    const { ask: answers } = model(LOOK_WANTED);
+    const judged: string[] = [];
+    const ask = async (prompt: string) => {
+        if (prompt.startsWith('Here is the source')) judged.push(prompt);
+        return answers(prompt);
+    };
+    const shown: Array<{ prompt: string; image: { mime: string; data: string } }> = [];
+    const look = answer && (async (prompt: string, image: { mime: string; data: string }) => {
+        shown.push({ prompt, image });
+        const id = /\[([^\]]+)\] an elegant design/u.exec(prompt)?.[1];
+        return JSON.stringify({ verdicts: [{ id, ...answer }] });
+    });
+    const ctx = await runContext(site(), LOOK_REQUEST, ask);
+    const qa = panelWithEyes();
+    const report = await executionFirewall.runInContext('joe-eng-verify-finish', () =>
+        createVerifier({ ask, runTool, browserQa: qa, ...(look ? { look } : {}) })(ctx, { summary: 'done' })) as DeliveryVerification;
+    return { report, judged, shown, qa };
+}
+
+describe('a requirement about how the page looks (2026-11-02: «التصميم أنيق» refused a working page)', () => {
+    it('is judged on the page\'s screenshot, never on the source, and a page that looks so is delivered', async () => {
+        const { report, judged, shown, qa } = await verifyLook({ verdict: 'met', why: 'warm colours, clear type and generous spacing' });
+        expect(report.passed).toBe(true);
+        expect(failedChecks(report)).toEqual([]);
+        expect(report.unproven).toEqual([]);
+        //  The source judge was never asked about the look.
+        expect(judged.length).toBeGreaterThan(0);
+        for (const p of judged) expect(p).not.toContain('an elegant design');
+        //  The audit was asked for the landing view, and that picture was shown.
+        expect(qa.audits[0].opts.lookPath).toMatch(/[\\/]look[\\/]page-\d+\.jpg$/u);
+        expect(shown).toHaveLength(1);
+        expect(shown[0].image).toEqual({ mime: 'image/jpeg', data: Buffer.from('the landing view').toString('base64') });
+        expect(shown[0].prompt).toContain('A preference is not a defect');
+        expect(report.delivery.acceptance.requirements).toContainEqual(expect.objectContaining({ id: 'R4', verdict: 'met', judgedBy: 'sight' }));
+        expect(check(report, 'browser')?.detail).toContain('seen on the page\'s screenshot: R4 warm colours');
+    });
+
+    it('a visible defect the judge names blocks the delivery as a Browser QA failure, with the requirement', async () => {
+        const { report } = await verifyLook({ verdict: 'unmet', why: 'the menu is light grey on white and cannot be read' });
+        expect(report.passed).toBe(false);
+        expect(failedChecks(report)).toEqual(['browser']);
+        expect(check(report, 'browser')?.detail).toContain('R4 «an elegant design» does not look as he asked: the menu is light grey on white');
+        expect(report.unproven).toEqual([{ id: 'R4', text: 'an elegant design', reason: 'not met, seen on the page: the menu is light grey on white and cannot be read' }]);
+    });
+
+    it('a model that cannot see leaves it unjudged by eye, says so, and does not block', async () => {
+        const { report, shown } = await verifyLook(null);
+        expect(shown).toHaveLength(0);
+        expect(report.passed).toBe(true);
+        expect(report.unproven).toEqual([{ id: 'R4', text: 'an elegant design', reason: expect.stringMatching(/^not judged by eye \(this does not block the delivery\): the chosen model cannot see images/u) }]);
+    });
+});

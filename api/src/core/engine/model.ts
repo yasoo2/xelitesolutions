@@ -29,7 +29,9 @@ import { managedOllamaChat, managedContextCeilingTokens, isManagedOllamaEndpoint
 import { routeToModel, isProviderFailure } from '../llm/intelligent-router';
 import { isKeyedVendor, providerAllowedByCost, serverKeyFor } from '../llm/provider-continuity';
 import { readModelTurn, withoutReasoning } from './toolcalls';
-import { anthropicModel, anthropicSettings, anthropicTextAsk, claudeAccount, CLAUDE_MODELS } from './anthropic';
+import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
+import { anthropicLook, anthropicModel, anthropicSettings, anthropicTextAsk, claudeAccount, CLAUDE_MODELS } from './anthropic';
+import type { Look } from '../quality/appearance';
 import type { ChatMessage, EngineModel, ModelStep, ToolSchema } from './types';
 
 export interface ModelChoice {
@@ -171,6 +173,18 @@ function forManaged(messages: ChatMessage[]): unknown[] {
     });
 }
 
+/**
+ * How long one local call may wait: until the run's deadline, never past the
+ * per-call hard maximum, which managedOllamaChat refuses before it starts.
+ * Measured 2026-11-02 on the 500-prompt exam (JOE_RUN_DEADLINE_MS = 12 h):
+ * every local call asked for the 12 h left, every one was refused with
+ * «Local inference timeout must be between 1 ms and the local inference hard
+ * maximum», and 337 of 338 prompts failed in 18 s each.
+ */
+export function localCallTimeout(deadlineAt: number, now = Date.now()): number {
+    return Math.min(LOCAL_INFERENCE_HARD_MAX_MS, Math.max(60_000, Math.floor(deadlineAt - now)));
+}
+
 export function managedModel(choice: ModelChoice, vision: boolean): EngineModel {
     let calls = 0;
     return {
@@ -186,7 +200,7 @@ export function managedModel(choice: ModelChoice, vision: boolean): EngineModel 
                 messages: forManaged(messages),
                 tools,
                 signal,
-                timeoutMs: Math.max(60_000, deadlineAt - Date.now()),
+                timeoutMs: localCallTimeout(deadlineAt),
                 reasoningEffort: choice.reasoning,
             });
             const durationMs = Date.now() - started;
@@ -218,7 +232,7 @@ export function textAsk(choice: ModelChoice, joe: any, signal: AbortSignal, dead
             const result = await managedOllamaChat({
                 baseURL: choice.baseUrl!, model: choice.model,
                 messages: [{ role: 'user', content: prompt }],
-                signal, timeoutMs: Math.max(60_000, deadlineAt - Date.now()),
+                signal, timeoutMs: localCallTimeout(deadlineAt),
                 reasoningEffort: choice.reasoning,
             });
             return withoutReasoning(result.content || '');
@@ -265,6 +279,24 @@ export function routedModel(choice: ModelChoice, joe: any): EngineModel {
 export interface EngineBrain {
     model: EngineModel;
     ask: (prompt: string) => Promise<string>;
+    /** The same model shown a picture; only when it can see. */
+    look?: Look;
+}
+
+/** The local model shown one picture, when it takes images. */
+function localLook(choice: ModelChoice, signal: AbortSignal, deadlineAt: number): Look {
+    return async (prompt, image) => {
+        const result = await managedOllamaChat({
+            baseURL: choice.baseUrl!, model: choice.model,
+            messages: forManaged([{ role: 'user', content: [
+                { type: 'text', text: prompt },
+                { type: 'image_url', image_url: { url: `data:${image.mime};base64,${image.data}` } },
+            ] }]),
+            signal, timeoutMs: localCallTimeout(deadlineAt),
+            reasoningEffort: choice.reasoning,
+        });
+        return withoutReasoning(result.content || '');
+    };
 }
 
 /**
@@ -286,11 +318,17 @@ export async function engineBrain(
         });
         if ('error' in settings) return settings;
         const deps = { settings, ledger: account.ledger, runId: String(joe?.runId || 'run') };
-        return { model: anthropicModel(deps), ask: anthropicTextAsk(deps, signal, deadlineAt) };
+        return {
+            model: anthropicModel(deps), ask: anthropicTextAsk(deps, signal, deadlineAt),
+            ...(settings.vision ? { look: anthropicLook(deps, signal, deadlineAt) } : {}),
+        };
     }
     if (choice.provider === 'local') {
         const vision = choice.vision ?? await localModelHasVision(choice.baseUrl!, choice.model, signal);
-        return { model: managedModel(choice, vision), ask: textAsk(choice, joe, signal, deadlineAt) };
+        return {
+            model: managedModel(choice, vision), ask: textAsk(choice, joe, signal, deadlineAt),
+            ...(vision ? { look: localLook(choice, signal, deadlineAt) } : {}),
+        };
     }
     return { model: routedModel(choice, joe), ask: textAsk(choice, joe, signal, deadlineAt) };
 }

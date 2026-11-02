@@ -34,6 +34,7 @@ import {
 import { deliveryRun, type DeliveryRunState } from '../quality/delivery-run';
 import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements } from '../quality/acceptance-gate';
 import { acceptanceSource, judgeAcceptance, type Criterion } from '../quality/acceptance';
+import { isAppearanceRequirement, judgeAppearance, type JudgedAppearance, type Look } from '../quality/appearance';
 import { nothingWasJudged, verifyNamed, type JudgedNamed, type NamedRequirement } from '../quality/named-requirements';
 import { runRequestedTests, testsRequestedIn } from '../quality/request-coverage';
 import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
@@ -63,6 +64,12 @@ export interface JudgedRequirement {
     text: string;
     verdict: 'met' | 'unmet' | 'unprovable';
     why: string;
+    /**
+     * Where it was judged: on the source, or on a screenshot of the page (a
+     * requirement about how the page looks, core/quality/appearance.ts). An
+     * unprovable look never blocks; an unmet one fails the Browser QA.
+     */
+    judgedBy?: 'source' | 'sight';
 }
 
 /** Everything the verdict was made from, kept so the run's receipt can be built from it. */
@@ -181,6 +188,8 @@ export interface VerifierDeps {
     /** One of Joe's tools through ToolService: quality_run, project_run, project_stop, shell_execute. */
     runTool: (tool: string, input: any) => Promise<any>;
     browserQa?: BrowserQa;
+    /** The same model shown a screenshot, when it can see: judges what the request says about the look. */
+    look?: Look;
 }
 
 /** The order the report lists the instruments in: the order they are measured. */
@@ -463,18 +472,25 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
 
     //  C11 — every requirement the request named, judged on the source.
     //  Recorded before Browser QA, so QA never runs to rescue a refused delivery.
+    //  A requirement about how a delivered page LOOKS is held for the page
+    //  itself: the source cannot show a taste (core/quality/appearance.ts).
     const acceptance = { requirements: [] as JudgedRequirement[], requestUnread: false, whyNotRead: '' };
+    let bySight: Array<{ id: string; text: string; quote: string }> = [];
     await stage(['acceptance'], async () => {
         const judged = await judgeRequirements(ctx, request, isAr, root, deps.ask, note, {
             built: buildsPassed, liveUrl,
-        });
+        }, interfaceDelivered);
         Object.assign(acceptance, judged.summary);
+        bySight = judged.bySight;
         ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined });
+        const onThePage = bySight.length ? `; ${bySight.length} about how the page looks (${bySight.map(r => planIdOf(ctx, r.id)).join(', ')}) are judged on the page itself, by the Browser QA` : '';
         passed.set('acceptance', judged.requirementsCount
-            ? `every one of the ${judged.requirementsCount} requirement(s) read from the request is met in the source`
-            : 'the request was read and names nothing the source can be judged against');
+            ? `every one of the ${judged.requirementsCount} requirement(s) read from the request is met in the source${onThePage}`
+            : bySight.length ? `the request's requirement(s) are all about how the page looks${onThePage}`
+                : 'the request was read and names nothing the source can be judged against');
         if (judged.leftOut.length) remark('acceptance', `not handed to the judge (over ${JUDGE_FILE_BYTES} bytes each): ${judged.leftOut.join(', ')}`);
     });
+    let looks: JudgedAppearance[] | undefined;
 
     //  C12 — visible Browser QA, when an interface is delivered and nothing
     //  it cannot repair has already failed.
@@ -489,9 +505,11 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 return;
             }
             const auditDir = projectAuditDirectory(Array.from(new Set([...auditRoots, ...interfaceRoots])));
+            const lookPath = bySight.length ? path.join(ctx.stateDir || path.join(root, '.joe'), 'look', `page-${Date.now()}.jpg`) : undefined;
             const options = (timeoutMs: number): AuditOptions => ({
                 request, watchSessionId: eye.sessionId, serveUrl: qaTarget, artifactRootDir: root,
                 requireVisibleBrowser: true, timeoutMs, onProgress: (m: string) => note(`browser QA: ${m}`),
+                ...(lookPath ? { lookPath } : {}),
             });
             let audit = await browserQa.audit(auditDir, options(45_000));
             //  A coverage timeout is the walker's budget, not the app: once more, larger.
@@ -505,20 +523,40 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 if (!retry.skipped) audit = retry;
             }
             browserAudit = audit;
+            //  What the request says about the look, judged on the page the audit opened.
+            if (bySight.length && !audit.skipped) {
+                looks = await judgeAppearance(bySight, audit.look, isAr, deps.look,
+                    audit.lookProblem ? `the page's screenshot could not be taken: ${audit.lookProblem}` : undefined);
+                for (const l of looks) note(`look: ${planIdOf(ctx, l.id)} ${l.verdict}: ${l.why}`);
+            }
+            const unmetLooks = (looks || []).filter(l => l.verdict === 'unmet')
+                .map(l => `${planIdOf(ctx, l.id)} «${l.text}» does not look as he asked: ${l.why}`);
             if (audit.skipped) {
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${audit.skipped}` });
             } else if (audit.findings.length) {
                 const findings = audit.findings.map(browserFindingLine);
-                ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${audit.findings.length} blocking finding(s): ${findings.slice(0, 8).join(' | ')}${findings.length > 8 ? ` (+${findings.length - 8} more)` : ''}` });
+                ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${audit.findings.length} blocking finding(s): ${findings.slice(0, 8).join(' | ')}${findings.length > 8 ? ` (+${findings.length - 8} more)` : ''}${unmetLooks.length ? ` | ${unmetLooks.join(' | ')}` : ''}` });
+            } else if (unmetLooks.length) {
+                ledger.record({ instrument: 'browser', ok: false, error: `the page, seen on its screenshot: ${unmetLooks.join(' | ')}` });
             } else {
                 ledger.record({ instrument: 'browser', ok: true });
-                passed.set('browser', `visible Browser QA in the panel found nothing to fix (score ${audit.score})`);
+                const seen = (looks || []).filter(l => l.verdict === 'met');
+                passed.set('browser', `visible Browser QA in the panel found nothing to fix (score ${audit.score})${seen.length ? `; seen on the page's screenshot: ${seen.map(l => `${planIdOf(ctx, l.id)} ${l.why}`).join(' | ')}` : ''}`);
             }
         });
     } else if (interfaceDelivered && !ledger.all().some(m => m.instrument === 'browser')) {
         skipped.set('browser', 'not run: an earlier check failed, and Browser QA never runs to rescue a refused delivery');
     } else if (!interfaceDelivered && !ledger.all().some(m => m.instrument === 'browser')) {
         skipped.set('browser', 'no interface is delivered, so there is no page to open');
+    }
+
+    //  A look nobody could see is said so, and never blocks.
+    if (bySight.length && !looks) {
+        looks = await judgeAppearance(bySight, undefined, isAr, deps.look,
+            `not looked at: ${skipped.get('browser') || (ledger.all().some(m => m.instrument === 'browser' && m.ok !== true) ? 'the Browser QA did not open the page' : 'the page was not opened')}`);
+    }
+    for (const l of looks || []) {
+        acceptance.requirements.push({ id: planIdOf(ctx, l.id), key: l.id, text: l.text, verdict: l.verdict, why: l.why, judgedBy: 'sight' });
     }
 
     //  C14 — one verdict, from every measurement. The agent called
@@ -588,7 +626,12 @@ function unprovenRequirements(
 ): VerificationReport['unproven'] {
     const out: VerificationReport['unproven'] = judged
         .filter(r => r.verdict !== 'met')
-        .map(r => ({ id: r.id, text: r.text, reason: `${r.verdict === 'unmet' ? 'not met' : 'not provable'}: ${r.why}` }));
+        .map(r => ({
+            id: r.id, text: r.text,
+            reason: r.judgedBy === 'sight'
+                ? `${r.verdict === 'unmet' ? 'not met, seen on the page' : 'not judged by eye (this does not block the delivery)'}: ${r.why}`
+                : `${r.verdict === 'unmet' ? 'not met' : 'not provable'}: ${r.why}`,
+        }));
     const ruled = new Set(judged.map(r => r.id));
     const measured = ledger.all().find(m => m.instrument === 'acceptance');
     const whyNot = measured && measured.ok !== true ? String(measured.error || 'the acceptance check failed')
@@ -699,6 +742,12 @@ async function judgeSource(root: string): Promise<{ text: string; leftOut: strin
     return { text: [builders, ...texts].filter(Boolean).join('\n'), leftOut };
 }
 
+/** The plan's R-id for a requirement the judge knows by its own id. */
+function planIdOf(ctx: ToolContext, key: string): string {
+    const r = (ctx.state?.plan?.requirements || []).find(x => (x.key || x.id) === key);
+    return r?.id || key;
+}
+
 function adoptRequirements(ctx: ToolContext, named: NamedRequirement[]): void {
     const plan = ctx.state?.plan;
     if (!plan || !named.length) return;
@@ -723,7 +772,8 @@ async function judgeRequirements(
     ask: (prompt: string) => Promise<string>,
     note: (line: string) => void,
     evidence: { built: boolean; liveUrl: string },
-): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
+    pageDelivered = false,
+): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
     //  same reader seeded them), or — when the seeding read nothing — a
     //  reading now, which also enters the plan.
@@ -739,6 +789,13 @@ async function judgeRequirements(
         requestUnread = read.requestUnread;
         whyNotRead = read.whyNotRead;
         adoptRequirements(ctx, read.named);
+    }
+    //  What a delivered page must LOOK like is judged on the page, after
+    //  the Browser QA opened it; everything else on the source.
+    const bySight = pageDelivered ? named.filter(r => isAppearanceRequirement(r.text || r.quote)) : [];
+    if (bySight.length) {
+        named = named.filter(r => !bySight.includes(r));
+        note(`acceptance: ${bySight.length} requirement(s) about how the page looks are judged on the page itself: ${bySight.map(r => `«${r.text}»`).join(', ')}`);
     }
     //  2-3. The source, and a verdict per requirement grounded in it.
     const source = await judgeSource(root);
@@ -761,10 +818,10 @@ async function judgeRequirements(
     const plan = ctx.state?.plan?.requirements || [];
     const requirements: JudgedRequirement[] = accepted.criteria.map(c => {
         const inPlan = plan.find(r => (r.key || r.id) === c.id);
-        return { id: inPlan?.id || c.id, key: c.id, text: c.en, verdict: c.verdict, why: c.why };
+        return { id: inPlan?.id || c.id, key: c.id, text: c.en, verdict: c.verdict, why: c.why, judgedBy: 'source' as const };
     });
     note(`acceptance: ${accepted.met}/${accepted.criteria.length} met, ${accepted.unmet} unmet, ${accepted.unprovable} unprovable${requestUnread ? ` — the request was not read (${whyNotRead})` : ''}`);
-    return { blocked, error, requirementsCount: named.length, leftOut: source.leftOut, summary: { requirements, requestUnread, whyNotRead } };
+    return { blocked, error, requirementsCount: named.length, leftOut: source.leftOut, bySight, summary: { requirements, requestUnread, whyNotRead } };
 }
 
 /* ───────────────────────── the report ───────────────────────── */

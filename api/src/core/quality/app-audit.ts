@@ -148,6 +148,15 @@ export interface AppAudit {
     }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
+    /**
+     * The page as a visitor first sees it, captured when the caller asked for
+     * it (`lookPath`): what a requirement about how the page LOOKS is judged on
+     * (core/quality/appearance.ts). A path, never the image, so the record
+     * that keeps this audit stays small.
+     */
+    look?: { path: string; url: string };
+    /** Why the look was not captured, when it was asked for. */
+    lookProblem?: string;
     /** Positive evidence for a maintained external integration, never inferred from silence. */
     externalApiRuntime?: {
         capability: 'weather' | 'currency' | 'ip';
@@ -348,6 +357,8 @@ export async function auditBuiltApp(
         offline?: boolean;
         /** Original user request, used only for request-specific observable QA scenarios. */
         request?: string;
+        /** Where to save a screenshot of the landing view, as a visitor first sees it (see AppAudit.look). */
+        lookPath?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -808,6 +819,20 @@ export async function auditBuiltApp(
                         opts?.onProgress?.('recovered');
                     }
                 } catch { /* the folder could not be served either — reported below */ }
+            }
+        }
+        //  The landing view, before any control is pressed: what a visitor
+        //  sees first, and what a requirement about the look is judged on.
+        let look: AppAudit['look'];
+        let lookProblem = '';
+        if (opts?.lookPath) {
+            try {
+                await fs.promises.mkdir(path.dirname(opts.lookPath), { recursive: true });
+                await page.waitForTimeout(400).catch(() => { });
+                await page.screenshot({ path: opts.lookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                look = { path: opts.lookPath, url: page.url() };
+            } catch (e: any) {
+                lookProblem = String(e?.message || e).split('\n')[0].slice(0, 200);
             }
         }
         /**
@@ -1758,6 +1783,8 @@ export async function auditBuiltApp(
 
         return {
             score: scoreOf(findings), findings,
+            ...(look ? { look } : {}),
+            ...(lookProblem ? { lookProblem } : {}),
             visible: borrowed,
             authenticated,
             ...(authError ? { authError } : {}),
