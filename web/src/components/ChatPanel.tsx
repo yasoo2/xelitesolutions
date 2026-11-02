@@ -14,6 +14,8 @@ import JoeMark from './JoeMark';
 import { composeGreeting } from '../lib/greetings';
 import { resolveIdentity } from '../lib/userIdentity';
 import PlanCredits from './PlanCredits';
+import RunActivityPanel from './RunActivityPanel';
+import { ErrorBoundary } from './ErrorBoundary';
 import WordReveal from './WordReveal';
 import ArtifactCard from './ArtifactCard';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
@@ -27,6 +29,8 @@ interface Message {
     /** Attachment meta the user sent with this message (id/name/type/size). */
     files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
     timestamp?: Date;
+    /** The run that wrote this reply: its activity is drawn under it. */
+    runId?: string;
 }
 
 // Old sessions stored system messages with literally escaped newlines ("\n\n"
@@ -120,6 +124,12 @@ export default function ChatPanel({
         return () => unsub();
     }, [sessionId]);
     const traceFor = React.useMemo(() => attachTraces(messages, traces), [messages, traces]);
+    //  A run's activity is drawn once, under the last reply it wrote.
+    const activityReplies = React.useMemo(() => {
+        const last = new Map<string, string>();
+        for (const m of messages) if (m.role === 'assistant' && m.runId) last.set(m.runId, m.id);
+        return new Set(last.values());
+    }, [messages]);
 
     // Auto scroll to bottom
     useEffect(() => {
@@ -249,6 +259,13 @@ export default function ChatPanel({
                                 )}
                                 {msg.role === 'assistant' && traceFor.has(msg.id) && (
                                     <NeuralTraceReceipt trace={traceFor.get(msg.id)!} />
+                                )}
+                                {/* Every call the run made, with what it was given and
+                                    what came back: one line, opened on demand. */}
+                                {msg.role === 'assistant' && msg.runId && activityReplies.has(msg.id) && (
+                                    <ErrorBoundary key={`activity:${msg.runId}`} fallbackTitle={t('act_loadFailed')}>
+                                        <RunActivityPanel variant="inline" sessionId={sessionId} runId={msg.runId} />
+                                    </ErrorBoundary>
                                 )}
                                 {/* dir="auto" + per-block auto direction below: a Latin
                                     name («Younes») inside an Arabic sentence scrambled
@@ -447,6 +464,10 @@ export default function ChatPanel({
                                 />
                                 {/* The plan, inside the reply: it rolls up like credits as each step finishes. */}
                                 <PlanCredits sessionId={sessionId} />
+                                {/* The step Joe is on, live; opened, every call so far. */}
+                                <ErrorBoundary key={`activity-live:${sessionId}`} fallbackTitle={t('act_loadFailed')}>
+                                    <RunActivityPanel variant="inline" sessionId={sessionId} />
+                                </ErrorBoundary>
                             </div>
                         </div>
                     </div>

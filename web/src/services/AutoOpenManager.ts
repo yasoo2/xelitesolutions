@@ -3,7 +3,7 @@
  * Listens to AI tool usage events and auto-opens relevant panels
  */
 
-type PanelType = 'terminal' | 'browser' | 'preview' | 'problems' | 'output' | 'activity';
+type PanelType = 'terminal' | 'browser' | 'preview' | 'problems' | 'output';
 
 interface AutoOpenConfig {
     enabled: boolean;
@@ -42,7 +42,6 @@ class AutoOpenManagerClass {
             preview: true,
             problems: true,
             output: true,
-            activity: true,
         },
     };
     /** Runs of the agent engine seen on this page, oldest first. */
@@ -146,20 +145,18 @@ class AutoOpenManagerClass {
      */
     processStepEvent(event: { type: string; data?: any; runId?: unknown; sessionId?: unknown }) {
         /**
-         * THE AGENT ENGINE'S RUN OPENS ITS OWN TAB, ONCE.
+         * THE AGENT ENGINE'S RUN IS DRAWN IN THE CHAT, AND OPENS NO PANEL.
          *
-         * Its first step is the moment there is something to watch: the plan,
-         * then each call with what it was given and what came back. It opens
-         * once per run, so a person who then chooses another tab keeps it, and
-         * it carries a reason: like a panel the server names, it is a stated
-         * intent that a passing guess does not override.
+         * Its steps used to open an Activity tab beside the chat. Since
+         * 2026-11-02 they are drawn inside Joe's reply (RunActivityPanel,
+         * inline): the owner wanted them in the conversation, not in a panel
+         * of their own. The run is still remembered, so the engine's own
+         * tools and notes never pull the workspace to another tab.
          */
         if (event.type === 'engine_step') {
             const runId = runIdOf(event);
             if (runId && !this.engineRuns.includes(runId)) {
                 this.engineRuns = [...this.engineRuns, runId].slice(-ENGINE_RUN_MEMORY);
-                const sessionId = typeof event.sessionId === 'string' && event.sessionId ? event.sessionId : event.data?.sessionId;
-                this.triggerOpen('activity', { ...(event.data || {}), sessionId, runId, reason: 'engine_run' });
             }
             return;
         }

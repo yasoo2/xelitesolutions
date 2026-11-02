@@ -1,18 +1,24 @@
 /**
- * THE ACTIVITY TAB OPENS ITSELF WHEN THE ENGINE STARTS, AND STAYS ON SCREEN.
+ * WHAT THE ENGINE DOES IS DRAWN INSIDE JOE'S REPLY, NOT IN A TAB.
  *
- * Three layers, each driven the way it runs:
- *   - AutoOpenManager is logic, so it is driven with events: the first
- *     engine_step of a run opens Activity once, and the engine's own tool
- *     names and notes no longer pull the workspace to another tab.
+ * The owner, 2026-11-02: «احنا اتفقنا انه يكون داخله جوا وليس في قائمة
+ * عائمة». The Activity tab used to open itself beside the chat on the
+ * engine's first step; the same panel now lives in the conversation
+ * (RunActivityPanel, inline): live under the plan while Joe works, and under
+ * each reply for its own run. Its behaviour inline is proven where the panel
+ * is mounted (the-activity-panel-draws-what-the-engine-did).
+ *
+ * Here, each layer driven the way it runs:
+ *   - AutoOpenManager is logic, driven with events: the engine's steps open
+ *     no panel, and its own tool names and notes still never pull the
+ *     workspace to another tab.
  *   - The layout and the workspace are mounted for real in a DOM, with their
- *     children and transports as stand-ins: the layout opens the tab for the
- *     conversation on screen only, keeps it when the run ends, lets no
- *     streamed file or engine browser step take it away, and gives the next
- *     run a clean slate; the workspace offers the tab and keeps its panel
- *     mounted, one per conversation.
- *   - The dictionary is read as text, because that is what it is: every word
- *     the panel shows exists in every language the interface offers.
+ *     children and transports as stand-ins: the engine's steps leave the
+ *     workspace where it was, the workspace offers no Activity tab, and a
+ *     streamed file's transient Logs still folds away when the run ends.
+ *   - The chat's wiring is read as text: the live line and the reply's line.
+ *   - The dictionary is read as text: every word the panel shows exists in
+ *     every language the interface offers.
  */
 import fs from 'fs';
 import path from 'path';
@@ -53,20 +59,13 @@ function opened(events: any[]): Array<[string, any]> {
 const step = (runId: string, n: number, sessionId = 'chat-1') =>
     ({ type: 'engine_step', id: `engine-${runId}-${n}`, sessionId, runId, data: { step: n, sessionId, runId } });
 
-describe('AutoOpenManager opens Activity on the engine’s first step', () => {
-    it('opens it once per run, naming the conversation and the run, as a stated intent', () => {
-        expect(opened([step('run-a1', 1), step('run-a1', 2), step('run-a1', 3)])).toEqual([
-            ['activity', expect.objectContaining({ reason: 'engine_run', sessionId: 'chat-1', runId: 'run-a1', step: 1 })],
-        ]);
-        //  The next run opens it again, even after he chose another tab in between.
-        expect(opened([step('run-a2', 1)]).map(([p]) => p)).toEqual(['activity']);
-        //  A step with no run cannot be told apart from the next one, so it opens nothing.
-        expect(opened([{ type: 'engine_step', sessionId: 'chat-1', data: { step: 1 } }])).toEqual([]);
-    });
-
-    it('lets the server name the Activity tab like any other panel', () => {
+describe('AutoOpenManager opens no panel for the engine', () => {
+    it('opens nothing on the engine’s steps: they are drawn in the chat', () => {
+        expect(opened([step('run-a1', 1), step('run-a1', 2), step('run-a1', 3)])).toEqual([]);
+        expect(opened([step('run-a2', 1)])).toEqual([]);
+        //  There is no Activity panel to name, even by the server.
         expect(opened([{ type: 'panel_focus', sessionId: 'chat-1', data: { panel: 'activity', reason: 'engine_run', sessionId: 'chat-1' } }]))
-            .toEqual([['activity', expect.objectContaining({ reason: 'engine_run' })]]);
+            .toEqual([]);
     });
 
     it('never lets the engine’s own tools or notes pull the tab to the browser, while everyone else’s still do', () => {
@@ -208,45 +207,27 @@ async function mountLayout(sessionId: string) {
     };
 }
 
-describe('the layout opens Activity for the conversation on screen, and keeps it', () => {
-    it('opens it on the engine’s first step of this conversation, and never for another one', async () => {
+describe('the layout leaves the workspace where it was when the engine works', () => {
+    it('the engine’s steps, of this conversation or another, open no tab and no canvas', async () => {
         const layout = await mountLayout('chat-1');
         try {
             expect(layout.tab()).toBe('logs');
             expect(layout.canvasOpen()).toBe(false);
-            //  A run in another conversation, and a step that names no conversation, take nothing.
             await layout.step(step('run-other', 1, 'chat-2'));
-            await layout.step({ type: 'engine_step', id: 'engine-run-x-1', runId: 'run-x', data: { step: 1, runId: 'run-x' } });
+            await layout.step(step('run-mine', 1, 'chat-1'));
+            await layout.step(step('run-mine', 2, 'chat-1'));
             expect(layout.tab()).toBe('logs');
             expect(layout.canvasOpen()).toBe(false);
-            //  This conversation's run opens the tab and the canvas.
-            await layout.step(step('run-mine', 1, 'chat-1'));
-            expect(layout.tab()).toBe('activity');
-            expect(layout.canvasOpen()).toBe(true);
         } finally { await layout.close(); }
     }, MOUNT_TIMEOUT);
 
-    it('keeps Activity when the run ends, lets no streamed file take it, and gives the next run a clean slate', async () => {
+    it('a streamed file still shows its Logs for a moment, and that view folds away when the run ends', async () => {
         const layout = await mountLayout('chat-1');
         const streamed = (runId: string, file: string) =>
             ({ type: 'file_stream', sessionId: 'chat-1', runId, data: { file, chunk: 'x', done: true, sessionId: 'chat-1', runId } });
         try {
-            await layout.send({ type: 'run_started', sessionId: 'chat-1', runId: 'run-1', data: { sessionId: 'chat-1', runId: 'run-1' } });
-            await layout.step(step('run-1', 1, 'chat-1'));
-            expect(layout.tab()).toBe('activity');
-            //  A file the engine wrote streams in: the stated intent outranks it.
-            await layout.send(streamed('run-1', 'src/App.tsx'));
-            expect(layout.tab()).toBe('activity');
-            //  The run ends. Activity now holds the verdict, so it stays on screen.
-            await layout.setBusy(false);
-            await layout.graceElapses();
-            expect(layout.tab()).toBe('activity');
-            expect(layout.canvasOpen()).toBe(true);
-
-            //  The next run states its own intent; until it does, a streamed file
-            //  may show its Logs, and that transient view folds away when the run ends.
-            await layout.setBusy(true);
             await layout.send({ type: 'run_started', sessionId: 'chat-1', runId: 'run-2', data: { sessionId: 'chat-1', runId: 'run-2' } });
+            await layout.step(step('run-2', 1, 'chat-1'));
             await layout.send(streamed('run-2', 'index.html'));
             expect(layout.tab()).toBe('logs');
             await layout.setBusy(false);
@@ -269,14 +250,6 @@ describe('the layout opens Activity for the conversation on screen, and keeps it
 
 async function mountWorkspace(sessionId: string) {
     const { dom, restore } = installDom();
-    const panels: Array<{ props: any; mounted: boolean }> = [];
-    function ActivityStub(props: any) {
-        const self = React.useRef(null);
-        if (!self.current) { self.current = { props, mounted: true }; panels.push(self.current); }
-        self.current.props = props;
-        React.useEffect(() => () => { self.current.mounted = false; }, []);
-        return React.createElement('div', { 'data-activity': props.sessionId });
-    }
     const Workspace = evaluate(web('components', 'WorkspacePanel.tsx'), {
         react: React, 'react-i18next': i18n, 'lucide-react': icon, '../lib/plainText': plainText,
         './ErrorBoundary': { ErrorBoundary: pass },
@@ -284,7 +257,6 @@ async function mountWorkspace(sessionId: string) {
         './terminal/EnterpriseTerminalPanel': { __esModule: true, default: Null },
         './EmbeddedBrowser': { __esModule: true, default: Null },
         './PreviewPanel': { __esModule: true, default: Null },
-        './RunActivityPanel': { __esModule: true, default: ActivityStub },
     }).default;
     function Host({ sid }: { sid: string }) {
         const [tab, setTab] = React.useState('logs');
@@ -297,7 +269,7 @@ async function mountWorkspace(sessionId: string) {
     await render(sessionId);
     const tabButton = (label: string) => dom.window.document.querySelector(`button.joe-workspace-tab[aria-label="${label}"]`);
     return {
-        panels, tabButton, render,
+        tabButton, render,
         async click(el: Element) { await act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await settle(); }); },
         async close() {
             try { await act(async () => { root.unmount(); }); } finally { restore(); }
@@ -305,30 +277,33 @@ async function mountWorkspace(sessionId: string) {
     };
 }
 
-describe('the workspace offers Activity and keeps its panel', () => {
-    it('offers the tab, mounts the panel before it is shown, keeps it while hidden, and gives each conversation its own', async () => {
+describe('the workspace offers no Activity tab', () => {
+    it('its tabs are the workspace’s own: the activity is in the chat', async () => {
         const ws = await mountWorkspace('chat-1');
         try {
-            const tab = ws.tabButton('act_title');
-            expect(tab).not.toBeNull();
-            //  Mounted from the start, behind the Logs tab, so no live step is lost.
-            expect(ws.panels.map(p => [p.props.sessionId, p.props.active, p.mounted])).toEqual([['chat-1', false, true]]);
-
-            await ws.click(tab!);
-            expect(ws.tabButton('act_title')?.getAttribute('aria-pressed')).toBe('true');
-            expect(ws.panels.map(p => [p.props.sessionId, p.props.active, p.mounted])).toEqual([['chat-1', true, true]]);
-
-            //  Another tab hides it; it is the same panel, still mounted, when it comes back.
-            await ws.click(ws.tabButton('wsp_tabLogs')!);
-            await ws.click(ws.tabButton('act_title')!);
-            expect(ws.panels).toHaveLength(1);
-            expect(ws.panels[0]).toMatchObject({ mounted: true, props: { active: true } });
-
-            //  Another conversation is another panel.
-            await ws.render('chat-2');
-            expect(ws.panels.map(p => [p.props.sessionId, p.mounted])).toEqual([['chat-1', false], ['chat-2', true]]);
+            expect(ws.tabButton('wsp_tabLogs')).not.toBeNull();
+            expect(ws.tabButton('act_title')).toBeNull();
+            //  The workspace loads no Activity panel at all (its imports are given above, and it asks for none).
+            expect(read('components', 'WorkspacePanel.tsx')).not.toMatch(/import\(['"]\.\/RunActivityPanel['"]\)|from ['"]\.\/RunActivityPanel['"]/);
         } finally { await ws.close(); }
     }, MOUNT_TIMEOUT);
+});
+
+describe('the chat draws the activity inside Joe’s reply', () => {
+    it('live under the plan while Joe works, and under each reply for its own run, each in its own boundary', () => {
+        const chat = read('components', 'ChatPanel.tsx');
+        //  Live: in the dock, right after the plan credits.
+        expect(chat).toMatch(/<PlanCredits sessionId=\{sessionId\} \/>[\s\S]{0,400}<RunActivityPanel variant="inline" sessionId=\{sessionId\} \/>/);
+        //  Finished: the last reply of each run carries that run's line.
+        expect(chat).toContain('<RunActivityPanel variant="inline" sessionId={sessionId} runId={msg.runId} />');
+        expect(chat).toMatch(/for \(const m of messages\) if \(m\.role === 'assistant' && m\.runId\) last\.set\(m\.runId, m\.id\)/);
+        //  A failure of the line never takes the conversation with it.
+        expect((chat.match(/<ErrorBoundary key=\{`activity/g) || []).length).toBe(2);
+        //  The reply knows its run: the history names it.
+        expect(read('pages', 'Joe.tsx')).toContain("...(typeof e.runId === 'string' && e.runId ? { runId: e.runId } : {}),");
+        //  And nothing opens a tab for it any more.
+        expect(read('components', 'JoeIDELayout.tsx')).not.toMatch(/'activity'/);
+    });
 });
 
 describe('every word of the panel is in every language', () => {
@@ -337,7 +312,7 @@ describe('every word of the panel is in every language', () => {
         const marks = ['en', 'ar', 'fr', 'de', 'ru', 'es'].map(l => ({ l, at: dictionary.indexOf(`\n  ${l}: {`) }));
         expect(marks.every(m => m.at > 0)).toBe(true);
         const blocks = marks.map((m, i) => ({ l: m.l, text: dictionary.slice(m.at, i + 1 < marks.length ? marks[i + 1].at : undefined) }));
-        const source = read('components', 'RunActivityPanel.tsx') + read('components', 'WorkspacePanel.tsx');
+        const source = read('components', 'RunActivityPanel.tsx') + read('components', 'ChatPanel.tsx');
         const keys = new Set<string>([...source.matchAll(/t\('(act_[A-Za-z_]+)'/g)].map(m => m[1]));
         for (const m of source.matchAll(/'(act_note_[a-z]+)'/g)) keys.add(m[1]);
         //  The keys the panel builds from a value: one per value the reducer can hold.

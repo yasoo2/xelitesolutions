@@ -17,7 +17,10 @@
  *   - a reopened panel restores the session's latest run from its history
  *     and the run's record, and refills events it missed, reading each at
  *     most once;
- *   - a new run, and a new conversation, start an empty panel.
+ *   - a new run, and a new conversation, start an empty panel;
+ *   - inside Joe's reply (2026-11-02, the tab is gone): the live line appears
+ *     with the run's first step and names the step it is on, and a finished
+ *     reply's line reads its run's record the first time it is opened, once.
  */
 import fs from 'fs';
 import path from 'path';
@@ -68,6 +71,8 @@ interface MountOptions {
     active?: boolean;
     /** The run the session-running registry names, as a live run does. */
     runningRunId?: string;
+    /** More props for the panel: the inline form inside a reply. */
+    props?: Record<string, unknown>;
 }
 
 async function mountPanel(records: Record<string, any>, options: MountOptions = {}) {
@@ -124,7 +129,7 @@ async function mountPanel(records: Record<string, any>, options: MountOptions = 
     const act = React.act;
     const settle = () => new Promise(resolve => setTimeout(resolve, 20));
     const render = async (sessionId: string, active = true) => {
-        await act(async () => { root.render(React.createElement(Panel, { sessionId, active })); await settle(); await settle(); });
+        await act(async () => { root.render(React.createElement(Panel, { sessionId, active, ...(options.props || {}) })); await settle(); await settle(); });
     };
     await render('chat-1', options.active ?? true);
     return {
@@ -331,6 +336,53 @@ describe('the Activity panel in the Arabic interface', () => {
             //  Once: the panel does not poll.
             await panel.wait(2300);
             expect(panel.reads).toHaveLength(2);
+        } finally { await panel.close(); }
+    }, RENDER_TIMEOUT);
+});
+
+describe('the Activity line inside Joe’s reply', () => {
+    it('a finished reply reads its run’s record the first time it is opened, and never before', async () => {
+        const panel = await mountPanel(history, { props: { variant: 'inline', runId: 'run-old' } });
+        try {
+            //  One line, closed: nothing is read for a reply nobody opens.
+            expect(panel.doc.querySelector('section.ra-inline')).not.toBeNull();
+            expect(panel.doc.querySelector('.ra-inline .ra-head')?.getAttribute('aria-expanded')).toBe('false');
+            await panel.wait(400);
+            expect(panel.reads).toEqual([]);
+
+            await panel.click(panel.doc.querySelector('.ra-inline .ra-head')!);
+            expect(panel.reads).toEqual(['/runs/run-old/receipt']);
+            expect(panel.text()).toContain('The old run wrote one file.');
+            //  Its own run only: the session's live events are not folded in.
+            await panel.send(ev(30, 'step_started', { name: 'engine:file_list', callId: 'z1', input: '{}' }));
+            expect(panel.text()).not.toContain('استعراض الملفات');
+
+            //  Closed and opened again, it reads nothing twice.
+            await panel.click(panel.doc.querySelector('.ra-inline .ra-head')!);
+            await panel.click(panel.doc.querySelector('.ra-inline .ra-head')!);
+            await panel.wait(400);
+            expect(panel.reads).toEqual(['/runs/run-old/receipt']);
+        } finally { await panel.close(); }
+    }, RENDER_TIMEOUT);
+
+    it('the live line appears with the run’s first step and names the step it is on', async () => {
+        const panel = await mountPanel({ '/sessions/chat-1/history': { events: [] } }, { props: { variant: 'inline' } });
+        try {
+            //  Nothing to show before the first step.
+            expect(panel.doc.querySelector('section.ra-inline')).toBeNull();
+            await panel.send(
+                ev(1, 'engine_step', { step: 1 }),
+                ev(2, 'step_started', { name: 'engine:shell_run', callId: 'c1', input: '{"command":"npm run build"}' }),
+            );
+            const head = panel.doc.querySelector('.ra-inline .ra-head');
+            expect(head?.getAttribute('aria-expanded')).toBe('false');
+            expect(panel.doc.querySelector('.ra-inline .ra-now')?.textContent).toContain('تشغيل أمر');
+            expect(panel.doc.querySelector('.ra-inline .ra-now')?.textContent).toContain('npm run build');
+            //  Closed, it reads nothing; the live events are its record.
+            expect(panel.reads).toEqual([]);
+            await panel.click(head!);
+            expect(panel.text()).toContain('shell_run');
+            expect(panel.doc.querySelector('.ra-inline .ra-now')).toBeNull();
         } finally { await panel.close(); }
     }, RENDER_TIMEOUT);
 });

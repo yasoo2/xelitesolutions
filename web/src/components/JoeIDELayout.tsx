@@ -35,7 +35,7 @@ interface Message {
     timestamp?: Date;
 }
 
-type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity';
+type WorkspaceTab = 'browser' | 'terminal' | 'preview' | 'logs' | 'problems';
 
 interface JoeIDELayoutProps {
 
@@ -345,7 +345,10 @@ export default function JoeIDELayout({
         const handleOpenLogsTab = () => {
             //  A stated intent outranks a streamed file.
             if (explicitPanel.current && explicitPanel.current !== 'logs') return;
-            if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
+            //  A canvas it opened by itself is one it folds away when the run
+            //  ends. With Logs already the tab, no tab change marked it so,
+            //  and the canvas stayed open over the chat after the run.
+            if (canAutoOpen.current) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
             if (onWorkspaceTabChange) onWorkspaceTabChange('logs');
             else setInternalWorkspaceTab('logs');
         };
@@ -364,15 +367,15 @@ export default function JoeIDELayout({
     // settles into idle, a canvas that opened itself over a TRANSIENT work view
     // (logs/problems/terminal) folds away after a short grace period, giving
     // the chat back its full page. Result views (preview/browser) stay open:
-    // closing what Joe just delivered would hide the deliverable. Activity is
-    // one of them: when the run ends it holds the verdict of the final checks.
+    // closing what Joe just delivered would hide the deliverable. (The
+    // engine's activity and its verdict are in the chat, inside the reply.)
     // Any resumed activity, tab change or manual collapse cancels the pending
     // close.
     useEffect(() => {
         if (runBusy) return;
         if (isWorkspaceCollapsed) return;
         if (!autoOpenedRef.current) return;
-        if (activeWorkspaceTab === 'preview' || activeWorkspaceTab === 'browser' || activeWorkspaceTab === 'activity') return;
+        if (activeWorkspaceTab === 'preview' || activeWorkspaceTab === 'browser') return;
         const id = window.setTimeout(() => {
             autoOpenedRef.current = false;
             setIsWorkspaceCollapsed(true);
@@ -769,19 +772,13 @@ export default function JoeIDELayout({
     // the canvas ONLY after the initial settle window (so it doesn't fight the
     // full-page-chat default on load).
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
-        //  The Activity tab opens for the conversation on screen only: a run
-        //  in another chat must never take this one's workspace. The engine
-        //  names its session on every event, so one that names none is not
-        //  this one's either.
-        if (panel === 'activity') {
-            const sid = String(data?.sessionId || '').trim();
-            if (!sid || sid !== String(sessionRef.current || '').trim()) return;
-        }
+        //  The engine's activity is drawn in the chat, inside Joe's reply; no
+        //  panel opens for it.
+        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser'
+            : panel === 'terminal' ? 'terminal' : null;
+        if (!tab) return;
         //  `panel_focus` always carries a reason; a tool-name guess does not.
         if (data?.reason) explicitPanel.current = (panel as WorkspaceTab);
-        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser'
-            : panel === 'terminal' ? 'terminal' : panel === 'activity' ? 'activity' : null;
-        if (!tab) return;
         if (onWorkspaceTabChange) onWorkspaceTabChange(tab); else setInternalWorkspaceTab(tab);
         if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
     }, [onWorkspaceTabChange]);
@@ -808,7 +805,6 @@ export default function JoeIDELayout({
         { id: 'tab-preview', label: t('ide_cmdOpenPreview'), hint: t('panelPreview'), icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
         { id: 'tab-terminal', label: t('ide_cmdOpenTerminal'), hint: t('panelTerminal'), icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
         { id: 'tab-browser', label: t('ide_cmdOpenBrowser'), hint: t('panelBrowser'), icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
-        { id: 'tab-activity', label: t('ide_cmdOpenActivity'), hint: t('act_title'), icon: '≡', keywords: 'activity steps engine نشاط خطوات محرك', run: () => handleWorkspaceTabChange('activity') },
         { id: 'toggle-canvas', label: t('ide_cmdToggleWorkspace'), hint: t('ide_hintCanvas'), icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
         { id: 'toggle-files', label: t('ide_cmdFileExplorer'), hint: t('ide_hintFiles'), icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
         { id: 'git', label: t('ide_cmdGitChanges'), hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },

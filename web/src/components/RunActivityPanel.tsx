@@ -19,6 +19,14 @@
  *     the one place that shows it, in left-to-right blocks.
  *
  * The state itself is built by the pure reducer in lib/activity-feed.ts.
+ *
+ * ⛔ IT LIVES IN THE CONVERSATION, NOT IN A TAB (2026-11-02). The owner:
+ * «احنا اتفقنا انه يكون داخله جوا وليس في قائمة عائمة». The `inline` form is
+ * one line inside Joe's reply: while the run works, the step it is on; when
+ * the reply arrives, that run's whole record under the reply, opened on
+ * demand. A finished reply names its run (`runId`) and reads that run's
+ * record the first time it is opened, never before: on a server with
+ * thousands of people, most replies are never opened.
  */
 import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -115,6 +123,16 @@ const CSS = `
 .ra-btn{background:none;border:1px solid var(--ra-line);border-radius:6px;padding:2px 8px;color:var(--ra-soft);cursor:pointer;font-family:inherit;font-size:11px;margin:2px 10px 8px}
 .ra-icon-btn{background:none;border:none;padding:2px;cursor:pointer;color:var(--ra-muted);display:inline-flex;align-items:center;flex:none}
 .ra-ok{color:var(--ra-ok)}.ra-fail{color:var(--ra-fail)}.ra-run{color:var(--ra-run)}.ra-off{color:var(--ra-muted)}
+.ra-inline{height:auto;display:block;background:transparent;border:1px solid var(--ra-line);border-radius:10px;margin:6px 0 8px;overflow:hidden;font-size:12px}
+.ra-inline .ra-head{width:100%;border:none;background:none;color:inherit;font-family:inherit;cursor:pointer;text-align:start;padding:6px 10px;flex-wrap:nowrap;min-width:0}
+.ra-inline .ra-head:hover{background:rgba(255,255,255,.03)}
+.ra-inline.open .ra-head{border-bottom:1px solid var(--ra-line)}
+.ra-inline .ra-title{font-weight:700;white-space:nowrap}
+.ra-inline .ra-now{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ra-soft);font-size:11px}
+.ra-inline .ra-now .ra-tool{margin-inline-start:6px}
+.ra-inline .ra-body{max-height:min(60vh,520px);padding:8px}
+.ra-inline .ra-chev{flex:none;color:var(--ra-muted);transition:transform .2s ease}
+.ra-inline.open .ra-chev{transform:rotate(180deg)}
 .ra-spin{animation:raSpin 1s linear infinite}
 @keyframes raSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.ra-spin{animation:none}}
@@ -498,9 +516,14 @@ interface RunActivityPanelProps {
     sessionId?: string;
     /** True while the tab is on screen: the timeline then follows the newest step. */
     active?: boolean;
+    /** 'inline': one line inside the reply, opened on demand (its own `open` replaces `active`). */
+    variant?: 'panel' | 'inline';
+    /** A finished reply's run: its record is read when opened, and no live event is folded in. */
+    runId?: string;
+    defaultOpen?: boolean;
 }
 
-function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelProps) {
+function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', runId: fixedRun = '', defaultOpen = false }: RunActivityPanelProps) {
     useActivityStyles();
     const { t: rawT, i18n } = useTranslation();
     const t = rawT as unknown as TFn;
@@ -508,12 +531,16 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
     const language = String(i18n.language || 'en');
     const secondSuffix = t('traceSecond');
     const [state, dispatch] = useReducer(panelReducer, undefined, () => emptyActivity());
+    const inline = variant === 'inline';
+    const [open, setOpen] = useState(defaultOpen);
+    //  What «on screen» means: the tab for the panel, the open line inline.
+    const shown = inline ? open : active;
 
     //  A new conversation is a new panel: nothing of the previous one stays.
     useEffect(() => { dispatch({ kind: 'reset' }); }, [sessionId]);
 
     useEffect(() => {
-        if (!sessionId) return;
+        if (!sessionId || fixedRun) return;
         return SocketService.subscribe((event: any) => {
             //  Fail closed: an event that names no session, or another one,
             //  is never painted here. Nor is a late frame of a run a newer
@@ -523,13 +550,13 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
             if (!ACTIVITY_EVENT_TYPES.has(String(event?.type || ''))) return;
             dispatch({ kind: 'event', event });
         }, sessionId);
-    }, [sessionId]);
+    }, [sessionId, fixedRun]);
 
     const [running, setRunning] = useState(false);
     useEffect(() => {
-        if (!sessionId) { setRunning(false); return; }
+        if (!sessionId || fixedRun) { setRunning(false); return; }
         return subscribeRunningSessions(() => setRunning(isSessionRunning(sessionId)));
-    }, [sessionId]);
+    }, [sessionId, fixedRun]);
 
     /**
      *  WHAT HAPPENED BEFORE THIS PANEL WAS ON SCREEN.
@@ -568,7 +595,7 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
     //  cut short, so the next time the tab is shown reads again.
     const restoredSession = useRef('');
     useEffect(() => {
-        if (!sessionId || !active || restoredSession.current === sessionId) return;
+        if (!sessionId || fixedRun || !shown || restoredSession.current === sessionId) return;
         restoredSession.current = sessionId;
         const controller = new AbortController();
         let complete = false;
@@ -593,7 +620,15 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
             controller.abort();
             if (!complete && restoredSession.current === sessionId) restoredSession.current = '';
         };
-    }, [sessionId, active, restoreRun]);
+    }, [sessionId, fixedRun, shown, restoreRun]);
+
+    //  A finished reply's run: its record, read the first time it is opened.
+    useEffect(() => {
+        if (!fixedRun || !shown) return;
+        const controller = new AbortController();
+        void restoreRun(fixedRun, 'final', controller.signal);
+        return () => controller.abort();
+    }, [fixedRun, shown, restoreRun]);
 
     const gap = state.missedEvents > 0;
     const ended = state.final !== null;
@@ -618,13 +653,13 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
     //  run the panel counted as missing (a reconnect, a panel opened mid run),
     //  or an engine run that stopped without its final word. Once while it
     //  runs, and once after its end, when the record is complete.
-    const needsRecord = gap || (closed && !ended && engineRun);
+    const needsRecord = !fixedRun && (gap || (closed && !ended && engineRun));
     useEffect(() => {
-        if (!active || !runId || !needsRecord) return;
+        if (!shown || !runId || !needsRecord) return;
         const controller = new AbortController();
         const timer = window.setTimeout(() => { void restoreRun(runId, closed ? 'final' : 'live', controller.signal); }, closed ? 2000 : 300);
         return () => { window.clearTimeout(timer); controller.abort(); };
-    }, [active, runId, needsRecord, closed, restoreRun]);
+    }, [shown, runId, needsRecord, closed, restoreRun]);
 
     const [openCalls, setOpenCalls] = useState<Record<string, boolean>>({});
     useEffect(() => { setOpenCalls({}); }, [runId]);
@@ -649,8 +684,8 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
     const last = state.steps[state.steps.length - 1];
     useEffect(() => {
         const el = bodyRef.current;
-        if (el && active && follow.current) el.scrollTop = el.scrollHeight;
-    }, [active, timeline.length, last?.ok, state.final]);
+        if (el && shown && follow.current) el.scrollTop = el.scrollHeight;
+    }, [shown, timeline.length, last?.ok, state.final]);
 
     const chip = state.final
         ? { tone: state.final.status === 'delivered' ? 'ok' : state.final.status === 'failed' ? 'fail' : 'off', text: t(`act_status_${state.final.status}`) }
@@ -660,47 +695,83 @@ function RunActivityPanel({ sessionId = '', active = true }: RunActivityPanelPro
                 ? { tone: 'off', text: t('act_ended') }
                 : null;
 
+    const body = !hasActivity(state) ? (
+            <div className="ra-empty">{t('act_empty')}</div>
+        ) : (
+            <>
+                {state.final && <FinalCard state={state} t={t} />}
+                {state.verification && <VerdictCard state={state} t={t} />}
+                {(state.plan.steps.length > 0 || state.plan.requirements.length > 0) && <PlanSection state={state} t={t} />}
+                {state.latestScreenshot && <ScreenshotSection shot={state.latestScreenshot} sessionId={sessionId} t={t} />}
+                {state.served.length > 0 && <ServedSection state={state} t={t} />}
+                {(state.files.length > 0 || state.olderFiles > 0) && <FilesSection state={state} t={t} />}
+                {timeline.length > 0 && (
+                    <div>
+                        <div className="ra-stitle" style={{ padding: '4px 2px 6px' }}>{t('act_timeline')}</div>
+                        {state.olderSteps > 0 && <div className="ra-more">{t('act_olderSteps', { n: state.olderSteps })}</div>}
+                        {state.olderNotes > 0 && <div className="ra-more">{t('act_olderNotes', { n: state.olderNotes })}</div>}
+                        {timeline.map(item => item.kind === 'step'
+                            ? <StepRow key={`s:${item.step.key}`} step={item.step} language={language}
+                                open={!!openCalls[item.step.key]} onToggle={toggle} t={t} secondSuffix={secondSuffix} />
+                            : <NoteRow key={`n:${item.note.id}`} note={item.note} t={t} />)}
+                    </div>
+                )}
+                {state.missedEvents > 0 && <div className="ra-more">{t('act_missed', { n: state.missedEvents })}</div>}
+            </>
+        );
+
+    const chipEl = chip && (
+        <span className={`ra-chip ${chip.tone}`}>
+            {chip.tone === 'run' && <Loader2 size={11} className="ra-spin" aria-hidden />}
+            {chip.text}
+        </span>
+    );
+    const countEl = state.steps.length > 0 && <span className="ra-count">{t('act_callCount', { n: state.steps.length + state.olderSteps })}</span>;
+
+    if (inline) {
+        //  Live, the line appears with the run's first step; a finished
+        //  reply's line is there to be opened.
+        if (!fixedRun && !hasActivity(state)) return null;
+        const current = !state.final && last ? last : undefined;
+        return (
+            <section className={`ra-root ra-inline${open ? ' open' : ''}`} dir={uiDir} aria-label={t('act_title')}>
+                <button type="button" className="ra-head" aria-expanded={open} onClick={() => setOpen(v => !v)}
+                    title={open ? t('act_hideDetails') : t('act_showDetails')}>
+                    <Activity size={13} aria-hidden />
+                    <span className="ra-title">{t('act_title')}</span>
+                    {chipEl}
+                    {!open && current && (
+                        <span className="ra-now" dir="auto">
+                            {toolLabel(current.tool, language) || ''}
+                            <span className="ra-tool" dir="ltr">{stripPictographs(inputSummary(current.tool, current.input)) || current.tool}</span>
+                        </span>
+                    )}
+                    {countEl}
+                    <ChevronDown size={14} className="ra-chev" aria-hidden />
+                </button>
+                {open && (
+                    <div className="ra-body" ref={bodyRef} onScroll={onScroll}>
+                        {body}
+                    </div>
+                )}
+            </section>
+        );
+    }
+
     return (
         <section className="ra-root" dir={uiDir} aria-label={t('act_title')}>
             <header className="ra-head">
                 <Activity size={15} aria-hidden />
                 <h3>{t('act_title')}</h3>
-                {chip && (
-                    <span className={`ra-chip ${chip.tone}`}>
-                        {chip.tone === 'run' && <Loader2 size={11} className="ra-spin" aria-hidden />}
-                        {chip.text}
-                    </span>
-                )}
-                {state.steps.length > 0 && <span className="ra-count">{t('act_callCount', { n: state.steps.length + state.olderSteps })}</span>}
+                {chipEl}
+                {countEl}
             </header>
             <div className="ra-body" ref={bodyRef} onScroll={onScroll}>
-                {!hasActivity(state) ? (
-                    <div className="ra-empty">{t('act_empty')}</div>
-                ) : (
-                    <>
-                        {state.final && <FinalCard state={state} t={t} />}
-                        {state.verification && <VerdictCard state={state} t={t} />}
-                        {(state.plan.steps.length > 0 || state.plan.requirements.length > 0) && <PlanSection state={state} t={t} />}
-                        {state.latestScreenshot && <ScreenshotSection shot={state.latestScreenshot} sessionId={sessionId} t={t} />}
-                        {state.served.length > 0 && <ServedSection state={state} t={t} />}
-                        {(state.files.length > 0 || state.olderFiles > 0) && <FilesSection state={state} t={t} />}
-                        {timeline.length > 0 && (
-                            <div>
-                                <div className="ra-stitle" style={{ padding: '4px 2px 6px' }}>{t('act_timeline')}</div>
-                                {state.olderSteps > 0 && <div className="ra-more">{t('act_olderSteps', { n: state.olderSteps })}</div>}
-                                {state.olderNotes > 0 && <div className="ra-more">{t('act_olderNotes', { n: state.olderNotes })}</div>}
-                                {timeline.map(item => item.kind === 'step'
-                                    ? <StepRow key={`s:${item.step.key}`} step={item.step} language={language}
-                                        open={!!openCalls[item.step.key]} onToggle={toggle} t={t} secondSuffix={secondSuffix} />
-                                    : <NoteRow key={`n:${item.note.id}`} note={item.note} t={t} />)}
-                            </div>
-                        )}
-                        {state.missedEvents > 0 && <div className="ra-more">{t('act_missed', { n: state.missedEvents })}</div>}
-                    </>
-                )}
+                {body}
             </div>
         </section>
     );
+
 }
 
 export default memo(RunActivityPanel);

@@ -33,6 +33,8 @@ interface Message {
     content: string;
     timestamp?: Date;
     files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
+    /** The run that wrote this reply (the chat draws its activity under it). */
+    runId?: string;
 }
 
 export default function Joe() {
@@ -100,7 +102,7 @@ export default function Joe() {
      * «في البداية قام بتشغيل الثيرمال ثم انتقل الى شاشة اللوغز». Logs is the
      * tab a build streams into, and showing it starts no process at all.
      */
-    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems' | 'activity'>('logs');
+    const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
@@ -664,7 +666,8 @@ export default function Joe() {
                             content: isEngineeringReport(e.data?.text || '')
                                 ? summarizeEngineeringReport(e.data?.text || '', i18n.language)
                                 : e.data?.text || '',
-                            timestamp: new Date(e.ts || Date.now())
+                            timestamp: new Date(e.ts || Date.now()),
+                            ...(typeof e.runId === 'string' && e.runId ? { runId: e.runId } : {}),
                         }];
                     }
                     if (e.type === 'run_interrupted') {
