@@ -3,6 +3,40 @@
  * Understands conversation context and multi-turn interactions
  */
 
+export interface SpecificationContext {
+    specificationId: string;
+    requirements: any[]; // Requirement[]
+    constraints: any[]; // Constraint[]
+    implicitRequirements: any[]; // ImplicitRequirement[]
+    acceptanceCriteria: any[]; // AcceptanceCriterion[]
+    constraintInteractions: any[]; // ConstraintInteraction[]
+    currentPhase: number;
+    currentPhaseName: string;
+    requirementCoverage: Map<string, RequirementCoverage>;
+    phaseProgress: Map<number, PhaseProgress>;
+    activeTensionResolutions: Map<string, string>; // constraintId -> resolution approach
+}
+
+export interface RequirementCoverage {
+    requirementId: string;
+    status: 'pending' | 'in_progress' | 'implemented' | 'verified' | 'failed';
+    implementedIn: string[];
+    verifiedBy: string[];
+    lastUpdated: number;
+    phaseNumber?: number;
+    taskIds?: string[];
+}
+
+export interface PhaseProgress {
+    phaseNumber: number;
+    name: string;
+    status: 'pending' | 'in_progress' | 'completed' | 'failed';
+    requirementsCovered: string[];
+    startedAt?: number;
+    completedAt?: number;
+    taskResults?: any[];
+}
+
 export interface ConversationContext {
     userId: string;
     sessionId: string;
@@ -21,6 +55,7 @@ export interface ConversationContext {
         files?: string[];
         language?: string;
     } | null;
+    specificationContext?: SpecificationContext;
 }
 
 export interface ContextualIntent {
@@ -352,9 +387,143 @@ export function matchPatternWithContext(
     }
 }
 
+export function analyzeSpecificationProgress(
+    currentMessage: string,
+    context: ConversationContext
+): SpecificationContextUpdate | null {
+    if (!context.specificationContext) return null;
+
+    const spec = context.specificationContext;
+    const msg = currentMessage.toLowerCase();
+
+    // Check for phase completion signals
+    const phaseCompletePatterns = [
+        /phase\s+\d+\s+(complete|done|finished)/i,
+        /completed\s+phase\s+\d+/i,
+        /phase\s+\d+\s+verified/i
+    ];
+    
+    const isPhaseComplete = phaseCompletePatterns.some(p => p.test(msg));
+
+    // Check for requirement implementation signals
+    const requirementPatterns = [
+        /implemented\s+(req|requirement)\s+[\w-]+/i,
+        /requirement\s+[\w-]+\s+(done|complete|implemented)/i,
+        /finished\s+implementing\s+[\w-]+/i
+    ];
+    
+    const isRequirementDone = requirementPatterns.some(p => p.test(msg));
+
+    // Check for constraint resolution
+    const tensionPatterns = [
+        /resolved\s+(tension|constraint)\s+[\w-]+/i,
+        /(performance|security|availability)\s+(vs|versus)\s+(security|performance|simplicity|flexibility)\s+resolved/i
+    ];
+    
+    const isTensionResolved = tensionPatterns.some(p => p.test(msg));
+
+    // Build update
+    const update: SpecificationContextUpdate = {
+        specificationId: context.specificationContext!.specificationId,
+        phaseAdvanced: false,
+        requirementsUpdated: [],
+        tensionsResolved: [],
+        newImplicitRequirements: []
+    };
+
+    if (isPhaseComplete) {
+        update.phaseAdvanced = true;
+    }
+
+    // Check for specific requirement mentions
+    const reqIdPattern = /(req|requirement|req-?)\s*(\d+)/gi;
+    const reqMatches = currentMessage.matchAll(reqIdPattern);
+    for (const match of reqMatches) {
+        const reqId = match[2] ? `REQ-${match[2].padStart(3, '0')}` : match[1];
+        if (!update.requirementsUpdated.includes(reqId)) {
+            update.requirementsUpdated.push(reqId);
+        }
+    }
+
+    if (isTensionResolved) {
+        const tensionIds = context.specificationContext!.constraintInteractions
+            .filter(c => c.resolutionStrategy && 
+                currentMessage.toLowerCase().includes(c.resolutionStrategy.toLowerCase()))
+            .map(c => c.constraintIds.join('_'));
+        update.tensionsResolved.push(...tensionIds);
+    }
+
+    return update;
+}
+
+export interface SpecificationContextUpdate {
+    specificationId: string;
+    phaseAdvanced: boolean;
+    requirementsUpdated: string[];
+    tensionsResolved: string[];
+    newImplicitRequirements: string[];
+}
+
+export function updateSpecificationContext(
+    context: ConversationContext,
+    update: SpecificationContextUpdate
+): void {
+    if (!context.specificationContext) return;
+
+    const spec = context.specificationContext!;
+    
+    // Update requirement coverage
+    for (const reqId of update.requirementsUpdated) {
+        const coverage = spec.requirementCoverage.get(reqId);
+        if (coverage) {
+            coverage.status = 'implemented';
+            coverage.lastUpdated = Date.now();
+            spec.requirementCoverage.set(reqId, coverage);
+        }
+    }
+
+    // Update tension resolutions
+    for (const tensionKey of update.tensionsResolved) {
+        const tensions = spec.constraintInteractions.filter(
+            c => c.constraintIds.join('_') === tensionKey
+        );
+        for (const tension of tensions) {
+            tension.resolutionStrategy = 'resolved';
+        }
+    }
+
+    // Advance phase if needed
+    if (update.phaseAdvanced) {
+        const currentPhase = spec.currentPhase;
+        const nextPhase = currentPhase + 1;
+        spec.currentPhase = nextPhase;
+        spec.currentPhaseName = `Phase ${nextPhase}`;
+        
+        // Initialize next phase progress
+        const phaseProgress = spec.phaseProgress.get(nextPhase) || {
+            phaseNumber: nextPhase,
+            name: `Phase ${nextPhase}`,
+            status: 'in_progress',
+            requirementsCovered: []
+        };
+        phaseProgress.status = 'in_progress';
+        phaseProgress.startedAt = Date.now();
+        spec.phaseProgress.set(nextPhase, phaseProgress);
+
+        // Mark previous phase as completed
+        const prevProgress = spec.phaseProgress.get(currentPhase);
+        if (prevProgress) {
+            prevProgress.status = 'completed';
+            prevProgress.completedAt = Date.now();
+        }
+    }
+}
+
 export default {
     extractEntities,
     analyzeContextualIntent,
     buildConversationContext,
-    matchPatternWithContext
+    matchPatternWithContext,
+    analyzeSpecificationProgress,
+    updateSpecificationContext
 };

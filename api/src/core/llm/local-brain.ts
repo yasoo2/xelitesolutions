@@ -176,9 +176,27 @@ export async function detectLocalModels(timeoutMs = 4000): Promise<LocalBrainSta
  * get the coder model; everything else gets the fast chat model. Falls back to
  * LOCAL_LLM_MODEL when detection hasn't run.
  */
-export function pickLocalModel(taskType?: string): string | undefined {
+export function pickLocalModel(taskType?: string, preference?: 'small_text'): string | undefined {
+    // Strict local mode must retain the operator's primary model for every
+    // internal call too; ranking an installed older coder silently undoes a migration.
+    const configured = String(process.env.LOCAL_LLM_MODEL || '').trim();
+    if (String(process.env.LOCAL_LLM_STRICT || '').trim() === '1' && configured) return configured;
     const isCode = taskType === 'code_generation' || taskType === 'data_analysis';
     if (isLocalBrainReady()) {
+        // Explicitly brief answers may use an already-installed small text model.
+        // Never downgrade coding/data, choose a vision/translation model, or pull a model.
+        if (!isCode && preference === 'small_text') {
+            const smallTextModels = state.models.filter(name => {
+                const size = Number(name.match(/(\d+(?:\.\d+)?)b(?:$|[-_])/i)?.[1]);
+                return size >= 1 && size <= 3
+                    && /^(?:qwen|llama|gemma|mistral|phi|smollm)(?:[\d.:/_-]|$)|(?:instruct|chat)/i.test(name)
+                    && !/vision|(?:^|[-_:])vl(?:$|[-_:])|llava|moondream|bakllava|clip|translate|coder|code|embed/i.test(name);
+            }).sort((a, b) => {
+                const size = (name: string) => Number(name.match(/(\d+(?:\.\d+)?)b(?:$|[-_])/i)?.[1]);
+                return size(a) - size(b) || chatScore(b) - chatScore(a) || a.localeCompare(b);
+            });
+            if (smallTextModels[0]) return smallTextModels[0];
+        }
         const chosen = isCode ? state.codeModel : state.chatModel;
         if (chosen) return chosen;
     }
@@ -207,14 +225,33 @@ export function pickLocalModel(taskType?: string): string | undefined {
 let _warmupMs = 0;
 export function localWarmupMs(): number { return _warmupMs; }
 
-export async function warmUpLocalBrain(): Promise<void> {
+import { requestResourceManager } from '../resources/RequestResourceManager';
+
+let warmupInFlight: Promise<void> | null = null;
+
+/** Coalesce boot/detection requests; never queue duplicate background inference. */
+export function warmUpLocalBrain(): Promise<void> {
+    if (warmupInFlight) return warmupInFlight;
+    const pending = performLocalWarmup();
+    warmupInFlight = pending;
+    const release = () => { if (warmupInFlight === pending) warmupInFlight = null; };
+    void pending.then(release, release);
+    return pending;
+}
+
+async function performLocalWarmup(): Promise<void> {
     const host = state.host || ollamaHost();
     if (!host) return;
     const models = new Set<string>();
-    if (state.codeModel) models.add(state.codeModel);
-    if (state.chatModel) models.add(state.chatModel);
     const envModel = String(process.env.LOCAL_LLM_MODEL || '').trim();
-    if (envModel) models.add(envModel);
+    // Warm one interactive model by default. Other installed models remain
+    // available for task routing and load when actually needed.
+    const firstModel = envModel || state.chatModel || state.codeModel;
+    if (firstModel) models.add(firstModel);
+    if (String(process.env.JOE_LOCAL_WARMUP_ALL || '0') === '1') {
+        if (state.codeModel) models.add(state.codeModel);
+        if (state.chatModel) models.add(state.chatModel);
+    }
     // The FAST vision model stays warm too (moondream is ~1.7GB resident —
     // affordable). Cold-loading eyes at question time is part of why llava
     // burned its entire timeout before producing a word. Heavy vision models
@@ -234,19 +271,39 @@ export async function warmUpLocalBrain(): Promise<void> {
 
     for (const model of models) {
         const startedAt = Date.now();
+        const controller = new AbortController();
+        // A finite lease and request budget protect idle machines. Timeout
+        // releases the single-flight even if a transport ignores AbortSignal.
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timeout = new Promise<never>((_, reject) => {
+            timer = setTimeout(() => {
+                controller.abort();
+                reject(new Error('local_warmup_timeout'));
+            }, 10_000);
+        });
         try {
-            const res = await fetch(`${host}/api/generate`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ model, prompt: 'hi', stream: false, keep_alive: -1, options: { num_predict: 1 } }),
-            }).catch(() => null);
+            const request = requestResourceManager.withInference(async budget => {
+                const response = await fetch(`${host}/api/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ model, prompt: 'hi', stream: false, keep_alive: '5m',
+                        options: { num_predict: 1, num_ctx: budget.contextTokens }, truncate: false, shift: false }),
+                    signal: budget.signal,
+                });
+                // Keep admission until the finite response body settles, not just
+                // until headers arrive or the user-facing timeout wins its race.
+                await response.json();
+                return response;
+            }, { promptEstimatedTokens: 16, requestedOutputTokens: 1, signal: controller.signal });
+            const res = await Promise.race([request, timeout]);
             // The CHAT/CODE model's own warm-up is the honest yardstick — the
             // vision model's load says nothing about a planning call.
             if (res?.ok && (model === state.chatModel || model === state.codeModel)) {
                 _warmupMs = Math.max(_warmupMs, Date.now() - startedAt);
                 console.info(`[LocalBrain] ⏱️ ${model} answered a one-token prompt in ${_warmupMs}ms — the router sizes its patience from this.`);
             }
-        } catch { /* best-effort */ }
+        } catch { /* best-effort; no retry or provider fallback at boot */ }
+        finally { if (timer) clearTimeout(timer); }
     }
 }
 

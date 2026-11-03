@@ -13,17 +13,28 @@ import { parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest,
 import { composeAnswer } from '../core/orchestrator/answerComposer';
 import { isProviderFailure } from '../core/llm/intelligent-router';
 
-describe('explicit terminal diagnostics execute instead of merely opening a terminal', () => {
+describe('runtime diagnostics and explicit terminal tools', () => {
     test('a read-only local diagnostic is classified before the slow model path', async () => {
         const goal = 'Run a read-only local diagnostic in the current workspace: report the Node.js version and the current workspace path. Do not modify files, install packages, or start a server.';
         expect(isReadOnlyRequest(goal)).toBe(true);
         expect(isBoundedTerminalDiagnosticRequest(goal)).toBe(true);
         const intent = await IntentParser.parse(goal, {} as any);
-        expect(intent.requiredTools).toEqual(['shell_execute']);
-        expect(intent.rawIntent).toEqual(expect.objectContaining({ terminalDiagnostic: true, deterministic: true }));
+        expect(intent.requiredTools).toEqual(['runtime_diagnostics']);
+        expect(intent.rawIntent).toEqual(expect.objectContaining({ runtimeDiagnostics: true, deterministic: true }));
         const plan = await PlanningEngine.generatePlan({ intent: intent as any });
-        expect(plan.steps.map(step => step.input.command)).toEqual(['node --version', 'pwd']);
-        expect(plan.metadata).toMatchObject({ terminalExecution: true });
+        expect(plan.steps).toHaveLength(1);
+        expect(plan.steps[0]).toMatchObject({tool:'runtime_diagnostics',input:{request:goal,facts:['node_version','workspace_path'],path:'.'}});
+        expect(plan.steps[0].input.command).toBeUndefined();
+        expect(plan.metadata).toMatchObject({ matchedBy: 'runtime-diagnostics' });
+        expect(plan.metadata.terminalExecution).toBeUndefined();
+    });
+    test('literal CLI requests retain their explicit terminal contract',async()=>{
+        const goal='Run a read-only local diagnostic: report node --version. Do not modify files.';
+        const intent=await IntentParser.parse(goal,{} as any);
+        expect(intent.requiredTools).toEqual(['shell_execute']);
+        const plan=await PlanningEngine.generatePlan({intent:intent as any});
+        expect(plan.steps.map(step=>step.input.command)).toEqual(['node --version']);
+        expect(plan.steps.map(step=>step.tool)).not.toContain('runtime_diagnostics');
     });
 
     test('responsive browser QA is not mistaken for a terminal check', async () => {
@@ -197,7 +208,7 @@ describe('explicit read-only file lists use the active workspace directly', () =
         expect(answer).toContain('joe-prompt-02.txt');
         expect(answer).toContain('2 lines');
         expect(answer).toContain('joe-prompt-03/README.txt');
-        expect(answer).toContain('No marker value was specified');
+        expect(answer).not.toMatch(/\*\*Marker:\*\* (?:PASS|FAIL)|Expected marker|No marker value was specified/);
     });
 
     test('checks explicitly supplied markers against the read content', async () => {

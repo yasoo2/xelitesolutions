@@ -1,4 +1,6 @@
+import { createPlannerRunBoundary, isPlannerBoundaryError } from '../../../core/orchestrator/planner-run-boundary';
 import { ToolDefinition, ToolPermission } from '../types';
+import { engineeringScope, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
 import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/quality/plan-verification';
 
 import path from 'path';
@@ -7,6 +9,7 @@ import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intellige
 import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
+import { requestTextForPrompt, transportRequestText, truncateAuxiliaryText, truncateEvidenceJsonText, DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { brandFrom } from '../../../core/design/page-head';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
@@ -75,11 +78,73 @@ export class ProjectPlannerTool implements ToolDefinition {
         // A missing required argument is a QUESTION, not a crash. The registry
         // audit called every read-only tool with {} and six of them threw a raw
         // TypeError — which is what the user sees when a planner omits a field.
-        if (!String(projectDescription || '').trim()) {
-            return { ok: false, error: 'project_planner needs projectDescription — describe the project to plan.', logs } as any;
+        // Bounded request transport: an invalid or over-bound request is
+        // rejected honestly BEFORE any prompt is built or provider called.
+        // Recovery branches below therefore embed the complete verified text.
+        const requestTransport = transportRequestText(projectDescription);
+        if (!requestTransport.ok) {
+            logs.push(`[plan] large-request admission rejected: ${requestTransport.error}`);
+            return {
+                ok: false,
+                error: requestTransport.error,
+                output: {
+                    ...this.fallbackPlan(typeof projectDescription === 'string' ? projectDescription : '', analysis, evidence),
+                    totalPhases: 0,
+                    phases: [],
+                    fallback: true,
+                    deliveryStatus: 'blocked',
+                    executionStatus: 'not_started',
+                    verificationStatus: 'not_run',
+                    blocker: {
+                        code: requestTransport.code,
+                        message: requestTransport.error,
+                        remedy: requestTransport.code === 'large_request_over_bound'
+                            ? 'Shorten the brief (or split it into smaller requests) and resubmit; no plan was produced from a truncated request.'
+                            : 'Provide projectDescription as a non-empty string describing the project to plan.',
+                    },
+                    autoExecuted: false,
+                    executionPolicy: 'planner_only',
+                },
+                logs,
+            } as any;
         }
 
+        let boundary: ReturnType<typeof createPlannerRunBoundary> | undefined;
         try {
+            if (engineeringScope(context) && evidence?.requiredSpecification
+                && JSON.stringify(this.planningEvidence(evidence), null, 2).length > DISCOVERY_EVIDENCE_MAX_CHARS) {
+                return { ok: false, error: 'specification_planner_budget_exceeded', output: { totalPhases: 0, phases: [],
+                    autoExecuted: false, executionPolicy: 'planner_only', executionStatus: 'not_started', verificationStatus: 'not_run',
+                    blocker: { code: 'specification_planner_budget_exceeded', message: 'Complete required-source evidence exceeds the bounded planner intake; no truncated plan was requested.' } }, logs };
+            }
+            const plannerBoundary = createPlannerRunBoundary(context);
+            boundary = plannerBoundary;
+            plannerBoundary.throwIfCancelled();
+            // The canonical LLM entry remains unchanged; every recovery shares
+            // this owner's signal, identities and one total remaining budget.
+            const plannerLLM = async (prompt: string, messages: any[], routing: any): Promise<string> => {
+                plannerBoundary.throwIfCancelled();
+                // A character budget is an intake bound, not a tokenizer claim.
+                // Preserve the entire source/request or stop before inference.
+                if (prompt.startsWith('ISOLATED EXISTING NODE PLAN') && prompt.length > 12000) {
+                    throw new Error('isolated_planner_prompt_budget_exceeded');
+                }
+                const requestedMs = Number(routing?.providerTimeoutMs);
+                const options = {
+                    ...routing,
+                    modelConfig: context?.modelConfig,
+                    sessionId: context?.sessionId,
+                    runId: context?.runId,
+                    workspaceId: context?.workspaceId,
+                    engineeringPipeline: context?.engineeringPipeline === true,
+                    signal: plannerBoundary.signal,
+                    providerTimeoutMs: Math.min(Number.isFinite(requestedMs) && requestedMs > 0 ? requestedMs : 120000, plannerBoundary.remainingMs()),
+                };
+                const response = await plannerBoundary.wrap(() => callLLM(prompt, messages, options));
+                plannerBoundary.throwIfCancelled();
+                return response;
+            };
+
             // A plan is portable workspace code, not a reflection of the host
             // machine. The raw evidence remains available for internal guards,
             // but the model receives no absolute host paths to copy into tools.
@@ -88,7 +153,9 @@ export class ProjectPlannerTool implements ToolDefinition {
             const scopeRepairTargets = Array.isArray(context?.scopeRepairTargets)
                 ? context.scopeRepairTargets.map((target: unknown) => String(target || '').trim()).filter(Boolean).slice(0, 12)
                 : [];
-            const planningPrompt = this.createPlanningPrompt(
+            const scopedInitial = !repairMode && !scopeRepairMode && !!engineeringScope(context);
+            const isolatedProfile = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
+            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : this.createPlanningPrompt(
                 projectDescription,
                 analysis,
                 this.planningEvidence(evidence),
@@ -109,7 +176,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 response = JSON.stringify(constrainedPlan);
                 logs.push('Planner derived one constrained frontend phase from the explicit request and discovery evidence; no provider call was needed.');
             } else {
-                response = await callLLM(planningPrompt, [
+                response = await plannerLLM(planningPrompt, [
                     { role: 'system', content: 'You are a senior software project manager. Return only valid JSON.' }
                 ], {
                 // The user-selected compatible gateway is part of the live tool
@@ -157,9 +224,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
-                            evidence,
-                        );
-                        recoveryResponse = await callLLM(recoveryPrompt, [
+                            evidence, context);
+                        recoveryResponse = await plannerLLM(recoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only compact valid JSON with executable phases and tasks.' }
                         ], {
                             modelConfig: context?.modelConfig,
@@ -174,6 +240,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             logs.push('Planner provider recovery completed; continuing with the recovered response.');
                         }
                     } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                         logs.push(`Planner provider recovery failed: ${recoveryError?.message || recoveryError}`);
                     }
                     if (!isProviderFailure(response)) {
@@ -198,7 +265,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 }
                 if (isProviderFailure(response)) {
                     logs.push('Planner provider unavailable; no plan was invented from the outage message.');
-                    return {
+                    plannerBoundary.throwIfCancelled();
+                return {
                         ok: false,
                         error: response,
                         output: {
@@ -220,6 +288,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     throw new Error('Planner returned valid JSON without a non-empty phases/tasks plan');
                 }
             } catch (parseError) {
+                        if (isPlannerBoundaryError(parseError)) throw parseError;
                 console.warn(`[ProjectPlanner] initial-parse-failed ${JSON.stringify({ error: String(parseError), response: this.responseDiagnostic(response) })}`);
                 logs.push(`Initial planner response was not executable JSON: ${parseError}`);
                 // A provider can answer successfully with prose, `{ phases: [] }`,
@@ -236,9 +305,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    retryResponse = await callLLM(retryPrompt, [
+                        evidence, context);
+                    retryResponse = await plannerLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
                     ], {
                         modelConfig: context?.modelConfig,
@@ -254,6 +322,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     logs.push('Planner recovery completed with a non-empty execution plan');
                 } catch (retryError: any) {
+                        if (isPlannerBoundaryError(retryError)) throw retryError;
                     console.warn(`[ProjectPlanner] parse-recovery-failed ${JSON.stringify({ error: retryError?.message || String(retryError), response: this.responseDiagnostic(typeof retryResponse === 'undefined' ? null : retryResponse) })}`);
                     logs.push(`Planner recovery failed: ${retryError?.message || retryError}`);
                     plan = this.fallbackPlan(projectDescription, analysis, evidence);
@@ -361,9 +430,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    const retryResponse = await callLLM(retryPrompt, [
+                        evidence, context);
+                    const retryResponse = await plannerLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
                     ], {
                         modelConfig: context?.modelConfig,
@@ -402,6 +470,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner contract recovery completed with non-document implementation artifacts');
                 } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                     logs.push(`Planner contract recovery failed: ${recoveryError?.message || recoveryError}`);
                     console.warn(`[ProjectPlanner] contract-recovery-failed ${JSON.stringify({ message: recoveryError?.message || String(recoveryError), plan: this.planContractDiagnostic(plan) })}`);
                 }
@@ -424,9 +493,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    const recoveryRequest = () => callLLM(recoveryPrompt, [
+                        evidence, context);
+                    const recoveryRequest = () => plannerLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
                     ], {
                         modelConfig: context?.modelConfig,
@@ -443,6 +511,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             if (!isProviderFailure(recoveryResponse)) break;
                             recoveryFailure = recoveryResponse;
                         } catch (attemptError: any) {
+                        if (isPlannerBoundaryError(attemptError)) throw attemptError;
                             recoveryFailure = attemptError;
                         }
                         const failureText = String(recoveryFailure?.message || recoveryFailure || '');
@@ -454,7 +523,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                                 ? Math.max(0, Math.min(configuredDelay, 65_000))
                                 : Math.min(Math.max(61_000, (advertisedDelay || 0) + 1_000), 65_000);
                             logs.push(`[plan] portability recovery hit a provider rate limit; waiting ${delayMs}ms for one bounded retry.`);
-                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                            await plannerBoundary.sleep(delayMs);
                             continue;
                         }
                         break;
@@ -499,6 +568,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner scaffold contract recovery completed with executable implementation artifacts');
                 } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                     logs.push(`Planner scaffold contract recovery failed: ${recoveryError?.message || recoveryError}`);
                 }
             }
@@ -548,6 +618,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     blocker: clean.blocker,
                 }, projectDescription);
                 logs.push(`[plan] blocked: ${clean.blocker.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: clean.blocker.message,
@@ -568,6 +639,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 };
                 blocked.planNotes = clean.notes;
                 logs.push(`[plan] blocked: ${blocked.blocker.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: blocked.blocker.message,
@@ -590,6 +662,7 @@ export class ProjectPlannerTool implements ToolDefinition {
             if (plan?.fallback === true) {
                 const blockerMessage = plan?.blocker?.message || 'No executable engineering plan was produced.';
                 logs.push(`[plan] blocked: ${blockerMessage}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: blockerMessage,
@@ -622,9 +695,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
-                            evidence,
-                        );
-                        const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
+                            evidence, context);
+                        const scopeRecoveryResponse = await plannerLLM(scopeRecoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
                         ], {
                             modelConfig: context?.modelConfig,
@@ -679,6 +751,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         clean.notes.forEach(n => logs.push(n));
                         logs.push('Planner scope recovery completed with sufficient requirement coverage');
                     } catch (scopeRecoveryError: any) {
+                        if (isPlannerBoundaryError(scopeRecoveryError)) throw scopeRecoveryError;
                         logs.push(`Planner scope recovery attempt ${scopeRecoveryAttempt} failed: ${scopeRecoveryError?.message || scopeRecoveryError}`);
                     }
                 }
@@ -692,6 +765,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 };
                 blocked.scopeAssessment = scopeAssessment;
                 logs.push(`[plan] scope gate blocked execution: ${scopeAssessment.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: scopeAssessment.message,
@@ -706,7 +780,8 @@ export class ProjectPlannerTool implements ToolDefinition {
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
             logs.push('Planner-only mode: generated tasks were not executed.');
 
-            return {
+            plannerBoundary.throwIfCancelled();
+                return {
                 ok: true,
                 output: {
                     ...plan,
@@ -717,6 +792,20 @@ export class ProjectPlannerTool implements ToolDefinition {
                 logs
             };
         } catch (error: any) {
+            if (isPlannerBoundaryError(error)) {
+                return {
+                    ok: false,
+                    error: error.code,
+                    output: {
+                        totalPhases: 0, phases: [], status: 'failed',
+                        deliveryStatus: 'blocked', executionStatus: 'not_started', verificationStatus: 'not_run',
+                        autoExecuted: false, executionPolicy: 'planner_only',
+                        blocker: { code: error.code, message: error.message },
+                    },
+                    logs: [...logs, 'Planner stopped at its owner cancellation/deadline boundary.'],
+                };
+            }
+
             logs.push(`Error: ${error.message}`);
             return {
                 ok: false,
@@ -728,6 +817,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 },
                 logs
             };
+        } finally {
+            boundary?.cleanup();
         }
     }
 
@@ -761,6 +852,10 @@ export class ProjectPlannerTool implements ToolDefinition {
         if (!base) return undefined;
         const referenceProjects = candidates.find((value: any) => Array.isArray(value.referenceProjects))?.referenceProjects;
         const selectedProject = candidates.find((value: any) => value.selectedProject)?.selectedProject;
+        // An already canonical snapshot retains its server-owned evidence seal.
+        // Normalizing an envelope may merge fields, but must never mint a seal.
+        if ((!referenceProjects || referenceProjects === base.referenceProjects)
+            && (!selectedProject || selectedProject === base.selectedProject)) return base as EngineeringEvidence;
         return {
             ...base,
             ...(referenceProjects ? { referenceProjects } : {}),
@@ -820,6 +915,54 @@ export class ProjectPlannerTool implements ToolDefinition {
         };
     }
 
+    private createScopedInitialPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence): string {
+        const promptEvidence = this.planningEvidence(evidence);
+        const excerpt = promptEvidence ? truncateEvidenceJsonText(JSON.stringify({ mode: promptEvidence.mode, workspaceRoot: '.', instructionFiles: promptEvidence.instructionFiles || [], facts: promptEvidence.facts || [], requiredSpecification: promptEvidence.requiredSpecification, blockers: promptEvidence.blockers || [], selectedProject: promptEvidence.selectedProject ? { root: promptEvidence.selectedProject.root, manifests: promptEvidence.selectedProject.manifests, likelyEntrypoints: promptEvidence.selectedProject.likelyEntrypoints, sourceFiles: promptEvidence.selectedProject.sourceFiles || [], testFiles: promptEvidence.selectedProject.testFiles || [], candidateChecks: promptEvidence.selectedProject.candidateChecks || [] } : undefined, referenceProjects: (promptEvidence.referenceProjects || []).map(project => ({ root: project.root, manifests: project.manifests, likelyEntrypoints: project.likelyEntrypoints, sourceFiles: project.sourceFiles || [], testFiles: project.testFiles || [] })) }, null, 2)) : '';
+        const scope = this.requirementScope(projectDescription);
+        const targets = scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ');
+        const perPhase = Math.max(1, Math.ceil(scope.targets.length / scope.minPhases));
+        const projectRule = promptEvidence?.selectedProject
+            ? 'Reuse the evidenced selected project when modification is requested; honor an explicit request for a separate new project folder and preserve unrelated files.'
+            : 'No existing runnable project is proved by this bounded discovery. Honor an explicitly requested new project folder; do not infer an empty workspace, an existing manifest, or a default stack.';
+        const ledger = Array.from({ length: scope.minPhases }, (_, phaseIndex) => { const start = phaseIndex * perPhase; const end = Math.min(scope.targets.length, start + perPhase); const ids = Array.from({ length: Math.max(0, end - start) }, (_, offset) => `R${start + offset + 1}`); return ids.length ? `Phase ${phaseIndex + 1}: ${ids.join(', ')}` : ''; }).filter(Boolean).join(' | ');
+        return `COMPACT SCOPED INITIAL PLAN — first planning turn for this server-issued scoped engineering run. There is no earlier planner attempt; plan from the request and evidence below.\n\n${plannerToolPrompt()}\n\n${ENGINEERING_CONSTITUTION}\n\n${DEPENDENCY_RESOLUTION_CONTRACT}\n\nCOMPLETE ORIGINAL REQUEST (all constraints mandatory; the register below never replaces them):\n${requestTextForPrompt(projectDescription)}\n${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${excerpt ? `AUTHORITATIVE DISCOVERY EVIDENCE (bounded excerpt; a truncation marker means incomplete evidence — do not infer omitted paths; reuse visible workspace-relative paths exactly):\n${excerpt}\n` : ''}\nREQUIREMENT REGISTER FROM THE ORIGINAL REQUEST:\n${targets || 'R1: the requested implementation'}\nCOVERAGE LEDGER (collectively cover every listed R number in requirementsCovered): ${ledger}\n\nRules: ${projectRule} Inspect available evidence before choosing a scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never an absolute host path, drive path, network path, or '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. If evidence.mode is greenfield and the request names no stack, include a clearly labeled stack decision grounded in requirements and registered tools. Never copy a fixed template.\n\nOUTPUT BUDGET: return a compact JSON plan fitting one response: ${scope.minPhases} to 8 phases, up to 4 tasks per phase, one short sentence per text field (preferably under 180 characters). Use R-number IDs in requirementsCovered and cover every ID. Never inline source code, HTML, logs, or catalogue text in the plan. Implementation files use ai_write_file with args.path plus a precise short args.description; the controlled executor generates file contents later from those descriptions. Keep each args object to the fields the selected tool requires. A task using write_file MUST include args.path and args.content. A task using test_generator MUST name one concrete evidenced source file. A task using auto_tester MUST use args.testType exactly one of syntax, build, unit, integration with a safe args.projectPath; syntax tests also need args.files. Build, unit, and integration tests only when discovery proved the matching package script exists. A task that starts or serves a React/Vite/Next/Expo project MUST use project_run with the evidenced cwd and manifest-aware start command; never shell_execute node on a .ts/.tsx/.jsx entrypoint. Every phase must produce something that EXISTS on disk. Do not claim anything was executed; planner-only, autoExecuted false.\nReturn ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies, and optional verificationBoundaries. Each phase: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime, requirementsCovered (non-empty). Each task: task, tool, args, priority, realisticMinutes.`;
+    }
+    /** A sealed source snapshot informs planning; this method grants no tool authority. */
+    private isolatedExistingNodeProfile(request: string, evidence: any, context?: any): { command: string; paths: string[] } | null {
+        const scope = engineeringScope(context);
+        if (!scope || request !== scope.request || evidence?.mode !== 'existing_workspace' || evidence.selectedProject?.root !== scope.root
+            || evidence.constraints?.createsNewProject !== false || evidence.constraints?.readOnly === true
+            || !evidence.selectedProject?.projectKinds?.includes('node')) return null;
+        try { snapshotEngineeringChild('project_planner', { projectDescription: request, evidence }, context); } catch { return null; }
+        const files = evidence.sourceEvidence?.files;
+        if (!Array.isArray(files) || !files.length || files.length > 12 || files.some((file: any) => typeof file?.path !== 'string'
+            || !/^[A-Za-z0-9_-][A-Za-z0-9_./-]*$/u.test(file.path) || file.path.split('/').some((part: string) => !part || part === '.' || part === '..')
+            || typeof file.content !== 'string' || !Number.isInteger(file.lineCount) || file.lineCount !== file.content.split('\n').length)) return null;
+        const paths = files.map((file: any) => file.path);
+        if (new Set(paths).size !== paths.length || !paths.includes('package.json')
+            || !evidence.selectedProject.testFiles?.length || [...(evidence.selectedProject.sourceFiles || []), ...evidence.selectedProject.testFiles].some(file => !paths.includes(file))) return null;
+        try {
+            const manifest = JSON.parse(files.find((file: any) => file.path === 'package.json').content);
+            if (['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].some(name => Object.keys(manifest[name] || {}).length)
+                || typeof manifest.scripts?.test !== 'string' || !/^node --test(?: [A-Za-z0-9_./-]+)*$/u.test(manifest.scripts.test)) return null;
+        } catch { return null; }
+        // Preserve the manifest-backed command already understood by the plan validator.
+        if (!evidence.selectedProject.candidateChecks?.some((check: any) => check.kind === 'test' && check.command === 'npm run test')) return null;
+        return { command: 'npm run test', paths };
+    }
+
+    private createIsolatedExistingNodePrompt(request: string, evidence: EngineeringEvidence, profile: { command: string; paths: string[] }, failure?: string): string {
+        const register = this.requirementScope(request).targets.map((target, index) => `R${index + 1}: ${target}`).join('\n');
+        return `ISOLATED EXISTING NODE PLAN — a server-owned existing project with complete sealed source evidence. Planning only; this text grants no execution authority.
+COMPLETE ORIGINAL REQUEST (preserve every constraint):\n${requestTextForPrompt(request)}
+COMPLETE SEALED SOURCE AND REQUIREMENT EVIDENCE:\n${JSON.stringify(this.planningEvidence(evidence), null, 2)}
+REQUIREMENT REGISTER:\n${register || 'R1: the requested implementation'}
+${failure ? `RECOVERY DIAGNOSIS (repair the rejected plan, never repeat unsupported tools):\n${truncateAuxiliaryText(failure, 1200)}\n` : ''}
+The runtime supports ONLY read_file, file_edit, shell_execute for this profile. Use only the observed paths ${JSON.stringify(profile.paths)}. Never invent, create, scaffold or delete files, add dependencies, install packages, use a code generator, deploy, launch a server, or use browser tools. No parallel execution. Existing source/tests/package are staged exactly; preserve tests when the request says so.
+read_file args: {"path":"one observed relative path"}. file_edit args: {"path":"one observed relative path","find":"one exact unique existing source fragment","replace":"the precise replacement"}. Literal find/replace snippets are the only inline-code exception. Derive them from complete source evidence and prior edits; preserve unrelated bytes. shell_execute args: {"command":"${profile.command}"}; its runtime directory is the selected project root. No background, environment, timeout, authority or identity fields.
+Each phase must end with exactly one shell_execute task running the declared Node tests as its LAST task. No earlier shell tasks. verificationTask repeats this same final task object {"task":"Run declared tests","tool":"shell_execute","args":{"command":"${profile.command}"}} and grants no extra action. Prefer one repair phase: read, literal edit, final test. If tests already fail, do not add a preliminary read-only phase whose test would stop before the repair. At most 3 phases and 12 tasks total. Cover every R-ID across requirementsCovered; never hide an unmet request in a generic scaffold or claim execution. No dependencies list entries.
+Return ONLY a compact JSON object: projectName, projectVibe, totalPhases, estimatedDuration, dependencies:[], phases. Each phase: phaseNumber,name,description,tasks,verificationTask,deliverables,estimatedTime,requirementsCovered. Each task: task,tool,args,priority,realisticMinutes. Deliverables are observed files actually repaired or read, not invented artifacts.`;
+    }
     private createPlanningPrompt(
         projectDescription: string,
         analysis?: any,
@@ -871,12 +1014,16 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         scopeRepairMode = false,
         scopeRepairTargets: string[] = [],
         evidence?: EngineeringEvidence,
+        context?: any,
     ): string {
+        const isolated = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
+        if (isolated) return this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolated, failureReason);
         const promptEvidence = this.planningEvidence(evidence);
         const authoritativeEvidence = promptEvidence
-            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — these are the only known project roots, manifests, entrypoints, source files, and tests. Reuse these workspace-relative paths exactly; never invent a product-named directory or prefix.\n${JSON.stringify({
+            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — bounded excerpt of known project roots, manifests, entrypoints, source files, and tests. A truncation marker means incomplete evidence: do not infer omitted paths. Reuse visible workspace-relative paths exactly; never invent a product-named directory or prefix.\n${truncateEvidenceJsonText(JSON.stringify({
                 mode: promptEvidence.mode,
                 workspaceRoot: '.',
+                requiredSpecification: promptEvidence.requiredSpecification,
                 selectedProject: promptEvidence.selectedProject ? {
                     root: promptEvidence.selectedProject.root,
                     manifests: promptEvidence.selectedProject.manifests,
@@ -892,7 +1039,7 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
                     sourceFiles: project.sourceFiles || [],
                     testFiles: project.testFiles || [],
                 })),
-            }, null, 2).slice(0, 9000)}\n`
+            }, null, 2))}\n`
             : '';
         const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(`${failureReason}\n${projectDescription}`);
         // Quality-contract repair is a specialized bounded repair even when the
@@ -904,9 +1051,9 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
 
@@ -925,10 +1072,13 @@ Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract 
 
 ${ENGINEERING_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}
 
 MISSING CAPABILITY LEDGER (implement every item, using the current workspace as evidence):
 ${targets}
+
+COMPLETE ORIGINAL REQUEST (all constraints remain mandatory):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before choosing exact source paths. Use only executable file-level implementation tasks with safe workspace-relative paths. Modify the existing project in place; do not create a template, second project, unrelated foundation, or documentation-only phase. Each missing capability must have concrete source evidence and a local verification task. Re-run the existing build/tests and one real start/readiness check after the changes. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd, not shell_execute node on a TypeScript/JSX entrypoint. Use only test runners and browser dependencies proven by the inspected manifest. Use requirementsCovered: ${JSON.stringify(ids)} and keep totalPhases equal to the phases returned.
 
@@ -945,10 +1095,13 @@ Schema: {"projectName":"scope-repair","projectVibe":"bounded missing-capability 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}
 
 MISSING LOCAL RUNTIME IMPORT LEDGER (every item is mandatory):
 ${targets}
+
+COMPLETE ORIGINAL REQUEST (all constraints remain mandatory):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect each importer and the filesystem before editing. Every ledger item must have a concrete file-level implementation task that repairs the exact edge or creates only the smallest real module required by the proven contract; never create a placeholder, unrelated file, guessed dependency, or second project. Use requirementsCovered: ${JSON.stringify(ids)} and include syntax/build/tests plus one real start/readiness check after all items are addressed.`;
             }
@@ -957,9 +1110,9 @@ Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
 
@@ -969,9 +1122,9 @@ Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 900)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 900)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. Modify only the smallest existing artifact(s) required to make the current implementation build and start, such as package.json, an existing start/build command, or the missing entrypoint. For React/Vite/Next/Expo, the verification start/readiness task MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Do not create a template, second project, documentation-only phase, or unrelated feature. Include a verification task for the existing build/tests and one real start/readiness check after the repair. Use requirementsCovered: ["R1"] for the bounded repair requirement. Keep totalPhases equal to the number of phases returned and keep each phase to at most 3 tasks.
 
@@ -988,7 +1141,10 @@ Schema: {"projectName":"repair","projectVibe":"bounded runnable-contract repair"
         }).filter(Boolean).join(' | ');
         return `COMPACT PLANNER RECOVERY — OUTPUT LIMIT OVERRIDES ALL OTHER PLANNING VERBOSITY.
 
-The previous planner response could not be safely used. Failure evidence: ${String(failureReason || '').slice(0, 900)}
+The previous planner response could not be safely used. Failure evidence: ${truncateAuxiliaryText(failureReason, 900)}
+
+COMPLETE ORIGINAL REQUEST (the derived register below does not replace these constraints):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 REQUIREMENT REGISTER FROM THE ORIGINAL REQUEST:
 ${targets || 'R1: the requested implementation'}

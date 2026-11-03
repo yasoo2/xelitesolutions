@@ -34,9 +34,11 @@ import { ProgressiveGeneratorTool } from './definitions/ProgressiveGeneratorTool
 import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
+import { SpecificationVerificationTool } from './definitions/SpecificationVerificationTool';
 import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
 import { OrionBusinessFoundationTool } from './definitions/OrionBusinessFoundationTool';
 import { EngineeringDiscoveryTool } from './definitions/EngineeringDiscoveryTool';
+import { RuntimeDiagnosticsTool } from './definitions/RuntimeDiagnosticsTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
@@ -92,6 +94,7 @@ import { NotifyUserTool } from './definitions/NotifyUserTool';
 import { PaymentsTool } from './definitions/PaymentsTool';
 import { SonarAnalysisTool, DependencyAuditTool, QualityRunTool, SecretsScanRepoTool, CiGeneratePipelineTool, LoadTesterTool } from './definitions/QualityTools';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
+import { ScreenshotResultTool } from './definitions/ScreenshotResultTool';
 import { SearchApiTool } from './definitions/SearchApiTool';
 import { SearchPublicApisTool, InspectApiTool, ValidateApiTool } from './definitions/PublicApiDiscoveryTools';
 import { CapabilityDecisionTool } from './definitions/CapabilityDecisionTool';
@@ -162,6 +165,7 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('browser_action', () => new BrowserActionTool()),
   safeNew('browser_vision', () => new BrowserVisionTool()),
   safeNew('screenshot', () => new ScreenshotTool()),
+  safeNew('screenshot_result', () => new ScreenshotResultTool()),
   safeNew('visual_compare', () => new VisualComparisonTool()),
   safeNew('video_action', () => new VideoActionTool()),
   // Database
@@ -214,6 +218,7 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('knowledge_add', () => new KnowledgeAddTool()),
   safeNew('task_lifecycle', () => new TaskLifecycleTool()),
   safeNew('inspect_directory', () => new DirectoryInspectionTool()),
+  safeNew('runtime_diagnostics', () => new RuntimeDiagnosticsTool()),
   safeNew('search_files', () => new FileSearchTool()),
   // Content search — «grep» and its five synonyms resolve HERE now.
   safeNew('search_text', () => new SearchTextTool()),
@@ -283,6 +288,11 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.MultiAgentDebateTool(),
   new EliteTools.SelfConfidenceTool(),
 
+  // IMPLEMENTED_NOT_REGISTERED (F2) — now registered
+  VisualQATool,
+  ImageGenerationTool,
+  BulkFileGeneratorTool,
+
   new EngineeringDiscoveryTool(),
   new CapabilityDecisionTool(),
   new SearchPublicApisTool(),
@@ -291,6 +301,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),
+  createTool(SpecificationVerificationTool),
   createTool(EnterprisePlatformFoundationTool),
   createTool(OrionBusinessFoundationTool),
   createTool(ProjectRunTool),
