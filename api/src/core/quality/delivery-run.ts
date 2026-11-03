@@ -30,6 +30,8 @@ import {
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
+import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
+import { deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
 import { say as pick } from '../../shared/reply-language';
@@ -246,7 +248,22 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
                 error: part.ok ? undefined : `project quality contract failed in ${path.basename(root)} — ${part.failures.slice(0, 4).join('; ')}`,
             });
         }
-        const scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
+        let scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
+        //  Search, filtering and sorting are behaviour. When the source does
+        //  not show one of them, the live page is operated before it is
+        //  called missing (interaction-probe.ts: P352–P354, 2026-11-03).
+        const unseen = scoped.scopeCoverageFailed ? interactiveMissing(scoped.scopeAudit?.missing || []) : [];
+        if (unseen.length && live.liveUrl && deliveredTreeHasInterface(auditRoots)) {
+            say(pick(isAr, `▶️ لم أجد ${unseen.join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
+            const bound = bindRunCancellation(input.cancellation, input.signal);
+            try {
+                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal });
+                scoped = reconcileScope(scoped, measured);
+                for (const r of measured.results) input.log?.(`[pipeline] interaction ${r.capability} ${r.ok ? 'shown' : 'not shown'}: ${r.detail}`);
+            } finally {
+                bound.dispose();
+            }
+        }
         state.scopeAudit = scoped.scopeAudit;
         if (scoped.verified || scoped.scopeCoverageFailed === true) {
             ledger.record({ instrument: 'scope', ok: scoped.verified, error: scoped.error });
