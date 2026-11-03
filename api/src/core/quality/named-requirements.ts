@@ -1236,7 +1236,11 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         //    plain comparison, and a session or token it issues;
         //  - roles: a role on the user, a check of it, and a 403 for the rest.
         const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
-            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src);
+            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src)
+            //  Whatever the router is called — authRouter, api, auth (P155,
+            //  2026-11-03) — a registration whose handler takes the request is
+            //  a server route; a client's `api.post('/auth/login', body)` is not.
+            || /\b[A-Za-z_$][\w$]*\s*\.\s*post\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b[^'"`]*['"`]\s*,[^;]{0,240}?\(\s*(?:req|request|ctx)\b/iu.test(src);
         const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
         const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
             //  A random token the server keeps as the session (randomBytes or randomUUID).
@@ -1256,7 +1260,12 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         const proven = workflowEvidence.find(([asked, present]) => asked.test(fieldPhrase) && present);
         if (proven) return { ...r, verdict: 'met', why: proven[2] };
         if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
-            return { ...r, verdict: 'unmet', why: 'the build rendered a generic records form instead of a workflow engine' };
+            //  Not Joe's old template, and no shape above proved it: the judge
+            //  reads the source and must quote the line. P155 (2026-11-03): a
+            //  real login on authRouter.post was refused four times as «unmet:
+            //  the build rendered a generic records form instead of a workflow
+            //  engine» — a sentence about the old template's component.
+            return null;
         }
         const defects = inspectWorkflowEngineSource(text, src);
         return defects.length
