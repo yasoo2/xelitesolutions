@@ -88,7 +88,16 @@ const PAGE_HELPERS = `
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(child);
       }
-      for (const g of groups.values()) if (g.length >= 2 && g.length > best.length) best = g;
+      // A row of boxes that mostly hold a field to fill is the form's layout,
+      // not the data: P352 (2026-11-03) wrapped its period select and two
+      // date inputs in three div.field boxes, and the probe took them for the
+      // items and set aside the very controls it had to operate.
+      const fieldBox = el => !!el.querySelector('select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])');
+      for (const g of groups.values()) {
+        if (g.length < 2 || g.length <= best.length) continue;
+        if (g.filter(fieldBox).length * 2 >= g.length) continue;
+        best = g;
+      }
     }
     return best;
   };
@@ -140,7 +149,9 @@ const PAGE_CANDIDATES = `(() => {${PAGE_HELPERS}
   const labelOf = el => {
     const byFor = el.id ? document.querySelector('label[for="' + CSS.escape(el.id) + '"]') : null;
     const wrap = el.closest('label');
-    return clean(el.getAttribute('aria-label') || (byFor && byFor.innerText) || (wrap && wrap.innerText) || el.getAttribute('placeholder') || el.getAttribute('name') || el.id || el.innerText || el.value).slice(0, 60);
+    // A button is called what it says; its id is the last resort («resetBtn» told the builder nothing).
+    const own = /^(BUTTON|TH|A)$/.test(el.tagName) || el.getAttribute('role') ? el.innerText : '';
+    return clean(el.getAttribute('aria-label') || (byFor && byFor.innerText) || (wrap && wrap.innerText) || el.getAttribute('placeholder') || own || el.getAttribute('name') || el.id || el.innerText || el.value).slice(0, 60);
   };
   const out = [];
   let n = 0;

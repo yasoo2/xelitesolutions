@@ -137,6 +137,20 @@ describe('filtering, search and sorting are measured on the live page', () => {
         expect(lines.join('\n')).toMatch(/interaction filtering shown: on the live page, choosing «(3m|6m)» in «الفترة الزمنية» \(select\)/u);
     });
 
+    it('a filter whose fields sit in identical boxes is still operated (P352, the re-run)', async () => {
+        //  Three div.field boxes — a period select and two dates — were taken
+        //  for the shown items, and only the two buttons beside them were
+        //  pressed: «I operated 2 control(s) — «resetBtn», «loadSampleBtn»».
+        const boxed = REPORT['index.html']
+            .replace(/(<label for="period">[\s\S]*?<\/select>)/u, '<div class="field">$1</div>')
+            .replace('<label for="from">من</label><input type="date" id="from">', '<div class="field"><label for="from">من</label><input type="date" id="from"></div>')
+            .replace('<label for="to">إلى</label><input type="date" id="to">', '<div class="field"><label for="to">إلى</label><input type="date" id="to"></div>\n  <button id="resetBtn" type="button">إعادة ضبط الفلتر</button>');
+        expect(boxed.match(/class="field"/g)?.length).toBe(3);
+        const { scope, lines } = await scopeOf(P352, { ...REPORT, 'index.html': boxed });
+        expect(scope).toMatchObject({ instrument: 'scope', ok: true });
+        expect(lines.join('\n')).toMatch(/interaction filtering shown: on the live page, (choosing «(3m|6m)» in «الفترة الزمنية» \(select\)|setting «(من|إلى)» \(date\))/u);
+    });
+
     it('an add form beside a list that deletes with .filter is not a filter, and the refusal says what was tried', async () => {
         const request = 'Build a page for a library that lists books and lets the user filter them by genre.';
         const page = `<!doctype html><html><head><meta charset="utf-8"><title>Books</title></head><body>
