@@ -41,9 +41,9 @@ import { acceptanceFor } from '../core/quality/acceptance';
 
 const HIS_STORE = 'اعمل لي متجراً إلكترونياً لبيع العسل الطبيعي اسمه «شهد»، فيه صفحة رئيسية وصفحة منتجات فيها ستة أنواع عسل مع أسعارها، وصفحة عن المزرعة، وصفحة تواصل فيها نموذج يعمل، وسلة شراء تحسب الإجمالي وتحفظ الطلب. التصميم دافئ وفاخر، ولا تقبل سعراً صفراً أو سالباً.';
 
-/** A fresh session id per call, so no pending clarification leaks between tests. */
-let n = 0;
-const gate = (text: string) => clarifyGate(text, `thin-brief-${++n}`, 'ar', {});
+//  Since 2026-11-03 a thin request is built with Joe's own choices
+//  ('decide'), never stopped on a question (core/orchestrator/clarify.ts).
+const gate = (text: string) => clarifyGate(text, 'ar', {});
 
 describe('a request is judged by everything in it, not by one clause', () => {
     it('⛔ POSITIVE — the exact prompt he watched being refused now builds', () => {
@@ -58,8 +58,8 @@ describe('a request is judged by everything in it, not by one clause', () => {
 
     //  ── the gate must keep stopping everything it was built to stop ──────
     const stillAsks = (label: string, text: string) => {
-        it(`NEGATIVE — ${label} is still questioned`, () => {
-            expect({ label, kind: gate(text).kind }).toEqual({ label, kind: 'ask' });
+        it(`NEGATIVE — ${label} is still recognised as thin`, () => {
+            expect({ label, kind: gate(text).kind }).toEqual({ label, kind: 'decide' });
         });
     };
 

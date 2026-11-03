@@ -3,27 +3,30 @@
  *
  * A build prompt with almost nothing in it — «ابن لي موقع» — used to start a
  * full build IMMEDIATELY: palette rolled, sections invented, minutes spent on
- * a page about nothing the user actually meant. A real team asks first. This
- * gate is deterministic (no model call, no quota): a THIN fresh-build prompt
- * gets 3-4 targeted questions in the user's language; the answers arrive as
- * the next message, are merged with the original request, and the build runs
- * once with the full picture. «ابدأ مباشرة» (or any detailed prompt) skips
- * the dialogue entirely — questions are for missing information, never a
- * toll booth.
+ * a page about nothing the user actually meant. So this gate learned to ask
+ * first: deterministic (no model call, no quota), a THIN fresh-build prompt
+ * got targeted questions in the user's language.
+ *
+ * ⛔ AND THEN THE OWNER RULED OUT THE QUESTION ITSELF — 2026-11-03.
+ *
+ *     «اريد جو مستقل وقادر على بناء اي نظام مهما كان معقد لوحده وبدون تدخل
+ *      بشري»
+ *
+ * A question before building is the human intervention he ruled out. On the
+ * 500-prompt exam the same day it was worse than a pause: a detailed chatbot
+ * request (P454) was asked «ما الذي تريد تسجيله لكل واحد من «رياضي يجاوب»؟»,
+ * and the run that asked ended under another id, so its own record said
+ * «running» for eight hours. A thin request is now BUILT with Joe's own
+ * choices: the gate says up front what he did not say and what Joe is
+ * choosing — about HIS thing, never a website questionnaire — and the reply
+ * names the choices so he can change them. Nothing is invented silently, and
+ * nothing waits for him.
  */
 
 import { RECORD_CONTAINER } from '../design/app-blueprints';
 import { asksForSomething, describesItsContents, tracksSomethingOfHis, trackingVerbAt } from './buildIntent';
 import { isBuildRequest } from '../intelligence/intent-classifier';
 import { isArabicReply } from '../../shared/reply-language';
-
-interface PendingClarify { request: string; at: number }
-const TTL_MS = 30 * 60_000;
-
-function pendingMap(): Record<string, PendingClarify> {
-    const g: any = global as any;
-    return g.joeClarify || (g.joeClarify = {});
-}
 
 /** Strip the runtime-injected blocks; the gate judges the USER's words only. */
 function userWords(goal: string): string {
@@ -32,7 +35,6 @@ function userWords(goal: string): string {
         .trim();
 }
 
-const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ابني|ابن\s|انشئ|أنشئ|اصنع|صمم|اعمل|سوي?\s*لي)/i;
 /**
  *  …AND A THING HE SAYS HE WILL KEEP TRACK OF.
  *
@@ -53,18 +55,7 @@ const BUILD_VERB = /\b(build|create|make|design|develop|generate)\b|(ابنِ|ا
  */
 const TRACKING = /(أتابع|اتابع|أسجل|اسجل|أدوّن|ادون|أحفظ|احفظ|أنظم|انظم|أرتب|ارتب|أدير|ادير|\btrack\b|\bmanage\b|\brecord\b|\blog\b|\bkeep\s+track\b|\borgani[sz]e\b)/i;
 
-const WEB_NOUN = /\b(page|site|website|app|store|dashboard|portfolio|landing)\b|(صفحة|موقع|تطبيق|متجر|لوحة|واجهة|بورتفوليو|هبوط)/i;
 const BYPASS = /(مباشرة|مباشره|بدون\s*أ?سئلة|بدون\s*اسئله|على\s*(راحتك|كيفك|ذوقك)|كما\s*تراه|اقترح\s*أنت|directly|no\s*questions|your\s*call|surprise\s*me)/i;
-
-/**
- * A command to operate, verify, or deploy an existing project is a NEW task,
- * never an answer to an earlier "what should I build?" dialogue. Keeping a
- * 30-minute clarify state must not turn «شغّل المشروع» into a request to build
- * the stale project. Deliberately excludes «ابدأ مباشرة»: that is the
- * documented answer which means "build the pending brief now".
- */
-const EXPLICIT_OPERATIONAL_INTENT =
-    /\b(project_run|run|start|launch|execute|open|test|verify|validate|deploy)\b|شغّ?ل|تشغيل|افتح|اختبر|تحقّ?ق|تأكّ?د|تاكّ?د|ابدأ\s*(?:التشغيل|تشغيل)|نفّ?ذ|انشر/i;
 
 /** Words that carry no description of WHAT to build. */
 const STOP = new Set([
@@ -119,6 +110,12 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     //  column, so counting words would call it complete and build him a
     //  table out of thin air.
     if (namesSomethingToTrack) {
+        //  A request that says this much about its thing is not thin, whatever
+        //  the acceptance deriver could turn into criteria. P454 (2026-11-03): a
+        //  chatbot that answers FAQs, books and cancels subscriptions and keeps
+        //  its history derived one criterion and was judged empty. «بدي شي
+        //  أتابع فيه ديوني» carries four describing words.
+        if (descriptiveTokens(text).length >= 8) return false;
         /**
          *  ⛔ BUT «HE MENTIONED SAVING SOMETHING» IS NOT «HE SAID NOTHING».
          *
@@ -172,9 +169,8 @@ export function isVagueBuildRequest(goal: string, opts?: { hasActivePage?: boole
     return descriptiveTokens(text).length < 3;
 }
 
-/** The questions, deterministic, in the user's language. */
 /**
- *  WHAT HE SAYS HE WILL TRACK IS WHAT THE QUESTION IS ABOUT.
+ *  WHAT HE SAYS HE WILL TRACK IS WHAT THE DECISION IS ABOUT.
  *
  *  Measured live, after the gate was taught to fire on «بدي شي أتابع فيه
  *  ديوني». Joe stopped lecturing him about interest rates — and asked:
@@ -209,39 +205,19 @@ function trackedObject(goal: string): string {
 }
 
 /**
- *  A LIST WRITTEN AS A PARAGRAPH IS A PARAGRAPH.
- *
- *  He pasted back what he actually saw, and it was one cramped block:
- *
- *      1⃣ What is the site about? (a restaurant? a store? ...) 2⃣ Which
- *      sections do you want? (e.g. home, services, ...) 3⃣ Any colours
- *
- *  Two faults in one string, and both are invisible in the source.
- *
- *  1. SINGLE NEWLINES. The chat renders markdown, and markdown folds a
- *     single newline into a space. Four questions written on four lines
- *     arrive as one paragraph. A real ordered list survives that, because
- *     it is a list rather than four lines that happen to look like one.
- *
- *  2. KEYCAP EMOJI. `1️⃣` is U+0031 U+FE0F U+20E3, and in his font the
- *     sequence falls back to an empty box — which is exactly the `1⃣` he
- *     pasted. A number is a number; markdown will draw it.
- *
- *  His words: «فالافضل ان يكون منسق اكثر مثل المواقع العالمية المنافسة»
- *  and «هناك تفاصيل صغيره كثيره يجب الانتباه عليها».
+ *  What Joe tells him he is choosing, because he did not say it — and then
+ *  builds. Until 2026-11-03 this was the question; it is the decision now,
+ *  said about the same thing the question was about.
  */
-export function clarifyQuestions(goal: string, language: string): string {
-    //  A blank line, not a newline: the chat renders markdown and markdown
-    //  folds a single newline into a space.
-    const nl2 = '\n\n';
+export function decisionNote(goal: string, language: string): string {
     const isAr = isArabicReply({ language, text: goal });
-    //  A man who named something to track needs one question, not four,
-    //  and it must be about HIS thing — never about sections and colours.
+    //  A man who named something to track is told what Joe chooses for HIS
+    //  thing — never sections and colours.
     const tracked = trackedObject(goal);
     if (tracked) {
         return isAr
-            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله لكل واحد من «${tracked}»؟\n\nمثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر في الجدول، وسأبنيه بها.\n\nوإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
-            : `One question before I start — what do you want to record for each of your ${tracked}?\n\nFor example: name, amount, date… write them the way you want them to appear in the table, and I will build it with those.\n\nOr say "start now" and I will choose for you.`;
+            ? `💬 لم تذكر ما يُسجَّل لكل واحد من «${tracked}» — أختار بنفسي الحقول التي يحتاجها نظام مثله، وأذكرها في الرد لتغيّرها متى شئت.`
+            : `💬 You did not say what each of your ${tracked} holds — I am choosing the fields a system like this needs, and I will name them in the reply so you can change them.`;
     }
     /**
      *  A CONTAINER HE NAMED IS NOT A WEBSITE.
@@ -250,95 +226,38 @@ export function clarifyQuestions(goal: string, language: string): string {
      *
      *      «بدي جدول»
      *
-     *  and Joe answered:
-     *
-     *      What is the site about? A restaurant, a store, a company…
-     *      Which sections do you want? Home, services, pricing, contact…
-     *      Any colours or brand identity?   One page, or several?
-     *
-     *  He asked for a TABLE and was asked about a site's sections and its
-     *  colours. The branch above already knows the right shape — one
-     *  question, about HIS thing — but it only fires when a tracking verb
-     *  is present («أسجل», «أحفظ», «track»). «بدي جدول» has no verb, so it
-     *  fell through to a questionnaire that assumes every vague request is
-     *  a website. That is the fourth law broken in the one function whose
-     *  whole job is to ask about the request.
-     *
-     *  A container that holds records needs to know WHAT GOES IN IT, and
-     *  nothing about colours. The word is echoed back exactly as he wrote
-     *  it — his «كشف» is a كشف, not a «جدول» we prefer.
+     *  and Joe answered with a website questionnaire: the site's subject, its
+     *  sections, its colours, one page or several. He asked for a TABLE. A
+     *  container that holds records is about WHAT GOES IN IT, and nothing
+     *  about colours. The word is echoed back exactly as he wrote it — his
+     *  «كشف» is a كشف, not a «جدول» we prefer.
      */
     const container = RECORD_CONTAINER.exec(userWords(goal));
     if (container) {
-        const word = container[1];
+        //  The pattern has no group: the whole match is his word (it was `[1]`,
+        //  which printed «undefined» once the reading fork folded the regex).
+        const word = container[0];
         return isAr
-            ? `سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله في «${word}»؟` + nl2 +
-              `مثلاً: الاسم، المبلغ، التاريخ… اكتبها كما تريدها أن تظهر، وسأبنيه بها.` + nl2 +
-              `وإن أردت أن أختار أنا، قل «ابدأ مباشرة».`
-            : `One question before I start — what do you want to record in your ${word}?` + nl2 +
-              `For example: name, amount, date… write them the way you want them to appear, and I will build it with those.` + nl2 +
-              `Or say "start now" and I will choose for you.`;
+            ? `💬 لم تذكر ما يُسجَّل في «${word}» — أختار الأعمدة بنفسي، وأذكرها في الرد لتغيّرها متى شئت.`
+            : `💬 You did not say what your ${word} records — I am choosing its columns, and I will name them in the reply so you can change them.`;
     }
-
     const wantsApp = /(تطبيق|app)/i.test(userWords(goal));
-    if (isAr) {
-        return `**سؤال واحد قبل أن أبدأ** — حتى أبني ما تريده فعلاً لا ما أتخيّله.
-
-1. **ما موضوع ${wantsApp ? 'التطبيق' : 'الموقع'}؟** مطعم، متجر، شركة، معرض أعمال…
-2. **ما الأقسام التي تريدها؟** رئيسية، خدمات، أسعار، تواصل…
-3. **هل لديك ألوان أو هوية؟** أو اتركها لي.
-4. **صفحة واحدة أم عدّة صفحات؟**
-
-أجب بما تعرفه فقط وسأتصرّف في الباقي — أو قل **«ابدأ مباشرة»** وأبني فوراً.`;
-    }
-    return `**One thing before I start** — so I build what you actually mean.
-
-1. **What is the ${wantsApp ? 'app' : 'site'} about?** A restaurant, a store, a company, a portfolio…
-2. **Which sections do you want?** Home, services, pricing, contact…
-3. **Any colours or brand identity?** Or leave it to me.
-4. **One page, or several?**
-
-Answer what you know and I'll handle the rest — or say **"start now"** and I'll build immediately.`;
+    return isAr
+        ? `💬 الطلب مختصر — أختار بنفسي موضوع ${wantsApp ? 'التطبيق' : 'الموقع'} وأقسامه وألوانه، وأذكر ما اخترته في الرد لتغيّره متى شئت.`
+        : `💬 The request is brief — I am choosing the ${wantsApp ? 'app' : 'site'}'s subject, sections and colours myself, and I will say what I chose in the reply so you can change it.`;
 }
 
 export type ClarifyDecision =
-    | { kind: 'ask'; text: string }
-    | { kind: 'merge'; goal: string }
+    | { kind: 'decide'; note: string }
     | { kind: 'pass' };
 
 /**
- * One call per incoming message. Owns the pending state:
- *  - a vague fresh build   → remember it, return the questions;
- *  - the NEXT message      → merge answers with the remembered request;
- *  - anything else         → pass through untouched.
+ * One call per incoming message, and it never stops the run: a thin fresh
+ * build is built with Joe's own choices, and `note` says up front what he did
+ * not say and what Joe is choosing. Nothing is remembered between messages —
+ * there is no question waiting for an answer.
  */
-export function clarifyGate(goal: string, sessionId: string, language: string, opts?: { hasActivePage?: boolean }): ClarifyDecision {
-    const key = String(sessionId || 'default');
-    const map = pendingMap();
-    const pending = map[key];
-    const text = userWords(goal);
-
-    if (pending && Date.now() - pending.at < TTL_MS) {
-        delete map[key];
-        // An explicit run/verification/deploy command targets the current
-        // project, not the unanswered build brief. Pass it unchanged so the
-        // planner can select project_run (or the relevant operational tool).
-        if (EXPLICIT_OPERATIONAL_INTENT.test(text)) {
-            return { kind: 'pass' };
-        }
-        // A brand-new DETAILED build request replaces the old conversation.
-        if (BUILD_VERB.test(text) && WEB_NOUN.test(text) && descriptiveTokens(text).length >= 2) {
-            return { kind: 'pass' };
-        }
-        const isAr = isArabicReply({ language, text: goal });
-        const merged = `${pending.request}\n\n${isAr ? '[توضيحات المستخدم عن المشروع]' : '[The user\'s clarifications]'}: ${text}`;
-        return { kind: 'merge', goal: merged };
-    }
-    if (pending) delete map[key];   // expired
-
-    if (isVagueBuildRequest(goal, opts)) {
-        map[key] = { request: text, at: Date.now() };
-        return { kind: 'ask', text: clarifyQuestions(goal, language) };
-    }
+export function clarifyGate(goal: string, language: string, opts?: { hasActivePage?: boolean }): ClarifyDecision {
+    if (isVagueBuildRequest(goal, opts)) return { kind: 'decide', note: decisionNote(goal, language) };
     return { kind: 'pass' };
 }

@@ -298,6 +298,39 @@ export async function getRunEvidence(runId: string): Promise<RunEvidenceRecord |
 }
 
 /**
+ * A RUN WHOSE EXECUTION RETURNED IS NEVER LEFT «RUNNING».
+ *
+ * The 500-prompt exam, 2026-11-03, P454: the run asked a question and ended in
+ * 54 ms, announcing its end under another id; its own record kept `running`,
+ * and the client waiting on it polled for eight hours. A run cancelled before
+ * its first step, or refused by the resource manager, ended the same way — a
+ * message and no receipt. So the owner of a run closes its record once the
+ * execution has returned: a record that already carries its receipt is left
+ * as it is; one still `running` gets this status and the reason.
+ */
+export function closeRunEvidenceIfOpen(runId: string, status: string, reason: string): Promise<void> {
+    const normalized = trimString(runId, 180);
+    if (!normalized) return Promise.resolve();
+    return enqueue(normalized, async () => {
+        try {
+            const current = await runEvidenceStore.findOne({ runId: normalized });
+            if (!current || current.status !== 'running') return;
+            await upsertRecord({
+                ...current,
+                updatedAt: new Date().toISOString(),
+                status,
+                events: [...(current.events || []), compactEvent({
+                    type: 'run_closed', runId: normalized, sessionId: current.sessionId, ts: Date.now(),
+                    data: { status, reason: trimString(reason, 400) },
+                })],
+            });
+        } catch {
+            // Evidence is a secondary sink: a failed close must not fail the run.
+        }
+    });
+}
+
+/**
  * A process restart cannot preserve an in-memory executor. Any durable record
  * that still says `running` when this API boots is therefore an orphan, not an
  * active run. Close it explicitly so clients never mistake stale evidence for
