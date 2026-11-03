@@ -148,6 +148,33 @@ export function hisWordsOnly(text: string): string {
     return raw.slice(0, end).trim();
 }
 
+/**
+ *  A LATIN WORD IN A TECHNOLOGY POSITION IS NOT THE BRAND.
+ *
+ *  Eval round 15 (2026-10-24, P101): «أنشئ واجهة برمجية REST باستخدام
+ *  Node.js و Express لـعيادة أسنان…» was named «REST» — project api-rest,
+ *  owner@rest.local — because rule 3 below takes the first Latin token of an
+ *  Arabic request. «REST» qualifies the artifact, «Node.js» follows «باستخدام»,
+ *  «Express» is coordinated with it. Those are positions in the sentence, not
+ *  names of technologies, so no list of frameworks is kept here:
+ *
+ *    - after a stack introducer: «باستخدام / بلغة / عبر / بـ / using / with / via / in»;
+ *    - coordinated («و» / «and» / «،» / «,») with a token in such a position;
+ *    - right after the programming-interface noun («واجهة برمجية REST», «API GraphQL»).
+ */
+function latinInStackPosition(text: string, index: number, length: number): boolean {
+    const before = text.slice(0, index);
+    const INTRODUCER = /(?:^|\s)(?:باستخدام|بإستخدام|باستعمال|بلغة|بلغه|بتقنية|بتقنيه|عبر|using|with|via|in|on|built\s+with|بـ)\s*$/iu;
+    if (INTRODUCER.test(before)) return true;
+    if (/(?:^|\s)(?:واجهة|واجهه)\s+(?:برمجية|برمجيه|برمجة\s+(?:ال)?تطبيقات)\s*$|(?:^|\s)(?:api|apis)\s*$/iu.test(before)) return true;
+    // «Node.js و Express», «React, Vite and Tailwind»: walk back over the
+    // coordination to the token it joins; that token decides.
+    const joined = before.match(/([A-Za-z][A-Za-z0-9._-]{1,30})\s*(?:،|,|\s+و|\s+and|\s+&)\s*$/iu);
+    if (joined && joined.index !== undefined) return latinInStackPosition(text, joined.index, joined[1].length);
+    void length;
+    return false;
+}
+
 export function brandFrom(request: string, _isArabic?: boolean): string {
     const req = String(request || '');
 
@@ -214,8 +241,11 @@ export function brandFrom(request: string, _isArabic?: boolean): string {
      */
     if (/[؀-ۿ]/.test(req)) {
         const mine = hisWordsOnly(req);
-        const latin = mine.match(/\b[A-Za-z][A-Za-z0-9._-]{2,30}\b/);
-        if (latin && !/^(https?|www|html|css|js|api|web)$/i.test(latin[0])) return latin[0];
+        for (const latin of mine.matchAll(/\b[A-Za-z][A-Za-z0-9._-]{2,30}\b/g)) {
+            if (/^(https?|www|html|css|js|api|web)$/i.test(latin[0])) continue;
+            if (latinInStackPosition(mine, latin.index || 0, latin[0].length)) continue;
+            return latin[0];
+        }
     }
 
     return '';
@@ -374,6 +404,9 @@ export function brandFallback(request: string, isArabic: boolean, kind = 'generi
         // times — and «متجر القهوة» is what a signboard says, not «متجر قهوة».
         const bare = subject.replace(/^(لل|ال|ل)/, '');
         if (bare.length < 3) return 'مشروعي';
+        // «لـمطعم» on a restaurant: the kind word IS the subject, and
+        // «مطعم المطعم» says it twice (eval round 15, P103).
+        if (bare === word.ar) return `ال${bare}`;
         return `${word.ar} ال${bare}`;
     }
     const titled = titleCase(subject);

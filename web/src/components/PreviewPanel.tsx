@@ -319,7 +319,7 @@ export default function PreviewPanel({
                                 marginRight: 8,
                             }}>
                                 <RefreshCw size={10} style={{ color: '#38bdf8', animation: 'spin 2s linear infinite' }} />
-                                <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>جاري البناء...</span>
+                                <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>{t('pv_building')}</span>
                             </div>
                         )}
                         
@@ -436,7 +436,7 @@ export default function PreviewPanel({
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
                                     <span>{Math.round(buildProgress.progress)}%</span>
-                                    <span>التقدم الإجمالي</span>
+                                    <span>{t('pv_overallProgress')}</span>
                                 </div>
                             </div>
                         </div>

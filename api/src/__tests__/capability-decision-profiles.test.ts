@@ -1,9 +1,19 @@
 import { capabilityFamilyFromRequest, capabilityProfilesFor, compactCapabilityDecisionReceiptForRuntime, decideCapabilityRoute, type CapabilityCandidate } from '../core/capabilities/decision-profiles';
 
+/**
+ *  FRESH MEANS FRESH TODAY, NOT ON THE DAY THIS FILE WAS WRITTEN.
+ *
+ *  The fixture used to carry evidenceCheckedAt '2026-09-22' against a
+ *  seven-day freshness window, so every «proven» candidate below went
+ *  stale on 2026-09-29 and two tests turned red with no change to any
+ *  code. A fixture that means «recently checked» is dated relative to now.
+ */
+const DAY_MS = 24 * 60 * 60 * 1000;
+const checkedYesterday = () => new Date(Date.now() - DAY_MS).toISOString();
 const candidate = (id: string, family: string, overrides: Partial<CapabilityCandidate> = {}): CapabilityCandidate => ({
     id, family, route: 'local', setup: 'ZERO_SETUP', reliability: 'PROVEN', privacy: 'LOCAL',
     supportsOffline: true, supportsDeployment: true, recurringCost: 'NONE', maintenance: 'LOW',
-    evidenceCheckedAt: '2026-09-22T00:00:00.000Z', ...overrides,
+    evidenceCheckedAt: checkedYesterday(), ...overrides,
 });
 
 describe('capability decision profiles', () => {

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useMonacoReady } from '../monaco-setup';
 import { DiffEditor } from '@monaco-editor/react';
 import { X, GitBranch } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 
 interface DiffViewerProps {
     originalContent: string;
@@ -15,11 +16,14 @@ interface DiffViewerProps {
 export default function DiffViewer({
     originalContent,
     modifiedContent,
-    originalTitle = 'Original',
-    modifiedTitle = 'Modified',
+    originalTitle,
+    modifiedTitle,
     language = 'javascript',
     onClose
 }: DiffViewerProps) {
+    const { t } = useTranslation();
+    const shownOriginalTitle = originalTitle ?? t('diff_original');
+    const shownModifiedTitle = modifiedTitle ?? t('diff_modified');
     const [theme, setTheme] = useState<'vs-dark' | 'light'>('vs-dark');
     // Monaco arrives with this view, not with the page — see monaco-setup.
     const monacoReady = useMonacoReady();
@@ -58,9 +62,9 @@ export default function DiffViewer({
                 fontSize: 12
             }}>
                 <GitBranch size={14} style={{ color: '#e2b340' }} />
-                <span style={{ opacity: 0.6 }}>{originalTitle}</span>
+                <span style={{ opacity: 0.6 }}>{shownOriginalTitle}</span>
                 <span style={{ opacity: 0.3 }}>→</span>
-                <span style={{ fontWeight: 600 }}>{modifiedTitle}</span>
+                <span style={{ fontWeight: 600 }}>{shownModifiedTitle}</span>
                 <div style={{ flex: 1 }} />
                 {onClose && (
                     <button
@@ -98,7 +102,7 @@ export default function DiffViewer({
                         renderOverviewRuler: true,
                         diffWordWrap: 'on',
                     }}
-                    loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>Loading Diff Viewer...</div>}
+                    loading={<div style={{ color: 'var(--text-muted)', padding: 20 }}>{t('diff_loading')}</div>}
                 />
                 )}
             </div>

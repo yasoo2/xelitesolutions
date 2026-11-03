@@ -515,7 +515,7 @@ export function reviewHtml(
     }
 
     // --- Remaining (non-auto-fixable) issues lower the score but don't block ---
-    if (/\b(TODO|FIXME|placeholder text|lorem ipsum|your text here|اكتب هنا|النص هنا)\b/i.test(html)) {
+    if (/\b(?:TODO|FIXME|placeholder text|lorem ipsum|your text here)\b|(?<![\p{L}\p{N}_])(?:[اأ]كتب هنا|النص هنا)(?![\p{L}\p{N}_])/iu.test(html)) {
         issues.push('contains placeholder/TODO text that should be replaced with real content');
     }
     if (/(src|href)=["']\s*["']/i.test(html)) {

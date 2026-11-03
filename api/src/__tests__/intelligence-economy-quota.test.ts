@@ -94,7 +94,9 @@ describe('the patience is measured from this machine, and it learns', () => {
 
     it('and records how long the local call really took', () => {
         const src = ROUTER();
-        expect(src).toMatch(/if \(p\.name === 'Local \(Auto\)'\) noteLocalDuration\(Date\.now\(\) - attemptStartedAt\);/);
+        // Counted from admission: queue wait behind another call is not how
+        // long this machine took to answer (0e110817).
+        expect(src).toMatch(/if \(p\.name === 'Local \(Auto\)'\) noteLocalDuration\(Date\.now\(\) - \(admittedAt \|\| attemptStartedAt\)\);/);
     });
 
     it('and blames its own patience before it blames the engine', () => {

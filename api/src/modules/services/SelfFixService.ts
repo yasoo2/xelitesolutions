@@ -126,6 +126,27 @@ function extractAcceptanceEvidence(ticket: RepairTicket) {
     : null;
 }
 
+/**
+ * A capability the delivery gate could not prove, in a file the builder itself
+ * generated (eval round 15, P051/P151). react_project names the unproven
+ * capabilities in its error («requested_features_not_proven: a chart, …» or
+ * «capability_gap_unresolved: …») and the generated engine as `repairFile`;
+ * without both there is nothing evidence-bound to repair.
+ */
+function extractCapabilityGapEvidence(ticket: RepairTicket) {
+  const failed = ticket.failedTasks.find(task =>
+    /^(?:requested_features_not_proven|capability_gap_unresolved):\s*\S/i.test(String(task.error || '').trim())
+    && typeof task.repairFile === 'string'
+    && task.repairFile.trim().length > 0,
+  );
+  if (!failed) return null;
+  const error = String(failed.error).trim();
+  const capabilities = error.slice(error.indexOf(':') + 1).trim();
+  return capabilities
+    ? { file: failed.repairFile!.trim(), cwd: failed.cwd, capabilities, request: failed.description }
+    : null;
+}
+
 function extractArtifactValidationFailure(ticket: RepairTicket) {
   const failed = ticket.failedTasks.find(task => {
     if (!task.file) return false;
@@ -428,6 +449,109 @@ function extractMissingNpmRunner(ticket: RepairTicket) {
     const runner = match?.[1]?.toLowerCase();
     if (!runner || !npmRunners.has(runner)) continue;
     return { runner, cwd: failed.cwd, task: failed.task };
+  }
+  return null;
+}
+
+interface MissingNpxExecutableEvidence {
+  packageName: string;
+  executable: string;
+  installedVersion: string;
+  dev: boolean;
+  cwd: string;
+  task: string;
+}
+
+/**
+ *  ⛔ AN EXECUTABLE THE INSTALLED RELEASE NO LONGER SHIPS.
+ *
+ *  P001 (run500): the plan ran `npm install -D tailwindcss postcss
+ *  autoprefixer && npx tailwindcss init -p`. The registry's latest was
+ *  tailwindcss@4.3.3, whose manifest declares no executable at all, so npx
+ *  answered «could not determine executable to run» — while the plan's own
+ *  next files (tailwind.config.js, the @tailwind directives) were written for
+ *  the release that had one. No file was named, so the healer stopped with
+ *  "General phase failure has no evidence-bound repair file" and the build
+ *  ended at 1/5.
+ *
+ *  The evidence is on disk, not in a catalogue: the package npx was asked for
+ *  is installed in the command's directory and declared by its manifest, and
+ *  the installed release's `bin` lacks that name. Which release does declare
+ *  it is the registry's answer — npm_manager asks it (`providesBin`); nothing
+ *  here guesses a major.
+ */
+function npxPackageSpec(segment: string): string | null {
+  const match = segment.match(/^npx\s+(.+)$/i);
+  if (!match) return null;
+  for (const token of match[1].split(/\s+/)) {
+    // An explicit -p/--package names the package apart from the executable;
+    // that is another shape, and this reader does not guess it.
+    if (/^(?:-p|--package)(?:=|$)/.test(token)) return null;
+    if (token.startsWith('-')) continue;
+    return token;
+  }
+  return null;
+}
+
+function installedManifest(root: string, packageName: string): any | null {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(root, 'node_modules', ...packageName.split('/'), 'package.json'), 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+function manifestDeclaresExecutable(manifest: any, executable: string): boolean {
+  const bin = manifest?.bin;
+  if (typeof bin === 'string') return bin.trim().length > 0;
+  if (bin && typeof bin === 'object') {
+    const names = Object.keys(bin);
+    // npx runs a package's only executable whatever its name.
+    return names.includes(executable) || names.length === 1;
+  }
+  return !!manifest?.directories?.bin;
+}
+
+function extractMissingNpxExecutable(ticket: RepairTicket): MissingNpxExecutableEvidence | null {
+  for (const failed of ticket.failedTasks) {
+    if (failed.tool !== 'shell_execute' || !failed.cwd || !failed.command) continue;
+    const evidence = `${failed.error || ''}\n${ticket.primaryError || ''}`;
+    if (!/could not determine executable to run/i.test(evidence)) continue;
+    const base = path.resolve(failed.cwd);
+    let dir = base;
+    for (const rawSegment of failed.command.split(/&&|\|\||;|\|/)) {
+      const segment = rawSegment.trim();
+      const cd = segment.match(/^cd\s+(?:\/d\s+)?["']?([^"']+?)["']?$/i);
+      if (cd) {
+        // The executor may already have bound the cwd the plan's `cd` named;
+        // follow a `cd` only when it exists and stays inside the recorded cwd.
+        const next = path.resolve(dir, cd[1]);
+        const relative = path.relative(base, next);
+        if (!relative.startsWith('..') && !path.isAbsolute(relative) && fs.existsSync(next)) dir = next;
+        continue;
+      }
+      const spec = npxPackageSpec(segment);
+      if (!spec) continue;
+      const packageName = spec.match(/^((?:@[^/@\s]+\/)?[^@\s]+)/)?.[1] || '';
+      if (!isSafeNpmPackageName(packageName)) continue;
+      const executable = packageName.split('/').pop() || packageName;
+      const manifest = installedManifest(dir, packageName);
+      if (!manifest || manifestDeclaresExecutable(manifest, executable)) continue;
+      let declared: any = null;
+      try { declared = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8')); } catch { declared = null; }
+      const dev = !!declared?.devDependencies?.[packageName];
+      // A transitive package is not the plan's own install; pinning it as a
+      // direct dependency would be a change the evidence does not ask for.
+      if (!dev && !declared?.dependencies?.[packageName]) continue;
+      return {
+        packageName,
+        executable,
+        installedVersion: String(manifest.version || 'unknown'),
+        dev,
+        cwd: dir,
+        task: failed.task,
+      };
+    }
   }
   return null;
 }
@@ -889,6 +1013,13 @@ export class SelfFixService {
       };
     }
 
+    // ⛔ AN UNREAD REQUEST HAS NO FILE TO FIX. react_project stopped because
+    // the request itself could not be read, so nothing it built was judged;
+    // rewriting a source file would be a guess dressed as a repair.
+    if (ticket.failedTasks.some(task => /acceptance_unverified:\s*request_not_read/i.test(String(task.error || '')))) {
+      return this.stop(ticket, 'The request itself could not be read, so acceptance is unverified and there is no evidence-bound file to repair. Re-run once a provider can read the request.', 'manual_review');
+    }
+
     const acceptanceEvidence = extractAcceptanceEvidence(ticket);
     if (acceptanceEvidence) {
       return {
@@ -924,6 +1055,32 @@ export class SelfFixService {
     const cureNote = remembered
       ? `A cure proven ${remembered.wins}x on this same error class: ${remembered.repair}`
       : '';
+
+    const capabilityGap = extractCapabilityGapEvidence(ticket);
+    if (capabilityGap) {
+      const repairTarget = { path: capabilityGap.file, cwd: capabilityGap.cwd };
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `The delivery gate could not prove requested capabilities in the generated file ${capabilityGap.file}: ${capabilityGap.capabilities}. Repair only that file, then rerun the failed phase and judge it again.`,
+        maxAttempts: 1,
+        strategy: 'code_fix',
+        repairFile: capabilityGap.file,
+        suggestedTool: 'ai_write_file',
+        suggestedInput: {
+          path: capabilityGap.file,
+          description: `Repair only the generated file ${capabilityGap.file}; do not redirect the fix to another file.\n`
+            + `Unproven capabilities, exactly as the delivery gate named them: ${capabilityGap.capabilities}\n`
+            + 'Add each one as a concrete state, interaction and visible result in this file. Preserve every working behaviour, import and the default export; return the complete corrected file.'
+            + (capabilityGap.request ? `\nOriginal request:\n${capabilityGap.request}` : '')
+            + (cureNote ? `\n[PROVEN PAST CURE — same error class]: ${cureNote}` : ''),
+          context: JSON.stringify({ repairTarget, repairTicket: ticket }),
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
 
     const launcher = extractMissingLauncher(ticket);
     if (launcher) {
@@ -1086,6 +1243,29 @@ export class SelfFixService {
           command: 'install',
           ...(invalidNpmVersion.explicitSpecifier ? { packages: [token] } : {}),
           cwd: invalidNpmVersion.cwd,
+        },
+        rememberedCure: cureNote || undefined,
+        safety: this.safety(),
+        sourceTicket: ticket,
+      };
+    }
+
+    const missingNpxExecutable = extractMissingNpxExecutable(ticket);
+    if (missingNpxExecutable) {
+      const { packageName, executable, installedVersion, dev, cwd } = missingNpxExecutable;
+      return {
+        type: 'self_fix_plan',
+        allowed: true,
+        reason: `npx could not run ${executable}: the installed ${packageName}@${installedVersion} declares no "${executable}" executable. Install the newest published ${packageName} whose manifest declares it (registry evidence) in the recorded project cwd, then rerun the failed phase.`,
+        maxAttempts: 1,
+        strategy: 'dependency_fix',
+        suggestedTool: 'npm_manager',
+        suggestedInput: {
+          command: 'install',
+          packages: [packageName],
+          dev,
+          cwd,
+          providesBin: executable,
         },
         rememberedCure: cureNote || undefined,
         safety: this.safety(),

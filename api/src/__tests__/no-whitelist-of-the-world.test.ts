@@ -14,8 +14,11 @@ const keys = (r: string) => inferModel(r).entities.map(e => e.key);
 
 describe('a business nobody hardcoded still gets a database', () => {
     it('a car rental', () => {
+        // «vehicles» is the curated `cars` table: the list reader and the delivery
+        // gate key it so, and an English item is read by its head as theirs are
+        // (round 21) — one table, one key, whichever reader built it.
         expect(keys('a car rental system with vehicles, rentals, drivers and invoices'))
-            .toEqual(['vehicles', 'rentals', 'drivers', 'invoices']);
+            .toEqual(['cars', 'rentals', 'drivers', 'invoices']);
     });
 
     it('a library', () => {
@@ -104,6 +107,8 @@ describe('and it sits BEFORE the model, not after', () => {
         //  guard on the spelling of a line, not on the property the test
         //  is named for. The property is that the shape reader's output
         //  is validated, whatever the call looks like.
-        expect(d).toMatch(/validateDesign\(inferred\.entities/);
+        //  Round 22: the shape reader's reading is `shaped` (one reading of the
+        //  items, R4), and it is still validated before anything is returned.
+        expect(d).toMatch(/validateDesign\(shaped, floor\)/);
     });
 });

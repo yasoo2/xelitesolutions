@@ -4,6 +4,9 @@ import { ToolPermission } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { glob } from 'glob';
+import { editAlreadyApplied } from '../../../shared/utils/edit-in-place';
+import { autonomousDevelopmentEnabled } from '../../services/AutonomousDevelopmentPolicy';
+import { inspectAutonomousWorkspaceDirectory } from '../../services/AutonomousWorkspacePolicy';
 
 function getWorkspaceRoot(workspaceId?: string) {
     try {
@@ -53,6 +56,10 @@ export class DirectoryInspectionTool extends BaseTool {
     sideEffects: ToolPermission[] = [];
 
     async execute(input: any, context?: any) {
+        if (autonomousDevelopmentEnabled(process.env.JOE_AUTONOMOUS_DEVELOPMENT)) {
+            const { workspaceService } = require('../../services/WorkspaceService');
+            return inspectAutonomousWorkspaceDirectory(input.path, workspaceService.getActiveRoot(context?.workspaceId), workspaceService.externalRoot);
+        }
         const dirPath = resolveToolPath(String(input?.path ?? '.'), context?.workspaceId);
         const depth = Number(input.depth || 1);
 
@@ -314,6 +321,8 @@ function applyAdvancedReplacement(content: string, find: string, replace: string
     const asFile = (t: string) => t.replace(/\r\n?/g, '\n').split('\n').join(ending);
     const findHere = asFile(find);
     const replaceHere = asFile(replace);
+    // Already in place: unchanged, never spliced a second time (shared/utils/edit-in-place.ts).
+    if (editAlreadyApplied(content, findHere, replaceHere)) return content;
     if (content.includes(findHere)) return content.replace(findHere, replaceHere);
     const lines = String(find || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
     if (!lines.length) return null;

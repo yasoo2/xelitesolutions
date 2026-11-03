@@ -82,7 +82,10 @@ describe('a foundation that installs nothing cannot verify by importing', () => 
      * would drop the guard that made it worth writing.
      */
     it('and the verification still gates the tool\'s own ok', () => {
-        expect(ENTERPRISE).toMatch(/const verified = pythonSkipped \? jsonValid : \(compile\.ok && tests\.ok && serviceTests\.ok && jsonValid\);/);
+        // Round 22: the foundation tests are judged by the one judge of a test run — a
+        // run that ran nothing proved nothing — and still gate the tool's own ok.
+        expect(ENTERPRISE).toMatch(/const verified = pythonSkipped \? jsonValid : \(compile\.ok && foundationRun\.passed && serviceTests\.ok && jsonValid\);/);
+        expect(ENTERPRISE).toMatch(/const foundationRun = judged\(tests\);/);
         expect(ENTERPRISE).toMatch(/ok: verified,/);
     });
 

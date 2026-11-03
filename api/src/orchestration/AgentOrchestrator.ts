@@ -3,7 +3,7 @@ import { isArabicReply, say } from '../shared/reply-language';
 import { unrunnableShellStep } from '../core/orchestrator/plan-tools';
 import { IntentParser } from '../core/intelligence/IntentParser';
 import { executeTool } from '../modules/services/ToolService';
-import { broadcastThinkingDetail, broadcast } from '../api/ws';
+import { broadcastThinkingDetail, broadcast } from '../api/ws';
 import { announcePhase } from '../core/orchestrator/phaseAnnounce';
 import { narrate, narrationEnabled } from '../core/agents/narrator';
 import { routeToModel, isProviderFailure, PROVIDER_FAILURE_PREFIX } from '../core/llm/intelligent-router';
@@ -19,7 +19,7 @@ import intelligentRouter from '../core/llm/intelligent-router';
 import { withDeadline, NODE_DEADLINE_MS, RUN_DEADLINE_MS } from '../shared/utils/deadline';
 import { repairMemory } from '../core/memory/repair-memory';
 import { RunStep } from '../core/orchestrator/answerComposer';
-import { CANCELLED } from '../core/session/attended-run';
+import { CANCELLED, bindRunCancellation } from '../core/session/attended-run';
 import { compactCapabilityDecisionReceiptForRuntime } from '../core/capabilities/decision-profiles';
 
 /** Tools the PlanningEngine picks DETERMINISTICALLY. A node carrying one of
@@ -30,7 +30,7 @@ import { compactCapabilityDecisionReceiptForRuntime } from '../core/capabilities
  *  see that tool, fell back to another one, and the repo was never analysed. */
 const DETERMINISTIC_TOOLS = [
     'google_account', 'user_browser',
-    'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read',
+    'write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read', 'file_edit',
     'web_page_builder', 'react_project', 'api_project', 'orders_read', 'business_profile', 'project_edit', 'form_inbox', 'import_project', 'git_local_workflow', 'github_repo_manager', 'project_pipeline', 'project_run', 'project_stop', 'deploy_pages',
 ];
 
@@ -114,6 +114,12 @@ const MAX_REPAIR_NODES = 6;
  */
 export function isFinalPipelineOutcome(tool: string | undefined, output: any): boolean {
   if (tool === 'project_pipeline') return output?.pipelineFinal === true;
+  // The agent engine runs the build node it takes over under the planned
+  // name, so its measured delivery verdict arrives as a react_project or
+  // api_project result. That verdict is final like the pipeline's: a
+  // recovery planner would rebuild what Joe's own gates just judged.
+  if ((tool === 'react_project' || tool === 'api_project')
+    && output?.pipelineFinal === true && typeof output?.engineStatus === 'string') return true;
   // A surgical edit already built and measured the current project. When its
   // own acceptance or visible-browser gate fails, the payload is final
   // evidence for this attempt. Sending it to a generative recovery planner
@@ -191,12 +197,11 @@ export class AgentOrchestrator {
   private context?: Record<string, any>;
 
   /**
-   * Stop is a run-level control, not merely a tool-level control. LLM calls
-   * cannot be forcibly interrupted, but every await boundary must refuse to
+   * Stop is a run-level control, not merely a tool-level control. Model transports receive the owner signal, and every await boundary refuses to
    * turn a cancelled plan into real work when the response eventually arrives.
    */
   private throwIfCancelled(): void {
-    if (this.context?.isCancelled?.() === true) throw new Error(CANCELLED);
+    if (this.context?.isCancelled?.() === true || this.context?.signal?.aborted) throw new Error(CANCELLED);
   }
 
   /**
@@ -283,7 +288,10 @@ export class AgentOrchestrator {
     this.memory.set(goal.id, runtimeMemory);
 
     let traceEnded = false;
+    let modelCancellation: ReturnType<typeof bindRunCancellation> | undefined;
     try {
+        modelCancellation = bindRunCancellation(this.context?.cancellation, this.context?.signal);
+        this.context!.signal = modelCancellation.signal;
         this.throwIfCancelled();
         // [Departments] BA analyses the request, then the Architect plans it.
         emitDepartment(goal.id, 'analyst');
@@ -320,6 +328,7 @@ export class AgentOrchestrator {
 
         return result;
     } finally {
+        modelCancellation?.dispose();
         // Runtime memory is scoped to one execution. Keeping it in this Map
         // after return retains every bounded history/result object until the
         // process ends and turns repeated runs into a slow memory leak.
@@ -335,10 +344,36 @@ export class AgentOrchestrator {
    */
   public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
     this.throwIfCancelled();
-    const context = IntentParser.createContext('orchestrator', 'global', [], this.context);
+    // With the agent engine on, a request to build software, or to change the
+    // project this chat already has, goes to the engine as one build node
+    // (core/engine/select.ts agentEngineRoute). The first planner never picks
+    // a tool for it: on 2026-11-01 it turned «عدّل نفس التطبيق…» into a
+    // question to the user and nothing changed. Loaded on demand: this
+    // file's static imports are guarded.
+    const agentRoute = await (async () => {
+      try { return await require('../core/engine/select').agentEngineRoute(goalText, this.context); } catch { return null; }
+    })();
+    if (agentRoute) {
+      return {
+        id: randomUUID(),
+        status: 'idle',
+        nodes: [{
+          id: 'agent_build', traceId, agent: 'Dev' as AgentType, task: String(goalText || '').slice(0, 300), tool: 'project_pipeline',
+          input: { request: goalText, ...(agentRoute.kind === 'change' ? { path: agentRoute.path } : {}) },
+          dependencies: [], status: 'pending',
+        }],
+      };
+    }
+    //  The provider the user chose, not the whole run context: given the whole
+    //  context as its modelConfig, the parser's call found no provider in it and
+    //  ran on the default (measured 2026-11-02: Claude chosen, the request read
+    //  by the local model on the CPU for minutes). The run id keeps a paid
+    //  call's spend on the run's line in the ledger.
+    const context = IntentParser.createContext('orchestrator', 'global', [], this.context?.modelConfig, this.context?.signal);
+    (context as any).runId = this.context?.runId;
     const intent = await IntentParser.parse(goalText, context);
     this.throwIfCancelled();
-    
+
     // (An `enrichedGoal` used to be built here from memory.getSummary() and
     //  then never passed to anything — the plan was always made from goalText.
     //  The history DOES reach the planner, through the `memory` argument below,
@@ -437,7 +472,7 @@ export class AgentOrchestrator {
       }
 
       console.log(`[AgentOrchestrator] Step Iteration. Completed: ${completedNodes.size}/${dag.nodes.length}`);
-      
+
       // A dependency on a node that is not IN the graph can never be satisfied —
       // the node would stay pending, the loop would see nothing ready, and after
       // two replans the run ends with «Execution stopped» instead of doing the
@@ -491,25 +526,12 @@ export class AgentOrchestrator {
             }
           }
 
-          // Keep the tool consistent with the resolved agent (no repo task -> browser).
-          // CRITICAL: never clobber a specific browser smart-tool (browser_summarize,
-          // browser_responsive_check, browser_smart_agent, ...) — those are chosen
-          // deterministically by PlanningEngine and executed directly below. Coercing
-          // them to the generic browser_run here is what made every smart-browser
-          // prompt fall through to a failed browser_run + "Recovery failed".
-          if (node.tool !== 'central_answer') {
-            const isSmartBrowserTool = typeof node.tool === 'string'
-              && node.tool.startsWith('browser_') && node.tool !== 'browser_run';
-            // Deterministic tools chosen by PlanningEngine (Google, the user's browser,
-            // file read/write, page builder) must NEVER be coerced to browser_run just
-            // because the agent got re-classified — that broke compound plans (e.g. the
-            // "send" node of a browse->email plan ran the browser instead of Gmail).
-            const isProtected = isSmartBrowserTool || (typeof node.tool === 'string' && DETERMINISTIC_TOOLS.includes(node.tool));
-            if (!isProtected) {
-              if (node.agent === 'Browser') { node.tool = 'browser_run'; }
-              else if (node.tool === 'browser_run') { node.tool = 'shell_execute'; }
-            }
-          }
+          // The plan owns every explicit tool name. Agent labels are execution
+          // metadata; they must not replace a planned capability with a broader
+          // browser or shell tool. Unknown names reach ToolService unchanged and
+          // are rejected there. Only an unassigned node keeps agent fallback.
+          const hasPlannedTool = typeof node.tool === 'string' && !!node.tool.trim();
+          if (!hasPlannedTool && node.agent === 'Browser') node.tool = 'browser_run';
 
           node.status = "running";
           const startTime = Date.now();
@@ -536,7 +558,13 @@ export class AgentOrchestrator {
           // dead-brain latch, making a healthy planning call look unavailable.
           // Keep narration for ordinary nodes, but never buy it before engineering
           // planning begins; the pipeline's real progress remains visible below.
-          if (narrationEnabled() && node.tool !== 'project_pipeline') {
+          // Direct answers already produce the user-facing response. A second
+          // model call for narration delays it and competes for local inference.
+          // Basic file I/O already emits real tool progress and read-back evidence.
+          // Do not hold each file step behind an optional model completion.
+          if (narrationEnabled() && node.tool !== 'project_pipeline'
+              && node.tool !== 'central_answer' && node.tool !== 'echo'
+              && !['write_file', 'file_write', 'create_file', 'write_to_file', 'read_file', 'file_read', 'file_edit'].includes(String(node.tool || '').trim())) {
               const line = await narrate(
                   {
                       goal: goalText || node.task,
@@ -546,12 +574,15 @@ export class AgentOrchestrator {
                       total: dag.nodes.length,
                       isArabic: /[ؠ-ٟٮ-ۓۺ-ۿ]/.test(String(goalText || '')),
                   },
-                  (prompt) => routeToModel(
+                  (prompt, signal) => routeToModel(
                       [{ role: 'user', content: prompt }],
                       undefined, undefined, undefined, undefined, undefined, undefined,
                       {
                         modelConfig: goalContext?.modelConfig,
                         purpose: 'internal',
+                        signal: goalContext?.signal && signal
+                          ? AbortSignal.any([goalContext.signal, signal])
+                          : goalContext?.signal || signal,
                         runId: goalContext?.runId || traceId || liveSessionId,
                         traceId,
                         engineeringPipeline: node.tool === 'project_pipeline',
@@ -562,13 +593,13 @@ export class AgentOrchestrator {
               else console.log(`[Narrator] no line for ${node.id} (${line.reject || 'rejected'})`);
           }
 
-          const isBrowserNode = node.agent === 'Browser' || node.tool === 'browser_run';
+          const isBrowserNode = typeof node.tool === 'string' && node.tool.trim().startsWith('browser_');
           if (isBrowserNode) {
             broadcast({
               type: 'step_started',
               data: {
                 sessionId: memory.sessionId,
-                tool: { name: 'browser_run', input: { task: node.task } }
+                tool: { name: node.tool.trim(), input: { task: node.task } }
               },
               sessionId: memory.sessionId
             });
@@ -585,7 +616,7 @@ export class AgentOrchestrator {
                   startTime
               });
           }
-        
+
           const agent = this.agents.get(node.agent);
           let result;
 
@@ -594,11 +625,22 @@ export class AgentOrchestrator {
           // Keep the value on the canonical context so ProjectPipelineTool can
           // carry it through PhaseExecutor, verifiers, generators, and repairs.
           const engineeringNode = ['project_pipeline', 'react_project', 'api_project'].includes(String(node.tool || ''));
+          // ⛔ 120 s was the default for EVERY engineering node and flowed into the
+          // planner, every phase and every generator — on the owner's CPU each local
+          // call stopped at exactly 120 s ([LocalDeadline] requestedMs 120000 vs a
+          // sized 993600, eval round 5, 2026-10-23). When the LOCAL model serves, the
+          // call ceiling is the operator's local ceiling (the router sizes each call
+          // under it) and the planner deadline is left for the pipeline to size.
+          // Loaded only for engineering nodes: the orchestrator's static import surface
+          // is guarded (file-step-narration sandboxes it with an allowlist).
+          const localServed = engineeringNode && (() => {
+              try { return require('../core/llm/served-local-selection').servedByLocalModel(goalContext || {}) === true; } catch { return false; }
+          })();
           const engineeringLlmTimeoutMs = engineeringNode
-            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : 120000)
+            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : localServed ? require('../core/orchestrator/planner-run-boundary').localPlannerCeilingMs() : 120000)
             : goalContext?.providerTimeoutMs;
           const engineeringPlannerTimeoutMs = engineeringNode
-            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : 120000)
+            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : localServed ? undefined : 120000)
             : goalContext?.plannerTimeoutMs;
           const executionContext = {
               sessionId: liveSessionId,
@@ -641,8 +683,8 @@ export class AgentOrchestrator {
               onThought: (m: string) => { try { broadcastThinkingDetail(liveSessionId, m); } catch { /* panel optional */ } },
           };
 
-          const isDirectAnswer = node.tool === 'central_answer'
-            || /^(answering|respond to)\s*:/i.test(node.task || '');
+          const isDirectAnswer = String(node.tool || '').trim() === 'central_answer'
+            || (!String(node.tool || '').trim() && /^(answering|respond to)\s*:/i.test(node.task || ''));
 
           // Resolve {{FROM:<nodeId>}} references so a later node can CONSUME an earlier
           // node's output — e.g. write the browser's extracted data into a file. This
@@ -708,7 +750,22 @@ export class AgentOrchestrator {
               // مخططة (خصوصاً browser_run وأدوات التحقق) بأداة مختلفة أو برد
               // نصي. ننفذ الاسم كما هو؛ الاسم غير المسجّل يفشل صراحة في بوابة
               // الأدوات بدلاً من اختراع بديل.
-              const plannedTool = node.tool.trim();
+              let plannedTool = node.tool.trim();
+              // The general agent engine (core/engine) builds the project when
+              // the run asks for it: JOE_ENGINE=agent, or the run's own `engine`
+              // field. It takes the BUILD nodes only. The read-only audits that
+              // also travel as project_pipeline, and every other node, stay on
+              // this path. node.tool is left as planned, so deadlines and the
+              // final-outcome rule below treat it as the build it is. Loaded on
+              // demand: this file's static imports are guarded.
+              const agentBuild = engineeringNode
+                && !['read_only_audit', 'workspace_overview'].includes(String(node.id || ''))
+                && (() => { try { return require('../core/engine/select').engineFor(goalContext) === 'agent'; } catch { return false; } })();
+              if (agentBuild) {
+                plannedTool = 'agent_engine';
+                nodeInput.request = goalText;
+                if (goalContext?.resumeProjectRoot) nodeInput.path = goalContext.resumeProjectRoot;
+              }
               if (!DETERMINISTIC_TOOLS.includes(plannedTool)) {
                 console.log(`[AgentOrchestrator] executing planned non-catalogued tool directly: ${plannedTool}`);
               }
@@ -762,7 +819,7 @@ export class AgentOrchestrator {
         let result: any = ran.result;
         const startTime: number = ran.startTime;
         const isDirectAnswer: boolean = ran.isDirectAnswer;
-        
+
         if (result.ok) {
           // A retry that succeeds PROVES the repair worked — that is the only
           // moment a cure is worth remembering. Recording at plan time would
@@ -818,31 +875,24 @@ export class AgentOrchestrator {
             const existingIds = new Set(dag.nodes.map(n => n.id));
             const uniqueNodes = updatedDag.nodes.filter(n => !existingIds.has(n.id));
             dag.nodes = [...dag.nodes, ...uniqueNodes];
-            break; 
+            break;
           }
         } else {
           console.error(`[AgentOrchestrator] Node ${node.id} failed: ${result.error}`);
 
-          // A conversational / direct-answer node must NEVER spawn a diagnostic
-          // recovery loop (the duplicated "neural thinking" the user reported).
-          // Treat it as completed with whatever text we have and move on.
-          if (isDirectAnswer && !isProviderFailure(result.error)) {
-            // …but «the brain is unreachable» is not an answer to surface as
-            // one. Marking it completed made the run claim success, and — since
-            // a completed node's result is what {{FROM:…}} hands to the next
-            // step — wrote «تعذّر الوصول إلى محرّك الذكاء» into the user's
-            // report file in the place where the findings belong. Measured in
-            // verify_honest_results.ts. A dead brain falls through to the
-            // failure path below, which ends the run honestly and without a
-            // recovery loop.
-            const text = (typeof result.error === 'string' && result.error) ? result.error : 'تم.';
-            node.status = "completed";
-            node.result = text;
-            memory.record(node.id, node.task, text, "completed");
-            completedNodes.add(node.id);
-            continue;
+          // Failed answers are terminal evidence, not usable answer content.
+          // Stop before dependent steps or generative recovery can consume
+          // a permission rejection, timeout, cancellation or provider error.
+          if (isDirectAnswer) {
+            const text = (typeof result.error === 'string' && result.error)
+              ? result.error
+              : say(this.replyIsArabic(memory), 'تعذّر إكمال الإجابة.', 'The answer could not be completed.');
+            node.status = "failed";
+            node.lastError = text;
+            node.result = result.output ?? text;
+            memory.record(node.id, node.task, text, "failed");
+            return { ok: false, result: text, steps: runSteps(dag) };
           }
-
           // Tools that report a "the user must do X" state — connect Google, install
           // the browser extension, provide a 2FA code — are asking the USER to act.
           // That is a legitimate answer to surface, NOT a system failure to "recover"
@@ -899,8 +949,13 @@ export class AgentOrchestrator {
           // including provider outages: the pipeline owns phase-level recovery.
           const isDeterministicRunFailure = node.tool === 'project_run';
           const isFinalPipelineFailure = isFinalPipelineOutcome(node.tool, out);
-          if (out.nonRecoverable === true || out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
-            const reason = out.verificationFailed === true
+          // A gateway refusal is a terminal boundary, not repair instructions.
+          // Replanning must not replace a rejected tool or guess past its guard.
+          const isGatewayPolicyFailure = result.error === 'policy_blocked';
+          if (isGatewayPolicyFailure || out.nonRecoverable === true || out.verificationFailed === true || isDeterministicRunFailure || isFinalPipelineFailure) {
+            const reason = isGatewayPolicyFailure
+              ? 'gateway_policy_blocked'
+              : out.verificationFailed === true
               ? 'verification_failed'
               : out.nonRecoverable === true
                 ? 'non_recoverable_precondition'
@@ -987,7 +1042,7 @@ export class AgentOrchestrator {
           if (recoveryResult.recovered) {
             broadcastThinkingDetail(memory.sessionId, `⚠️ Recovering from failure in "${node.task}". Injecting repair nodes...`);
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_attempted', nodeId: node.id, status: 'recovered' });
-            
+
             const existingIds = new Set(dag.nodes.map(n => n.id));
             const nodesWithRetry = recoveryResult.newNodes
               .filter(n => !existingIds.has(n.id))
@@ -1201,9 +1256,9 @@ export class AgentOrchestrator {
       status: "pending"
     }));
 
-    return { 
-        recovered: newNodes.length > 0, 
-        newNodes 
+    return {
+        recovered: newNodes.length > 0,
+        newNodes
     };
   }
 

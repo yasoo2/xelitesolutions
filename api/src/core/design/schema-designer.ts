@@ -21,7 +21,7 @@
  */
 import type { ModelEntity, ModelField } from './data-model';
 import { deriveDataModel } from './data-model';
-import { namedEntities } from './named-entities';
+import { listedRecords, type ListedReading } from './named-entities';
 import { declaredTables } from './declared-tables';
 
 /** The shape the model is constrained to. Small on purpose — it must fit a 7B. */
@@ -246,16 +246,20 @@ Rules:
 }
 
 /**
- * The designed model, or the six known domains, or nothing — in that order.
+ * What his own words design, with no model asked: the finance contract, the
+ * tables he declared, his listed records and the items the shape reader reads
+ * beside them, the shapes of his words, then a stocked domain for a request
+ * that names nothing. Empty when none of them answers.
  *
- * `onNote` receives one honest line about which of the three answered, because
- * a user who cannot tell whether a model designed his database or a keyword did
- * has been told nothing.
+ * Synchronous and shared: designDataModel asks a model only after this, and
+ * the interface builder's fallback (react_project, when the server left no
+ * model behind) reads the SAME function in the SAME order — one reading of
+ * the sentence for both halves of a build.
  */
-export async function designDataModel(
+export function readDataModel(
     requestRaw: string,
-    opts?: { onNote?: (note: string) => void; timeoutMs?: number },
-): Promise<ModelEntity[]> {
+    opts?: { onNote?: (note: string) => void; listing?: ListedReading },
+): ModelEntity[] {
     /**
      * «بفئات: طعام، مواصلات، فواتير، ترفيه» declares the OPTIONS of one
      * select field — and the shape readers below turned that list into three
@@ -322,22 +326,34 @@ export async function designDataModel(
     const { inferModel } = require('./entity-inference');
 
     /**
-     * TWO READERS OF THE SAME SENTENCE — TAKE THE ONE THAT HEARD MORE OF IT.
+     * TWO READERS OF THE SAME ITEMS — EACH ITEM READ ONCE (round 21 review, R4).
      *
-     * `namedEntities` matches against a curated list of nouns: high precision,
-     * and blind to any noun nobody wrote down. `inferModel` reads by shape and
-     * has never heard of freight. Given the same eleven-domain sentence the
-     * curated reader returned five and the shape reader returned nine — and
-     * because the curated one ran first and returned a non-empty answer, four
-     * domains he typed were dropped without a word.
-     *
-     * Neither is wrong; they have different recall. So both read the sentence
-     * and the fuller reading wins, with the curated one preferred on a tie
-     * because its labels are hand-checked.
+     * `namedEntities` (the shared list reader) reads every item of his list:
+     * the nouns we know with hand-checked labels and columns, the unlisted
+     * nouns of a proven list, records about a known one. `inferModel` reads
+     * the same items by shape. This used to be a vote by COUNT — «the fuller
+     * reading wins» — and a count cannot tell which reading is right: the
+     * shape reader counted the words in front of his list as one more table
+     * («Library system: books, members, loans» → `libraries`, «4 by shape beat
+     * 3 by name») and won. Now each item has one reading: the list reader's
+     * where it read the item, the shape reader's only for an item of the same
+     * list the list reader could not read («rental contracts»). His list is
+     * never dropped for a fuller guess, and nothing outside it is added.
      */
-    const listed = namedEntities(request);
+    const listing: ListedReading = opts?.listing || listedRecords(request, { backend: true });
+    const listed = listing.entities;
     const reading = inferModel(request);
-    const shaped = reading.entities;
+    const shaped: ModelEntity[] = reading.entities;
+    if (listed.length) {
+        const have = new Set(listed.map(e => e.key));
+        const served = new Set(listing.served.map(s => s.key));
+        const extra = shaped.filter(e => !have.has(e.key) && !served.has(e.key));
+        const valid = validateDesign([...listed, ...extra], 1);
+        if (valid && valid.length) {
+            opts?.onNote?.(`data model: read from the request itself — ${valid.map(e => e.key).join(', ')}`);
+            return valid;
+        }
+    }
     /**
      *  A COUNT CANNOT TELL A BETTER READING FROM A WORSE ONE.
      *
@@ -352,49 +368,11 @@ export async function designDataModel(
      *  keys a question his sentence had already answered.
      */
     const floor = reading.declared ? 1 : 2;
-    if (listed.length || shaped.length >= floor) {
-        const richer = shaped.length > listed.length ? shaped : listed;
-        const valid = validateDesign(richer, richer === shaped ? floor : 2);
-        if (valid && valid.length >= (richer === shaped ? floor : 2)) {
+    if (shaped.length >= floor) {
+        const valid = validateDesign(shaped, floor);
+        if (valid && valid.length >= floor) {
             opts?.onNote?.(`data model: read from the request itself — ${valid.map(e => e.key).join(', ')}`
-                + (richer === shaped && listed.length ? ` (${shaped.length} by shape beat ${listed.length} by name)` : ''));
-            return valid;
-        }
-        if (listed.length >= 2) {
-            opts?.onNote?.(`data model: read from the request itself — ${listed.map(e => e.key).join(', ')}`);
-            return listed;
-        }
-    }
-
-    /**
-     * THE GENERAL PATH — «يجب ان نجد طريقه اخرى».
-     *
-     * He is right that adding a domain per prompt is not a plan: «هذا يعني ان
-     * يجب ان اطور جو لالاف الميزات … وهذا غير ممكن». A stocked domain is a
-     * whitelist — six domains, forty nouns — and a whitelist of the world has
-     * no end.
-     *
-     * This reads the request by the SHAPE of its words: what a noun looks
-     * like, what a gerund looks like, which suffixes mark a person, a payment,
-     * an appointment, a container. It has never heard of a veterinary clinic
-     * or a freight company and it builds both, because that list grows with a
-     * language and not with the world.
-     *
-     * It runs BEFORE the model and before the stock: it costs nothing, works
-     * with every provider rate-limited, and never invents a table it cannot
-     * give columns.
-     */
-    const inferred = inferModel(request);
-    //  Two, and not the caller's floor: this block is only reached when
-    //  the block above did NOT return, and a declared reading always
-    //  returns there. A mutation proved the conditional could never
-    //  decide anything, so it is written as the constant it is.
-    const inferredFloor = 2;
-    if (inferred.entities.length >= inferredFloor) {
-        const valid = validateDesign(inferred.entities, inferredFloor);
-        if (valid && valid.length >= inferredFloor) {
-            opts?.onNote?.(`data model: inferred from the request's own words — ${valid.map(e => e.key).join(', ')}`
-                + (inferred.capabilities.length ? ` (not tables: ${inferred.capabilities.slice(0, 4).join(', ')})` : ''));
+                + (reading.capabilities.length ? ` (not tables: ${reading.capabilities.slice(0, 4).join(', ')})` : ''));
             return valid;
         }
     }
@@ -402,9 +380,27 @@ export async function designDataModel(
     // Only now: a request that named nothing of its own.
     const known = deriveDataModel(request);
     if (known.length) { opts?.onNote?.(`data model: nothing was named, so a known domain answered — ${known.map(e => e.key).join(', ')}`); return known; }
+    return [];
+}
+
+/**
+ * The designed model, or the six known domains, or nothing — in that order.
+ *
+ * `onNote` receives one honest line about which of the three answered, because
+ * a user who cannot tell whether a model designed his database or a keyword did
+ * has been told nothing.
+ */
+export async function designDataModel(
+    requestRaw: string,
+    opts?: { onNote?: (note: string) => void; timeoutMs?: number; listing?: ListedReading },
+): Promise<ModelEntity[]> {
+    const read = readDataModel(requestRaw, opts);
+    if (read.length) return read;
 
     if (String(process.env.JOE_AI_SCHEMA || '1') === '0') return [];
 
+    const { stripDeclaredOptions } = require('./app-blueprints');
+    const request = stripDeclaredOptions(requestRaw);
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { askStructured } = require('../llm/structured');

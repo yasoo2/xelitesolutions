@@ -1,0 +1,57 @@
+From e54a2ce19cb26bdb32a12b7dde48cb7c811f2d75 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:44 +0000
+Subject: [PATCH 9/9] test(delivery): an open finding blocks on its own,
+ whatever else joins
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: honest-delivery (culprit 76f66a5d)
+  what blocks delivery is an open finding, not a flattering score
+  › the builder collects them AFTER the self-repair, from the final audit
+    pinned `qualityDeliveryBlocked = openQualityFindings.length > 0`
+
+Decision: P. 76f66a5d put `buildVerificationBlocked ||` (no dist bundle)
+in front and added recordsPresentationFindings; `openQualityFindings.length
+> 0` is still a top-level disjunct, so any open finding of the final audit
+blocks delivery — including in the static_records mode, which runs the
+same audit and verdict. The test now splits the decision on its top-level
+`||` and requires that bare disjunct, instead of pinning its position.
+
+Non-vacuity:
+  findings-not-blocking: `(openQualityFindings.length > 0 && visualAuditUnavailable)`
+    ✕ the builder collects them AFTER the self-repair, from the final audit
+    Expected value: "openQualityFindings.length > 0"
+    Received array: ["buildVerificationBlocked", "(openQualityFindings.length > 0 && visualAuditUnavailable)", ...]
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/honest-delivery.test.ts | 9 ++++++++-
+ 1 file changed, 8 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/honest-delivery.test.ts b/api/src/__tests__/honest-delivery.test.ts
+index 775a6266..c8d5296a 100644
+--- a/api/src/__tests__/honest-delivery.test.ts
++++ b/api/src/__tests__/honest-delivery.test.ts
+@@ -44,7 +44,14 @@ describe('what blocks delivery is an open finding, not a flattering score', () =
+         expect(blockers).toBeGreaterThan(0);
+         expect(blockers).toBeGreaterThan(repair);   // the surviving ones, not the original ones
+         expect(src).toContain('const openQualityFindings = ((audit?.findings || []) as any[])');
+-        expect(src).toMatch(/qualityDeliveryBlocked = openQualityFindings\.length > 0/);
++        //  An open finding blocks delivery ON ITS OWN: it is one top-level
++        //  disjunct of the decision, whatever else joins it. (76f66a5d put
++        //  `buildVerificationBlocked ||` in front, which the old pin read as
++        //  the finding check disappearing.)
++        const at = src.indexOf('const qualityDeliveryBlocked =');
++        expect(at).toBeGreaterThan(0);
++        const decision = src.slice(at + 'const qualityDeliveryBlocked ='.length, src.indexOf(';', at));
++        expect(decision.split('||').map(t => t.trim())).toContain('openQualityFindings.length > 0');
+     });
+ });
+ 
+-- 
+2.43.0
+

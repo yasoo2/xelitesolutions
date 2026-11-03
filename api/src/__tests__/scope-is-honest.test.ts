@@ -27,6 +27,7 @@ import {
     requestedCapabilities,
     scopeReport,
     hasFormValidationEvidence,
+    capabilityEvidence,
 } from '../core/quality/scope-audit';
 
 const HIS_REQUEST = 'Build a world-class e-commerce platform similar to Shopify. Features: '
@@ -312,5 +313,42 @@ describe('and the message says it plainly', () => {
         expect(R).toMatch(/scopeReport\(request, dirs\)/);
         // Both languages carry it, and it comes before the path.
         expect((R.match(/\$\{scopeBlock\}\$\{fidelityBlock\}\$\{appBlock\}/g) || []).length).toBe(2);
+    });
+});
+
+describe('a catalogue is judged by what the code renders, not by a component name', () => {
+    const catalog = CAPABILITIES.find(c => c.id === 'catalog')!;
+    it('an Arabic store whose ProductCatalogue renders its filtered products is a catalogue', () => {
+        const source = `export default function ProductCatalogue({ products }) {
+  const filteredProducts = products.filter(p => p.category === category);
+  return <section className="catalogue">{filteredProducts.map(p => <article key={p.id}>{p.name} {p.price} ر.س</article>)}</section>;
+}`;
+        expect(capabilityEvidence(catalog, source)).toBe(true);
+    });
+    it('a page with no products rendered is not one', () => {
+        expect(capabilityEvidence(catalog, '<main><h1>متجر عيادة الأسنان</h1><p>قريباً</p></main>')).toBe(false);
+    });
+});
+
+describe('a filter is a state the user sets and the list follows, whatever the control', () => {
+    it('category chips that set a category the products are filtered by are filtering', () => {
+        const source = [
+            "const [category, setCategory] = useState('all');",
+            "const visible = products.filter(p => category === 'all' || p.category === category);",
+            "{categories.map(c => <button key={c.id} onClick={() => setCategory(c.id)}>{c.name}</button>)}",
+        ].join('\n');
+        expect(hasFilterEvidence(source)).toBe(true);
+    });
+    it('vanilla buttons that set the active category are filtering', () => {
+        const source = [
+            "let activeCategory = 'all';",
+            "button.addEventListener('click', () => { activeCategory = button.dataset.category; render(); });",
+            "const shown = products.filter(p => activeCategory === 'all' || p.category === activeCategory);",
+        ].join('\n');
+        expect(hasFilterEvidence(source)).toBe(true);
+    });
+    it('removing an item from a cart is not filtering', () => {
+        const source = "const [cart, setCart] = useState([]); const remove = id => setCart(prev => prev.filter(i => i.id !== id)); <button onClick={() => remove(item.id)}>حذف</button>";
+        expect(hasFilterEvidence(source)).toBe(false);
     });
 });

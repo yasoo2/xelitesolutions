@@ -199,7 +199,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
             const cleaned = cleanTraceText(detail);
             return key ? t(key) : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleaned) ? t('neuralDetailAction', 'Performing the current action') : cleaned);
           })()}</span>
-          <span className="nc-now">{uiDir === 'rtl' ? 'الآن' : t('neuralLiveNow', 'now')}</span>
+          <span className="nc-now">{t('neuralLiveNow')}</span>
         </div>
       )}
 

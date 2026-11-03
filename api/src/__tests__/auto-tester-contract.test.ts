@@ -5,6 +5,7 @@ import path from 'path';
 import { AutoTesterTool } from '../modules/tools/definitions/AutoTesterTool';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import * as ToolService from '../modules/services/ToolService';
+import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 
 describe('AutoTesterTool acceptance contract', () => {
     let workspaceRoot = '';
@@ -31,9 +32,8 @@ describe('AutoTesterTool acceptance contract', () => {
         expect(result.error).toContain('requires testType');
     });
 
-    it('preserves the trusted owner when syntax testing delegates to shell_execute', async () => {
-        const sourceFile = path.join(workspaceRoot, 'index.js');
-        fs.writeFileSync(sourceFile, 'const answer = 42;\\n');
+    it('preserves the trusted owner when a test run delegates to shell_execute', async () => {
+        fs.writeFileSync(path.join(workspaceRoot, 'package.json'), JSON.stringify({ name: 'owned', scripts: { test: 'node --test' } }));
         const executeToolSpy = jest.spyOn(ToolService, 'executeTool').mockResolvedValue({
             ok: true,
             output: '',
@@ -41,9 +41,8 @@ describe('AutoTesterTool acceptance contract', () => {
         } as any);
 
         const result: any = await new AutoTesterTool().execute({
-            testType: 'syntax',
+            testType: 'unit',
             projectPath: '.',
-            files: ['index.js'],
         }, {
             sessionId: 'session-nexus-19',
             workspaceId: 'workspace-nexus-19',
@@ -60,6 +59,22 @@ describe('AutoTesterTool acceptance contract', () => {
                 userId: 'owner-nexus-19',
             }),
         );
+        executeToolSpy.mockRestore();
+    });
+
+    it('parses JavaScript with the shared checker inside the orchestrated run, never through a shell line', async () => {
+        fs.writeFileSync(path.join(workspaceRoot, 'index.js'), 'const answer = 42;\n');
+        const executeToolSpy = jest.spyOn(ToolService, 'executeTool');
+
+        const result: any = await executionFirewall.runInContext('auto-tester-syntax', () => new AutoTesterTool().execute({
+            testType: 'syntax',
+            projectPath: '.',
+            files: ['index.js'],
+        }, { sessionId: 'session-nexus-19', workspaceId: 'workspace-nexus-19', userId: 'owner-nexus-19' }));
+
+        expect(result.ok).toBe(true);
+        expect(result.logs.join('\n')).toContain('node --check passed: index.js');
+        expect(executeToolSpy).not.toHaveBeenCalled();
         executeToolSpy.mockRestore();
     });
 

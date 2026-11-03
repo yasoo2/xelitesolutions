@@ -30,7 +30,13 @@ describe('shell timeouts match reality', () => {
 
 describe('the auto build check is honest about WHERE and WHETHER', () => {
     test('it derives the project dir from the plan-written package.json', () => {
-        expect(phaseExec).toMatch(/package\\\.json/);
+        // P001 (2026-10-25): the package.json match moved into auto-build-readiness
+        // (autoBuildManifests since round 21: every project the phase wrote into),
+        // which the executor calls with the phase's writes.
+        const readiness = fs.readFileSync(
+            path.join(__dirname, '..', 'modules', 'tools', 'auto-build-readiness.ts'), 'utf-8');
+        expect(readiness).toMatch(/package\\\.json/);
+        expect(phaseExec).toMatch(/autoBuildManifests\(writtenPaths/);
         expect(phaseExec).toMatch(/projectDir \? \{ cwd: projectDir \} : \{\}/);
     });
 

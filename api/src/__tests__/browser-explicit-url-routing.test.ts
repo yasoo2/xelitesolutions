@@ -115,9 +115,14 @@ describe('active live preview browser routing', () => {
                 { sessionId },
             );
             expect(p.steps[0].tool).toBe('project_repair');
+            //  A path is a value the code computes, not a string to spell:
+            //  the audit directory is the project directory joined with dist
+            //  by THIS platform's rules. Spelled with backslashes, this
+            //  assertion described one operating system and was red on Linux
+            //  from the commit that added it (c51f14e6).
             expect(p.steps[0].input).toMatchObject({
                 projectDir: 'C:/workspace/repair-me',
-                auditDir: 'C:\\workspace\\repair-me\\dist',
+                auditDir: path.join('C:/workspace/repair-me', 'dist'),
             });
         } finally {
             (global as any).joeProjects = before;
@@ -181,9 +186,11 @@ describe('active live preview browser routing', () => {
             { sessionId },
         );
         expect(p.steps[0].tool).toBe('project_repair');
+        //  The directory is quoted from his request verbatim; the audit
+        //  directory is computed from it with the platform's join (see above).
         expect(p.steps[0].input).toMatchObject({
             projectDir: 'C:\\workspace\\repair-me',
-            auditDir: 'C:\\workspace\\repair-me\\dist',
+            auditDir: path.join('C:\\workspace\\repair-me', 'dist'),
         });
     });
 });

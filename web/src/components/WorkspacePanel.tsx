@@ -7,6 +7,7 @@ import {
     Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
+import { useUiDir } from './NeuralTraceView';
 
 // Lazy load the heavy components
 const EnterpriseTerminalPanel = lazy(() => import('./terminal/EnterpriseTerminalPanel'));
@@ -201,6 +202,7 @@ function PanelToolbar({ filter, onFilterChange, onCopyAll, onClear, count, label
 // ─── Enhanced Logs Panel ───────────────────────────────────────────
 /** One growing file: name, size, state, and the code itself. */
 function LiveFileCard({ f }: { f: LiveFile }) {
+    const { t } = useTranslation();
     // A long run can finish dozens of files. Keeping every completed source
     // file mounted made the Logs tab render megabytes of text and eventually
     // crash the very browser Joe is meant to observe. The active file remains
@@ -233,13 +235,13 @@ function LiveFileCard({ f }: { f: LiveFile }) {
                 <FileOutput size={13} style={{ flex: 'none', color: f.done ? '#22c55e' : '#3b82f6' }} />
                 <span style={{ fontWeight: 600, direction: 'ltr' }}>{f.file}</span>
                 <span style={{ color: 'var(--joe-text-muted)', fontSize: 11 }}>
-                    {(f.content.length / 1024).toFixed(1)} KB
+                    {t('act_sizeKB', { n: (f.content.length / 1024).toFixed(1) })}
                 </span>
                 <span style={{
                     marginInlineStart: 'auto', fontSize: 11,
                     color: f.done ? '#22c55e' : '#3b82f6',
                 }}>
-                    {f.done ? '✓ اكتمل' : (f.label || '⋯ يُكتب الآن')}
+                    {f.done ? `✓ ${t('wsp_fileDone')}` : (f.label || `⋯ ${t('wsp_fileWriting')}`)}
                 </span>
             </button>
             {open && (
@@ -265,19 +267,44 @@ const LIVE_CARET_CSS = `
 `;
 
 /**
+ * The stages the server reports (api/src/core/terminal/build-status.ts) are a
+ * closed set, so each one is named here in the interface language. A stage
+ * this list does not know yet falls back to the label the server sent.
+ */
+const BUILD_STAGE: Record<string, { labelKey: string }> = {
+    sections: { labelKey: 'wsp_stageSections' },
+    assemble: { labelKey: 'wsp_stageAssemble' },
+    planning: { labelKey: 'wsp_stagePlanning' },
+    reference: { labelKey: 'wsp_stageReference' },
+    images: { labelKey: 'wsp_stageImages' },
+    content: { labelKey: 'wsp_stageContent' },
+    'audit-visual': { labelKey: 'wsp_stageAuditVisual' },
+    'audit-behaviour': { labelKey: 'wsp_stageAuditBehaviour' },
+    links: { labelKey: 'wsp_stageLinks' },
+    site: { labelKey: 'wsp_stageSite' },
+    written: { labelKey: 'wsp_stageWritten' },
+};
+const SCORE_LABEL: Record<string, { labelKey: string }> = {
+    'audit-visual': { labelKey: 'wsp_scoreVisual' },
+    'audit-behaviour': { labelKey: 'wsp_scoreBehaviour' },
+};
+
+/**
  * One line of truth about the running build: the stage that JUST produced a
  * log line, plus every audit score seen so far. There is no percentage bar
  * because the server does not know one — a stalled build shows a stalled
  * strip, which is exactly what the user should see.
  */
 function BuildStatusStrip({ status }: { status: BuildStatusState }) {
+    const { t, i18n } = useTranslation();
+    const uiDir = useUiDir();
     const scoreColor = (n: number) => (n >= 90 ? '#10b981' : n >= 70 ? '#f59e0b' : '#ef4444');
-    const scoreLabel: Record<string, string> = {
-        'audit-visual': 'بصري',
-        'audit-behaviour': 'تفاعل',
-    };
+    const known = BUILD_STAGE[status.current.stage];
+    const stageLabel = known
+        ? t(known.labelKey, { index: status.current.section?.index ?? '', id: status.current.section?.id ?? '' })
+        : (String(i18n.language || '').startsWith('ar') ? status.current.labelAr : status.current.label) || status.current.labelAr;
     return (
-        <div dir="rtl" style={{
+        <div dir={uiDir} style={{
             display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
             padding: '8px 12px', marginBottom: 6, borderRadius: 8,
             background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)',
@@ -288,7 +315,7 @@ function BuildStatusStrip({ status }: { status: BuildStatusState }) {
             )}
             {status.done && <span aria-hidden style={{ color: 'var(--joe-text-muted, #6e7178)', fontWeight: 700 }}>·</span>}
             <span style={{ fontWeight: 600, color: 'var(--joe-text, #e4e4e7)' }}>
-                {status.current.labelAr}
+                {stageLabel}
             </span>
             {Object.entries(status.scores).map(([stage, n]) => (
                 <span key={stage} style={{
@@ -296,7 +323,7 @@ function BuildStatusStrip({ status }: { status: BuildStatusState }) {
                     color: scoreColor(n), border: `1px solid ${scoreColor(n)}55`,
                     background: `${scoreColor(n)}14`,
                 }}>
-                    {scoreLabel[stage] || stage} {n}/100
+                    {SCORE_LABEL[stage] ? t(SCORE_LABEL[stage].labelKey) : stage} {n}/100
                 </span>
             ))}
             <span dir="ltr" style={{
@@ -314,8 +341,9 @@ function BuildStatusStrip({ status }: { status: BuildStatusState }) {
 /** A sticky divider so the files and the log lines read as two ORDERED
  *  sections instead of one undifferentiated stream. */
 function SectionHeading({ label, note }: { label: string; note?: string }) {
+    const uiDir = useUiDir();
     return (
-        <div dir="rtl" style={{
+        <div dir={uiDir} style={{
             position: 'sticky', top: 0, zIndex: 1,
             display: 'flex', alignItems: 'center', gap: 8,
             padding: '5px 12px', margin: '2px 0 4px',
@@ -361,7 +389,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
         // reporting success read as "the button does not work".
         const parts: string[] = [];
         for (const f of liveFiles) {
-            parts.push(`===== ${f.file}${f.done ? '' : ' (still building)'} =====`);
+            parts.push(`===== ${f.file}${f.done ? '' : ` (${t('wsp_stillBuilding')})`} =====`);
             parts.push(f.content);
         }
         parts.push(...filtered);
@@ -413,7 +441,7 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
                 )}
                 {hiddenLogCount > 0 && (
                     <div style={{ padding: '4px 12px', color: 'var(--joe-text-muted)', fontSize: 11 }}>
-                        {`Showing the latest ${RENDERED_LOG_LIMIT} lines. Search to inspect older retained evidence.`}
+                        {t('wsp_showingLatest', { n: RENDERED_LOG_LIMIT })}
                     </div>
                 )}
                 {filtered.length === 0 && liveFiles.length === 0 ? (
@@ -514,7 +542,7 @@ function EnhancedProblemsPanel({ problems }: { problems: any[] }) {
                         padding: 24, textAlign: 'center',
                         color: 'var(--joe-text-muted)', fontSize: 13,
                     }}>
-                        ✓ لا توجد مشاكل
+                        ✓ {t('wsp_noProblems')}
                     </div>
                 ) : (
                     filtered.map((p, i) => (
@@ -623,12 +651,14 @@ export default function WorkspacePanel({
     };
 
     const tabs: { id: WorkspaceTab; label: string; icon: React.ReactNode; badge?: number }[] = [
-        { id: 'browser', label: 'Browser', icon: <Globe size={16} /> },
-        { id: 'terminal', label: 'Terminal', icon: <TerminalIcon size={16} /> },
-        { id: 'preview', label: 'Preview', icon: <Eye size={16} /> },
-        { id: 'logs', label: 'Logs', icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
+        { id: 'browser', label: t('panelBrowser'), icon: <Globe size={16} /> },
+        { id: 'terminal', label: t('panelTerminal'), icon: <TerminalIcon size={16} /> },
+        { id: 'preview', label: t('panelPreview'), icon: <Eye size={16} /> },
+        { id: 'logs', label: t('wsp_tabLogs'), icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
         // The Problems tab was removed at the owner's request — its findings
         // already reach the chat and the logs, so the extra tab was noise.
+        // So was Activity (2026-11-02): what the engine does is drawn inside
+        // Joe's reply in the chat (RunActivityPanel, inline), not in a tab.
     ];
 
     const LoadingFallback = () => (
@@ -641,7 +671,7 @@ export default function WorkspacePanel({
             gap: 12
         }}>
             <Loader size={24} className="animate-spin" />
-            <span>Loading...</span>
+            <span>{t('wsp_loading')}</span>
         </div>
     );
 
@@ -677,7 +707,7 @@ export default function WorkspacePanel({
                 <button
                     className="joe-header-btn show-mobile-only"
                     onClick={handleMobileToggle}
-                    title={isMobileCollapsed ? "Expand" : "Collapse"}
+                    title={isMobileCollapsed ? t('wsp_expand') : t('wsp_collapse')}
                     style={{ border: 'none', background: 'transparent', marginLeft: 4 }}
                 >
                     {isMobileCollapsed ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
@@ -704,7 +734,7 @@ export default function WorkspacePanel({
                     <button
                         className="joe-header-btn hide-mobile"
                         onClick={onMaximizeToggle}
-                        title={isMaximized ? "Restore" : "Maximize"}
+                        title={isMaximized ? t('wsp_restore') : t('maximize')}
                         style={{ border: 'none', background: 'transparent' }}
                     >
                         <Maximize2 size={16} style={{ transform: isMaximized ? 'rotate(180deg)' : 'none', transition: 'transform 0.3s' }} />

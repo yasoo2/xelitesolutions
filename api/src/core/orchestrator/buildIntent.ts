@@ -106,7 +106,7 @@ export function isBoundedTerminalDiagnosticRequest(goalRaw: string): boolean {
     if (!text) return false;
 
     const explicitlyRequestsExecution = /\bshell_execute\b/i.test(text)
-        || /(?:\b(?:run|execute|perform)\b[^\n]{0,100}\b(?:local\s+)?(?:diagnostic|check)\b)|(?:\b(?:terminal|shell|command\s*(?:line)?)\b[^\n]{0,120}\b(?:run|execute|perform|check|verify|test)\b)|(?:\b(?:نفذ|شغل|اجري|أجرِ|قم\s+ب(?:إجراء|عمل))\b[^\n]{0,120}(?:طرفي[هة]|terminal|shell|فحص|تحقق|اختبر))/i.test(text);
+        || /(?:\b(?:run|execute|perform)\b[^\n]{0,100}\b(?:local\s+)?(?:diagnostic|check)\b)|(?:\b(?:terminal|shell|command\s*(?:line)?)\b[^\n]{0,120}\b(?:run|execute|perform|check|verify|test)\b)|(?:(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(?:نفذ|شغل|[اأإ]جر[يى]?|قم\s+ب(?:[إا]جراء|عمل))(?![\p{L}\p{N}_])[^\n]{0,120}(?:طرفي[هة]|terminal|shell|فحص|تحقق|اختبر))/iu.test(text);
     const diagnosticSignal = /\b(?:diagnostic|check|verify|test|status|version)\b|(?:فحص|تحقق|اختبر|حالة|إصدار|نسخة)/i.test(text);
     if (!explicitlyRequestsExecution || !diagnosticSignal) return false;
 

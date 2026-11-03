@@ -383,7 +383,8 @@ describe('the offline scaffold — complete, parseable, kind-aware', () => {
             { request, root: tmp, skipInstall: true }, { sessionId });
         // Scaffold-only evidence proves the handoff, not a running database.
         expect(react.ok).toBe(false);
-        expect(react.error).toBe('requested_features_not_proven');
+        // The blocker carries the capabilities it could not prove (eval round 15).
+        expect(react.error).toBe('requested_features_not_proven: an API, database');
         expect(react.logs).toContain('delivery: BLOCKED — requested capabilities not proven: an API, database');
         const content = fs.readFileSync(path.join(react.output.path, 'src', 'content.js'), 'utf8');
         expect(content).toContain("api: '/api/defects'");

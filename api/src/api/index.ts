@@ -1,10 +1,14 @@
 import { ExecutionEnforcer } from '../kernel/ExecutionEnforcer';
 import { ExecutionGuard } from '../kernel/ExecutionGuard';
 import { reconcileInterruptedRunEvidence } from '../shared/run-evidence-store';
+import { installLoopbackInferenceTransport } from '../core/llm/providers/loopback-fetch';
 
 // Phase 1.8: Hard Architecture Enforcement
 ExecutionEnforcer.validateIntegrity();
 ExecutionGuard.install();
+// Local inference answers can take longer than fetch's fixed 300 s headers timeout on a CPU
+// (eval round 6: UND_ERR_HEADERS_TIMEOUT at 312 s); the caller's deadline governs instead.
+installLoopbackInferenceTransport();
 
 // Polyfill for libraries that expect browser globals (like pdfjs-dist used by pdf-parse)
 if (typeof (global as any).DOMMatrix === 'undefined') {

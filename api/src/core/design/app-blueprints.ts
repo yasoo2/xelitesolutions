@@ -28,9 +28,11 @@
 //  learned a mark the other did not.
 import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { saysWord, words, normalise } from '../language/arabic';
+import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact, stripDeclaredOptions } from './requested-artifact';
 import { hisWordsOnly } from './page-head';
 //  The reader that already knows which noun stands beside the container.
 import { subjectAfterContainer } from './subject-phrase';
+import { FoldedRegExp, isPossessivePhrase } from './request-lists';
 
 export type AppEngine = 'map' | 'chat' | 'weather' | 'records' | 'ledger' | 'social' | 'shop' | 'calculator' | 'productivity' | 'finance' | 'custom';
 
@@ -125,18 +127,8 @@ export function readDeclaredOptions(requestRaw: string): string[] | null {
  * as a billing SYSTEM. The categories belong to the category field alone;
  * everyone else reads the sentence without them.
  */
-export function stripDeclaredOptions(requestRaw: string): string {
-    const r = String(requestRaw || '');
-    return r
-        .replace(/(?:ب|وال|ال)?(?:فئات|تصنيفات|أقسام|اقسام|categories|types)\s*(?:هي|are)?\s*[:：]\s*[^.\n؟?!]{2,160}/gi, ' ')
-        .replace(/(?:بفئات|بتصنيفات|بأقسام|باقسام|with\s+categories)\s+[^.\n؟?!:،]{2,160}(?:،[^.\n؟?!]{0,120})?/gi, ' ')
-        // Preserve newlines: block schema declarations use them as boundaries.
-        // Tidy within lines only. Collapsing every run of whitespace would
-        // flatten structured schema declarations; line structure is data.
-        .replace(/[ \t]{2,}/g, ' ')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim();
-}
+// Moved to requested-artifact, which reads claims without option lists; re-exported here.
+export { stripDeclaredOptions };
 
 /**
  * A SECOND TABLE, AND THE LINE BETWEEN THEM — «علاقات بين أكثر من جدول
@@ -302,7 +294,9 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
 ];
 
 /** The request asks for something to be MANAGED — a records app, not a poster. */
-const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل\b|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
+// «سجل» ends where the Arabic word ends — `\b` is ASCII-only, so «سجل\b»
+// could match only before a Latin letter, i.e. never (eval round 15 sweep).
+const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
 /** …and it is an application, not a document about one. */
 const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|لوحة\s*تحكم|\bapp\b|application|system|platform|tool|dashboard/i;
 /**
@@ -354,15 +348,8 @@ export function siteNounWithoutAppRequest(request: string): boolean {
     return SITE_NOUN.test(t) && !APP_SIGNAL.test(t);
 }
 
-export function maskNegatedSpans(text: string): string {
-    return String(text || '').replace(
-        // JS `\\b` is ASCII-oriented and therefore unsafe for Arabic. Require
-        // the marker to be outside every Unicode letter/number/identifier word
-        // on the left, and followed by whitespace/end-of-input on the right.
-        /(?<![\p{L}\p{N}_-])(?:not|no|never|without|ليس|ليست|لا|بدون|غير)(?=\s|$)(?:(?:\s+)[\p{L}\p{N}_-]+){0,8}/giu,
-        span => span.replace(/[^\r\n]/gu, ' '),
-    );
-}
+// Moved to requested-artifact, which every kind reader shares; re-exported here.
+export { maskNegatedSpans };
 
 /**
  * A release/task-board contract names concrete program surfaces, rather than
@@ -420,17 +407,45 @@ export const RECORDS_TABLE_BY_KIND: Record<string, [string, string]> = {
     lms: ['enrolments', 'التسجيلات'], contacts: ['contacts', 'جهات الاتصال'], habits: ['habits', 'العادات'], media: ['media', 'الوسائط'],
 };
 
+/**
+ * True when the object of the build verb is an artifact the stock catalogue
+ * has no engine for (a game, a quiz, a chatbot, a report with charts, a
+ * simulator): «Make a browser quiz game about a clinic», «اعمل لعبة أسئلة عن
+ * عيادة». Read from the build verb's own object (a few words after it), so a
+ * clinic system that merely MENTIONS a report keeps its records engine.
+ */
+export function requestedArtifactWithoutStockEngine(request: string): boolean {
+    const artifact = requestedArtifact(String(request || ''));
+    if (artifact.kind === 'game' || artifact.kind === 'bot' || artifact.kind === 'report') return true;
+    // A simulator or an animation is authored from the request as well; the
+    // deliverable lexicon does not list them, so they are read from the object.
+    return /\b(?:simulator|simulation|animation)\b|محاكي|محاكاه/u.test(artifact.evidence.object);
+}
+
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
     const intentRequest = maskNegatedSpans(request);
+    // A command-line tool has no web engine, so no stock app kind applies
+    // (eval round 15: CLIs came back 'custom', 'booking' or 'lms').
+    if (requestedArtifact(request).kind === 'cli') return null;
     // «صفحة هبوط لتطبيق خرائط» is a page about an app — the document the user
     // named wins, exactly as classifyBuildScope decides it.
     if (PAGE_SIGNAL.test(intentRequest)) return null;
     //  …and the plain word for a site, when nothing in the request asks for
     //  an application. See siteNounWithoutAppRequest above for what this cost.
     if (siteNounWithoutAppRequest(intentRequest)) return null;
+    //  THE THING HE ASKED TO BUILD OUTRANKS WHAT IT IS ABOUT.
+    //
+    //  Eval run500, 2026-10-23: «a browser quiz game about a dental clinic»,
+    //  «an interactive report … three charts» and «a customer-support chatbot»
+    //  all came back as the stock BOOKINGS app — the domain words (clinic,
+    //  appointments, viewings) outscored an artifact the catalogue has no
+    //  engine for. The same rule as «صفحة هبوط لتطبيق خرائط»: the document he
+    //  named wins over its subject. An artifact with no stock engine is
+    //  authored from the request ('custom').
+    if (requestedArtifactWithoutStockEngine(intentRequest)) return 'custom';
     // Two named collections are a stronger contract than either word alone.
     // This prevents «notes and tasks» from becoming only a task table or a
     // React-Native-shaped scaffold; the builder receives both surfaces.
@@ -922,8 +937,31 @@ const RECORDING_WORD = /(أسجل|اسجل|سجّل|أضيف|اضيف|أدخل|�
  *  أسجل فيه المواعيد» puts «أسجل» beside the container, and it is refused
  *  here even though the earlier reader is the one that saves it.
  */
+/**
+ *  AN OPENER IS WHERE THE LIST BEGINS, NOT PART OF THE NAME (round 21 review, R7).
+ *
+ *  «بدي قائمة الطلاب فيها: الاسم والعمر» named its table «الطلاب فيها»: the
+ *  subject ran up to the colon and took the opener with it. The openers are
+ *  the grammar that introduces a list (request-lists' openers), never a word
+ *  of what is listed.
+ */
+const TRAILING_OPENER = /\s+(?:فيه|فيها|به|بها|يحوي|تحوي|يحتوي|تحتوي|يشمل|تشمل|with|containing|including|has|having)$/iu;
+const withoutTrailingOpener = (subject: string) => String(subject || '').trim().replace(TRAILING_OPENER, '').trim();
+
+/**
+ *  …AND A WORD OF GRAMMAR IS NO NAME EITHER (R3).
+ *
+ *  «My gym app should track: members, trainers, workouts» put «should» in
+ *  front of the recording verb, and the reader that looks there for the
+ *  table's name («بدي جدول للمواعيد أسجل فيه») built a `shoulds` table with
+ *  his three tables for columns. A modal, an auxiliary, a pronoun or the
+ *  infinitive's «to» stands in front of an English verb; none of them names
+ *  anything. A closed class of the language, not a vocabulary of domains.
+ */
+const ENGLISH_GRAMMAR_WORD = /^(?:should|would|will|shall|can|could|must|may|might|to|i|we|you|they|it|he|she|that|which|who|also|and|or|then|please|me|us)$/iu;
+
 function theNounBesideTheContainer(request: string): string | null {
-    const beside = String(subjectAfterContainer(request) || '').trim();
+    const beside = withoutTrailingOpener(String(subjectAfterContainer(request) || '').trim());
     //  A NAME IS WHAT IS LEFT AFTER THE PARTICLES, NOT THE PARTICLES.
     //
     //  «ما الفرق بين قاعدة البيانات والجدول؟» handed back «وال» — a
@@ -983,7 +1021,7 @@ export function recordedSubject(requestRaw: string): string | null {
     const before = request.slice(0, opener.index || 0).trim().split(/\s+/);
     const tail = before.slice(-1)[0] || '';
     const bare = tail.replace(/^(?:لل|ال|ل)/, '');
-    return bare.length >= 3 ? bare : theNounBesideTheContainer(request);
+    return bare.length >= 3 && !ENGLISH_GRAMMAR_WORD.test(bare) ? bare : theNounBesideTheContainer(request);
 }
 
 /**
@@ -2259,8 +2297,19 @@ function everyItemIsADefiniteName(items: string[]): boolean {
  *  place now — the clarifier, which must ask about the container HE named
  *  instead of asking about a website — and a second copy would drift the
  *  first time one of them learned a word the other did not.
+ *
+ *  «قائمه» is «قائمة» typed the way most people type it (round 21): the
+ *  informal «بدي قائمه الطلاب فيها: الاسم، العمر» missed the container,
+ *  and its columns became the tables `asms` and `amrs`.
+ *
+ *  …and adding «قائمه» fixed one spelling of it (round 21 review, R5):
+ *  «قايمة» and «قايمه» — the hamza seat written as ي — still missed it, and
+ *  their columns were still tables. The container is matched FOLDED, on the
+ *  request folded the way every reader folds it, so it is the word that
+ *  matches, not one way of typing it; the match is mapped back to his text,
+ *  so every caller that slices by its index still reads his own words.
  */
-export const RECORD_CONTAINER = /(?:جدول|قائمة|كشف|سجل|سجلّ)(?:اً|ًا|ا)?|جداول|\btable\b|\blist\b|\bsheet\b|\bboard\b|\bqueue\b|\bledger\b|\bregister\b|\btracker\b|\bdirectory\b|\bregistry\b|\bcatalog(?:ue)?\b/iu;
+export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|سجل)(?:ا)?|جداول|\\btable\\b|\\blist\\b|\\bsheet\\b|\\bboard\\b|\\bqueue\\b|\\bledger\\b|\\bregister\\b|\\btracker\\b|\\bdirectory\\b|\\bregistry\\b|\\bcatalog(?:ue)?\\b', 'iu');
 
 /**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
@@ -3228,17 +3277,29 @@ function canonicalFieldKey(label: string): string | null {
  * Callers must not grow their own field-name catalogues: those duplicate paths
  * drift and eventually mistake capability lists for record schemas.
  */
+/**
+ * Is the deliverable a command-line program? The object of the build verb
+ * decides (eval round 15, P301: «اكتب أداة سطر أوامر … ملف CSV فيه الزبائن»).
+ * When the object names any other kind, the answer is no — «a web app that
+ * imports a CSV file» is an app. Only an object the lexicon does not know
+ * falls back to a command-line or CSV-input mention anywhere in the request.
+ */
+export function isCliRequest(requestRaw: string): boolean {
+    const request = stripArabicDiacritics(String(requestRaw || '')).trim();
+    const kind = requestedArtifact(request).kind;
+    if (kind) return kind === 'cli';
+    return mentionsCommandLine(request) || readsCsvInput(request);
+}
+
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
     const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    // A user often states context before making the request: "I run a
-    // camel farm. I want a register...". The build verb begins the second
-    // sentence, not the whole message. Read a clause boundary, while still
-    // refusing a mere description that never asks Joe to create anything.
     const clauseStart = '(?:^|[.؟!\\n]\\s*)';
     const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
         || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;
+    // CLI/utility/script requests are NOT persistent record schemas
+    if (isCliRequest(requestRaw)) return false;
     const columns = columnsAnywhereInHisRequest(requestRaw);
     return Array.isArray(columns) && columns.length >= 2;
 }
@@ -3322,22 +3383,22 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
  */
 export interface ColumnEdit { add: string[]; remove: string[]; rename?: { from: string; to: string } }
 
-const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
-const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
+const ADD_COLUMN = /(?:ضيف|أضف|اضف|اضافة|إضافة|زيد|حط|\badd\b)\s+(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:اسمه\s+|باسم\s+|called\s+|named\s+|for\s+|the\s+)?([^\n،,.؛;]{2,32})/iu;
+const DROP_COLUMN = /(?:شيل|احذف|أحذف|امسح|الغِ?ي?|ألغِ|\bremove\b|\bdrop\b|\bdelete\b)\s+(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+(?:the\s+)?([^\n،,.؛;]{2,32})/iu;
 /**
  *  The connector is the closed class, not the verb. «إلى / الى /
  *  ليصبح / ليصير / to» is the same set ProjectEditTool already uses
  *  to rename an app, and a second copy would drift the first time one
  *  of them learned a word the other did not.
  */
-const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:a|an|the)?\s*(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
+const RENAME_COLUMN = /(?:غيّ?ر|بدّ?ل|سمّ?ِ?|\brename\b|\bchange\b)\s+(?:اسم\s+)?(?:(?:an|a|the)\s+)?(?:عمود|العمود|خانة|الخانة|حقل|الحقل|column|field)\s+([^\n،,.؛;]{2,32}?)\s*(?:إلى|الى|ليصبح|ليصير|يصير|تصير|\bto\b)\s+([^\n،,.؛;]{2,32})/iu;
 //  ARABIC PUTS THE NAME AFTER THE CONTAINER, ENGLISH BEFORE IT.
 //
 //  «عمود المبلغ» and «the amount column» are the same phrase in two
 //  orders, and a pattern that reads one reads half his messages. The
 //  same fact is already written down beside subjectAfterContainer; it
 //  is a fact about the two languages, not about renaming.
-const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:a|an|the)?\s*([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
+const RENAME_COLUMN_EN = /(?:\brename\b|\bchange\b)\s+(?:(?:an|a|the)\s+)?([A-Za-z][A-Za-z0-9 _-]{1,31}?)\s+(?:column|field)\s+(?:\bto\b|\binto\b)\s+([A-Za-z][A-Za-z0-9 _-]{1,31})/i;
 
 /** The one-column changes a follow-up message asks for, in his own words. */
 /**
@@ -3587,11 +3648,51 @@ export function requestedFeatures(requestRaw: string): string[] {
     // prose paragraph after "with" is not a feature list.
     const sentenceCount = (request.match(/[.!?؟]/g) || []).length;
     if (out.length < 3 && sentenceCount <= 2) {
-        const m = request.match(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/i);
+        /**
+         *  «… book with their name and phone …» IS NOT A FEATURE LIST.
+         *
+         *  Eval round 15 (P251): the first «with» in the sentence modified the
+         *  verb «book», and its items are the fields of that action. The build
+         *  stopped on «requested capabilities not proven: their name». A list
+         *  whose first item is owned by someone (isPossessivePhrase) describes
+         *  what that person enters; the next «with / including» may still be
+         *  the app's own feature list, so the search moves on to it.
+         */
+        let m: RegExpMatchArray | null = null;
+        for (const candidate of request.matchAll(/\b(?:with|including|features?:?)\s+([^.\n]{10,300})/gi)) {
+            const first = candidate[1].split(/,| and | و /i)[0] || '';
+            if (isPossessivePhrase(first)) continue;
+            m = candidate;
+            break;
+        }
         if (m) {
             for (const part of m[1].split(/,| and | و /i)) {
                 if (/^(?:requiring|using|including|from|without|ensuring|plus)\b/i.test(part.trim())) continue;
+                if (isPossessivePhrase(part)) continue;
                 push(part);
+            }
+        }
+        /**
+         *  …AND THE SAME LIST WRITTEN IN ARABIC.
+         *
+         *  Measured over the 500-prompt eval (2026-10-23): this reader found
+         *  features in 25 of 250 English requests and in 0 of 250 Arabic ones.
+         *  «فيه قسم رئيسي، والخدمات، وآراء العملاء» is the same one-line list as
+         *  «with a hero, services and testimonials»; unread, an Arabic request
+         *  could never be told what was not built. Items split on «،» and on a
+         *  conjunction before a definite noun («والخدمات»); a word that merely
+         *  starts with و («وصف», «وقت») is not split.
+         */
+        if (!m) {
+            //  «ويحجز مع اسمه ورقم هاتفه» — the same fields, in Arabic.
+            const ar = [...request.matchAll(/(?:^|\s)(?:فيه|فيها|مع|يحتوي\s+على|تحتوي\s+على|يشمل|تشمل)\s+([^.\n]{10,300})/gu)]
+                .find(candidate => !isPossessivePhrase(candidate[1].split(/[،,]|\s+و(?=ال)/u)[0] || ''));
+            if (ar) {
+                for (const part of ar[1].split(/[،,]|\s+و(?=ال)/u)) {
+                    const item = part.trim().replace(/^و(?=\S{3,})/u, '');
+                    if (isPossessivePhrase(item)) continue;
+                    push(item);
+                }
             }
         }
     }
@@ -3616,14 +3717,24 @@ const ENGINE_COVERS: Record<AppEngine, RegExp> = {
     // The shop covers the catalogue, the cart and the order — and deliberately
     // NOT payment gateways, shipping carriers or multi-vendor payouts, so a
     // «Shopify-like» request still gets an honest list of what was not built.
-    shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر/i,
+    shop: /product|catalog(ue)?|cart|checkout|order|price|pricing|stock|inventory|category|categories|search|storefront|shop|store|remov|total|quantit|valid|منتج|منتجات|كتالوج|سلة|طلب|طلبات|سعر|أسعار|مخزون|تصنيف|تصنيفات|بحث|متجر|حذف|إزالة|ازالة|مجموع|إجمالي|اجمالي|كمية|تحقق|التحقق/i,
     // Custom engines are authored from the request; no stock capability is
     // assumed here, so named requirements remain visible to the quality gate.
     custom: /(?!)/i,
 };
 
 /** Cross-cutting things the BACKEND covers when one was built alongside. */
-const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
+const BACKEND_COVERS = /login|sign\s*in|account|auth|password|database|db\b|api\b|rest\b|server|storage|persist|order|endpoint|نقاط\s*وصول|تسجيل\s*دخول|حساب|قاعدة\s*بيانات|خادم|واجهة\s*برمجية|طلبات/i;
+/**
+ * The service api_project builds keeps an owner on every row and lists only the
+ * signed-in employee's rows unless the role sees everyone's (scopeOf /
+ * owner_id): «each staff member only sees their own records» is that backend's
+ * work, whatever the interface engine (eval round 20: the English full-stack
+ * prompt went to a 65-minute model plan while its Arabic twin was covered).
+ * Narrow on purpose — the broad BACKEND_COVERS words («order», «api») must not
+ * cover a records feature such as «a summary of orders by month».
+ */
+const BACKEND_OWNS_ROWS = /\bown\s+(?:records|rows|data|entries|items)\b|\bonly\s+(?:sees?|views?|accesses)\s+(?:their|his|her)\b|سجلات(?:ه|ها|هم)\s+فقط/i;
 
 /**
  * A compound weather capability is covered only by independent source evidence.
@@ -3730,7 +3841,7 @@ export function requestedFilterFields(requestRaw: string, fields: Array<{ key: s
         }
         return keys;
     }
-    const stop = clause.split(/\s+(?:plus|with|and\s+(?:a|an|the)?\s*(?:progress|metric)|ومقياس|وإضافة|واضافة)\b/iu)[0];
+    const stop = clause.split(/\s+(?:plus|with|and\s+(?:(?:an|a|the)\s+)?(?:progress|metric)|ومقياس|وإضافة|واضافة)(?![\p{L}\p{N}])/iu)[0];
     const tokens = new Set(stop.split(/[^\p{L}\p{N}_]+/u).filter(t => t.length >= 2));
     for (const field of fields) {
         const label = String(field.label || '').toLowerCase().replace(/[ً-ْـ]/g, '');
@@ -3905,6 +4016,32 @@ function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[
  * the React delivery path passes the generated source so compound features are
  * judged by implementation evidence rather than by a stock engine keyword.
  */
+/**
+ * What a request asks for that the stock engine it maps to cannot build —
+ * computed BEFORE the build, from the request alone.
+ *
+ * Eval run500, 2026-10-23: an admin dashboard «with a summary page showing
+ * totals and a chart» was built from the stock records engine and then
+ * blocked as requested_features_not_proven, the gap reported only AFTER the
+ * build. Law 4: the request is the reference, so a stock engine is used only
+ * when it covers what was asked. A «gap» that names a field the blueprint
+ * already has (its name or label) is not a gap: «their name», «phone» on a
+ * booking app were false alarms of the feature reader.
+ */
+export function stockEngineGaps(request: string, hasBackend = false): string[] {
+    const kind = detectAppKind(request);
+    if (!kind || kind === 'custom') return [];
+    const isAr = /[؀-ۿ]/.test(request);
+    const bp = blueprintFor(kind, request, isAr);
+    const fieldWords = (bp.fields || []).flatMap(field => [field.key, field.label])
+        .map(word => String(word || '').toLowerCase().trim()).filter(word => word.length > 1);
+    const namesAField = (gap: string) => {
+        const g = gap.toLowerCase();
+        return fieldWords.some(word => g.includes(word) || word.includes(g.replace(/^(?:their|his|her|the|a|an)\s+/, '').trim()));
+    };
+    return uncoveredFeatures(request, bp.engine, hasBackend, '').filter(gap => !namesAField(gap));
+}
+
 export function uncoveredFeatures(request: string, engine: AppEngine | null, hasBackend: boolean, evidence = ''): string[] {
     const extracted = requestedFeatures(request);
     // If extraction found no explicit list, inspect the full prose request via
@@ -3914,6 +4051,9 @@ export function uncoveredFeatures(request: string, engine: AppEngine | null, has
     if (!asked.length) return [];
     const covers = engine ? ENGINE_COVERS[engine] : null;
     return asked.filter(f => {
+        // Per-user ownership is the backend's, whatever the interface engine
+        // (the records branch below returns before the backend check).
+        if (hasBackend && BACKEND_OWNS_ROWS.test(f)) return false;
         if (engine === 'weather' && weatherFeatureCovered(f, evidence)) return false;
         if (engine === 'records') return !recordFeatureCovered(f, request, evidence);
         if (engine !== 'weather' && covers && covers.test(f)) return false;

@@ -159,8 +159,13 @@ router.post('/dev', async (req: Request, res: Response) => {
 
   if (!isLoopback) return res.status(404).json({ error: 'Not found' });
 
+  // ONE developer, not two. Requests without a token (auth bypass, the eval
+  // runner, the extension) act as config.localUserId; this token used a second,
+  // hard-coded id, so the UI saw a different person's sessions and nothing the
+  // rest of the install created (owner, 2026-10-23: «inside Joe the system
+  // doesn't work»). The dev token now names the same local owner.
   const token = jwt.sign({
-    sub: '507f1f77bcf86cd799439011', // Valid Mongo ObjectId for dev-user
+    sub: config.localUserId,
     role: 'OWNER',
     email: 'dev@joe.local',
     name: 'Developer'

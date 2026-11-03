@@ -193,7 +193,7 @@ async function main() {
     // The detector is exported for this proof; if not, read the command the
     // tool would build by running it against the source folder directly.
     if (typeof detectStart === 'function') {
-        const d = detectStart(reactDir, 4321);
+        const d = await detectStart(reactDir, 4321);
         console.log(`        command: ${d.command}`);
         check('vite is told --port', /--port 4321/.test(d.command), d.command);
         check('…and --strictPort, so it fails instead of drifting silently',

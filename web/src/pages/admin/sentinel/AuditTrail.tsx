@@ -1,12 +1,29 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ShieldCheck, Server, AlertTriangle, FileText, Loader2 } from 'lucide-react';
 import { API_URL } from '../../../config';
 
 export default function AuditTrail() {
+    const { t } = useTranslation();
     const [logs, setLogs] = useState<any[]>([]);
     const [integrity, setIntegrity] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const token = localStorage.getItem('token');
+
+    /**
+     * A result is a run status ('success', 'failed' …) said in the interface
+     * language; anything else — a reason code or a raw error — is shown as written.
+     */
+    const resultLabel = (r: string) => {
+        switch (r) {
+            case 'success': return t('sn_resSuccess');
+            case 'failed': case 'failure': return t('sn_resFailed');
+            case 'pending': return t('sn_resPending');
+            case 'running': return t('sn_resRunning');
+            case 'rolled_back': return t('sn_resRolledBack');
+            default: return String(r).toUpperCase();
+        }
+    };
 
     const fetchAudit = async () => {
         try {
@@ -51,16 +68,16 @@ export default function AuditTrail() {
                     )}
                     <div>
                         <h3 style={{ margin: '0 0 4px', color: integrity?.valid ? '#10b981' : '#ef4444', fontSize: '16px' }}>
-                            {integrity?.valid ? 'Cryptographic Chain Valid' : 'Tampering Detected in Chain'}
+                            {integrity?.valid ? t('sn_chainValid') : t('sn_chainTampered')}
                         </h3>
                         <p style={{ margin: 0, fontSize: '13px', color: 'var(--text-muted)' }}>
-                            {integrity?.valid 
-                                ? 'All system and user mitigation actions have been mathematically verified for absolute immutability.'
-                                : `Hash verification failed at index ${integrity?.brokenAtIndex}. Audit log may be compromised.`}
+                            {integrity?.valid
+                                ? t('sn_chainValidBody')
+                                : t('sn_chainTamperedBody', { index: integrity?.brokenAtIndex })}
                         </p>
                     </div>
                 </div>
-                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>SHA-256 Chained Hash Algorithm</div>
+                <div style={{ fontSize: '12px', color: 'var(--text-muted)', fontFamily: 'monospace' }}>{t('sn_hashAlgo')}</div>
             </div>
 
             {/* Log Table */}
@@ -68,21 +85,21 @@ export default function AuditTrail() {
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
                     <thead style={{ background: 'rgba(255,255,255,0.02)', borderBottom: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
                         <tr>
-                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>Timestamp</th>
-                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>Actor</th>
-                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>Action</th>
-                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>Target Resource</th>
-                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>Result</th>
+                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>{t('sn_colTimestamp')}</th>
+                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>{t('sn_colActor')}</th>
+                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>{t('action')}</th>
+                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>{t('sn_colTarget')}</th>
+                            <th style={{ padding: '16px 24px', fontWeight: 600 }}>{t('sn_colResult')}</th>
                         </tr>
                     </thead>
                     <tbody>
                         {logs.length === 0 ? (
-                            <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>No audit events generated yet.</td></tr>
+                            <tr><td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>{t('sn_noAuditEvents')}</td></tr>
                         ) : logs.map((log) => (
                             <tr key={log._id} style={{ borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                                 <td style={{ padding: '16px 24px', color: 'var(--text-secondary)' }}>{new Date(log.timestamp).toLocaleString()}</td>
                                 <td style={{ padding: '16px 24px', color: log.actor === 'system' ? 'var(--accent-primary)' : '#60a5fa', fontWeight: 600 }}>
-                                    {log.actor.toUpperCase()}
+                                    {log.actor === 'system' ? t('system') : log.actor.toUpperCase()}
                                 </td>
                                 <td style={{ padding: '16px 24px', color: 'var(--text-primary)', fontWeight: 600 }}>{log.action}</td>
                                 <td style={{ padding: '16px 24px', fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{log.resource}</td>
@@ -92,7 +109,7 @@ export default function AuditTrail() {
                                         background: log.result === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
                                         color: log.result === 'success' ? '#10b981' : '#ef4444'
                                     }}>
-                                        {log.result.toUpperCase()}
+                                        {resultLabel(log.result)}
                                     </span>
                                 </td>
                             </tr>

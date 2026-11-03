@@ -5,6 +5,7 @@ import { SelfFixService, type SelfFixPlan } from './SelfFixService';
 import { RepairTicketService } from './RepairTicketService';
 import { repairMemory } from '../../core/memory/repair-memory';
 import { workspaceService } from './WorkspaceService';
+import { manifestDeclaresBuild } from '../tools/auto-build-readiness';
 
 const ALLOWED_SELF_FIX_TOOLS = new Set([
   'write_file',
@@ -64,6 +65,9 @@ function nearestManifestRoot(file: unknown): string {
   }
   return '';
 }
+
+// Does the repaired project declare a build? One reader, shared with the
+// phase's build check: auto-build-readiness › manifestDeclaresBuild.
 
 function projectContextAfterRepair(projectContext: any, repairedFile?: unknown): any {
   const root = nearestManifestRoot(repairedFile);
@@ -157,15 +161,24 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   };
 
   const skipped: string[] = [];
+  let verifiesRepair = false;
   const tasks = phase.tasks
     .map((task: any) => {
       const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
       // A source repair is already present on disk. Rerunning react_project
-      // would invoke the request-driven author again and overwrite it before
-      // the verification phase can prove the cure.
+      // as authored would write the engine again and erase the cure; skipping
+      // it (as this did) left the capability and acceptance gates — which
+      // live inside react_project — unrun, so a phase reduced to a build
+      // completed whether or not the repair added what was missing (eval
+      // round 15). Run it in verifyExisting mode on the repaired project:
+      // nothing is authored or regenerated, and the same gates decide.
       if (sourceArtifactRepair && tool === 'react_project') {
-        skipped.push(String(task.task || task.description || task.tool || 'react project regeneration'));
-        return { ...task, __selfFixSkip: true };
+        verifiesRepair = true;
+        return {
+          ...task,
+          args: { ...(task.args || {}), verifyExisting: true, projectDir: repairProjectRoot },
+          ...(task.input ? { input: { ...task.input, verifyExisting: true, projectDir: repairProjectRoot } } : {}),
+        };
       }
       // react_project owns both the initial scaffold and the request-driven
       // domain authoring step. After npm repairs, skipping it wholesale leaves
@@ -184,7 +197,8 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
       if (task?.__selfFixSkip) return false;
       const tool = String(task?.tool || task?.name || '').trim().toLowerCase();
       const resumedReactProject = manifestRepair && tool === 'react_project' && task?.args?.resumeExisting === true;
-      const matches = !resumedReactProject
+      const verifyingReactProject = tool === 'react_project' && task?.args?.verifyExisting === true;
+      const matches = !resumedReactProject && !verifyingReactProject
         && taskPaths(task).some((candidate) => pathsReferToSameFile(candidate, file));
       const preserveScaffold = isScaffoldTask(task);
       if (matches || preserveScaffold) {
@@ -209,7 +223,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
           ...phase,
           name: `${String(phase.name || 'Project')} — post-repair verification`,
           tasks: [
-            {
+            ...(manifestDeclaresBuild(projectRoot) ? [{
               task: 'Build the repaired project without rewriting generated files',
               tool: 'shell_execute',
               args: {
@@ -217,7 +231,7 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
                 cwd: projectRoot,
                 projectPath: projectRoot,
               },
-            },
+            }] : []),
             {
               task: 'Verify the repaired project can start',
               tool: 'project_run',
@@ -237,6 +251,12 @@ export function phaseAfterRepair(phase: any, repairedFile?: unknown): { phase: a
   if (tasks.length === 0) return { phase, skipped: [] };
   const phaseUnchanged = tasks.length === phase.tasks.length
     && tasks.every((task: any, index: number) => task === phase.tasks[index]);
+  if (verifiesRepair) {
+    return {
+      phase: { ...phase, name: `${String(phase.name || 'Project')} — post-repair verification`, tasks },
+      skipped,
+    };
+  }
   return { phase: phaseUnchanged ? phase : { ...phase, tasks }, skipped };
 }
 

@@ -1,0 +1,137 @@
+From cc3be4460c595b476209263311bbf10f807cf45b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:02:59 +0000
+Subject: [PATCH 3/9] fix(acceptance): what the catalogue already checks is not
+ a table column
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit 76f66a5d, PR #90):
+  nothing-is-done-until-it-is-proven › the rejected English branch also discloses the judge boundary
+  Expected "0 of 3 requested criteria were proven", received "0 of 6 …":
+    ❌ a column «counter» / «title» / «production build» exists in the table
+
+Root cause: 76f66a5d let a natural-language field list survive the generic
+suppression (`!hasExplicitRecordSchema(t)`), so it could feed filter criteria
+for «Build a maintenance register with …». hasExplicitRecordSchema is true for
+any build request listing two or more things, including «Create a page with a
+counter, title, and production build.». The only guard left was uiOnlyLabel,
+a closed list of UI words of its own (counter, button, title, heading, status
+message) that did not know `production build` — which the acceptance
+CATALOGUE checks as a verification — nor the Arabic article («العداد»). Two
+readers of one question, and they disagreed: three criteria no page can meet.
+
+Decision: R. The count is derived from the request (law 4), so the count was a
+behaviour change. The widget guard now asks the catalogue itself: a derived
+label that, read alone, raises a catalogue criterion THIS request already
+carries is that criterion and not a column. No second vocabulary. The
+culprit's own cases stay green (reading log / maintenance register keep their
+columns and filters; widget lists stay suppressed). New cases: NEGATIVE (the
+page request; the Arabic-article widgets, which the old list also missed) and
+POSITIVE (title, author, rating keeps all three columns).
+
+Measured over the 29 suites that call acceptanceFor/judgeAcceptance/
+acceptanceBlock: 26 pass; the 7 failures (a-page-he-named-is-a-criterion…,
+a-page-he-never-chose…, media-review-contract) are failing identically at
+917c70e and belong to other groups.
+
+Mutations (acceptance.ts, CRLF-mixed; byte-exact tool; sha256 identical):
+  acc1 old widget list restored  -> 3 ✕: + "column:text1","column:title","column:text3" (both
+       NEGATIVEs) and Expected "0 of 3 …" Received "⚠️ Delivery blocked: 0 of 6 …"
+  acc2 every -> some             -> POSITIVE ✕: - "title","author","rating"
+
+Not fixed here (routing, reported): the same hasExplicitRecordSchema makes
+deterministicPhasesFor route «Create a page with a counter, title, and
+production build.» to react_project (Application) although
+classifyBuildScope says page.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...nothing-is-done-until-it-is-proven.test.ts | 26 +++++++++++++++++++
+ api/src/core/quality/acceptance.ts            | 25 +++++++++++++++---
+ 2 files changed, 47 insertions(+), 4 deletions(-)
+
+diff --git a/api/src/__tests__/nothing-is-done-until-it-is-proven.test.ts b/api/src/__tests__/nothing-is-done-until-it-is-proven.test.ts
+index e47fb213..65a713d8 100644
+--- a/api/src/__tests__/nothing-is-done-until-it-is-proven.test.ts
++++ b/api/src/__tests__/nothing-is-done-until-it-is-proven.test.ts
+@@ -79,6 +79,32 @@ describe('the criteria come from HIS brief, never from a fixed checklist', () =>
+         ].sort());
+     });
+ 
++    /**
++     *  ⛔ WHAT THE CATALOGUE ALREADY CHECKS IS NOT A COLUMN AS WELL.
++     *
++     *  «a counter, title, and production build» was read twice: as the three
++     *  catalogue criteria, and again as three table columns no page can ever
++     *  have — six criteria, three of them unmeetable. The widget guard kept a
++     *  list of its own (counter, title…) that did not know `production build`
++     *  and did not know the Arabic article. One reader decides now.
++     */
++    it('⛔ NEGATIVE — a page of catalogue shapes asks for no table column', () => {
++        expect(acceptanceFor('Create a page with a counter, title, and production build.').map(c => c.id))
++            .toEqual(['counter', 'title', 'production_build']);
++    });
++
++    it('⛔ NEGATIVE — «العداد والعنوان والزر» with the article are the same widgets', () => {
++        expect(acceptanceFor('ابن لي تطبيق فيه العداد والعنوان والزر').map(c => c.id)
++            .filter(id => id.startsWith('column:'))).toEqual([]);
++    });
++
++    it('⛔ POSITIVE — one label the catalogue does not check keeps the whole list as columns', () => {
++        //  «title» alone is a catalogue shape; beside «author» and «rating» it
++        //  is a column of a reading tracker, and all three are kept.
++        expect(acceptanceFor('Build a tracker with title, author and rating')
++            .filter(c => c.expectedColumn).map(c => c.expectedColumn)).toEqual(['title', 'author', 'rating']);
++    });
++
+     it('freezes the Gate062 acceptance input separately from the live input', () => {
+         expect(acceptanceFor(GATE062_ACCEPTANCE_PROMPT).map(c => c.id).sort()).toEqual([
+             'button', 'counter', 'status_message', 'title',
+diff --git a/api/src/core/quality/acceptance.ts b/api/src/core/quality/acceptance.ts
+index 386e02d1..03b30f1e 100644
+--- a/api/src/core/quality/acceptance.ts
++++ b/api/src/core/quality/acceptance.ts
+@@ -548,16 +548,33 @@ export function acceptanceFor(request: string): Criterion[] {
+     const willBuildATable = detectedKind !== null;
+     const derived = willBuildATable ? (columnsAnywhereInHisRequest(t) || []) : [];
+     const explicitSchema = /\b(?:fields?|columns?|records?|table|form)\b|(?:حقول?|أعمدة|اعمدة|سجلات?|جدول|نموذج)/iu.test(t);
+-    const uiOnlyLabel = (label: string) => /^(?:a\s+|an\s+|the\s+)?(?:counter|button|title|heading|status\s+message|عداد|زر|عنوان|رسالة\s+حالة)$/iu
+-        .test(String(label || '').trim());
++    /**
++     *  ⛔ WHAT THE CATALOGUE ALREADY CHECKS IS NOT A COLUMN.
++     *
++     *  «Create a page with a counter, title, and production build.» derived
++     *  six criteria: the catalogue's three, and the same three words again as
++     *  «a column «production build» exists in the table» — criteria no page
++     *  can ever meet, so the delivery is refused for having no table.
++     *
++     *  The widget guard below held its own list of UI words (counter, button,
++     *  title, heading, status message). The catalogue above is a second list
++     *  answering the same question, and it also checks `production build`,
++     *  `preview`, `export`… The two drifted the moment a request named
++     *  something only one of them knew. So there is one reader now: a derived
++     *  label that, read on its own, raises a catalogue criterion THIS request
++     *  already carries is that criterion — never a column as well.
++     */
++    const catalogueIds = new Set(catalogue.map(c => c.id));
++    const checkedByCatalogue = (label: string) => CATALOGUE.some(c => catalogueIds.has(c.id)
++        && (c.says ? saysAny(String(label || ''), c.says) : requestAsksFor(c.asked, String(label || ''))));
+     // A list of visible widgets is not a record schema. Without an explicit
+     // table/form/field declaration, suppress a derived run made entirely of
+-    // UI shapes that the acceptance catalogue already checks directly.
++    // shapes the acceptance catalogue already checks directly.
+     // A natural-language field list need not literally say "fields" or "table".
+     // Keep the separate widget-only guard below even when that list was parsed.
+     const columns = !explicitSchema && !hasExplicitRecordSchema(t) && detectedKind === 'generic'
+         ? []
+-        : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
++        : !explicitSchema && derived.length > 0 && derived.every(column => checkedByCatalogue(column.label))
+         ? []
+         : derived;
+     const requestedFilters = willBuildATable ? requestedFilterFields(t, columns) : [];
+-- 
+2.43.0
+

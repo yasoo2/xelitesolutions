@@ -454,6 +454,25 @@ export class WorkspaceService {
         return workspace as IWorkspace;
     }
 
+    /** Read-only capability lookup; a chat binding alone is not workspace write permission. */
+    async canAccessAutonomousFiles(workspaceId: string, userId: string, write: boolean): Promise<boolean> {
+        if (!workspaceId || !userId) return false;
+        if (!isDbConnected()) {
+            const uid = safeObjectIdHex(userId);
+            // Restored personal sessions retain their deterministic owner binding
+            // without minting a workspace or changing the member store on lookup.
+            if (workspaceId === safeObjectIdHex(`ws:${uid}`)) return true;
+            const member = (mockMembersByWorkspaceId.get(workspaceId) || []).filter(m => m.userId._id === uid);
+            const workspace = [...mockWorkspacesByUserId.values()].flat().find(w => w._id === workspaceId);
+            return workspace?.status === 'active' && member.length === 1
+                && (write ? ['OWNER', 'ADMIN', 'DEVELOPER'] : ['OWNER', 'ADMIN', 'DEVELOPER', 'VIEWER']).includes(member[0].role);
+        }
+        const members = await WorkspaceMember.find({ workspaceId, userId } as any).select({ role: 1 }).limit(2).lean();
+        if (!Array.isArray(members) || members.length !== 1 || !(write ? ['OWNER', 'ADMIN', 'DEVELOPER'] : ['OWNER', 'ADMIN', 'DEVELOPER', 'VIEWER']).includes(members[0]?.role)) return false;
+        const workspace = await Workspace.findById(workspaceId).select({ status: 1 }).lean();
+        return workspace?.status === 'active';
+    }
+
     async getWorkspace(workspaceId: string, userId: string): Promise<IWorkspace | null> {
         if (!isDbConnected()) {
             const uid = safeObjectIdHex(userId);

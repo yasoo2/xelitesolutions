@@ -228,7 +228,7 @@ export default function EmbeddedBrowser({
     // button to press — the manual one was redundant.)
 
     if (!hasSession) {
-        return <div className="joe-browser-container" aria-label="No active browser session" />;
+        return <div className="joe-browser-container" aria-label={t('eb_noBrowserSession')} />;
     }
 
     return (
@@ -324,7 +324,7 @@ export default function EmbeddedBrowser({
                                 whiteSpace: 'nowrap',
                                 fontFamily: 'monospace',
                                 direction: 'ltr',
-                            }} title={pageTitle ? `${pageTitle}${runtimeErrorCount ? ` · أخطاء: ${runtimeErrorCount}` : ''}` : undefined}>
+                            }} title={pageTitle ? `${pageTitle}${runtimeErrorCount ? ` · ${t('browser_errorsCount', { n: runtimeErrorCount })}` : ''}` : undefined}>
                                 {currentUrl || t('browserNoPageLoaded')}
                             </span>
                         </>

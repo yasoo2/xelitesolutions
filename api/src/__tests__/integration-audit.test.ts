@@ -102,8 +102,8 @@ describe('greenfield runtime evidence binds the artifact before its manifest', (
         expect(canBindRuntimeProjectEvidence(project, tmp, '', true)).toBe(true);
     });
 
-    it('resolves the same source-entrypoint project by its explicit name', () => {
-        expect(resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
+    it('resolves the same source-entrypoint project by its explicit name', async () => {
+        expect(await resolveRunnableProject(tmp, '"TaskFlow AI"')).toMatchObject({ cwd: project, matched: true });
     });
 });
 
@@ -424,7 +424,9 @@ describe('pipeline preserves an honest verification verdict for its caller', () 
         expect(pipeline).toContain('const requestFidelityBlocked = requestFidelityMismatch || requestFidelityEvidenceUnavailable');
         expect(pipeline).toContain('const verificationFailed = requestFidelityBlocked || (Array.isArray(pipeline?.results)');
         expect(pipeline).toContain('result?.verificationFailed === true');
-        expect(pipeline).toContain('const partialDelivery = !requestFidelityBlocked &&');
+        // The verdict reducer receives the fidelity block; partial comes only from it.
+        expect(pipeline).toMatch(/deliveryVerdict\(\{\s*phaseVerified: verified,\s*requestFidelityBlocked,/);
+        expect(pipeline).toContain('const partialDelivery = finalDeliveryVerdict.partial;');
         expect(pipeline).toContain('const honestBlocker = pipeline?.honestBlocker === true || verificationFailed');
         expect(pipeline).toContain('...(verificationFailed ? { verificationFailed: true } : {})');
         expect(pipeline).toContain('let finalHonestBlocker = honestBlocker');
@@ -460,10 +462,15 @@ describe('planner provider and requirements-boundary contracts', () => {
         expect(pipeline).not.toContain('deterministicRescueForDeadPlanner(request)');
         expect(pipeline).not.toContain('&& deterministicRescueAllowed(request))');
         expect(pipeline).not.toContain('const rescue = deterministicPhasesFor(request);');
-        expect(pipeline).toContain('applyProjectQualityContractOutcome(liveSourceRoot || liveRuntimeRoot, productRequest, liveOutcome);');
-        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, liveAuditRoots, qualityCheckedLiveOutcome);');
-        expect(pipeline).toContain('applyProjectQualityContractOutcome(artifactRoot || scopeRetryRuntimeRoot, productRequest, scopeRetryLive);');
-        expect(pipeline).toContain('applyScopeAuditOutcome(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry);');
+        // Quality and scope are measured against the product request, on the
+        // roots of each live run — the first run and the scope-repair retry.
+        expect(pipeline).toMatch(/recordLiveAcceptance\(runRes, liveSourceRoot \|\| liveRuntimeRoot, liveAuditRoots/);
+        expect(pipeline).toMatch(/recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult, runBeforeScopeRetry\), artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
+        // …by the delivery run both engines share, which the pipeline hands that request.
+        const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf-8');
+        expect(pipeline).toMatch(/deliveryRun\(\{\s*productRequest,/);
+        expect(shared).toMatch(/inspectProjectQualityContract\(qualityRoot, productRequest/);
+        expect(shared).toContain('applyScopeAuditOutcome(productRequest, auditRoots, ');
         expect(pipeline).toContain('`Original build request: ${productRequest.slice(0, 1200)}`,');
     });
 

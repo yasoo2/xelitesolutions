@@ -373,13 +373,19 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         expect(router).toMatch(/providerProbeSucceeded[\s\S]*!isProviderFailure/);
-        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\)/);
+        //  97fa9f0d wrapped `usable` to mark a healthy circuit on success. The
+        //  verdict it returns must still be the probe check, unchanged. Since
+        //  2026-11-02 the vendor's own route keeps its circuit, so `usable` is
+        //  the probe check alone.
+        expect(router).toMatch(/const usable = \(s: any\) => providerProbeSucceeded\(s\);/);
     });
 
     test('Auto preflight gives a measured local Ollama brain enough time before fallback', () => {
         const router = fs.readFileSync(
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
-        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'))");
+        //  The probe now carries the preflight's own cancellation signal
+        //  (97fa9f0d), so a timed-out local probe stops instead of queueing.
+        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'), undefined, probeAbort.signal)");
         expect(router).toContain("detail: 'local_ok'");
         expect(router).toContain('localWarmupMs');
         expect(router).toContain('warmup * 12');
@@ -451,8 +457,14 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             expect(result.scopeCoverageFailed).toBe(true);
             expect(result.error).toMatch(/artifact coverage 0%/);
             expect(result.error).toMatch(/user accounts|inventory management|analytics/i);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(liveSourceRoot \|\| liveRuntimeRoot, productRequest, liveOutcome\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, liveAuditRoots, qualityCheckedLiveOutcome\)/);
+            // The live run's scope is measured on its own artifact roots and recorded
+            // as its own instrument, so a later Browser QA pass cannot clear it.
+            expect(src).toMatch(/recordLiveAcceptance\(runRes, liveSourceRoot \|\| liveRuntimeRoot, liveAuditRoots/);
+            // …by the delivery run both engines share (core/quality/delivery-run), which the pipeline records through.
+            const shared = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'delivery-run.ts'), 'utf-8');
+            expect(src).toMatch(/await delivery\.recordLiveAcceptance\(runRes, qualityRoot, auditRoots\);/);
+            expect(shared).toMatch(/applyScopeAuditOutcome\(productRequest, auditRoots, \{ verified: true/);
+            expect(shared).toMatch(/ledger\.record\(\{ instrument: 'scope', ok: scoped\.verified/);
             expect(src).toMatch(/scopeAudit/);
         } finally {
             fs.rmSync(root, { recursive: true, force: true });
@@ -497,10 +509,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(src).toMatch(/scopeRepairMode:\s*true/);
         expect(src).toMatch(/scopeRepairTargets/);
         expect(src).toMatch(/scope_repair_pipeline_failed/);
-        expect(src).toMatch(/if \(scopeCoverageFailed && !finalVerified/);
+        // Scope repair is due when scope failed and the live run and quality passed.
+        expect(src).toMatch(/const scopeRepairDue = \(\) => measured\('scope', false\) && !liveRepairDue\(\);/);
+        expect(src).toMatch(/if \(scopeRepairDue\(\) && context\?\.scopeRepairAttempted !== true\)/);
         expect(src).toMatch(/scopeRepairAttempted/);
-            expect(src).toMatch(/applyProjectQualityContractOutcome\(artifactRoot \|\| scopeRetryRuntimeRoot, productRequest, scopeRetryLive\)/);
-            expect(src).toMatch(/applyScopeAuditOutcome\(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry\)/);
+            expect(src).toMatch(/recordLiveAcceptance\(postRepairRunOutcome\(scopeRetryResult, runBeforeScopeRetry\), artifactRoot \|\| scopeRetryRuntimeRoot, scopeRetryAuditRoots/);
     });
 
     test('success and verification are earned, with explicit execution and delivery states', () => {
@@ -619,7 +632,11 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         // The check runs in the PROJECT dir derived from the plan's own
         // package.json path — never blindly at the workspace root — and skips
         // honestly when the phase wrote no package.json.
-        expect(phaseExec).toMatch(/pkgPath\.replace/);
+        // P001 (2026-10-25): the manifest now comes from autoBuildManifest, already
+        // '/'-normalised, so the dir is split from it rather than replace()d first.
+        // Round 21: autoBuildManifests — every project the phase wrote into.
+        expect(phaseExec).toMatch(/autoBuildManifests\(writtenPaths, plannedProjectFiles/);
+        expect(phaseExec).toMatch(/pkgPath\.split\('\/'\)\.slice\(0, -1\)/);
         expect(phaseExec).toMatch(/skipped honestly/);
         expect(phaseExec).toMatch(/timeout: 300000/);
     });

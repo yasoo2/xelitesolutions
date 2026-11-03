@@ -138,7 +138,7 @@ export default function JoeHeader({
                     <button
                         className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleExplorer}
-                        title="Toggle Explorer"
+                        title={t('hdr_toggleExplorer')}
                     >
                         <PanelRight size={18} />
                     </button>
@@ -182,7 +182,7 @@ export default function JoeHeader({
                         <ChevronDown size={14} className="joe-user-chevron" />
                         {/* Visible without opening anything: there is a newer
                             Joe waiting. */}
-                        {updateAvailable ? <span className="joe-update-dot" aria-label="تحديث متاح" /> : null}
+                        {updateAvailable ? <span className="joe-update-dot" aria-label={t('upd_available')} /> : null}
                     </button>
 
                     {menuOpen && (
@@ -211,7 +211,7 @@ export default function JoeHeader({
                                 <button className="joe-user-menu-item" role="menuitem"
                                     onClick={() => { setMenuOpen(false); onThemeToggle(); }}>
                                     {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                                    <span>{theme === 'dark' ? t('themeLight', 'الوضع النهاري') : t('themeDark', 'الوضع الليلي')}</span>
+                                    <span>{theme === 'dark' ? t('themeLight') : t('themeDark')}</span>
                                 </button>
                             )}
 
@@ -219,7 +219,7 @@ export default function JoeHeader({
                                 <button className="joe-user-menu-item" role="menuitem"
                                     onClick={() => { setMenuOpen(false); onSystemClick?.(); }}>
                                     <Shield size={16} />
-                                    <span>{t('systemManagement', 'إدارة النظام')}</span>
+                                    <span>{t('systemManagement')}</span>
                                 </button>
                             )}
 

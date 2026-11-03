@@ -7,9 +7,11 @@
  * evening every visible reply fell to the weakest keyless provider.
  *
  * The contract locked here:
- *   1. context.purpose === 'internal' exists and routes to the local brain
- *      first — skipping the custom (Groq) route AND the Groq happy path
- *      while the local brain is available.
+ *   1. context.purpose === 'internal' exists and, in Auto, routes to the
+ *      local brain first — skipping the Groq happy path while the local brain
+ *      is available. A provider the user CHOSE is no longer skipped for
+ *      internal calls (2026-11-02, the owner: Joe runs on the model he
+ *      chose); the-chosen-provider-is-the-brain-of-the-whole-run.test.ts.
  *   2. The internal mesh keeps Local FIRST even when a cloud key exists.
  *   3. A 429 quota error pauses the custom route for the window the error
  *      itself names (customRouteCooldownUntil), instead of re-hammering.
@@ -62,7 +64,10 @@ describe('the router understands internal vs answer', () => {
         const src = router();
         expect(src).toContain("const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim()");
         expect(src).toContain('if (!hasGroq && !localFirst)');
-        expect(src).toContain('internalCall: true');
+        //  2026-10-25: this pinned `internalCall: true`, a key routeToModel never
+        //  reads (it decides on `purpose`), so the analysis ran as a user answer.
+        //  The claim is unchanged: the analysis call is marked internal.
+        expect(src).toMatch(/purpose: 'internal',\s*engineeringPipeline: true/);
         expect(src).toMatch(/\? await routeToModel\([\s\S]*?\)\s*:\s*await callGroq\(analyst/);
     });
 
@@ -169,7 +174,7 @@ describe('a recovered local brain gets one bounded re-entry probe', () => {
         expect(src).toContain('probeLocalBrainForRecovery');
         expect(src).toContain('local recovery probe timeout');
         expect(src).toContain('localRecoveryProbeAt = Date.now()');
-        expect(src).toContain('if (await probeLocalBrainForRecovery())');
+        expect(src).toContain('if (await probeLocalBrainForRecovery(callerSignal))');
         expect(src).toContain('if (isLocalBrainOpen())');
     });
 });

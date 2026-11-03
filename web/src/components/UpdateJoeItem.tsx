@@ -22,15 +22,24 @@
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { DownloadCloud, Copy, Check } from 'lucide-react';
 import { API_URL } from '../config';
 import { isRunBusy, subscribeRunBusy } from '../lib/run-activity';
 
 export type UpdatePhase = 'idle' | 'starting' | 'working' | 'restarting' | 'failed' | 'stalled';
 
-type UpdateState = { phase: UpdatePhase; log: string; error: string; startedAt: number; lines: number; stage: string };
+/**
+ * What went wrong, kept as a dictionary key rather than a sentence: the store
+ * lives outside React, so it cannot know the language — the card says it in
+ * the language the user chose when it renders. `detail` is the server's own
+ * words, shown inside the translated sentence, never replaced by it.
+ */
+type UpdateError = { i18nKey: string; n?: number; detail?: string } | null;
 
-let state: UpdateState = { phase: 'idle', log: '', error: '', startedAt: 0, lines: 0, stage: '' };
+type UpdateState = { phase: UpdatePhase; log: string; error: UpdateError; startedAt: number; lines: number; stage: string };
+
+let state: UpdateState = { phase: 'idle', log: '', error: null, startedAt: 0, lines: 0, stage: '' };
 const listeners = new Set<(s: UpdateState) => void>();
 let timer: number | null = null;
 let wentAway = false;
@@ -61,7 +70,7 @@ async function tick(): Promise<boolean> {
             window.setTimeout(() => window.location.reload(), 1200);
             return true;
         }
-        if (d?.failed) { set({ phase: 'failed', error: 'انتهى التحديث بخطأ — التفاصيل في السجل أدناه.' }); return true; }
+        if (d?.failed) { set({ phase: 'failed', error: { i18nKey: 'upd_errFailed' } }); return true; }
         /**
          * «نصف ساعه ولم يتم تحديث النظام» — AND THE BAR KEPT MOVING.
          *
@@ -73,8 +82,8 @@ async function tick(): Promise<boolean> {
             set({
                 phase: 'stalled',
                 error: d.stalled === 'never_started'
-                    ? 'المحدِّث لم يكتب سطراً واحداً — يبدو أنه لم يبدأ أصلاً.'
-                    : `المحدِّث توقّف عن الكتابة منذ ${Math.round(Number(d.silentForMs || 0) / 60000)} دقيقة.`,
+                    ? { i18nKey: 'upd_errNeverStarted' }
+                    : { i18nKey: 'upd_errSilent', n: Math.round(Number(d.silentForMs || 0) / 60000) },
             });
             return true;
         }
@@ -90,7 +99,7 @@ async function tick(): Promise<boolean> {
 export async function startSelfUpdate() {
     if (state.phase !== 'idle' && state.phase !== 'failed') return;
     wentAway = false;
-    set({ phase: 'starting', log: '', error: '', startedAt: Date.now(), lines: 0, stage: '' });
+    set({ phase: 'starting', log: '', error: null, startedAt: Date.now(), lines: 0, stage: '' });
     try {
         const r = await fetch(`${apiBase()}/system/update`, { method: 'POST' });
         if (!r.ok) {
@@ -98,7 +107,10 @@ export async function startSelfUpdate() {
             throw new Error(d?.message || d?.error || `HTTP ${r.status}`);
         }
     } catch (e: any) {
-        set({ phase: 'failed', error: e?.message || 'تعذّر بدء التحديث.' });
+        // The server's reason (or the HTTP status) is kept word for word; only
+        // the sentence around it follows the interface language.
+        const detail = String(e?.message || '').trim();
+        set({ phase: 'failed', error: detail ? { i18nKey: 'upd_errStartFailedWith', detail } : { i18nKey: 'upd_errStartFailed' } });
         return;
     }
     set({ phase: 'working' });
@@ -170,10 +182,10 @@ export function useUpdateAvailable(): UpdateCheckState {
 
 /** The four things an update does, in the order it does them. */
 const STEPS = [
-    { key: 'pulling', label: 'سحب التحديث من GitHub' },
-    { key: 'stopping', label: 'إيقاف النسخة القديمة' },
-    { key: 'building', label: 'بناء الخادم والواجهة' },
-    { key: 'starting', label: 'تشغيل جو من جديد' },
+    { key: 'pulling', labelKey: 'upd_stepPulling' },
+    { key: 'stopping', labelKey: 'upd_stepStopping' },
+    { key: 'building', labelKey: 'upd_stepBuilding' },
+    { key: 'starting', labelKey: 'upd_stepStarting' },
 ];
 
 function stepClass(key: string, s: UpdateState): string {
@@ -218,6 +230,7 @@ export function useSelfUpdateAllowed(): boolean {
 
 /** The menu row. Safe to unmount — it owns nothing. */
 export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
+    const { t } = useTranslation();
     const allowed = useSelfUpdateAllowed();
     const { available, behind, known } = useUpdateAvailable();
     if (!allowed) return null;
@@ -230,20 +243,20 @@ export default function UpdateJoeItem({ onBefore }: { onBefore?: () => void }) {
      * and the row shows what it answered: something waiting, nothing waiting,
      * or (offline) an honest «I could not ask».
      */
-    const label = available ? `تحديث متاح${behind > 1 ? ` · ${behind}` : ''}`
-        : known ? 'جو محدَّث — أعد البناء'
-            : 'تحديث جو';
+    const label = available ? `${t('upd_available')}${behind > 1 ? ` · ${behind}` : ''}`
+        : known ? t('upd_upToDateRebuild')
+            : t('upd_updateJoe');
     return (
         <button
             className={`joe-user-menu-item${available ? ' has-update' : ''}`}
             role="menuitem"
             data-testid="update-joe"
             onClick={() => { onBefore?.(); void startSelfUpdate(); }}
-            title={available ? `${behind} تحديث جديد على GitHub` : known ? 'نسختك على آخر إصدار' : undefined}
+            title={available ? t('upd_newOnGithub', { n: behind }) : known ? t('upd_latestVersion') : undefined}
         >
             <DownloadCloud size={16} />
             <span>{label}</span>
-            {available ? <span className="joe-update-dot" aria-label="تحديث جديد" /> : null}
+            {available ? <span className="joe-update-dot" aria-label={t('upd_newUpdate')} /> : null}
         </button>
     );
 }
@@ -292,6 +305,7 @@ function autoUpdateEnabled(): boolean {
 }
 
 export function UpdateAutoPilot() {
+    const { t } = useTranslation();
     const allowed = useSelfUpdateAllowed();
     const { available, behind, known, latest } = useUpdateAvailable();
     const [busy, setBusy] = useState(isRunBusy());
@@ -340,21 +354,21 @@ export function UpdateAutoPilot() {
         <div className="joe-autoupdate-banner" role="status" data-testid="autoupdate-banner">
             <DownloadCloud size={16} />
             <span className="joe-autoupdate-text">
-                {`تحديث جديد لجو${behind > 1 ? ` (${behind} تحديثات)` : ''}${latest ? ` — ${latest}` : ''}`}
-                {busy ? ' · ينتظر انتهاء المهمة الجارية'
-                    : auto ? ` · يبدأ تلقائياً بعد ${left} ثانية`
+                {`${t('upd_bannerTitle')}${behind > 1 ? ` ${t('upd_bannerCount', { n: behind })}` : ''}${latest ? ` — ${latest}` : ''}`}
+                {busy ? ` · ${t('upd_bannerWaiting')}`
+                    : auto ? ` · ${t('upd_bannerAutoIn', { n: left })}`
                         : ''}
             </span>
             <button type="button" className="joe-autoupdate-now" data-testid="autoupdate-now"
                 onClick={() => void startSelfUpdate()} disabled={busy}>
-                حدّث الآن
+                {t('upd_updateNow')}
             </button>
             <button type="button" className="joe-autoupdate-later" onClick={dismiss}>
-                ليس الآن
+                {t('upd_notNow')}
             </button>
             <button type="button" className="joe-autoupdate-toggle" onClick={toggleAuto}
-                title="عند الإيقاف يبقى الإشعار ويصبح التحديث بضغطة يدوية">
-                {auto ? 'التلقائي: مفعّل' : 'التلقائي: موقف'}
+                title={t('upd_autoToggleHint')}>
+                {auto ? t('upd_autoOn') : t('upd_autoOff')}
             </button>
         </div>,
         document.body,
@@ -363,6 +377,7 @@ export function UpdateAutoPilot() {
 
 /** Mounted beside the menu, not inside it, so closing the menu cannot kill the run. */
 export function SelfUpdateOverlay() {
+    const { t } = useTranslation();
     const [s, setS] = useState<UpdateState>(state);
     const [now, setNow] = useState(Date.now());
     const logRef = useRef<HTMLPreElement | null>(null);
@@ -399,7 +414,10 @@ export function SelfUpdateOverlay() {
         window.setTimeout(() => setCopied(false), 1600);
     };
     const secs = s.startedAt ? Math.max(0, Math.round((now - s.startedAt) / 1000)) : 0;
-    const elapsed = secs < 60 ? `${secs} ثانية` : `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')} دقيقة`;
+    const elapsed = secs < 60
+        ? t('upd_elapsedSec', { n: secs })
+        : t('upd_elapsedMin', { time: `${Math.floor(secs / 60)}:${String(secs % 60).padStart(2, '0')}` });
+    const errorText = s.error ? t(s.error.i18nKey, { n: s.error.n, error: s.error.detail }) : '';
     useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [s.log]);
 
     if (s.phase === 'idle') return null;
@@ -422,15 +440,15 @@ export function SelfUpdateOverlay() {
                     </span>
                     <div className="joe-update-titles">
                         <b>
-                            {s.phase === 'failed' ? 'تعذّر التحديث'
-                                : s.phase === 'stalled' ? 'التحديث متوقّف'
-                                    : (current?.label || 'يبدأ التحديث')}
+                            {s.phase === 'failed' ? t('upd_titleFailed')
+                                : s.phase === 'stalled' ? t('upd_titleStalled')
+                                    : (current ? t(current.labelKey) : t('upd_titleStarting'))}
                         </b>
                         <span>
-                            {s.phase === 'failed' ? 'راجع التفاصيل بالأسفل'
-                                : s.phase === 'stalled' ? `لا تقدّم منذ ${elapsed} — لن أدّعي غير ذلك`
-                                    : s.phase === 'restarting' ? 'جو يعود الآن — ستُحدَّث الصفحة وحدها'
-                                        : `الخطوة ${Math.min(done + 1, STEPS.length)} من ${STEPS.length}`}
+                            {s.phase === 'failed' ? t('upd_seeDetails')
+                                : s.phase === 'stalled' ? t('upd_noProgressFor', { time: elapsed })
+                                    : s.phase === 'restarting' ? t('upd_restarting')
+                                        : t('upd_stepOf', { n: Math.min(done + 1, STEPS.length), total: STEPS.length })}
                         </span>
                     </div>
                     {s.startedAt && !bad ? <span className="joe-update-clock">{elapsed}</span> : null}
@@ -444,15 +462,15 @@ export function SelfUpdateOverlay() {
                         <ol className="joe-update-steps">
                             {STEPS.map(st => (
                                 <li key={st.key} className={stepClass(st.key, s)}>
-                                    <span className="joe-step-dot" />{st.label}
+                                    <span className="joe-step-dot" />{t(st.labelKey)}
                                 </li>
                             ))}
                         </ol>
-                        <p className="joe-update-note">ملفاتك محفوظة تلقائياً. لا تُغلق جو حتى تعود الصفحة وحدها.</p>
+                        <p className="joe-update-note">{t('upd_note')}</p>
                     </>
                 )}
 
-                {s.error && <p className="joe-update-error" data-testid="update-error">{s.error}</p>}
+                {errorText && <p className="joe-update-error" data-testid="update-error">{errorText}</p>}
 
                 {/*
                     A DEAD END IS NOT AN END. When the updater cannot be made
@@ -462,9 +480,9 @@ export function SelfUpdateOverlay() {
                 */}
                 {s.phase === 'stalled' && (
                     <div className="joe-update-rescue" data-testid="update-rescue">
-                        <p>شغّله بنفسك في نافذة PowerShell وسترى السبب كاملاً:</p>
+                        <p>{t('upd_rescueRun')}</p>
                         <code dir="ltr">cd $HOME\Documents\xelitesolutions ; .\update-joe.ps1</code>
-                        <span>السجل بالأسفل يحمل اسم البرنامج والسكربت اللذين حاول جو تشغيلهما — انسخه كاملاً.</span>
+                        <span>{t('upd_rescueLog')}</span>
                     </div>
                 )}
 
@@ -476,23 +494,23 @@ export function SelfUpdateOverlay() {
                 */}
                 <div className="joe-console">
                     <div className="joe-console-bar">
-                        <span className="joe-console-title">سجل التحديث</span>
-                        {s.lines ? <span className="joe-console-count">{s.lines} سطر</span> : null}
+                        <span className="joe-console-title">{t('upd_logTitle')}</span>
+                        {s.lines ? <span className="joe-console-count">{t('upd_lines', { n: s.lines })}</span> : null}
                         <button
                             type="button"
                             className="joe-console-copy"
                             data-testid="copy-log"
                             onClick={copyLog}
-                            title="نسخ السجل كاملاً"
-                            aria-label="نسخ السجل كاملاً"
+                            title={t('upd_copyLog')}
+                            aria-label={t('upd_copyLog')}
                             disabled={!s.log}
                         >
                             {copied ? <Check size={14} /> : <Copy size={14} />}
-                            <span>{copied ? 'نُسخ' : 'نسخ'}</span>
+                            <span>{copied ? t('upd_copied') : t('upd_copy')}</span>
                         </button>
                     </div>
                     <pre className="joe-console-body" ref={logRef} dir="ltr">
-                        {s.log || 'بدأ التحديث — لم يصل أول سطر بعد.'}
+                        {s.log || t('upd_noLinesYet')}
                     </pre>
                 </div>
 
@@ -503,9 +521,9 @@ export function SelfUpdateOverlay() {
                             data-testid="update-retry"
                             onClick={() => { set({ phase: 'idle' }); void startSelfUpdate(); }}
                         >
-                            حاول مرة أخرى
+                            {t('upd_retry')}
                         </button>
-                        <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>إغلاق</button>
+                        <button className="joe-update-close" onClick={() => set({ phase: 'idle' })}>{t('close')}</button>
                     </div>
                 )}
             </div>

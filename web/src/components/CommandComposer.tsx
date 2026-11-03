@@ -12,12 +12,12 @@ import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
 import { setRunBusy } from '../lib/run-activity';
-import { markRunning } from '../services/runningSessions';
+import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
-import TodosPanel from './TodosPanel';
+import { useUiDir } from './NeuralTraceView';
 
 
 // Web Speech API types
@@ -168,9 +168,9 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
   const md = report.engineeringReportMarkdown || '';
   
   const generateSummaryFromJson = (r: any) => {
-    const ok = r.ok ? '✅ SUCCESS' : '❌ FAILED';
+    const ok = r.ok ? `✅ ${t('cc_reportSuccess')}` : `❌ ${t('cc_reportFailed')}`;
     const progress = `${r.completedPhases} / ${r.totalPlannedPhases || '?'}`;
-    return `### Pipeline Summary\n- **Status**: ${ok}\n- **Progress**: ${progress}\n\nDetailed orchestration data available.`;
+    return t('cc_reportSummary', { status: ok, progress });
   };
 
   const displayMd = md || (report.engineeringReport ? generateSummaryFromJson(report.engineeringReport) : '');
@@ -186,12 +186,12 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
       <div className="report-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ShieldCheck size={20} className="report-icon" />
-          <span>Joe Engineering Report</span>
+          <span>{t('cc_reportTitle')}</span>
         </div>
         <button 
           onClick={() => setShowRaw(!showRaw)}
           className="debug-toggle-btn"
-          title="Toggle Debug Info"
+          title={t('cc_reportToggleDebug')}
         >
           <Code size={14} />
         </button>
@@ -238,7 +238,7 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
           animate={{ opacity: 1, height: 'auto' }}
           className="report-debug-info"
         >
-          <div className="debug-header">RAW ORCHESTRATION DATA</div>
+          <div className="debug-header">{t('cc_reportRawData')}</div>
           <pre className="debug-content">
             {JSON.stringify(report.engineeringReport || report, null, 2)}
           </pre>
@@ -612,7 +612,7 @@ const ChatBubble = forwardRef(
         {showAvatar ? (
           <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
             {bubbleVariant === 'user' && userPicture ? (
-              <img src={userPicture} alt="User" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              <img src={userPicture} alt={t('you')} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : bubbleVariant === 'user' ? (
               <SenderIcon size={16} />
             ) : (
@@ -633,7 +633,7 @@ const ChatBubble = forwardRef(
                   <span>{fmtTime(ts)}</span>
                 </div>
                 {showCopy ? (
-                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title={t('copy')}>
                     {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                   </button>
                 ) : null}
@@ -654,14 +654,14 @@ const ChatBubble = forwardRef(
                     {/* An attached IMAGE shows itself, not a generic icon — the
                         composer already carries the data-URI preview it made. */}
                     {f.preview ? (
-                      <img src={f.preview} alt={f.name || 'image'} style={{
+                      <img src={f.preview} alt={f.name || t('artifacts.image')} style={{
                         width: 44, height: 44, objectFit: 'cover', borderRadius: 6, display: 'block'
                       }} />
                     ) : (
                       <FileText size={12} style={{ opacity: 0.7 }} />
                     )}
                     <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {f.name || 'File'}
+                      {f.name || t('artifacts.file')}
                     </span>
                   </div>
                 ))}
@@ -740,7 +740,7 @@ const ChatBubble = forwardRef(
             )}
 
             {isTyping && !streamingRef.current ? (
-              <div className="typing-dots" aria-label="Typing">
+              <div className="typing-dots" aria-label={t('cc_typing')}>
                 <span className="typing-dot" />
                 <span className="typing-dot" />
                 <span className="typing-dot" />
@@ -766,6 +766,9 @@ interface ProviderConfig {
   // untranslated — only the descriptor around them changes with the language.
   nameKey?: string;
   tagKey?: string;
+  // The short word the toolbar button writes when `name` is not a brand
+  // («Auto», «Local»): a brand stays as it is, a common word follows the language.
+  labelKey?: string;
   apiKey: string;
   isConnected: boolean;
   baseUrl?: string;
@@ -778,47 +781,99 @@ interface ProviderConfig {
   // a live request. The status dot is green only when this is true — never by
   // default. Reset to false whenever the key changes.
   verified?: boolean;
+  // Claude: the user pressed «use the server's key». Only then is 'server-key' theirs to keep.
+  serverKeyChosen?: boolean;
 }
 
-// OpenRouter available models
-const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descriptionKey: string }> = [
-  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, descriptionKey: 'modelKimiDesc' },
-  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, descriptionKey: 'modelLlamaDesc' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, descriptionKey: 'modelGemmaDesc' },
-  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, descriptionKey: 'modelMinimaxDesc' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, descriptionKey: 'modelDeepseekDesc' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, descriptionKey: 'modelGpt4oMiniDesc' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, descriptionKey: 'modelGpt4oDesc' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
+// The Claude models Joe runs, cheapest first: the server keeps the same list
+// (core/engine/anthropic.ts CLAUDE_MODELS) with a checked price for each. The
+// panel shows the models the user's own account offers (POST /runs/models,
+// asked of Anthropic with the key); this list names and describes them, and
+// stands in until the key is added.
+const ANTHROPIC_MODELS: Array<{ id: string; name: string; descriptionKey: string }> = [
+  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', descriptionKey: 'modelHaikuDesc' },
+  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', descriptionKey: 'modelSonnet55Desc' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', descriptionKey: 'modelOpusDesc' },
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', descriptionKey: 'modelFableDesc' },
 ];
+
+// Why a model list is only suggestions, in the user's language (provider-models.ts reason codes).
+const MODELS_REASON_KEYS: Record<string, string> = {
+  needs_key: 'modelsNeedsKey', refused: 'modelsRefused', unreachable: 'modelsUnreachable', empty: 'modelsEmpty',
+  no_address: 'modelsNoAddress', local_down: 'modelsLocalDown', local_empty: 'modelsLocalEmpty', none_runnable: 'claudeModelsNoneRun',
+};
+
+// Why Claude did not connect, in the user's language (the codes /runs/verify returns).
+const CLAUDE_ERROR_KEYS: Record<string, string> = {
+  MODEL_AUTH: 'provClaudeErrAuth', MODEL_BILLING: 'provClaudeErrBilling', MODEL_NOT_FOUND: 'provClaudeErrModel',
+  MODEL_NOT_RUN: 'provClaudeErrModel', ENGINE_BUDGET_EXHAUSTED: 'provClaudeErrBudget', PROVIDER_FAILURE: 'provClaudeErrDown',
+};
+
+// Why the chosen provider stopped a run, in the user's language (run-model-choice.ts codes).
+const PROVIDER_STATUS_REASON: Record<string, string> = {
+  PROVIDER_NEEDS_KEY: 'cc_provReasonNeedsKey',
+  PROVIDER_AUTH: 'cc_provReasonAuth', PROVIDER_BILLING: 'cc_provReasonBilling', PROVIDER_QUOTA: 'cc_provReasonQuota',
+  PROVIDER_MODEL: 'cc_provReasonModel', PROVIDER_DOWN: 'cc_provReasonDown', PROVIDER_COOLING: 'cc_provReasonDown',
+  PROVIDER_BUDGET: 'cc_provReasonBudget', PROVIDER_UNSUPPORTED: 'cc_provReasonUnsupported',
+};
+// The router's spellings of a provider, as the panel's keys.
+const PROVIDER_STATUS_KEY: Record<string, string> = { claude: 'anthropic', google: 'gemini', xai: 'grok' };
+
+/** What the server's engine really runs on (GET /runs/engine). */
+interface EngineInfo {
+  engine: 'agent' | 'legacy';
+  auto: { provider: string; model: string } | null;
+  claude: { serverKey: boolean; models: string[] };
+  budget: { totalUsd: number; perRunUsd: number; spentUsd: number } | null;
+}
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
-  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
+  // The SDK requires a nonempty key; Ollama ignores this public sentinel.
+  local: { name: 'Local', nameKey: 'cc_provLocal', labelKey: 'cc_provLocal', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
+  // ⛔ NO VENDOR IS «CONNECTED» WITHOUT A KEY. These six were marked connected
+  // with the placeholder 'free-mode', and the server ran a placeholder as Auto:
+  // «DeepSeek» answered from the free mesh. Measured 2026-11-02 against the
+  // vendors, every one answers 401/400/403 without a key. The «free» ones give
+  // a FREE key (the panel links to it); Auto is the only thing that needs none.
+  // The default models are the vendors' current ones: the old defaults
+  // (gemini-2.0-flash, Cerebras' llama-3.3-70b, kimi-k2:free, deepseek-chat,
+  // grok-beta) are retired, and a retired model never turns green.
+  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: '', isConnected: false, model: 'gemini-3.8-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
-  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
-  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
-  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
-  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
-  deepseek: { name: 'DeepSeek', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-4o' },
-  anthropic: { name: 'Anthropic', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: '', isConnected: false, baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', isFree: true },
+  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: '', isConnected: false, baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b', isFree: true },
+  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-4-31b-it:free', isFree: true },
+  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
+  deepseek: { name: 'DeepSeek', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'deepseek-flash', isCustom: true },
+  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-6-luna' },
+  anthropic: { name: 'Claude', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-haiku-5-5' },
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
-  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-4.7' },
 };
 
+/** Defaults the vendors have retired: a saved one is moved to the current default. */
+const RETIRED_DEFAULT_MODELS: Record<string, string[]> = {
+  gemini: ['gemini-2.0-flash'], groq: ['qwen/qwen3-32b'],
+  cerebras: ['llama-3.3-70b', 'llama3.1-8b', 'qwen-3-32b'], openrouter: ['moonshotai/kimi-k2:free', 'google/gemma-2-9b-it:free', 'meta-llama/llama-3-8b-instruct:free'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'], grok: ['grok-beta', 'grok-3', 'grok-3-mini'],
+};
+/** What the panel once stored where no key was typed. It is not a key. */
+const PLACEHOLDER_KEY = /^(?:free-mode|auto-mode|free|dummy)$/;
+
 // Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
-//  - 'keyless'  : works with NO key at all (DeepSeek via the Pollinations proxy).
-//  - 'optional' : keyless-capable but a personal key raises speed/limits (Groq).
+//  - 'keyless'  : works with NO key at all. No vendor in the menu does (measured
+//                 2026-11-02); DeepSeek was labelled so while another model answered.
+//  - 'optional' : keyless-capable but a personal key raises speed/limits.
 //  - 'required' : the FREE tier still needs a FREE key to work — the earlier UI
 //                 wrongly said "no key needed", which is why these felt "fake".
 //  - 'paid'     : needs a paid key.
 type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
 const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder?: string; placeholderKey?: string }> = {
-  groq: { need: 'optional', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
-  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
+  groq: { need: 'required', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
+  deepseek: { need: 'paid', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholder: 'sk-...' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
   mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholderKey: 'keyPlaceholderMistral' },
@@ -864,6 +919,7 @@ export default function CommandComposer({
 
 }) {
   const { t } = useTranslation();
+  const uiDir = useUiDir();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
@@ -957,7 +1013,7 @@ export default function CommandComposer({
       const token = localStorage.getItem('token');
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const name = payload.name || payload.email?.split('@')[0] || 'User';
+        const name = payload.name || payload.email?.split('@')[0] || t('cc_userFallback');
         const pic = payload.picture || '';
         setUserName(name);
         if (pic) setUserPicture(pic);
@@ -966,7 +1022,7 @@ export default function CommandComposer({
         if (events.length === 0) {
           setEvents([{
             type: 'text',
-            data: { text: `👋 Welcome back, **${name}**! How can I help you today?` },
+            data: { text: t('cc_welcomeBack', { name }) },
             duration: 0
           }]);
         }
@@ -1030,6 +1086,8 @@ export default function CommandComposer({
   const lastTextDedupRef = useRef<{ sig: string; ts: number } | null>(null);
   const terminalRunIdsRef = useRef<Set<string>>(new Set());
   const terminalSessionRef = useRef(false);
+  const terminalRevisionRef = useRef(0);
+  const lastUserInputRunRef = useRef<{ runId: string } | null>(null);
   const pendingBrowserRetryRef = useRef<{ url: string; sessionId: string } | null>(null);
   const lastAutoOpenedHrefRef = useRef<string>('');
 
@@ -1040,25 +1098,23 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
+  const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
+  // The models each provider really offers (POST /runs/models), and which
+  // provider's model the user chose to type by hand.
+  const [modelLists, setModelLists] = useState<Record<string, {
+    models: string[]; source: 'live' | 'catalog'; note?: string; loading?: boolean;
+    reason?: { code: string; status?: number }; names?: Record<string, string>; unsupported?: string[];
+  }>>({});
+  const [customModel, setCustomModel] = useState<Record<string, boolean>>({});
+  const customModelRef = useRef(customModel);
+  customModelRef.current = customModel;
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
-    // Display order: Auto first, then the free providers (Groq/Gemini/Cerebras/
-    // Mistral/DeepSeek/OpenRouter), then the paid ones. IMPORTANT: every provider
-    // in DEFAULT_PROVIDERS must be listed here — the panel renders from this state,
-    // so a provider omitted here (Groq/Cerebras/Mistral used to be) never appears.
-    const baseProviders: { [key: string]: ProviderConfig } = {
-      auto: { ...DEFAULT_PROVIDERS.auto },
-      groq: { ...DEFAULT_PROVIDERS.groq },
-      gemini: { ...DEFAULT_PROVIDERS.gemini },
-      cerebras: { ...DEFAULT_PROVIDERS.cerebras },
-      mistral: { ...DEFAULT_PROVIDERS.mistral },
-      deepseek: { ...DEFAULT_PROVIDERS.deepseek },
-      openrouter: { ...DEFAULT_PROVIDERS.openrouter },
-      openai: { ...DEFAULT_PROVIDERS.openai },
-      anthropic: { ...DEFAULT_PROVIDERS.anthropic },
-      grok: { ...DEFAULT_PROVIDERS.grok },
-    };
+    // Clone the entire catalog so a registered provider cannot disappear here.
+    const baseProviders: { [key: string]: ProviderConfig } = Object.fromEntries(
+      Object.entries(DEFAULT_PROVIDERS).map(([key, provider]) => [key, { ...provider }])
+    );
 
     try {
       const saved = localStorage.getItem('ai_providers');
@@ -1075,14 +1131,28 @@ export default function CommandComposer({
            * The user's own settings (key, model, baseUrl) are theirs to keep;
            * identity is ours, and it is restored on every load.
            */
-          const { name, nameKey, tagKey, ...userOwned } = (parsed[k] || {}) as any;
+          const { name, nameKey, tagKey, isFree, ...userOwned } = (parsed[k] || {}) as any;
           baseProviders[k] = {
             ...baseProviders[k], ...userOwned,
             name: DEFAULT_PROVIDERS[k].name,
             nameKey: DEFAULT_PROVIDERS[k].nameKey,
             tagKey: DEFAULT_PROVIDERS[k].tagKey,
+            // Free or paid is the vendor's, not the cache's: DeepSeek was saved «free».
+            isFree: DEFAULT_PROVIDERS[k].isFree,
           };
+          if (k !== 'auto' && k !== 'local' && PLACEHOLDER_KEY.test(String(baseProviders[k].apiKey || ''))) {
+            baseProviders[k] = { ...baseProviders[k], apiKey: '' };
+          }
+          if ((RETIRED_DEFAULT_MODELS[k] || []).includes(String(baseProviders[k].model || ''))) {
+            baseProviders[k] = { ...baseProviders[k], model: DEFAULT_PROVIDERS[k].model };
+          }
         });
+      }
+      // Claude is paid, so the server's key is used only when the user asks for
+      // it. The build of 2026-11-01 filled 'server-key' in by itself; that was
+      // never the user's choice, so it is not kept. A choice the user made is.
+      if (baseProviders.anthropic?.apiKey === 'server-key' && !baseProviders.anthropic.serverKeyChosen) {
+        baseProviders.anthropic = { ...baseProviders.anthropic, apiKey: '' };
       }
       // Never trust a persisted "verified/connected" flag across reloads — the dot
       // must reflect a REAL test in THIS session. Keep the saved key, but clear the
@@ -1103,7 +1173,11 @@ export default function CommandComposer({
       const savedActive = localStorage.getItem('active_provider');
       console.log('[ProviderDebug] Loaded active_provider:', savedActive);
 
-      if (savedActive && baseProviders[savedActive]) {
+      // A vendor saved as active with no key ran on the free mesh all along,
+      // under its name. It is Auto now, honestly; his key brings it back.
+      const keyOf = (k: string) => String(baseProviders[k]?.apiKey || '').trim();
+      const runnable = (k: string) => k === 'auto' || k === 'local' || !!keyOf(k);
+      if (savedActive && baseProviders[savedActive] && runnable(savedActive)) {
         return { providers: baseProviders, activeProvider: savedActive };
       }
       return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
@@ -1113,13 +1187,120 @@ export default function CommandComposer({
   }, []);
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+
+  // THE BUTTON SAYS WHAT REALLY RUNS. Measured on 2026-11-01: the button read
+  // «Auto (free)» while the engine ran on Claude. The server says what Auto
+  // runs on (free, never Claude) and whether it offers its own Claude key.
+  // Claude is paid: it is connected only by the user, with their key (or the
+  // server's key when they ask for it), never filled in for them.
+  useEffect(() => {
+    let alive = true;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    fetch(`${API}/runs/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((info: EngineInfo | null) => { if (alive && info) setEngineInfo(info); })
+      .catch(() => { /* an older server without the endpoint: the button keeps its own state */ });
+    return () => { alive = false; };
+  }, []);
+
+  const providerVerificationRevisionRef = useRef<Record<string, number>>({});
+  const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
+  const providerActivationRevisionRef = useRef(0);
+  const providersRef = useRef(providers);
+  providersRef.current = providers;
+  function invalidateProviderVerification(key: string, configurationChanged = true) {
+    providerVerificationRevisionRef.current[key] = (providerVerificationRevisionRef.current[key] || 0) + 1;
+    if (configurationChanged) providerConfigurationRevisionRef.current[key] = (providerConfigurationRevisionRef.current[key] || 0) + 1;
+  }
   // activeProvider = the one ACTUALLY used at runtime (only changes after a
   // successful Verify). selectedProvider = the one you're currently viewing/
   // configuring in the panel (changing it does NOT switch the runtime provider).
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
   const [selectedProvider, setSelectedProvider] = useState(initialProviderState.activeProvider);
+
+  // EVERY PROVIDER OFFERS ITS MODELS. The panel had one free-text «Model ID»
+  // (Claude's held claude-3-opus-20240229). The server asks the provider for
+  // its own list with the key (the key stays on the server) and says when the
+  // list is only suggestions. Asked again when the provider or its key changes:
+  // pasting a Claude key lists the models that account offers.
+  const pickerProvider = showProviders && selectedProvider && selectedProvider !== 'auto' ? selectedProvider : '';
+  const pickerKey = pickerProvider ? String(providers[pickerProvider]?.apiKey || '') : '';
+  const pickerBaseUrl = pickerProvider ? String(providers[pickerProvider]?.baseUrl || '') : '';
+  useEffect(() => {
+    if (!pickerProvider) return;
+    let alive = true;
+    setModelLists(prev => ({ ...prev, [pickerProvider]: { ...(prev[pickerProvider] || { models: [], source: 'catalog' }), loading: true } }));
+    const timer = setTimeout(() => {
+      const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+      fetch(`${API}/runs/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ provider: pickerProvider, apiKey: pickerKey, baseUrl: pickerBaseUrl || undefined }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(list => {
+          if (!alive) return;
+          setModelLists(prev => ({ ...prev, [pickerProvider]: list && Array.isArray(list.models)
+            ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false, reason: list.reason, names: list.names, unsupported: list.unsupported }
+            : { models: [], source: 'catalog', note: undefined, loading: false } }));
+          // A model the provider does not offer is replaced by the first it does
+          // (its recommended one: the server lists those first). A model typed
+          // by hand is his to keep.
+          if (list?.source === 'live' && list.models?.length) {
+            setProviders(prev => (list.models.includes(String(prev[pickerProvider]?.model || '')) || customModelRef.current[pickerProvider] ? prev
+              : { ...prev, [pickerProvider]: { ...prev[pickerProvider], model: list.models[0], isConnected: false, verified: false, lastError: undefined } }));
+          }
+        })
+        .catch(() => { if (alive) setModelLists(prev => ({ ...prev, [pickerProvider]: { models: [], source: 'catalog', loading: false } })); });
+    }, 500);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [pickerProvider, pickerKey, pickerBaseUrl]);
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
-  const [activeRunId, setActiveRunId] = useState<string | null>(null);
+  const [activeRunId, setActiveRunIdState] = useState<string | null>(null);
+  // The session-scoped socket callback outlives a render. Read the current
+  // identity synchronously instead of capturing an old React state value.
+  const activeRunIdentityRef = useRef<string | null>(null);
+  const submissionEpochRef = useRef(0);
+  const awaitingRunIdentityRef = useRef(false);
+  const pendingStopEpochRef = useRef<number | null>(null);
+  function setActiveRunId(id: string | null) {
+    activeRunIdentityRef.current = id;
+    if (id && lastUserInputRunRef.current?.runId !== id) {
+      lastUserInputRunRef.current = { runId: id };
+    }
+    setActiveRunIdState(id);
+  }
+  function beginRunSubmission() {
+    SocketService.invalidateRunPresentation(String(sessionId || ''));
+    const epoch = ++submissionEpochRef.current;
+    pendingStopEpochRef.current = null;
+    awaitingRunIdentityRef.current = true;
+    setActiveRunId(null);
+    lastUserInputRunRef.current = null;
+    terminalSessionRef.current = false;
+    return epoch;
+  }
+  function adoptRunStartResponse(id: string, epoch: number) {
+    if (epoch !== submissionEpochRef.current) return false;
+    if (activeRunIdentityRef.current && activeRunIdentityRef.current !== id) return false;
+    awaitingRunIdentityRef.current = false;
+    if (terminalRunIdsRef.current.has(id)) {
+      // Its terminal frame arrived while HTTP was pending. Do not reopen it.
+      terminalRevisionRef.current += 1;
+      terminalSessionRef.current = true;
+      setActiveRunId(null);
+      clearToolTimers();
+      setStatus('idle');
+      setIsThinking(false);
+      setThinkingPhase('idle');
+      setActiveToolName(null);
+      setToolVisible(false);
+      return false;
+    }
+    terminalSessionRef.current = false;
+    setActiveRunId(id);
+    return true;
+  }
 
 
   const derived = useMemo(() => {
@@ -1264,7 +1445,7 @@ export default function CommandComposer({
         sessionId: String(detail?.sessionId || '').trim(),
         report: {
           ok: Boolean(report.ok),
-          title: String(report.title || 'فحص جودة المتصفح'),
+          title: String(report.title || t('cc_browserQualityTitle')),
           checks: report.checks.map(String),
         },
         ts: Date.now(),
@@ -1279,6 +1460,30 @@ export default function CommandComposer({
   useEffect(() => {
     localStorage.setItem('ai_providers', JSON.stringify(providers));
   }, [providers]);
+
+  //  THE LOCAL MODEL IS THE ONE THE SERVER HAS, NOT A GUESS IN THE BUNDLE.
+  //  The Local provider defaulted to «qwen2.5:1.5b», which the owner's machine
+  //  does not have: its dot went red while /api/status reported the server's own
+  //  model installed and answering (owner, 2026-10-23). A model the user chose
+  //  and the server has installed is kept; anything else follows the server.
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`${API}/status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((s: any) => {
+        const ai = s?.ai;
+        if (cancelled || ai?.mode !== 'local' || !ai?.modelInstalled || typeof ai?.model !== 'string') return;
+        const installed: string[] = Array.isArray(ai.installedModels) ? ai.installedModels : [];
+        setProviders(prev => {
+          const local = prev.local;
+          if (!local || installed.includes(String(local.model || ''))) return prev;
+          return { ...prev, local: { ...local, model: ai.model, ...(ai.endpoint ? { baseUrl: ai.endpoint } : {}), isConnected: false, verified: false, lastError: undefined } };
+        });
+      })
+      .catch(() => { /* offline: keep what the user has */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('active_provider', activeProvider);
@@ -1644,9 +1849,16 @@ export default function CommandComposer({
         terminalRunIdsRef.current.add(messageRunId);
         // Keep this bounded: run ids are unique, but a long-lived Joe tab
         // must not accumulate an unbounded event tombstone list.
-        if (terminalRunIdsRef.current.size > 128) terminalRunIdsRef.current.clear();
+        if (terminalRunIdsRef.current.size > 128) {
+          const oldestId = terminalRunIdsRef.current.values().next().value;
+          if (oldestId) terminalRunIdsRef.current.delete(oldestId);
+        }
+        const knownRunId = activeRunIdentityRef.current;
+        if ((knownRunId && messageRunId !== knownRunId)
+          || (!knownRunId && awaitingRunIdentityRef.current)) return;
       } else if (msg.type === 'user_input' && messageRunId) {
         // A fresh, identified user request opens the next run for this session.
+        lastUserInputRunRef.current = { runId: messageRunId };
         terminalSessionRef.current = false;
       } else if (terminalSessionRef.current || (messageRunId && terminalRunIdsRef.current.has(messageRunId))) {
         // An executor can finish its cancellation race after the user-facing
@@ -1655,6 +1867,15 @@ export default function CommandComposer({
         return;
       }
       if (messageRunId) {
+        // While our HTTP start is pending, an unidentified socket frame may
+        // belong to the previous run. Wait for HTTP or identified user_input
+        // rather than letting a delayed run_started poison the admission.
+        if (!isTerminalRunEvent && msg.type !== 'user_input'
+          && !activeRunIdentityRef.current && awaitingRunIdentityRef.current) return;
+        // Only an identified user request can replace a known live run.
+        // Delayed tool/start frames from the prior run cannot retarget Stop.
+        if (!isTerminalRunEvent && msg.type !== 'user_input'
+          && activeRunIdentityRef.current && messageRunId !== activeRunIdentityRef.current) return;
         setActiveRunId(messageRunId);
       }
       if (msg.type === 'user_input') {
@@ -1667,6 +1888,9 @@ export default function CommandComposer({
       }
 
       if (isTerminalRunEvent) {
+        // Retain the transition even when legacy events lack a run id or
+        // the bounded run-id set rolls over during an awaited Stop request.
+        terminalRevisionRef.current += 1;
         terminalSessionRef.current = true;
         window.dispatchEvent(new CustomEvent('sessions:refresh'));
         setActiveRunId(null);
@@ -1843,24 +2067,32 @@ export default function CommandComposer({
         }
       }
 
-      // THE DAY'S QUOTA RAN OUT — AND THE BUTTON STILL SAID OTHERWISE.
-      // When the chosen provider hits its daily limit Joe keeps working on the
-      // free/local mesh, but the provider button went on showing the dead
-      // provider: the user could not tell why answers changed character, and
-      // every new run still asked for a quota that was gone. The switch is made
-      // HERE, for real — the button moves to «تلقائي» and the reason is said
-      // once, in the conversation, in the user's own language.
-      if (msg.type === 'provider_quota') {
+      // THE PROVIDER HE CHOSE DID NOT ANSWER — AND IT STAYS HIS CHOICE.
+      // Joe no longer swaps in another model (the server waits a short limit
+      // out on the same provider, or stops). The light turns red with the
+      // reason, the button keeps his choice, and the reason is said once in
+      // the conversation, in his language. The old `provider_quota` event
+      // moved the button to Auto, and it reached every connected user.
+      if (msg.type === 'provider_status') {
         const d: any = msg?.data || {};
-        const target = String(d.switchTo || 'auto');
-        setActiveProvider(target);
-        setSelectedProvider(target);
-        try { localStorage.setItem('active_provider', target); } catch { /* private mode */ }
-        const noticeId = `quota:${d.provider || ''}:${d.until || Date.now()}`;
+        if (d.ok !== false) return;
+        const key = PROVIDER_STATUS_KEY[String(d.provider || '').toLowerCase()] || String(d.provider || '').toLowerCase();
+        const minutes = Number(d.minutes);
+        const when = Number.isFinite(minutes) && minutes > 0
+          ? (minutes >= 60 ? t('cc_quotaHours', { n: Math.round(minutes / 60) }) : t('cc_quotaMinutes', { n: Math.ceil(minutes) }))
+          : '';
+        const reasonKey = PROVIDER_STATUS_REASON[String(d.code || '')] || 'cc_provReasonDown';
+        const reason = reasonKey === 'cc_provReasonQuota' && !when ? t('cc_provReasonQuotaNow') : t(reasonKey, { when });
+        setProviders(prev => prev[key]
+          ? { ...prev, [key]: { ...prev[key], isConnected: false, isVerifying: false, verified: false, lastError: reason } }
+          : prev);
+        const name = providersRef.current?.[key]?.name || String(d.provider || '');
+        const noticeId = `provider:${key}:${d.code || ''}:${msg?.runId || d.until || ''}`;
+        const text = t('cc_provStopped', { provider: name, model: d.model ? ` (${d.model})` : '', reason });
         setEvents((prev: any[]) => (
           prev.some((e: any) => e?.id === noticeId)
             ? prev
-            : [...prev, { type: 'text', id: noticeId, data: String(d.message || 'انتهت حصّة المزوّد — تم التحويل إلى الوضع التلقائي.') }]
+            : [...prev, { type: 'text', id: noticeId, data: text }]
         ));
         return;
       }
@@ -2461,7 +2693,7 @@ export default function CommandComposer({
         lastGateSigRef.current.secret = undefined;
         setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء حفظ التوكن: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2482,7 +2714,7 @@ export default function CommandComposer({
         await approve(decision);
         lastGateSigRef.current.approval = undefined;
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء إرسال قرار الموافقة: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_approvalSendError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2491,6 +2723,7 @@ export default function CommandComposer({
     // the API mint one during /runs/start means user_input, run_started, and
     // an early Stop can be emitted before this component knows what chat owns
     // them. Create and adopt the session at the client boundary instead.
+    const submissionEpoch = beginRunSubmission();
     let runSessionId = String(sessionId || '').trim();
     if (!runSessionId) {
       try {
@@ -2515,15 +2748,20 @@ export default function CommandComposer({
         // before the run route broadcasts its first event.
         await new Promise(resolve => window.setTimeout(resolve, 0));
       } catch (error: any) {
+        if (submissionEpoch !== submissionEpochRef.current) return;
+        awaitingRunIdentityRef.current = false;
+        // 'session_creation_failed' is this function's own code, not a sentence.
+        const createMessage = String(error?.message || '').trim();
         setEvents(prev => [...prev, {
           type: 'error',
-          data: String(error?.message || 'Unable to create a conversation for this task.'),
+          data: createMessage && createMessage !== 'session_creation_failed' ? createMessage : t('cc_sessionCreateFailed'),
           ts: Date.now(),
         }]);
         return;
       }
     }
 
+    if (submissionEpoch !== submissionEpochRef.current) return;
     clearToolTimers();
     setStatus('thinking');
     setIsThinking(true);
@@ -2645,6 +2883,8 @@ export default function CommandComposer({
     // Optimistic update removed (duplicate)
 
     const token = localStorage.getItem('token');
+    const registryAdmission = captureRunningAdmission(runSessionId);
+    const presentationRevision = SocketService.beginRunPresentation(runSessionId);
     try {
       /**
        *  A RUN CARRIES ITS BROWSER, EVEN WHEN THE MESSAGE DOES NOT MENTION ONE.
@@ -2721,7 +2961,7 @@ export default function CommandComposer({
             body: JSON.stringify({ sessionId: opened.sessionId, instructionText: `افتح ${desiredUrl}`, mode: 'execute' }),
           }).catch(() => null);
         } catch (e: any) {
-          const msg = String(e?.message || e || 'فشل فتح المتصفح');
+          const msg = String(e?.message || e || t('cc_browserOpenFailed'));
           setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
           const sid = runSessionId;
           const looksLikeUnauthorizedWorker = /worker_error=401\b|unauthorized\b|غير مصرح/i.test(msg);
@@ -2737,28 +2977,12 @@ export default function CommandComposer({
         }
       }
 
-      const pickFirstValidProvider = () => {
-        for (const [k, p] of Object.entries(providers)) {
-          if (String(p?.apiKey || '').trim() && p?.isConnected) return k;
-        }
-        return 'openai';
-      };
-
-      let providerToSend = activeProvider;
-      let providerCfgToSend = providers[providerToSend];
-
-      // [FIX] Allow all free providers to proceed without API key check
-      const isFreeProvider = !!providerCfgToSend?.isFree;
-
-      console.log(`[ProviderDebug] run() start. active=${activeProvider}, toSend=${providerToSend}, isFree=${isFreeProvider}`);
-
-      if (!isFreeProvider && (!String(providerCfgToSend?.apiKey || '').trim() || !providerCfgToSend?.isConnected)) {
-        console.log('[ProviderDebug] Provider invalid, falling back...');
-        const valid = pickFirstValidProvider();
-        providerToSend = valid;
-        providerCfgToSend = providers[valid];
-        console.log('[ProviderDebug] Fallback provider:', valid);
-      }
+      // Verification/status cannot authorize a different brain. Preserve the
+      // user's selected provider; the backend resolves its credentials/policy
+      // and reports its failure without silently substituting another vendor.
+      const providerToSend = activeProvider;
+      const providerCfgToSend = providers[providerToSend];
+      if (!providerCfgToSend) throw new Error(t('cc_providerUnavailable'));
 
       const payload: any = {
         type: 'run_start',
@@ -2814,6 +3038,7 @@ export default function CommandComposer({
       });
       console.log(`[JOE] /runs/start Response Status: ${res.status}`);
       const raw = await res.text();
+      if (submissionEpoch !== submissionEpochRef.current) return;
       let data: any = null;
       try {
         data = raw ? JSON.parse(raw) : null;
@@ -2839,7 +3064,20 @@ export default function CommandComposer({
 
       if (typeof data?.runId === 'string' && data.runId.trim()) {
         const rid = data.runId.trim();
-        setActiveRunId(rid);
+        if (!registryAdmission.canStart(rid)) return;
+        if (!adoptRunStartResponse(rid, submissionEpoch)) return;
+        // An early Stop belongs to this submission, even before HTTP gives it
+        // an id. Cancel only the id acknowledged for that same submission.
+        if (pendingStopEpochRef.current === submissionEpoch) {
+          pendingStopEpochRef.current = null;
+          await stopCurrentRun({ runId: rid, sessionId: runSessionId, submissionEpoch });
+          return;
+        }
+        if (registryAdmission.markStarted(rid)) {
+          // HTTP can identify a run whose socket opener was missed. Permit its
+          // final persisted-answer receipt without reopening socket live state.
+          SocketService.registerRunPresentation(runSessionId, rid, presentationRevision);
+        }
       }
       if (data?.sessionId && !sessionId && onSessionCreated) {
         onSessionCreated(data.sessionId);
@@ -2888,6 +3126,8 @@ export default function CommandComposer({
       }
       if (!overrideFiles) setAttachedFiles([]);
     } catch (e) {
+      if (submissionEpoch !== submissionEpochRef.current) return;
+      awaitingRunIdentityRef.current = false;
       console.error(e);
       const msg = String((e as any)?.message || e || '').trim();
       const finalMsg = msg ? `${t('error')}: ${msg}` : t('error');
@@ -2906,6 +3146,9 @@ export default function CommandComposer({
       setIsThinking(false);
       setActiveToolName(null);
       setToolVisible(false);
+    } finally {
+      registryAdmission.release();
+      SocketService.endRunPresentation(runSessionId, presentationRevision);
     }
   }
 
@@ -2961,10 +3204,20 @@ export default function CommandComposer({
     if (pendingQueue.length === 0 && queuePaused) setQueuePaused(false);
   }, [pendingQueue.length, queuePaused]);
 
-  async function stopCurrentRun() {
+  async function stopCurrentRun(target?: { runId: string; sessionId: string; submissionEpoch: number }) {
+    if (target && (target.submissionEpoch !== submissionEpochRef.current
+      || target.runId !== activeRunIdentityRef.current)) return;
     // Interrupting a run by hand is a statement that the plan changed —
     // whatever was queued behind it must wait for an explicit resume.
     if (pendingQueue.length > 0) setQueuePaused(true);
+    if (!target && awaitingRunIdentityRef.current && !activeRunIdentityRef.current) {
+      pendingStopEpochRef.current = submissionEpochRef.current;
+      setActiveToolName(t('cc_stoppingRequest'));
+      setToolVisible(true);
+      setStatus('thinking');
+      setIsThinking(true);
+      return;
+    }
     const token = (() => {
       try {
         return localStorage.getItem('token');
@@ -2977,10 +3230,30 @@ export default function CommandComposer({
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     };
 
-    const rid = String(activeRunId || '').trim();
-    const sid = String(sessionId || '').trim();
+    const rid = String(target?.runId || activeRunId || '').trim();
+    const sid = String(target?.sessionId || sessionId || '').trim();
+    const runningGenerationAtStop = getRunningGeneration(sid);
     const bid = String(browserSessionId || '').trim();
     const pendingBid = String(pendingBrowserRetryRef.current?.sessionId || '').trim();
+    const terminalRevisionAtStop = terminalRevisionRef.current;
+    const submissionEpochAtStop = submissionEpochRef.current;
+    const userInputAtStop = lastUserInputRunRef.current;
+    let stopTargetRunId = rid;
+    const stopReplyIsStale = () => terminalRevisionRef.current !== terminalRevisionAtStop
+      || getRunningGeneration(sid) !== runningGenerationAtStop
+      || submissionEpochRef.current !== submissionEpochAtStop
+      // An unidentified session Stop cannot safely adopt an identity which
+      // appeared after the request. Its own terminal frame may still settle it.
+      || (!stopTargetRunId && lastUserInputRunRef.current !== userInputAtStop
+        && Boolean(lastUserInputRunRef.current?.runId))
+      // A successor can arrive without a terminal frame for the old run.
+      // Its identity must also fence the old reply and active-run recovery.
+      || (Boolean(stopTargetRunId) && lastUserInputRunRef.current !== userInputAtStop
+        && Boolean(lastUserInputRunRef.current?.runId)
+        && lastUserInputRunRef.current?.runId !== stopTargetRunId)
+      || (stopTargetRunId
+        ? terminalRunIdsRef.current.has(stopTargetRunId)
+        : terminalSessionRef.current);
 
     let serverConfirmedStop = false;
     const requestStop = async (runId: string) => {
@@ -3030,26 +3303,37 @@ export default function CommandComposer({
       } catch { }
     }
 
+    // A terminal event can win while Stop waits for HTTP. Its late response
+    // must neither resurrect this run nor recover and stop a newer one.
+    if (stopReplyIsStale()) return;
+
     // A websocket reconnect or a session switch can leave the composer without
     // its run id even though the server still has one. Resolve it from the
     // active-run registry and retry before changing the visible state. A Stop
     // control is a command with a real effect, never a client-side disguise.
-    if (!serverConfirmedStop && sid) {
+    if (!serverConfirmedStop && sid && !rid) {
       try {
         const response = await fetch(`${API}/runs/active`, { headers });
         const active = await response.json().catch(() => null);
+        if (stopReplyIsStale()) return;
         const recoveredRunId = Array.isArray(active?.runs)
           ? String(active.runs.find((run: any) => String(run?.sessionId || '') === sid)?.runId || '').trim()
           : '';
-        if (recoveredRunId && recoveredRunId !== rid) await requestStop(recoveredRunId);
+        if (recoveredRunId && recoveredRunId !== rid) {
+          stopTargetRunId = recoveredRunId;
+          await requestStop(recoveredRunId);
+        }
       } catch { }
     }
+
+    // The recovery request has the same race as the original stop request.
+    if (stopReplyIsStale()) return;
 
     // The stop response is authoritative for this exact user action. Clear
     // the cross-session registry immediately instead of waiting for its 2.5s
     // recovery poll; the server's run_cancelled event remains the second wire
     // for other tabs and a remounted composer.
-    if (serverConfirmedStop && sid) markRunning(sid, false);
+    if (serverConfirmedStop && sid) markRunning(sid, false, stopTargetRunId, runningGenerationAtStop);
     if (serverConfirmedStop) terminalSessionRef.current = true;
 
     // Do not clear a visibly active conversation until the server has said
@@ -3057,7 +3341,7 @@ export default function CommandComposer({
     // the owner retry or see the eventual terminal event instead of believing
     // a task vanished when it is still consuming tools in the background.
     if (!serverConfirmedStop && (rid || sid)) {
-      setActiveToolName('Unable to confirm that the run stopped; it is still active.');
+      setActiveToolName(t('cc_stopUnconfirmed'));
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3137,7 +3421,7 @@ export default function CommandComposer({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
     } catch (e) {
-      setEvents(prev => [...prev, { type: 'error', data: `تعذّر متابعة المتصفح: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+      setEvents(prev => [...prev, { type: 'error', data: t('cc_browserResumeFailed', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
     } finally {
       setBrowserCred(null);
       setBrowserCredValue('');
@@ -3154,8 +3438,13 @@ export default function CommandComposer({
   // startup auto-check: it must not steal the panel selection, and a failure on
   // an early attempt (API still booting) must not paint the button red before
   // the retries are exhausted.
-  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean; background?: boolean }): Promise<boolean> => {
-    const p = providers[key];
+  const checkConnection = async (key: string, opts?: { closeOnSuccess?: boolean; background?: boolean; reportError?: boolean; isCurrent?: () => boolean }): Promise<boolean> => {
+    if (opts?.isCurrent?.() === false) return false;
+    const p = providersRef.current[key];
+    invalidateProviderVerification(key, false);
+    const revision = providerVerificationRevisionRef.current[key];
+    const activationRevision = opts?.background ? providerActivationRevisionRef.current : ++providerActivationRevisionRef.current;
+    const currentVerification = () => providerVerificationRevisionRef.current[key] === revision && opts?.isCurrent?.() !== false;
 
     // Show it in the panel + start verifying — but do NOT make it the runtime
     // provider yet. It becomes active ONLY if the verify below succeeds.
@@ -3172,39 +3461,49 @@ export default function CommandComposer({
         },
         body: JSON.stringify({
           provider: key,
-          apiKey: p.apiKey || (p.isFree ? 'free-mode' : ''),
+          apiKey: p.apiKey || '',
           baseUrl: p.baseUrl,
           model: p.model,
+          // The check on every page load must not spend: for Claude it asks
+          // whether the key lists the model (free); Connect makes one real call.
+          light: !!opts?.background,
         }),
       });
 
+      if (!currentVerification()) return false;
       if (res.status === 401) {
         handleUnauthorized();
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
-      const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+      const data = await res.json().catch(() => ({ ok: false, error: t('cc_badResponse') }));
+      if (!currentVerification()) return false;
 
       if (data?.ok) {
         // SUCCESS: a live request actually returned. Mark REALLY verified and make
         // it the active runtime provider.
-        setActiveProvider(key);
+        if (!opts?.background && activationRevision === providerActivationRevisionRef.current) setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined },
         }));
-        if (opts?.closeOnSuccess) setShowProviders(false); // green → switch & close
+        if (opts?.closeOnSuccess && !opts?.background
+          && activationRevision === providerActivationRevisionRef.current) setShowProviders(false);
         return true;
       }
       // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (data?.error || 'فشل الاتصال') },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined
+            : (key === 'anthropic' && CLAUDE_ERROR_KEYS[data?.code] ? t(CLAUDE_ERROR_KEYS[data.code])
+              : PROVIDER_STATUS_REASON[data?.code] ? t('cc_provNotConnected', { reason: t(PROVIDER_STATUS_REASON[data.code], { when: '' }) })
+                : (data?.error || t('cc_connectionFailed'))) },
       }));
       return false;
     } catch (err: any) {
+      if (!currentVerification()) return false;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background ? undefined : (err.message || 'فشل الاتصال') },
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || t('cc_connectionFailed')) },
       }));
       return false;
     }
@@ -3219,6 +3518,17 @@ export default function CommandComposer({
     const ap = String(activeProvider || '').trim();
     if (!ap || didAutoVerifyRef.current) return;
     let cancelled = false;
+    const configurationRevision = providerConfigurationRevisionRef.current[ap] || 0;
+    const activationRevision = providerActivationRevisionRef.current;
+    const currentStartup = () => !cancelled
+      && (providerConfigurationRevisionRef.current[ap] || 0) === configurationRevision
+      && providerActivationRevisionRef.current === activationRevision;
+    let startupProbeRevision: number | undefined;
+    const retireStartupProbe = () => {
+      if (startupProbeRevision === undefined || providerVerificationRevisionRef.current[ap] !== startupProbeRevision) return;
+      invalidateProviderVerification(ap, false);
+      setProviders(prev => ({ ...prev, [ap]: { ...prev[ap], isVerifying: false } }));
+    };
     const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
     // Joe must open READY: the provider verifies itself the moment the panel
     // appears, with no click. The first attempt is immediate (the check itself
@@ -3233,35 +3543,39 @@ export default function CommandComposer({
         // The guard is claimed on SUCCESS, never at schedule time: claiming it
         // early let a StrictMode/remount cleanup cancel the only attempt while
         // the ref already read "done", so the check never ran at all.
-        if (cancelled || didAutoVerifyRef.current) return;
+        if (!currentStartup() || didAutoVerifyRef.current) return;
         const isLast = i === attempts.length - 1;
-        const ok = await checkConnection(ap, { closeOnSuccess: false, background: !isLast });
-        if (cancelled) return;
+        const verification = checkConnection(ap, { closeOnSuccess: false, background: true, reportError: isLast, isCurrent: currentStartup });
+        startupProbeRevision = providerVerificationRevisionRef.current[ap];
+        const ok = await verification;
+        if (!currentStartup()) { retireStartupProbe(); return; }
         if (ok) { didAutoVerifyRef.current = true; return; }
       }
     })();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; retireStartupProbe(); };
   }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
-    if (confirm('Are you sure you want to remove the API key?')) {
-      // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
-      // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
-      const isFree = !!providers[key]?.isFree;
+    if (confirm(t('cc_confirmRemoveKey'))) {
+      invalidateProviderVerification(key);
+      // A vendor without its key cannot run, free tier or paid: the 'free-mode'
+      // placeholder this used to leave behind ran the free mesh under its name.
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, verified: false, lastError: undefined }
+        [key]: { ...prev[key], apiKey: '', isConnected: false, isVerifying: false, verified: false, lastError: undefined }
       }));
-      if (!isFree) setActiveProvider('openai');
+      // Joe goes back to Auto, which needs no key.
+      if (activeProvider === key) setActiveProvider('auto');
     }
   };
 
   const handleDisconnect = async (key: string) => {
-    if (!confirm('Are you sure you want to disconnect?')) return;
+    if (!confirm(t('cc_confirmDisconnect'))) return;
+    invalidateProviderVerification(key);
 
     setProviders(prev => ({
       ...prev,
-      [key]: { ...prev[key], isConnected: false, isVerifying: false }
+      [key]: { ...prev[key], isConnected: false, isVerifying: false, verified: false }
     }));
 
     try {
@@ -3757,18 +4071,18 @@ export default function CommandComposer({
             {/* Left Sidebar */}
             <div className="providers-left">
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Cpu size={18} /> Providers
+                <Cpu size={18} /> {t('aiProviders')}
               </h3>
 
               <div className="provider-section">
-                <div className="section-header free">🆓 مجاني — Free</div>
+                <div className="section-header free">{t('cc_sectionFree')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('providerClickToView')}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToView', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -3782,14 +4096,14 @@ export default function CommandComposer({
               </div>
 
               <div className="provider-section">
-                <div className="section-header paid">💳 مدفوع — Paid</div>
+                <div className="section-header paid">{t('cc_sectionPaid')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، أدخل المفتاح، ثم Verify للتفعيل'}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToViewKey', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -3807,86 +4121,40 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[selectedProvider] && (
                 <>
-                  {/* OpenRouter Model Selection */}
-                  {selectedProvider === 'openrouter' && (
-                    <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">اختر النموذج</label>
-                      <select
-                        className="model-select"
-                        value={providers[selectedProvider].model || ''}
-                        onChange={(e) => {
-                          const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
-                          const isFreeModel = selectedModel?.free ?? true;
-                          setProviders(prev => ({
-                            ...prev,
-                            [selectedProvider]: {
-                              ...prev[selectedProvider],
-                              model: e.target.value,
-                              isFree: isFreeModel,
-                              isConnected: isFreeModel || !!prev[selectedProvider].apiKey
-                            }
-                          }));
-                        }}
-                      >
-                        <optgroup label={t('modelsFree')}>
-                          {OPENROUTER_MODELS.filter(m => m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label={t('modelsPaid')}>
-                          {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                      </select>
-                      {/* Show selected model info */}
-                      {(() => {
-                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[selectedProvider].model);
-                        if (!selected) return null;
-                        return (
-                          <div style={{
-                            marginTop: 8, padding: '8px 12px', borderRadius: 8,
-                            background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                            border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                            fontSize: 12
-                          }}>
-                            {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني - لا يحتاج API Key</span>
-                            ) : (
-                              <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
-                            )}
-                          </div>
-                        );
-                      })()}
+                  {/* Auto is the pure keyless mesh — no key. */}
+                  {selectedProvider === 'auto' && (
+                    <div className="info-box free" dir="auto">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('provClaudeAutoTitle')}</div>
+                      <div>{t('provClaudeAutoBody')}</div>
                     </div>
                   )}
 
-                  {/* Auto is the pure keyless mesh — no key. */}
-                  {selectedProvider === 'auto' && (
+                  {selectedProvider === 'local' && (
                     <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ تلقائي — بلا مفتاح</div>
-                      <div>يختار أفضل مزوّد مجاني متاح تلقائياً (محلي + مجاني). لا يحتاج أي مفتاح.</div>
+                      <div>{t('cc_localBody')}</div>
                     </div>
                   )}
 
                   {/* Honest per-provider info box driven by PROVIDER_KEY_INFO. */}
                   {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
                     const info = PROVIDER_KEY_INFO[selectedProvider];
-                    const title = info.need === 'keyless' ? '🆓 مجاني بلا مفتاح — ويقبل مفتاحك (اختياري)'
-                      : info.need === 'optional' ? '⚡ مجاني — ويقبل مفتاحك الخاص (اختياري، لسرعة وحدود أعلى)'
-                        : info.need === 'required' ? '🔑 مجاني — لكنه يحتاج مفتاحاً مجانياً لتفعيله'
-                          : '💳 مزوّد مدفوع — يحتاج مفتاحه';
+                    const title = info.need === 'keyless' ? t('cc_needKeyless')
+                      : info.need === 'optional' ? t('cc_needOptional')
+                        : info.need === 'required' ? t('cc_needRequired')
+                          : t('cc_needPaid');
+                    // The body names the button below by its own translated label.
+                    const action = t('cc_connectActivate');
                     const body = info.need === 'required'
-                      ? 'هذا المزوّد مجاني، لكنه يتطلّب مفتاح API مجانياً من موقعه. أنشئ مفتاحاً مجانياً، ألصقه بالأسفل، ثم اضغط «Connect & Activate» للتحقّق الحقيقي منه.'
+                      ? t('cc_bodyRequired', { action })
                       : info.need === 'paid'
-                        ? 'ألصق مفتاح المزوّد بالأسفل ثم اضغط «Connect & Activate» للتحقّق منه.'
-                        : 'يعمل مجاناً مباشرة. ولمزيد من السرعة والحدود يمكنك (اختياريّاً) لصق مفتاحك الخاص بالأسفل.';
+                        ? t('cc_bodyPaid', { action })
+                        : t('cc_bodyFree');
                     return (
                       <div className="info-box free">
                         <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
                         <div>{body}</div>
                         {info.getUrl && (
-                          <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح من <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
+                          <div style={{ marginTop: 6, fontSize: 12 }}>{t('cc_getKeyFrom')} <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
                         )}
                       </div>
                     );
@@ -3898,27 +4166,19 @@ export default function CommandComposer({
                     const keyOptional = info.need === 'keyless' || info.need === 'optional';
                     return (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">API Key{keyOptional ? ' (اختياري)' : ''}</label>
+                      <label className="section-label">{keyOptional ? t('cc_apiKeyLabelOptional') : t('cc_apiKeyLabel')}</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
                             type={showKey[selectedProvider] ? "text" : "password"}
                             className="api-key-input"
                             dir="ltr"
-                            value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
+                            value={/^(free-mode|auto-mode|server-key)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
-                              const newKey = e.target.value;
-                              // Keyless/optional providers fall back to the free mesh when the
-                              // box is empty; required/paid providers stay empty until a key.
-                              const emptyVal = keyOptional ? 'free-mode' : '';
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, verified: false, lastError: undefined } }));
-                              if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                fetch(`${API}/providers/openai/key`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ apiKey: newKey.trim() })
-                                }).catch(err => console.error('Failed to send API key to server:', err));
-                              }
+                              invalidateProviderVerification(selectedProvider);
+                              // The key travels with each request; an empty box is no key.
+                              const newKey = e.target.value.trim();
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
                             }}
                             placeholder={info.placeholderKey ? t(info.placeholderKey) : info.placeholder}
                           />
@@ -3940,7 +4200,7 @@ export default function CommandComposer({
                               }).catch(err => console.error('Failed to clear API key on server:', err));
                             }
                           }}
-                          title="Clear Key"
+                          title={t('cc_clearKey')}
                           style={{
                             padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
                             background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
@@ -3954,27 +4214,121 @@ export default function CommandComposer({
                   })()}
 
 
-                  {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
-                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
+                  {/* CLAUDE: paste the key, the account's models appear, pick one, Connect. Claude is paid. */}
+                  {selectedProvider === 'anthropic' && (() => {
+                    const list = modelLists.anthropic;
+                    const current = String(providers.anthropic?.model || '');
+                    const runnable = list?.models?.length ? list.models : ANTHROPIC_MODELS.map(m => m.id);
+                    const known = (id: string) => ANTHROPIC_MODELS.find(m => m.id === id);
+                    const nameOf = (id: string) => list?.names?.[id] || known(id)?.name || id;
+                    const descOf = (id: string) => (known(id) ? ` — ${t(known(id)!.descriptionKey)}` : '');
+                    const usingServerKey = providers.anthropic?.apiKey === 'server-key';
+                    const setClaude = (patch: Partial<ProviderConfig>) => {
+                      invalidateProviderVerification('anthropic');
+                      setProviders(prev => ({ ...prev, anthropic: { ...prev.anthropic, ...patch, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                    };
+                    const reasonKey = list?.reason?.code === 'needs_key' ? 'claudeModelsNeedKey' : MODELS_REASON_KEYS[String(list?.reason?.code || '')];
+                    return (
+                      <div style={{ marginBottom: 20 }}>
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        <select
+                          className="model-select"
+                          value={runnable.includes(current) ? current : runnable[0]}
+                          onChange={(e) => setClaude({ model: e.target.value })}
+                        >
+                          {runnable.map(id => <option key={id} value={id}>{nameOf(id)}{descOf(id)}</option>)}
+                          {!!list?.unsupported?.length && (
+                            <optgroup label={t('claudeModelsNotRun')}>
+                              {list.unsupported.map(id => <option key={id} value={id} disabled>{nameOf(id)}</option>)}
+                            </optgroup>
+                          )}
+                        </select>
+                        <div dir="auto" style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                          {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                            : list?.source === 'live' && !list?.reason ? t('claudeModelsLive', { count: runnable.length })
+                            : reasonKey ? t(reasonKey, { status: list?.reason?.status ?? '' }) : t('modelsCatalog')}
+                        </div>
+                        <div dir="auto" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12 }}>
+                          💳 {t('provClaudePaid')}
+                        </div>
+                        {engineInfo?.claude?.serverKey && (
+                          <div dir="auto" style={{ marginTop: 8, fontSize: 12 }}>
+                            {usingServerKey ? (
+                              <>
+                                {t('provClaudeServerNote', { spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2), total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0) })}{' '}
+                                <button type="button" className="link-button" onClick={() => setClaude({ apiKey: '', serverKeyChosen: false })}>{t('provClaudeUseOwnKey')}</button>
+                              </>
+                            ) : (
+                              <button type="button" className="link-button" onClick={() => setClaude({ apiKey: 'server-key', serverKeyChosen: true })}>{t('provClaudeUseServerKey')}</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* The model: a list of what the provider offers (Auto and Claude have their own). */}
+                  {selectedProvider !== 'auto' && selectedProvider !== 'anthropic' && (
                     <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                       <div>
-                        <label className="section-label">Model ID</label>
-                        <input
-                          type="text"
-                          className="api-key-input"
-                          value={providers[selectedProvider].model || ''}
-                          onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value } }))}
-                          placeholder="gpt-4o"
-                        />
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        {(() => {
+                          const list = modelLists[selectedProvider];
+                          const current = String(providers[selectedProvider].model || '');
+                          const options = list?.models || [];
+                          const typing = customModel[selectedProvider] === true;
+                          const setModel = (model: string) => {
+                            invalidateProviderVerification(selectedProvider);
+                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                          };
+                          return (
+                            <>
+                              <select
+                                className="model-select"
+                                value={typing ? '__custom__' : current}
+                                onChange={(e) => {
+                                  if (e.target.value === '__custom__') { setCustomModel(prev => ({ ...prev, [selectedProvider]: true })); return; }
+                                  setCustomModel(prev => ({ ...prev, [selectedProvider]: false }));
+                                  setModel(e.target.value);
+                                }}
+                              >
+                                {current && !options.includes(current) && <option value={current}>{current}</option>}
+                                {options.map(m => <option key={m} value={m}>{m}</option>)}
+                                <option value="__custom__">{t('modelOther', 'Another model…')}</option>
+                              </select>
+                              {typing && (
+                                <input
+                                  type="text"
+                                  className="api-key-input"
+                                  style={{ marginTop: 8 }}
+                                  value={current}
+                                  onChange={(e) => setModel(e.target.value)}
+                                  placeholder={options[0] || ''}
+                                />
+                              )}
+                              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                                  : list?.source === 'live' ? t('modelsLive', { count: options.length })
+                                  : t('modelsCatalog')}
+                                {/* A public list (OpenRouter) is the provider's own; only chatting needs the key. */}
+                                {!list?.loading && list?.source === 'live' && list?.reason?.code === 'needs_key' ? ` — ${t('modelsPublicNeedsKey')}`
+                                  : !list?.loading && list?.reason && MODELS_REASON_KEYS[list.reason.code] ? ` — ${t(MODELS_REASON_KEYS[list.reason.code], { status: list.reason.status ?? '' })}` : ''}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                       {selectedProvider === 'grok' && (
                         <div>
-                          <label className="section-label">Base URL</label>
+                          <label className="section-label">{t('cc_baseUrl')}</label>
                           <input
                             type="text"
                             className="api-key-input"
                             value={providers[selectedProvider].baseUrl || ''}
-                            onChange={(e) => setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], baseUrl: e.target.value } }))}
+                            onChange={(e) => {
+                              invalidateProviderVerification(selectedProvider);
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], baseUrl: e.target.value, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                            }}
                             placeholder="https://api..."
                             style={{
                               width: '100%', padding: '10px 12px', borderRadius: 8,
@@ -4007,7 +4361,8 @@ export default function CommandComposer({
                       disabled={providers[selectedProvider].isVerifying}
                       style={{
                         flex: 1, padding: '12px', borderRadius: 8, border: 'none',
-                        background: providers[selectedProvider].isConnected ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
+                        background: providers[selectedProvider].isConnected && providers[selectedProvider].verified
+                          && selectedProvider === activeProvider ? '#22c55e' : providers[selectedProvider].lastError ? '#ef4444' : 'var(--accent-primary)',
                         color: 'var(--joe-on-accent, #fff)', fontSize: 14, fontWeight: 600, cursor: 'pointer',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
                         opacity: providers[selectedProvider].isVerifying ? 0.7 : 1
@@ -4015,15 +4370,16 @@ export default function CommandComposer({
                     >
                       {providers[selectedProvider].isVerifying ? (
                         <>
-                          <Loader2 size={18} className="spin" /> Verifying...
+                          <Loader2 size={18} className="spin" /> {t('cc_verifying')}
                         </>
-                      ) : providers[selectedProvider].isConnected ? (
+                      ) : providers[selectedProvider].isConnected && providers[selectedProvider].verified
+                        && selectedProvider === activeProvider ? (
                         <>
-                          <CheckCircle2 size={18} /> Verified & Active
+                          <CheckCircle2 size={18} /> {t('cc_verifiedActive')}
                         </>
                       ) : (
                         <>
-                          <Zap size={18} /> Connect & Activate
+                          <Zap size={18} /> {t('cc_connectActivate')}
                         </>
                       )}
                     </button>
@@ -4035,7 +4391,7 @@ export default function CommandComposer({
                         handleDisconnect(selectedProvider);
                       }}
                       disabled={!providers[selectedProvider].isConnected}
-                      title="Disconnect Provider"
+                      title={t('cc_disconnectProvider')}
                       style={{
                         padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
                         background: 'var(--bg-secondary)',
@@ -4066,7 +4422,7 @@ export default function CommandComposer({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('cc_serviceToken')}</div>
                 </div>
               </div>
 
@@ -4092,7 +4448,7 @@ export default function CommandComposer({
                           const key = secretPrompt.key;
                           const provider = secretPrompt.provider;
                           setSecretPrompt(null);
-                          setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+                          setEvents(prev => [...prev, { type: 'user_input', data: t('secretSentMask'), ts: Date.now() }]);
 
                           const token = localStorage.getItem('token');
                           try {
@@ -4106,10 +4462,10 @@ export default function CommandComposer({
                               return;
                             }
                             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                            setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue')}`, ts: Date.now() }]);
                             pendingBrowserRetryRef.current = null;
                           } catch (err) {
-                            setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveFailed'), ts: Date.now() }]);
                           }
                         }
                       }
@@ -4124,7 +4480,7 @@ export default function CommandComposer({
                 </div>
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>Your token is sent securely and not stored permanently.</span>
+                  <span>{t('cc_tokenSecureNote')}</span>
                 </div>
               </div>
 
@@ -4133,7 +4489,7 @@ export default function CommandComposer({
                   onClick={() => setSecretPrompt(null)}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4145,16 +4501,16 @@ export default function CommandComposer({
         // Browser agent paused for a credential / 2FA code — answered HERE in the
         // chat (not inside the browser panel), then the same live browser resumes.
         browserCred && (
-          <div className="modal" dir="rtl">
+          <div className="modal" dir={uiDir}>
             <div className="panel" style={{ width: 420, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
                   <Lock size={24} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>المتصفح يحتاج بياناتك للمتابعة</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('cc_browserNeedsCreds')}</h3>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {/PASSWORD/i.test(browserCred.secretKey) ? 'كلمة المرور' : /EMAIL/i.test(browserCred.secretKey) ? 'البريد الإلكتروني' : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'رمز التحقّق' : 'بيانات الدخول'}
+                    {/PASSWORD/i.test(browserCred.secretKey) ? t('password') : /EMAIL/i.test(browserCred.secretKey) ? t('email') : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('cc_credCode') : t('cc_credLogin')}
                   </div>
                 </div>
               </div>
@@ -4167,7 +4523,7 @@ export default function CommandComposer({
                   <input
                     type={/PASSWORD/i.test(browserCred.secretKey) ? 'password' : 'text'}
                     autoFocus
-                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : 'rtl'}
+                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : uiDir}
                     value={browserCredValue}
                     onChange={(e) => setBrowserCredValue(e.target.value)}
                     placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('enter2faCode') : /EMAIL/i.test(browserCred.secretKey) ? t('enterEmail') : /PASSWORD/i.test(browserCred.secretKey) ? t('enterPassword') : t('enterRequiredValue')}
@@ -4202,7 +4558,7 @@ export default function CommandComposer({
                 )}
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>تُرسَل بأمان وتُخزَّن مشفّرة — لا تظهر في السجلّ ولا في اللقطات.</span>
+                  <span>{t('cc_credSecureNote')}</span>
                 </div>
               </div>
 
@@ -4219,7 +4575,7 @@ export default function CommandComposer({
                   disabled={browserCredBusy}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: browserCredBusy ? 'default' : 'pointer' }}
                 >
-                  إلغاء
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4248,12 +4604,12 @@ export default function CommandComposer({
             {pendingQueue.length > 0 && (
               <div className="pending-queue-strip">
                 <span className="pending-queue-title">
-                  <Clock size={12} /> {t('queueTitle', 'قيد الانتظار')} ({pendingQueue.length})
+                  <Clock size={12} /> {t('queueTitle')} ({pendingQueue.length})
                 </span>
                 {pendingQueue.map((item) => (
                   <div key={item.id} className="pending-queue-card">
                     <span className="pending-queue-text" dir="auto">
-                      {item.text || t('queueFilesOnly', 'مرفقات فقط')}
+                      {item.text || t('queueFilesOnly')}
                     </span>
                     {item.files.length > 0 && (
                       <span className="pending-queue-files"><Paperclip size={11} /> {item.files.length}</span>
@@ -4261,7 +4617,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn"
-                      title={t('queueSendNow', 'أرسل الآن')}
+                      title={t('queueSendNow')}
                       disabled={!composerIdle || isUploading}
                       onClick={() => dispatchQueuedItem(item.id)}
                     >
@@ -4270,7 +4626,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn pending-queue-remove"
-                      title={t('queueRemove', 'حذف من الانتظار')}
+                      title={t('queueRemove')}
                       onClick={() => setPendingQueue(prev => prev.filter(q => q.id !== item.id))}
                     >
                       <X size={12} />
@@ -4283,7 +4639,7 @@ export default function CommandComposer({
                     className="pending-queue-resume"
                     onClick={() => setQueuePaused(false)}
                   >
-                    {t('queueResume', 'استئناف الإرسال التلقائي')}
+                    {t('queueResume')}
                   </button>
                 )}
               </div>
@@ -4318,10 +4674,10 @@ export default function CommandComposer({
                       {file.size && (
                         <span className="file-size">
                           {file.size < 1024
-                            ? `${file.size} B`
+                            ? t('act_sizeBytes', { n: file.size })
                             : file.size < 1024 * 1024
-                              ? `${(file.size / 1024).toFixed(1)} KB`
-                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                              ? t('act_sizeKB', { n: (file.size / 1024).toFixed(1) })
+                              : t('act_sizeMB', { n: (file.size / (1024 * 1024)).toFixed(1) })
                           }
                         </span>
                       )}
@@ -4378,8 +4734,8 @@ export default function CommandComposer({
               </div>
             )}
 
-            <TodosPanel sessionId={sessionId} />
-
+            {/* The plan is not here: it lives inside Joe's reply (PlanCredits), so
+                nothing floats over what the user is typing (the owner, 2026-11-02). */}
 
             <textarea
               className="main-input"
@@ -4577,7 +4933,7 @@ export default function CommandComposer({
                         return st?.lastError ? 'is-disconnected' : 'is-unknown';
                       })()}`}
                       onClick={() => setShowProviders(true)}
-                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}${activeProvider === 'auto' && engineInfo?.engine === 'agent' && engineInfo.auto ? ` — ${t('provEngineRunsOn', { model: engineInfo.auto.model })}` : ''}`}
                     >
                       {/*
                         THE PROVIDER SAYS ITS NAME.
@@ -4590,9 +4946,11 @@ export default function CommandComposer({
                         The ⚡ in «Groq ⚡» is stripped — a name, not decoration.
                       */}
                       <span className="provider-label">
-                        {String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
-                          .replace(/[^\p{L}\p{N} .+-]/gu, '')
-                          .trim() || activeProvider}
+                        {DEFAULT_PROVIDERS[activeProvider]?.labelKey
+                          ? t(String(DEFAULT_PROVIDERS[activeProvider].labelKey))
+                          : String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
+                            .replace(/[^\p{L}\p{N} .+-]/gu, '')
+                            .trim() || activeProvider}
                       </span>
                       {/*
                         A KEY, NOT A SENTENCE.
@@ -4611,13 +4969,20 @@ export default function CommandComposer({
                           <Key
                             size={10}
                             className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
-                            aria-label={need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
+                            aria-label={need === 'optional' ? t('provKeyOptional') : t('provKeyNeeded')}
                           />
                         );
                       })()}
-                      {providers[activeProvider]?.isFree ? (
-                        <span className="provider-free">free</span>
-                      ) : null}
+                      {(() => {
+                        // Auto is free (it never runs Claude). Claude names its
+                        // model and says it is paid, so the cost is never hidden.
+                        if (activeProvider === 'anthropic') {
+                          const id = String(providers.anthropic?.model || '');
+                          const name = (modelLists.anthropic?.names?.[id] || ANTHROPIC_MODELS.find(x => x.id === id)?.name || id).replace(/^Claude /, '');
+                          return <span className="provider-free provider-paid">{name} · {t('provClaudePaidBadge')}{providers.anthropic?.apiKey === 'server-key' ? ` · ${t('provServerKey')}` : ''}</span>;
+                        }
+                        return providers[activeProvider]?.isFree ? (<span className="provider-free">{t('provFree')}</span>) : null;
+                      })()}
                     </button>
                   );
                 })()}
@@ -4625,7 +4990,7 @@ export default function CommandComposer({
                 <button
                   className="action-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title={t('attachFile') || "Attach file"}
+                  title={t('attachFile')}
                   disabled={isUploading}
                 >
                   {isUploading ? (
@@ -4636,7 +5001,7 @@ export default function CommandComposer({
                 <button
                   className="action-btn"
                   onClick={onGitClick}
-                  title="GitHub Integration"
+                  title={t('cc_githubIntegration')}
                 >
                   <Github size={14} color={githubConnected ? "#10b981" : "#ef4444"} />
                 </button>
@@ -4646,7 +5011,7 @@ export default function CommandComposer({
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
                   onClick={() => setIsVoiceMode(!isVoiceMode)}
-                  title="Voice Mode"
+                  title={t('cc_voiceMode')}
                 >
                   {isVoiceMode ? <Mic size={14} /> : <MicOff size={14} />}
                 </button>
@@ -4660,7 +5025,7 @@ export default function CommandComposer({
                   type="button"
                   className="action-btn queue-add-btn"
                   onClick={queueCurrentDraft}
-                  title={t('queueAdd', 'أضف إلى الانتظار — يُرسل بعد انتهاء المهمة الجارية')}
+                  title={t('queueAdd')}
                 >
                   <ListPlus size={14} />
                 </button>
@@ -4687,7 +5052,7 @@ export default function CommandComposer({
                   }
                 }}
                 disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                title={status !== 'idle' || !!approval || !!secretPrompt ? t('stop') : t('send')}
                 style={{ position: 'relative' }}
               >
                 {status !== 'idle' || !!approval || !!secretPrompt ? (
@@ -4708,11 +5073,11 @@ export default function CommandComposer({
                 {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
               </button>
               <div className="voice-info">
-                <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
-                <span className="voice-lang">Arabic (SA) / English (US)</span>
+                <span className="voice-status">{isListening ? t('cc_listening') : t('cc_tapToSpeak')}</span>
+                <span className="voice-lang">{t('cc_voiceLangs')}</span>
               </div>
 
-              <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+              <button className="action-btn" title={t('cc_stopSpeaking')} onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                 <Volume2 size={18} />
               </button>
             </div>

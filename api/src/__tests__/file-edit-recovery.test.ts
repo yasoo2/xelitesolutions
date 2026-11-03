@@ -874,22 +874,16 @@ describe('evidence-aware file edit recovery', () => {
 
     const resumed = phaseAfterRepair(phase, repairedFile);
 
-    expect(resumed.skipped).toEqual(['Create the React project']);
+    // The gates that refused the build live inside react_project: a build +
+    // start proof alone completed whether or not the repair worked (eval
+    // round 15). The task runs again in verifyExisting mode on this project.
+    expect(resumed.skipped).toEqual([]);
     expect(resumed.phase.name).toContain('post-repair verification');
     expect(resumed.phase.tasks).toEqual([
       {
-        task: 'Build the repaired project without rewriting generated files',
-        tool: 'shell_execute',
-        args: {
-          command: 'npm run build',
-          cwd: projectRoot,
-          projectPath: projectRoot,
-        },
-      },
-      {
-        task: 'Verify the repaired project can start',
-        tool: 'project_run',
-        args: { cwd: projectRoot },
+        task: 'Create the React project',
+        tool: 'react_project',
+        args: { projectName: 'WeatherGo', verifyExisting: true, projectDir: projectRoot },
       },
     ]);
   });

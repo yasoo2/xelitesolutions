@@ -122,10 +122,14 @@ describe('the provider he chose is the provider that builds', () => {
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'),
             'utf-8',
         );
-        // Local-first is correct for hidden helper calls, but it must never
-        // replace the provider selected for planning, authoring, QA, or repair.
-        expect(router).toMatch(/internalCall\s*&&\s*isLocalBrainReady\(\)\s*&&\s*!engineeringPipeline/);
-        expect(router).toContain('engineering provider selection remains authoritative');
+        // Local-first held for hidden helper calls while it never replaced the
+        // provider selected for planning, authoring, QA, or repair. Since
+        // 2026-11-02 (the owner: Joe runs on the model the user chose) the
+        // chosen provider holds for the hidden helpers too: the local-first
+        // branch is gone from the chosen-provider route, and a failure there is
+        // said, never swapped (the-chosen-provider-is-the-brain-of-the-whole-run).
+        expect(router).not.toMatch(/internalCall\s*&&\s*isLocalBrainReady\(\)\s*&&\s*!engineeringPipeline/);
+        expect(router).toContain('A PROVIDER THE USER CHOSE IS NEVER SWAPPED IN SILENCE');
     });
 
     it('NEGATIVE — a call with no arguments at all would not pass', () => {

@@ -180,6 +180,7 @@ describe('workflow capability lists', () => {
         expect(reactTool).toContain('/\\btraffic\\b|road\\s*closures?|\\btransit\\b|public\\s*transport');
         expect(reactTool).toContain("took over immediately");
         expect(reactTool).toContain('provider-independent workflow engine passed the request API contract');
-        expect(reactTool).toContain('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables)');
+        // Multi-entity systems never author RecordsApp; verification (eval round 15) authors nothing.
+        expect(reactTool).toContain('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables && !verifyExisting) {');
     });
 });

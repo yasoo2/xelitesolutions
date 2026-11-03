@@ -2,6 +2,8 @@ import { ToolDefinition } from '../types';
 import fs from 'fs';
 import path from 'path';
 import { routeToModel } from '../../../core/llm/intelligent-router';
+import { readModelJsonObject } from '../../../shared/utils/json';
+import { workspaceService } from '../../services/WorkspaceService';
 
 // Helper to encode image to base64
 function encodeImage(imagePath: string): string {
@@ -44,8 +46,20 @@ export const VisualQATool: ToolDefinition = {
     rateLimitPerMinute: 5, // Vision is expensive/rate-limited
     auditFields: ['imagePath'],
     mockSupported: true,
-    execute: async (input) => {
+    execute: async (input, context) => {
         const filePath = input.imagePath;
+        
+        // Workspace containment: validate imagePath is within workspace boundary
+        const workspaceRoot = path.resolve(workspaceService.getActiveRoot(context?.workspaceId) || '');
+        const resolvedFilePath = path.resolve(filePath);
+        if (!resolvedFilePath.startsWith(workspaceRoot + path.sep) && resolvedFilePath !== workspaceRoot) {
+            return {
+                ok: false,
+                error: `imagePath '${filePath}' escapes workspace boundary. Must be within workspace root: ${workspaceRoot}`,
+                logs: [`[VisualQA] SECURITY: imagePath '${filePath}' rejected - outside workspace boundary`]
+            };
+        }
+
         if (!fs.existsSync(filePath)) {
             return { ok: false, error: `Image not found at: ${filePath}`, logs: [] };
         }
@@ -88,13 +102,14 @@ Return JSON format:
                 }
             );
 
-            const jsonMatch = String(responseText || '').match(/\{[\s\S]*\}/);
-            const jsonStr = jsonMatch ? jsonMatch[0] : responseText;
-            const result = JSON.parse(jsonStr || '{}');
+            // The shared reader (round 22, W7); an empty reply is still {}, and a
+            // reply with no JSON object in it is still a failure, as before.
+            const result = readModelJsonObject(String(responseText || ''));
+            if (!result && String(responseText || '').trim()) throw new Error('the vision reply held no JSON object');
 
             return {
                 ok: true,
-                output: result,
+                output: result ?? {},
                 logs: [`Analyzed image: ${path.basename(filePath)}`]
             };
 

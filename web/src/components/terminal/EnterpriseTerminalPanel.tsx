@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Terminal } from 'xterm';
 import { FitAddon } from 'xterm-addon-fit';
 import { SearchAddon } from 'xterm-addon-search';
@@ -6,6 +7,7 @@ import 'xterm/css/xterm.css';
 import { SocketService } from '../../services/socket';
 import { API_URL } from '../../config';
 import { shapeForTerminal } from '../../lib/arabic-terminal';
+import { useUiDir } from '../NeuralTraceView';
 import { Terminal as TerminalIcon, RefreshCw, Trash2, Maximize2, Minimize2, X, Copy, Download, Check, Search, ChevronUp, ChevronDown } from 'lucide-react';
 
 // ANSI escape sequences are display, not content — strip them for copy/download.
@@ -22,6 +24,13 @@ interface EnterpriseTerminalPanelProps {
 }
 
 export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId, terminalId, workspaceId }: EnterpriseTerminalPanelProps) {
+    const { t } = useTranslation();
+    //  Letter spacing pulls a cursive script apart, so the spaced capitals
+    //  of the header apply to the Latin-script languages only.
+    const cursive = useUiDir() === 'rtl';
+    //  xterm paints codepoints left to right with no shaper: a translated
+    //  status line goes through the same shaper as the stream itself.
+    const termText = (ansi: string, text: string) => shapeForTerminal(`${ansi}${text}\x1b[0m`);
     const ownerSessionId = String(sessionId || terminalId || '').trim();
     const activeTabId = ownerSessionId ? `terminal:${ownerSessionId}` : (terminalId || 'local_terminal');
     const containerRef = useRef<HTMLDivElement>(null);
@@ -128,7 +137,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
             restoredScrollback = true;
             const history = SocketService.getTerminalHistory(ownerSessionId);
             if (!history) return;
-            term.writeln('\x1b[2m--- Restored Joe execution output ---\x1b[0m');
+            term.writeln(termText('\x1b[2m', `--- ${t('term_restoredOutput')} ---`));
             term.write(shapeForTerminal(history));
             const plain = stripAnsi(history);
             logBufferRef.current = plain.length > LOG_BUFFER_CAP ? plain.slice(-LOG_BUFFER_CAP) : plain;
@@ -186,12 +195,12 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                     isReadyRef.current = true;
                     setIsReady(true);
                     term.focus();
-                    term.writeln('\x1b[1;32m✓ Joe Terminal Session Ready\x1b[0m');
+                    term.writeln(termText('\x1b[1;32m', `✓ ${t('term_sessionReady')}`));
                 } else {
-                    term.writeln(`\x1b[1;31m✗ ${data.error || 'Failed to create session'}\x1b[0m`);
+                    term.writeln(termText('\x1b[1;31m', `✗ ${data.error || t('term_createFailed')}`));
                 }
             } catch (e) {
-                term.writeln('\x1b[1;31m✗ Connection Failed\x1b[0m');
+                term.writeln(termText('\x1b[1;31m', `✗ ${t('term_connectionFailed')}`));
             } finally {
                 setIsConnecting(false);
             }
@@ -288,7 +297,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
 
     const handleReconnect = async () => {
         if (!termRef.current) return;
-        termRef.current.writeln('\x1b[1;33m\n--- Reconnecting ---\x1b[0m');
+        termRef.current.writeln(termText('\x1b[1;33m', `\n--- ${t('term_reconnecting')} ---`));
         setIsConnecting(true);
         try {
             const token = localStorage.getItem('token');
@@ -348,8 +357,8 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                         <TerminalIcon size={14} color="#10b981" />
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.25 }}>
-                        <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', letterSpacing: 2, textTransform: 'uppercase' }}>Terminal</span>
-                        <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', letterSpacing: 1 }}>JOE Shell</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: '#e2e8f0', letterSpacing: cursive ? 0 : 2, textTransform: 'uppercase' }}>{t('panelTerminal')}</span>
+                        <span style={{ fontSize: 9, color: '#64748b', fontFamily: 'monospace', letterSpacing: cursive ? 0 : 1 }}>{t('term_shellName')}</span>
                     </div>
                     <div style={{ height: 16, width: 1, background: 'rgba(255,255,255,0.1)', margin: '0 8px' }}></div>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
@@ -358,8 +367,8 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                             background: isConnecting ? '#3b82f6' : isReady ? '#10b981' : '#ef4444',
                             boxShadow: isReady && !isConnecting ? '0 0 8px rgba(16,185,129,0.8)' : 'none',
                         }}></div>
-                        <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: 1, textTransform: 'uppercase' }}>
-                            {isConnecting ? 'Connecting' : isReady ? 'Connected' : 'Offline'}
+                        <span style={{ fontSize: 9, fontWeight: 700, color: '#94a3b8', letterSpacing: cursive ? 0 : 1, textTransform: 'uppercase' }}>
+                            {isConnecting ? t('term_connecting') : isReady ? t('term_connected') : t('term_offline')}
                         </span>
                     </div>
                 </div>
@@ -373,20 +382,20 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                         }}
                         className="joe-term-btn"
                         style={{ ...ghostBtn, ...(searchOpen ? { background: 'rgba(255,255,255,0.08)', color: '#fff' } : {}) }}
-                        title="بحث في السجل (Ctrl+F)"
+                        title={t('term_searchLog')}
                     >
                         <Search size={14} />
                     </button>
-                    <button onClick={handleCopyAll} className="joe-term-btn" style={ghostBtn} title="نسخ كل السجل">
+                    <button onClick={handleCopyAll} className="joe-term-btn" style={ghostBtn} title={t('term_copyLog')}>
                         {justCopied ? <Check size={14} color="#10b981" /> : <Copy size={14} />}
                     </button>
-                    <button onClick={handleDownload} className="joe-term-btn" style={ghostBtn} title="تنزيل السجل كملف">
+                    <button onClick={handleDownload} className="joe-term-btn" style={ghostBtn} title={t('term_downloadLog')}>
                         <Download size={14} />
                     </button>
-                    <button onClick={handleClear} className="joe-term-btn" style={ghostBtn} title="Clear Output">
+                    <button onClick={handleClear} className="joe-term-btn" style={ghostBtn} title={t('term_clearOutput')}>
                         <Trash2 size={14} />
                     </button>
-                    <button onClick={handleReconnect} className="joe-term-btn" style={ghostBtn} title="Reconnect Session">
+                    <button onClick={handleReconnect} className="joe-term-btn" style={ghostBtn} title={t('term_reconnectSession')}>
                         <RefreshCw size={14} className={isConnecting ? 'animate-spin' : ''} />
                     </button>
 
@@ -428,7 +437,7 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                                 termRef.current?.focus();
                             }
                         }}
-                        placeholder="ابحث في مخرجات الطرفية…"
+                        placeholder={t('term_searchPlaceholder')}
                         dir="auto"
                         style={{
                             flex: 1, maxWidth: 340, background: 'rgba(255,255,255,0.05)',
@@ -441,18 +450,18 @@ export default function EnterpriseTerminalPanel({ onClose, isEmbedded, sessionId
                         {searchQuery
                             ? (searchResults && searchResults.resultCount > 0
                                 ? `${searchResults.resultIndex + 1}/${searchResults.resultCount}`
-                                : 'لا نتائج')
+                                : t('term_noResults'))
                             : ''}
                     </span>
-                    <button onClick={() => runSearch(searchQuery, 'prev')} className="joe-term-btn" style={ghostBtn} title="السابق (Shift+Enter)">
+                    <button onClick={() => runSearch(searchQuery, 'prev')} className="joe-term-btn" style={ghostBtn} title={t('term_prevMatch')}>
                         <ChevronUp size={14} />
                     </button>
-                    <button onClick={() => runSearch(searchQuery, 'next')} className="joe-term-btn" style={ghostBtn} title="التالي (Enter)">
+                    <button onClick={() => runSearch(searchQuery, 'next')} className="joe-term-btn" style={ghostBtn} title={t('term_nextMatch')}>
                         <ChevronDown size={14} />
                     </button>
                     <button
                         onClick={() => { setSearchOpen(false); setSearchQuery(''); setSearchResults(null); searchAddonRef.current?.clearDecorations(); termRef.current?.focus(); }}
-                        className="joe-term-btn danger" style={ghostBtn} title="إغلاق (Esc)"
+                        className="joe-term-btn danger" style={ghostBtn} title={t('term_closeSearch')}
                     >
                         <X size={14} />
                     </button>

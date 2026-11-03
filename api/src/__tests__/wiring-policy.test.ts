@@ -896,21 +896,20 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
             .toContain('if (isDirectAnswer && !isProviderFailure(result.error))');
     });
 
-    it('a spent daily quota is announced, and the button really moves', () => {
-        // Joe already survived a spent quota by moving to the free/local mesh —
-        // silently. The provider button went on showing the dead provider, so
-        // the user could not tell why answers changed, and every new run asked
-        // for a quota that was gone. Proven live against a real 429 in
-        // verify_quota_switch.ts; locked here so the three halves stay together.
+    it('a spent quota on the chosen provider is said in his session, and his choice stays', () => {
+        // 2026-11-02, the owner: Joe runs on the model he chose. A spent quota
+        // used to move Joe to the free mesh and broadcast `provider_quota`
+        // with no session, so every connected user's button moved to Auto.
+        // Now the light in HIS session turns red with the reason and the time
+        // it returns, and nothing swaps the brain (behaviour proven in
+        // the-chosen-provider-is-the-brain-of-the-whole-run.test.ts).
         const router = SRC('core', 'llm', 'intelligent-router.ts');
-        expect(router).toContain('announceQuotaSwitch(routeKey, cfgProvider, cfgModel, waitMs)');
-        expect(router).toContain("type: 'provider_quota'");
-        expect(router).toMatch(/const last = quotaAnnounced\.get\(routeKey\)/);   // once per window
+        expect(router).not.toContain("type: 'provider_quota'");
+        expect(router).toContain("refuseChosen('PROVIDER_QUOTA'");
+        expect(SRC('core', 'llm', 'run-model-choice.ts')).toContain("type: 'provider_status', sessionId");
         const composer = WEB('components', 'CommandComposer.tsx');
-        expect(composer).toContain("msg.type === 'provider_quota'");
-        expect(composer).toContain('setActiveProvider(target)');
-        expect(composer).toContain('setSelectedProvider(target)');
-        expect(composer).toContain("localStorage.setItem('active_provider', target)");
+        expect(composer).toContain("msg.type === 'provider_status'");
+        expect(composer).not.toContain("msg.type === 'provider_quota'");
     });
 
     it('independent steps run together — but never the ones sharing a live resource', () => {
@@ -1668,8 +1667,10 @@ describe('the provider button says its name', () => {
         // An older build wrote a translated HINT into `name`; the saved blob was
         // merged over the defaults, so «ضع مفتاح gsk هنا Groq» survived every
         // update. Settings are the user's; identity is the code's.
-        expect(C).toMatch(/const \{ name, nameKey, tagKey, \.\.\.userOwned \}/);
+        //  2026-11-02: free or paid is identity too — DeepSeek was cached «free».
+        expect(C).toMatch(/const \{ name, nameKey, tagKey, isFree, \.\.\.userOwned \}/);
         expect(C).toMatch(/name: DEFAULT_PROVIDERS\[k\]\.name/);
+        expect(C).toMatch(/isFree: DEFAULT_PROVIDERS\[k\]\.isFree/);
         expect(C).toMatch(/DEFAULT_PROVIDERS\[activeProvider\]\?\.name/);
     });
 
@@ -1857,8 +1858,9 @@ describe('a run keeps going while you read another conversation', () => {
         const fatal = S.slice(S.indexOf('Fatal runtime error'));
         expect(fatal).toContain("role: 'assistant'");
         expect(fatal).toContain('content: failText');
-        expect(fatal).toContain('persistChatStores()');
-        expect(fatal.indexOf('persistChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
+        expect(S).toContain("import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';");
+        expect(fatal).toContain('flushChatStores()');
+        expect(fatal.indexOf('flushChatStores()')).toBeLessThan(fatal.indexOf('releaseHandle('));
     });
 
     it('restores the last visible conversation after a reload', () => {
@@ -1880,11 +1882,17 @@ describe('a run keeps going while you read another conversation', () => {
 
     it('serves persisted chat history in explicit offline mode', () => {
         const S = SRC('api', 'controllers', 'sessionController.ts');
-        expect(S).toMatch(/readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/);
+        expect(S).toContain("import { persistChatStores, usesLocalChatStore } from '../chat-store';");
+        expect(S).toMatch(/function isOfflineSessionStore\(\): boolean \{\s*return usesLocalChatStore\(\);/);
+        const history = S.slice(S.indexOf('export async function listSessionMessages'));
+        expect(history).toContain('const isOffline = isOfflineSessionStore();');
+        const store = SRC('api', 'chat-store.ts');
+        expect(store).toMatch(/export function usesLocalChatStore\(\): boolean \{\s*return mongoose\.connection\.readyState !== 1\s*\|\| process\.env\.OFFLINE_MODE === 'true'\s*\|\| process\.env\.PERSISTENCE_MODE === 'JSON'/);
         expect(S).toContain("messages = mockMessages.filter((m: any) => m.sessionId === sessionId)");
-        for (const file of [SRC('api', 'routes', 'run.ts'), SRC('modules', 'services', 'AgentLoopService.ts')]) {
-            expect(file).toMatch(/process\.env\.OFFLINE_MODE === 'true'[\s\S]{0,180}PERSISTENCE_MODE === 'JSON'/);
-        }
+        const route = SRC('api', 'routes', 'run.ts');
+        expect(route).toMatch(/function usesJsonRunStore\(\): boolean \{[\s\S]{0,650}return mongoose\.connection\.readyState !== 1\s*\|\| process\.env\.OFFLINE_MODE === 'true'\s*\|\| process\.env\.PERSISTENCE_MODE === 'JSON'/);
+        expect(route).toMatch(/if \(usesJsonRunStore\(\)\)/);
+        expect(SRC('modules', 'services', 'AgentLoopService.ts')).toContain('usesLocalChatStore()');
     });
 
     it('the owner stop route broadcasts a session-scoped cancellation', () => {
@@ -1896,10 +1904,11 @@ describe('a run keeps going while you read another conversation', () => {
 
     it('the stop control clears its session immediately after a confirmed stop', () => {
         const C = WEB('components', 'CommandComposer.tsx');
-        expect(C).toContain("import { markRunning } from '../services/runningSessions';");
+        expect(C).toContain("import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';");
         expect(C).toMatch(/payload\?\.stopped === true/);
-        expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false\)/);
-        expect(C).toMatch(/if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/);
+        expect(C).toMatch(/serverConfirmedStop[\s\S]{0,260}markRunning\(sid, false, stopTargetRunId, runningGenerationAtStop\)/);
+        expect(C).toMatch(/const requestStop = async \(runId: string\) => \{\s*const response = await fetch\(`\$\{API\}\/runs\/stop`/);
+        expect(C).toMatch(/if \(rid \|\| sid\) \{\s*reqs\.push\(\s*requestStop\(rid\)/);
         expect(C).toContain("fetch(`${API}/runs/active`, { headers })");
         const unconfirmed = C.indexOf('if (!serverConfirmedStop && (rid || sid))');
         const reset = C.indexOf("setStatus('idle');", unconfirmed);
@@ -1918,7 +1927,8 @@ describe('a run keeps going while you read another conversation', () => {
     it('the chip marks a working session, and only a working one', () => {
         const J = WEB('pages', 'Joe.tsx');
         expect(J).toMatch(/startTrackingRuns\(\)/);
-        expect(J).toMatch(/subscribeRunningSessions\(setRunningIds\)/);
+        expect(J).toContain('subscribeRunningSessions((sessions, runIds) => setRunningSnapshot({ sessions, runIds }))');
+        expect(J).toContain("serverRunId={runningSnapshot.runIds.get(activeSessionId || '') || undefined}");
         expect(J).toMatch(/isRunning: isRunning\(s\.id\)/);
         const B = WEB('components', 'SessionsBar.tsx');
         expect(B).toMatch(/isRunning\?: boolean/);
@@ -2058,9 +2068,14 @@ it('the updater speaks where the interface can hear it', () => {
         expect(S).toMatch(/running: !!startedAt && !finished && !failed && !stalled/);
         expect(S).toMatch(/stalled = 'never_started'/);
         const U = WEB('components', 'UpdateJoeItem.tsx');
-        expect(U).toMatch(/لم يصل أول سطر بعد/);
+        // The words live in the dictionary now (every language the user can
+        // choose); the card must still ask for them, and Arabic must still say them.
+        const I18N = WEB('i18n.ts');
+        expect(U).toMatch(/t\('upd_noLinesYet'\)/);
+        expect(I18N).toMatch(/\bupd_noLinesYet['"]?:\s*['"`][^'"`\n]*لم يصل أول سطر بعد/);
         expect(U).toMatch(/joe-update-clock/);
-        expect(U).toMatch(/التحديث متوقّف/);
+        expect(U).toMatch(/t\('upd_titleStalled'\)/);
+        expect(I18N).toMatch(/\bupd_titleStalled['"]?:\s*['"`]التحديث متوقّف['"`]/);
     });
 
         it('and the overlay lives outside the menu that opened it', () => {
@@ -2507,8 +2522,14 @@ it('the row says which of the three states it is in', () => {
         const S = SRC('api', 'routes', 'system.ts');
         expect(S).toMatch(/if \(!lastCheck\.at \|\| String\(req\.query\.force \|\| ''\) === '1'\) await refreshUpdateCheck\(true\)/);
         const U = WEB('components', 'UpdateJoeItem.tsx');
-        expect(U).toMatch(/تحديث متاح/);
-        expect(U).toMatch(/جو محدَّث/);
+        // Each of the three states has its own words, asked of the dictionary
+        // so they follow the language the user chose.
+        const I18N = WEB('i18n.ts');
+        expect(U).toMatch(/t\('upd_available'\)/);
+        expect(U).toMatch(/t\('upd_upToDateRebuild'\)/);
+        expect(U).toMatch(/t\('upd_updateJoe'\)/);
+        expect(I18N).toMatch(/\bupd_available['"]?:\s*['"`]تحديث متاح['"`]/);
+        expect(I18N).toMatch(/\bupd_upToDateRebuild['"]?:\s*['"`]جو محدَّث/);
     });
 
     it('and a running update is a card, not a wall of log', () => {

@@ -31,6 +31,9 @@
  * against every tool and the catalogue collapses back to the core.
  */
 import { tools } from '../../modules/tools/registry';
+import { requestedPrimitiveOptions } from './requested-primitive-options';
+import { namedTargetFile } from './file-intent';
+import { isEngineTool } from '../../modules/tools/engine-tools';
 
 /** Arabic (and common transliteration) → the English words tools describe themselves with. */
 /**
@@ -121,6 +124,14 @@ export const CORE_TOOLS = [
     'inspect_directory', 'search_files', 'search_text', 'shell_execute',
 ];
 
+/**
+ * The toolbox the planner may know it has: every registered tool except the
+ * agent engine's own (modules/tools/engine-tools.ts). Those run through
+ * ToolService for the engine alone, bound to its run's project folder; they
+ * are not offered here, do not weigh the words below, and are not routed to.
+ */
+const plannerTools = (): any[] => (tools as any[]).filter(t => t?.name && !isEngineTool(t.name));
+
 export interface ScoredTool { name: string; score: number; line: string }
 
 /**
@@ -135,13 +146,13 @@ export interface ScoredTool { name: string; score: number; line: string }
  */
 const IDF: Map<string, number> = (() => {
     const df = new Map<string, number>();
-    for (const t of tools as any[]) {
+    for (const t of plannerTools()) {
         const seen = new Set(
             `${norm(t?.name || '')} ${(t?.tags || []).map((x: any) => norm(String(x))).join(' ')}`
                 .split(/[\s_]+/).filter(Boolean));
         for (const w of seen) df.set(w, (df.get(w) || 0) + 1);
     }
-    const n = (tools as any[]).length || 1;
+    const n = plannerTools().length || 1;
     const out = new Map<string, number>();
     for (const [w, c] of df) out.set(w, Math.max(0.25, Math.log(n / c) / Math.log(n)));
     return out;
@@ -185,7 +196,7 @@ export function toolLine(tool: any): string {
  */
 export function selectToolsFor(goal: string, limit = 30): ScoredTool[] {
     const terms = goalTerms(goal);
-    const all = (tools as any[]).filter(t => t?.name && t?.description);
+    const all = plannerTools().filter(t => t?.description);
     const scored = all
         .map(t => ({ name: t.name, score: scoreTool(t, terms), line: toolLine(t) }))
         .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
@@ -209,8 +220,8 @@ export function catalogueFor(goal: string, limit = 30): string {
     return selectToolsFor(goal, limit).map(s => s.line).join('\n');
 }
 
-/** Every registered name — the planner's answers are checked against this. */
-export const registeredToolNames = (): string[] => (tools as any[]).map(t => t.name);
+/** Every name the planner may use — the planner's answers are checked against this. */
+export const registeredToolNames = (): string[] => plannerTools().map(t => t.name);
 
 /**
  * THE CAPABILITY ROUTER — because a catalogue nobody consults is a catalogue
@@ -313,11 +324,26 @@ export function inputForTool(tool: any, goal: string, context?: any): Record<str
             input[key] = goal;
             continue;
         }
+        // A FILE field takes the file the request names («a file named hello.py»).
+        // Schema-driven: only a field whose own description says it is a file.
+        if (/^(path|file|filename|filepath|destination|output|outputpath)$/.test(k)
+            && /\bfile\b|ملف/i.test(String(props[key]?.description || ''))) {
+            const named = namedTargetFile(goal);
+            if (named) input[key] = named;
+            continue;
+        }
         if (/^(projectpath|directory|folder|root|workspacepath)$/.test(k)) {
             if (localPath) input[key] = localPath;
             continue;
         }
     }
+    // Honor explicit declared primitive arguments instead of silently using
+    // tool defaults. This is schema driven; identity/authority are context,
+    // never arguments inferred from an untrusted request.
+    const options = requestedPrimitiveOptions(goal, props);
+    if (options.invalid) return null;
+    Object.assign(input, options.values);
+
     // Anything still required and still missing means this tool cannot serve
     // this sentence — and saying so is the point. Some tools expose aliases
     // for one semantic input (for example query/pattern), so a whole group is
@@ -343,8 +369,8 @@ export function capabilityRoute(goal: string, context?: any): CapabilityRoute | 
     if (!ACT_VERB.test(norm(g))) return null;
 
     const terms = goalTerms(g);
-    const ranked = (tools as any[])
-        .filter(t => t?.name && !ROUTER_EXCLUDED.has(t.name))
+    const ranked = plannerTools()
+        .filter(t => !ROUTER_EXCLUDED.has(t.name))
         .map(t => ({ tool: t, score: scoreTool(t, terms) }))
         .sort((a, b) => b.score - a.score);
 

@@ -1,3 +1,4 @@
+import ScreenshotResults from './ScreenshotResults';
 import { stripPictographs } from '../lib/plainText';
 import React, { useRef, useEffect, useState } from 'react';
 import { Sparkles, Send, Mic, User, Bot, Copy, Check, Paperclip } from 'lucide-react';
@@ -12,7 +13,10 @@ import { attachTraces, loadTraces, type NeuralTrace } from '../lib/neuralTrace';
 import JoeMark from './JoeMark';
 import { composeGreeting } from '../lib/greetings';
 import { resolveIdentity } from '../lib/userIdentity';
-import TodosPanel from './TodosPanel';
+import PlanCredits from './PlanCredits';
+import RunActivityPanel from './RunActivityPanel';
+import { ErrorBoundary } from './ErrorBoundary';
+import WordReveal from './WordReveal';
 import ArtifactCard from './ArtifactCard';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 
@@ -25,6 +29,8 @@ interface Message {
     /** Attachment meta the user sent with this message (id/name/type/size). */
     files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
     timestamp?: Date;
+    /** The run that wrote this reply: its activity is drawn under it. */
+    runId?: string;
 }
 
 // Old sessions stored system messages with literally escaped newlines ("\n\n"
@@ -48,6 +54,7 @@ interface ChatPanelProps {
     children?: React.ReactNode; // For CommandComposer
     isCollapsed?: boolean;
     sessionId?: string;
+    screenshotRefreshKey?: number;
 }
 
 export default function ChatPanel({
@@ -56,13 +63,15 @@ export default function ChatPanel({
     onInputChange,
     onSend,
     isLoading = false,
-    placeholder = 'Ask Joe or type a command...',
+    placeholder,
     children,
     isCollapsed = false,
-    sessionId
+    sessionId,
+    screenshotRefreshKey
 }: ChatPanelProps) {
     const { t, i18n } = useTranslation();
     const messagesEndRef = useRef<HTMLDivElement>(null);
+    const messagesBoxRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
 
     // «مساء الخير يا يونس — ما الذي سنصنعه الليلة؟»: the welcome greets the user
@@ -115,11 +124,52 @@ export default function ChatPanel({
         return () => unsub();
     }, [sessionId]);
     const traceFor = React.useMemo(() => attachTraces(messages, traces), [messages, traces]);
+    //  A run's activity is drawn once, under the last reply it wrote.
+    const activityReplies = React.useMemo(() => {
+        const last = new Map<string, string>();
+        for (const m of messages) if (m.role === 'assistant' && m.runId) last.set(m.runId, m.id);
+        return new Set(last.values());
+    }, [messages]);
 
     // Auto scroll to bottom
     useEffect(() => {
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
+
+    /**
+     * A REPLY THAT ARRIVES WHILE THE USER WATCHES UNFOLDS WORD BY WORD.
+     *
+     * Decided while drawing, not after: deciding in an effect drew the whole
+     * reply once before the reveal began (measured: 96 words, then 1). And by
+     * the reply's TEXT, not its id: the same reply is saved again under a new
+     * id a moment later, and an id-keyed reveal stopped there (measured: back
+     * to 96 words after 120 ms).
+     *
+     * The messages on screen when the conversation is first drawn are its
+     * history and appear whole. A reply is new when its text was not there
+     * then, and it is dated after that moment, so a history that loads late
+     * (after a session switch) is not replayed. Once unfolded it stays whole.
+     */
+    const revealRef = useRef<{ session?: string; baseline: Set<string> | null; since: number; done: Set<string> }>({ baseline: null, since: 0, done: new Set() });
+    if (revealRef.current.session !== sessionId) revealRef.current = { session: sessionId, baseline: null, since: 0, done: new Set() };
+    if (!revealRef.current.baseline && messages.length) {
+        revealRef.current.baseline = new Set(messages.map(m => `${m.role}:${m.content}`));
+        revealRef.current.since = Date.now();
+    }
+    const shouldReveal = (m: Message): boolean => {
+        const r = revealRef.current;
+        const key = `${m.role}:${m.content}`;
+        if (m.role !== 'assistant' || !r.baseline || r.baseline.has(key) || r.done.has(key)) return false;
+        const at = m.timestamp ? new Date(m.timestamp).getTime() : NaN;
+        return !Number.isFinite(at) || at >= r.since - 5_000;
+    };
+    const revealDone = React.useCallback((m: Message) => { revealRef.current.done.add(`${m.role}:${m.content}`); }, []);
+    //  Follow the unfolding text down, unless the user scrolled up to read.
+    const followReveal = React.useCallback(() => {
+        const box = messagesBoxRef.current;
+        if (!box || box.scrollHeight - box.scrollTop - box.clientHeight > 160) return;
+        box.scrollTop = box.scrollHeight;
+    }, []);
 
     // Keep the live activity at the end of this same conversation stream when
     // it changes, without covering the messages above or the composer below.
@@ -153,7 +203,7 @@ export default function ChatPanel({
                 above it already carries the brand, and a second small "Joe"
                 right under it was pure repetition (removed at the owner's
                 request). */}
-            <div className="joe-chat-messages">
+            <div className="joe-chat-messages" ref={messagesBoxRef}>
                 {messages.length === 0 ? (
                     /**
                      * The welcome screen. Two measured defects fixed here:
@@ -204,8 +254,18 @@ export default function ChatPanel({
                                 {/* What Joe did before he answered — collapsed to one
                                     line, and kept. It sits ABOVE the reply because
                                     that is the order it happened in. */}
+                                {msg.role === 'assistant' && !!traceFor.get(msg.id)?.plan?.length && (
+                                    <PlanCredits mode="final" plan={traceFor.get(msg.id)!.plan} />
+                                )}
                                 {msg.role === 'assistant' && traceFor.has(msg.id) && (
                                     <NeuralTraceReceipt trace={traceFor.get(msg.id)!} />
+                                )}
+                                {/* Every call the run made, with what it was given and
+                                    what came back: one line, opened on demand. */}
+                                {msg.role === 'assistant' && msg.runId && activityReplies.has(msg.id) && (
+                                    <ErrorBoundary key={`activity:${msg.runId}`} fallbackTitle={t('act_loadFailed')}>
+                                        <RunActivityPanel variant="inline" sessionId={sessionId} runId={msg.runId} />
+                                    </ErrorBoundary>
                                 )}
                                 {/* dir="auto" + per-block auto direction below: a Latin
                                     name («Younes») inside an Arabic sentence scrambled
@@ -227,17 +287,23 @@ export default function ChatPanel({
                                                 const rawUrl = f.id ? `/api/files/${encodeURIComponent(f.id)}/raw?token=${encodeURIComponent(token)}` : '';
                                                 return isImage && rawUrl ? (
                                                     <a key={i} href={rawUrl} target="_blank" rel="noopener noreferrer" className="joe-msg-file is-image" title={f.name || ''}>
-                                                        <img src={rawUrl} alt={f.name || 'image'} loading="lazy" />
+                                                        <img src={rawUrl} alt={f.name || t('artifacts.image')} loading="lazy" />
                                                     </a>
                                                 ) : (
                                                     <span key={i} className="joe-msg-file" title={f.name || ''}>
                                                         <Paperclip size={12} />
-                                                        <span className="joe-msg-file-name">{f.name || 'ملف'}</span>
+                                                        <span className="joe-msg-file-name">{f.name || t('artifacts.file')}</span>
                                                     </span>
                                                 );
                                             })}
                                         </div>
                                     )}
+                                    <WordReveal
+                                        text={msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
+                                        animate={shouldReveal(msg)}
+                                        onGrow={followReveal}
+                                        onDone={() => revealDone(msg)}
+                                    >{(shown) => (
                                     <ReactMarkdown
                                         // A single newline IS a line break here.
                                         //
@@ -317,7 +383,7 @@ export default function ChatPanel({
                                                                 borderBottom: '1px solid rgba(255,255,255,0.05)'
                                                             }}>
                                                                 <span style={{ color: 'var(--joe-gold-primary)', fontWeight: 600 }}>{filepath}</span>
-                                                                <span style={{ color: 'var(--joe-text-muted)' }}>Lines {startLine}-{endLine}</span>
+                                                                <span style={{ color: 'var(--joe-text-muted)' }}>{t('chat_lines', { from: startLine, to: endLine })}</span>
                                                             </div>
                                                             <div className="joe-citation-body" style={{ opacity: 0.9 }}>
                                                                 <SyntaxHighlighter
@@ -354,14 +420,15 @@ export default function ChatPanel({
                                             }
                                         }}
                                     >
-                                        {msg.role === 'assistant' ? stripPictographs(displayedContent) : displayedContent}
+                                        {shown}
                                     </ReactMarkdown>
+                                    )}</WordReveal>
                                 </div>
                                 {msg.role === 'assistant' && (
                                     <div className="joe-msg-actions" style={{ display: 'flex', justifyContent: 'flex-start', marginTop: '6px' }}>
                                         <button
                                             onClick={() => handleCopy(msg.id, msg.content)}
-                                            title="انسخ الرد"
+                                            title={t('chat_copyReply')}
                                             style={{
                                                 background: 'transparent', border: 'none', color: 'var(--joe-text-muted)',
                                                 cursor: 'pointer', padding: '4px 8px', borderRadius: '4px', display: 'flex',
@@ -371,7 +438,7 @@ export default function ChatPanel({
                                             onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--joe-text-muted)'; e.currentTarget.style.background = 'transparent'; }}
                                         >
                                             {copiedId === msg.id ? <Check size={14} color="var(--joe-success, #4CAF50)" /> : <Copy size={14} />}
-                                            {copiedId === msg.id ? 'تم النسخ' : 'نسخ النص'}
+                                            {copiedId === msg.id ? t('chat_copied') : t('copy')}
                                         </button>
                                     </div>
                                 )}
@@ -395,10 +462,17 @@ export default function ChatPanel({
                                     variant="bubble"
                                     sessionId={sessionId}
                                 />
+                                {/* The plan, inside the reply: it rolls up like credits as each step finishes. */}
+                                <PlanCredits sessionId={sessionId} />
+                                {/* The step Joe is on, live; opened, every call so far. */}
+                                <ErrorBoundary key={`activity-live:${sessionId}`} fallbackTitle={t('act_loadFailed')}>
+                                    <RunActivityPanel variant="inline" sessionId={sessionId} />
+                                </ErrorBoundary>
                             </div>
                         </div>
                     </div>
                 )}
+                <ScreenshotResults sessionId={sessionId} refreshKey={screenshotRefreshKey} />
                 <div ref={messagesEndRef} />
 
             </div>
@@ -411,15 +485,12 @@ export default function ChatPanel({
             ) : (
                 <div className="joe-chat-input-area" style={{ position: 'relative' }}>
                     <div className="joe-chat-input-wrapper" style={{ position: 'relative' }}>
-                        <div style={{ position: 'absolute', bottom: 'calc(100% + 12px)', right: 0, zIndex: 100 }}>
-                            <TodosPanel />
-                        </div>
                         <textarea
                             ref={inputRef}
                             value={inputValue}
                             onChange={handleInput}
                             onKeyDown={handleKeyDown}
-                            placeholder={placeholder}
+                            placeholder={placeholder ?? t('chat_inputPlaceholder')}
                             className="joe-chat-input"
                             rows={1}
                             disabled={isLoading}
@@ -428,7 +499,7 @@ export default function ChatPanel({
                             className="joe-send-btn"
                             onClick={onSend}
                             disabled={!inputValue.trim() || isLoading}
-                            title="Send message"
+                            title={t('chat_sendMessage')}
                         >
                             <Send size={18} />
                         </button>

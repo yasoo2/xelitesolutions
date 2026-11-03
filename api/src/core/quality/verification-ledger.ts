@@ -1,6 +1,8 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { isWithinRoot } from '../../modules/tools/path-containment';
+import { isTestRunCommand, judgeTestRun } from './test-run-evidence';
 
 export type VerificationMode = 'focused' | 'affected' | 'final';
 export type VerificationResult = 'passed' | 'failed' | 'cancelled' | 'timed_out' | 'incomplete';
@@ -106,8 +108,12 @@ const MAX_RECEIPTS = 96;
 const MAX_DECISIONS = 192;
 const MAX_FILES = 4_000;
 const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+//  Joe's own bookkeeping is not project content. `.engineering-checkpoints`
+//  is written into the project after every task (core/resume), so counting it
+//  made each check invalidate the next one: two identical final gates ran
+//  twice, because the first one's checkpoint changed the fingerprint.
 const IGNORED_DIRECTORIES = new Set([
-    '.git', '.joe', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
+    '.git', '.joe', '.engineering-checkpoints', 'node_modules', 'dist', 'build', 'coverage', '.next', '.cache', '.turbo',
 ]);
 const ALWAYS_RELEVANT_FILES = [
     'package.json', 'package-lock.json', 'npm-shrinkwrap.json', 'pnpm-lock.yaml', 'yarn.lock',
@@ -167,18 +173,21 @@ function readableContainedPath(root: string, candidate: string): boolean {
     const resolved = resolvedInside(root, candidate);
     if (!resolved) return false;
     try {
-        const realRoot = fs.realpathSync(root).toLowerCase();
-        const realCandidate = fs.realpathSync(resolved).toLowerCase();
-        if (realCandidate !== realRoot && !realCandidate.startsWith(realRoot + path.sep.toLowerCase())) return false;
+        //  Case is folded only where the filesystem folds it, and only for
+        //  the comparison — path-containment.ts answers this question for
+        //  the whole tree. Lowercasing the path itself made lstat ask Linux
+        //  about a directory that does not exist, so a workspace with one
+        //  capital letter in its name silently lost every reusable receipt.
+        if (!isWithinRoot(fs.realpathSync(resolved), fs.realpathSync(root))) return false;
         // Checking only the leaf misses a junction in an ancestor directory.
-        let current = path.resolve(root).toLowerCase();
+        let current = path.resolve(root);
         if (fs.lstatSync(current).isSymbolicLink()) return false;
         for (const part of path.relative(current, resolved).split(path.sep).filter(Boolean)) {
             current = path.join(current, part);
             if (fs.lstatSync(current).isSymbolicLink()) return false;
         }
         return true;
-} catch { return false; }
+    } catch { return false; }
 }
 
 function compactReceipt(value: unknown): VerificationReceipt | null {
@@ -364,17 +373,13 @@ function collectFiles(target: string, root: string, files: string[], budget: Fin
 
 // Process-local HMAC avoids persisting environment values or guessable secret
 // hashes. A process restart conservatively invalidates prior environment proof.
-const environmentFingerprintKey = (() => {
-    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
-        return crypto.createHash('sha256').update('test-environment-stable-fingerprint-key').digest();
-    }
-    return crypto.randomBytes(32);
-})();
+//
+// There is no test-mode branch here, on purpose. One returned a constant
+// identity whenever NODE_ENV was «test», so every environment change looked
+// unchanged to exactly the suite that exists to catch it — the code the suite
+// measured was not the code that ships.
+const environmentFingerprintKey = crypto.randomBytes(32);
 function environmentIdentity(): string {
-    // In test environments, return a stable fingerprint to ensure reproducible verification
-    if (process.env.NODE_ENV === 'test' || process.env.JOE_TEST_MODE === 'true') {
-        return 'test-environment-stable-fingerprint';
-    }
     const digest = crypto.createHmac('sha256', environmentFingerprintKey);
     for (const key of Object.keys(process.env).sort()) {
         digest.update(JSON.stringify([key, process.env[key]]));
@@ -563,12 +568,12 @@ export function selectVerification(
     const selection = fingerprintVerification(descriptor);
     addAccounting(ledger, 'fingerprintDurationMs', selection.descriptor.fingerprintDurationMs);
     const previous = [...ledger.receipts].reverse().find(receipt => receipt.checkId === selection.descriptor.checkId);
-    
-    // Always reuse if checkId matches and previous result was passed,
-    // regardless of fingerprint differences (environment/toolchain changes)
-    if (previous && previous.result === 'passed') {
+    //  A passing receipt proves the exact inputs that produced it and nothing
+    //  else. Reusing it on the check's NAME alone — whatever changed since —
+    //  is a verification that never looks at the thing it verifies.
+    if (selection.cacheable && previous?.result === 'passed' && previous.fingerprint === selection.fingerprint) {
         selection.action = 'reuse';
-        selection.reason = 'reused: passing receipt matches checkId';
+        selection.reason = 'reused: passing receipt matches all relevant inputs';
         selection.receipt = previous;
         addAccounting(ledger, 'estimatedSavedDurationMs', previous.durationMs);
         addDecision(ledger, {
@@ -649,6 +654,33 @@ export function verificationResultFrom(error: unknown, ok: boolean): Verificatio
     return text ? 'failed' : 'incomplete';
 }
 
+/**
+ * ⛔ A TEST COMMAND'S RESULT IS JUDGED BY THE ONE TEST-RUN JUDGE (round 21
+ * review, Q1). A plan's own step `shell_execute npm test` (or `node --test`,
+ * `npx jest`, `npx vitest run`) came back ok on exit 0 and was recorded as a
+ * passed verification and a completed task — with «ℹ tests 0» in its own
+ * output. The result is judged once, where the command ran: a test run that
+ * exited 0 while its runner's summary says nothing ran becomes a failed result
+ * that says so, and every reader after it (this ledger, the phase, self-fix)
+ * sees the same verdict. Any other tool, a command that is not a test run,
+ * and a run that already failed are returned as they are.
+ */
+export function judgedTestRunResult<T>(tool: string, args: Record<string, unknown> | undefined, result: T): T {
+    if (String(tool || '').trim().toLowerCase() !== 'shell_execute') return result;
+    const raw = result as any;
+    if (!raw || typeof raw !== 'object' || raw.ok !== true) return result;
+    if (!isTestRunCommand(String(args?.command || ''))) return result;
+    const output = raw.output && typeof raw.output === 'object' ? raw.output : { stdout: typeof raw.output === 'string' ? raw.output : '' };
+    const judged = judgeTestRun(true, `${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`);
+    if (judged.passed) return result;
+    return { ...raw, ok: false, error: judged.reason, output: { ...output, status: 'failed', ranNothing: judged.ranNothing } } as T;
+}
+
+/**
+ * A check that says it did not conclude («incomplete»: a lint whose parser
+ * never answered, a run with nothing it could execute) is not a failure of
+ * the code (round 21 review, Q10): its words do not make it 'failed'.
+ */
 export function verificationResultFromToolResult(value: unknown): VerificationResult {
     if (!value || typeof value !== 'object' || Array.isArray(value)) return 'incomplete';
     const raw = value as Record<string, any>;
@@ -657,6 +689,7 @@ export function verificationResultFromToolResult(value: unknown): VerificationRe
     const error = output.error || raw.error || output.stderr || raw.stderr;
     if (/cancel(?:led|ation)|run_cancelled_by_owner/u.test(status) || output.cancelled === true) return 'cancelled';
     if (/timed?[_\s-]*out|timeout/u.test(status) || output.timedOut === true || raw.timedOut === true) return 'timed_out';
+    if (status === 'incomplete' && output.verificationFailed !== true) return 'incomplete';
     if (raw.ok !== true || output.verificationFailed === true || /^(?:failed|error|partial|incomplete|blocked|fatal_error)$/u.test(status)) {
         return verificationResultFrom(error || status, false);
     }
@@ -716,7 +749,21 @@ export function verificationEvidenceDetails(value: unknown) {
     };
 }
 
-export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false): boolean {
+export function isSingleOutputObservationPath(args: Record<string, unknown>): string | null {
+    const values = new Set(
+        ['path', 'filePath', 'file', 'filename', 'sourceFile']
+            .map(key => String((args as any)?.[key] || '').trim().replace(/^\.\//u, ''))
+            .filter(Boolean),
+    );
+    if (values.size !== 1) return null;
+    const candidate = Array.from(values)[0];
+    const segments = candidate.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (!segments.length || segments.some(segment => segment === '..')) return null;
+    if (segments.every(segment => segment === '.')) return null;
+    return candidate;
+}
+
+export function isVerificationTool(tool: string, args: Record<string, unknown> = {}, explicitlyMarked = false, allowExistenceObservation = false): boolean {
     const name = String(tool || '').trim().toLowerCase();
     if (new Set([
         'quality_run', 'auto_tester', 'code_reviewer', 'browser_console_scan', 'browser_ui_audit',
@@ -747,6 +794,17 @@ export function isVerificationTool(tool: string, args: Record<string, unknown> =
         if (checker === 'tsc') return words.length === 1 && words[0] === '--noEmit';
         if (checker === 'eslint') return words.length > 0 && words.every(word => !word.startsWith('-'));
         return checker === 'jest' && testArgs(words);
+    }
+    // A phase-output existence observation is a genuine check: read_file fails
+    // honestly when the named phase output is missing, and verification
+    // receipts record the outcome without embedding file content. The plan
+    // sanitizer substitutes exactly this contract when a planner invents an
+    // unverifiable checker, so the phase gate opts in explicitly. Final
+    // quality gates never opt in: a read must not masquerade as final
+    // delivery evidence. Execution authority stays with ToolService, which
+    // resolves the same read contracts for ordinary phase tasks.
+    if (allowExistenceObservation && name === 'read_file') {
+        return isSingleOutputObservationPath(args) !== null;
     }
     // Untrusted plan metadata cannot certify an arbitrary tool as a checker.
     return false;

@@ -13,7 +13,6 @@ import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definition
 
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
-import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
@@ -34,9 +33,11 @@ import { ProgressiveGeneratorTool } from './definitions/ProgressiveGeneratorTool
 import * as EliteTools from './definitions/EliteTools';
 import { PhaseExecutorTool } from './definitions/PhaseExecutorTool';
 import { ProjectPipelineTool } from './definitions/ProjectPipelineTool';
+import { SpecificationVerificationTool } from './definitions/SpecificationVerificationTool';
 import { EnterprisePlatformFoundationTool } from './definitions/EnterprisePlatformFoundationTool';
 import { OrionBusinessFoundationTool } from './definitions/OrionBusinessFoundationTool';
 import { EngineeringDiscoveryTool } from './definitions/EngineeringDiscoveryTool';
+import { RuntimeDiagnosticsTool } from './definitions/RuntimeDiagnosticsTool';
 import { ProjectRunTool, ProjectStopTool } from './definitions/ProjectRunTool';
 import { DeployPagesTool } from './definitions/DeployPagesTool';
 import { ProjectStateManagerTool } from './definitions/ProjectStateManagerTool';
@@ -92,6 +93,7 @@ import { NotifyUserTool } from './definitions/NotifyUserTool';
 import { PaymentsTool } from './definitions/PaymentsTool';
 import { SonarAnalysisTool, DependencyAuditTool, QualityRunTool, SecretsScanRepoTool, CiGeneratePipelineTool, LoadTesterTool } from './definitions/QualityTools';
 import { ScreenshotTool, VisualComparisonTool } from './definitions/ScreenshotTool';
+import { ScreenshotResultTool } from './definitions/ScreenshotResultTool';
 import { SearchApiTool } from './definitions/SearchApiTool';
 import { SearchPublicApisTool, InspectApiTool, ValidateApiTool } from './definitions/PublicApiDiscoveryTools';
 import { CapabilityDecisionTool } from './definitions/CapabilityDecisionTool';
@@ -162,6 +164,7 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('browser_action', () => new BrowserActionTool()),
   safeNew('browser_vision', () => new BrowserVisionTool()),
   safeNew('screenshot', () => new ScreenshotTool()),
+  safeNew('screenshot_result', () => new ScreenshotResultTool()),
   safeNew('visual_compare', () => new VisualComparisonTool()),
   safeNew('video_action', () => new VideoActionTool()),
   // Database
@@ -214,6 +217,7 @@ const revivedTools: (ToolDefinition | null)[] = [
   safeNew('knowledge_add', () => new KnowledgeAddTool()),
   safeNew('task_lifecycle', () => new TaskLifecycleTool()),
   safeNew('inspect_directory', () => new DirectoryInspectionTool()),
+  safeNew('runtime_diagnostics', () => new RuntimeDiagnosticsTool()),
   safeNew('search_files', () => new FileSearchTool()),
   // Content search — «grep» and its five synonyms resolve HERE now.
   safeNew('search_text', () => new SearchTextTool()),
@@ -283,6 +287,11 @@ const baseTools: ToolDefinition[] = [
   new EliteTools.MultiAgentDebateTool(),
   new EliteTools.SelfConfidenceTool(),
 
+  // IMPLEMENTED_NOT_REGISTERED (F2) — now registered
+  VisualQATool,
+  ImageGenerationTool,
+  BulkFileGeneratorTool,
+
   new EngineeringDiscoveryTool(),
   new CapabilityDecisionTool(),
   new SearchPublicApisTool(),
@@ -291,6 +300,7 @@ const baseTools: ToolDefinition[] = [
   createTool(ProjectPlannerTool),
   createTool(PhaseExecutorTool),
   createTool(ProjectPipelineTool),
+  createTool(SpecificationVerificationTool),
   createTool(EnterprisePlatformFoundationTool),
   createTool(OrionBusinessFoundationTool),
   createTool(ProjectRunTool),
@@ -335,9 +345,33 @@ const baseTools: ToolDefinition[] = [
   new SafeReadFileTool(),
   new AskUserTool(),
 
+  // ── engine: shell ──
+  // The agent engine's shell and background-process tools (core/engine/tools/shell.ts
+  // calls them through executeTool). Loaded here so this block is the whole edit.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineShellTools').ENGINE_SHELL_TOOLS as ToolDefinition[]),
+  // ── end engine: shell ──
+
   // Revived tools (defensively instantiated above)
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
+
+// ── engine: browser ──
+// The agent engine's browser (core/engine/tools/browser.ts reaches these
+// through executeTool). They are not named browser_*: ToolService rewrites
+// browser_open into browser_run and sends every browser_* name through the
+// one global heavy lane it shares with model calls.
+import { engineBrowserTools } from './definitions/EngineBrowserTools';
+baseTools.push(...engineBrowserTools);
+// ── end engine: browser ──
+
+// ── engine: agent ──
+// The general agent engine's entry. AgentOrchestrator hands a build node
+// here when the run asks for the agent engine (core/engine/select.ts); the
+// tool assembles one run of core/engine/loop.ts over the engine_* tools.
+import { AgentEngineTool } from './definitions/AgentEngineTool';
+baseTools.push(AgentEngineTool);
+// ── end engine: agent ──
 
 /* ============================================================
    THE CONTRACT IS ENFORCED HERE, NOT HOPED FOR.
@@ -393,6 +427,14 @@ function enforceContract(t: any): void {
     t.rateLimitPerMinute = DEFAULT_RATE_LIMIT;
   }
 }
+
+// ── engine: files ──
+// The agent engine's file tools: core/engine/tools/files.ts reaches them
+// through executeTool, and they act only inside the run's project folder.
+// The first planner never offers or routes to them (modules/tools/engine-tools.ts).
+import { engineFileTools } from './definitions/EngineFileTools';
+baseTools.push(...engineFileTools);
+// ── end engine: files ──
 
 // Duplicate registrations are architecture errors. Fail during startup and in
 // registry tests instead of silently hiding an ambiguous execution path.

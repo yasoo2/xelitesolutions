@@ -1,13 +1,19 @@
+import { createPlannerRunBoundary, isPlannerBoundaryError, localPlanDeadlineMs, localPlannerCeilingMs, resolvePlannerTotalMs } from '../../../core/orchestrator/planner-run-boundary';
 import { ToolDefinition, ToolPermission } from '../types';
+import { engineeringScope, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
 import { ensurePlanFinalVerification, frontendFinalCheck } from '../../../core/quality/plan-verification';
 
 import path from 'path';
 import { callLLM } from '../../../core/llm';
 import { isProviderFailure, retryAfterMsFrom } from '../../../core/llm/intelligent-router';
-import { plannerToolPrompt, sanitisePlanPhases } from '../../../core/orchestrator/plan-tools';
+import { compactPlannerToolPrompt, plannerToolPrompt, sanitisePlanPhases, toolExecutes } from '../../../core/orchestrator/plan-tools';
+import { servedModelConfig } from '../../../core/llm/served-local-selection';
 import { EngineeringEvidence } from './EngineeringDiscoveryTool';
 import { BOUNDED_REPAIR_CONSTITUTION, ENGINEERING_CONSTITUTION } from '../../../core/orchestrator/engineering-policy';
+import { requestTextForPrompt, transportRequestText, truncateAuxiliaryText, truncateEvidenceJsonText, DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
 import { brandFrom } from '../../../core/design/page-head';
+import { jsonReplyCandidates, parseModelJson } from '../../../shared/utils/json';
+import { hasBuildVerb, requestedArtifact } from '../../../core/design/requested-artifact';
 
 const DEPENDENCY_RESOLUTION_CONTRACT = `DEPENDENCY RESOLUTION CONTRACT: Never invent npm package versions or copy an unverified exact patch. When a plan introduces or edits package.json, use a published stable release family grounded in the inspected project or an explicit requirement. Before declaring setup complete, run the real install in the project root and treat ETARGET/No matching version as evidence: inspect the registry for stable versions, update only the failing package specifier, retry once, then verify the manifest and install result. Do not use --force or --legacy-peer-deps to hide a missing package version, do not choose prerelease/dev/integration tags, and do not remove a dependency unless source inspection proves it is unused.`;
 
@@ -29,6 +35,41 @@ function extractRuntimeImportLedger(projectDescription: unknown): string[] {
  * the orchestrator / phase executor layer, where userId, workspaceId,
  * approvals, and quality gates can be enforced consistently.
  */
+const LOCAL_COMPACT_EVIDENCE_MAX_CHARS = 3000;
+// Measured 2026-10-23: a plan that inlined file contents ran 2048 tokens at
+// ~1.2 tokens/s (30 min) and was cut mid-JSON. A compact plan is small.
+const LOCAL_PLAN_MAX_COMPLETION_TOKENS = 3000;
+
+/**
+ * Whether the model that will SERVE a plan is local (a named local model, or
+ * Auto on a server pinned to local). Decided by the served model, not the UI
+ * label. It sizes the plan's deadline from the measured machine; it does NOT
+ * choose a shorter brief (see plannerBrief).
+ */
+export function plannerPromptProfile(context?: { modelConfig?: any }): 'local-compact' | 'full' {
+    const served = servedModelConfig(context || {})?.modelConfig;
+    return String(served?.provider || '').trim().toLowerCase() === 'local' ? 'local-compact' : 'full';
+}
+
+/**
+ * Which brief a plan gets: the FULL one whenever it fits the window a local
+ * model can be given; the compact one only when it does not.
+ *
+ * Owner, 2026-10-23: the laptop is for development; Joe runs on a GPU server
+ * for thousands of users, and nothing is to be shortened to suit the laptop.
+ * The compact brief had been chosen for every local plan because a CPU read the
+ * full one slowly — a laptop decision that would have followed Joe onto the
+ * server. Speed is the deadline's business (sized from measured throughput);
+ * the brief changes only for capacity: a prompt that cannot fit the window.
+ */
+export function plannerBrief(fullPrompt: string, servedLocally: boolean): 'full' | 'compact' {
+    if (!servedLocally) return 'full';
+    const { estimatePromptTokens } = require('../../../core/llm/local-throughput');
+    const { managedContextCeilingTokens } = require('../../../core/llm/providers/managed-ollama-chat');
+    const { LOCAL_PLAN_OUTPUT_TOKENS } = require('../../../core/orchestrator/planner-run-boundary');
+    return estimatePromptTokens(fullPrompt) + LOCAL_PLAN_OUTPUT_TOKENS <= managedContextCeilingTokens() ? 'full' : 'compact';
+}
+
 export class ProjectPlannerTool implements ToolDefinition {
     name = 'project_planner';
     version = '1.1.0';
@@ -75,11 +116,88 @@ export class ProjectPlannerTool implements ToolDefinition {
         // A missing required argument is a QUESTION, not a crash. The registry
         // audit called every read-only tool with {} and six of them threw a raw
         // TypeError — which is what the user sees when a planner omits a field.
-        if (!String(projectDescription || '').trim()) {
-            return { ok: false, error: 'project_planner needs projectDescription — describe the project to plan.', logs } as any;
+        // Bounded request transport: an invalid or over-bound request is
+        // rejected honestly BEFORE any prompt is built or provider called.
+        // Recovery branches below therefore embed the complete verified text.
+        const requestTransport = transportRequestText(projectDescription);
+        if (!requestTransport.ok) {
+            logs.push(`[plan] large-request admission rejected: ${requestTransport.error}`);
+            return {
+                ok: false,
+                error: requestTransport.error,
+                output: {
+                    ...this.fallbackPlan(typeof projectDescription === 'string' ? projectDescription : '', analysis, evidence),
+                    totalPhases: 0,
+                    phases: [],
+                    fallback: true,
+                    deliveryStatus: 'blocked',
+                    executionStatus: 'not_started',
+                    verificationStatus: 'not_run',
+                    blocker: {
+                        code: requestTransport.code,
+                        message: requestTransport.error,
+                        remedy: requestTransport.code === 'large_request_over_bound'
+                            ? 'Shorten the brief (or split it into smaller requests) and resubmit; no plan was produced from a truncated request.'
+                            : 'Provide projectDescription as a non-empty string describing the project to plan.',
+                    },
+                    autoExecuted: false,
+                    executionPolicy: 'planner_only',
+                },
+                logs,
+            } as any;
         }
 
+        let boundary: ReturnType<typeof createPlannerRunBoundary> | undefined;
         try {
+            if (engineeringScope(context) && evidence?.requiredSpecification
+                && JSON.stringify(this.planningEvidence(evidence), null, 2).length > DISCOVERY_EVIDENCE_MAX_CHARS) {
+                return { ok: false, error: 'specification_planner_budget_exceeded', output: { totalPhases: 0, phases: [],
+                    autoExecuted: false, executionPolicy: 'planner_only', executionStatus: 'not_started', verificationStatus: 'not_run',
+                    blocker: { code: 'specification_planner_budget_exceeded', message: 'Complete required-source evidence exceeds the bounded planner intake; no truncated plan was requested.' } }, logs };
+            }
+            // A plan the LOCAL model serves is budgeted from its size and this
+            // machine's measured speed, not from a cut sized for a cloud model.
+            // Only a DEFAULT deadline is replaced; a deadline the caller set is a
+            // contract (planner-run-boundary tests pin 20 ms and 1 s ones).
+            // A caller's long local deadline (the pipeline sizes one) is honoured up
+            // to the local ceiling instead of being clamped at five minutes.
+            const callerMs = Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 0;
+            const callerSetDeadline = callerMs > 0 && context?.plannerTimeoutDefaulted !== true;
+            // Read the profile only when it can change the budget.
+            const localPlan = (!callerSetDeadline || callerMs > 300_000) && plannerPromptProfile(context) === 'local-compact';
+            const localPlanBudgetMs = !localPlan ? undefined
+                : callerSetDeadline ? Math.min(localPlannerCeilingMs(), callerMs)
+                : Math.max(resolvePlannerTotalMs(context), localPlanDeadlineMs(String(projectDescription || '')));
+            const plannerBoundary = localPlanBudgetMs !== undefined
+                ? createPlannerRunBoundary(context, localPlanBudgetMs, localPlannerCeilingMs())
+                : createPlannerRunBoundary(context);
+            boundary = plannerBoundary;
+            plannerBoundary.throwIfCancelled();
+            // The canonical LLM entry remains unchanged; every recovery shares
+            // this owner's signal, identities and one total remaining budget.
+            const plannerLLM = async (prompt: string, messages: any[], routing: any): Promise<string> => {
+                plannerBoundary.throwIfCancelled();
+                // A character budget is an intake bound, not a tokenizer claim.
+                // Preserve the entire source/request or stop before inference.
+                if (prompt.startsWith('ISOLATED EXISTING NODE PLAN') && prompt.length > 12000) {
+                    throw new Error('isolated_planner_prompt_budget_exceeded');
+                }
+                const requestedMs = Number(routing?.providerTimeoutMs);
+                const options = {
+                    ...routing,
+                    modelConfig: context?.modelConfig,
+                    sessionId: context?.sessionId,
+                    runId: context?.runId,
+                    workspaceId: context?.workspaceId,
+                    engineeringPipeline: context?.engineeringPipeline === true,
+                    signal: plannerBoundary.signal,
+                    providerTimeoutMs: Math.min(Number.isFinite(requestedMs) && requestedMs > 0 ? requestedMs : 120000, plannerBoundary.remainingMs()),
+                };
+                const response = await plannerBoundary.wrap(() => callLLM(prompt, messages, options));
+                plannerBoundary.throwIfCancelled();
+                return response;
+            };
+
             // A plan is portable workspace code, not a reflection of the host
             // machine. The raw evidence remains available for internal guards,
             // but the model receives no absolute host paths to copy into tools.
@@ -88,7 +206,9 @@ export class ProjectPlannerTool implements ToolDefinition {
             const scopeRepairTargets = Array.isArray(context?.scopeRepairTargets)
                 ? context.scopeRepairTargets.map((target: unknown) => String(target || '').trim()).filter(Boolean).slice(0, 12)
                 : [];
-            const planningPrompt = this.createPlanningPrompt(
+            const scopedInitial = !repairMode && !scopeRepairMode && !!engineeringScope(context);
+            const isolatedProfile = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
+            const fullPrompt = isolatedProfile || scopedInitial ? '' : this.createPlanningPrompt(
                 projectDescription,
                 analysis,
                 this.planningEvidence(evidence),
@@ -96,6 +216,9 @@ export class ProjectPlannerTool implements ToolDefinition {
                 scopeRepairMode,
                 scopeRepairTargets,
             );
+            const compactBrief = !isolatedProfile && !scopedInitial
+                && plannerBrief(fullPrompt, localPlan || plannerPromptProfile(context) === 'local-compact') === 'compact';
+            const planningPrompt = isolatedProfile ? this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolatedProfile) : scopedInitial ? this.createScopedInitialPlanningPrompt(projectDescription, analysis, evidence) : compactBrief ? this.createLocalCompactPlanningPrompt(projectDescription, this.planningEvidence(evidence), repairMode, scopeRepairMode, scopeRepairTargets) : fullPrompt;
             // A self-contained, greenfield browser request can be planned from
             // its explicit contract alone. Do that before contacting an
             // unavailable provider: it keeps a local-only build from waiting
@@ -109,7 +232,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 response = JSON.stringify(constrainedPlan);
                 logs.push('Planner derived one constrained frontend phase from the explicit request and discovery evidence; no provider call was needed.');
             } else {
-                response = await callLLM(planningPrompt, [
+                response = await plannerLLM(planningPrompt, [
                     { role: 'system', content: 'You are a senior software project manager. Return only valid JSON.' }
                 ], {
                 // The user-selected compatible gateway is part of the live tool
@@ -128,8 +251,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 // specification has already been read and compressed, but a
                 // multi-domain JSON plan can legitimately take longer than a
                 // normal conversational turn. Keep the cap finite and explicit.
-                providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                 reasoningEffort: context?.plannerReasoningEffort || 'low',
                     purpose: 'internal',
                 });
@@ -157,9 +280,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
-                            evidence,
-                        );
-                        recoveryResponse = await callLLM(recoveryPrompt, [
+                            evidence, context);
+                        recoveryResponse = await plannerLLM(recoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only compact valid JSON with executable phases and tasks.' }
                         ], {
                             modelConfig: context?.modelConfig,
@@ -174,6 +296,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             logs.push('Planner provider recovery completed; continuing with the recovered response.');
                         }
                     } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                         logs.push(`Planner provider recovery failed: ${recoveryError?.message || recoveryError}`);
                     }
                     if (!isProviderFailure(response)) {
@@ -198,7 +321,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 }
                 if (isProviderFailure(response)) {
                     logs.push('Planner provider unavailable; no plan was invented from the outage message.');
-                    return {
+                    plannerBoundary.throwIfCancelled();
+                return {
                         ok: false,
                         error: response,
                         output: {
@@ -220,6 +344,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     throw new Error('Planner returned valid JSON without a non-empty phases/tasks plan');
                 }
             } catch (parseError) {
+                        if (isPlannerBoundaryError(parseError)) throw parseError;
                 console.warn(`[ProjectPlanner] initial-parse-failed ${JSON.stringify({ error: String(parseError), response: this.responseDiagnostic(response) })}`);
                 logs.push(`Initial planner response was not executable JSON: ${parseError}`);
                 // A provider can answer successfully with prose, `{ phases: [] }`,
@@ -236,14 +361,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    retryResponse = await callLLM(retryPrompt, [
+                        evidence, context);
+                    retryResponse = await plannerLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases and tasks.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -254,6 +378,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     logs.push('Planner recovery completed with a non-empty execution plan');
                 } catch (retryError: any) {
+                        if (isPlannerBoundaryError(retryError)) throw retryError;
                     console.warn(`[ProjectPlanner] parse-recovery-failed ${JSON.stringify({ error: retryError?.message || String(retryError), response: this.responseDiagnostic(typeof retryResponse === 'undefined' ? null : retryResponse) })}`);
                     logs.push(`Planner recovery failed: ${retryError?.message || retryError}`);
                     plan = this.fallbackPlan(projectDescription, analysis, evidence);
@@ -361,14 +486,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    const retryResponse = await callLLM(retryPrompt, [
+                        evidence, context);
+                    const retryResponse = await plannerLLM(retryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with executable phases, exact tool contracts, and non-document implementation artifacts.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -377,6 +501,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     if (!this.hasPlanningShape(recoveredPlan)) {
                         throw new Error('Contract recovery returned valid JSON without a non-empty phases/tasks plan');
                     }
+                    const recoveredRaw = JSON.parse(JSON.stringify(recoveredPlan));
                     const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                     const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
                         mode: evidence?.mode,
@@ -397,11 +522,15 @@ export class ProjectPlannerTool implements ToolDefinition {
                     }
                     plan = this.validatePlan(recoveredPlan, projectDescription);
                     plan.phases = recoveredClean.phases;
-                    rawPlanForPortableRewrite = JSON.parse(JSON.stringify(plan));
+                    // The rewrite reads the model's own tasks, as for the first
+                    // plan — not the sanitised phases, which have already dropped
+                    // or blocked the very tasks it would make portable.
+                    rawPlanForPortableRewrite = recoveredRaw;
                     clean = recoveredClean;
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner contract recovery completed with non-document implementation artifacts');
                 } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                     logs.push(`Planner contract recovery failed: ${recoveryError?.message || recoveryError}`);
                     console.warn(`[ProjectPlanner] contract-recovery-failed ${JSON.stringify({ message: recoveryError?.message || String(recoveryError), plan: this.planContractDiagnostic(plan) })}`);
                 }
@@ -411,27 +540,90 @@ export class ProjectPlannerTool implements ToolDefinition {
             // contract failure, not a reason to manufacture a document or run a
             // blind npm install. Both are recoverable once: the model must supply
             // an evidence-backed, workspace-runnable alternative.
+            // So is a task missing a required argument (tool_contract_invalid):
+            // eval round 8 (2026-10-23) lost a 45-minute build to one
+            // security_scanner task with no path. The model is shown the exact
+            // missing field once; a second miss still stops honestly.
+            const PORTABILITY_BLOCKERS = new Set(['unportable_native_dependency', 'native_dependency_requires_npm_manager']);
+            // The deterministic dependency-only rewrite. It preserves the model's
+            // architecture and task scope; it merely applies the already stated
+            // contract (node:sqlite/JSON, node:crypto, sass, or a portable
+            // fallback) before the same sanitiser and artifact gates run again.
+            const normalisePortablePlan = (rawPlan: any) => {
+                const portablePlan = this.rewriteUnportableNativePlan(rawPlan);
+                const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
+                    mode: evidence?.mode,
+                    disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
+                    evidencedPaths,
+                    testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
+                    candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
+                    disallowUnportableNativeDependencies: true,
+                    requireRunnableContract: context?.requireRunnableContract === true,
+                    repairMode,
+                    preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
+                    reactRequest: projectDescription,
+                });
+                return { portablePlan, portableClean, usable: !portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0 };
+            };
+            let rewrittenRaw: any = null;
+            const adoptPortablePlan = (rawPlan: any, stage: 'before' | 'after'): boolean => {
+                if (!rawPlan || rawPlan === rewrittenRaw) return false;   // one rewrite per plan
+                rewrittenRaw = rawPlan;
+                const { portablePlan, portableClean, usable } = normalisePortablePlan(rawPlan);
+                if (!usable) {
+                    logs.push(`Planner portability normalization failed: ${portableClean.blocker?.message || 'no implementation artifact survived'}`);
+                    return false;
+                }
+                plan = this.validatePlan(portablePlan, projectDescription);
+                plan.phases = portableClean.phases;
+                clean = portableClean;
+                clean.notes.forEach(n => logs.push(n));
+                logs.push(stage === 'before'
+                    ? 'Planner portability normalization completed before model recovery.'
+                    : 'Planner portability normalization completed after bounded model recovery failed.');
+                return true;
+            };
+            /**
+             * ⛔ THE DETERMINISTIC REPAIR COMES BEFORE THE MODEL.
+             *
+             * Eval round 15 (P101): a plan whose defect was sqlite3 went to a
+             * model recovery first — 69 minutes of planning on this CPU — and a
+             * clean recovery REPLACED the plan, file writes only, so the build was
+             * «all paper». Swapping a native addon for node:sqlite is a rewrite,
+             * not a judgement: it runs first, and the model is asked only when
+             * the rewritten plan still cannot run.
+             */
+            if (PORTABILITY_BLOCKERS.has(String(clean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
+                adoptPortablePlan(rawPlanForPortableRewrite, 'before');
+            }
+            // The rejected plan's runnable steps, named so the recovery keeps them.
+            const runnableStepsOf = (rawPlan: any): string[] => (Array.isArray(rawPlan?.phases) ? rawPlan.phases : [])
+                .flatMap((phase: any) => [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask && typeof phase.verificationTask === 'object' ? [phase.verificationTask] : [])])
+                .filter((task: any) => toolExecutes(String(task?.tool || '')))
+                .map((task: any) => `«${String(task?.task || task?.description || task?.tool).slice(0, 80)}» (${String(task?.tool)})`)
+                .slice(0, 12);
+
             const blocker = clean.blocker;
             const contractRecoveryBlocker = !!blocker
-                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|missing_runnable_contract)$/.test(String(blocker.code || ''));
+                && /^(?:scaffold_project_contract_invalid|implicit_scaffold_requires_explicit_stack|unportable_native_dependency|native_dependency_requires_npm_manager|missing_runnable_contract|tool_contract_invalid)$/.test(String(blocker.code || ''));
             if (contractRecoveryBlocker) {
                 logs.push(`[plan] ${blocker.code} detected; starting one bounded contract recovery.`);
                 try {
+                    const rejectedSteps = runnableStepsOf(rawPlanForPortableRewrite);
                     const recoveryPrompt = this.createCompactRecoveryPlanningPrompt(
                         projectDescription,
-                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a stack scaffold with an inspectable runnable structure) before any live-run. Do not use scaffold_project or native npm addons in this repair. Prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface; use file-level implementation tasks instead. Re-plan from the original request and evidence; do not invent a fixed template locally.`,
+                        `The parsed plan was rejected by a planning contract: ${blocker.code}: ${blocker.message}. ${blocker.remedy || ''} For missing_runnable_contract, add an explicit foundation task using write_file or ai_write_file for package.json and a real entrypoint (or a scaffold_project with a concrete, runnable structure) before any live-run. Never use a native npm addon: prefer node:sqlite when available, otherwise a JSON/file fallback with the same interface. Keep every install, test and run step of the rejected plan, made portable; never remove them.${rejectedSteps.length ? ` Steps of the rejected plan to keep: ${rejectedSteps.join(', ')}.` : ''} Re-plan from the original request and evidence; do not invent a fixed template locally.`,
                         undefined,
                         repairMode,
                         scopeRepairMode,
                         scopeRepairTargets,
-                        evidence,
-                    );
-                    const recoveryRequest = () => callLLM(recoveryPrompt, [
+                        evidence, context);
+                    const recoveryRequest = () => plannerLLM(recoveryPrompt, [
                         { role: 'system', content: 'You are a senior software project manager. Repair the rejected plan using the evidence and exact tool contracts. Return only valid JSON; never return prose or Markdown fences.' }
                     ], {
                         modelConfig: context?.modelConfig,
-                        providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                        maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                        providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                        maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                         reasoningEffort: context?.plannerReasoningEffort || 'low',
                         purpose: 'internal',
                     });
@@ -443,6 +635,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                             if (!isProviderFailure(recoveryResponse)) break;
                             recoveryFailure = recoveryResponse;
                         } catch (attemptError: any) {
+                        if (isPlannerBoundaryError(attemptError)) throw attemptError;
                             recoveryFailure = attemptError;
                         }
                         const failureText = String(recoveryFailure?.message || recoveryFailure || '');
@@ -454,7 +647,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                                 ? Math.max(0, Math.min(configuredDelay, 65_000))
                                 : Math.min(Math.max(61_000, (advertisedDelay || 0) + 1_000), 65_000);
                             logs.push(`[plan] portability recovery hit a provider rate limit; waiting ${delayMs}ms for one bounded retry.`);
-                            await new Promise(resolve => setTimeout(resolve, delayMs));
+                            await plannerBoundary.sleep(delayMs);
                             continue;
                         }
                         break;
@@ -481,11 +674,25 @@ export class ProjectPlannerTool implements ToolDefinition {
                         preserveScaffoldBuilderChoice: true,
                         reactRequest: projectDescription,
                     });
-                    if (recoveredClean.blocker?.code === 'unportable_native_dependency') {
-                        // The model supplied a newer architecture but repeated the
-                        // native choice. Preserve that newer plan for the bounded
-                        // dependency-only rewrite below.
-                        rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
+                    if (PORTABILITY_BLOCKERS.has(String(recoveredClean.blocker?.code || ''))) {
+                        if (PORTABILITY_BLOCKERS.has(String(blocker.code || ''))) {
+                            // Asked to repair a native dependency, it repeated one:
+                            // the original plan stays the source of the rewrite.
+                            logs.push('[plan] the recovery repeated the native dependency; the original plan stays the source of the portability rewrite.');
+                        } else {
+                            // The model supplied a newer architecture but repeated the
+                            // native choice. Preserve that newer plan for the bounded
+                            // dependency-only rewrite below — and make it the current
+                            // state, because that rewrite is gated on `clean`. Eval
+                            // round 15 (2026-10-24, P151): the first plan's own blocker
+                            // was tool_contract_invalid, so `clean` kept it, the gate
+                            // stayed shut, and a 21-minute recovered plan whose only
+                            // defect was sqlite3 was thrown away. The rewrite
+                            // re-sanitises: any other defect still stops honestly.
+                            rawPlanForPortableRewrite = JSON.parse(JSON.stringify(recoveredPlan));
+                            plan = this.validatePlan(recoveredPlan, projectDescription);
+                            clean = recoveredClean;
+                        }
                     }
                     if (recoveredClean.blocker) {
                         throw new Error(`Contract recovery remained blocked: ${recoveredClean.blocker.code}: ${recoveredClean.blocker.message}`);
@@ -499,38 +706,15 @@ export class ProjectPlannerTool implements ToolDefinition {
                     clean.notes.forEach(n => logs.push(n));
                     logs.push('Planner scaffold contract recovery completed with executable implementation artifacts');
                 } catch (recoveryError: any) {
+                        if (isPlannerBoundaryError(recoveryError)) throw recoveryError;
                     logs.push(`Planner scaffold contract recovery failed: ${recoveryError?.message || recoveryError}`);
                 }
             }
 
-            // If the model ignored both portability-recovery prompts, perform one
-            // deterministic dependency-only rewrite. This preserves the model's
-            // architecture and task scope; it merely applies the already stated
-            // contract (node:sqlite/JSON, node:crypto, sass, or a portable fallback)
-            // before the same sanitiser and artifact gates run again.
-            if (clean.blocker?.code === 'unportable_native_dependency' && evidence?.mode === 'greenfield') {
-                const portablePlan = this.rewriteUnportableNativePlan(rawPlanForPortableRewrite);
-                const portableClean = sanitisePlanPhases(portablePlan.phases, portablePlan.projectName, {
-                    mode: evidence?.mode,
-                    disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !this.hasPlannerStackDecision(portablePlan),
-                    evidencedPaths,
-                    testFiles: (evidence?.selectedProject?.testFiles || []).map(item => String(item || '').trim()).filter(Boolean),
-                    candidateCheckCommands: (evidence?.selectedProject?.candidateChecks || []).map(check => check.command),
-                    disallowUnportableNativeDependencies: true,
-                    requireRunnableContract: context?.requireRunnableContract === true,
-                    repairMode,
-                    preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
-                    reactRequest: projectDescription,
-                });
-                if (!portableClean.blocker && this.countImplementationArtifacts(portableClean.phases) > 0) {
-                    plan = this.validatePlan(portablePlan, projectDescription);
-                    plan.phases = portableClean.phases;
-                    clean = portableClean;
-                    clean.notes.forEach(n => logs.push(n));
-                    logs.push('Planner portability normalization completed after bounded model recovery failed.');
-                } else {
-                    logs.push(`Planner portability normalization failed: ${portableClean.blocker?.message || 'no implementation artifact survived'}`);
-                }
+            // A recovery that is still blocked by a native dependency gets the
+            // same deterministic rewrite, on the newest plan (never twice on one).
+            if (PORTABILITY_BLOCKERS.has(String(clean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
+                adoptPortablePlan(rawPlanForPortableRewrite, 'after');
             }
 
             // Preserve any remaining blocker so the pipeline stops honestly and
@@ -548,6 +732,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                     blocker: clean.blocker,
                 }, projectDescription);
                 logs.push(`[plan] blocked: ${clean.blocker.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: clean.blocker.message,
@@ -568,6 +753,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 };
                 blocked.planNotes = clean.notes;
                 logs.push(`[plan] blocked: ${blocked.blocker.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: blocked.blocker.message,
@@ -590,6 +776,7 @@ export class ProjectPlannerTool implements ToolDefinition {
             if (plan?.fallback === true) {
                 const blockerMessage = plan?.blocker?.message || 'No executable engineering plan was produced.';
                 logs.push(`[plan] blocked: ${blockerMessage}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: blockerMessage,
@@ -622,14 +809,13 @@ export class ProjectPlannerTool implements ToolDefinition {
                             repairMode,
                             scopeRepairMode,
                             scopeRepairTargets,
-                            evidence,
-                        );
-                        const scopeRecoveryResponse = await callLLM(scopeRecoveryPrompt, [
+                            evidence, context);
+                        const scopeRecoveryResponse = await plannerLLM(scopeRecoveryPrompt, [
                             { role: 'system', content: 'You are a senior software project manager. Return only valid JSON with complete requirement coverage, executable phases, exact tool contracts, and concrete non-document artifacts.' }
                         ], {
                             modelConfig: context?.modelConfig,
-                            providerTimeoutMs: Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000,
-                            maxCompletionTokens: Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000,
+                            providerTimeoutMs: localPlanBudgetMs ?? (Number(context?.plannerTimeoutMs) > 0 ? Number(context.plannerTimeoutMs) : 120000),
+                            maxCompletionTokens: Math.min(Number(context?.plannerMaxCompletionTokens) > 0 ? Number(context.plannerMaxCompletionTokens) : 12000, compactBrief ? LOCAL_PLAN_MAX_COMPLETION_TOKENS : Infinity),
                             reasoningEffort: context?.plannerReasoningEffort || 'low',
                             purpose: 'internal',
                         });
@@ -640,7 +826,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         }
                         const recoveredHasPlannerStackDecision = this.hasPlannerStackDecision(recoveredPlan);
                         logs.push(`[plan] scope recovery stack decision=${recoveredHasPlannerStackDecision}`);
-                        const recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
+                        let recoveredClean = sanitisePlanPhases(recoveredPlan.phases, recoveredPlan.projectName, {
                             disallowImplicitScaffold: evidence?.mode === 'greenfield' && !hasExplicitStack && !hasEvidenceBackedStack && !recoveredHasPlannerStackDecision,
                             evidencedPaths,
                             testFiles: evidence?.selectedProject?.testFiles || [],
@@ -653,13 +839,25 @@ export class ProjectPlannerTool implements ToolDefinition {
                              preferReactBuilder: this.hasExplicitReactBuilderConstraint(projectDescription),
                              reactRequest: projectDescription,
                          });
+                        // The same class as the contract recovery above: a newer
+                        // plan whose only defect is a native dependency is made
+                        // portable, not discarded; any other defect still throws.
+                        let recoveredSource: any = recoveredPlan;
+                        if (PORTABILITY_BLOCKERS.has(String(recoveredClean.blocker?.code || '')) && evidence?.mode === 'greenfield') {
+                            const portable = normalisePortablePlan(recoveredPlan);
+                            if (portable.usable) {
+                                recoveredClean = portable.portableClean;
+                                recoveredSource = portable.portablePlan;
+                                logs.push('Planner scope recovery: portability normalization applied to the recovered plan.');
+                            }
+                        }
                         if (recoveredClean.blocker) {
                             throw new Error(`Scope recovery was blocked during contract sanitisation: ${recoveredClean.blocker.message}`);
                         }
                         if (this.countImplementationArtifacts(recoveredClean.phases) === 0) {
                             throw new Error('Scope recovery retained no non-document implementation artifact');
                         }
-                        const recoveredValidatedPlan = this.validatePlan(recoveredPlan, projectDescription);
+                        const recoveredValidatedPlan = this.validatePlan(recoveredSource, projectDescription);
                         recoveredValidatedPlan.phases = recoveredClean.phases;
                         const recoveredAssessment = this.assessPlanScope(
                             recoveredValidatedPlan,
@@ -679,6 +877,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                         clean.notes.forEach(n => logs.push(n));
                         logs.push('Planner scope recovery completed with sufficient requirement coverage');
                     } catch (scopeRecoveryError: any) {
+                        if (isPlannerBoundaryError(scopeRecoveryError)) throw scopeRecoveryError;
                         logs.push(`Planner scope recovery attempt ${scopeRecoveryAttempt} failed: ${scopeRecoveryError?.message || scopeRecoveryError}`);
                     }
                 }
@@ -692,6 +891,7 @@ export class ProjectPlannerTool implements ToolDefinition {
                 };
                 blocked.scopeAssessment = scopeAssessment;
                 logs.push(`[plan] scope gate blocked execution: ${scopeAssessment.message}`);
+                plannerBoundary.throwIfCancelled();
                 return {
                     ok: false,
                     error: scopeAssessment.message,
@@ -706,7 +906,8 @@ export class ProjectPlannerTool implements ToolDefinition {
             logs.push(`Plan created: ${plan.totalPhases} phases, ${plan.estimatedDuration}`);
             logs.push('Planner-only mode: generated tasks were not executed.');
 
-            return {
+            plannerBoundary.throwIfCancelled();
+                return {
                 ok: true,
                 output: {
                     ...plan,
@@ -717,6 +918,20 @@ export class ProjectPlannerTool implements ToolDefinition {
                 logs
             };
         } catch (error: any) {
+            if (isPlannerBoundaryError(error)) {
+                return {
+                    ok: false,
+                    error: error.code,
+                    output: {
+                        totalPhases: 0, phases: [], status: 'failed',
+                        deliveryStatus: 'blocked', executionStatus: 'not_started', verificationStatus: 'not_run',
+                        autoExecuted: false, executionPolicy: 'planner_only',
+                        blocker: { code: error.code, message: error.message },
+                    },
+                    logs: [...logs, 'Planner stopped at its owner cancellation/deadline boundary.'],
+                };
+            }
+
             logs.push(`Error: ${error.message}`);
             return {
                 ok: false,
@@ -728,6 +943,8 @@ export class ProjectPlannerTool implements ToolDefinition {
                 },
                 logs
             };
+        } finally {
+            boundary?.cleanup();
         }
     }
 
@@ -761,6 +978,10 @@ export class ProjectPlannerTool implements ToolDefinition {
         if (!base) return undefined;
         const referenceProjects = candidates.find((value: any) => Array.isArray(value.referenceProjects))?.referenceProjects;
         const selectedProject = candidates.find((value: any) => value.selectedProject)?.selectedProject;
+        // An already canonical snapshot retains its server-owned evidence seal.
+        // Normalizing an envelope may merge fields, but must never mint a seal.
+        if ((!referenceProjects || referenceProjects === base.referenceProjects)
+            && (!selectedProject || selectedProject === base.selectedProject)) return base as EngineeringEvidence;
         return {
             ...base,
             ...(referenceProjects ? { referenceProjects } : {}),
@@ -820,6 +1041,88 @@ export class ProjectPlannerTool implements ToolDefinition {
         };
     }
 
+    private createScopedInitialPlanningPrompt(projectDescription: string, analysis?: any, evidence?: EngineeringEvidence): string {
+        const promptEvidence = this.planningEvidence(evidence);
+        const excerpt = promptEvidence ? truncateEvidenceJsonText(JSON.stringify({ mode: promptEvidence.mode, workspaceRoot: '.', instructionFiles: promptEvidence.instructionFiles || [], facts: promptEvidence.facts || [], requiredSpecification: promptEvidence.requiredSpecification, blockers: promptEvidence.blockers || [], selectedProject: promptEvidence.selectedProject ? { root: promptEvidence.selectedProject.root, manifests: promptEvidence.selectedProject.manifests, likelyEntrypoints: promptEvidence.selectedProject.likelyEntrypoints, sourceFiles: promptEvidence.selectedProject.sourceFiles || [], testFiles: promptEvidence.selectedProject.testFiles || [], candidateChecks: promptEvidence.selectedProject.candidateChecks || [] } : undefined, referenceProjects: (promptEvidence.referenceProjects || []).map(project => ({ root: project.root, manifests: project.manifests, likelyEntrypoints: project.likelyEntrypoints, sourceFiles: project.sourceFiles || [], testFiles: project.testFiles || [] })) }, null, 2)) : '';
+        const scope = this.requirementScope(projectDescription);
+        const targets = scope.targets.map((target, index) => `R${index + 1}: ${target}`).join(' | ');
+        const perPhase = Math.max(1, Math.ceil(scope.targets.length / scope.minPhases));
+        const projectRule = promptEvidence?.selectedProject
+            ? 'Reuse the evidenced selected project when modification is requested; honor an explicit request for a separate new project folder and preserve unrelated files.'
+            : 'No existing runnable project is proved by this bounded discovery. Honor an explicitly requested new project folder; do not infer an empty workspace, an existing manifest, or a default stack.';
+        const ledger = Array.from({ length: scope.minPhases }, (_, phaseIndex) => { const start = phaseIndex * perPhase; const end = Math.min(scope.targets.length, start + perPhase); const ids = Array.from({ length: Math.max(0, end - start) }, (_, offset) => `R${start + offset + 1}`); return ids.length ? `Phase ${phaseIndex + 1}: ${ids.join(', ')}` : ''; }).filter(Boolean).join(' | ');
+        return `COMPACT SCOPED INITIAL PLAN — first planning turn for this server-issued scoped engineering run. There is no earlier planner attempt; plan from the request and evidence below.\n\n${plannerToolPrompt()}\n\n${ENGINEERING_CONSTITUTION}\n\n${DEPENDENCY_RESOLUTION_CONTRACT}\n\nCOMPLETE ORIGINAL REQUEST (all constraints mandatory; the register below never replaces them):\n${requestTextForPrompt(projectDescription)}\n${analysis ? `ANALYSIS:\n${JSON.stringify(analysis, null, 2)}\n` : ''}${excerpt ? `AUTHORITATIVE DISCOVERY EVIDENCE (bounded excerpt; a truncation marker means incomplete evidence — do not infer omitted paths; reuse visible workspace-relative paths exactly):\n${excerpt}\n` : ''}\nREQUIREMENT REGISTER FROM THE ORIGINAL REQUEST:\n${targets || 'R1: the requested implementation'}\nCOVERAGE LEDGER (collectively cover every listed R number in requirementsCovered): ${ledger}\n\nRules: ${projectRule} Inspect available evidence before choosing a scaffold. Every write task must refer to an evidence fact or an explicit user requirement. Use candidateChecks from the evidence for verification where available. Paths in every file-oriented tool argument must be safe workspace-relative paths; never an absolute host path, drive path, network path, or '..'. A read_file task may read only an evidence path or a file created earlier in the same phase. If evidence.mode is greenfield and the request names no stack, include a clearly labeled stack decision grounded in requirements and registered tools. Never copy a fixed template.\n\nOUTPUT BUDGET: return a compact JSON plan fitting one response: ${scope.minPhases} to 8 phases, up to 4 tasks per phase, one short sentence per text field (preferably under 180 characters). Use R-number IDs in requirementsCovered and cover every ID. Never inline source code, HTML, logs, or catalogue text in the plan. Implementation files use ai_write_file with args.path plus a precise short args.description; the controlled executor generates file contents later from those descriptions. Keep each args object to the fields the selected tool requires. A task using write_file MUST include args.path and args.content. A task using test_generator MUST name one concrete evidenced source file. A task using auto_tester MUST use args.testType exactly one of syntax, build, unit, integration with a safe args.projectPath; syntax tests also need args.files. Build, unit, and integration tests only when discovery proved the matching package script exists. A task that starts or serves a React/Vite/Next/Expo project MUST use project_run with the evidenced cwd and manifest-aware start command; never shell_execute node on a .ts/.tsx/.jsx entrypoint. Every phase must produce something that EXISTS on disk. Do not claim anything was executed; planner-only, autoExecuted false.\nReturn ONLY JSON with: projectName, projectVibe, totalPhases, estimatedDuration, phases, dependencies, and optional verificationBoundaries. Each phase: phaseNumber, name, description, tasks, verificationTask, deliverables, estimatedTime, requirementsCovered (non-empty). Each task: task, tool, args, priority, realisticMinutes.`;
+    }
+    /** A sealed source snapshot informs planning; this method grants no tool authority. */
+    private isolatedExistingNodeProfile(request: string, evidence: any, context?: any): { command: string; paths: string[] } | null {
+        const scope = engineeringScope(context);
+        if (!scope || request !== scope.request || evidence?.mode !== 'existing_workspace' || evidence.selectedProject?.root !== scope.root
+            || evidence.constraints?.createsNewProject !== false || evidence.constraints?.readOnly === true
+            || !evidence.selectedProject?.projectKinds?.includes('node')) return null;
+        try { snapshotEngineeringChild('project_planner', { projectDescription: request, evidence }, context); } catch { return null; }
+        const files = evidence.sourceEvidence?.files;
+        if (!Array.isArray(files) || !files.length || files.length > 12 || files.some((file: any) => typeof file?.path !== 'string'
+            || !/^[A-Za-z0-9_-][A-Za-z0-9_./-]*$/u.test(file.path) || file.path.split('/').some((part: string) => !part || part === '.' || part === '..')
+            || typeof file.content !== 'string' || !Number.isInteger(file.lineCount) || file.lineCount !== file.content.split('\n').length)) return null;
+        const paths = files.map((file: any) => file.path);
+        if (new Set(paths).size !== paths.length || !paths.includes('package.json')
+            || !evidence.selectedProject.testFiles?.length || [...(evidence.selectedProject.sourceFiles || []), ...evidence.selectedProject.testFiles].some(file => !paths.includes(file))) return null;
+        try {
+            const manifest = JSON.parse(files.find((file: any) => file.path === 'package.json').content);
+            if (['dependencies', 'devDependencies', 'optionalDependencies', 'peerDependencies'].some(name => Object.keys(manifest[name] || {}).length)
+                || typeof manifest.scripts?.test !== 'string' || !/^node --test(?: [A-Za-z0-9_./-]+)*$/u.test(manifest.scripts.test)) return null;
+        } catch { return null; }
+        // Preserve the manifest-backed command already understood by the plan validator.
+        if (!evidence.selectedProject.candidateChecks?.some((check: any) => check.kind === 'test' && check.command === 'npm run test')) return null;
+        return { command: 'npm run test', paths };
+    }
+
+    private createIsolatedExistingNodePrompt(request: string, evidence: EngineeringEvidence, profile: { command: string; paths: string[] }, failure?: string): string {
+        const register = this.requirementScope(request).targets.map((target, index) => `R${index + 1}: ${target}`).join('\n');
+        return `ISOLATED EXISTING NODE PLAN — a server-owned existing project with complete sealed source evidence. Planning only; this text grants no execution authority.
+COMPLETE ORIGINAL REQUEST (preserve every constraint):\n${requestTextForPrompt(request)}
+COMPLETE SEALED SOURCE AND REQUIREMENT EVIDENCE:\n${JSON.stringify(this.planningEvidence(evidence), null, 2)}
+REQUIREMENT REGISTER:\n${register || 'R1: the requested implementation'}
+${failure ? `RECOVERY DIAGNOSIS (repair the rejected plan, never repeat unsupported tools):\n${truncateAuxiliaryText(failure, 1200)}\n` : ''}
+The runtime supports ONLY read_file, file_edit, shell_execute for this profile. Use only the observed paths ${JSON.stringify(profile.paths)}. Never invent, create, scaffold or delete files, add dependencies, install packages, use a code generator, deploy, launch a server, or use browser tools. No parallel execution. Existing source/tests/package are staged exactly; preserve tests when the request says so.
+read_file args: {"path":"one observed relative path"}. file_edit args: {"path":"one observed relative path","find":"one exact unique existing source fragment","replace":"the precise replacement"}. Literal find/replace snippets are the only inline-code exception. Derive them from complete source evidence and prior edits; preserve unrelated bytes. shell_execute args: {"command":"${profile.command}"}; its runtime directory is the selected project root. No background, environment, timeout, authority or identity fields.
+Each phase must end with exactly one shell_execute task running the declared Node tests as its LAST task. No earlier shell tasks. verificationTask repeats this same final task object {"task":"Run declared tests","tool":"shell_execute","args":{"command":"${profile.command}"}} and grants no extra action. Prefer one repair phase: read, literal edit, final test. If tests already fail, do not add a preliminary read-only phase whose test would stop before the repair. At most 3 phases and 12 tasks total. Cover every R-ID across requirementsCovered; never hide an unmet request in a generic scaffold or claim execution. No dependencies list entries.
+Return ONLY a compact JSON object: projectName, projectVibe, totalPhases, estimatedDuration, dependencies:[], phases. Each phase: phaseNumber,name,description,tasks,verificationTask,deliverables,estimatedTime,requirementsCovered. Each task: task,tool,args,priority,realisticMinutes. Deliverables are observed files actually repaired or read, not invented artifacts.`;
+    }
+    /**
+     * The planning brief for a model that reads every character on a CPU.
+     *
+     * The full brief (createPlanningPrompt) carries ~15.4k characters of fixed
+     * text; on the owner's laptop that is ~15 minutes of prompt reading before
+     * the first planned word (measured 2026-10-23), so the local model never
+     * planned and builds fell back to stock apps. This brief keeps every
+     * contract the plan validator enforces — tool names, safe relative paths,
+     * evidence-bound writes, requirement IDs, the output fields — and drops the
+     * execution-time rules (retries, dependency repair) the planner cannot act on.
+     */
+    private createLocalCompactPlanningPrompt(
+        projectDescription: string,
+        evidence?: EngineeringEvidence,
+        repairMode = false,
+        scopeRepairMode = false,
+        scopeRepairTargets: string[] = [],
+    ) {
+        const evidenceText = evidence
+            ? `EVIDENCE (facts, not suggestions):\n${truncateEvidenceJsonText(JSON.stringify(evidence), LOCAL_COMPACT_EVIDENCE_MAX_CHARS)}\n`
+            : '';
+        return `Plan this software project for an automated builder. Return ONLY JSON.
+
+${compactPlannerToolPrompt()}
+
+RULES: Build exactly what PROJECT asks; every phase advances a stated requirement. If EVIDENCE shows a selected existing project, change it instead of scaffolding a new one. Every write must trace to an evidence fact or a requirement. File paths are safe workspace-relative paths (no drive, absolute, or ".." paths). Plan only software work; never claim anything already ran.
+
+PROJECT:
+${projectDescription}
+
+${evidenceText}${this.scopePlanningInstructions(projectDescription, repairMode, scopeRepairMode, scopeRepairTargets)}
+OUTPUT: {"projectName","projectVibe","totalPhases","estimatedDuration","dependencies":[],"phases":[{"phaseNumber","name","description","tasks":[{"task","tool","args","priority","realisticMinutes"}],"verificationTask","deliverables","estimatedTime","requirementsCovered":["R1"]}]}. At most 5 phases and 4 tasks per phase; one short sentence per text field; no file contents anywhere; the whole JSON under 2500 characters.`;
+    }
+
     private createPlanningPrompt(
         projectDescription: string,
         analysis?: any,
@@ -871,12 +1174,16 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
         scopeRepairMode = false,
         scopeRepairTargets: string[] = [],
         evidence?: EngineeringEvidence,
+        context?: any,
     ): string {
+        const isolated = this.isolatedExistingNodeProfile(projectDescription, evidence, context);
+        if (isolated) return this.createIsolatedExistingNodePrompt(projectDescription, evidence!, isolated, failureReason);
         const promptEvidence = this.planningEvidence(evidence);
         const authoritativeEvidence = promptEvidence
-            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — these are the only known project roots, manifests, entrypoints, source files, and tests. Reuse these workspace-relative paths exactly; never invent a product-named directory or prefix.\n${JSON.stringify({
+            ? `\n\nAUTHORITATIVE DISCOVERY EVIDENCE — bounded excerpt of known project roots, manifests, entrypoints, source files, and tests. A truncation marker means incomplete evidence: do not infer omitted paths. Reuse visible workspace-relative paths exactly; never invent a product-named directory or prefix.\n${truncateEvidenceJsonText(JSON.stringify({
                 mode: promptEvidence.mode,
                 workspaceRoot: '.',
+                requiredSpecification: promptEvidence.requiredSpecification,
                 selectedProject: promptEvidence.selectedProject ? {
                     root: promptEvidence.selectedProject.root,
                     manifests: promptEvidence.selectedProject.manifests,
@@ -892,7 +1199,7 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
                     sourceFiles: project.sourceFiles || [],
                     testFiles: project.testFiles || [],
                 })),
-            }, null, 2).slice(0, 9000)}\n`
+            }, null, 2))}\n`
             : '';
         const qualityRepair = /(?:project\s+quality\s+contract|truthful\s+test\s+script|missing\s+test\s+script|real\s+(?:local\s+)?tests?)/iu.test(`${failureReason}\n${projectDescription}`);
         // Quality-contract repair is a specialized bounded repair even when the
@@ -904,9 +1211,9 @@ Include build, browser QA, visual QA, and self-healing verification tasks where 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
 
@@ -925,10 +1232,13 @@ Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract 
 
 ${ENGINEERING_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}
 
 MISSING CAPABILITY LEDGER (implement every item, using the current workspace as evidence):
 ${targets}
+
+COMPLETE ORIGINAL REQUEST (all constraints remain mandatory):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before choosing exact source paths. Use only executable file-level implementation tasks with safe workspace-relative paths. Modify the existing project in place; do not create a template, second project, unrelated foundation, or documentation-only phase. Each missing capability must have concrete source evidence and a local verification task. Re-run the existing build/tests and one real start/readiness check after the changes. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd, not shell_execute node on a TypeScript/JSX entrypoint. Use only test runners and browser dependencies proven by the inspected manifest. Use requirementsCovered: ${JSON.stringify(ids)} and keep totalPhases equal to the phases returned.
 
@@ -945,10 +1255,13 @@ Schema: {"projectName":"scope-repair","projectVibe":"bounded missing-capability 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}
 
 MISSING LOCAL RUNTIME IMPORT LEDGER (every item is mandatory):
 ${targets}
+
+COMPLETE ORIGINAL REQUEST (all constraints remain mandatory):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect each importer and the filesystem before editing. Every ledger item must have a concrete file-level implementation task that repairs the exact edge or creates only the smallest real module required by the proven contract; never create a placeholder, unrelated file, guessed dependency, or second project. Use requirementsCovered: ${JSON.stringify(ids)} and include syntax/build/tests plus one real start/readiness check after all items are addressed.`;
             }
@@ -957,9 +1270,9 @@ Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 1200)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 1200)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. If the evidence says the test script is missing or untruthful, update the existing package.json with a real local test command and add at least one deterministic test file that imports or exercises existing implementation behavior; run that test command after writing the test. Preserve existing build/start commands and make one real start/readiness check after the repair. For React/Vite/Next/Expo, that start/readiness check MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Never use echo, true, :, exit 0, a placeholder, or documentation as test evidence. Do not create a template, second project, or unrelated feature. Use requirementsCovered: ["R1"] and keep each phase to at most 3 tasks.
 
@@ -969,9 +1282,9 @@ Schema: {"projectName":"quality-repair","projectVibe":"bounded quality-contract 
 
 ${BOUNDED_REPAIR_CONSTITUTION}
 
-Failure evidence: ${String(failureReason || '').slice(0, 900)}${authoritativeEvidence}
+Failure evidence: ${truncateAuxiliaryText(failureReason, 900)}${authoritativeEvidence}
 Original repair request and evidence:
-${String(projectDescription || '').slice(0, 5000)}
+${requestTextForPrompt(projectDescription)}
 
 Return ONLY one valid JSON object with 1-3 compact phases and no prose. Inspect the current workspace before deciding exact paths. Every task must be an executable file-level implementation task using ai_write_file or write_file with safe workspace-relative args.path and a precise args.description or args.content. Modify only the smallest existing artifact(s) required to make the current implementation build and start, such as package.json, an existing start/build command, or the missing entrypoint. For React/Vite/Next/Expo, the verification start/readiness task MUST use project_run with the evidenced project cwd; never use shell_execute or terminal_manager to invoke node directly on .ts/.tsx/.jsx. Use only test runners and browser dependencies proven by the inspected manifest. Do not create a template, second project, documentation-only phase, or unrelated feature. Include a verification task for the existing build/tests and one real start/readiness check after the repair. Use requirementsCovered: ["R1"] for the bounded repair requirement. Keep totalPhases equal to the number of phases returned and keep each phase to at most 3 tasks.
 
@@ -988,7 +1301,10 @@ Schema: {"projectName":"repair","projectVibe":"bounded runnable-contract repair"
         }).filter(Boolean).join(' | ');
         return `COMPACT PLANNER RECOVERY — OUTPUT LIMIT OVERRIDES ALL OTHER PLANNING VERBOSITY.
 
-The previous planner response could not be safely used. Failure evidence: ${String(failureReason || '').slice(0, 900)}
+The previous planner response could not be safely used. Failure evidence: ${truncateAuxiliaryText(failureReason, 900)}
+
+COMPLETE ORIGINAL REQUEST (the derived register below does not replace these constraints):
+${requestTextForPrompt(projectDescription)}${authoritativeEvidence}
 
 REQUIREMENT REGISTER FROM THE ORIGINAL REQUEST:
 ${targets || 'R1: the requested implementation'}
@@ -997,12 +1313,16 @@ COVERAGE LEDGER (use every listed ID in at least one requirementsCovered array):
 
 Return ONLY one valid JSON object. No Markdown, prose, source code, HTML, logs, catalogue text, or explanations. Do not return an empty phases array.
 
-SCAFFOLD RECOVERY CONTRACT: if the failure evidence mentions a scaffold contract, args.structure must be concrete and non-empty with at least one executable source/config file, and every path must be safe workspace-relative. Otherwise do not use scaffold_project in this compact recovery.
+SCAFFOLD RECOVERY CONTRACT: scaffold_project is allowed only with a concrete, non-empty args.structure holding at least one executable source/config file, every path safe and workspace-relative.
 PORTABILITY RECOVERY CONTRACT: if the failure evidence mentions an unportable native dependency, do not choose better-sqlite3, sqlite3, bcrypt, sharp, canvas, node-sass, ffi-napi, or another native addon. Choose node:sqlite when the runtime supports it, or a JSON/file implementation with the same interface, and record the choice in the plan.
 
 The plan must contain between ${scope.minPhases} and 8 phases, with up to 4 short implementation tasks per phase. Keep every phase name, description, verificationTask, deliverable, task name, and args.description to one short sentence. Use requirementsCovered with the complete R-number register above; collectively cover every listed R number, including every missing area named by the validator. Before returning JSON, audit that every ID from R1 through R${scope.targets.length} appears in requirementsCovered; do not stop at a partial subset.
 
-Make an explicit technical stack/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework). Do not infer a stack from the product name. Do not use scaffold_project in this recovery. Every task must be an executable file-level implementation task using the registered tool ai_write_file, with args.path and args.description. Each phase must create two non-document source, configuration, or test artifacts under a safe workspace-relative path; never put code in JSON. Use paths such as src/, server/, client/, tests/, or config/ and let the controlled executor generate the contents from the descriptions.
+Make an explicit technical stack/architecture decision in phase 1, grounded in the requirements (for example a concrete runtime, language, and framework). Do not infer a stack from the product name. Use only the registered tools listed below, each with its exact argument contract. Source, configuration and test files use ai_write_file with args.path and args.description (the controlled executor generates the contents), or write_file with args.path and args.content; never put code in JSON. Every phase must produce at least one non-document artifact under a safe workspace-relative path such as src/, server/, client/, tests/, or config/.
+
+RUNNABLE STEPS ARE PART OF THE PLAN: keep every install, test and run step of the rejected plan, made portable, and never remove them. Install the dependencies the manifest declares with npm_manager {"command": "install"} once package.json exists, run the project's own tests through a verificationTask object {"task": "...", "tool": "quality_run", "args": {"tasks": ["test"]}}, and start the project with project_run in the last phase. A verificationTask is always an object naming a checker the gate runs (quality_run, auto_tester, browser_run), never a prose note.
+
+${compactPlannerToolPrompt()}
 
 Use this exact compact schema:
 {
@@ -1017,17 +1337,19 @@ Use this exact compact schema:
       "description": "short sentence",
       "requirementsCovered": ["R1"],
       "tasks": [
+        {"task": "short manifest task", "tool": "ai_write_file", "args": {"path": "package.json", "description": "manifest with the portable dependencies and real start and test scripts"}, "priority": "high", "realisticMinutes": 5},
         {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "src/file.ts", "description": "short technical file description"}, "priority": "high", "realisticMinutes": 15},
-        {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "tests/file.test.ts", "description": "short technical test description"}, "priority": "high", "realisticMinutes": 15}
+        {"task": "short implementation task", "tool": "ai_write_file", "args": {"path": "tests/file.test.ts", "description": "short technical test description"}, "priority": "high", "realisticMinutes": 15},
+        {"task": "install the declared dependencies", "tool": "npm_manager", "args": {"command": "install"}, "priority": "high", "realisticMinutes": 5}
       ],
-      "verificationTask": "short verification note",
-      "deliverables": ["src/file.ts", "tests/file.test.ts"],
+      "verificationTask": {"task": "run the project's own tests", "tool": "quality_run", "args": {"tasks": ["test"]}},
+      "deliverables": ["package.json", "src/file.ts", "tests/file.test.ts"],
       "estimatedTime": "30 minutes"
     }
   ],
   "dependencies": []
 }
-Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage according to the coverage ledger. Each R-ID must advance a concrete file-level implementation task; verification tasks may be included but must not replace implementation coverage. Do not output anything before or after the JSON object.`;
+Repeat the same compact phase shape for at least ${scope.minPhases} phases and no more than 8 phases, changing paths, descriptions, and R-number coverage according to the coverage ledger; write the manifest and install once, and start the project with project_run in the last phase. Each R-ID must advance a concrete file-level implementation task; verification tasks may be included but must not replace implementation coverage. Do not output anything before or after the JSON object.`;
     }
 
     /**
@@ -1417,16 +1739,25 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
     }
 
     private parsePlan(response: string) {
-        const markdownMatch = response.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        let jsonStr = markdownMatch ? markdownMatch[1] : response;
-        if (!markdownMatch) {
-            const braceMatch = jsonStr.match(/\{[\s\S]*\}/);
-            if (braceMatch) jsonStr = braceMatch[0];
+        // A fence inside the plan's strings (a README's ```bash) is content, not
+        // the answer's wrapper: read the reply's own JSON first. Each candidate is
+        // read by the shared parseModelJson, so a raw line break inside one of the
+        // plan's strings (a file it writes inline) no longer throws the plan away.
+        // The trailing-comma repair is a second try only, so a valid plan's strings
+        // are never edited.
+        let firstError: unknown = null;
+        for (const candidate of jsonReplyCandidates(String(response ?? ''))) {
+            for (const jsonStr of [candidate, candidate.replace(/,\s*([}\]])/g, '$1')]) {
+                try {
+                    const plan = parseModelJson(jsonStr);
+                    if (plan && Array.isArray(plan.phases)) return plan;
+                    firstError ??= new Error('Missing phases array in JSON');
+                } catch (error) {
+                    firstError ??= error;
+                }
+            }
         }
-        jsonStr = jsonStr.replace(/,\s*([}\]])/g, '$1');
-        const plan = JSON.parse(jsonStr);
-        if (!Array.isArray(plan.phases)) throw new Error('Missing phases array in JSON');
-        return plan;
+        throw firstError ?? new SyntaxError('The planner response holds no JSON object');
     }
 
     private responseDiagnostic(response: any): { type: string; length: number; prefix: string; suffix: string } {
@@ -1485,6 +1816,22 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
             .replace(/\b(?:ffi-napi|ref-napi|isolated-vm|@tensorflow\/tfjs-node|cpu-features|bufferutil|utf-8-validate)\b/gi, 'portable runtime fallback')
             .replace(/\b(?:node-gyp|prebuild-install|binding\.gyp)\b/gi, 'native toolchain')
             .replace(/C\+\+\s+compiler/gi, 'host compiler');
+        // A shell command keeps its executable: «cd api && npm install express
+        // sqlite3» must stay an install of express, not become «… npm install
+        // express node:sqlite or JSON file fallback» (five bogus packages), nor
+        // lose its «npm» (only npm_manager takes the bare subcommand).
+        const PACKAGE_INSTALL = /^(\s*)(npm\s+(?:install|i|ci)|yarn\s+add|pnpm\s+(?:add|install|i))(?=\s|$)(.*)$/i;
+        const rewriteShellCommand = (value: string): string => value
+            .split(/(\s*(?:&&|\|\||;)\s*)/)
+            .map(segment => {
+                if (/^\s*(?:&&|\|\||;)\s*$/.test(segment)) return segment;
+                const install = segment.match(PACKAGE_INSTALL);
+                if (!install) return rewriteText(segment);
+                const kept = String(install[3] || '').trim().split(/\s+/).filter(Boolean).filter(token => !nativePackageSpec(token));
+                return [`${install[1]}${install[2]}`, ...kept].join(' ');
+            })
+            .join('');
+        const SOURCE_WRITERS = new Set(['write_file', 'file_write', 'create_file']);
         const rewritePackageContent = (raw: string): string => {
             try {
                 const parsed = JSON.parse(raw);
@@ -1499,25 +1846,78 @@ Repeat the same compact phase shape for at least ${scope.minPhases} phases and n
                 return rewriteText(raw);
             }
         };
-        const visit = (value: any, key = ''): any => {
+        /**
+         * Source code that imports a native addon cannot be made portable by
+         * renaming the module: «require('sqlite3')» became «require('node:sqlite
+         * or JSON file fallback')», a file that cannot load. The task is handed to
+         * the file author with the portable contract and the planned source as
+         * its reference, so the plan keeps that file and its responsibility.
+         */
+        const portableSourceTask = (task: any): any | null => {
+            const args = task?.args && typeof task.args === 'object' ? task.args : {};
+            const target = String(args.path || args.filePath || '').trim();
+            const content = typeof args.content === 'string' ? args.content : '';
+            if (!SOURCE_WRITERS.has(String(task?.tool || '').toLowerCase()) || !target || !content
+                || /(?:^|[\\/])package\.json$/i.test(target) || !nativeNames.test(content)) return null;
+            const purpose = rewriteText(String(task?.task || task?.description || `Write ${target}`));
+            const rest = visit(Object.fromEntries(Object.entries(task).filter(([k]) => k !== 'args' && k !== 'tool')));
+            return {
+                ...rest,
+                tool: 'ai_write_file',
+                args: {
+                    path: target,
+                    description: `${purpose} Write ${target} with the same responsibility as the planned source below, using no native addon: storage through node:sqlite (DatabaseSync, Node >= 22.5) with a JSON file fallback behind the same interface when node:sqlite is unavailable; password hashing through node:crypto scrypt; sass instead of node-sass. Planned source, native module names replaced:\n${rewriteText(content).slice(0, 6000)}`,
+                },
+            };
+        };
+        /**
+         * A scaffold carries files as structure entries. A manifest there is
+         * rewritten as a manifest; a source file that imports a native addon
+         * leaves the structure and is handed to the author, like a write_file.
+         */
+        const portableScaffoldTasks = (task: any): any[] | null => {
+            if (String(task?.tool || '').toLowerCase() !== 'scaffold_project') return null;
+            const structure = task?.args?.structure;
+            if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return null;
+            const nativeSources = Object.entries(structure).filter(([file, content]) => typeof content === 'string'
+                && !/(?:^|[\\/])package\.json$/i.test(file) && nativeNames.test(content as string));
+            if (!nativeSources.length) return null;
+            const base = String(task?.args?.baseDir || task?.args?.projectName || task?.args?.name || '.').replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/, '');
+            const kept = Object.fromEntries(Object.entries(structure).filter(([file]) => !nativeSources.some(([nativeFile]) => nativeFile === file)));
+            const authored = nativeSources.map(([file, content]) => portableSourceTask({
+                task: `Write ${file}`,
+                tool: 'write_file',
+                args: { path: base && base !== '.' && !file.startsWith(`${base}/`) ? `${base}/${file}` : file, content },
+            }));
+            const scaffold = Object.keys(kept).length ? [visit({ ...task, args: { ...task.args, structure: kept } })] : [];
+            return [...scaffold, ...authored];
+        };
+        const visit = (value: any, key = '', tool = ''): any => {
             if (typeof value === 'string') {
                 return key === 'content' && /(?:^|[\\/])package\.json$/i.test(String((plan as any)?.path || ''))
                     ? rewritePackageContent(value)
                     : rewriteText(value);
             }
-            if (Array.isArray(value)) return value.map(item => visit(item, key));
+            if (Array.isArray(value)) return value.flatMap(item => (key === 'tasks' ? portableScaffoldTasks(item) : null) || [visit(item, key, tool)]);
             if (!value || typeof value !== 'object') return value;
+            const portableTask = portableSourceTask(value);
+            if (portableTask) return portableTask;
+            const ownTool = typeof value.tool === 'string' ? String(value.tool).toLowerCase() : tool;
             const out: any = {};
             for (const [childKey, childValue] of Object.entries(value)) {
                 if (childKey === 'tool') out[childKey] = childValue;
                 else if (childKey === 'content' && typeof childValue === 'string' && /package\.json$/i.test(String(value.path || value.filePath || ''))) {
                     out[childKey] = rewritePackageContent(childValue);
-                } else if (childKey === 'command' && typeof childValue === 'string' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
+                } else if (typeof childValue === 'string' && /(?:^|[\\/])package\.json$/i.test(childKey)) {
+                    out[childKey] = rewritePackageContent(childValue);
+                } else if (childKey === 'command' && typeof childValue === 'string' && ownTool === 'npm_manager' && /^(?:npm\s+)?(?:install|i|ci)(?:\s|$)/i.test(childValue.trim())) {
                     out[childKey] = rewriteNpmInstallCommand(childValue);
+                } else if (childKey === 'command' && typeof childValue === 'string') {
+                    out[childKey] = rewriteShellCommand(childValue);
                 } else if (childKey === 'packages' && Array.isArray(childValue)) {
                     out[childKey] = childValue.filter(packageSpec => !nativePackageSpec(packageSpec));
                 } else {
-                    out[childKey] = visit(childValue, childKey);
+                    out[childKey] = visit(childValue, childKey, ownTool);
                 }
             }
             return out;
@@ -1614,10 +2014,24 @@ ${this.scopePlanningInstructions(projectDescription)}`;
     private constrainedFrontendPlan(projectDescription: string, evidence?: EngineeringEvidence): any | null {
         const request = String(projectDescription || '').trim();
         const lower = request.toLowerCase();
-        const createsFrontend = /\b(?:create|build|make|design|implement)\b/i.test(request)
-            && /\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form|converter)\b/i.test(request);
+        /**
+         * Read from the artifact reader, in both languages (eval round 19):
+         * an English-only verb and noun list sent «ابني متجر إلكتروني …» (P201)
+         * and «اعمل موقع تعريفي …» (P001) to a 40–70 minute model plan while
+         * their English twins took this instant path; and a booking app whose
+         * owner sees every customer's booking (P251, a server claim) got a
+         * browser-only plan where each booking would live in one browser.
+         */
+        const artifact = requestedArtifact(request);
+        const frontendKind = ['app', 'store', 'booking', 'game', 'bot', 'report', 'page'].includes(String(artifact.kind));
+        const unknownObjectFrontend = !artifact.kind
+            && (/\b(?:app|application|website|web site|webpage|page|dashboard|tracker|form|converter|calculator|timer)\b/i.test(request)
+                || /(?<![\p{L}\p{N}_])(?:محول|حاسب[ةه]|متتبع|مؤقت|نموذج)(?![\p{L}\p{N}_])/u.test(request));
+        const createsFrontend = hasBuildVerb(request) && (frontendKind || unknownObjectFrontend);
         const publicDataCapability = /\b(?:weather|forecast|currency|exchange\s+rate|forex|ip\s+(?:information|info|location|geolocation))\b|طقس|حرارة|تحويل\s+عمل|سعر\s+الصرف|معلومات\s+.*ip/iu.test(request);
-        const externalOrStateful = /\b(?:backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request)
+        const externalOrStateful = artifact.needsServer
+            || /\b(?:backend|server|database|postgres|mysql|mongo|redis|oauth|login|sign[ -]?in|payment|stripe|deploy|docker|kubernetes)\b/i.test(request)
+            || /(?:دفع\s+(?:إلكتروني|الكتروني)|بوابة\s+دفع|بطاقة\s+ائتمان)/u.test(request)
             || (/\bapi\b/i.test(request) && !publicDataCapability);
         const existingWorkspace = evidence?.mode === 'existing_workspace'
             || Boolean(evidence?.selectedProject?.root)
@@ -1626,6 +2040,42 @@ ${this.scopePlanningInstructions(projectDescription)}`;
 
         const scope = this.requirementScope(request);
         const projectName = brandFrom(request, /[؀-ۿ]/u.test(request)) || 'Requested web application';
+        /**
+         * One document is built by the page builder in both languages — the
+         * same decision deterministicPhasesFor makes — never React in one
+         * language and the page builder in the other (25/25 English landings
+         * went to React, 25/25 Arabic ones to the page builder). A page head
+         * with records to manage is an application and stays on React below,
+         * and an object the lexicon does not know («a currency converter»)
+         * keeps the React plan it always had.
+         */
+        let buildScope = 'app';
+        try { buildScope = require('../../../core/orchestrator/PlanningEngine').PlanningEngine.classifyBuildScope(request); } catch { /* React below */ }
+        if (artifact.kind === 'page' && buildScope === 'page') {
+            return {
+                projectName,
+                projectVibe: 'Constrained single-page delivery',
+                totalPhases: 1,
+                estimatedDuration: 'bounded local page build and browser verification',
+                dependencies: {},
+                derivedFromExplicitRequest: true,
+                phases: [{
+                    phaseNumber: 1,
+                    name: 'Page',
+                    description: 'Technical stack decision: use the registered page builder because the request asks for one document, not an application or a service; build and verify it locally.',
+                    requirementsCovered: scope.targets.map((_, index) => `R${index + 1}`),
+                    deliverables: ['A responsive page built from the request.'],
+                    estimatedTime: 'bounded by local page build and browser QA',
+                    tasks: [{
+                        task: 'Build the requested page from the user request.',
+                        tool: 'web_page_builder',
+                        args: { request },
+                        priority: 'high',
+                        realisticMinutes: 10,
+                    }],
+                }],
+            };
+        }
         return {
             projectName,
             projectVibe: 'Constrained self-contained frontend delivery',

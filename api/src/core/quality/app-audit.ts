@@ -148,6 +148,15 @@ export interface AppAudit {
     }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
+    /**
+     * The page as a visitor first sees it, captured when the caller asked for
+     * it (`lookPath`): what a requirement about how the page LOOKS is judged on
+     * (core/quality/appearance.ts). A path, never the image, so the record
+     * that keeps this audit stays small.
+     */
+    look?: { path: string; url: string };
+    /** Why the look was not captured, when it was asked for. */
+    lookProblem?: string;
     /** Positive evidence for a maintained external integration, never inferred from silence. */
     externalApiRuntime?: {
         capability: 'weather' | 'currency' | 'ip';
@@ -348,6 +357,8 @@ export async function auditBuiltApp(
         offline?: boolean;
         /** Original user request, used only for request-specific observable QA scenarios. */
         request?: string;
+        /** Where to save a screenshot of the landing view, as a visitor first sees it (see AppAudit.look). */
+        lookPath?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -808,6 +819,20 @@ export async function auditBuiltApp(
                         opts?.onProgress?.('recovered');
                     }
                 } catch { /* the folder could not be served either — reported below */ }
+            }
+        }
+        //  The landing view, before any control is pressed: what a visitor
+        //  sees first, and what a requirement about the look is judged on.
+        let look: AppAudit['look'];
+        let lookProblem = '';
+        if (opts?.lookPath) {
+            try {
+                await fs.promises.mkdir(path.dirname(opts.lookPath), { recursive: true });
+                await page.waitForTimeout(400).catch(() => { });
+                await page.screenshot({ path: opts.lookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                look = { path: opts.lookPath, url: page.url() };
+            } catch (e: any) {
+                lookProblem = String(e?.message || e).split('\n')[0].slice(0, 200);
             }
         }
         /**
@@ -1344,6 +1369,18 @@ export async function auditBuiltApp(
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
+            /**
+             * ⛔ THE PHONE PASS STARTS FROM THE HOME PAGE, FRESHLY LOADED.
+             *
+             * It isolates each control by reloading, so it must list them from
+             * the state a reload restores — as the per-route passes below do.
+             * The exam, 2026-11-03 (P051, a React admin whose tabs live in
+             * memory): begun on the Treatments tab the desktop walk left open,
+             * it listed «+ Add treatment», reloaded onto the default tab, and
+             * called a working button «gone before I could press it» four
+             * refusals in a row.
+             */
+            await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) }).catch(() => { });
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
@@ -1758,6 +1795,8 @@ export async function auditBuiltApp(
 
         return {
             score: scoreOf(findings), findings,
+            ...(look ? { look } : {}),
+            ...(lookProblem ? { lookProblem } : {}),
             visible: borrowed,
             authenticated,
             ...(authError ? { authError } : {}),

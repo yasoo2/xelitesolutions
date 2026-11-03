@@ -31,6 +31,8 @@
  */
 import { TOOL_ALIASES } from '../../modules/services/ToolService';
 import { syntaxFileKind } from '../../shared/syntax-contract';
+import { isVerificationTool } from '../quality/verification-ledger';
+import { isEngineTool } from '../../modules/tools/engine-tools';
 
 /**
  * Runtime-bound fields are the small, explicit exception to the planner's
@@ -60,9 +62,89 @@ function registered(): Set<string> {
     if (registeredCache) return registeredCache;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { tools } = require('../../modules/tools/registry');
-    const set = new Set<string>((tools || []).map((t: any) => String(t.name)));
+    // A plan never names the agent engine's own tools (modules/tools/engine-tools.ts).
+    const set = new Set<string>((tools || []).filter((t: any) => !isEngineTool(t?.name)).map((t: any) => String(t.name)));
     if (set.size > 0) registeredCache = set;   // don't cache a half-initialised registry
     return set;
+}
+
+/**
+ * Does a registered tool EXECUTE something — a process, an install, a run?
+ * Read from the tool's own declared sideEffects with the same lazy registry
+ * read as registered(), never from a hand-made list. Builders that write an
+ * artifact without declaring 'execute' (web_page_builder) are covered by
+ * taskProducesArtifact, not here.
+ */
+let executesCache: Set<string> | null = null;
+export function toolExecutes(name: string): boolean {
+    let set = executesCache;
+    if (!set) {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const { tools } = require('../../modules/tools/registry');
+            set = new Set<string>((tools || [])
+                .filter((t: any) => Array.isArray(t?.sideEffects) && t.sideEffects.includes('execute'))
+                .map((t: any) => String(t.name)));
+            if (set.size > 0) executesCache = set;   // don't cache a half-initialised registry
+        } catch { return false; }
+    }
+    return set.has(String(name || ''));
+}
+
+/** npm addons that need node-gyp and a host C/C++ toolchain to install. */
+export const NATIVE_ADDON_PACKAGES: readonly string[] = [
+    'better-sqlite3', 'sqlite3', 'node-sqlite3', 'bcrypt', 'node-sass',
+    'sharp', 'canvas', 'ffi-napi', 'ref-napi', 'isolated-vm',
+    '@tensorflow/tfjs-node', 'cpu-features', 'bufferutil', 'utf-8-validate',
+];
+function isNativeAddonSpec(token: string): boolean {
+    const name = String(token || '').trim().replace(/^["']|["']$/g, '').replace(/(?!^)@[^/@]*$/, '').toLowerCase();
+    return NATIVE_ADDON_PACKAGES.includes(name);
+}
+
+/** `npm|pnpm|yarn [run] test|build|lint|typecheck …` → the script and what followed it. */
+export function packageScriptCheck(command: unknown): { script: string; rest: string } | null {
+    const m = normaliseShellCommand(command).match(/^(?:npm|pnpm|yarn)\s+(?:run\s+)?(test|build|lint|typecheck)(?:\s+(.*))?$/i);
+    return m ? { script: m[1].toLowerCase(), rest: String(m[2] || '').trim() } : null;
+}
+
+const SHELL_INSTALL_SEGMENT = /^(\s*)((?:npm|pnpm)\s+(?:install|i|add|ci)|yarn\s+add)(?=\s|$)(.*)$/i;
+/**
+ * An install that names a native addon beside other packages, repaired in
+ * place: the addon goes, the install of the rest stays. Returns null when the
+ * install names no addon, when it is not an install, or when the addon was all
+ * it installed — that install exists FOR the addon, and the plan's choice of it
+ * is a portability blocker for recovery, not something to erase quietly. A
+ * shell command keeps its executable and every other segment.
+ */
+export function withoutNativeInstallPackages(toolName: string, args: any): { args: any; removed: string[] } | null {
+    const removed: string[] = [];
+    const out = { ...(args || {}) };
+    let installedOnlyAddons = false;
+    if (toolName === 'npm_manager') {
+        const parts = String(out.command || '').trim().split(/\s+/).filter(Boolean);
+        const offset = /^npm$/i.test(parts[0] || '') ? 1 : 0;
+        if (!/^(?:install|i|add|ci)$/i.test(parts[offset] || '')) return null;
+        const named = [...parts.slice(offset + 1), ...(Array.isArray(out.packages) ? out.packages.map(String) : [])];
+        const keptCommand = parts.slice(offset + 1).filter(token => isNativeAddonSpec(token) ? (removed.push(token), false) : true);
+        out.command = [parts[offset], ...keptCommand].join(' ');
+        if (Array.isArray(out.packages)) {
+            out.packages = out.packages.filter((spec: any) => isNativeAddonSpec(String(spec)) ? (removed.push(String(spec)), false) : true);
+        }
+        installedOnlyAddons = named.length > 0 && named.length === removed.length;
+    } else if (toolName === 'shell_execute' || toolName === 'terminal_manager') {
+        if (typeof out.command !== 'string') return null;
+        out.command = out.command.split(/(\s*(?:&&|\|\||;)\s*)/).map((segment: string) => {
+            const install = segment.match(SHELL_INSTALL_SEGMENT);
+            if (!install) return segment;
+            const tokens = String(install[3] || '').trim().split(/\s+/).filter(Boolean);
+            const kept = tokens.filter(token => isNativeAddonSpec(token) ? (removed.push(token), false) : true);
+            if (kept.length === tokens.length) return segment;
+            if (!kept.some(token => !token.startsWith('-'))) installedOnlyAddons = true;
+            return [`${install[1]}${install[2]}`, ...kept].join(' ');
+        }).join('');
+    }
+    return removed.length && !installedOnlyAddons ? { args: out, removed } : null;
 }
 
 /**
@@ -109,10 +191,13 @@ export const PLANNER_TOOL_CATALOGUE: Array<{ tool: string; purpose: string }> = 
     { tool: 'doc_generator', purpose: 'write project documentation' },
     { tool: 'browser_run', purpose: 'open the built app in a real browser and check it' },
     { tool: 'browser_ui_audit', purpose: 'audit the built UI for visual and accessibility defects' },
-    { tool: 'project_detect', purpose: 'verify what was actually created on disk' },
+    { tool: 'project_detect', purpose: 'list which projects exist on disk (an inspection, not a checker: never a verificationTask)' },
     { tool: 'project_run', purpose: 'start the built project and get a live URL' },
     { tool: 'deploy_project', purpose: 'build, start, or package the project locally for verification; use action build_static, start_server, or package by default. Never use expose_port or publish externally unless the user explicitly requests and approves an external deployment.' },
     { tool: 'mobile_builder', purpose: 'build the mobile application' },
+    { tool: 'visual_qa', purpose: 'analyze a screenshot or image file to provide UI/UX critique and code fixes using vision model' },
+    { tool: 'generate_image', purpose: 'generate an image from a text prompt using image generation model' },
+    { tool: 'bulk_file_generator', purpose: 'generate multiple files at once from a structured description' },
 ];
 
 /**
@@ -158,6 +243,9 @@ const MEANS: Record<string, string> = {
     documentation: 'doc_generator', readme: 'doc_generator', docs: 'doc_generator',
     'file system': 'write_file', fs: 'write_file', editor: 'file_edit', ide: 'file_edit',
     browser: 'browser_run', lighthouse: 'browser_ui_audit', accessibility: 'browser_ui_audit',
+    qa: 'visual_qa', screenshot: 'visual_qa', image: 'visual_qa', 'ui critique': 'visual_qa',
+    'generate image': 'generate_image', image_gen: 'generate_image', art: 'generate_image',
+    'bulk files': 'bulk_file_generator', scaffold: 'bulk_file_generator',
 };
 
 /**
@@ -393,10 +481,45 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const stem = dot > 0 ? filename.slice(0, dot) : filename;
         return `${dir ? `${dir}/` : ''}__tests__/${stem}.test.ts`;
     };
+    /**
+     * A scaffold's structure keys are plan-declared file outputs with the same
+     * standing as write_file paths: the executor writes exactly these files
+     * under baseDir. Null values are empty directories, not files. Mirror the
+     * executor's repeated-prefix strip so evidence paths match what lands on
+     * disk. Without this, manifests produced by scaffold_project are invisible
+     * to every evidence gate below (CRITICAL-REAL-JOE-UI-001 run 3: a plan
+     * that scaffolded package.json still had `npm test` dropped as unproven).
+     */
+    const scaffoldOutputPaths = (task: any): string[] => {
+        const structure = task?.args?.structure ?? task?.input?.structure;
+        if (!structure || typeof structure !== 'object' || Array.isArray(structure)) return [];
+        const declaredBaseDir = String(
+            task?.args?.baseDir || task?.args?.projectName || task?.args?.name
+            || task?.input?.baseDir || task?.input?.projectName || task?.input?.name
+            || '.',
+        ).trim() || '.';
+        const basePrefix = declaredBaseDir.replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/$/u, '');
+        const fileKeys = Object.entries(structure)
+            .filter(([, contents]) => typeof contents === 'string')
+            .map(([relativePath]) => String(relativePath).replace(/\\/g, '/'));
+        if (!fileKeys.length) return [];
+        const repeatedPrefix = basePrefix !== '.'
+            && fileKeys.every(key => key === basePrefix || key.startsWith(`${basePrefix}/`));
+        return fileKeys
+            .map(key => {
+                const stripped = repeatedPrefix
+                    ? (key === basePrefix ? '' : key.slice(`${basePrefix}/`.length))
+                    : key;
+                if (!stripped) return '';
+                return basePrefix === '.' ? stripped : `${basePrefix}/${stripped}`;
+            })
+            .filter(key => !!key && !unsafeWorkspacePath(key));
+    };
     const taskOutputPaths = (tasks: any[]) => tasks
         .flatMap((task: any) => {
             const tool = String(task?.tool || '');
             if (tool === 'test_generator') return [testGeneratorOutputPath(task)];
+            if (tool === 'scaffold_project') return scaffoldOutputPaths(task);
             if (!['write_file', 'ai_write_file', 'file_edit', 'file_edit_advanced'].includes(tool)) return [];
             return [task?.args?.path || task?.args?.filePath || task?.args?.filename || task?.input?.path || task?.input?.filePath || task?.input?.filename];
         })
@@ -482,6 +605,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         const tasks = Array.isArray(phase?.tasks) ? phase.tasks : [];
         const kept: any[] = [];
         const phaseBlockers: PlanSanitiseBlocker[] = [];
+        const droppedExecutingSteps: Array<{ desc: string; tool: string; blocker: PlanSanitiseBlocker }> = [];
         let hadHardContractDrop = false;
 
         for (const task of tasks) {
@@ -497,8 +621,27 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 // greenfield policy hide a missing structure behind a generic
                 // "implicit scaffold" note: that was the round-18 failure mode.
                 const rawArgs = { ...(task?.args || {}), ...(task?.input || {}) };
-                const adaptedArgs = adaptPlannedArgsFromDescription(r.tool, rawArgs, desc);
-                const native = unportableNativeDependency({ ...task, args: adaptedArgs });
+                let adaptedArgs = adaptPlannedArgsFromDescription(r.tool, rawArgs, desc);
+                /**
+                 * ⛔ AN INSTALL IS REPAIRED IN PLACE, NOT DROPPED.
+                 *
+                 * Eval round 15 (2026-10-24, P201): «cd store && npm install express
+                 * cors sqlite3» was dropped whole — and with it express and cors —
+                 * because one package was a native addon; the phase went on with no
+                 * install at all. In a greenfield plan the addon goes and the install
+                 * stays. The install is judged by what it executes, not by its prose;
+                 * anything native left in it still stops as before.
+                 */
+                const installRepair = options.disallowUnportableNativeDependencies
+                    ? withoutNativeInstallPackages(r.tool, adaptedArgs)
+                    : null;
+                if (installRepair) {
+                    adaptedArgs = installRepair.args;
+                    notes.push(`[plan] أصلحتُ «${desc}» في مكانه — أزلتُ ${installRepair.removed.join('، ')} من التثبيت (native addon يحتاج مترجم C/C++)، وبقي التثبيت نفسه.`);
+                }
+                const native = unportableNativeDependency(installRepair
+                    ? { args: { command: adaptedArgs?.command, packages: adaptedArgs?.packages } }
+                    : { ...task, args: adaptedArgs });
                 const directNpmInstall = r.tool === 'shell_execute'
                     && /(?:^|[;&|]\s*)npm\s+(?:install|i|ci)\b/i.test(String(adaptedArgs?.command || ''));
                 if (native && (options.disallowUnportableNativeDependencies || directNpmInstall)) {
@@ -662,9 +805,22 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     continue;
                 }
                 const argsIssue = plannedArgsIssue(r.tool, adaptedArgs);
+                // The same rule the verification gate uses: a package script is
+                // proven by a manifest discovery found OR one this plan writes
+                // (eval round 9 P001 lost «npm run build» and «npm test» beside the
+                // package.json the plan itself wrote; the phase became a document).
                 const shellIssue = r.tool === 'shell_execute'
-                    ? unprovenProjectCheckIssue(adaptedArgs?.command, candidateCheckCommands)
+                    ? unprovenProjectCheckIssueUnlessPlanProduced(adaptedArgs?.command, candidateCheckCommands, [...generatedPaths, ...taskOutputPaths(kept)])
                     : null;
+                // A builder proved the artifact but named no manifest path: the
+                // check runs through quality_run on the runtime-bound root.
+                const scriptCheck = shellIssue ? packageScriptCheck(adaptedArgs?.command) : null;
+                if (scriptCheck && (priorArtifactReady || kept.some(taskProducesArtifact))) {
+                    kept.push({ ...task, tool: 'quality_run', args: { tasks: [scriptCheck.script] } });
+                    executableTasks++;
+                    notes.push(`[plan] حوّلتُ «${desc}» إلى quality_run (${scriptCheck.script}) على المشروع الذي بنته مرحلة سابقة${scriptCheck.rest ? `؛ لم أنقل «${scriptCheck.rest}» — الفحص يجري كما هو معلن، أشدّ لا أخفّ` : ''}.`);
+                    continue;
+                }
                 // A small registry, not a growing list of copied exceptions,
                 // defines fields supplied by the trusted runtime after an earlier
                 // builder has produced the artifact. Every other schema-required
@@ -689,11 +845,19 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     // documentation phase when this was the only requested work.
                     if (argsIssue && (argsIssue.includes('يحتاج') || /الحقل الإلزامي|واحداً من/.test(argsIssue))) {
                         hadHardContractDrop = true;
-                        phaseBlockers.push({
+                        const contractBlocker: PlanSanitiseBlocker = {
                             code: 'tool_contract_invalid',
                             message: `المرحلة «${phaseName}» تحتوي ${r.tool} بعقد arguments ناقص: ${argsIssue}`,
                             remedy: 'أكمل جميع الحقول الإلزامية في خطة الأداة قبل التنفيذ؛ لا تُنشئ Joe مخرجاً بديلاً لإخفاء نقص العقد.',
-                        });
+                        };
+                        phaseBlockers.push(contractBlocker);
+                        // An executing step with no deterministic repair left. An
+                        // install is not one: project_run installs what the
+                        // manifest declares.
+                        if (toolExecutes(r.tool) && r.tool !== 'npm_manager'
+                            && !SHELL_INSTALL_SEGMENT.test(String(adaptedArgs?.command || ''))) {
+                            droppedExecutingSteps.push({ desc, tool: r.tool, blocker: contractBlocker });
+                        }
                     }
                     notes.push(`[plan] أسقطتُ «${desc}» — ${issue}`);
                     continue;
@@ -710,6 +874,16 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         }
 
         const runnable = kept.filter(t => String(t.tool || 'manual') !== 'manual');
+        /**
+         * A phase does work when it writes a file, builds an artifact, or
+         * executes something. The two judgements below used to read only file
+         * outputs: a phase of [quality_run, swagger_docs {}] lost its proven
+         * quality_run because a documentation step lacked «action», and an
+         * install/run phase was turned into a document.
+         */
+        const phaseHasWork = taskOutputPaths(kept).length > 0
+            || kept.some(taskProducesArtifact)
+            || kept.some(t => toolExecutes(String(t?.tool || '')));
         const nativeDependencyBlocker = phaseBlockers.find(blocker => blocker.code === 'unportable_native_dependency');
         if (nativeDependencyBlocker) {
             blockers.push(nativeDependencyBlocker);
@@ -722,7 +896,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 blocker: nativeDependencyBlocker,
             };
         }
-        if (phaseBlockers.length && (runnable.length === 0 || (taskOutputPaths(kept).length === 0 && !kept.some(taskProducesArtifact)))) {
+        if (phaseBlockers.length && (runnable.length === 0 || !phaseHasWork)) {
             const blocker = phaseBlockers[0];
             blockers.push(blocker);
             notes.push(`[plan] أوقفتُ المرحلة «${phaseName}» بعائق تخطيط صريح: ${blocker.message}`);
@@ -755,8 +929,7 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
         }
         // Inspection-only work still needs an evidence artefact. Without one, a
         // planner can name a nonexistent source and turn a plan defect into repair.
-        const hasConcreteDelivery = taskOutputPaths(kept).length > 0;
-        if (runnable.length === 0 || !hasConcreteDelivery) {
+        if (runnable.length === 0 || !phaseHasWork) {
             // Not a failure — a deliverable. Write the phase down instead of
             // pretending it ran, and instead of letting it stop the build.
             /**
@@ -802,6 +975,18 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             notes.push(`[plan] المرحلة «${phaseName}» لم يبق فيها عمل قابل للتنفيذ — حوّلتُها إلى وثيقة حقيقية بدل مرحلة فاشلة.`);
         }
 
+        // The phase is kept, but an executing step was lost with no repair. When
+        // the plan builds something that step would act on, say so as a plan
+        // blocker (a code planner recovery already repairs) instead of
+        // letting the step disappear behind a note.
+        const planBuildsRunnable = priorArtifactReady || kept.some(taskProducesArtifact)
+            || [...generatedPaths, ...taskOutputPaths(kept)].some(isRunnableContractPath);
+        if (droppedExecutingSteps.length && planBuildsRunnable) {
+            const steps = droppedExecutingSteps.map(step => `«${step.desc}» (${step.tool})`).join('، ');
+            blockers.push({ ...droppedExecutingSteps[0].blocker, message: `${droppedExecutingSteps[0].blocker.message} — خطوات تنفيذ أُسقطت بلا إصلاح: ${steps}` });
+            notes.push(`[plan] خطوة تنفيذ أُسقطت من المرحلة «${phaseName}» بلا إصلاح حتمي: ${steps}؛ أرفعها عائقاً للخطة بدل إخفائها.`);
+        }
+
         const phaseProducedPaths = taskOutputPaths(kept);
         phaseProducedPaths.forEach((candidate: string) => {
             producedPaths.add(candidate);
@@ -822,7 +1007,11 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
 
         const v = phase?.verificationTask;
         let verification = v;
-        if (v && v.tool) {
+        const observedOutputPaths = phaseProducedPaths
+            .map((candidate: string) => String(candidate || '').trim())
+            .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
+        const observedOutputPath = observedOutputPaths[0];
+        if (v && typeof v === 'object' && v.tool) {
             const rv = resolvePlannedTool(v.tool);
             const verificationTool = rv.tool;
             // A verification task is an acceptance observation, never another
@@ -836,10 +1025,6 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
             // from an earlier task in execution order, not from the model's
             // verification prose. If the phase has no named file output, inspect
             // the project instead of inventing one.
-            const observedOutputPaths = phaseProducedPaths
-                .map((candidate: string) => String(candidate || '').trim())
-                .filter((candidate: string) => candidate && !candidate.startsWith('/') && !candidate.includes('..'));
-            const observedOutputPath = observedOutputPaths[0];
             const runHasRunnableEvidence = [...producedPaths].some(runnableMarker);
             const generatesInsteadOfObserving = new Set([
                 'doc_generator', 'test_generator', 'ai_write_file', 'write_file',
@@ -892,13 +1077,63 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                 && verificationTestType === 'integration'
                 && !hasDeclaredIntegrationCheck;
 
-            if (verificationNeedsTestEvidence || verificationNeedsIntegrationScript) {
+            /**
+             * ⛔ A TEST RUN IN A VERIFICATION IS TRANSLATED, NOT ERASED.
+             *
+             * Eval round 15 (P101): «cd dental-clinic-api && npm test --
+             * --passWithNoTests» beside the plan's own package.json was read as
+             * a smoke command and replaced by reading a file — the requested
+             * tests never ran. The plan's paths are still bare here (the
+             * greenfield prefix is applied after this loop), so a «cd» into the
+             * sanitiser's own project directory with a bare package.json counts.
+             * Flags are not carried over: the check runs as declared, stricter.
+             */
+            const verificationPackageCheck = verificationTool === 'shell_execute'
+                ? (() => {
+                    const command = normaliseShellCommand(verificationArgs?.command);
+                    const m = command.match(/^(?:cd\s+(?:\/d\s+)?(?:"([^"]+)"|'([^']+)'|([^\s&;|"']+))\s*&&\s*)?(.+)$/i);
+                    const check = m ? packageScriptCheck(m[4]) : null;
+                    if (!m || !check) return null;
+                    const rel = normaliseEvidencePath(m[1] || m[2] || m[3] || '').replace(/\/+$/, '');
+                    if (rel && unsafeWorkspacePath(rel)) return null;
+                    const known = (candidate: string) => generatedPaths.has(candidate) || phaseProducedPaths.includes(candidate) || evidencedPaths.has(candidate);
+                    const bareManifest = known('package.json');
+                    let path = '';
+                    if (rel && known(`${rel}/package.json`)) path = rel;
+                    else if (rel && rel === dir && bareManifest) path = dir;
+                    else if (!rel && bareManifest) path = options.mode === 'greenfield' && generatedPaths.has('package.json') ? dir : '.';
+                    return path ? { ...check, path } : null;
+                })()
+                : null;
+
+            if (verificationPackageCheck) {
+                verification = {
+                    task: String(v?.task || `Run the project's ${verificationPackageCheck.script}`),
+                    tool: 'quality_run',
+                    args: { path: verificationPackageCheck.path, tasks: [verificationPackageCheck.script] },
+                };
+                notes.push(`[plan] حوّلتُ تحقق «${String(verificationArgs?.command || '').trim().slice(0, 120)}» إلى quality_run (${verificationPackageCheck.script}) على «${verificationPackageCheck.path}»${verificationPackageCheck.rest ? `؛ لم أنقل «${verificationPackageCheck.rest}» — الفحص يجري كما هو معلن، أشدّ لا أخفّ` : ''}.`);
+            } else if (verificationNeedsTestEvidence || verificationNeedsIntegrationScript) {
                 verification = undefined;
                 const reason = verificationNeedsIntegrationScript
                     ? 'لا يوجد script تكاملي معلن وقابل للتشغيل لهذا المشروع'
                     : 'لا يوجد ملف اختبار مثبت داخل مسار المشروع أو test_generator سابق';
                 notes.push(`[plan] أزلتُ تحقق auto_tester من نوع ${verificationTestType} غير المدعوم — ${reason}؛ لن أدّعي نجاح اختبار غير موجود.`);
-            } else if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact) {
+            } else {
+                // A mid-phase shell_execute verification that is neither a recognized
+                // checker contract (isVerificationTool) nor a package-script check
+                // (unprovenProjectCheckIssue) is a runtime smoke command the planner
+                // emitted to run the artifact it just wrote. The sanitizer trusted it
+                // but the phase gate only accepts test-runner invocations as
+                // shell_execute verifications, so the run died before the test
+                // phases executed (CRITICAL-REAL-JOE-UI-001 run 4b). Rewrite it into
+                // the same output-existence observation used for other unverifiable
+                // checkers so execution continues to the genuine test phases.
+                const shellSmokeWithoutCheckerContract = verificationTool === 'shell_execute'
+                    && !isVerificationTool(verificationTool, verificationArgs, false, true)
+                    && !unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands);
+
+                if (!verificationTool || generatesInsteadOfObserving.has(verificationTool) || readsUnprovenPhaseOutput || referencesUnprovenFile || runsBeforeRunnableArtifact || shellSmokeWithoutCheckerContract) {
                 verification = observedOutputPath
                     ? {
                         task: `Verify phase output exists: ${observedOutputPath}`,
@@ -912,16 +1147,26 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     };
                 const reason = readsUnprovenPhaseOutput || referencesUnprovenFile
                     ? 'تحققاً مولّداً يشير إلى ملفاً غير مثبت'
-                    : runsBeforeRunnableArtifact
-                        ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
-                        : 'تحققاً مولّداً';
+                    : shellSmokeWithoutCheckerContract
+                        ? 'أمر تدخين وهمياً لا يطابق عقدة تحقق معروفة'
+                        : runsBeforeRunnableArtifact
+                            ? 'تشغيلاً حياً قبل إنتاج artifact قابل للتشغيل'
+                            : 'تحققاً مولّداً';
+                // Name the dropped smoke command so the next such rewrite is
+                // diagnosable from the session log alone (run 4b needed a
+                // run-evidence dig to recover `node index.js < sample.txt`).
+                const droppedSmokeCommand = shellSmokeWithoutCheckerContract
+                    ? String(verificationArgs?.command || '').trim().replace(/\s+/g, ' ').slice(0, 120)
+                    : '';
+                const smokeSuffix = droppedSmokeCommand ? ` — الأمر المسقط: «${droppedSmokeCommand}»` : '';
                 notes.push(observedOutputPath
-                    ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
-                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+                    ? `[plan] استبدلتُ ${reason} بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.${smokeSuffix}`
+                    : `[plan] استبدلتُ ${reason} بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.${smokeSuffix}`);
             } else {
+                const planProducedPathsForCheck = [...generatedPaths, ...phaseProducedPaths];
                 const verificationIssue = plannedArgsIssue(verificationTool, verificationArgs)
                     || (verificationTool === 'shell_execute'
-                        ? unprovenProjectCheckIssue(verificationArgs?.command, candidateCheckCommands)
+                        ? unprovenProjectCheckIssueUnlessPlanProduced(verificationArgs?.command, candidateCheckCommands, planProducedPathsForCheck)
                         : null);
                 // A browser verifier is itself the evidence boundary. Replacing
                 // an invalid browser contract with project_detect would make an
@@ -936,8 +1181,47 @@ export function sanitisePlanPhases(phases: any[], projectDir = '', options: Plan
                     : `[plan] استبدلتُ مهمة تحقق غير مكتملة بفحص المشروع — ${verificationIssue}`);
             }
         }
+        } else if (typeof v === 'string' && v.trim()) {
+            const prose = v.trim();
+            verification = observedOutputPath
+                ? { task: `Verify phase output exists: ${observedOutputPath}`, tool: 'read_file', args: { path: observedOutputPath } }
+                : { task: 'Inspect phase output on disk', tool: 'project_detect', args: {} };
+            notes.push(observedOutputPath
+                ? `[plan] استبدلتُ مهمة تحقق نصية «${prose.slice(0, 120)}» بقراءة المخرج المثبت «${observedOutputPath}»؛ التحقق يلاحظ الناتج ولا ينشئ أو يفترض ملفاً متخيلاً.`
+                : `[plan] استبدلتُ مهمة تحقق نصية «${prose.slice(0, 120)}» بفحص المشروع؛ لا يوجد مخرج مساري مثبت في هذه المرحلة لأفحصه.`);
+        } else if (typeof v === 'string') {
+            verification = undefined;
+        }
 
-        return { ...phase, tasks: kept, verificationTask: verification };
+        /**
+         * ⛔ THE SANITIZER AND THE GATE MUST AGREE — END TO END, NOT IN PRINCIPLE.
+         *
+         * Eval round 9 (2026-10-23, P001): the planner named project_detect as a
+         * phase verification; the catalogue had advertised it as one ("verify what
+         * was actually created on disk") and this sanitizer substitutes it itself.
+         * The phase gate (isVerificationTool) never accepts it — it succeeds on any
+         * existing directory and proves nothing — so the phase failed with
+         * verification_unavailable after 45 minutes of correct work. The same held
+         * for every read_file observation written here for an OBJECT verification
+         * (the run-4b rewrite's tests stopped at the sanitizer): the gate admits a
+         * read only for a prose-origin verification, and even then an observation
+         * leaves the phase partial by design (Gap A/B).
+         *
+         * So an object verification leaves here only as a checker the gate
+         * accepts, or as the named browser verifier (kept for an honest
+         * verification_unavailable). Anything else is removed and said so — the
+         * same standing as a phase planned without a verification: its own task
+         * receipts and the final quality gate still decide delivery.
+         */
+        // Prose-origin verifications keep their observation contract (Gap A/B);
+        // an OBJECT verification must be a checker the gate accepts.
+        const observationNote: string | undefined = typeof v === 'string' && v.trim() ? v : undefined;
+        if (verification && !observationNote && String(verification.tool || '') !== 'browser_run'
+            && !isVerificationTool(String(verification.tool || ''), verification.args || {}, false, false)) {
+            notes.push(`[plan] أزلتُ تحقق «${String(verification.tool)}» من المرحلة «${String(phase?.name || '')}»: ليس فاحصاً تقبله بوابة التحقق، فكان سيُفشل مرحلة صحيحة دون أن يثبت شيئاً؛ إيصالات مهامها والتحقق النهائي للمشروع هي التي تحكم.`);
+            verification = undefined;
+        }
+        return { ...phase, tasks: kept, verificationTask: verification, verificationNote: observationNote };
     });
 
     const sanitisedTasks = out.flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : []);
@@ -1109,9 +1393,8 @@ const ARG_SYNONYMS: Record<string, string[]> = {
 };
 
 /** When a required field is still missing, the least surprising real value. */
-const REQUIRED_DEFAULTS: Record<string, Record<string, any>> = {
+export const REQUIRED_DEFAULTS: Record<string, Record<string, any>> = {
     git_ops: { operation: 'status' },
-    npm_manager: { operation: 'install' },
     shell_execute: { command: 'npm run build' },
 };
 
@@ -1398,6 +1681,23 @@ export function unprovenProjectCheckIssue(command: unknown, declaredChecks: Set<
     return `أمر «${normalised}» ليس فحصاً معلناً في ملفات المشروع التي استكشفها Joe؛ لن يُشغَّل npm بافتراض وجود package.json أو script.`;
 }
 
+export function planProducedCheckProven(command: unknown, planProducedPaths: Iterable<string>): boolean {
+    const normalised = normaliseShellCommand(command);
+    const m = normalised.match(/^(?:npm|pnpm|yarn)\s+(?:run\s+)?([A-Za-z0-9:_-]+)/i);
+    if (!m) return false;
+    const script = m[1];
+    for (const p of planProducedPaths) {
+        if (/(?:^|\/)package\.json$/i.test(p)) return true;
+    }
+    return false;
+}
+
+export function unprovenProjectCheckIssueUnlessPlanProduced(command: unknown, declaredChecks: Set<string>, planProducedPaths: Iterable<string>): string | null {
+    const issue = unprovenProjectCheckIssue(command, declaredChecks);
+    if (!issue) return null;
+    return planProducedCheckProven(command, planProducedPaths) ? null : issue;
+}
+
 export function adaptPlannedArgs(toolName: string, args: any): any {
     const out: any = { ...(args || {}) };
     if (NEEDS_BUILT_URL.has(toolName) && !String(out.url || '').trim()) {
@@ -1428,8 +1728,22 @@ export function adaptPlannedArgs(toolName: string, args: any): any {
         }
     }
 
+    /**
+     * A model writes {action:'install'} for npm_manager, whose contract is a
+     * required `command`. Map it only where the schema REQUIRES command and
+     * declares neither operation nor action: project_run's optional command is
+     * a start override, and terminal_manager's action is its own field.
+     */
+    const blank = (value: unknown) => value === undefined || value === null || value === '';
+    const requiredFields: string[] = Array.isArray(schema.required) ? schema.required.map(String) : [];
+    if (requiredFields.includes('command') && !('operation' in schema.properties) && !('action' in schema.properties) && blank(out.command)) {
+        for (const alt of ['action', 'operation']) {
+            if (!blank(out[alt])) { out.command = out[alt]; break; }
+        }
+    }
+
     for (const req of (schema.required || [])) {
-        if (out[req] === undefined || out[req] === null || out[req] === '') {
+        if (blank(out[req])) {
             const d = REQUIRED_DEFAULTS[toolName]?.[req];
             if (d !== undefined) out[req] = d;
         }
@@ -1563,6 +1877,47 @@ export function findBinary(name: string): string | null {
         }
     }
     return null;
+}
+
+/**
+ * The same vocabulary for a model that must read every character on a CPU.
+ *
+ * Measured 2026-10-23: the full planning prompt is ~16.6k characters, ~93% of
+ * it fixed text, and the owner's laptop reads ~6 tokens/s — ~15 minutes before
+ * the first planned word, far past every planning deadline, so the local model
+ * never planned and builds fell back to stock apps. Same catalogue (it cannot
+ * drift from the real tool list), each purpose cut to its first clause, no
+ * few-shot block; the argument shapes a weak model gets wrong stay explicit.
+ */
+/**
+ * The business arguments a tool requires, read from its registered schema, so
+ * the compact brief can never disagree with the tool (eval 2026-10-23: a local
+ * plan gave scaffold_full_stack, npm_manager and api_project empty args).
+ * Runtime identity fields are injected by the executor and never planned.
+ */
+function requiredBusinessArgs(name: string): string[] {
+    try {
+        const { tools } = require('../../modules/tools/registry');
+        const tool = (tools as any[]).find(t => t?.name === name);
+        const required: unknown[] = Array.isArray(tool?.inputSchema?.required) ? tool.inputSchema.required : [];
+        return required.map(String).filter(k => !/^(?:sessionId|userId|workspaceId|context|__\w+)$/.test(k));
+    } catch { return []; }
+}
+
+export function compactPlannerToolPrompt(maxPurposeChars = 90): string {
+    const firstClause = (purpose: string) => {
+        const clause = purpose.split(/;\s|\.\s|\s—\s|\s\(/)[0].trim();
+        return clause.length <= maxPurposeChars ? clause : clause.slice(0, maxPurposeChars).replace(/\s+\S*$/, '') + '…';
+    };
+    return [
+        'TOOLS (exact names only; "manual" if a step needs no tool):',
+        ...PLANNER_TOOL_CATALOGUE.map(t => {
+            const required = requiredBusinessArgs(t.tool);
+            return `- ${t.tool}${required.length ? ` {${required.join(', ')}}` : ''}: ${firstClause(t.purpose)}`;
+        }),
+        'ai_write_file args: {"path":"<relative path>","description":"<what this one file must contain>"} — one task per file; the file is written later from this description.',
+        'NEVER put file contents in the plan (no code, no JSON files inside args): each file is an ai_write_file task, or one builder tool creates the whole project.',
+    ].join('\n');
 }
 
 /** The vocabulary block the planner prompt carries. */

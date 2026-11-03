@@ -24,6 +24,14 @@ export function normalizeAutoOpenToolName(toolName: unknown): string {
     return raw.trim().replace(/^execute:/i, '').trim().toLowerCase();
 }
 
+/** How many agent-engine runs this page remembers, so each opens its tab once. */
+const ENGINE_RUN_MEMORY = 64;
+
+function runIdOf(event: { runId?: unknown; data?: any }): string {
+    const raw = typeof event.runId === 'string' ? event.runId : typeof event.data?.runId === 'string' ? event.data.runId : '';
+    return raw.trim();
+}
+
 class AutoOpenManagerClass {
     private listeners: Set<EventCallback> = new Set();
     private config: AutoOpenConfig = {
@@ -36,6 +44,14 @@ class AutoOpenManagerClass {
             output: true,
         },
     };
+    /** Runs of the agent engine seen on this page, oldest first. */
+    private engineRuns: string[] = [];
+
+    /** True for an event of a run the agent engine is driving: its work is shown in Activity. */
+    isEngineRunEvent(event: { runId?: unknown; data?: any }): boolean {
+        const rid = runIdOf(event);
+        return !!rid && this.engineRuns.includes(rid);
+    }
 
     /**
      * Subscribe to auto-open events
@@ -69,6 +85,11 @@ class AutoOpenManagerClass {
          * proof, not a reading, is what finally caught it.
          */
         const normalizedToolName = normalizeAutoOpenToolName(toolName);
+        //  The agent engine's tools (`engine_browser_open` through ToolService,
+        //  `engine:browser_open` on its own steps) are shown call by call in
+        //  the Activity tab its run opened. Their names are not a reason to
+        //  switch away from it.
+        if (/^engine[_:]/.test(normalizedToolName)) return;
         const isPanelBoot = normalizedToolName === 'terminal_manager';
         if (
             !isPanelBoot && (
@@ -122,7 +143,24 @@ class AutoOpenManagerClass {
     /**
      * Process AI step events - for streaming responses
      */
-    processStepEvent(event: { type: string; data?: any }) {
+    processStepEvent(event: { type: string; data?: any; runId?: unknown; sessionId?: unknown }) {
+        /**
+         * THE AGENT ENGINE'S RUN IS DRAWN IN THE CHAT, AND OPENS NO PANEL.
+         *
+         * Its steps used to open an Activity tab beside the chat. Since
+         * 2026-11-02 they are drawn inside Joe's reply (RunActivityPanel,
+         * inline): the owner wanted them in the conversation, not in a panel
+         * of their own. The run is still remembered, so the engine's own
+         * tools and notes never pull the workspace to another tab.
+         */
+        if (event.type === 'engine_step') {
+            const runId = runIdOf(event);
+            if (runId && !this.engineRuns.includes(runId)) {
+                this.engineRuns = [...this.engineRuns, runId].slice(-ENGINE_RUN_MEMORY);
+            }
+            return;
+        }
+
         // Direct browser activation events
         // The server's real browser events. «browser_opened», «show_browser»
         // and «browser_started» were listened for and never sent by anything —
@@ -153,8 +191,9 @@ class AutoOpenManagerClass {
             this.triggerOpen(event.data.panel as PanelType, event.data);
         }
 
-        // Detect browser tasks from thinking details
-        if (event.type === 'thinking_detail' && typeof event.data?.detail === 'string') {
+        // Detect browser tasks from thinking details — never for the engine,
+        // whose model writes «browser» in its notes on every other line.
+        if (event.type === 'thinking_detail' && typeof event.data?.detail === 'string' && !this.isEngineRunEvent(event)) {
             const detailLower = event.data.detail.toLowerCase();
             if (
                 detailLower.includes('browser agent') ||

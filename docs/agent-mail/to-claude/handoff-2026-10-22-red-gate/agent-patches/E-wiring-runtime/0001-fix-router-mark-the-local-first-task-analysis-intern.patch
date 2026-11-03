@@ -1,0 +1,60 @@
+From 326fc0535d002f41c02e7ef2aaedfb78cbed9831 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:11:09 +0000
+Subject: [PATCH 1/2] fix(router): mark the local-first task analysis internal
+ with the key the router reads
+
+Red: a-flag-nothing-reads-is-a-flag-that-was-never-set.test.ts
+  "NEGATIVE - no production file passes a key the router does not read"
+  Received ["intelligent-router.ts:287"].
+Culprit: a8ebf2e0 "Route advanced analysis through local-first brain".
+
+Root cause: the new local-first branch of advancedAnalyzeTask passed
+`internalCall: true` in the routeToModel context. routeToModel decides
+internal-ness only from `context.purpose === 'internal'`; nothing reads
+`context.internalCall`, so the analysis was routed as a visible answer
+and the intelligence economy (local brain first, Groq last) never applied
+to it - the culprit's own intent. The Gemini branch of the same function
+already passes `purpose: 'internal'`.
+
+Decision: R. The key is now `purpose: 'internal'`.
+
+Mutation (fixed mutate.py, restore the dead key):
+  x NEGATIVE - no production file passes a key the router does not read
+  x advanced analysis respects local-first mode... (with the patched
+    assertion below applied) Expected substring: "purpose: 'internal',"
+  sha256 identical
+
+Known side effect, out of this group: intelligence-economy.test.ts:65
+pins the dead spelling (`expect(src).toContain('internalCall: true')`)
+and goes red with this fix (22/23). A one-assertion patch asserting
+`purpose: 'internal'` on the local-first call is handed to the
+coordinator separately; it makes that suite 23/23 again.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/core/llm/intelligent-router.ts | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/core/llm/intelligent-router.ts b/api/src/core/llm/intelligent-router.ts
+index 1b5d69ac..fc7fa3df 100644
+--- a/api/src/core/llm/intelligent-router.ts
++++ b/api/src/core/llm/intelligent-router.ts
+@@ -284,7 +284,12 @@ Return exactly this JSON structure:
+                 undefined,
+                 {
+                     modelConfig: { provider: 'auto', apiKey: 'auto-mode' },
+-                    internalCall: true,
++                    // The router decides «internal» on `purpose` and on nothing
++                    // else — the Gemini branch above already says it this way.
++                    // The `internalCall` key this call used to pass is read by
++                    // no one, so the local-first analysis was routed as if it
++                    // were the visible answer.
++                    purpose: 'internal',
+                     engineeringPipeline: true
+                 }
+             )
+-- 
+2.43.0
+

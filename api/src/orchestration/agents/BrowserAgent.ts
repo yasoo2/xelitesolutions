@@ -5,6 +5,7 @@ import { executePlannedActions } from '../../modules/browser/executor';
 import { LocalProvider } from '../../core/llm/providers/local';
 import { normalizeIntentText } from '../../core/orchestrator/promptNormalizer';
 import { agentSearchUrl } from '../../modules/browser/challenge';
+import { readModelJson, readModelJsonObject } from '../../shared/utils/json';
 
 /** Sites that BLOCK automated login/signup (bot detection / CAPTCHA / 2FA).
  *  For a login OR account-creation task on one of these, driving the form with
@@ -269,8 +270,9 @@ Set verified=true ONLY if the page clearly shows the goal is achieved (e.g. a su
                 [{ role: 'system', content: system }, { role: 'user', content: 'Is the goal achieved? JSON only.' }],
                 { type: 'browser_task', complexity: 'low', requiresTools: false, estimatedTokens: 200, language: 'en' } as any
             );
-            const m = String(text || '').match(/\{[\s\S]*\}/);
-            const obj = m ? JSON.parse(m[0]) : null;
+            // The shared reader (round 22, W7): the verdict object, wherever it stands.
+            const obj: any = readModelJson(String(text || ''), (parsed: any) => (parsed && typeof parsed === 'object' && 'verified' in parsed ? parsed : undefined))
+                ?? readModelJsonObject(String(text || ''));
             // Only a CLEAR, explicit false downgrades the result; anything ambiguous or
             // unparseable is treated as verified (real page evidence is attached anyway).
             if (obj && obj.verified === false) return { verified: false, note: String(obj.note || '').slice(0, 200) };
@@ -316,11 +318,10 @@ Coordinates are pixels from the top-left of the screenshot.`;
 
 /** Robustly extract a JSON action from a model response; fall back to ask_user. */
 export function parseAction(text: string): ReactAction {
-    try {
-        const m = String(text || '').match(/\{[\s\S]*\}/);
-        const obj = m ? JSON.parse(m[0]) : JSON.parse(String(text));
-        if (obj && typeof obj.action === 'string') return obj as ReactAction;
-    } catch { /* fall through */ }
+    // The shared reader (round 22, W7): the object that names an action, past
+    // any brace the model wrote around it.
+    const obj = readModelJson(String(text || ''), (parsed: any) => (parsed && typeof parsed === 'object' && typeof parsed.action === 'string' ? parsed : undefined));
+    if (obj) return obj as ReactAction;
     return { action: 'ask_user', message: 'تعذّر فهم الخطوة التالية من النموذج. أعد صياغة الطلب بتفاصيل أوضح.' };
 }
 

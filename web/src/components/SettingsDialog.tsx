@@ -30,13 +30,9 @@ const LANGUAGES = [
 
 type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'account';
 
-/** One-click preset: makes Joe use the terminal automatically while building. */
-const TERMINAL_FIRST_PRESET = `منهجية إلزامية في كل مهمة بناء أو تطوير:
-1) استخدم الطرفية تلقائياً في كل مرحلة: أنشئ مجلدات المشروع بأوامر حقيقية، وبعد كل مرحلة اعرض هيكل الملفات.
-2) بعد كتابة أي ملف تحقق منه من الطرفية (اعرض حجمه وأول أسطره).
-3) قبل إعلان أي إنجاز شغّل فحوصات حقيقية من الطرفية وأظهر نواتجها كاملة في تبويب Terminal.
-4) إذا فشل أمر: اقرأ الخطأ، أصلح السبب، وأعد المحاولة — لا تتجاوز خطأً أبداً.
-5) لا تقل «اكتمل العمل» إلا بعد نجاح كل الفحوصات، مع ملخص الأوامر التي نُفّذت.`;
+/** One-click preset: makes Joe use the terminal automatically while building.
+ *  Its text is `stg_presetTerminalFirstText`, written in the interface language:
+ *  once inserted it is the user's own instructions, so it reads in his language. */
 
 interface MenuItem {
     id: SettingsTab;
@@ -198,10 +194,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                     {mode === 'dark' ? <Moon size={14} /> : <Sun size={14} />}
                                     <span>
                                         {mode === 'dark'
-                                            ? t('accentDarkTitle', 'ألوان الوضع الليلي')
-                                            : t('accentLightTitle', 'ألوان الوضع النهاري')}
+                                            ? t('accentDarkTitle')
+                                            : t('accentLightTitle')}
                                     </span>
-                                    {theme === mode && <span className="stg-accent-live">{t('accentActive', 'المطبَّق الآن')}</span>}
+                                    {theme === mode && <span className="stg-accent-live">{t('accentActive')}</span>}
                                 </div>
                                 <div className="stg-accent-row" role="group">
                                     {ACCENTS.map(a => {
@@ -212,7 +208,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                                 className={`stg-accent-swatch ${chosen ? 'active' : ''}`}
                                                 style={{ background: mode === 'dark' ? a.dark : a.light }}
                                                 onClick={() => pickAccent(mode, a.id)}
-                                                title={a.label}
+                                                title={t(a.labelKey)}
                                                 aria-pressed={chosen}
                                                 data-accent-id={`${mode}-${a.id}`}
                                             >
@@ -221,7 +217,10 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                         );
                                     })}
                                     <span className="stg-accent-name">
-                                        {ACCENTS.find(a => a.id === (mode === 'dark' ? accentDark : accentLight))?.label}
+                                        {(() => {
+                                            const current = ACCENTS.find(a => a.id === (mode === 'dark' ? accentDark : accentLight));
+                                            return current ? t(current.labelKey) : null;
+                                        })()}
                                     </span>
                                 </div>
                             </div>
@@ -288,7 +287,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         <textarea
                             value={instructions}
                             onChange={(e) => saveInstructions(e.target.value)}
-                            placeholder={t('joeInstructionsPh', 'مثال: استخدم الطرفية في كل خطوة بناء، وتحقق من كل ملف بعد كتابته…')}
+                            placeholder={t('joeInstructionsPh')}
                             dir="auto"
                             style={{
                                 width: '100%', minHeight: 190, resize: 'vertical',
@@ -302,7 +301,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                         />
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, flexWrap: 'wrap' }}>
                             <button
-                                onClick={() => saveInstructions(TERMINAL_FIRST_PRESET)}
+                                onClick={() => saveInstructions(t('stg_presetTerminalFirstText'))}
                                 style={{
                                     display: 'flex', alignItems: 'center', gap: 8,
                                     padding: '8px 14px', borderRadius: 10, cursor: 'pointer',
@@ -313,7 +312,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 }}
                             >
                                 <Wand2 size={14} />
-                                {t('presetTerminalFirst', 'استخدام الطرفية تلقائياً في كل بناء')}
+                                {t('presetTerminalFirst')}
                             </button>
                             {instructions && (
                                 <button
@@ -325,7 +324,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                         fontSize: 12.5, fontFamily: 'inherit',
                                     }}
                                 >
-                                    {t('clearInstructions', 'مسح التعليمات')}
+                                    {t('clearInstructions')}
                                 </button>
                             )}
                             <span style={{
@@ -333,7 +332,7 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 opacity: instrSaved ? 1 : 0, transition: 'opacity 0.3s',
                                 display: 'flex', alignItems: 'center', gap: 4,
                             }}>
-                                <Check size={13} /> {t('instrSaved', 'حُفظت — تُطبَّق على كل مهمة قادمة')}
+                                <Check size={13} /> {t('instrSaved')}
                             </span>
                         </div>
                     </div>

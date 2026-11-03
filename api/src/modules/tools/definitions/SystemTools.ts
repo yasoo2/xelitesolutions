@@ -10,9 +10,11 @@ import { resolveToolPath as sharedResolveToolPath } from '../utils';
 import { commandRouter } from '../../terminal/command-router';
 import { broadcast, broadcastTerminalLine } from '../../../api/ws';
 import { handleShellCommand } from '../handlers';
-import { prepareArtifactContent } from '../artifact-validation';
+import { prepareArtifactContent, validateArtifactContent } from '../artifact-validation';
 import { executionEngine } from '../../../kernel/ExecutionEngine';
 import { validateFileWriteBatch } from '../../../shared/file-write-contract';
+import { AUTONOMOUS_FILE_BYTES } from '../../services/AutonomousFilePolicy';
+import { editAlreadyApplied } from '../../../shared/utils/edit-in-place';
 
 // Background Process Store
 const backgroundProcesses = new Map<string, { pid: number, command: string, cwd: string, startTime: number, process: any }>();
@@ -679,10 +681,12 @@ export class FileEditTool extends BaseTool {
         type: 'object' as const,
         properties: {
             filename: { type: 'string' },
+            path: { type: 'string', minLength: 1 },
             find: { type: 'string', description: 'Text to find (alias: search / old_string)' },
-            replace: { type: 'string', description: 'Replacement text (alias: new_string)' }
+            replace: { type: 'string', minLength: 0, description: 'Replacement text (alias: new_string); empty removes the match' }
         },
-        required: ['filename', 'find', 'replace']
+        required: ['find', 'replace'],
+        requiredAny: [['filename', 'path']]
     };
     outputSchema = { type: 'object' as const, properties: { success: { type: 'boolean' } } };
     permissions: ToolPermission[] = ['write', 'read'];
@@ -749,6 +753,12 @@ export class FileEditTool extends BaseTool {
         const toFile = (t: string) => t.replace(/\r\n?/g, '\n').split('\n').join(dominantEnding);
         const findInFile = toFile(find);
         const replaceInFile = toFile(replace);
+        // A rerun of an edit that already landed is that edit, not missing
+        // text, and must not land twice (shared/utils/edit-in-place.ts).
+        if (editAlreadyApplied(content, findInFile, replaceInFile)) {
+            logs.push(`edit=${filename} (already in place)`);
+            return { ok: true, output: { success: true, alreadyApplied: true }, logs };
+        }
         if (!content.includes(findInFile)) {
             /**
              *  A FAILURE THAT NAMES NOTHING CANNOT BE REPAIRED.
@@ -770,14 +780,49 @@ export class FileEditTool extends BaseTool {
                 : ` The file has ${lines.length} lines and none of them opens with that text.`;
             return { ok: false, error: `Text to replace not found in ${filename}. Looked for: ${wanted}.${hint}`, logs };
         }
-        content = content.replace(findInFile, replaceInFile);
-        fs.writeFileSync(full, content);
+        // An edit is a write: the destination contract file_write and
+        // ai_write_file enforce holds here too, or a one-line edit can leave a
+        // package.json that is not JSON, or one npm install cannot fetch. Only
+        // a violation the edit itself introduces is refused, so a file that
+        // was already off can still be repaired by editing it. A function
+        // replacement keeps `$&`, `$'` and `$$` in his text literal.
+        const autonomousEdit = typeof input.autonomousEditBefore === 'string' && typeof input.autonomousEditAfter === 'string';
+        const edited: string = autonomousEdit ? input.autonomousEditAfter : content.replace(findInFile, () => replaceInFile);
+        const introduced = validateArtifactContent(filename, edited);
+        if (introduced && !validateArtifactContent(filename, content)) {
+            return { ok: false, error: `${introduced}. The edit was not applied; ${filename} is unchanged.`, logs };
+        }
+        if (autonomousEdit) {
+            // The gateway prepared a unique literal edit. Recheck the same preimage
+            // on the writable descriptor; no await or path reopen occurs before writing.
+            const fd = fs.openSync(full, fs.constants.O_RDWR | (fs.constants.O_NOFOLLOW ?? 0));
+            try {
+                const stat = fs.fstatSync(fd);
+                if (!stat.isFile() || stat.nlink !== 1 || stat.size > AUTONOMOUS_FILE_BYTES) {
+                    return { ok: false, error: 'invalid_file_target', logs };
+                }
+                const bytes = Buffer.alloc(AUTONOMOUS_FILE_BYTES + 1);
+                const length = fs.readSync(fd, bytes, 0, bytes.length, 0);
+                const before = Buffer.from(input.autonomousEditBefore, 'utf8');
+                if (length !== before.length || !bytes.subarray(0, length).equals(before)) {
+                    return { ok: false, error: 'file_changed', logs };
+                }
+                if (context?.isCancelled?.()) return { ok: false, error: 'cancelled', logs };
+                content = edited;
+                fs.writeFileSync(fd, content, 'utf8');
+                fs.ftruncateSync(fd, Buffer.byteLength(content));
+            } finally { fs.closeSync(fd); }
+        } else {
+            content = edited;
+            fs.writeFileSync(full, content);
+        }
         logs.push(`edit=${filename}`);
 
         const findLines = find.split('\n').length;
         const replaceLines = replace.split('\n').length;
         broadcast({
             type: 'diff',
+            sessionId: context?.sessionId,
             data: {
                 path: filename,
                 content: content,
@@ -864,6 +909,7 @@ export class WriteFileTool extends BaseTool {
             content: { type: 'string' },
             mode: { type: 'string', enum: ['overwrite', 'append'] },
             requireExisting: { type: 'boolean' },
+            createOnly: { type: 'boolean' },
             ensureSingleAppend: { type: 'boolean' },
             expectedFinalLineCount: { type: 'number' }
         },
@@ -934,7 +980,7 @@ export class WriteFileTool extends BaseTool {
             }
             logs.push(`${alreadySatisfied ? 'append_already_satisfied' : 'append'}=${rawPath}`);
         } else {
-            fs.writeFileSync(full, safeContent);
+            fs.writeFileSync(full, safeContent, input?.createOnly === true ? { flag: 'wx' } : undefined);
             logs.push(`write=${rawPath}`);
         }
 
@@ -942,6 +988,7 @@ export class WriteFileTool extends BaseTool {
         const lines = diffContent.split('\n');
         broadcast({
             type: 'diff',
+            sessionId: context?.sessionId,
             data: {
                 path: rawPath,
                 content: finalContent,
@@ -1186,6 +1233,153 @@ async function recoverNpmInvalidVersion(
     };
 }
 
+function binDeclaresExecutable(output: unknown, packageName: string, executable: string): boolean {
+    let parsed: unknown;
+    try {
+        parsed = JSON.parse(String(output || '').trim() || 'null');
+    } catch {
+        return false;
+    }
+    const unscoped = packageName.split('/').pop() || packageName;
+    const declares = (value: unknown): boolean => {
+        if (Array.isArray(value)) return value.some(declares);
+        if (typeof value === 'string') return value.trim().length > 0 && executable === unscoped;
+        return !!value && typeof value === 'object' && Object.prototype.hasOwnProperty.call(value, executable);
+    };
+    return declares(parsed);
+}
+
+/**
+ * What `npm view <pkg>@<version> deprecated --json` says: the deprecation
+ * message, '' when the release is not deprecated (npm prints nothing, or an
+ * empty string for an un-deprecated release), null when it could not be read.
+ */
+function deprecationNotice(probe: { ok?: boolean; output?: unknown }): string | null {
+    if (!probe?.ok) return null;
+    const text = String(probe.output ?? '').trim();
+    if (!text) return '';
+    try {
+        const parsed = JSON.parse(text);
+        return typeof parsed === 'string' ? parsed.trim() : null;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * How many releases `npm view <pkg>@<major> deprecated --json` names as
+ * deprecated: npm prints nothing for none, one string for one, an array for
+ * several. Null when it could not be read.
+ */
+function deprecatedReleaseCount(probe: { ok?: boolean; output?: unknown }): number | null {
+    if (!probe?.ok) return null;
+    const text = String(probe.output ?? '').trim();
+    if (!text) return 0;
+    try {
+        const parsed = JSON.parse(text);
+        if (Array.isArray(parsed)) return parsed.filter(item => typeof item === 'string' && item.trim()).length;
+        return typeof parsed === 'string' ? (parsed.trim() ? 1 : 0) : null;
+    } catch {
+        return null;
+    }
+}
+
+export interface ReleaseProvidingBin {
+    version?: string;
+    /** The major the chosen release belongs to. */
+    major?: number;
+    /** One sentence: which release was chosen and why, naming what was skipped. */
+    reason?: string;
+    /**
+     * True only when the registry was read and said the chosen release is not
+     * deprecated; false when that read failed. A sentence that calls the
+     * release «non-deprecated» is built from this, never assumed (second
+     * review of round 21: project_run said so even when the read had failed).
+     */
+    deprecationKnown?: boolean;
+    error?: string;
+    probed: string[];
+    /** Releases seen declaring the executable but deprecated, newest first. */
+    skippedDeprecated: string[];
+}
+
+/**
+ * The newest stable published release of `packageName` whose manifest declares
+ * the executable `executable` and that is not deprecated, as the registry
+ * reports it. Majors are probed newest first, starting from each major's
+ * newest release; a release without the executable is never chosen, and no
+ * major is assumed.
+ *
+ * ⛔ Review r21 (8c5b5be6): this could pin a release the registry marks
+ * deprecated («2.x is no longer supported») without a word. Now a deprecated
+ * release is never chosen: when a major's newest is deprecated, the registry
+ * is asked how many of that major's releases are, and either the whole major
+ * is passed over or its newest non-deprecated release is tried. The chosen
+ * major is named in `reason` — the line he reads — and when only deprecated
+ * releases declare the executable the answer says so instead of installing
+ * one. (A `^` pin of a non-deprecated release also keeps npm off the
+ * deprecated ones above it: npm prefers non-deprecated versions in a range.)
+ */
+export async function findReleaseProvidingBin(
+    workDir: string,
+    packageName: string,
+    executable: string,
+    timeoutMs: number,
+): Promise<ReleaseProvidingBin> {
+    const npmView = (spec: string, field: string) => handleShellCommand('npm', ['view', spec, field, '--json'], workDir, timeoutMs, false);
+    const listing = await handleShellCommand('npm', ['view', packageName, 'versions', '--json'], workDir, timeoutMs, false);
+    const stable = listing.ok ? stableVersionsFromNpmView(listing.output).sort(compareNpmVersions) : [];
+    if (!stable.length) return { error: `npm_no_stable_published_version:${packageName}`, probed: [], skippedDeprecated: [] };
+    const releasesPerMajor = new Map<number, string[]>();
+    for (const version of [...stable].reverse()) {
+        const major = versionTuple(version)[0];
+        releasesPerMajor.set(major, [...(releasesPerMajor.get(major) || []), version]);
+    }
+    const majors = [...releasesPerMajor.keys()].sort((a, b) => b - a);
+    const probed: string[] = [];
+    const lacking: string[] = [];
+    const skippedDeprecated: string[] = [];
+    const deprecatedMajors: number[] = [];
+    const declares = async (version: string) => {
+        probed.push(version);
+        const probe = await npmView(`${packageName}@${version}`, 'bin');
+        const yes = !!probe.ok && binDeclaresExecutable(probe.output, packageName, executable);
+        if (!yes) lacking.push(version);
+        return yes;
+    };
+    const chosen = (version: string, notice: string | null): ReleaseProvidingBin => {
+        const major = versionTuple(version)[0];
+        const singly = skippedDeprecated.filter(v => !deprecatedMajors.includes(versionTuple(v)[0]));
+        const skipped = [
+            ...deprecatedMajors.map(m => `every ${m}.x release is deprecated`),
+            ...(singly.length ? [`skipped deprecated ${singly.join(', ')}`] : []),
+            ...(lacking.length ? [`${lacking.join(', ')} declare${lacking.length === 1 ? 's' : ''} no "${executable}"`] : []),
+        ];
+        const reason = `${packageName}@${version} (major ${major}) is the newest stable${notice === null ? '' : ', non-deprecated'} release that declares "${executable}"`
+            + `${notice === null ? ' (its deprecation status could not be read)' : ''}${skipped.length ? `; ${skipped.join('; ')}` : ''}`;
+        return { version, major, reason, deprecationKnown: notice !== null, probed, skippedDeprecated };
+    };
+    for (const major of majors) {
+        const releases = releasesPerMajor.get(major) as string[];
+        if (!await declares(releases[0])) continue; // one release per major says whether it ships the program
+        const notice = deprecationNotice(await npmView(`${packageName}@${releases[0]}`, 'deprecated'));
+        if (!notice) return chosen(releases[0], notice);
+        skippedDeprecated.push(releases[0]);
+        const deprecatedInMajor = deprecatedReleaseCount(await npmView(`${packageName}@${major}`, 'deprecated'));
+        if (deprecatedInMajor !== null && deprecatedInMajor >= releases.length) { deprecatedMajors.push(major); continue; }
+        for (const older of releases.slice(1)) {
+            const olderNotice = deprecationNotice(await npmView(`${packageName}@${older}`, 'deprecated'));
+            if (olderNotice) { skippedDeprecated.push(older); continue; }
+            if (await declares(older)) return chosen(older, olderNotice);
+            break; // this major stopped shipping the program below its newest: try the next major
+        }
+    }
+    if (skippedDeprecated.length) {
+        return { error: `npm_only_deprecated_releases_declare_executable:${packageName}:${executable}:${skippedDeprecated.join(',')}`, probed, skippedDeprecated };
+    }
+    return { error: `npm_no_release_declares_executable:${packageName}:${executable}`, probed, skippedDeprecated };
+}
+
 export class NpmManagerTool extends BaseTool {
     name = 'npm_manager';
     description = 'Manage npm dependencies and run scripts.';
@@ -1193,7 +1387,7 @@ export class NpmManagerTool extends BaseTool {
     tags = ['npm', 'package', 'install'];
     inputSchema = {
         type: 'object' as const,
-        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' }, cwd: { type: 'string' }, projectPath: { type: 'string' } },
+        properties: { command: { type: 'string' }, packages: { type: 'array', items: { type: 'string' } }, dev: { type: 'boolean' }, cwd: { type: 'string' }, projectPath: { type: 'string' }, providesBin: { type: 'string' } },
         required: ['command']
     };
     outputSchema = { type: 'object' as const, properties: { output: { type: 'string' } } };
@@ -1295,6 +1489,24 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
             let installArgs = args;
+            let binProvider: { version: string; major?: number; reason?: string; deprecationKnown: boolean; skippedDeprecated: string[] } | undefined;
+            // A repair that must run `npx <executable>` installs the release
+            // that ships it — chosen from registry manifests, never assumed.
+            const providesBin = typeof input?.providesBin === 'string' ? input.providesBin.trim() : '';
+            if (installLike && providesBin) {
+                const target = pkgs.length === 1 ? String(pkgs[0]).trim() : '';
+                if (!VALID_NPM_PACKAGE_NAME.test(target)) {
+                    return { ok: false, error: 'npm_provides_bin_needs_one_bare_package', logs };
+                }
+                const provider = await findReleaseProvidingBin(workDir, target, providesBin, Math.min(installTimeoutMs, 60_000));
+                logs.push(`npm.bin_probe=${target}:${providesBin} probed=${provider.probed.join(',') || 'none'}`);
+                if (!provider.version) return { ok: false, error: provider.error, logs };
+                const pinned = `${target}@^${provider.version}`;
+                installArgs = args.map(token => token === target ? pinned : token);
+                logs.push(`npm.bin_provider=${pinned} declares ${providesBin} — ${provider.reason}`);
+                binProvider = { version: provider.version, major: provider.major, reason: provider.reason,
+                    deprecationKnown: provider.deprecationKnown === true, skippedDeprecated: provider.skippedDeprecated };
+            }
             let r = await handleShellCommand('npm', installArgs, workDir, installLike ? installTimeoutMs : 5 * 60_000, false);
             if (!r.ok && installLike) {
                 const failureText = `${r.error || ''}\n${String((r as any).output || '')}\n${(r.logs || []).join('\n')}`;
@@ -1350,7 +1562,7 @@ export class NpmManagerTool extends BaseTool {
                 }
             }
 
-            return { ok: true, output: { output: String(r.output || '') }, logs: [...logs, ...(r.logs || [])] };
+            return { ok: true, output: { output: String(r.output || ''), ...(binProvider ? { binProvider } : {}) }, logs: [...logs, ...(r.logs || [])] };
         } catch (e: any) {
             return { ok: false, error: e.message || e.stderr, logs };
         }
@@ -1685,18 +1897,29 @@ export class ShellExecuteTool extends BaseTool {
 
             echoCommand();
             const r = await handleShellCommand(command, [], workDir, timeoutVal, false, context?.sessionId);
+            // A bare shell sentence («The system cannot find the path specified.»)
+            // names no path: carry the command and cwd so the phase error, the
+            // repair ticket and the model can act on it (eval round 15, P201).
+            // Machine codes stay codes.
+            const failure = String(r.error || 'command_failed');
+            const located = /^[A-Za-z0-9_.:-]+$/.test(failure) ? failure : `${failure.trim()} — command «${redactCmd(command).slice(0, 300)}» in ${workDir}`;
             const durationMs = Date.now() - startedAt;
             logs.push(...(r.logs || []));
             logs.push(`exec=${redactCmd(command)} server=local exit=${r.ok ? 0 : 1}`);
-            echoResult(String(r.output || ''), r.ok ? '' : String(r.error || ''), r.ok ? 0 : 1);
+            // What a command printed to stderr is part of what it said, success
+            // or not: unittest writes «Ran 0 tests … OK» there, and a reader of
+            // the runner's summary cannot tell a pass from an empty run without
+            // it (round 21). Only a failure falls back to the error text.
+            const stderr = r.ok ? String(r.stderr || '') : String(r.stderr ?? r.error ?? '');
+            echoResult(String(r.output || ''), stderr, r.ok ? 0 : 1);
 
             return {
                 ok: r.ok,
-                error: r.ok ? undefined : String(r.error || 'command_failed'),
+                error: r.ok ? undefined : located,
                 output: {
                     status: r.ok ? 'success' : 'failed',
                     stdout: String(r.output || ''),
-                    stderr: r.ok ? '' : String(r.error || ''),
+                    stderr,
                     exitCode: r.ok ? 0 : 1,
                     cwd: workDir,
                     durationMs,

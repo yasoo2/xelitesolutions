@@ -1,4 +1,12 @@
 import { ToolDefinition, ToolPermission } from '../types';
+import { DeliveryLedger, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl, browserQaTargetUrl, type DeliveryInstrument } from '../../../core/quality/delivery-verdict';
+import { collectServerEvidence, requestCoverageRepairTask, testsRequestedIn, type RequestCoverageReport } from '../../../core/quality/request-coverage';
+import { deliveryRun } from '../../../core/quality/delivery-run';
+import { RepairTicketService } from '../../services/RepairTicketService';
+import { clearDeliveryParts, deliveryPartsForRun } from '../../../core/quality/delivery-parts';
+import { builderClaimsRemeasured, markUnremeasuredBuilderClaims, measureBuilderProofs, regressedBuilderProofs, servedByStaticFallback, type BuilderProofs } from '../../../core/quality/builder-proofs';
+import { staticSiteRoot } from '../preview-site';
+import { bindRunCancellation } from '../../../core/session/attended-run';
 import { ensurePlanFinalVerification } from '../../../core/quality/plan-verification';
 import { isWithinRoot } from '../path-containment';
 import fs from 'fs';
@@ -12,29 +20,29 @@ import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
 import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
-import { hasExplicitRecordSchema } from '../../../core/design/app-blueprints';
+import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
+import { requestedArtifact } from '../../../core/design/requested-artifact';
 import { guardUnverifiedBuilderClaims } from '../../../core/api-discovery/reporting';
 import { publicUrlFor } from '../../../shared/utils/publicUrl';
 import { integrationProfile } from '../../../core/api-discovery/integration-profiles';
+import { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
+import { engineeringScope, hasEngineeringToken, sealEngineeringEvidence, snapshotEngineeringChild } from '../../services/AutonomousEngineeringPolicy';
+import { engineeringExecution, issueEngineeringExecution } from '../../services/AutonomousEngineeringPolicy';
+import { autonomousFileTextIsSafe } from '../../services/AutonomousFilePolicy';
+import { DISCOVERY_EVIDENCE_MAX_CHARS } from '../../../core/orchestrator/large-request-contract';
+import { namedTargetFile } from '../../../core/orchestrator/file-intent';
+import { foldChars } from '../../../core/orchestrator/promptNormalizer';
+import { AR_END, AR_START } from '../../../shared/arabic-word-boundary';
+import { pythonRunCommand, pythonTestCommand } from '../../../core/quality/python-test-runner';
+import { isPlaceholderScript } from '../../../core/quality/placeholder-script';
+import { servedByLocalModel } from '../../../core/llm/served-local-selection';
+import { localPlanDeadlineMs } from '../../../core/orchestrator/planner-run-boundary';
+export { isWorkspaceOverviewRequest } from '../../../core/orchestrator/workspace-overview';
 
 const MAX_PIPELINE_LOGS = 192;
 const MAX_PIPELINE_LOG_CHARS = 2_000;
 const MAX_DELIVERY_FILES = 120;
 const MAX_DELIVERY_FILE_DEPTH = 6;
-
-/** A bounded workspace question can be answered without selecting a project. */
-export function isWorkspaceOverviewRequest(request: string): boolean {
-    const text = String(request || '').replace(/\s+/g, ' ').trim();
-    const asksForRootListing = /\b(?:list|show|inspect)\b[^.!?\n]{0,80}\b(?:top[- ]level|root)\b[^.!?\n]{0,40}\bfiles?\b/i.test(text)
-        || /(?:اعرض|اعطِني|أعطني|اذكر|استكشف|افحص)[^.!؟\n]{0,80}(?:ملفات|محتويات)[^.!؟\n]{0,40}(?:الجذر|المستوى\s+الأعلى|مساحة\s+العمل\s+(?:الرئيسية|الأساسية))/i.test(text);
-    const asksForReadme = /\b(?:readme|read\s+the\s+readme|summari[sz]e\s+(?:the\s+)?readme)\b/i.test(text)
-        || /(?:اقرأ|لخ[ّّ]ص|لخص|ملخص)[^.!؟\n]{0,40}(?:README|الملف\s+التعريفي)/i.test(text);
-    // Listing the workspace root and reading its README are each bounded,
-    // non-destructive questions. Requiring both made a plain "list the
-    // top-level files" request ask the user for a project path even though
-    // the active workspace is the exact safe target.
-    return asksForRootListing || asksForReadme;
-}
 
 function summarizeReadme(content: string): string {
     const lines = String(content || '').split(/\r?\n/).map(line => line.trim()).filter(Boolean);
@@ -122,6 +130,10 @@ export function buildPipelineDecisionEvidence(input: {
     liveRunError?: string;
     scopeAudit?: { built?: number; requested?: number; missing?: string[] };
     phaseResults?: any[];
+    specVerificationFailed?: boolean;
+    specVerificationCoverage?: number;
+    requestCoverageFailed?: boolean;
+    requestCoverageMissing?: string[];
 }): PipelineDecisionEvidence {
     const results = Array.isArray(input.phaseResults) ? input.phaseResults : [];
     const verificationUnavailable = input.verificationUnavailable === true || results.some((result: any) => (
@@ -137,7 +149,10 @@ export function buildPipelineDecisionEvidence(input: {
     const phaseName = String(failedPhase?.phaseName || failedPhase?.name || failedPhase?.phaseNumber || '').trim();
     const phaseError = String(failedPhase?.primaryError || failedPhase?.error || '').trim();
     let honestBlocker: string | null = null;
-    if (input.liveRunError) {
+    if (input.requestCoverageFailed && input.requestCoverageMissing?.length) {
+        // Missing requested records are named before any other blocker.
+        honestBlocker = `requested_records_missing: ${input.requestCoverageMissing.slice(0, 12).join(', ')}`;
+    } else if (input.liveRunError) {
         honestBlocker = `live_run: ${String(input.liveRunError).slice(0, 420)}`;
     } else if (input.browserQaFailed) {
         honestBlocker = 'browser_qa_failed';
@@ -145,6 +160,8 @@ export function buildPipelineDecisionEvidence(input: {
         honestBlocker = 'verification_unavailable';
     } else if (input.scopeCoverageFailed && input.scopeAudit?.requested) {
         honestBlocker = `scope_coverage: ${Number(input.scopeAudit.built || 0)}/${Number(input.scopeAudit.requested)}`;
+    } else if (input.specVerificationFailed) {
+        honestBlocker = `spec_verification: ${Math.round((input.specVerificationCoverage || 0) * 100)}% coverage`;
     } else if (phaseName || phaseError) {
         honestBlocker = [phaseName, phaseError].filter(Boolean).join(': ').slice(0, 520);
     } else if (input.verificationFailed || input.liveRunVerificationFailed) {
@@ -631,37 +648,587 @@ export function alignGreenfieldPlanIdentity(plan: any, request: string, isGreenf
     return plan;
 }
 
+/**
+ * ⛔ A TEMPLATE IS A SKELETON, NOT THE PROGRAM HE ASKED FOR (CLAUDE.md law 4).
+ *
+ * Eval L3-cli, 2026-10-22: «Write a Node.js command-line tool wordcount.js that
+ * takes a file path argument and prints the number of words in that file» was
+ * delivered as src/index.ts holding a JSON property=value FILTER, a test that
+ * filters Alice/Bob/Charlie, and no wordcount.js — the same program every CLI
+ * request received, whatever it asked for.
+ *
+ * So the language skeleton (manifest, config, entry file name) still comes from
+ * here, but: the file he names is the entry; the stock filter/convert body is
+ * kept only when that IS what he asked for; otherwise the entry and its test are
+ * authored from his request. His text is also flattened before it is embedded,
+ * because a quote or newline in it broke package.json and the comment lines.
+ */
+const CLI_LANGUAGE_BY_EXTENSION: Record<string, ReturnType<typeof detectLanguage>> = {
+    '.js': 'javascript', '.cjs': 'javascript', '.mjs': 'javascript', '.ts': 'typescript',
+    '.py': 'python', '.sh': 'bash', '.go': 'go', '.rs': 'rust',
+};
+/**
+ * How each interpreted language's program is started in the scripts Joe
+ * delivers. ⛔ Python's is not a name (round 21 review, Q11): a delivered
+ * `python3 main.py`, written because the build machine was Linux, is the
+ * Microsoft Store stub on the Windows laptop he runs it on, and `python` is
+ * absent on many Linux boxes. The launcher (python-test-runner) finds the
+ * interpreter on the machine that runs the script.
+ */
+const CLI_START: Record<string, (entry: string) => string> = {
+    javascript: entry => `node ${entry}`, python: pythonRunCommand, bash: entry => `bash ${entry}`,
+};
+/** The interpreter as a brief names it to the file author — the language's own word, not the launcher. */
+const CLI_RUNNER: Record<string, string> = { javascript: 'node', python: 'python', bash: 'bash' };
+
+function buildCliScaffold(request: string, projectName: string): {
+    projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
+} {
+    // The file he named is the program only when it is source code. Eval P301
+    // (2026-10-25): «… وتكتب الأسطر الخاطئة في ملف errors.csv» names the file
+    // the program WRITES; taking it as the entry ran `python errors.csv`, and
+    // the Python program was authored into a .csv file. A data file stays the
+    // program's input or output, as his request says; the entry keeps the
+    // language's own name. Only source names are counted, BEFORE the «exactly
+    // one name» rule (round 21 review): «validate.py … errors.csv» lost
+    // validate.py, because two names counted as no name.
+    const named = namedTargetFile(request, name => Boolean(CLI_LANGUAGE_BY_EXTENSION[path.extname(name).toLowerCase()]));
+    const namedExt = named ? path.extname(named).toLowerCase() : '';
+    const namedEntry = named && CLI_LANGUAGE_BY_EXTENSION[namedExt] ? named : null;
+    // The program he named decides the language before any keyword guess does.
+    const lang = (namedEntry && CLI_LANGUAGE_BY_EXTENSION[namedExt]) || detectLanguage(request);
+    const format = detectInputFormat(request);
+    const flat = request.replace(/[\r\n\t]+/g, ' ').replace(/["\\`$]/g, "'").trim();
+
+    const scaffold = generateCliScaffold(lang, format, flat, projectName);
+    const { pkgJson, tsconfigJson, sampleFile, sampleFileName, variant } = scaffold;
+    let { entryPoint, entryPointContent, testFile, testFileName } = scaffold;
+    let manifest = pkgJson;
+    // A named entry replaces the default one wherever the manifest runs it.
+    // Interpreted languages only: compiled targets keep their build layout.
+    // Only a SOURCE file in the program's language is an entry: «تكتب الأسطر
+    // الخاطئة في ملف errors.csv» names what the program writes, and taking it
+    // as the entry wrote the Python program into errors.csv, which the program
+    // then overwrote with its own output (eval round 19, P301). A named data
+    // file reaches the program through the request text, never the structure.
+    const runner = CLI_RUNNER[lang];
+    const start = CLI_START[lang];
+    if (namedEntry && start && namedEntry !== entryPoint) {
+        try {
+            const pkg = JSON.parse(manifest);
+            pkg.main = namedEntry;
+            pkg.scripts = { ...(pkg.scripts || {}), start: start(namedEntry) };
+            manifest = JSON.stringify(pkg, null, 2);
+            entryPoint = namedEntry;
+        } catch { /* keep the default entry when the stock manifest is unreadable */ }
+    }
+    // A Python program's tests are named after it and run by the standard
+    // library: a test script that needs pytest made the verdict depend on the
+    // machine (this laptop has no pytest), not on the program (eval round 19).
+    if (lang === 'python') {
+        testFileName = `test_${path.basename(entryPoint, '.py').replace(/[^A-Za-z0-9_]/g, '_')}.py`;
+        testFile = generatePythonTest(entryPoint, format === 'csv');
+        try {
+            const pkg = JSON.parse(manifest);
+            pkg.scripts = { ...(pkg.scripts || {}), test: pythonTestCommand([testFileName], true) };
+            manifest = JSON.stringify(pkg, null, 2);
+        } catch { /* keep the stock manifest */ }
+    }
+
+    // ⛔ THE STOCK BODY AND ITS TEST ARE ONE VARIANT, AND IT IS KEPT ONLY WHEN
+    // IT IS THE PROGRAM HE ASKED FOR (round 21 review, Q2). The Go and Rust CSV
+    // entries shipped the JSON-filter test (`sample.json city=NYC` against a
+    // program that reads CSV) — once the test compiled, it failed every time;
+    // the JavaScript skeleton has no CSV body, so «CSV to JSON» got the JSON
+    // filter. Each template now says which program its entry is; the test is
+    // that program's own, and a request for anything else is authored from it.
+    const asksForFilter = /\bfilter(?:s|ing)?\b|property\s*=\s*value|matching\s+entries|فلتر|تصفية|يصفي/i.test(request);
+    // A tab-separated file is read as CSV by detectInputFormat, but the stock
+    // converter splits on commas: a TSV request is not that program.
+    const asksForCsvToJson = format === 'csv' && /\bjson\b/i.test(request) && !/\btsv\b|\btab.separated/i.test(request);
+    const templateServesRequest = variant === 'csv-to-json'
+        ? asksForCsvToJson && !asksForFilter
+        : asksForFilter && (format === 'json' || format === 'unknown');
+
+    const structure: Record<string, string> = { 'package.json': manifest, [entryPoint]: entryPointContent };
+    if (templateServesRequest) {
+        structure[testFileName] = testFile;
+        structure[sampleFileName] = sampleFile;
+    }
+    if (tsconfigJson) structure['tsconfig.json'] = tsconfigJson;
+    // go.mod / Cargo.toml: the manifest the language's own toolchain reads.
+    Object.assign(structure, scaffold.toolchainFiles);
+
+    const tasks: any[] = [{
+        tool: 'scaffold_project',
+        description: `CLI tool scaffold for: ${request}`,
+        args: { request, structure },
+    }];
+    if (!templateServesRequest) {
+        const runCommand = runner ? `${runner} ${entryPoint}` : `the project's start script`;
+        let testCommand = '';
+        try { testCommand = String(JSON.parse(manifest)?.scripts?.test || ''); } catch { /* the brief then names no command */ }
+        tasks.push({
+            tool: 'ai_write_file',
+            description: `Write ${entryPoint} from the request`,
+            args: {
+                path: entryPoint,
+                description: `${request}\n\nWrite the complete ${lang} program in ${entryPoint}. It is run as \`${runCommand} <arguments>\`. `
+                    + 'Implement exactly the behaviour requested above, read inputs from the command-line arguments, print results to stdout, '
+                    + 'print a short usage line and exit with a non-zero code when arguments are missing or a file cannot be read.',
+            },
+        }, {
+            tool: 'ai_write_file',
+            description: `Write ${testFileName} for the requested behaviour`,
+            args: {
+                path: testFileName,
+                description: cliTestBrief(entryPoint, runCommand, testCommand, request, lang, toolchainPackageName(projectName)),
+            },
+        });
+    }
+
+    return {
+        projectName,
+        reason: templateServesRequest
+            ? `a CLI/utility/script was asked for; file-level scaffolding with ${lang} structure`
+            : `a CLI/utility/script was asked for; ${lang} skeleton, then ${entryPoint} authored from the request`,
+        phases: [{
+            phaseNumber: 1,
+            name: 'CLI Scaffold',
+            tasks,
+        }]
+    };
+}
+
+/**
+ * ⛔ A LANGUAGE HE NAMES IN ARABIC IS NAMED (round 21 review). «أداة سطر أوامر
+ * بلغة بايثون» fell through every English pattern to the TypeScript default.
+ * Arabic names are matched on the folded request (foldChars: أ/إ/آ→ا, ة→ه,
+ * ى→ي), so «بلغة» and «بلغه» are one spelling. A name that is also an everyday
+ * word counts only inside a language phrase: English «go» («let me go
+ * through my notes»), Arabic «جو» (also Joe's own name, and «weather»), «باش»
+ * (Maghrebi «in order to»), «شل», «رست».
+ */
+/**
+ * ⛔ AND THE NAME CARRIES ITS CLITICS (round 21 review, Q7). Arabic glues
+ * «و/ف», then «ب/ل/ك», then the article «ال» to the noun: «بلغة البايثون»,
+ * «بالبايثون», «باستخدام البايثون», «بلغة الجافا سكريبت» all fell to the
+ * TypeScript default, because the name was matched bare. A name that is only
+ * a language (Python, TypeScript, JavaScript) is matched with any of them; a
+ * name that is also an everyday word keeps needing its language phrase, and
+ * there takes the article too («بلغة الرست»).
+ */
+const AR_NAME_CLITICS = '[وف]?(?:لل|[بلك]?(?:ال)?)';
+const IN_LANGUAGE_AR = `${AR_START}[وف]?(?:بال|ب|ال)?لغه\\s+(?:ال)?`;
+const ARABIC_LANGUAGE_NAMES: Array<[ReturnType<typeof detectLanguage>, RegExp]> = [
+    ['python', new RegExp(`${AR_START}${AR_NAME_CLITICS}با?ي(?:ث|ت)ون${AR_END}`, 'u')],
+    ['typescript', new RegExp(`${AR_START}${AR_NAME_CLITICS}تايب\\s*سكري?بت${AR_END}`, 'u')],
+    ['bash', new RegExp(`${IN_LANGUAGE_AR}(?:باش|شل)${AR_END}|${AR_START}سكري?بت\\s+(?:باش|شل)${AR_END}|${AR_START}(?:باش|شل)\\s+سكري?بت${AR_END}`, 'u')],
+    ['go', new RegExp(`${IN_LANGUAGE_AR}(?:جو|غو|قو|go)${AR_END}|${AR_START}(?:جو|غو|قو)لانج${AR_END}`, 'u')],
+    ['rust', new RegExp(`${IN_LANGUAGE_AR}(?:رست|راست)${AR_END}`, 'u')],
+    ['javascript', new RegExp(`${AR_START}${AR_NAME_CLITICS}جافا\\s*سكري?بت${AR_END}`, 'u')],
+];
+
+function detectLanguage(request: string): 'typescript' | 'python' | 'bash' | 'go' | 'rust' | 'javascript' | 'unknown' {
+    const req = foldChars(request);
+    
+    // Explicit language mentions (TypeScript first for specificity)
+    if (/\bpython[23]?\b/.test(req)) return 'python';
+    if (/\btypescript\b|\bts\b/.test(req)) return 'typescript';
+    if (/\bbash\b|\bshell\b|\bsh\b/.test(req)) return 'bash';
+    if (/\bgolang\b|\bgo\s+(?:cli|program|tool|script|binary|module|code|app|application|utility|command)\b|\b(?:in|using|written\s+in)\s+go\b/.test(req)) return 'go';
+    if (/\brust\b/.test(req)) return 'rust';
+    if (/\bjavascript\b/.test(req)) return 'javascript';
+    for (const [lang, name] of ARABIC_LANGUAGE_NAMES) if (name.test(req)) return lang;
+    
+    // Framework/tool hints (Node.js ecosystem defaults to TypeScript)
+    if (/django|flask|fastapi|pandas|numpy|pip|conda|virtualenv/.test(req)) return 'python';
+    if (/node|npm|yarn|pnpm|express|fastify|nestjs|react|vue|next/.test(req)) return 'typescript';
+    if (/cargo|rustup|tokio|actix/.test(req)) return 'rust';
+    if (/go\.mod|gin|echo|fiber/.test(req)) return 'go';
+    
+    return 'typescript'; // default fallback
+}
+
+function detectInputFormat(request: string): 'csv' | 'json' | 'text' | 'unknown' {
+    const req = request.toLowerCase();
+    
+    if (/\bcsv\b|\bcomma.separated/.test(req)) return 'csv';
+    if (/\btsv\b|\btab.separated/.test(req)) return 'csv'; // treat TSV as CSV
+    if (/\bjson\b|\.json\b/.test(req)) return 'json';
+    if (/\bxml\b/.test(req)) return 'text';
+    if (/\btext\b|\.txt\b/.test(req)) return 'text';
+    
+    return 'unknown';
+}
+
+/** Which stock program a template's entry is: the JSON filter, or the CSV → JSON converter. */
+type StockVariant = 'filter' | 'csv-to-json';
+
+/** The stock program's own fixture, by variant: the filter reads JSON records, the converter a CSV. */
+function stockSample(variant: StockVariant): { sampleFile: string; sampleFileName: string } {
+    return variant === 'csv-to-json'
+        ? { sampleFile: 'name,city\nAlice,NYC\nBob,LA\n', sampleFileName: 'sample.csv' }
+        : { sampleFile: generateSampleData(), sampleFileName: 'sample.json' };
+}
+
+function generateCliScaffold(lang: string, format: string, request: string, projectName: string): {
+    pkgJson: string;
+    tsconfigJson: string;
+    entryPoint: string;
+    entryPointContent: string;
+    testFile: string;
+    sampleFile: string;
+    sampleFileName: string;
+    testFileName: string;
+    toolchainFiles: Record<string, string>;
+    /** The program the entry IS; its test is that program's test (Q2). */
+    variant: StockVariant;
+} {
+    const isCsv = format === 'csv';
+    
+    switch (lang) {
+        case 'python':
+            return generatePythonScaffold(request, projectName, isCsv);
+        case 'bash':
+            return generateBashScaffold(request, projectName, isCsv);
+        case 'go':
+            return generateGoScaffold(request, projectName, isCsv);
+        case 'rust':
+            return generateRustScaffold(request, projectName, isCsv);
+        case 'javascript':
+            return generateJavaScriptScaffold(request, projectName, isCsv);
+        case 'typescript':
+        default:
+            return generateTypeScriptScaffold(request, projectName, isCsv);
+    }
+}
+
+/**
+ * package.json is written as data, never pasted together: a dependency list
+ * that ended in a comma (the JavaScript CSV skeleton) was not JSON at all.
+ * npm reads it, so it names npm packages only; a Python, Go or Rust library
+ * belongs in that language's own manifest (eval P301, 2026-10-25: a Python
+ * tool's package.json asked npm for `"pandas": "^2.0.0"`).
+ */
+function npmManifest(projectName: string, request: string, main: string, scripts: Record<string, string>, devDependencies?: Record<string, string>): string {
+    return JSON.stringify({
+        name: projectName, version: '1.0.0', description: request, main, scripts,
+        ...(devDependencies ? { devDependencies } : {}),
+    }, null, 2);
+}
+
+/** A name both Go modules and Cargo packages accept. */
+function toolchainPackageName(projectName: string): string {
+    return projectName.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|[-_]+$/g, '') || 'cli-tool';
+}
+
+function generateTypeScriptScaffold(request: string, projectName: string, isCsv: boolean) {
+    const pkgJson = npmManifest(projectName, request, 'dist/index.js',
+        { build: 'tsc', start: 'node dist/index.js', test: 'node --test test.js' },
+        { typescript: '^5.0.0', '@types/node': '^20.0.0', ...(isCsv ? { 'csv-parse': '^5.5.0' } : {}) });
+    const tsconfigJson = `{\n  "compilerOptions": {\n    "target": "ES2020",\n    "module": "commonjs",\n    "outDir": "./dist",\n    "rootDir": "./src",\n    "strict": true,\n    "esModuleInterop": true,\n    "skipLibCheck": true,\n    "forceConsistentCasingInFileNames": true\n  },\n  "include": ["src/**/*"]\n}`;
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generateTypeScriptEntry(request, isCsv);
+    const testFile = generateNodeCliTest('node dist/index.js', variant);
+    return { pkgJson, tsconfigJson, entryPoint: 'src/index.ts', entryPointContent, testFile, testFileName: 'test.js', toolchainFiles: {}, variant, ...stockSample(variant) };
+}
+
+function generatePythonScaffold(request: string, projectName: string, isCsv: boolean) {
+    // The test runs with Python alone: a standard-library unittest suite named
+    // after the program (eval P301: «No module named pytest» failed a finished
+    // program at delivery). A Python library is not an npm package, so the
+    // manifest only says how the program starts and how its tests run.
+    // Both scripts find the interpreter on the machine that runs them (Q11).
+    const pkgJson = npmManifest(projectName, request, 'main.py', { start: pythonRunCommand('main.py'), test: pythonTestCommand(['test_main.py'], true) });
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generatePythonEntry(request, isCsv);
+    const testFile = generatePythonTest('main.py', isCsv);
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.py', entryPointContent, testFile, testFileName: 'test_main.py', toolchainFiles: {}, variant, ...stockSample(variant) };
+}
+
+function generateBashScaffold(request: string, projectName: string, isCsv: boolean) {
+    const pkgJson = npmManifest(projectName, request, 'main.sh', { start: 'bash main.sh', test: 'bash test.sh' });
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generateBashEntry(request, isCsv);
+    const testFile = generateBashTest(variant);
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.sh', entryPointContent, testFile, testFileName: 'test.sh', toolchainFiles: {}, variant, ...stockSample(variant) };
+}
+
+function generateGoScaffold(request: string, projectName: string, isCsv: boolean) {
+    // The CSV entry reads with encoding/csv, so the module requires nothing.
+    const pkgJson = npmManifest(projectName, request, 'main.go', { build: 'go build -o dist/main .', start: './dist/main', test: 'go test ./...' });
+    const goMod = `module ${toolchainPackageName(projectName)}\n\ngo 1.21\n`;
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generateGoEntry(request, isCsv);
+    const testFile = generateGoTest(variant);
+    // `go test` compiles only files named *_test.go: a test in test.go is part
+    // of the program and «[no test files]» passes (round 21 review).
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'main.go', entryPointContent, testFile, testFileName: 'main_test.go', toolchainFiles: { 'go.mod': goMod }, variant, ...stockSample(variant) };
+}
+
+function generateRustScaffold(request: string, projectName: string, isCsv: boolean) {
+    const crate = toolchainPackageName(projectName);
+    const pkgJson = npmManifest(projectName, request, 'src/main.rs', { build: 'cargo build --release', start: `./target/release/${crate}`, test: 'cargo test' });
+    // Both stock entries use serde_json; the CSV one also reads with the csv crate.
+    const cargoToml = `[package]\nname = "${crate}"\nversion = "0.1.0"\nedition = "2021"\n\n[dependencies]\n${isCsv ? 'csv = "1.3"\n' : ''}serde_json = "1.0"\n`;
+    const variant: StockVariant = isCsv ? 'csv-to-json' : 'filter';
+    const entryPointContent = generateRustEntry(request, isCsv);
+    const testFile = generateRustTest(crate, variant);
+    // src/test.rs is compiled only when main.rs declares `mod test;` — it did
+    // not, so `cargo test` ran 0 tests and passed (round 21 review). A file in
+    // tests/ is an integration test cargo builds by itself, against the binary.
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'src/main.rs', entryPointContent, testFile, testFileName: 'tests/cli.rs', toolchainFiles: { 'Cargo.toml': cargoToml }, variant, ...stockSample(variant) };
+}
+
+function generateJavaScriptScaffold(request: string, projectName: string, isCsv: boolean) {
+    const pkgJson = npmManifest(projectName, request, 'index.js', { start: 'node index.js', test: 'node --test test.js' },
+        isCsv ? { 'csv-parse': '^5.5.0' } : undefined);
+    // The JavaScript skeleton has one body, the JSON filter: a CSV request is
+    // not that program, so buildCliScaffold has it authored from the request.
+    const variant: StockVariant = 'filter';
+    const entryPointContent = generateJavaScriptEntry(request);
+    const testFile = generateNodeCliTest('node index.js', variant);
+    return { pkgJson: pkgJson, tsconfigJson: '', entryPoint: 'index.js', entryPointContent, testFile, testFileName: 'test.js', toolchainFiles: {}, variant, ...stockSample(variant) };
+}
+
+/** The TypeScript entry of the variant generateCliScaffold chose (the same reading of the request, never a second guess). */
+function generateTypeScriptEntry(request: string, isCsv: boolean): string {
+    if (isCsv) {
+        return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\nimport { parse } from 'csv-parse/sync';\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\n\nif (!filePath) {\n  console.error('Usage: node dist/index.js <csv-file>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const records = parse(content, { columns: true, skip_empty_lines: true });\n  console.log(JSON.stringify(records, null, 2));\n} catch (err) {\n  console.error('Error:', (err as Error).message);\n  process.exit(1);\n}`;
+    }
+    return `// ${request}\nimport fs from 'fs';\nimport path from 'path';\n\nfunction filterJson(data: any[], filter: string): any[] {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args: string[] = process.argv.slice(2);\nconst filePath: string = args[0];\nconst filter: string = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node dist/index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content: string = fs.readFileSync(filePath, 'utf-8');\n  const data: any[] = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', (err as Error).message);\n  process.exit(1);\n}\n\nexport { filterJson };`;
+}
+
+function generatePythonEntry(request: string, isCsv: boolean): string {
+    if (isCsv) {
+        return `# ${request}\nimport csv\nimport json\nimport sys\n\n\ndef main():\n    if len(sys.argv) < 2:\n        print("Usage: python main.py <csv-file>", file=sys.stderr)\n        sys.exit(1)\n    try:\n        with open(sys.argv[1], newline='', encoding='utf-8') as f:\n            rows = list(csv.DictReader(f))\n    except OSError as e:\n        print(f"Error: {e}", file=sys.stderr)\n        sys.exit(1)\n    print(json.dumps(rows, indent=2, ensure_ascii=False))\n\n\nif __name__ == "__main__":\n    main()`;
+    }
+    return `# ${request}\nimport json\nimport sys\n\ndef filter_json(data, filter_str):\n    prop, value = filter_str.split('=')\n    if not prop or not value:\n        raise ValueError("Filter must be in format: property=value")\n    return [item for item in data if str(item.get(prop, '')) == value]\n\ndef main():\n    if len(sys.argv) < 3:\n        print("Usage: python main.py <json-file> <property=value>")\n        sys.exit(1)\n    \n    file_path = sys.argv[1]\n    filter_str = sys.argv[2]\n    \n    try:\n        with open(file_path, 'r') as f:\n            data = json.load(f)\n        if not isinstance(data, list):\n            raise ValueError("JSON file must contain an array")\n        filtered = filter_json(data, filter_str)\n        print(json.dumps(filtered, indent=2))\n    except Exception as e:\n        print(f"Error: {e}")\n        sys.exit(1)\n\nif __name__ == "__main__":\n    main()`;
+}
+
+function generateBashEntry(request: string, isCsv: boolean): string {
+    if (isCsv) {
+        // `csvtool -u JSON` sets csvtool's output SEPARATOR to «JSON» and names
+        // no command — it failed wherever csvtool was installed — and
+        // `command -v python3` finds the Windows Store stub too. Python 3's own
+        // csv module reads it, run by the first name that really is Python 3.
+        return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 1 ]; then\n    echo "Usage: \$0 <csv-file>"\n    exit 1\nfi\n\n# Python 3 reads the CSV with its standard csv module: the first name on this\n# machine that really is Python 3 (a Store stub or a Python 2 is not).\nfor PY in python3 python; do\n    if "\$PY" -c 'import sys; sys.exit(sys.version_info[0] - 3)' >/dev/null 2>&1; then\n        exec "\$PY" -c '\nimport csv, json, sys\ntry:\n    with open(sys.argv[1], newline="", encoding="utf-8") as f:\n        print(json.dumps(list(csv.DictReader(f)), indent=2, ensure_ascii=False))\nexcept OSError as e:\n    print("Error: %s" % e, file=sys.stderr)\n    sys.exit(1)\n' "\$1"\n    fi\ndone\necho "Error: Python 3 is required to read the CSV file" >&2\nexit 1`;
+    }
+    return `#!/bin/bash\n# ${request}\n\nif [ \$# -lt 2 ]; then\n    echo "Usage: \$0 <json-file> <property=value>"\n    exit 1\nfi\n\nJSON_FILE="\$1"\nFILTER="\$2"\n\nif ! command -v jq &> /dev/null; then\n    echo "Error: jq required" >&2\n    exit 1\nfi\n\njq --arg filter "\$FILTER" 'map(select(.\$filter | split(\"=\") | .[0] as \$k | .[1] as \$v | .[\$k] == \$v))' "\$JSON_FILE"`;
+}
+
+function generateGoEntry(request: string, isCsv: boolean): string {
+    if (isCsv) {
+        return `// ${request}\npackage main\n\nimport (\n\t"encoding/csv"\n\t"encoding/json"\n\t"fmt"\n\t"os"\n)\n\nfunc main() {\n\tif len(os.Args) < 2 {\n\t\tfmt.Println("Usage: go run main.go <csv-file>")\n\t\tos.Exit(1)\n\t}\n\t\n\tfile, err := os.Open(os.Args[1])\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\tdefer file.Close()\n\n\treader := csv.NewReader(file)\n\trecords, err := reader.ReadAll()\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tif len(records) == 0 {\n\t\treturn\n\t}\n\n\theaders := records[0]\n\tvar results []map[string]string\n\tfor _, row := range records[1:] {\n\t\trecord := make(map[string]string)\n\t\tfor i, h := range headers {\n\t\t\trecord[h] = row[i]\n\t\t}\n\t\tresults = append(results, record)\n\t}\n\n\toutput, _ := json.MarshalIndent(results, "", "  ")\n\tfmt.Println(string(output))\n}`;
+    }
+    return `// ${request}\npackage main\n\nimport (\n\t"encoding/json"\n\t"fmt"\n\t"os"\n\t"strings"\n)\n\nfunc main() {\n\tif len(os.Args) < 3 {\n\t\tfmt.Println("Usage: go run main.go <json-file> <property=value>")\n\t\tos.Exit(1)\n\t}\n\n\tfilePath := os.Args[1]\n\tfilter := os.Args[2]\n\n\tcontent, err := os.ReadFile(filePath)\n\tif err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tvar data []map[string]interface{}\n\tif err := json.Unmarshal(content, &data); err != nil {\n\t\tfmt.Fprintf(os.Stderr, "Error: %v\\n", err)\n\t\tos.Exit(1)\n\t}\n\n\tprop, value, _ := strings.Cut(filter, "=")\n\tvar filtered []map[string]interface{}\n\tfor _, item := range data {\n\t\tif val, ok := item[prop].(string); ok && val == value {\n\t\t\tfiltered = append(filtered, item)\n\t\t}\n\t}\n\n\toutput, _ := json.MarshalIndent(filtered, "", "  ")\n\tfmt.Println(string(output))\n}`;
+}
+
+function generateRustEntry(request: string, isCsv: boolean): string {
+    if (isCsv) {
+        // Each row is built from the header and the record, column by column:
+        // csv's deserialize into a serde_json::Value reads ONE field per row
+        // (its deserialize_any takes the next field), so «CSV to JSON» printed
+        // only the first column (read, round 22, Q2; no cargo on this machine).
+        return `// ${request}\nuse std::env;\nuse std::fs::File;\nuse std::io::BufReader;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 2 {\n        eprintln!("Usage: {} <csv-file>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file = match File::open(&args[1]) {\n        Ok(file) => file,\n        Err(err) => {\n            eprintln!("Error: {}", err);\n            std::process::exit(1);\n        }\n    };\n    let mut reader = csv::Reader::from_reader(BufReader::new(file));\n    let headers = match reader.headers() {\n        Ok(headers) => headers.clone(),\n        Err(err) => {\n            eprintln!("Error: {}", err);\n            std::process::exit(1);\n        }\n    };\n    let mut results = Vec::new();\n    for record in reader.records() {\n        let record = match record {\n            Ok(record) => record,\n            Err(err) => {\n                eprintln!("Error: {}", err);\n                std::process::exit(1);\n            }\n        };\n        // One JSON object per row, keyed by the header: every column, as text.\n        let mut row = serde_json::Map::new();\n        for (header, value) in headers.iter().zip(record.iter()) {\n            row.insert(header.to_string(), serde_json::Value::String(value.to_string()));\n        }\n        results.push(serde_json::Value::Object(row));\n    }\n\n    println!("{}", serde_json::to_string_pretty(&results).unwrap());\n}`;
+    }
+    return `// ${request}\nuse std::env;\nuse std::fs;\nuse serde_json::Value;\n\nfn main() {\n    let args: Vec<String> = env::args().collect();\n    if args.len() < 3 {\n        eprintln!("Usage: {} <json-file> <property=value>", args[0]);\n        std::process::exit(1);\n    }\n\n    let file_path = &args[1];\n    let filter = &args[2];\n    let parts: Vec<&str> = filter.split('=').collect();\n    if parts.len() != 2 {\n        eprintln!("Filter must be in format: property=value");\n        std::process::exit(1);\n    }\n    let (prop, value) = (parts[0], parts[1]);\n\n    let content = fs::read_to_string(file_path).expect("Failed to read file");\n    let data: Vec<Value> = serde_json::from_str(&content).expect("Invalid JSON");\n    \n    let filtered: Vec<Value> = data.into_iter()\n        .filter(|item| item.get(&prop).and_then(|v| v.as_str()) == Some(value))\n        .collect();\n    \n    println!("{}", serde_json::to_string_pretty(&filtered).unwrap());\n}`;
+}
+
+/**
+ * A CommonJS program: it requires its modules, so it exports with
+ * module.exports. Its `export { filterJson }` made Node read the file as an ES
+ * module, where `require` is not defined — the stock tool crashed on its
+ * first line and its own test failed every time (measured, round 22, Q2).
+ */
+function generateJavaScriptEntry(request: string): string {
+    return `// ${request}\nconst fs = require('fs');\nconst path = require('path');\n\nfunction filterJson(data, filter) {\n  const [prop, value] = filter.split('=');\n  if (!prop || !value) {\n    throw new Error('Filter must be in format: property=value');\n  }\n  return data.filter(item => item[prop] == value);\n}\n\nconst args = process.argv.slice(2);\nconst filePath = args[0];\nconst filter = args[1]; // format: property=value\n\nif (!filePath || !filter) {\n  console.error('Usage: node index.js <json-file> <property=value>');\n  process.exit(1);\n}\n\ntry {\n  const content = fs.readFileSync(filePath, 'utf-8');\n  const data = JSON.parse(content);\n  if (!Array.isArray(data)) {\n    console.error('JSON file must contain an array');\n    process.exit(1);\n  }\n  const filtered = filterJson(data, filter);\n  console.log(JSON.stringify(filtered, null, 2));\n} catch (err) {\n  console.error('Error:', err.message);\n  process.exit(1);\n}\n\nmodule.exports = { filterJson };`;
+}
+
+/**
+ * The stock program's own node test, for the variant its entry is (Q2): the
+ * filter's test filters, the converter's test converts. Both write their own
+ * fixture beside themselves and run the program from there.
+ */
+function generateNodeCliTest(command: string, variant: StockVariant): string {
+    const cp = 'child_process';
+    const ex = 'execSync';
+    const head = `const { ${ex} } = require('${cp}');\nconst fs = require('fs');\nconst path = require('path');\n\n`;
+    if (variant === 'csv-to-json') {
+        return `// Test for the CSV to JSON tool\n${head}fs.writeFileSync(path.join(__dirname, 'sample.csv'), 'name,city\\nAlice,NYC\\nBob,LA\\n');\n\nconst output = ${ex}('${command} sample.csv', { encoding: 'utf-8', cwd: __dirname });\nconst rows = JSON.parse(output.trim());\nif (rows.length !== 2) throw new Error('Expected 2 rows, got ' + rows.length);\nif (rows[0].name !== 'Alice' || rows[0].city !== 'NYC') throw new Error('Unexpected first row: ' + JSON.stringify(rows[0]));\nif (rows[1].name !== 'Bob' || rows[1].city !== 'LA') throw new Error('Unexpected second row: ' + JSON.stringify(rows[1]));\nconsole.log('Test passed!');`;
+    }
+    return `// Test for CLI filter tool\n${head}const testFile = path.join(__dirname, 'sample.json');\nconst testData = [\n  { name: 'Alice', age: 30, city: 'NYC' },\n  { name: 'Bob', age: 25, city: 'LA' },\n  { name: 'Charlie', age: 35, city: 'NYC' }\n];\nfs.writeFileSync(testFile, JSON.stringify(testData, null, 2));\n\nconst output = ${ex}('${command} sample.json city=NYC', { encoding: 'utf-8', cwd: __dirname });\nconst result = JSON.parse(output.trim());\nif (result.length !== 2) throw new Error('Expected 2 results');\nif (result[0].name !== 'Alice') throw new Error('Expected Alice');\nif (result[1].name !== 'Charlie') throw new Error('Expected Charlie');\nconsole.log('Test passed!');`;
+}
+
+/** The stock program's own test, as a standard-library unittest case run against its entry. */
+function generatePythonTest(entry = 'main.py', isCsv = false): string {
+    const head = `import json\nimport os\nimport subprocess\nimport sys\nimport unittest\n\nHERE = os.path.dirname(os.path.abspath(__file__))\nENTRY = os.path.join(HERE, ${JSON.stringify(entry)})\n\n\n`;
+    const body = isCsv
+        ? `class CsvToJsonTest(unittest.TestCase):\n    def test_converts_every_row(self):\n        sample = os.path.join(HERE, 'sample.csv')\n        with open(sample, 'w', encoding='utf-8', newline='') as f:\n            f.write('name,city\\nAlice,NYC\\nBob,LA\\n')\n        result = subprocess.run([sys.executable, ENTRY, sample], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual(json.loads(result.stdout), [{'name': 'Alice', 'city': 'NYC'}, {'name': 'Bob', 'city': 'LA'}])\n`
+        : `class FilterToolTest(unittest.TestCase):\n    def test_filters_by_property(self):\n        sample = os.path.join(HERE, 'sample.json')\n        with open(sample, 'w', encoding='utf-8') as f:\n            json.dump([{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}], f, indent=2)\n        result = subprocess.run([sys.executable, ENTRY, sample, 'city=NYC'], capture_output=True, text=True)\n        self.assertEqual(result.returncode, 0, result.stderr)\n        self.assertEqual([item['name'] for item in json.loads(result.stdout)], ['Alice', 'Charlie'])\n`;
+    return `${head}${body}\n\nif __name__ == '__main__':\n    unittest.main()\n`;
+}
+
+/**
+ * How a Python program's tests run, and how it starts on any machine: one
+ * runner (python-test-runner), shared with the delivery's record gate. An
+ * empty run fails on every Python; pytest-style files, their xunit hooks and
+ * coroutine tests are really run; the interpreter is found where the script
+ * runs, never named for the machine that built it.
+ */
+export { pythonTestCommand };
+
+/** The stock program's bash test, for the variant its entry is (Q2). */
+function generateBashTest(variant: StockVariant): string {
+    if (variant === 'csv-to-json') {
+        return `#!/bin/bash\n# Test for the CSV to JSON tool\n\nprintf 'name,city\\nAlice,NYC\\nBob,LA\\n' > sample.csv\nOUTPUT=$(bash main.sh sample.csv) || { echo "the program failed: $OUTPUT"; exit 1; }\nfor EXPECTED in '"name": "Alice"' '"city": "NYC"' '"name": "Bob"' '"city": "LA"'; do\n    if ! printf '%s' "$OUTPUT" | grep -qF "$EXPECTED"; then\n        echo "Expected $EXPECTED in the output, got: $OUTPUT"\n        exit 1\n    fi\ndone\n\necho "Test passed!"`;
+    }
+    return `#!/bin/bash\n# Test for CLI filter tool\n\nTEST_FILE="sample.json"\nTEST_DATA='[\n  {"name": "Alice", "age": 30, "city": "NYC"},\n  {"name": "Bob", "age": 25, "city": "LA"},\n  {"name": "Charlie", "age": 35, "city": "NYC"}\n]'\necho "$TEST_DATA" > "$TEST_FILE"\n\nOUTPUT=$(bash main.sh "$TEST_FILE" 'city=NYC')\nRESULT_COUNT=$(echo "$OUTPUT" | jq length)\nif [ "$RESULT_COUNT" -ne 2 ]; then\n    echo "Expected 2 results, got $RESULT_COUNT"\n    exit 1\nfi\n\nNAME_0=$(echo "$OUTPUT" | jq -r '.[0].name')\nif [ "$NAME_0" != "Alice" ]; then\n    echo "Expected Alice, got $NAME_0"\n    exit 1\nfi\n\nNAME_1=$(echo "$OUTPUT" | jq -r '.[1].name')\nif [ "$NAME_1" != "Charlie" ]; then\n    echo "Expected Charlie, got $NAME_1"\n    exit 1\nfi\n\necho "Test passed!"`;
+}
+
+/** The stock program's Go test, for the variant its entry is (Q2): the CSV entry is run on a CSV, never the filter's JSON. */
+function generateGoTest(variant: StockVariant): string {
+    if (variant === 'csv-to-json') {
+        return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"os/exec"\n\t"testing"\n)\n\nfunc TestCSVToJSON(t *testing.T) {\n\tif err := os.WriteFile("sample.csv", []byte("name,city\\nAlice,NYC\\nBob,LA\\n"), 0644); err != nil {\n\t\tt.Fatal(err)\n\t}\n\n\toutput, err := exec.Command("go", "run", "main.go", "sample.csv").Output()\n\tif err != nil {\n\t\tt.Fatalf("the program failed: %v", err)\n\t}\n\tvar rows []map[string]string\n\tif err := json.Unmarshal(output, &rows); err != nil {\n\t\tt.Fatalf("not JSON: %v\\n%s", err, output)\n\t}\n\n\tif len(rows) != 2 {\n\t\tt.Fatalf("Expected 2 rows, got %d", len(rows))\n\t}\n\tif rows[0]["name"] != "Alice" || rows[0]["city"] != "NYC" {\n\t\tt.Fatalf("Unexpected first row: %v", rows[0])\n\t}\n\tif rows[1]["name"] != "Bob" || rows[1]["city"] != "LA" {\n\t\tt.Fatalf("Unexpected second row: %v", rows[1])\n\t}\n}\n`;
+    }
+    return `package main\n\nimport (\n\t"encoding/json"\n\t"os"\n\t"os/exec"\n\t"testing"\n)\n\nfunc TestCLIFilter(t *testing.T) {\n\ttestData := []map[string]interface{}{\n\t\t{"name": "Alice", "age": 30, "city": "NYC"},\n\t\t{"name": "Bob", "age": 25, "city": "LA"},\n\t\t{"name": "Charlie", "age": 35, "city": "NYC"},\n\t}\n\n\ttestFile := "sample.json"\n\tdata, _ := json.MarshalIndent(testData, "", "  ")\n\tos.WriteFile(testFile, data, 0644)\n\n\toutput, _ := exec.Command("go", "run", "main.go", "sample.json", "city=NYC").Output()\n\tvar result []map[string]interface{}\n\tjson.Unmarshal(output, &result)\n\n\tif len(result) != 2 {\n\t\tt.Fatalf("Expected 2 results, got %d", len(result))\n\t}\n\tif result[0]["name"] != "Alice" {\n\t\tt.Fatalf("Expected Alice, got %v", result[0]["name"])\n\t}\n\tif result[1]["name"] != "Charlie" {\n\t\tt.Fatalf("Expected Charlie, got %v", result[1]["name"])\n\t}\n}\n`;
+}
+
+/**
+ * The stock program's test as a Cargo integration test: tests/ is compiled by
+ * cargo itself, and the binary is the program's own — run on the input of the
+ * variant its entry is (Q2).
+ */
+function generateRustTest(bin: string, variant: StockVariant): string {
+    const csv = variant === 'csv-to-json';
+    return [
+        'use std::process::Command;',
+        '',
+        '#[test]',
+        csv ? 'fn converts_every_row() {' : 'fn filters_by_property() {',
+        `    let sample = std::env::temp_dir().join(format!("{}-sample-{}.${csv ? 'csv' : 'json'}", env!("CARGO_PKG_NAME"), std::process::id()));`,
+        csv
+            ? '    std::fs::write(&sample, "name,city\\nAlice,NYC\\nBob,LA\\n").unwrap();'
+            : '    std::fs::write(&sample, r#"[{"name": "Alice", "age": 30, "city": "NYC"}, {"name": "Bob", "age": 25, "city": "LA"}, {"name": "Charlie", "age": 35, "city": "NYC"}]"#).unwrap();',
+        '',
+        `    let output = Command::new(env!("CARGO_BIN_EXE_${bin}"))`,
+        '        .arg(&sample)',
+        ...(csv ? [] : ['        .arg("city=NYC")']),
+        '        .output()',
+        '        .expect("the program runs");',
+        '    assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));',
+        '',
+        '    let result: Vec<serde_json::Value> = serde_json::from_slice(&output.stdout).unwrap();',
+        '    assert_eq!(result.len(), 2);',
+        ...(csv
+            ? [
+                '    assert_eq!(result[0]["name"], "Alice");',
+                '    assert_eq!(result[0]["city"], "NYC");',
+                '    assert_eq!(result[1]["name"], "Bob");',
+                '    assert_eq!(result[1]["city"], "LA");',
+            ]
+            : [
+                '    assert_eq!(result[0]["name"], "Alice");',
+                '    assert_eq!(result[1]["name"], "Charlie");',
+            ]),
+        '}',
+        '',
+    ].join('\n');
+}
+
+function generateSampleData(): string {
+    return `[\n  { "name": "Alice", "age": 30, "city": "NYC" },\n  { "name": "Bob", "age": 25, "city": "LA" },\n  { "name": "Charlie", "age": 35, "city": "NYC" }\n]`;
+}
+
+/**
+ * ⛔ ONE ANSWER TO «IS THIS A COMMAND-LINE PROGRAM?» — for the router and for
+ * the delivery gate alike.
+ *
+ * Eval round 19: deterministicPhasesFor built a CLI scaffold for «a Python CLI
+ * that reads invoices», «a bash script that backs up my PostgreSQL database»
+ * and P347 «… لـموقع أخبار», while requestedDeliveryRoles judged the same
+ * requests as a server (a claim noun) or an interface (a domain noun) — so a
+ * correct CLI could never be delivered. Both now ask this predicate: the
+ * object of the verb when the lexicon knows it, otherwise the command-line /
+ * CSV-input fallback for a request classified as file-level.
+ */
+export function routesToCliScaffold(request: string, artifact = requestedArtifact(request)): boolean {
+    if (artifact.kind === 'cli') return true;
+    if (artifact.kind) return false;
+    const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
+    return PlanningEngine.classifyBuildScope(request) === 'page' && isCliRequestFn(request);
+}
+
 export function deterministicPhasesFor(request: string): {
     projectName: string; reason: string; phases: Array<{ phaseNumber: number; name: string; tasks: any[] }>;
 } | null {
     const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
     if (!PlanningEngine.looksLikeBuild(request)) return null;
     const classifiedScope: 'page' | 'app' | 'system' = PlanningEngine.classifyBuildScope(request);
+    const artifact = requestedArtifact(request);
     // A declared record schema is an interaction contract, even when its
     // wording does not happen to include one of the broad "application"
     // keywords.  Treating it as a page discarded the form, storage, and record
     // actions that the same schema reader later builds in React.  Do not
     // downgrade a real system: its explicit service boundary remains stronger.
-    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request)
+    // A presentation page (landing, portfolio, «هبوط», «تعريفي») is a document:
+    // its feature list is not a schema (eval round 15: 25/25 English landings
+    // went to react_project, 25/25 Arabic ones to the page builder).
+    const scope: 'page' | 'app' | 'system' = classifiedScope === 'page' && hasExplicitRecordSchema(request) && !artifact.evidence.presentation
         ? 'app'
         : classifiedScope;
 
     let projectName = 'project';
     try { projectName = resolveProjectIdentity(request, require('../../../core/design/subject-phrase').subjectPhrase(request, 48)); } catch { /* naming is cosmetic */ }
 
-    if (scope === 'system') {
+    /**
+     * ⛔ WHAT HE SAID THE SYSTEM IS MADE OF IS PART OF THE REQUEST (law 4).
+     *
+     * Eval round 15 (2026-10-24): «React frontend, Node backend … each staff
+     * member only sees their own records» (P151) scored as an app and was
+     * rescued into ONE frontend phase — the declared backend, and the
+     * per-user ownership that needs it, silently dropped. «أنشئ واجهة برمجية
+     * REST …» (P101) asked for an API and got an unrequested React interface
+     * beside it. A declared backend makes it a system; an API with no
+     * interface for people gets no interface phase.
+     */
+    const apiOnly = buildObjectIsAnApi(request);
+    const effectiveScope: 'page' | 'app' | 'system' = scope === 'app' && artifact.needsServer ? 'system' : scope;
+
+    // A command-line tool is a file-level project whatever data it reads or
+    // server it talks to — decided BEFORE the system branch, from the object of
+    // the verb (eval round 15: P333/P337, Arabic CLIs over «الزبائن» and
+    // «الحجوزات», became api_project + react_project). An object the lexicon
+    // does not know keeps the old command-line / CSV-input fallback for a page.
+    if (routesToCliScaffold(request, artifact)) {
+        return buildCliScaffold(request, projectName);
+    }
+
+    if (effectiveScope === 'system') {
         // The interface depends on the service that holds the rows — declared
         // as an ordered pair of phases, so the dependency is enforced by the
         // plan rather than left to whoever executes it.
+        const service = { phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] };
+        if (apiOnly) {
+            return {
+                projectName,
+                reason: 'an API was asked for and no interface for people, so none is built',
+                phases: [service],
+            };
+        }
         return {
             projectName,
-            reason: 'declared entities require their own data service, and the interface depends on it',
+            reason: scope === 'system'
+                ? 'declared entities require their own data service, and the interface depends on it'
+                : 'the request declares its own backend, and the interface depends on it',
             phases: [
-                { phaseNumber: 1, name: 'Data service and schema', tasks: [{ tool: 'api_project', description: `Backend and database for: ${request}`, args: { request } }] },
+                service,
                 { phaseNumber: 2, name: 'Interface on the service', tasks: [{ tool: 'react_project', description: `Interface for: ${request}`, args: { request } }] },
             ],
         };
     }
+
     return {
         projectName,
         reason: scope === 'page' ? 'a single page was asked for; no data service is implied' : 'an application was asked for with no declared data service',
@@ -845,7 +1412,12 @@ export function interactiveAppNeedsReactBuilder(request: string): boolean {
         // with the planner and its honest gates.
         const kind = detectAppKind(stripDeclaredOptions(text));
         if (!kind || (scope !== 'app' && scope !== 'system')) return false;
-        return /\b(?:web|browser|frontend|front[ -]?end|responsive|mobile|ui|interface|application|app|dashboard|portal|calculator|notes?|tracker|weather|shop|form|button|crud|tasks?)\b/i.test(text)
+        // Read from the artifact reader in both languages: an English-only
+        // word list sent «ابني متجر إلكتروني …» (P201) past this rescue while
+        // its English twin was caught (eval round 19).
+        const artifact = requestedArtifact(text);
+        return artifact.interfaceNamed
+            || ['app', 'store', 'booking', 'game'].includes(String(artifact.kind))
             || kind === 'productivity';
     } catch {
         return false;
@@ -876,6 +1448,8 @@ export function planContainsTool(phases: any[], toolName: string): boolean {
  */
 export function planContainsUnrequestedApiBuilder(request: string, phases: any[]): boolean {
     if (!interactiveAppNeedsReactBuilder(request)) return false;
+    // «React frontend, Node backend» asked for that backend (eval round 15, P151).
+    if (requestDeclaresOwnBackend(request)) return false;
     try {
         const { PlanningEngine } = require('../../../core/orchestrator/PlanningEngine');
         return PlanningEngine.classifyBuildScope(String(request || '')) === 'app'
@@ -883,6 +1457,266 @@ export function planContainsUnrequestedApiBuilder(request: string, phases: any[]
     } catch {
         return false;
     }
+}
+
+const NEGATED_INTERFACE = /\b(?:no|without|not)\s+(?:(?:a|an|any)\s+)?(?:(?:web|user|graphical)\s+)?(?:front[- ]?end|ui|gui|user\s+interface|interface|pages?|screens?|dashboard)\b|(?:بدون|دون|بلا|من\s+غير)\s+(?:أي\s+)?(?:واجهة(?:\s+(?:مستخدم|المستخدم|أمامية|امامية|رسومية))?|صفحات|شاشات)/giu;
+/**
+ * Does the request ask for something people look at — an interface, pages, a
+ * dashboard? Read by the artifact reader: the deliverable itself, or an
+ * interface named beside it. A keyword anywhere made «… لـموقع أخبار» (P147)
+ * an API WITH an unrequested React interface, and «… pages from a website» a
+ * CLI with an interface (eval round 19).
+ */
+export function requestNamesAnInterface(request: string): boolean {
+    return requestedArtifact(String(request || '')).interfaceNamed;
+}
+
+/**
+ * The object of the build verb is an API — and nothing in the request is an
+ * interface for people. The API head is authoritative: «a GitHub API
+ * dashboard», «a REST API client app» and «an API testing tool» are things
+ * ABOUT an API, and get their interface (eval round 15 review).
+ */
+export function buildObjectIsAnApi(request: string): boolean {
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.kind === 'api' && !artifact.interfaceNamed;
+}
+
+/**
+ * The request claims something only a server keeps: a declared backend, sign-in,
+ * accounts, roles, a database, data one party writes and another reads, or an
+ * owned API — read by requestedArtifact, negations masked.
+ */
+export function requestDeclaresOwnBackend(request: string): boolean {
+    return requestedArtifact(String(request || '')).needsServer;
+}
+
+/**
+ * A greenfield application that claims its own server, which
+ * deterministicPhasesFor builds as api_project + react_project. Eval round 20:
+ * P251 «… the owner sees all bookings» went to a browser-only plan, and the
+ * full-stack prompts to a 40–70 minute local model plan, while the builders
+ * that cover them were one branch away.
+ */
+export function serverClaimingApplication(request: string): boolean {
+    const artifact = requestedArtifact(String(request || ''));
+    return artifact.needsServer
+        && ['app', 'booking', 'store', 'system'].includes(String(artifact.kind))
+        && deterministicRescueAllowed(request);
+}
+
+const SERVER_SOURCE = /(?:^|\/)(?:server|backend|api)(?:\/|\.(?:[cm]?[jt]s|py)$)|(?:^|\/)(?:routes?|controllers?|endpoints)\/|(?:^|\/)(?:manage|wsgi|asgi)\.py$/i;
+const SERVER_FRAMEWORK = /["'](?:express|fastify|koa|hono|@nestjs\/core|@hapi\/hapi|restify)["']\s*:|\b(?:npm|pnpm|yarn)\s+(?:install|i|add)\b[^\n]*\b(?:express|fastify|koa|hono|@nestjs\/core)\b|\b(?:pip|pip3)\s+install\b[^\n]*\b(?:flask|fastapi|django)\b|^\s*(?:flask|fastapi|django)\b/im;
+
+/** Does this plan build a server: a service builder, server source, or a server framework it installs? */
+export function planBuildsAServer(request: string, phases: any[]): boolean {
+    const list = Array.isArray(phases) ? phases : [];
+    if (planContainsTool(list, 'api_project') || planContainsTool(list, 'scaffold_full_stack')) return true;
+    const tasks = list.flatMap((phase: any) => [...(Array.isArray(phase?.tasks) ? phase.tasks : []), ...(phase?.verificationTask ? [phase.verificationTask] : [])]);
+    const structured = tasks.flatMap((task: any) => {
+        const structure = task?.args?.structure && typeof task.args.structure === 'object' ? task.args.structure : {};
+        return Object.keys(structure).map(key => key.replace(/\\/g, '/'));
+    });
+    const paths = [...plannedFilePaths(list), ...structured];
+    if (paths.some(file => SERVER_SOURCE.test(file))) return true;
+    const texts = tasks.flatMap((task: any) => {
+        const args = task?.args || {};
+        const structure = args.structure && typeof args.structure === 'object' ? Object.values(args.structure) : [];
+        return [args.content, args.command, ...structure].filter(value => typeof value === 'string') as string[];
+    });
+    if (texts.some(text => SERVER_FRAMEWORK.test(text))) return true;
+    // The deliverable IS the service: its own source is the server.
+    return requestedArtifact(String(request || '')).kind === 'api' && paths.some(file => /\.(?:[cm]?[jt]s|py|go|rb|php)$/i.test(file));
+}
+
+/**
+ * The plan with the service its request claims, or null when it builds one
+ * already (or claims none). Never delivered browser-only: «… the owner sees
+ * all bookings» kept in each customer's browser is a front end with nowhere
+ * to put a row. The model's phases are kept; the service phase comes first
+ * because the interface depends on it.
+ */
+export function planWithRequestedService(request: string, phases: any[]): any[] | null {
+    const text = String(request || '');
+    const artifact = requestedArtifact(text);
+    if (!artifact.needsServer || routesToCliScaffold(text, artifact)) return null;
+    if (!Array.isArray(phases) || phases.length === 0 || planBuildsAServer(text, phases)) return null;
+    const service = {
+        phaseNumber: 1,
+        name: 'Data service and schema',
+        description: `The request claims its own server (${artifact.evidence.serverClaims.slice(0, 3).join('; ')}): build the data service the interface depends on.`,
+        tasks: [{ tool: 'api_project', description: `Backend and database for: ${text}`, args: { request: text } }],
+    };
+    return [service, ...phases.map((phase: any, index: number) => ({ ...phase, phaseNumber: index + 2 }))];
+}
+
+const PLANNED_SOURCE_WRITERS = new Set(['ai_write_file', 'write_file', 'file_write', 'create_file']);
+const PLANNED_TEST_FILE = /(?:^|\/)(?:__tests__|tests?|spec)\/|(?:^|\/)test_[^/]+\.py$|(?:^|\/)[^/]+_test\.py$|\.(?:test|spec)\.[cm]?[jt]sx?$/i;
+const WEB_ARTIFACT_FILE = /\.(?:html?|jsx|tsx|vue|svelte|css|scss|sass|less)$/i;
+const RUNNABLE_SOURCE: Array<{ ext: RegExp; lang: keyof typeof CLI_RUNNER }> = [
+    { ext: /\.py$/i, lang: 'python' },
+    { ext: /\.(?:mjs|cjs|js)$/i, lang: 'javascript' },
+    { ext: /\.sh$/i, lang: 'bash' },
+];
+
+function plannedFilePaths(phases: any[]): string[] {
+    return (Array.isArray(phases) ? phases : [])
+        .flatMap((phase: any) => Array.isArray(phase?.tasks) ? phase.tasks : [])
+        .filter((task: any) => PLANNED_SOURCE_WRITERS.has(String(task?.tool || '').toLowerCase()))
+        .map((task: any) => String(task?.args?.path || task?.args?.filePath || task?.input?.path || '').replace(/\\/g, '/').replace(/^\.\//, '').trim())
+        .filter(Boolean);
+}
+
+function commonDirectory(files: string[]): string {
+    const dirs = files.map(file => path.posix.dirname(file).split('/').filter(segment => segment && segment !== '.'));
+    const first = dirs[0] || [];
+    let depth = 0;
+    while (depth < first.length && dirs.every(segments => segments[depth] === first[depth])) depth++;
+    return first.slice(0, depth).join('/') || '.';
+}
+
+/** The test brief both CLI paths hand the file author: its own fixture, the exact output. */
+function cliTestBrief(entry: string, runCommand: string, testCommand: string, request: string, lang = '', binary = ''): string {
+    const runner = lang === 'python'
+        ? 'Write it as a standard-library unittest.TestCase class with test_ methods (no pytest), runnable by `python -m unittest -v <this file>`; run the program with sys.executable through subprocess. '
+        : lang === 'javascript' || lang === 'typescript'
+            ? 'Write it with node:test and node:assert, runnable by `node --test`. '
+            : lang === 'bash'
+                ? 'Write it as a bash script that exits non-zero on the first failed check. '
+                : lang === 'rust'
+                    ? `Write it as a Cargo integration test (this file is in tests/, which \`cargo test\` compiles by itself): #[test] functions that run the built program with std::process::Command::new(env!("CARGO_BIN_EXE_${binary || 'the-binary'}")). `
+                    : lang === 'go'
+                        ? 'Write it as a Go test in package main (the file name ends in _test.go, so `go test` compiles it): func TestXxx(t *testing.T) functions that run the program with exec.Command("go", "run", ".", ...). '
+                        : '';
+    return `A small self-contained test for the program in ${entry} (${request}). `
+        + `Create its own input fixture, run \`${runCommand}\` on it, and assert the exact output the request implies. `
+        + runner
+        + 'Use only the standard library of the language; no placeholder assertions.'
+        // Python's test command is the launcher and the runner on one line
+        // (python-test-runner): what it does is said, not its two thousand characters.
+        + (lang === 'python'
+            ? ' The test is run by a standard-library runner that imports this file and runs every unittest test in it (an empty or all-skipped run fails): every check must be a test method that fails when its assertion fails.'
+            : testCommand ? ` The test is run as \`${testCommand}\`: it must itself run every check it defines and exit with a non-zero code when any fails.` : '');
+}
+
+/**
+ * The phase that makes a paper plan runnable with the plan's own files, or
+ * null when the plan has nothing that can run: a package manifest (install,
+ * then its own tests), or a program in a language the CLI path already runs
+ * (an entry, a test authored with its own fixture when the plan wrote none,
+ * and the same runner manifest the CLI scaffold ships).
+ */
+function paperPlanRunPhase(request: string, files: string[], tests: string[]): { phase: any; projectDir: string } | null {
+    const manifest = files.filter(file => /(?:^|\/)package\.json$/i.test(file)).sort((a, b) => a.length - b.length)[0];
+    if (manifest) {
+        const projectDir = path.posix.dirname(manifest);
+        return {
+            projectDir,
+            phase: {
+                name: 'Install, test and run',
+                description: 'Install what the plan\'s own package.json declares and run its own tests; the pipeline then starts it live.',
+                tasks: [{ task: 'Install the declared dependencies', tool: 'npm_manager', args: { command: 'install', cwd: projectDir } }],
+                ...(tests.length ? { verificationTask: { task: 'Run the project\'s own tests', tool: 'quality_run', args: { path: projectDir, tasks: ['test'] } } } : {}),
+            },
+        };
+    }
+    const sources = files.filter(file => !PLANNED_TEST_FILE.test(file));
+    const lang = RUNNABLE_SOURCE.find(kind => sources.some(file => kind.ext.test(file)))?.lang;
+    if (!lang) return null;
+    const runner = CLI_RUNNER[lang];
+    const ext = RUNNABLE_SOURCE.find(kind => kind.lang === lang)!.ext;
+    const programs = sources.filter(file => ext.test(file));
+    const named = programs
+        .filter(file => /^(?:main|cli|__main__|app|index|run)\.[a-z]+$/i.test(path.posix.basename(file)))
+        .sort((a, b) => a.split('/').length - b.split('/').length)[0];
+    const entryFile = named || (programs.length === 1 ? programs[0] : '');
+    if (!entryFile) return null;
+    const projectDir = commonDirectory(files);
+    const within = (file: string) => projectDir === '.' ? file : path.posix.relative(projectDir, file);
+    const entry = within(entryFile);
+    const runCommand = `${runner} ${entry}`;
+    const tasks: any[] = [];
+    let testFiles = tests.filter(file => ext.test(file)).map(within);
+    const authoredByJoe = !testFiles.length;
+    const authored = !authoredByJoe ? ''
+        : lang === 'python' ? `test_${path.posix.basename(entry, '.py')}.py` : lang === 'bash' ? 'test.sh' : 'test.js';
+    if (authored) testFiles = [authored];
+    // Each test runs with the language alone (pythonTestCommand explains Python's).
+    const testCommand = lang === 'python' ? pythonTestCommand(testFiles, authoredByJoe)
+        : lang === 'bash' ? testFiles.map(file => `bash ${file}`).join(' && ')
+            : `node --test ${testFiles.join(' ')}`;
+    if (authored) {
+        tasks.push({
+            task: `Write ${authored} for the requested behaviour`,
+            tool: 'ai_write_file',
+            args: { path: projectDir === '.' ? authored : `${projectDir}/${authored}`, description: cliTestBrief(entry, runCommand, testCommand, request, lang) },
+        });
+    }
+    const name = (projectDir === '.' ? 'program' : path.posix.basename(projectDir)).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^-+|-+$/g, '') || 'program';
+    tasks.push({
+        task: 'Declare how the program starts and how its tests run',
+        tool: 'write_file',
+        args: {
+            path: projectDir === '.' ? 'package.json' : `${projectDir}/package.json`,
+            // The start script finds its interpreter where it runs (CLI_START), never the build machine's name.
+            content: JSON.stringify({ name, version: '1.0.0', private: true, description: request.replace(/\s+/g, ' ').trim().slice(0, 300), main: entry, scripts: { start: CLI_START[lang](entry), test: testCommand } }, null, 2),
+        },
+    });
+    return {
+        projectDir,
+        phase: {
+            name: 'Run and verify the program',
+            description: `Run the program the plan wrote (${runCommand}) through its own tests.`,
+            tasks,
+            verificationTask: { task: 'Run the program\'s tests', tool: 'quality_run', args: { path: projectDir, tasks: ['test'] } },
+        },
+    };
+}
+
+/**
+ * ⛔ A PLAN THAT READ THE REQUEST IS COMPLETED, NOT REPLACED (law 4).
+ *
+ * The paper-plan rescue swapped a model plan for the deterministic chain
+ * whenever the plan wrote files but ran nothing. Eval round 15 measured what
+ * that costs when the chain does not build what was asked:
+ *   - P101 «واجهة برمجية REST … المرضى والمواعيد والعلاجات … واختبارات آلية»:
+ *     the model planned patients/appointments/treatments routes and their
+ *     tests; the rescue built the stock bookings API — no requested entity,
+ *     no test — and it was scored a pass;
+ *   - P301 «أداة سطر أوامر بلغة Python»: the model planned the Python files;
+ *     the rescue built a ten-section landing page.
+ * So before a substitution: when the plan's artifact is a program and the
+ * rescue would build a web page, when the stock engine does not cover what
+ * the request names, or when the plan writes its own tests, the plan is kept
+ * and completed with the steps that make it run. Null means the substitution
+ * stands (the chain covers the request, or the plan has nothing to run).
+ */
+export function completePaperPlan(request: string, phases: any[], rescue: { phases: any[] } | null): { phases: any[]; reasons: string[]; projectDir: string } | null {
+    const files = plannedFilePaths(phases);
+    if (!files.length) return null;
+    const rescueTools = (rescue?.phases || []).flatMap((phase: any) => (phase?.tasks || []).map((task: any) => String(task?.tool || '')));
+    const tests = files.filter(file => PLANNED_TEST_FILE.test(file));
+    const reasons: string[] = [];
+    const webRescue = rescueTools.some(tool => tool === 'web_page_builder' || tool === 'react_project');
+    if (!files.some(file => WEB_ARTIFACT_FILE.test(file)) && !requestNamesAnInterface(request)) {
+        reasons.push(webRescue || !rescue
+            ? 'the plan builds a program, and the deterministic chain would build a different kind of artifact'
+            : 'the plan already holds the program\'s own files, which the deterministic chain would re-author from nothing');
+    }
+    if (rescueTools.some(tool => tool === 'api_project' || tool === 'react_project' || tool === 'web_page_builder')) {
+        let gaps: string[] = [];
+        try { gaps = require('../../../core/design/app-blueprints').stockEngineGaps(request, rescueTools.includes('api_project')); } catch { gaps = []; }
+        if (gaps.length) reasons.push(`the stock engine does not cover: ${gaps.slice(0, 6).join(' · ')}`);
+    }
+    if (tests.length) reasons.push(`the plan writes its own tests (${tests.slice(0, 3).join(', ')})`);
+    if (!reasons.length) return null;
+    const run = paperPlanRunPhase(request, files, tests);
+    if (!run) return null;
+    return {
+        reasons,
+        projectDir: run.projectDir,
+        phases: [...phases, { phaseNumber: phases.length + 1, ...run.phase }],
+    };
 }
 
 /**
@@ -907,6 +1741,209 @@ export function applyLiveRunOutcome(
         verificationFailed: true,
         error: String(runResult?.error || runResult?.output?.message || 'project_run did not confirm a live URL'),
     };
+}
+
+/**
+ * After a repair (or after phases edited the tree), an ADOPTED server is not
+ * proof: project_run answers «already running» for the recorded process,
+ * which still holds the pre-edit code (round 15 review). Post-edit runs ask
+ * for a restart; an answer that adopted anyway is a live-run failure.
+ *
+ * Nor is a STATIC FALLBACK standing in for a server that used to start: when
+ * the restarted server answers on no port, project_run serves dist/ or the
+ * static site instead (ok:true). If the run before the edit was a real
+ * server, that fallback means the edit broke it — a live failure, so the
+ * caller restores the file instead of keeping a dead backend behind static
+ * pages (round 15 review, findings 16 and 28).
+ */
+export function postRepairRunOutcome(runResult: any, before?: any): any {
+    const output = runResult?.output || {};
+    if (runResult?.ok === true && (output.adopted === true || output.kind === 'already-running')) {
+        return {
+            ...runResult,
+            ok: false,
+            error: 'the post-repair run adopted the pre-repair server instead of restarting it, so the repair was never measured',
+        };
+    }
+    if (servedByStaticFallback(runResult) && before?.ok === true && !servedByStaticFallback(before)
+        && before?.output?.devServerConfirmed !== false) {
+        return {
+            ...runResult,
+            ok: false,
+            error: `the server that started before the edit no longer starts; only static files were served instead (${String(output.fallbackFrom || output.kind).slice(0, 200)})`,
+        };
+    }
+    return runResult;
+}
+
+/** The record keys a coverage repair pass of this dimension targets (the same split requestCoverageRepairTask makes). */
+export function coverageRepairTargets(report: RequestCoverageReport | undefined, dimension: 'served' | 'tested'): string[] {
+    const missing = report?.missing || [];
+    return (dimension === 'served'
+        ? missing.filter(r => r.served === false || r.present === false)
+        : missing.filter(r => r.tested === false && r.served !== false && r.present !== false)
+    ).map(r => r.key);
+}
+
+const measurementKey = (m: { instrument: string; target?: string }) => `${m.instrument}${m.target ? `:${path.basename(m.target)}` : ''}`;
+
+/** Every instrument (per part) that passed — what a repair must not break. */
+export function passingMeasurementKeys(measurements: Array<{ instrument: string; ok: boolean; target?: string }>): string[] {
+    return Array.from(new Set(measurements.filter(m => m.ok && m.instrument !== 'coverage').map(measurementKey)));
+}
+
+/** Of what passed before, what now fails. */
+export function regressedMeasurementKeys(passedBefore: string[], measurements: Array<{ instrument: string; ok: boolean; target?: string }>): string[] {
+    const failing = new Set(measurements.filter(m => !m.ok).map(measurementKey));
+    return passedBefore.filter(key => failing.has(key));
+}
+
+/** Beyond this, a file is not embedded in the author's brief: it would crowd out the brief itself. */
+const EDIT_IN_PLACE_MAX_CHARS = 48_000;
+
+/**
+ * A REPAIR OF AN EXISTING FILE SEES THE FILE.
+ *
+ * SelfFix plans ai_write_file, which never reads its target: the server file
+ * was regenerated from the ticket alone, and «keep every existing route»
+ * could not be honoured (round 15 review, finding 27). The current content
+ * goes into the brief, with the instruction to edit it in place.
+ */
+export function editInPlaceRepairInput(tool: string, input: Record<string, any> | undefined, file: string, current: Buffer | null): Record<string, any> {
+    const base = { ...(input || {}) };
+    if (tool !== 'ai_write_file' || !current) return base;
+    const text = current.toString('utf8');
+    if (!text.trim() || text.length > EDIT_IN_PLACE_MAX_CHARS) return base;
+    const name = path.basename(file);
+    base.description = [
+        String(base.description || '').trim(),
+        `EDIT THIS EXISTING FILE IN PLACE. Its current content is below. Keep every existing route, middleware (authentication included), storage and export exactly as they are; add only what this repair needs, and return the whole file.`,
+        `--- current ${name} ---`,
+        text,
+        `--- end of current ${name} ---`,
+    ].filter(Boolean).join('\n');
+    return base;
+}
+
+/** Did any phase of this pipeline run a task — and so possibly edit the tree? */
+export function pipelineExecutedTasks(pipeline: any): boolean {
+    return (Array.isArray(pipeline?.results) ? pipeline.results : []).some((phase: any) => Number(phase?.executedTasks) > 0);
+}
+
+export interface CoverageRepairPass {
+    /** The file the repair writes (inside the server root). */
+    file: string;
+    /** Other files this pass may change (the project's package.json, when a test script is added): snapshotted and restored with it. */
+    guardedFiles?: string[];
+    /** Runs after the repair tool succeeded and before the restart — e.g. adding the test script the new tests need. A throw undoes the pass. */
+    afterRepair?: () => void | Promise<void>;
+    /** The record keys this pass must fix. */
+    targeted: string[];
+    /** The live run before the repair: a static fallback standing in for it is a failure. */
+    runBefore: any;
+    /** Run the planned repair tool, given the file's current content (null when it does not exist yet). */
+    runRepairTool: (current: Buffer | null) => Promise<any>;
+    /** Restart the server on the tree as it now is (project_run restart:true). */
+    restartServer: () => Promise<any>;
+    /** Record a run's live, quality, scope and coverage measurements. */
+    recordRun: (run: any, before: any) => Promise<void>;
+    measurements: () => Array<{ instrument: string; ok: boolean; target?: string }>;
+    /** The record keys still missing in the latest coverage measurement. */
+    currentTargets: () => string[];
+    /** The builder's live claims on the server answering now. */
+    measureProofs: () => Promise<BuilderProofs | null>;
+}
+
+/**
+ * ONE COVERAGE REPAIR PASS: NOTHING IT WRITES STAYS UNLESS IT IS PROVEN.
+ *
+ * The file is snapshotted; the repair runs; the server is RESTARTED and every
+ * gate measured again. The file goes back byte for byte (a file the repair
+ * created is removed), and a restarted server is restarted on the restored
+ * file, when any of these hold (round 15 review, findings 15, 16, 27, 30):
+ * the tool did not finish or threw; the restarted server does not start —
+ * including static files standing in for it; a record the pass targeted is
+ * still missing; a check that passed before now fails; or a live claim of the
+ * builder that held before (anonymous writes refused, a wrong password
+ * refused, rows surviving the restart) no longer does.
+ */
+export async function runCoverageRepairPass(pass: CoverageRepairPass): Promise<{ undoReason: string; remeasured: boolean }> {
+    // Every file the pass may change, snapshotted before anything runs.
+    const guarded = Array.from(new Set([pass.file, ...(pass.guardedFiles || [])].filter(Boolean)));
+    const snapshots = new Map<string, Buffer | null>(guarded.map(file => [file, fs.existsSync(file) ? fs.readFileSync(file) : null]));
+    const snapshot = snapshots.get(pass.file) ?? null;
+    const passedBefore = passingMeasurementKeys(pass.measurements());
+    let proofsBefore: BuilderProofs | null = null;
+    try { proofsBefore = await pass.measureProofs(); } catch { proofsBefore = null; }
+    let undoReason = '';
+    let restarted = false;
+    let remeasured = false;
+    try {
+        const repair = await pass.runRepairTool(snapshot);
+        if (repair?.ok !== true) {
+            undoReason = `the repair tool did not finish: ${String(repair?.error || 'repair tool failed').slice(0, 300)}`;
+        } else {
+            if (pass.afterRepair) await pass.afterRepair();
+            const rerun = await pass.restartServer();
+            restarted = true;
+            await pass.recordRun(rerun, pass.runBefore);
+            if (pass.measurements().some(m => m.instrument === 'live' && !m.ok)) {
+                undoReason = 'the repaired server no longer starts';
+            } else {
+                const stillMissing = pass.currentTargets().filter(key => pass.targeted.includes(key));
+                const lostInstruments = regressedMeasurementKeys(passedBefore, pass.measurements());
+                let proofsAfter: BuilderProofs | null = null;
+                if (proofsBefore) { try { proofsAfter = await pass.measureProofs(); } catch { proofsAfter = null; } }
+                const lostClaims = proofsBefore && proofsAfter ? regressedBuilderProofs(proofsBefore, proofsAfter) : [];
+                remeasured = !!(proofsBefore && proofsAfter && builderClaimsRemeasured(proofsBefore, proofsAfter));
+                if (stillMissing.length) undoReason = `the records it targeted are still missing: ${stillMissing.join(', ')}`;
+                else if (lostInstruments.length) undoReason = `checks that passed before the repair now fail: ${lostInstruments.join(', ')}`;
+                else if (proofsBefore && !proofsAfter) undoReason = 'the builder\'s own live claims could not be measured again';
+                else if (lostClaims.length) undoReason = `the builder's own live claims no longer hold: ${lostClaims.join('; ')}`;
+            }
+        }
+    } catch (error: any) {
+        undoReason = `the repair raised: ${String(error?.message || error).slice(0, 300)}`;
+    }
+    if (undoReason) {
+        for (const [file, before] of snapshots) {
+            if (before) fs.writeFileSync(file, before);
+            else fs.rmSync(file, { force: true });
+        }
+        if (restarted) await pass.recordRun(await pass.restartServer(), pass.runBefore);
+    }
+    return { undoReason, remeasured };
+}
+
+/**
+ * MERGE ADAPTER — the coverage fork (091554ed) makes requestCoverageRepairTask
+ * return `manifestPatch: { file, script }` for a Node project with no test
+ * script, and exports applyTestScriptPatch(patch) → previous bytes | null.
+ * The repair pass applies it under the same snapshot as the repair file, so
+ * tests the repair writes actually run, and both files go back together when
+ * the pass is undone. Until that export exists this refuses (and the pass is
+ * undone) rather than pretending a test script was added.
+ */
+export function applyRepairManifestPatch(patch: { file: string; script: string }): void {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const coverage = require('../../../core/quality/request-coverage');
+    if (typeof coverage.applyTestScriptPatch !== 'function') throw new Error('the test-script patch is not available in this build');
+    if (coverage.applyTestScriptPatch(patch) === null) throw new Error(`the test script could not be added to ${path.basename(patch.file)}`);
+}
+
+export interface PipelinePhaseIds { sessionId: string; runId: string }
+
+/** The session and run every phase hand-off of one pipeline run shares. */
+export function pipelinePhaseIds(context: any, now = Date.now()): PipelinePhaseIds {
+    return {
+        sessionId: String(context?.sessionId || '').trim() || `pipeline-${now}`,
+        runId: String(context?.runId || '').trim() || `run-${now}`,
+    };
+}
+
+/** The key PhaseExecutor records delivery parts under (its sessionProjectKey). */
+export function sessionPartsKeyOf(sessionId: unknown): string {
+    return String(sessionId || '').trim().replace(/[^a-zA-Z0-9._-]/g, '_') || 'default';
 }
 
 export interface ScopeGateOutcome {
@@ -950,16 +1987,74 @@ export function projectAuditRoots(sourceRoot: string, runtimeRoot: string): stri
     return roots;
 }
 
-export function projectAuditDirectory(roots: string[]): string {
-    for (const root of roots.map(value => String(value || '').trim()).filter(Boolean)) {
-        if (fs.existsSync(path.join(root, 'index.html'))) return root;
-        if (fs.existsSync(path.join(root, 'dist', 'index.html'))) return path.join(root, 'dist');
-        if (fs.existsSync(path.join(root, 'public', 'index.html'))) return path.join(root, 'public');
-    }
-    return roots.map(value => String(value || '').trim()).find(Boolean) || '';
+/** Folders that hold no delivered page: installed packages, generated reports, tests. */
+const NOT_A_PAGE_FOLDER = /^(?:node_modules|coverage|htmlcov|playwright-report|test-results|storybook-static|__tests__|tests?|__mocks__)$/iu;
+
+/**
+ * THE FOLDER A PART SERVES TO PEOPLE, or ''.
+ *
+ * Round 20 review: only index.html, dist/ and public/ counted, so a build-free
+ * site Joe writes into src/ (P001: src/index.html, served by project_run's
+ * strict loopback server from src/) was «no interface» — and blocked while it
+ * was live on screen. src/index.html and the static-site classifier the
+ * loopback server itself uses now count too.
+ */
+export function servedInterfaceDirectory(root: string): string {
+    const dir = String(root || '').trim();
+    if (!dir) return '';
+    if (fs.existsSync(path.join(dir, 'index.html'))) return dir;
+    if (fs.existsSync(path.join(dir, 'dist', 'index.html'))) return path.join(dir, 'dist');
+    if (fs.existsSync(path.join(dir, 'public', 'index.html'))) return path.join(dir, 'public');
+    if (fs.existsSync(path.join(dir, 'src', 'index.html'))) return path.join(dir, 'src');
+    try { return staticSiteRoot(dir, { servedAtRoot: true }) || ''; } catch { return ''; }
 }
 
-const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|available)|no\s+tests?|placeholder|todo).*|(?:true|:|exit\s+0))$/iu;
+/**
+ * The folder holding a part's page wherever the build put it.
+ *
+ * A page in client/, www/, static/ … is no usual place, so after the served
+ * places above comes the shallowest index.html in the part's own tree, never
+ * inside installed packages, hidden folders, generated reports (coverage,
+ * htmlcov, playwright-report …) or tests. A page found only by this search is
+ * evidence of an interface only where the request asks for one: a report a
+ * test run left behind is not a delivered page (round 21 review).
+ */
+export function deliveredPageDirectory(root: string, maxDepth = 3): string {
+    const base = String(root || '').trim();
+    if (!base) return '';
+    const served = servedInterfaceDirectory(base);
+    if (served) return served;
+    let level = [base];
+    for (let depth = 1; depth <= maxDepth && level.length; depth++) {
+        const next: string[] = [];
+        for (const dir of level) {
+            let entries: fs.Dirent[] = [];
+            try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+                if (!entry.isDirectory() || entry.name.startsWith('.') || NOT_A_PAGE_FOLDER.test(entry.name)) continue;
+                next.push(path.join(dir, entry.name));
+            }
+        }
+        const found = next.find(dir => fs.existsSync(path.join(dir, 'index.html')));
+        if (found) return found;
+        level = next;
+    }
+    return '';
+}
+
+export function projectAuditDirectory(roots: string[]): string {
+    const clean = roots.map(value => String(value || '').trim()).filter(Boolean);
+    // Every part's served places first, so a search never outranks them.
+    for (const root of clean) {
+        const served = servedInterfaceDirectory(root);
+        if (served) return served;
+    }
+    for (const root of clean) {
+        const page = deliveredPageDirectory(root);
+        if (page) return page;
+    }
+    return clean[0] || '';
+}
 
 /**
  * A declared lifecycle check is part of the delivery contract. A script that
@@ -968,7 +2063,39 @@ const PLACEHOLDER_SCRIPT = /^(?:echo\b.*(?:not\s+(?:implemented|specified|availa
  * This reducer is intentionally manifest/domain neutral and only rejects
  * explicit placeholders or missing checks when the request asks for them.
  */
-export function inspectProjectQualityContract(projectRoot: string, request = ''): ProjectQualityContract {
+/** A build step this part really has: a bundler/framework config, or TypeScript it compiles. */
+export function rootHasBuildStep(root: string, manifest: any): boolean {
+    const configs = /^(?:vite|webpack|next|nuxt|svelte|astro|rollup|remix|vue)\.config\.[cm]?[jt]s$|^angular\.json$/iu;
+    let names: string[] = [];
+    try { names = fs.readdirSync(root); } catch { return false; }
+    if (names.some(name => configs.test(name))) return true;
+    const deps = { ...(manifest?.dependencies || {}), ...(manifest?.devDependencies || {}) };
+    return names.includes('tsconfig.json') && Object.prototype.hasOwnProperty.call(deps, 'typescript');
+}
+
+/** The request names a build as a step to run — never the imperative «Build …» or the noun in «بناء نظام». */
+export const BUILD_COMMAND_NAMED = /\bnpm\s+run\s+build\b|\brun\s+(?:the\s+)?build\b|\bbuild\s+(?:step|script|command)\b|\bcompil(?:e|es|ing|ation)\b|خطوة\s+(?:ال)?بناء|سكربت\s+(?:ال)?بناء|أمر\s+(?:ال)?بناء/iu;
+
+/**
+ * ONE CONTRACT FOR EVERY DELIVERED ROOT — THE PRIMARY ONE INCLUDED.
+ *
+ * Round 20 review: the primary root kept a reader (asksForChecks) that matched
+ * every imperative «Build …», every «بناء» and every «tests», and then demanded
+ * BOTH a build and a test script. With one verdict that no later instrument can
+ * clear, that blocked every English «Build …» app whose manifest has no test
+ * script, and every API-only delivery (a plain Node server has no build step) —
+ * pushing a repair toward a fake «build» script. The rule now reads what the
+ * request asks of the part: a test script when the request asks for tests
+ * (testsRequestedIn — the same reader the record gate uses), a build script when
+ * the part really has a build step or the request names the build command.
+ * Placeholder scripts («exit 0», «true», «echo no tests») are refused on every
+ * root, always. `additionalRoot` only changes the wording.
+ */
+export function inspectProjectQualityContract(
+    projectRoot: string,
+    request = '',
+    opts: { additionalRoot?: boolean; testsRequested?: boolean } = {},
+): ProjectQualityContract {
     const root = String(projectRoot || '').trim();
     const manifestPath = root ? path.join(root, 'package.json') : '';
     if (!manifestPath || !fs.existsSync(manifestPath)) return { ok: true, failures: [] };
@@ -980,18 +2107,31 @@ export function inspectProjectQualityContract(projectRoot: string, request = '')
     }
     const scripts = manifest?.scripts && typeof manifest.scripts === 'object' ? manifest.scripts : {};
     const failures: string[] = [];
+    const testsAsked = typeof opts.testsRequested === 'boolean' ? opts.testsRequested : !!testsRequestedIn(String(request || ''));
+    const buildNamed = BUILD_COMMAND_NAMED.test(String(request || ''));
+    const buildOwed = rootHasBuildStep(root, manifest) || buildNamed;
+    // What a placeholder is, the one reader decides (placeholder-script): a
+    // script whose every command only prints or exits — never a word list (Q9).
+    // A placeholder test script is refused always, as it was. A placeholder
+    // BUILD script is refused where a build is owed: a site with no build step
+    // whose manifest says «echo No build step required» builds nothing and
+    // claims nothing (the phase's build check records no receipt for it), and
+    // refusing it would fail a working delivery (round 22 integration).
     for (const name of ['build', 'test']) {
-        if (typeof scripts[name] === 'string' && PLACEHOLDER_SCRIPT.test(scripts[name].trim())) {
+        if (name === 'build' && !buildOwed) continue;
+        if (typeof scripts[name] === 'string' && isPlaceholderScript(scripts[name])) {
             failures.push(`${name} script is a placeholder: ${scripts[name].trim()}`);
         }
     }
-    const asksForChecks = /(?:\b(?:npm\s+)?(?:run\s+)?(?:build|test|tests)\b|بناء|اختبار)/iu.test(String(request || ''));
-    if (asksForChecks) {
-        for (const name of ['build', 'test']) {
-            if (typeof scripts[name] !== 'string' || !scripts[name].trim()) {
-                failures.push(`package.json has no truthful ${name} script although the request requires it`);
-            }
-        }
+    const has = (name: string) => typeof scripts[name] === 'string' && scripts[name].trim().length > 0;
+    const where = opts.additionalRoot ? 'this part' : 'the project';
+    if (testsAsked && !has('test')) {
+        failures.push(`package.json has no truthful test script although the request asks for tests (${where})`);
+    }
+    if (buildOwed && !has('build')) {
+        failures.push(buildNamed
+            ? `package.json has no truthful build script although the request names the build (${where})`
+            : `package.json has no truthful build script although ${where} has a build step`);
     }
     return { ok: failures.length === 0, failures };
 }
@@ -1065,6 +2205,104 @@ export function applyScopeAuditOutcome(
     return { ...liveOutcome, scopeAudit };
 }
 
+/**
+ * The steps that BUILD or RUN the artifact a plan is for. A plan with none of
+ * them is «all paper» and gets the deterministic rescue.
+ *
+ * Not the registry's sideEffects 'execute': that set also holds browser_run,
+ * dead_code_detector and specification_verification, which execute something
+ * without building or running the project, so a paper plan verified by a
+ * browser step would escape the rescue. quality_run belongs here: it runs the
+ * project's own build/test scripts, and the plan-recovery repair now emits it
+ * for «npm test» / «npm run build» (round 15) — leaving it out judged a plan
+ * that runs its own tests as paper and replaced it.
+ */
+export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
+    'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit', 'quality_run']);
+
+/**
+ * WHICH PARTS THE REQUEST ASKED FOR (round 15 review, C2).
+ *
+ * service: the request names an API as something to build or use as its
+ * backend, its own backend/server, or an API «with» the app. interface:
+ * asked for unless explicitly negated («without a UI») or the build's object
+ * is an API and nothing for people is named — a CLI word never un-requests an
+ * interface when a web word is present. program: a CLI/script with no web
+ * word and no service. Roles decide which instruments must prove delivery;
+ * they never relax a measured failure.
+ */
+export function requestedDeliveryRoles(request: string): { service: boolean; interface: boolean; program: boolean } {
+    const text = String(request || '');
+    const artifact = requestedArtifact(text);
+    // What the router builds as a command-line program is proven as one, by
+    // its own tests — whatever data it reads («invoices», «a PostgreSQL
+    // database») or site it reads from (eval round 19). Only an interface
+    // named beside it adds a second instrument.
+    if (routesToCliScaffold(text, artifact)) return { service: false, interface: artifact.interfaceNamed, program: true };
+    const apiWithApp = /\bwith\s+(?:an?\s+)?(?:[\w./+-]+\s+){0,2}api\b|(?:مع|و)\s*واجهة\s+(?:برمجية|برمجة|خلفية)/iu.test(text);
+    // The API object and the server claims come from the one artifact reader
+    // the router also uses: roles and routing can never disagree on them.
+    const service = artifact.kind === 'api' || artifact.needsServer || apiWithApp;
+    if (artifact.kind === 'api') return { service, interface: artifact.interfaceNamed, program: false };
+    // «a web tool» is for people: a bare «web»/«browser» is a web word too.
+    const webWord = artifact.interfaceNamed || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
+    const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
+    return { service, interface: !(negatedInterface && !webWord), program: false };
+}
+
+/**
+ * Does the confirmed live address serve a page at «/»? A server-rendered or
+ * framework interface (Next.js, SvelteKit, Flask templates) has no index.html
+ * on disk; the page it answers is the evidence. Loopback only (project_run's
+ * own address), GET only, bounded by project_run's own answer timeout.
+ */
+export async function servesHtmlAtRoot(liveUrl: unknown): Promise<boolean> {
+    const raw = String(liveUrl || '').trim();
+    if (!raw) return false;
+    let url: URL;
+    try { url = new URL('/', raw); } catch { return false; }
+    if (url.protocol !== 'http:' || !['127.0.0.1', 'localhost', '[::1]', '::1'].includes(url.hostname)) return false;
+    let timeoutMs = 2500;
+    try { timeoutMs = Number(require('./ProjectRunTool').HTTP_ANSWER_TIMEOUT_MS) || 2500; } catch { /* default */ }
+    const http = require('http');
+    return await new Promise<boolean>(resolve => {
+        const req = http.get(url, { timeout: timeoutMs, headers: { Accept: 'text/html' } }, (res: any) => {
+            const ok = Number(res.statusCode) >= 200 && Number(res.statusCode) < 300 && /text\/html/i.test(String(res.headers?.['content-type'] || ''));
+            res.resume();
+            resolve(ok);
+        });
+        req.on('timeout', () => { req.destroy(); resolve(false); });
+        req.on('error', () => resolve(false));
+    });
+}
+
+/**
+ * A REQUEST THAT NEEDS A SERVER IS NOT DELIVERED BY A BROWSER-ONLY BUILD.
+ *
+ * Round 20 review (P251): «customers … book …, and the owner sees all bookings»
+ * claims data one party writes and another reads — only a server keeps it. A
+ * React-only plan built it in the browser: each customer's booking lived in
+ * that customer's browser, the owner could never see one, and nothing at
+ * delivery measured the missing server. Returns the failure naming the server
+ * claims, or '' when no server was asked for, an api_project part was bound,
+ * or a delivered root registers server routes.
+ */
+export async function missingRequestedServer(request: string, roots: string[], parts: Array<{ tool?: string }>): Promise<string> {
+    if (!requestedDeliveryRoles(request).service) return '';
+    if ((Array.isArray(parts) ? parts : []).some(part => String(part?.tool || '') === 'api_project')) return '';
+    if ((await collectServerEvidence(roots, [])).routes.length > 0) return '';
+    let claims: string[] = [];
+    try { claims = requestedArtifact(String(request || '')).evidence.serverClaims || []; } catch { claims = []; }
+    return `the request needs a server (${claims.join(', ') || 'an API it serves'}), but no delivered part registers server routes`;
+}
+
+export function planTouchesRunnable(phases: unknown): boolean {
+    return (Array.isArray(phases) ? phases : []).some((phase: any) =>
+        [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
+         ...(phase?.verificationTask ? [phase.verificationTask] : [])]
+            .some((t: any) => PLAN_STEPS_THAT_BUILD_OR_RUN.has(String(t?.tool || ''))));
+}
+
 export class ProjectPipelineTool implements ToolDefinition {
     name = 'project_pipeline';
     version = '1.0.0';
@@ -1103,10 +2341,107 @@ export class ProjectPipelineTool implements ToolDefinition {
     auditFields = ['request'];
     mockSupported = false;
 
+    /**
+     * ONE PHASE IDENTITY PER PIPELINE RUN.
+     *
+     * Each phase hand-off used to mint its own `pipeline-<ts>`/`run-<ts>` when
+     * the caller gave no ids, while delivery read the parts under
+     * 'default'/'' — so the parts were silently empty, and each repair sub-run
+     * started a new ledger (round 15 review). The ids are computed once here,
+     * every hand-off and every reader uses them, and this run's delivery parts
+     * are cleared when it starts (a retried pipeline in the same run never
+     * reads stale roots) and when it ends (the store stays bounded).
+     */
     async execute(input: { request: string; path?: string }, context?: any) {
+        const phaseIds = pipelinePhaseIds(context);
+        const partsKey = sessionPartsKeyOf(phaseIds.sessionId);
+        clearDeliveryParts(partsKey, phaseIds.runId);
+        try {
+            return await this.executeRun(input, context, phaseIds);
+        } finally {
+            clearDeliveryParts(partsKey, phaseIds.runId);
+        }
+    }
+
+    private async executeRun(input: { request: string; path?: string }, context: any, phaseIds: PipelinePhaseIds) {
+        const scopedFinal =(output: any) => ({ ...(output && typeof output === 'object' ? output : {}), pipelineFinal: true });
+        const planningScope = engineeringScope(context);
+        if (hasEngineeringToken(context) && !planningScope) return { ok: false, error: 'engineering_scope_invalid', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_invalid', executed: false }), logs: [] };
+        if (planningScope) {
+            if (input.request !== planningScope.request || input.path !== planningScope.root) return { ok: false, error: 'engineering_scope_mismatch', output: scopedFinal({ status: 'failed', reason: 'engineering_scope_mismatch', executed: false }), logs: [] };
+            context?.onProgress?.('Inspecting the selected workspace through the guarded tools.');
+            const discovery = await executeTool('engineering_discovery', { request: planningScope.request, path: planningScope.root }, context);
+            if (!discovery.ok || !discovery.output?.evidence || !engineeringScope(context)) return { ok: false, error: 'engineering_discovery_failed', output: scopedFinal({ status: 'failed', reason: 'engineering_discovery_failed', executed: false, discoveryResult: discovery.output }), logs: discovery.logs || [] };
+            const productRequest = planningScope.request, evidence = discovery.output.evidence;
+            try { snapshotEngineeringChild('project_planner', { projectDescription: productRequest, evidence }, context); }
+            catch { return { ok: false, error: 'engineering_evidence_untrusted', output: scopedFinal({ status: 'failed',
+                reason: 'engineering_evidence_untrusted', executed: false }), logs: discovery.logs || [] }; }
+            const logs: string[] = [...(discovery.logs || [])];
+            const say = (message: string) => { appendBoundedPipelineLog(logs, message); context?.onProgress?.(message); };
+            const isAr = isArabicReply({ language: context?.language, text: productRequest });
+            const specification = await this.readRequestedSpecifications(productRequest, evidence, context, logs, say, isAr);
+            if (specification.error || !engineeringScope(context)) return { ok: false, error: 'engineering_specification_failed',
+                output: scopedFinal({ status: 'failed', reason: 'engineering_specification_failed', executed: false, message: specification.error || 'The scoped source read was cancelled.' }), logs };
+            // Literal edits cannot be planned from filenames alone. Read every
+            // admitted Node source/test completely through the same file gateway.
+            const sourceNames = evidence.mode === 'existing_workspace' && evidence.selectedProject?.projectKinds?.includes('node')
+                ? [...new Set<string>(['package.json', ...(evidence.selectedProject.sourceFiles || []), ...(evidence.selectedProject.testFiles || [])])] : [];
+            if (!sourceNames.length || sourceNames.length > 7) return { ok: false, error: 'isolated_source_context_budget',
+                output: scopedFinal({ status: 'failed', executed: false, reason: 'isolated_source_context_budget' }), logs };
+            const codeSources: Array<{ path: string; content: string; lineCount: number }> = [];
+            for (const relative of sourceNames) {
+                if (!engineeringScope(context) || !/^[A-Za-z0-9_-][A-Za-z0-9_./-]*$/u.test(relative)
+                    || relative.split('/').some(part => !part || part === '.' || part === '..')) return { ok: false, error: 'isolated_source_context_invalid', output: scopedFinal({ status: 'failed', executed: false }), logs };
+                const reads: any[] = [];
+                for (let snapshot = 0; snapshot < 2; snapshot++) {
+                    const read = await executeTool('read_file', { path: path.join(planningScope.root, relative), startLine: 1, endLine: 10000 }, context);
+                    if (!read.ok || typeof read.output?.content !== 'string' || read.output.truncated !== false
+                        || !Number.isInteger(read.output.totalLines) || read.output.totalLines < 1 || read.output.totalLines > 10000
+                        || read.output.content.split('\n').length !== read.output.totalLines
+                        || !autonomousFileTextIsSafe(read.output.content)) return { ok: false, error: 'isolated_source_context_incomplete', output: scopedFinal({ status: 'failed', executed: false }), logs };
+                    reads.push(read.output);
+                }
+                if (reads[0].content !== reads[1].content || reads[0].totalLines !== reads[1].totalLines) return { ok: false, error: 'isolated_source_context_changed', output: scopedFinal({ status: 'failed', executed: false }), logs };
+                codeSources.push({ path: relative, content: reads[0].content, lineCount: reads[0].totalLines });
+            }
+            const fullContext = [specification.content, ...codeSources.map(source => `COMPLETE SOURCE: ${source.path}\n${source.content}`)].filter(Boolean).join('\n\n');
+            const plannerEvidence = sealEngineeringEvidence(context, { ...evidence, sourceEvidence: { files: codeSources },
+                requiredSpecification: { content: fullContext, sources: [...specification.sources, ...codeSources.map(source => ({ path: source.path, lineCount: source.lineCount }))] } });
+            if (JSON.stringify(plannerEvidence, null, 2).length > DISCOVERY_EVIDENCE_MAX_CHARS)
+                return { ok: false, error: 'specification_planner_budget_exceeded', output: scopedFinal({ status: 'failed',
+                    reason: 'specification_planner_budget_exceeded', executed: false, message: 'Complete required-source evidence exceeds the bounded planner intake.' }), logs };
+            context?.onProgress?.('Planning the requested project with the selected local model.');
+            const plan = await executeTool('project_planner', { projectDescription: planningScope.request, evidence: plannerEvidence }, {
+                // The scope's model is local by construction: a sized local plan, not a
+                // fixed 120 s (eval round 5, 2026-10-23: [LocalDeadline] requested 119977 ms
+                // for a plan sized at 48 min), still inside the scope's lifetime.
+                ...context, engineeringPipeline: false, plannerTimeoutMs: Math.min(localPlanDeadlineMs(planningScope.request), Math.max(1, planningScope.expires - Date.now())),
+            });
+            if (!plan.ok || !Array.isArray(plan.output?.phases) || plan.output.phases.length === 0 || !engineeringScope(context)) return { ok: false, error: 'engineering_planning_failed', output: scopedFinal({ status: 'failed', reason: 'engineering_planning_failed', executed: false, evidence: discovery.output.evidence, plannerResult: plan.output }), logs: [...(discovery.logs || []), ...(plan.logs || [])] };
+            try {
+                const isolatedContext = issueEngineeringExecution(context, plannerEvidence, plan.output);
+                const sealed = engineeringExecution(isolatedContext)!;
+                const { AgentLoopService } = await import('../../services/AgentLoopService');
+                const result = await AgentLoopService.runPlannedPhasesIfPresent({
+                    sessionId: planningScope.sessionId, runId: planningScope.runId, userId: planningScope.userId,
+                    workspaceId: planningScope.workspaceId, request: planningScope.request, modelConfig: context.modelConfig,
+                    isCancelled: context.isCancelled, cancellation: context.cancellation, language: context.language,
+                    onProgress: context.onProgress, isolatedEngineeringContext: isolatedContext,
+                    plannerResult: { ok: true, output: { projectName: plan.output.projectName,
+                        projectRoot: planningScope.root, createsNewProject: false, phases: sealed.phases, totalPhases: sealed.phases.length } },
+                });
+                return { ok: result.ok === true, ...(result.ok === true ? {} : { error: (result as any).error || 'isolated_execution_failed' }),
+                    output: scopedFinal({ ...result, status: result.ok === true ? 'completed' : 'failed',
+                        executed: true, verified: result.ok === true, evidence: discovery.output.evidence }), logs };
+            } catch (error: any) {
+                return { ok: false, error: error.message || 'isolated_plan_not_supported',
+                    output: scopedFinal({ status: 'failed', executed: false, reason: error.message || 'isolated_plan_not_supported',
+                        evidence: discovery.output.evidence, plannerResult: plan.output }), logs };
+            }
+        }
         const logs: string[] = [];
         const request = String(input?.request || '').trim();
-        if (!request) return { ok: false, error: 'request is required', logs };
+        if (!request) return { ok: false, error: 'request is required', output: scopedFinal({ status: 'failed', executed: false, reason: 'request_required' }), logs };
 
         const say = (m: string) => { appendBoundedPipelineLog(logs, m); context?.onProgress?.(m); };
 
@@ -1151,8 +2486,8 @@ export class ProjectPipelineTool implements ToolDefinition {
             const listing = await executeTool('inspect_directory', {
                 path: projectPath || '.', depth: 1,
             }, context);
-            if (!listing?.ok) {
-                const message = String(listing?.error || 'The workspace root could not be read.');
+            if (!listing?.ok || listing?.output?.truncated === true) {
+                const message = String(listing?.error || (listing?.output?.truncated ? 'directory_entry_limit' : 'The workspace root could not be read.'));
                 return {
                     ok: false,
                     error: message,
@@ -1170,7 +2505,15 @@ export class ProjectPipelineTool implements ToolDefinition {
             const rootReadme = tree.find((entry: any) => entry?.type === 'file' && /^readme(?:\.[a-z0-9_-]+)?$/i.test(String(entry?.name || '')));
             let readmeSummary = '';
             if (rootReadme?.name) {
-                const readme = await executeTool('read_file', { path: rootReadme.name }, context);
+                const readme = await executeTool('read_file', { path: path.join(root, rootReadme.name) }, context);
+                if (!readme?.ok) {
+                    const message = String(readme?.output?.reason || readme?.error || 'README could not be read.');
+                    return { ok: false, error: message,
+                        output: { status: 'failed', verified: false, executionStatus: 'blocked', verificationStatus: 'not_run',
+                            deliveryStatus: 'blocked', pipelineFinal: true,
+                            summary: pick(isAr, `تعذر إكمال قراءة README: ${message}`, `README inspection could not complete: ${message}`) },
+                        logs: boundedPipelineLogs(logs, readme?.logs) };
+                }
                 readmeSummary = summarizeReadme(String(readme?.output?.content || ''));
                 appendBoundedPipelineLogs(logs, readme?.logs);
             }
@@ -1186,12 +2529,16 @@ export class ProjectPipelineTool implements ToolDefinition {
             logs.push(`workspace.overview.entries=${names.length} directories=${directoryCount} files=${fileCount}`);
             logs.push(`workspace.overview.top_level=${names.join(' | ').slice(0, MAX_PIPELINE_LOG_CHARS)}`);
             logs.push(`workspace.overview.readme=${rootReadme?.name || 'missing at workspace root'}`);
+            // Names are part of the requested result, even when UI log filters
+            // suppress structured discovery lines. Keep filenames literal.
+            const entryListing = names.map((name: string) => `- ${name.replace(/([\\`*_\[\]<>])/g, '\\$1')}`).join('\n');
             const summary = pick(isAr,
-                `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**README:** ${rootReadme?.name || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء. التفاصيل الكاملة موجودة في Logs.`,
-                `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**README:** ${rootReadme?.name || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed. Full discovery details are available in Logs.`);
+                `## ✅ نظرة قراءة فقط على مساحة العمل\n\nقرأتُ جذر مساحة العمل **${root}** ووجدتُ **${names.length}** عنصرًا (${directoryCount} مجلدًا و${fileCount} ملفًا).\n\n**الملفات والمجلدات:**\n\n${entryListing || 'الجذر فارغ.'}\n\n**README:** ${rootReadme?.name || 'لا يوجد README في جذر مساحة العمل.'}${readmeSummary ? `\n\n**الخلاصة:**\n${readmeSummary}` : ''}\n\nلم أكتب أو أعدّل أو أشغّل أي شيء.`,
+                `## ✅ Read-only workspace overview\n\nI inspected the workspace root **${root}** and found **${names.length}** top-level entries (${directoryCount} directories and ${fileCount} files).\n\n**Files and directories:**\n\n${entryListing || 'The root is empty.'}\n\n**README:** ${rootReadme?.name || 'No README exists at the workspace root.'}${readmeSummary ? `\n\n**Summary:**\n${readmeSummary}` : ''}\n\nNo files were written, modified, or executed.`);
             return {
                 ok: true,
                 output: {
+                    status: 'completed',
                     projectName: 'read-only-workspace-overview', completedPhases: 1, totalPhases: 1,
                     verified: true, executionStatus: 'completed', verificationStatus: 'verified', deliveryStatus: 'delivered',
                     pipelineFinal: true, stopReason: 'read_only_request', overview, summary,
@@ -1216,7 +2563,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             : '';
         let discoveryPath = projectPath || persistedUserRoot;
         if (!projectPath && latestProjectRequest && discoveryPath) {
-            const resolved = resolveRunnableProject(discoveryPath, productRequest);
+            const resolved = await resolveRunnableProject(discoveryPath, productRequest);
             if (resolved.matched && resolved.cwd) discoveryPath = resolved.cwd;
         }
         const discoveryResult = await executeTool('engineering_discovery',
@@ -1332,21 +2679,53 @@ export class ProjectPipelineTool implements ToolDefinition {
             : null;
         const { hasWorkflowApplicationContract } = require('../../../core/design/app-blueprints');
         const deterministicWorkflow = hasWorkflowApplicationContract(productRequest);
-        // Discovery is authoritative about whether a project already exists,
-        // but older/newer discovery callers do not always populate the
-        // convenience `createsNewProject` flag consistently.
-        const confirmedGreenfield = isGreenfield;
-        const hisOwnSchema = confirmedGreenfield
-            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow)
+        // CLI/CSV requests are file-level projects, not web apps. They should
+        // use the deterministic scaffold path even without an explicit schema.
+        const isCliOrCsv = isCliRequestFn(productRequest);
+        // A greenfield application that claims its own server is built by
+        // api_project + react_project; the stock-coverage check below still
+        // decides whether a model plans it instead (eval round 20, P251/P151).
+        const claimsOwnServer = !hasExplicitRecordSchema(productRequest) && !deterministicWorkflow && !isCliOrCsv
+            && serverClaimingApplication(productRequest);
+        const stockPhases = isGreenfield
+            && (hasExplicitRecordSchema(productRequest) || deterministicWorkflow || isCliOrCsv || claimsOwnServer)
             ? deterministicPhasesFor(productRequest)
             : null;
+        /**
+         * ⛔ A STOCK ENGINE ONLY WHEN IT COVERS WHAT HE ASKED (law 4).
+         *
+         * Eval run500, 2026-10-23: «an admin dashboard … with a summary page
+         * showing totals and a chart» took the stock records engine, and the
+         * gap surfaced only after the build as requested_features_not_proven.
+         * When the request names something the stock engine cannot build and a
+         * model can plan, plan from the request; with no healthy model the stock
+         * engine still builds and the delivery report names the gaps honestly.
+         */
+        const stockGaps: string[] = stockPhases && !isCliOrCsv && !deterministicWorkflow && context?.skipProviderPreflight !== true
+            ? (() => { try {
+                // When the stock path builds its own API, what a backend covers is covered.
+                const withBackend = stockPhases.phases.some((ph: any) => (ph.tasks || []).some((t: any) => t?.tool === 'api_project'));
+                return require('../../../core/design/app-blueprints').stockEngineGaps(productRequest, withBackend);
+            } catch { return []; } })()
+            : [];
+        const gapPlannerHealth = stockGaps.length
+            ? await verifyProviderDirect(String(context?.modelConfig?.provider || 'auto'), {
+                apiKey: context?.modelConfig?.apiKey, baseUrl: context?.modelConfig?.baseUrl, model: context?.modelConfig?.model,
+            })
+            : null;
+        if (stockGaps.length) {
+            appendBoundedPipelineLog(logs, `[pipeline] stock engine does not cover: ${stockGaps.slice(0, 6).join(' · ')} → ${gapPlannerHealth?.ok ? 'planning from the request' : 'model unavailable, stock engine with honest gaps'}`);
+        }
+        const hisOwnSchema = stockGaps.length && gapPlannerHealth?.ok ? null : stockPhases;
         // The provider is a prerequisite for model planning, not for an
         // evidence-backed plan the request has already made deterministic.
         // Otherwise a clear form request waits behind a weak Ollama even though
         // neither its schema nor its phase graph needs an LLM decision.
         const requiresModelPlanning = !hisOwnSchema && !deterministicExistingEdit;
         const modelConfig = context?.modelConfig || {};
-        const providerHealth = context?.skipProviderPreflight === true
+        const providerHealth = gapPlannerHealth && hisOwnSchema === null
+            ? gapPlannerHealth
+            : context?.skipProviderPreflight === true
             ? { ok: true, provider: String(modelConfig.provider || 'auto'), detail: 'skipped_by_test_harness' }
             : !requiresModelPlanning
                 ? { ok: true, provider: 'deterministic', detail: 'request_contract_complete' }
@@ -1412,10 +2791,14 @@ export class ProjectPipelineTool implements ToolDefinition {
             say(pick(isAr,
                 deterministicWorkflow
                     ? `[pipeline] الطلب يصرّح بسير عمل مترابط — أبني عقد النظام الكامل مباشرة: ${hisOwnSchema.reason}`
-                    : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
+                    : claimsOwnServer
+                        ? `[pipeline] الطلب يطلب خادمه الخاص وتغطيه أدوات البناء — أبني الخدمة والواجهة مباشرة: ${hisOwnSchema.reason}`
+                        : `[pipeline] الطلب يصرّح بأعمدته — أبني منه مباشرة بلا أن أسأل نموذجاً ما المطلوب: ${hisOwnSchema.reason}`,
                 deterministicWorkflow
                     ? `[pipeline] the request declares a coordinated workflow — building its full-system contract directly: ${hisOwnSchema.reason}`
-                    : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
+                    : claimsOwnServer
+                        ? `[pipeline] the request claims its own server and the builders cover it — building its service and interface directly: ${hisOwnSchema.reason}`
+                        : `[pipeline] the request declares its own columns — building from it directly, with no model asked what to build: ${hisOwnSchema.reason}`));
             hisPlan = {
                 ok: true,
                 output: {
@@ -1434,9 +2817,14 @@ export class ProjectPipelineTool implements ToolDefinition {
         // deadline and mark the call as an engineering pipeline so the planner's
         // one recovery pass is available after a transient gateway failure. The
         // normal chat route keeps its shorter deadline.
+        // 180 s is this pipeline's DEFAULT for a cloud plan. A plan the LOCAL model
+        // serves gets a default sized to it and to this machine's measured speed
+        // (eval run500 P101, 2026-10-23: a compact local plan was cut at 180 s);
+        // the number then reaches every downstream planner call as-is.
         const plannerTimeoutMs = Number(context?.plannerTimeoutMs) > 0
             ? Number(context.plannerTimeoutMs)
-            : 180_000;
+            : servedByLocalModel(context) ? localPlanDeadlineMs(productRequest) : 180_000;
+        const plannerTimeoutDefaulted = !(Number(context?.plannerTimeoutMs) > 0);
         //  When his sentence settled it, the planner is not called at all.
         let plannerResult: any = hisPlan || (deterministicExistingEdit
             ? {
@@ -1451,6 +2839,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 requireRunnableContract: true,
                 engineeringPipeline: true,
                 plannerTimeoutMs,
+                plannerTimeoutDefaulted,
             },
         ));
         if (!plannerResult?.ok || plannerResult?.output?.fallback) {
@@ -1478,9 +2867,17 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ? deterministicPhasesFor(productRequest)
                 : null;
             if (deterministic) {
-                say(pick(isAr,
-                    `[pipeline] لا مخطِّط متاح — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
-                    `[pipeline] no planner available — planning deterministically from what the request declares: ${deterministic.reason}`));
+                // A planner that ANSWERED with a blocked plan is not «no planner»
+                // (eval round 15, P151: the log said so after a 44-minute plan).
+                const plannerBlocker = plannerResult?.output?.blocker;
+                const blockedCode = String(plannerBlocker?.code || '').trim();
+                say(blockedCode
+                    ? pick(isAr,
+                        `[pipeline] خطة المخطِّط حُجبت (${blockedCode}: ${String(plannerBlocker?.message || '').slice(0, 200)}) — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
+                        `[pipeline] the planner's plan was blocked (${blockedCode}: ${String(plannerBlocker?.message || '').slice(0, 200)}) — planning deterministically from what the request declares: ${deterministic.reason}`)
+                    : pick(isAr,
+                        `[pipeline] لا مخطِّط متاح — أخطّط حتمياً مما صرّح به الطلب: ${deterministic.reason}`,
+                        `[pipeline] no planner available — planning deterministically from what the request declares: ${deterministic.reason}`));
                 plannerResult = {
                     ok: true,
                     output: { projectName: deterministic.projectName, phases: deterministic.phases, deterministic: true, plannedWithoutModel: true },
@@ -1548,13 +2945,8 @@ export class ProjectPipelineTool implements ToolDefinition {
          * it is the same rescue both earlier shapes already use.
          */
         {
-            const CAN_BUILD_OR_RUN = new Set(['api_project', 'react_project', 'web_page_builder', 'scaffold_project',
-                'scaffold_full_stack', 'shell_execute', 'npm_manager', 'project_run', 'project_edit']);
             const planPhases = Array.isArray(plannerResult?.output?.phases) ? plannerResult.output.phases : [];
-            const touchesRunnable = planPhases.some((phase: any) =>
-                [...(Array.isArray(phase?.tasks) ? phase.tasks : []),
-                 ...(phase?.verificationTask ? [phase.verificationTask] : [])]
-                    .some((t: any) => CAN_BUILD_OR_RUN.has(String(t?.tool || ''))));
+            const touchesRunnable = planTouchesRunnable(planPhases);
             const requiresConcreteUiBuilder = interactiveAppNeedsReactBuilder(productRequest);
             const missingConcreteUiBuilder = requiresConcreteUiBuilder && !planContainsReactBuilder(planPhases);
             const unrequestedApiBuilder = planContainsUnrequestedApiBuilder(productRequest, planPhases);
@@ -1564,7 +2956,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                 && plannerResult?.output?.deterministic !== true
                 && (deterministicRescueAllowed(productRequest) || requiresConcreteUiBuilder)) {
                 const rescue = deterministicPhasesFor(productRequest);
-                if (rescue) {
+                const paperOnly = !touchesRunnable && !missingConcreteUiBuilder && !unrequestedApiBuilder;
+                const completed = paperOnly ? completePaperPlan(productRequest, planPhases, rescue) : null;
+                if (completed) {
+                    say(pick(isAr,
+                        `[pipeline] الخطة كتبت ملفات ولم تشغّل شيئاً — أكملتُها بخطوات تشغيلها بدلاً من استبدالها، لأن ${completed.reasons.join('؛ ')}`,
+                        `[pipeline] the plan writes files but runs nothing — completing it with the steps that run it instead of replacing it, because ${completed.reasons.join('; ')}`));
+                    plannerResult.output.phases = completed.phases;
+                    plannerResult.output.totalPhases = completed.phases.length;
+                } else if (rescue) {
                     const reason = missingConcreteUiBuilder
                         ? 'the interactive application plan omitted the concrete React UI builder'
                         : unrequestedApiBuilder
@@ -1579,6 +2979,22 @@ export class ProjectPipelineTool implements ToolDefinition {
                         logs: boundedPipelineLogs(plannerResult?.logs),
                     };
                 }
+            }
+        }
+
+        // Whatever planned it — the model, a rescue or the stock path — a plan
+        // for a request that claims its own server builds that server: the
+        // model's phases are kept and the service phase is added before them
+        // (eval round 20, P251: a browser-only plan for «the owner sees all
+        // bookings»).
+        if (isGreenfield && Array.isArray(plannerResult?.output?.phases) && plannerResult.output.phases.length > 0) {
+            const withService = planWithRequestedService(productRequest, plannerResult.output.phases);
+            if (withService) {
+                say(pick(isAr,
+                    '[pipeline] الطلب يطلب خادماً والخطة لا تبني واحداً — أضفتُ مرحلة الخدمة قبل مراحلها',
+                    '[pipeline] the request claims a server and the plan builds none — adding the service phase before its phases'));
+                plannerResult.output.phases = withService;
+                plannerResult.output.totalPhases = withService.length;
             }
         }
 
@@ -1620,8 +3036,8 @@ export class ProjectPipelineTool implements ToolDefinition {
         // is a cycle if imported at module load.
         const { AgentLoopService } = require('../../services/AgentLoopService');
         const pipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-            sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-            runId: context?.runId || `run-${Date.now()}`,
+            sessionId: phaseIds.sessionId,
+            runId: phaseIds.runId,
             userId: context?.userId || 'anonymous',
             workspaceId: context?.workspaceId || context?.sessionId || 'default',
             // Keep the complete product request separate from model-authored
@@ -1667,11 +3083,17 @@ export class ProjectPipelineTool implements ToolDefinition {
          * this is evidence, not a name-based fallback, and it also covers a
          * manifest that was written during the final phase.
          */
+        // The phases recorded their project under the shared phase ids; a caller
+        // that gave no run id keeps the legacy session read as a fallback.
         const runtimeProjectHandoff = trustedRuntimeProjectHandoff(
+            phaseIds.sessionId,
+            context?.workspaceId || context?.sessionId || 'default',
+            phaseIds.runId,
+        ) || (!context?.runId ? trustedRuntimeProjectHandoff(
             context?.sessionId,
             context?.workspaceId || context?.sessionId || 'default',
             context?.runId,
-        );
+        ) : null);
         const runtimeProjectRoot = runtimeProjectHandoff?.sourceRoot || '';
         if (pipeline?.ok === true && !String(plannerResult?.output?.projectRoot || '').trim() && runtimeProjectRoot) {
             plannerResult.output.projectRoot = runtimeProjectRoot;
@@ -1790,10 +3212,150 @@ export class ProjectPipelineTool implements ToolDefinition {
         let browserQaInfrastructureRetryAttempted = false;
         let browserQaInfrastructureRetryStatus = 'not_attempted';
         let scopeRepairAttempted = false;
+        let requestCoverageRepairStatus = 'not_attempted';
+        let requestCoverageRepairAttempted = false;
+        /** A server file a coverage repair rewrote after the builder proved it live, when its claims could not be measured again. */
+        let staleBuilderProof: { file: string; root: string } | null = null;
         let scopeRepairStatus = 'not_attempted';
         let scopeCoverageFailed = false;
         let scopeAudit: ScopeGateOutcome['scopeAudit'] | undefined;
-        if (verified) {
+        /**
+         * Every instrument records its own measurement; the verdict is a pure
+         * function of all of them (core/quality/delivery-verdict). Before
+         * round 15 the last instrument to run decided: a passing Browser QA
+         * re-derived the verdict from the scope flag alone, over a failed
+         * quality contract measured a moment earlier.
+         */
+        const ledger = new DeliveryLedger();
+        const liveRunNotes: string[] = [];
+        const deliveryRoles = requestedDeliveryRoles(productRequest);
+        // A program asked for on its own (a CLI, a script) has no URL: its own
+        // passing test run proves it runs, not project_run.
+        const sessionPartsKey = sessionPartsKeyOf(phaseIds.sessionId);
+        /** Every root a phase bound in this run, plus the roots of the last live run. */
+        const deliveredRoots = (extra: string[] = []) => Array.from(new Set([
+            ...deliveryPartsForRun(sessionPartsKey, phaseIds.runId).map(part => part.root),
+            ...extra,
+        ].map(root => String(root || '').trim()).filter(root => root && fs.existsSync(root)).map(root => path.resolve(root))));
+        const programRootCandidate = String(plannerResult?.output?.projectRoot || discoveredProjectRoot || runtimeProjectHandoff?.sourceRoot || '').trim();
+        // Round 20 review: a «tool» the router read as a CLI but that came out
+        // with a page is judged like any interface — live run, quality, scope,
+        // records and Browser QA — never by its own test run alone.
+        const programServesAPage = deliveredRoots([programRootCandidate]).some(root => !!servedInterfaceDirectory(root));
+        const programOnly = deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && !programServesAPage;
+        if (deliveryRoles.program && !deliveryRoles.interface && !deliveryRoles.service && programServesAPage) {
+            appendBoundedPipelineLog(logs, '[pipeline] the program serves a page, so it is proven live like an interface, not by its own tests alone');
+        }
+        let requestCoverage: RequestCoverageReport | undefined;
+        let requestCoverageFailed = false;
+        // A program's own test run proves it runs; its manifest must still pass
+        // the same contract as any delivery (a «test»: «exit 0» proves nothing).
+        let deliveryRequired: DeliveryInstrument[] = programOnly ? ['quality'] : [];
+        const syncFromLedger = (final = false) => {
+            const verdict = deliveryVerdict({
+                phaseVerified: verified,
+                requestFidelityBlocked,
+                measurements: ledger.all(),
+                required: final ? deliveryRequired : [],
+                primary: programOnly ? 'program' : 'live',
+            });
+            finalVerified = verdict.verified;
+            scopeCoverageFailed = verdict.failures.some(m => m.instrument === 'scope');
+            requestCoverageFailed = verdict.coverageFailed;
+            // In flight every failure blocks; only the final verdict may call a
+            // scope-only shape partial.
+            const blocking = verdict.failures.length > 0 && !(final && verdict.partial);
+            liveRunVerificationFailed = blocking;
+            finalHonestBlocker = honestBlocker || blocking;
+            liveRunError = blocking
+                ? [verdict.firstError, ...liveRunNotes].filter(Boolean).join('; ').slice(0, 900)
+                : (final && (verdict.unread.length || verdict.unverified.length) && !verdict.verified)
+                    // Unread: his words produced no record. Unverified: read, but no
+                    // instrument could measure it — never told as «could not be read».
+                    ? [
+                        verdict.unread.length ? `requested items could not be read, so their delivery is not verified: ${verdict.unread.join(', ')}` : '',
+                        verdict.unverified.length ? `not measured, so their delivery is not verified: ${verdict.unverified.join('; ')}` : '',
+                    ].filter(Boolean).join('; ').slice(0, 900)
+                    : '';
+            return verdict;
+        };
+        const noteLiveRunError = (note: string) => {
+            liveRunNotes.push(String(note || '').slice(0, 420));
+            syncFromLedger();
+        };
+        const measured = (instrument: DeliveryInstrument, ok: boolean) =>
+            ledger.all().some(m => m.instrument === instrument && m.ok === ok);
+        /**
+         * live, quality, scope and records for one project_run result —
+         * measured separately, never folded into one flag. The measurements
+         * are core/quality/delivery-run's, the same ones the general agent
+         * engine's verifier makes: this run gives them its ledger and its
+         * facts, and keeps what they establish for its report.
+         */
+        const delivery = deliveryRun({
+            productRequest,
+            ledger,
+            deliveryRoles,
+            deliveredRoots,
+            deliveryParts: () => deliveryPartsForRun(sessionPartsKey, phaseIds.runId),
+            runTool: (tool, input) => executeTool(tool, input, { ...(context || {}), language: isAr ? 'ar' : 'en' }),
+            requireInstrument: instrument => { deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, instrument])); },
+            cancellation: context?.cancellation,
+            signal: context?.signal,
+            isAr,
+            say,
+            log: line => appendBoundedPipelineLog(logs, line),
+        });
+        let lastAcceptanceRoots: { qualityRoot: string; auditRoots: string[] } = { qualityRoot: '', auditRoots: [] };
+        const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
+            lastAcceptanceRoots = { qualityRoot, auditRoots };
+            try {
+                await delivery.recordLiveAcceptance(runRes, qualityRoot, auditRoots);
+            } finally {
+                // What the measurement established, kept even when it raised —
+                // at the points the closures used to set it.
+                liveUrl = delivery.state.liveUrl;
+                scopeAudit = delivery.state.scopeAudit;
+                requestCoverage = delivery.state.requestCoverage;
+            }
+            return syncFromLedger();
+        };
+        /** A program's proof: its own tests, run through quality_run on the project root. */
+        const recordProgramProof = async () => {
+            const programRoot = programRootCandidate;
+            if (!programRoot || !fs.existsSync(programRoot)) {
+                ledger.record({ instrument: 'program', ok: false, error: 'no program root was bound, so its own tests could not be run' });
+                return syncFromLedger();
+            }
+            // The same contract the live path applies — placeholders refused,
+            // the scripts the request asks for present — measured before the run.
+            const quality = inspectProjectQualityContract(programRoot, productRequest);
+            ledger.record({
+                instrument: 'quality',
+                ok: quality.ok,
+                error: quality.ok ? undefined : `project quality contract failed — ${quality.failures.slice(0, 4).join('; ')}`,
+            });
+            say(pick(isAr, '▶️ أشغّل اختبارات البرنامج نفسه لأثبت أنه يعمل…', '▶️ Running the program\'s own tests to prove it works…'));
+            try {
+                const run = await executeTool('quality_run', { path: programRoot, tasks: ['test'] }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
+                const executed = Array.isArray(run?.output?.results) ? run.output.results.filter((r: any) => r?.skipped === false) : [];
+                const passed = run?.ok === true && executed.length > 0;
+                ledger.record({
+                    instrument: 'program',
+                    ok: passed,
+                    target: programRoot,
+                    error: passed ? undefined : `the program's own tests did not pass: ${String(run?.error || (executed.length ? 'tests failed' : 'no test script to run')).slice(0, 400)}`,
+                });
+            } catch (programError: any) {
+                ledger.record({ instrument: 'program', ok: false, target: programRoot, error: `the program's own tests could not run: ${String(programError?.message || programError).slice(0, 300)}` });
+            }
+            return syncFromLedger();
+        };
+        const liveRepairDue = () => measured('live', false) || measured('quality', false);
+        const scopeRepairDue = () => measured('scope', false) && !liveRepairDue();
+        if (verified && programOnly) {
+            await recordProgramProof();
+        } else if (verified) {
             try {
                 say(pick(isAr, '▶️ أُشغّل النظام لتراه حيّاً…', '▶️ Starting the system so you can see it live…'));
                 // …and it speaks the run's language, not the interface default.
@@ -1823,9 +3385,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     // stale directory by a shared business noun.
                     runInput.projectQuery = `"${plannedProjectName.replace(/"/gu, '\\"')}"`;
                 }
-                const runRes = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
-                liveRunResult = runRes;
-                const liveOutcome = applyLiveRunOutcome(finalVerified, runRes);
+                // Phases that ran in THIS run may have rewritten the tree under a
+                // server still running from an earlier one: restart, never adopt,
+                // so live acceptance and the probes measure the edited code
+                // (round 15 review, finding 46).
+                const phasesEditedTree = pipelineExecutedTasks(pipeline);
+                if (phasesEditedTree) (runInput as Record<string, unknown>).restart = true;
+                const startedRun = await executeTool('project_run', runInput, { ...context, language: isAr ? 'ar' : 'en' });
+                const runRes = phasesEditedTree ? postRepairRunOutcome(startedRun) : startedRun;
+                liveRunResult = startedRun;
                 const liveRuntimeRoot = String(
                     runRes?.output?.cwd || runInput.cwd || plannedProjectRoot || discoveredProjectRoot || ''
                 ).trim();
@@ -1833,23 +3401,15 @@ export class ProjectPipelineTool implements ToolDefinition {
                     plannedProjectRoot || discoveredProjectRoot || liveRuntimeRoot || ''
                 ).trim();
                 const liveAuditRoots = projectAuditRoots(liveSourceRoot, liveRuntimeRoot);
-                const qualityCheckedLiveOutcome = applyProjectQualityContractOutcome(liveSourceRoot || liveRuntimeRoot, productRequest, liveOutcome);
-                const scopedLiveOutcome = applyScopeAuditOutcome(productRequest, liveAuditRoots, qualityCheckedLiveOutcome);
-                scopeAudit = scopedLiveOutcome.scopeAudit;
-                scopeCoverageFailed = scopedLiveOutcome.scopeCoverageFailed === true;
-                finalVerified = scopedLiveOutcome.verified;
-                liveUrl = scopedLiveOutcome.liveUrl;
-                if (scopedLiveOutcome.verificationFailed) {
-                    liveRunError = scopedLiveOutcome.error || 'project_run did not pass live acceptance';
-                    liveRunVerificationFailed = true;
+                await recordLiveAcceptance(runRes, liveSourceRoot || liveRuntimeRoot, liveAuditRoots);
+                if (liveRunVerificationFailed) {
                     say(pick(isAr,
                         `⛔ لم أعتبر النظام مسلّماً: فشل قبول التشغيل الحي أو مطابقة نطاق الطلب. ${liveRunError}`,
                         `⛔ I did not mark the system delivered: live acceptance or requested-scope verification failed. ${liveRunError}`));
                 }
             } catch (e: any) {
-                liveRunError = String(e?.message || e);
-                finalVerified = false;
-                liveRunVerificationFailed = true;
+                ledger.record({ instrument: 'live', ok: false, error: String(e?.message || e) });
+                syncFromLedger();
                 say(pick(isAr,
                     `⛔ لم أعتبر النظام مسلّماً: تعذّر تأكيد التشغيل الحي. ${liveRunError}`,
                     `⛔ I did not mark the system delivered: live execution could not be confirmed. ${liveRunError}`));
@@ -1926,8 +3486,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 scopePlanner.output.projectRoot = artifactRoot;
                 scopePlanner.output.requirementsContext = requirementsContext;
                 const scopePipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-                    sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-                    runId: context?.runId || `run-${Date.now()}`,
+                    sessionId: phaseIds.sessionId,
+                    runId: phaseIds.runId,
                     userId: context?.userId || 'anonymous',
                     workspaceId: context?.workspaceId || context?.sessionId || 'default',
                     browserSessionId: context?.browserSessionId,
@@ -1947,25 +3507,33 @@ export class ProjectPipelineTool implements ToolDefinition {
                     scopeRepairStatus = 'scope_repair_pipeline_failed';
                     appendBoundedPipelineLog(logs, '[pipeline] scope repair phases did not verify successfully');
                     appendBoundedPipelineLog(logs, `[pipeline] scope repair evidence: ${summarizeScopeRepairPipeline(scopePipeline)}`);
+                    // Phases that edited the tree and then failed leave a server
+                    // running the pre-edit code: restart and judge the tree as it
+                    // now is, never Browser-QA the old process (finding 30).
+                    if (pipelineExecutedTasks(scopePipeline)) {
+                        const runBeforeScopeEdit = liveRunResult;
+                        const reMeasured = await executeTool(
+                            'project_run',
+                            { cwd: apiSiblingOf(artifactRoot) || artifactRoot, restart: true },
+                            { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
+                        );
+                        liveRunResult = reMeasured;
+                        const reRuntimeRoot = String(reMeasured?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
+                        await recordLiveAcceptance(postRepairRunOutcome(reMeasured, runBeforeScopeEdit), artifactRoot || reRuntimeRoot, projectAuditRoots(artifactRoot, reRuntimeRoot));
+                        appendBoundedPipelineLog(logs, '[pipeline] scope repair edited the tree and failed; the restarted server was measured again');
+                    }
                     return;
                 }
+                const runBeforeScopeRetry = liveRunResult;
                 const scopeRetryResult = await executeTool(
                     'project_run',
-                    { cwd: apiSiblingOf(artifactRoot) || artifactRoot },
+                    { cwd: apiSiblingOf(artifactRoot) || artifactRoot, restart: true },
                     { ...(context || {}), scopeRepairAttempted: true, language: isAr ? 'ar' : 'en' },
                 );
                 liveRunResult = scopeRetryResult;
-                const scopeRetryLive = applyLiveRunOutcome(true, scopeRetryResult);
                 const scopeRetryRuntimeRoot = String(scopeRetryResult?.output?.cwd || apiSiblingOf(artifactRoot) || artifactRoot || runtimeRoot).trim();
                 const scopeRetryAuditRoots = projectAuditRoots(artifactRoot, scopeRetryRuntimeRoot);
-                const qualityCheckedScopeRetry = applyProjectQualityContractOutcome(artifactRoot || scopeRetryRuntimeRoot, productRequest, scopeRetryLive);
-                const scopeRetryOutcome = applyScopeAuditOutcome(productRequest, scopeRetryAuditRoots, qualityCheckedScopeRetry);
-                scopeAudit = scopeRetryOutcome.scopeAudit;
-                scopeCoverageFailed = scopeRetryOutcome.scopeCoverageFailed === true;
-                finalVerified = scopeRetryOutcome.verified;
-                liveUrl = scopeRetryOutcome.liveUrl;
-                liveRunVerificationFailed = scopeRetryOutcome.verificationFailed;
-                liveRunError = scopeRetryOutcome.error || '';
+                await recordLiveAcceptance(postRepairRunOutcome(scopeRetryResult, runBeforeScopeRetry), artifactRoot || scopeRetryRuntimeRoot, scopeRetryAuditRoots);
                 scopeRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_scope_still_missing';
                 say(pick(isAr,
                     finalVerified ? '✅ أصلحتُ القدرات المفقودة وأعدت تشغيل artifact؛ اجتاز scope audit.' : `⛔ اكتملت محاولة scope-repair لكن الدليل ما زال ناقصاً: ${liveRunError}`,
@@ -1973,12 +3541,12 @@ export class ProjectPipelineTool implements ToolDefinition {
             } catch (scopeRepairError: any) {
                 scopeRepairStatus = 'scope_repair_error';
                 const message = String(scopeRepairError?.message || scopeRepairError).slice(0, 420);
-                liveRunError = `${liveRunError}; scope repair: ${message}`.slice(0, 900);
+                noteLiveRunError(`scope repair: ${message}`);
                 appendBoundedPipelineLog(logs, `[pipeline] scope repair error: ${message}`);
             }
         };
 
-        if (scopeCoverageFailed && !finalVerified && context?.scopeRepairAttempted !== true) {
+        if (scopeRepairDue() && context?.scopeRepairAttempted !== true) {
             await attemptScopeRepair();
         }
 
@@ -1988,7 +3556,7 @@ export class ProjectPipelineTool implements ToolDefinition {
         // then plan only the missing runnable contract. This is intentionally
         // inside project_pipeline (not a generic recovery loop): one attempt,
         // same project identity, same workspace, and no product-specific template.
-        if (!finalVerified && liveRunVerificationFailed && !scopeCoverageFailed && context?.liveRepairAttempted !== true) {
+        if (liveRepairDue() && context?.liveRepairAttempted !== true) {
             liveRepairAttempted = true;
             try {
                 const failureText = String(
@@ -2073,7 +3641,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                     repairEvidence?.selectedProject?.root || plannerResult?.output?.projectRoot || discoveredProjectRoot || ''
                 ).trim();
                 const manifestReconciliation = repairRootForEvidence
-                    ? reconcileMissingRuntimeTarget(repairRootForEvidence, failureText)
+                    ? await reconcileMissingRuntimeTarget(repairRootForEvidence, failureText)
                     : { repaired: false, message: 'no trusted repair root available' };
                 if (manifestReconciliation.repaired) {
                     appendBoundedPipelineLog(logs, `[pipeline] ${manifestReconciliation.message}`);
@@ -2093,8 +3661,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                         repairPlanner.output.requirementsContext = requirementsContext;
                         if (repairProjectRoot) repairPlanner.output.projectRoot = repairProjectRoot;
                         repairPipeline = await AgentLoopService.runPlannedPhasesIfPresent({
-                            sessionId: context?.sessionId || `pipeline-${Date.now()}`,
-                            runId: context?.runId || `run-${Date.now()}`,
+                            sessionId: phaseIds.sessionId,
+                            runId: phaseIds.runId,
                             userId: context?.userId || 'anonymous',
                             workspaceId: context?.workspaceId || context?.sessionId || 'default',
                             browserSessionId: context?.browserSessionId,
@@ -2141,7 +3709,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         let missingRuntime = [] as string[];
                         if (bootstrapRoot && fs.existsSync(manifestPath)) {
                             try {
-                                missingRuntime = missingRuntimeDependencies(bootstrapRoot, detectStart(bootstrapRoot, 4300));
+                                missingRuntime = await missingRuntimeDependencies(bootstrapRoot, await detectStart(bootstrapRoot, 4300));
                             } catch (dependencyError: any) {
                                 appendBoundedPipelineLog(logs, `[pipeline] runtime dependency evidence unreadable: ${String(dependencyError?.message || dependencyError).slice(0, 240)}`);
                             }
@@ -2166,7 +3734,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             boundedRepairReady = bootstrapResult?.ok === true;
                             if (!boundedRepairReady) {
                                 const bootstrapError = String(bootstrapResult?.error || bootstrapResult?.output?.message || 'npm install failed').slice(0, 420);
-                                liveRunError = `${liveRunError}; bounded dependency bootstrap: ${bootstrapError}`.slice(0, 900);
+                                noteLiveRunError(`bounded dependency bootstrap: ${bootstrapError}`);
                                 appendBoundedPipelineLog(logs, `[pipeline] bounded dependency bootstrap failed: ${bootstrapError}`);
                             }
                         }
@@ -2174,29 +3742,22 @@ export class ProjectPipelineTool implements ToolDefinition {
                     if (boundedRepairReady) {
                         const repairProjectName = String(repairPlanner?.output?.projectName || plannerResult?.output?.projectName || '').trim();
                         const repairProjectRoot = String(repairPlanner?.output?.projectRoot || plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim();
-                        const retryInput: Record<string, string> = {};
+                        const retryInput: Record<string, any> = { restart: true };
                         if (repairProjectRoot) retryInput.cwd = apiSiblingOf(repairProjectRoot) || repairProjectRoot;
                         else if (repairProjectName) retryInput.projectQuery = `"${repairProjectName.replace(/"/gu, '\\\"')}"`;
+                        const runBeforeLiveRepair = liveRunResult;
                         const retryRunResult = await executeTool(
                             'project_run',
                             retryInput,
                             { ...(context || {}), language: isAr ? 'ar' : 'en', liveRepairAttempted: true },
                         );
                         liveRunResult = retryRunResult;
-                        const retryOutcome = applyLiveRunOutcome(true, retryRunResult);
                         const retryRuntimeRoot = String(
                             retryRunResult?.output?.cwd || retryInput.cwd || repairProjectRoot || discoveredProjectRoot || ''
                         ).trim();
                         const retrySourceRoot = repairProjectRoot || discoveredProjectRoot || retryRuntimeRoot;
                         const retryAuditRoots = projectAuditRoots(retrySourceRoot, retryRuntimeRoot);
-                        const qualityCheckedRetryOutcome = applyProjectQualityContractOutcome(retrySourceRoot || retryRuntimeRoot, productRequest, retryOutcome);
-                        const scopedRetryOutcome = applyScopeAuditOutcome(productRequest, retryAuditRoots, qualityCheckedRetryOutcome);
-                        scopeAudit = scopedRetryOutcome.scopeAudit;
-                        scopeCoverageFailed = scopedRetryOutcome.scopeCoverageFailed === true;
-                        finalVerified = scopedRetryOutcome.verified;
-                        liveUrl = scopedRetryOutcome.liveUrl;
-                        liveRunVerificationFailed = scopedRetryOutcome.verificationFailed;
-                        liveRunError = scopedRetryOutcome.error || '';
+                        await recordLiveAcceptance(postRepairRunOutcome(retryRunResult, runBeforeLiveRepair), retrySourceRoot || retryRuntimeRoot, retryAuditRoots);
                         liveRepairStatus = finalVerified ? 'repaired_and_running' : 'repair_completed_but_live_run_failed';
                         say(pick(isAr,
                             finalVerified ? '✅ نجحت محاولة الإصلاح المحدودة وأصبح التشغيل الحي مؤكداً.' : `⛔ اكتملت محاولة الإصلاح لكن التشغيل الحي ما زال غير مؤكّد: ${liveRunError}`,
@@ -2212,13 +3773,112 @@ export class ProjectPipelineTool implements ToolDefinition {
             } catch (repairError: any) {
                 liveRepairStatus = 'repair_error';
                 const repairMessage = String(repairError?.message || repairError).slice(0, 420);
-                liveRunError = `${liveRunError}; repair: ${repairMessage}`.slice(0, 900);
+                noteLiveRunError(`repair: ${repairMessage}`);
                 say(pick(isAr, `⛔ تعذرت محاولة إصلاح التشغيل المحدودة: ${repairMessage}`, `⛔ Bounded live-run repair failed: ${repairMessage}`));
             }
         }
 
-        if (scopeCoverageFailed && !finalVerified && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
+        if (scopeRepairDue() && !scopeRepairAttempted && context?.scopeRepairAttempted !== true) {
             await attemptScopeRepair();
+        }
+
+        /**
+         * A MISSING RECORD IS REPAIRED, NOT ONLY FAILED.
+         *
+         * One evidence-bound pass per dimension — served first, then tested —
+         * through the same SelfFix contract phases use: a repair ticket whose
+         * target is the server file that already serves resources (or the
+         * project's test file), the records he named as structured context,
+         * then a RESTART (never adoption) and the same gates again. A server
+         * that no longer starts after the edit gets the file back byte for byte.
+         */
+        const attemptRequestCoverageRepair = async (): Promise<void> => {
+            if (requestCoverageRepairAttempted || context?.requestCoverageRepairAttempted === true) return;
+            requestCoverageRepairAttempted = true;
+            const repairContext = { ...(context || {}), requestCoverageRepairAttempted: true, language: isAr ? 'ar' : 'en' };
+            const { HTTP_ANSWER_TIMEOUT_MS } = require('./ProjectRunTool');
+            const proofTimeoutMs = Number(HTTP_ANSWER_TIMEOUT_MS) || 2500;
+            for (const dimension of ['served', 'tested'] as const) {
+                if (!requestCoverageFailed || !requestCoverage?.missing.length) return;
+                if (!measured('live', true) || measured('live', false)) return;
+                const serverRoot = String(liveRunResult?.output?.cwd || '').trim();
+                const task = requestCoverageRepairTask(requestCoverage, {
+                    request: productRequest,
+                    serverRoot,
+                    testFiles: requestCoverage.testFiles || [],
+                });
+                if (!task || task.dimension !== dimension) continue;
+                // The server's own tree only: an interface file (its API client,
+                // its UI test) is never a coverage target, and nothing outside
+                // the server root would be restored by a server restart
+                // (round 15 review, finding 15).
+                if (!serverRoot || !isWithinRoot(task.repairFile, serverRoot)) {
+                    requestCoverageRepairStatus = 'request_coverage_repair_no_trusted_target';
+                    return;
+                }
+                const ticket = RepairTicketService.build({
+                    phase: { phaseNumber: total + 1, name: isAr ? 'السجلات المطلوبة' : 'Requested records' },
+                    phaseStatus: 'failed',
+                    phaseResult: { ok: false, output: { status: 'failed', results: [{
+                        task: task.task, tool: 'request_coverage', ok: false, error: task.error,
+                        repairKind: 'code_fix', repairFile: task.repairFile, cwd: serverRoot,
+                        description: task.description, artifactContext: task.artifactContext,
+                    }] } },
+                    projectName: plannerResult?.output?.projectName,
+                    sessionId: context?.sessionId,
+                    workspaceId: context?.workspaceId || context?.sessionId,
+                    projectRoot: serverRoot,
+                    runId: context?.runId,
+                } as any);
+                const { SelfFixService } = require('../../services/SelfFixService');
+                const plan = SelfFixService.plan(ticket);
+                if (!plan?.allowed || !plan?.suggestedTool || plan?.strategy === 'manual_review') {
+                    requestCoverageRepairStatus = `request_coverage_repair_unplanned:${String(plan?.strategy || plan?.reason || 'none').slice(0, 80)}`;
+                    return;
+                }
+                say(pick(isAr,
+                    `🔧 ${dimension === 'served' ? 'سجلات طلبتها غير مخدومة' : 'سجلات طلبتها بلا اختبار'}: ${requestCoverage.missing.map(r => r.ar || r.key).join('، ')} — أصلحها مرة واحدة في ${path.basename(task.repairFile)} ثم أعيد التشغيل والفحص.`,
+                    `🔧 ${dimension === 'served' ? 'Requested records are not served' : 'Requested records are untested'}: ${requestCoverage.missing.map(r => r.key).join(', ')} — repairing once in ${path.basename(task.repairFile)}, then restarting and re-checking.`));
+                const bound = bindRunCancellation(context?.cancellation, context?.signal);
+                // MERGE WIRING: a test-script patch the repair task carries (coverage
+                // fork 091554ed) is applied under the same snapshot as the file.
+                const manifestPatch = (task as any).manifestPatch as { file: string; script: string } | undefined;
+                const manifestFile = manifestPatch?.file && isWithinRoot(manifestPatch.file, serverRoot) ? manifestPatch.file : '';
+                const pass = await runCoverageRepairPass({
+                    file: task.repairFile,
+                    guardedFiles: manifestFile ? [manifestFile] : [],
+                    afterRepair: manifestFile ? () => applyRepairManifestPatch(manifestPatch!) : undefined,
+                    targeted: coverageRepairTargets(requestCoverage, dimension),
+                    runBefore: liveRunResult,
+                    runRepairTool: (current) => executeTool(plan.suggestedTool, {
+                        ...editInPlaceRepairInput(plan.suggestedTool, plan.suggestedInput, task.repairFile, current),
+                        sessionId: context?.sessionId,
+                        workspaceId: context?.workspaceId || context?.sessionId,
+                    }, repairContext).then((result: any) => { appendBoundedPipelineLogs(logs, result?.logs); return result; }),
+                    restartServer: async () => {
+                        const run = await executeTool('project_run', { cwd: serverRoot, restart: true }, repairContext);
+                        liveRunResult = run;
+                        return run;
+                    },
+                    recordRun: (run, before) => recordLiveAcceptance(postRepairRunOutcome(run, before), lastAcceptanceRoots.qualityRoot, lastAcceptanceRoots.auditRoots).then(() => undefined),
+                    measurements: () => ledger.all(),
+                    currentTargets: () => coverageRepairTargets(requestCoverage, dimension),
+                    measureProofs: () => measureBuilderProofs(verifiedLiveUrl(ledger.all()), { timeoutMs: proofTimeoutMs, signal: bound.signal }),
+                }).finally(() => bound.dispose());
+                if (pass.undoReason) {
+                    requestCoverageRepairStatus = `request_coverage_repair_restored:${dimension}`;
+                    noteLiveRunError(`request-coverage repair (${dimension}) was undone — ${pass.undoReason}; ${path.basename(task.repairFile)} was restored`);
+                    return;
+                }
+                const remeasured = pass.remeasured;
+                // The builder's live claims about this file were made before the
+                // rewrite; unless they were measured again, the report must say so.
+                if (!remeasured) staleBuilderProof = { file: task.repairFile, root: serverRoot };
+                requestCoverageRepairStatus = requestCoverageFailed ? `repair_completed_records_still_missing:${dimension}` : 'repaired_and_served';
+            }
+        };
+        if (requestCoverageFailed && measured('live', true) && !measured('live', false)) {
+            await attemptRequestCoverageRepair();
         }
 
         /**
@@ -2231,11 +3891,44 @@ export class ProjectPipelineTool implements ToolDefinition {
          * A skipped audit is an honest verification failure: Joe must not call
          * an unmeasured application delivered.
          */
-        liveUrl = finalBrowserQaUrl(liveUrl, runtimeProjectHandoff?.durablePreviewUrl);
-        if (runtimeProjectHandoff?.durablePreviewUrl) {
-            appendBoundedPipelineLog(logs, `[pipeline] browser QA target=durable_project_preview url=${liveUrl}`);
+        /**
+         * An interface is judged in a browser — when one was delivered. An API
+         * or a program with no page has nothing for Browser QA to open, and its
+         * «no index.html to audit» used to block every API-only delivery
+         * (round 15, P101). A requested interface that no part serves is a
+         * failure of its own, named.
+         */
+        const interfaceRoots = deliveredRoots([...lastAcceptanceRoots.auditRoots, String(liveRunResult?.output?.cwd || '').trim()]);
+        // A request that needs a server is never delivered by a browser-only build.
+        if (verified && !programOnly) {
+            const serverGap = await missingRequestedServer(productRequest, interfaceRoots, deliveryPartsForRun(sessionPartsKey, phaseIds.runId));
+            if (serverGap) {
+                ledger.record({ instrument: 'service', ok: false, error: serverGap });
+                syncFromLedger();
+            }
         }
-        if (liveUrl) {
+        const interfaceDelivered = interfaceRoots.some(root => !!servedInterfaceDirectory(root))
+            || String(liveRunResult?.output?.kind || '') === 'static-site'
+            || await servesHtmlAtRoot(verifiedLiveUrl(ledger.all()))
+            || (deliveryRoles.interface && interfaceRoots.some(root => !!deliveredPageDirectory(root)));
+        if (!interfaceDelivered && verifiedLiveUrl(ledger.all()) && deliveryRoles.interface) {
+            ledger.record({ instrument: 'browser', ok: false, error: 'the request asks for an interface, but no delivered part serves one (no page is served at the live address)' });
+            syncFromLedger();
+        }
+        // Browser QA never runs to "rescue" an outcome already measured as
+        // failed, and a durable preview stands in only for a CONFIRMED live
+        // URL — a failed or never-run pipeline is not judged on a preview.
+        const browserQaTarget = interfaceDelivered && mayRunBrowserQa(ledger.all())
+            ? browserQaTargetUrl(verifiedLiveUrl(ledger.all()), runtimeProjectHandoff?.durablePreviewUrl)
+            : '';
+        if (!browserQaTarget && (liveUrl || runtimeProjectHandoff?.durablePreviewUrl)) {
+            appendBoundedPipelineLog(logs, `[pipeline] browser QA not run: an earlier measurement already failed (${liveRunError || 'no confirmed live run'})`);
+        }
+        if (browserQaTarget) {
+            liveUrl = browserQaTarget;
+            if (runtimeProjectHandoff?.durablePreviewUrl) {
+                appendBoundedPipelineLog(logs, `[pipeline] browser QA target=durable_project_preview url=${liveUrl}`);
+            }
             try {
                 const runtimeRoot = String(liveRunResult?.output?.cwd || '').trim();
                 const artifactRoot = String(
@@ -2245,7 +3938,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                     ''
                 ).trim();
                 const auditRoots = projectAuditRoots(artifactRoot, runtimeRoot);
-                const auditDir = projectAuditDirectory(auditRoots);
+                // The delivered interface may be any part this run built.
+                const auditDir = projectAuditDirectory(Array.from(new Set([...auditRoots, ...interfaceRoots])));
                 const { PANEL_BROWSER_SID } = require('./BrowserSmartTools');
                 const panelSid = String(context?.browserSessionId || PANEL_BROWSER_SID || process.env.PANEL_BROWSER_SID || '').trim();
                 const { broadcast } = require('../../../api/ws');
@@ -2294,10 +3988,8 @@ export class ProjectPipelineTool implements ToolDefinition {
                 });
                 if (browserQa.skipped) {
                     browserQaFailed = true;
-                    finalVerified = false;
-                    finalHonestBlocker = true;
-                    liveRunVerificationFailed = true;
-                    liveRunError = `browser QA skipped: ${browserQa.skipped}`;
+                    ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${browserQa.skipped}` });
+                    syncFromLedger();
                     say(pick(isAr,
                         `⛔ لم أسلّم النظام: فحص Browser QA لم يُجرَ (${browserQa.skipped}).`,
                         `⛔ I did not deliver the system: Browser QA did not run (${browserQa.skipped}).`));
@@ -2436,21 +4128,17 @@ export class ProjectPipelineTool implements ToolDefinition {
                     blocking = browserQa.findings.slice();
                     if (blocking.length > 0) {
                         browserQaFailed = true;
-                        finalVerified = false;
-                        finalHonestBlocker = true;
-                        liveRunVerificationFailed = true;
-                        liveRunError = `browser QA found ${blocking.length} blocking finding(s)`;
+                        ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${blocking.length} blocking finding(s)` });
+                        syncFromLedger();
                         say(pick(isAr,
                             `⛔ كشف Browser QA المرئي ${blocking.length} مشكلة حرجة بعد محاولة إصلاح bounded؛ لم أعتبر التطبيق مسلّماً.`,
                             `⛔ Visible Browser QA still found ${blocking.length} blocking issue(s) after the bounded repair attempt; the application is not delivered.`));
                     } else {
                         browserQaFailed = false;
-                        // Browser QA proves usability, but it must not erase a
-                        // deterministic scope failure measured earlier.
-                        finalVerified = !scopeCoverageFailed;
-                        finalHonestBlocker = false;
-                        liveRunVerificationFailed = false;
-                        liveRunError = '';
+                        // Browser QA records its own pass and clears nothing
+                        // another instrument measured (round 15).
+                        ledger.record({ instrument: 'browser', ok: true });
+                        syncFromLedger();
                         say(pick(isAr,
                             `✅ اجتاز التطبيق Browser QA بعد الإصلاح (score: ${browserQa.score}).`,
                             `✅ The application passed Browser QA after repair (score: ${browserQa.score}).`));
@@ -2458,13 +4146,69 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }
             } catch (qaError: any) {
                 browserQaFailed = true;
-                finalVerified = false;
-                finalHonestBlocker = true;
-                liveRunVerificationFailed = true;
                 const message = String(qaError?.message || qaError).slice(0, 420);
-                liveRunError = `browser QA error: ${message}`;
+                ledger.record({ instrument: 'browser', ok: false, error: `browser QA error: ${message}` });
+                syncFromLedger();
                 appendBoundedPipelineLog(logs, `[pipeline] browser QA error: ${message}`);
                 say(pick(isAr, `⛔ تعذّر إكمال Browser QA: ${message}`, `⛔ Browser QA could not complete: ${message}`));
+            }
+        }
+
+        // 3.5 — Specification Verification: verify all requirements from the
+        // specification are satisfied in the built artifact. This runs after
+        // Browser QA passes and before the final delivery decision.
+        let specVerificationFailed = false;
+        let specVerificationCoverage = 0;
+        let specVerificationResults: any = null;
+        if (finalVerified && specification?.content) {
+            try {
+                say(pick(isAr,
+                    '📋 التحقق من متطلبات المواصفة...',
+                    '📋 Verifying specification requirements...'));
+                appendBoundedPipelineLog(logs, '[pipeline] Starting specification verification');
+
+                const specVerifyResult = await executeTool('specification_verification', {
+                    specificationId: specification.specificationId,
+                    projectRoot: String(plannerResult?.output?.projectRoot || discoveredProjectRoot || '').trim(),
+                    userId: context?.userId || 'anonymous',
+                }, { ...(context || {}), language: isAr ? 'ar' : 'en' });
+
+                if (specVerifyResult?.ok && specVerifyResult?.output) {
+                    specVerificationResults = specVerifyResult.output;
+                    specVerificationCoverage = specVerifyResult.output.coverage || 0;
+                    if (!specVerifyResult.output.verified) {
+                        specVerificationFailed = true;
+                        ledger.record({ instrument: 'spec', ok: false, error: `specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ') || 'requirements not met'}` });
+                        syncFromLedger();
+                        say(pick(isAr,
+                            `⛔ التحقق من المواصفة فشل: ${specVerifyResult.output.missingRequirements?.join(', ')}`,
+                            `⛔ Specification verification failed: ${specVerifyResult.output.missingRequirements?.join(', ')}`));
+                    } else {
+                        ledger.record({ instrument: 'spec', ok: true });
+                        syncFromLedger();
+                        say(pick(isAr,
+                            `✅ التحقق من المواصفة نجح (${Math.round(specVerificationCoverage * 100)}% تغطية)`,
+                            `✅ Specification verification passed (${Math.round(specVerificationCoverage * 100)}% coverage)`));
+                    }
+                } else {
+                    specVerificationFailed = true;
+                    const msg = specVerifyResult?.error || 'specification verification tool failed';
+                    ledger.record({ instrument: 'spec', ok: false, error: `specification verification error: ${msg}` });
+                    syncFromLedger();
+                    appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${msg}`);
+                    say(pick(isAr,
+                        `⛔ تعذّر التحقق من المواصفة: ${msg}`,
+                        `⛔ Specification verification error: ${msg}`));
+                }
+            } catch (specVerifyError: any) {
+                specVerificationFailed = true;
+                const message = String(specVerifyError?.message || specVerifyError).slice(0, 420);
+                ledger.record({ instrument: 'spec', ok: false, error: `specification verification error: ${message}` });
+                syncFromLedger();
+                appendBoundedPipelineLog(logs, `[pipeline] specification verification error: ${message}`);
+                say(pick(isAr,
+                    `⛔ تعذّر التحقق من المواصفة: ${message}`,
+                    `⛔ Specification verification error: ${message}`));
             }
         }
 
@@ -2486,7 +4230,12 @@ export class ProjectPipelineTool implements ToolDefinition {
          * finding, and the ONLY failure is named scope coverage. `verified`
          * stays false — the missing list is the headline, never a footnote.
          */
-        const partialDelivery = !requestFidelityBlocked && !finalVerified && scopeCoverageFailed && !browserQaFailed && !!liveUrl;
+        // Browser QA is a required instrument whenever it was able to run.
+        if (browserQaTarget) deliveryRequired = Array.from(new Set<DeliveryInstrument>([...deliveryRequired, 'browser']));
+        const finalDeliveryVerdict = verified
+            ? syncFromLedger(true)
+            : deliveryVerdict({ phaseVerified: false, requestFidelityBlocked, measurements: ledger.all() });
+        const partialDelivery = finalDeliveryVerdict.partial;
         if (partialDelivery) {
             const missingText = (scopeAudit?.missing || []).slice(0, 8).join(', ');
             say(pick(isAr,
@@ -2497,11 +4246,17 @@ export class ProjectPipelineTool implements ToolDefinition {
         const finalVerificationStatus = requestFidelityBlocked
             ? requestFidelityEvidenceUnavailable ? 'fidelity_unverifiable' : 'request_fidelity_mismatch'
             : verificationUnavailable ? 'not_verified'
-                : finalVerified ? 'passed' : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
+                : finalVerified ? 'passed'
+                    : requestCoverageFailed ? 'requested_records_missing'
+                        : browserQaFailed ? 'browser_qa_failed' : String(pipeline?.verificationStatus || 'failed');
         const finalDeliveryStatus = requestFidelityBlocked
             ? 'blocked'
             : verificationUnavailable ? 'not_verified'
-                : finalVerified ? 'delivered' : (partialDelivery || done > 0) ? 'partial' : 'blocked';
+                : finalVerified ? 'delivered'
+                    // A requested record measured missing blocks — it is never a partial delivery.
+                    : finalDeliveryVerdict.coverageFailed ? 'blocked'
+                    : ((finalDeliveryVerdict.unread.length || finalDeliveryVerdict.unverified.length) && !finalDeliveryVerdict.failures.length) ? 'not_verified'
+                        : (partialDelivery || done > 0) ? 'partial' : 'blocked';
         const decisionEvidence = buildPipelineDecisionEvidence({
             finalVerified,
             browserQaFailed,
@@ -2516,14 +4271,18 @@ export class ProjectPipelineTool implements ToolDefinition {
             liveRunError,
             scopeAudit,
             phaseResults: pipeline?.results,
+            specVerificationFailed,
+            specVerificationCoverage,
+            requestCoverageFailed,
+            requestCoverageMissing: (requestCoverage?.missing || []).map(record => record.key),
         });
 
         const summary = this.buildDeliveryReport({
             language: isAr ? 'ar' : 'en',
             projectName: String(plannerResult.output.projectName || 'project'),
-            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa,
+            phases, pipeline, done, total, verified: finalVerified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, requestCoverage,
             externalApi: runtimeProjectHandoff?.externalApi,
-            decisionEvidence, verificationUnavailable,
+            decisionEvidence, verificationUnavailable, staleBuilderProof,
         });
         say(`[pipeline] ${finalVerified ? `✅ ${done}/${total}` : `⚠️ ${done}/${total}`} — delivery report ready`);
 
@@ -2545,6 +4304,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(requestFidelityEvidenceUnavailable ? { fidelityUnverifiable: true } : {}),
                 ...(liveRunVerificationFailed ? { verificationFailed: true } : {}),
                 ...(browserQaFailed ? { browserQaFailed: true } : {}),
+
+                ...(specVerificationFailed ? { specVerificationFailed: true } : {}),
+                ...(specVerificationResults ? { specVerificationResults } : {}),
                 ...(finalHonestBlocker ? { honestBlocker: true } : {}),
                 ...(liveRunVerificationFailed ? { honestBlocker: true } : {}),
                 ...(liveRepairAttempted ? { liveRepairAttempted: true, liveRepairStatus } : {}),
@@ -2555,6 +4317,9 @@ export class ProjectPipelineTool implements ToolDefinition {
                 ...(scopeCoverageFailed ? { scopeCoverageFailed: true } : {}),
                 ...(partialDelivery ? { partialDelivery: true } : {}),
                 ...(scopeAudit ? { scopeAudit } : {}),
+                ...(requestCoverage ? { requestCoverage } : {}),
+                ...(requestCoverageFailed ? { requestCoverageFailed: true } : {}),
+                ...(requestCoverageRepairAttempted ? { requestCoverageRepairAttempted: true, requestCoverageRepairStatus } : {}),
                 // `project_pipeline` already performed discovery, planning,
                 // verification, and its bounded self-healing attempt. A false
                 // result is therefore final evidence, not an invitation for the
@@ -2585,10 +4350,13 @@ export class ProjectPipelineTool implements ToolDefinition {
      * that discovery has actually observed, then read every page through Joe's
      * own read_file tool.  The planner receives the complete text or nothing.
      */
-    private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string }> {
+    private async readRequestedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string; specificationId: string }> {
         const asksToRead = requestRequiresLocalSpecification(request);
+        // The issued scope already admitted build/repair work. Its required
+        // sources remain binding even when the user says fix/edit rather than build.
+        if (asksToRead && hasEngineeringToken(context)) return this.readScopedSpecifications(request, evidence, context, logs, say, isAr);
         const asksToExecute = /(?:نف[ّذذ]|ابن|طو[ّو]ر|طبق|execute|implement|build|develop|create|run)/i.test(request);
-        if (!asksToRead || !asksToExecute) return { content: '', sources: [] };
+        if (!asksToRead || !asksToExecute) return { content: '', sources: [], specificationId: '' };
 
         const files = Array.isArray(evidence?.instructionFiles) ? evidence.instructionFiles : [];
         const named = files.filter((file: any) => /(?:spec|require|brief|مواصف|متطلبات)/i.test(String(file?.relativePath || '')));
@@ -2597,6 +4365,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             return {
                 content: '',
                 sources: [],
+                specificationId: '',
                 error: pick(isAr,
                     'طلبتَ قراءة مواصفة محلية قبل التنفيذ، لكن الاستكشاف لم يثبت ملف مواصفة واحداً يمكن قراءته بأمان. حدّد اسم الملف أو ضعه في مساحة العمل ثم أعد الطلب.',
                     'You asked Joe to read a local specification before execution, but discovery did not establish one safe specification file. Name the file or place it in the workspace, then retry.'),
@@ -2613,7 +4382,7 @@ export class ProjectPipelineTool implements ToolDefinition {
             const relativePath = this.safeWorkspaceRelativePath(suppliedPath, workspaceRoot);
             if (!relativePath) {
                 return {
-                    content: '', sources: [],
+                    content: '', sources: [], specificationId: '',
                     error: pick(isAr,
                         `رفض Joe مسار المواصفة «${suppliedPath}» لأنه ليس مساراً نسبياً آمناً داخل مساحة العمل المكتشفة.`,
                         `Joe refused specification path “${suppliedPath}” because it is not a safe workspace-relative path.`),
@@ -2629,7 +4398,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                 }, context);
                 if (!readResult?.ok || typeof readResult?.output?.content !== 'string') {
                     return {
-                        content: '', sources: [],
+                        content: '', sources: [], specificationId: '',
                         error: pick(isAr,
                             `تعذّر قراءة المواصفة المثبتة «${relativePath}» كاملة: ${readResult?.error || 'لم تُرجع أداة القراءة محتوى صالحاً'}.`,
                             `Joe could not fully read the established specification “${relativePath}”: ${readResult?.error || 'the read tool returned no valid content'}.`),
@@ -2644,9 +4413,76 @@ export class ProjectPipelineTool implements ToolDefinition {
             appendBoundedPipelineLog(logs, `pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
         }
         if (!sources.length) {
-            return { content: '', sources: [], error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };
+            return { content: '', sources: [], specificationId: '', error: pick(isAr, 'لم تتوفر مواصفة مقروءة كاملة للتخطيط الآمن.', 'No complete specification was available for safe planning.') };
         }
-        return { content: sections.join('\n\n'), sources };
+        // Generate a specification ID from the first source
+        const specificationId = `spec_${Date.now()}_${sources[0]?.path?.replace(/[^a-zA-Z0-9]/g, '_') || 'unknown'}`;
+        return { content: sections.join('\n\n'), sources, specificationId };
+    }
+
+    /** Complete, bounded source intake for the immutable current engineering owner. */
+    private async readScopedSpecifications(request: string, evidence: any, context: any, logs: string[], say: (message: string) => void, isAr: boolean): Promise<{ content: string; sources: Array<{ path: string; lineCount: number }>; error?: string; specificationId: string }> {
+        const fail = (error: string) => ({ content: '', sources: [], specificationId: '', error });
+        const scope = engineeringScope(context);
+        if (!scope || evidence?.workspaceRoot !== scope.root) return fail('engineering_scope_invalid');
+        const documents = Array.isArray(evidence.documentFiles) ? evidence.documentFiles : [];
+        if (evidence.blockers?.some((item: any) => item.code === 'discovery_coverage_limited')) return fail('specification_discovery_incomplete');
+        const readingClauses = Array.from(request.matchAll(/(?:read|inspect|review|اقرأ|قراءة)[^\n;!?؟]*/giu), match => match[0]).join('\n');
+        const mentionedFiles = Array.from(readingClauses.matchAll(/[^\s"'`<>]+\.[A-Za-z0-9]{1,12}\b/gu), match => match[0]);
+        if (mentionedFiles.some(name => !/\.(?:txt|md)$/iu.test(name))) return fail('specification_extension_unsupported');
+        const mentions = mentionedFiles;
+        const cleanPath = (value: unknown): string => {
+            if (typeof value !== 'string' || !value || /[\\\u0000-\u001f\u007f:]/u.test(value) || value.startsWith('/')) return '';
+            const normalized = value.replace(/^\.\//u, '');
+            if (normalized.split('/').some(part => !part || part === '.' || part === '..') || !/\.(?:txt|md)$/iu.test(normalized)) return '';
+            return normalized;
+        };
+        if (mentions.some(name => !cleanPath(name))) return fail('specification_path_invalid');
+        const named = [...new Set(mentions.map(cleanPath))];
+        const selected = named.length ? named.map(relativePath => documents.find((file: any) => file.relativePath === relativePath))
+            : documents.filter((file: any) => /(?:spec|require|brief|prd|مواصف|متطلبات)/iu.test(file.relativePath));
+        if (!selected.length || selected.some((file: any) => !file) || !named.length && selected.length !== 1 || selected.length > 4)
+            return fail('specification_missing_or_ambiguous');
+        const sections: string[] = [], sources: Array<{ path: string; lineCount: number }> = [];
+        for (const file of selected) {
+            const relativePath = cleanPath(file.relativePath);
+            if (!relativePath || !Number.isInteger(file.size) || file.size < 0 || file.size > 128 * 1024) return fail('specification_file_limit');
+            const absolute = path.join(scope.root, relativePath);
+            if (!isWithinRoot(absolute, scope.root)) return fail('specification_path_invalid');
+            say(pick(isAr, `[pipeline] أقرأ المواصفة كاملة: ${relativePath}`, `[pipeline] Reading complete local specification: ${relativePath}`));
+            const snapshots: string[] = [];
+            let expectedLines = 0;
+            for (let pass = 0; pass < 2; pass++) {
+                const chunks: string[] = [];
+                let total = 0;
+                for (let startLine = 1; startLine <= (total || 1); startLine += 1000) {
+                    if (!engineeringScope(context)) return fail('engineering_scope_invalid');
+                    const read = await executeTool('read_file', { path: absolute, startLine, endLine: Math.min(startLine + 999, total || 1000) }, context);
+                    if (!engineeringScope(context)) return fail('engineering_scope_invalid');
+                    const output = read?.output;
+                    if (!read?.ok || !output || typeof output.content !== 'string' || !Number.isInteger(output.totalLines)
+                        || output.totalLines < 1 || output.totalLines > 10000 || typeof output.truncated !== 'boolean') return fail('specification_read_incomplete');
+                    if (total && output.totalLines !== total || expectedLines && output.totalLines !== expectedLines) return fail('specification_changed');
+                    total = output.totalLines;
+                    const end = Math.min(startLine + 999, total);
+                    if (output.truncated !== (total > end) || output.content.split('\n').length !== end - startLine + 1) return fail('specification_read_incomplete');
+                    chunks.push(output.content);
+                    if (Buffer.byteLength(chunks.join('\n'), 'utf8') > 128 * 1024 || JSON.stringify(chunks.join('\n')).length > DISCOVERY_EVIDENCE_MAX_CHARS)
+                        return fail('specification_planner_budget_exceeded');
+                    appendBoundedPipelineLogs(logs, read.logs);
+                }
+                const completeSnapshot = chunks.join('\n');
+                // Description/code-fence semantics require the whole document;
+                // a page must never forget a fence or JSON object opened earlier.
+                if (!autonomousFileTextIsSafe(completeSnapshot, { allowRequirementDescriptions: true })) return fail('specification_sensitive_content');
+                expectedLines = total; snapshots.push(completeSnapshot);
+            }
+            if (snapshots[0] !== snapshots[1] || Buffer.byteLength(snapshots[0], 'utf8') !== file.size) return fail('specification_changed');
+            sections.push(`SOURCE: ${relativePath}\n${snapshots[0]}`); sources.push({ path: relativePath, lineCount: expectedLines });
+            if (JSON.stringify({ content: sections.join('\n\n'), sources }).length > DISCOVERY_EVIDENCE_MAX_CHARS) return fail('specification_planner_budget_exceeded');
+            appendBoundedPipelineLog(logs, `pipeline.specification_read=${relativePath} lines=1-${expectedLines}`);
+        }
+        return { content: sections.join('\n\n'), sources, specificationId: 'scoped-current-source' };
     }
 
     /**
@@ -2761,11 +4597,14 @@ export class ProjectPipelineTool implements ToolDefinition {
         scopeAudit?: ScopeGateOutcome['scopeAudit'];
         scopeRepairStatus?: string;
         browserQa?: AppAudit | null;
+        requestCoverage?: RequestCoverageReport;
         externalApi?: TrustedRuntimeProjectHandoff['externalApi'];
         decisionEvidence?: PipelineDecisionEvidence;
         verificationUnavailable?: boolean;
+        /** A server file rewritten after the builder proved it live, whose claims were not measured again. */
+        staleBuilderProof?: { file: string; root: string } | null;
     }): string {
-        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable } = args;
+        const { language: lang, projectName, phases, pipeline, done, total, verified, liveUrl, liveRunError, liveRepairStatus, scopeAudit, scopeRepairStatus, browserQa, externalApi, decisionEvidence, verificationUnavailable, requestCoverage, staleBuilderProof } = args;
         const ar = lang === 'ar';
         const lines: string[] = [];
         /**
@@ -2823,6 +4662,44 @@ export class ProjectPipelineTool implements ToolDefinition {
             techDetails.push(ar
                 ? `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`؛ done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`؛ honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``
                 : `- liveUrl: \`${decisionEvidence.liveUrl || 'null'}\`; done/total: \`${decisionEvidence.done}/${decisionEvidence.total}\`; honestBlocker: \`${decisionEvidence.honestBlocker || 'null'}\``);
+        }
+
+        if (requestCoverage) {
+            // What he named, record by record. «0 checked» is said as such —
+            // never as «all built».
+            // «not measured» is said as such — a record the probe could not see is never counted as proven.
+            const applies = (value: boolean | null, measuredHere: boolean) => measuredHere || value !== null;
+            const mark = (value: boolean | null, measuredHere: boolean, yes: string, no: string) => !applies(value, measuredHere) ? ''
+                : value === null ? (ar ? `${yes}: لم يُقَس` : `${yes}: not measured`) : value ? yes : no;
+            const unverifiedCount = (requestCoverage.unverified || []).length;
+            lines.push('');
+            lines.push(ar
+                ? `### السجلات التي طلبتها: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} مثبتة`
+                : `### The records you named: ${requestCoverage.checked - requestCoverage.missing.length - unverifiedCount}/${requestCoverage.checked} proven`);
+            for (const record of requestCoverage.records.slice(0, 24)) {
+                const facts = [
+                    mark(record.served, requestCoverage.servedApplies, ar ? 'مخدوم' : 'served', ar ? 'غير مخدوم' : 'not served'),
+                    mark(record.tested, !!requestCoverage.testsRequested, ar ? 'مختبر' : 'tested', ar ? 'بلا اختبار' : 'untested'),
+                    mark(record.present, !requestCoverage.servedApplies, ar ? 'مبني' : 'built', ar ? 'غير مبني' : 'not built'),
+                ].filter(Boolean).join(ar ? '، ' : ', ');
+                lines.push(`- ${record.ar && record.ar !== record.key ? `${record.ar} (${record.key})` : record.key}: ${facts}`);
+            }
+            if (requestCoverage.testsRun) {
+                const run = requestCoverage.testsRun;
+                lines.push(ar
+                    ? `- اختباراتك (${run.runner || 'tests'}): ${run.passed ? 'شُغّلت ونجحت' : run.ran ? 'شُغّلت وفشلت' : 'لم تُشغَّل'}`
+                    : `- Your tests (${run.runner || 'tests'}): ${run.passed ? 'ran and passed' : run.ran ? 'ran and failed' : 'did not run'}`);
+            }
+            if (requestCoverage.unread.length) {
+                lines.push(ar
+                    ? `- لم أستطع قراءتها كسجلات، فلم أتحقق من تسليمها: ${requestCoverage.unread.join('، ')}`
+                    : `- Could not read these as records, so their delivery is not verified: ${requestCoverage.unread.join(', ')}`);
+            }
+            if ((requestCoverage.capabilities || []).length) {
+                lines.push(ar
+                    ? `- قاعدة طلبتها ولم يقِسها فحص حي بعد، فلم أتحقق منها: ${(requestCoverage.capabilities || []).join('، ')}`
+                    : `- A rule you stated that no live check measures yet, so it is not verified: ${(requestCoverage.capabilities || []).join(', ')}`);
+            }
         }
 
         if (browserQa) {
@@ -2911,7 +4788,12 @@ export class ProjectPipelineTool implements ToolDefinition {
         const spoken: string[] = [];
         for (const p of phaseResults) {
             for (const t of (Array.isArray(p?.results) ? p.results : [])) {
-                const msg = redactDeliveryCredentials(guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar));
+                const said = guardUnverifiedBuilderClaims(String(t?.message || '').trim(), verified, ar);
+                // A live claim about a file a later repair rewrote is not reprinted
+                // as proven unless it was measured again (round 15 review, finding 27).
+                const msg = redactDeliveryCredentials(staleBuilderProof
+                    ? markUnremeasuredBuilderClaims(said, ar, path.basename(staleBuilderProof.file))
+                    : said);
                 if (msg && !spoken.includes(msg)) spoken.push(msg);
             }
         }

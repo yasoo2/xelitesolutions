@@ -205,7 +205,10 @@ describe('THE WIRING: both builders work in the visible shell', () => {
     });
 
     it('and every process it runs goes through the session', () => {
-        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{ cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation \}\);/);
+        // The call also carries idleProgress since eval run500 P001 (2026-10-26):
+        // a silent npm install that was writing was cut as idle. Same session,
+        // same four fields; only the single-line spelling is no longer pinned.
+        expect(REACT).toMatch(/const r = await shell\.run\(cmd, args, \{\s*cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation,/);
         expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeGreaterThan(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs);
         expect(REACT_NETWORK_INSTALL_TIMEOUTS.idleMs).toBeGreaterThanOrEqual(3 * 60_000);
         expect(REACT_NETWORK_INSTALL_TIMEOUTS.absoluteMs).toBeLessThanOrEqual(15 * 60_000);

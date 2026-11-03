@@ -436,7 +436,8 @@ describe('the interface itself is inspected — «وفحص ui»', () => {
         expect(u).toContain('await page.waitForTimeout(180)');
         expect(u).toContain('const finalCdp = await getViewportCdpSession(page)');
         expect(u.lastIndexOf("Emulation.setDeviceMetricsOverride")).toBeGreaterThan(u.lastIndexOf('await page.setViewportSize({ width, height })'));
-        expect(u).toContain('for (let attempt = 0; attempt < 10; attempt++)');
+        // The retry count is an implementation budget; the contract for every
+        // CDP attempt is checked in qa-instrumentation-regressions.
         expect(u).toContain('remained ${Number(actual?.width || 0)}x${Number(actual?.height || 0)} after requesting ${width}x${height}');
         expect(u).toContain('Math.abs(Number(actual?.height || 0) - height) <= 2');
         const a = read('core', 'quality', 'app-audit.ts');
@@ -622,7 +623,8 @@ describe('a measurement it cannot make honestly, it does not make', () => {
         const b = read('core', 'quality', 'behaviour-audit.ts');
         expect(b).toMatch(/page\.on\('download', onDownload\)/);
         expect(b).toContain('download.failure()');
-        expect(b).toContain("effect = downloaded ? 'download'");
+        expect(b.match(/effect = download\.succeeded\(\) \? 'download'/g)).toHaveLength(2);
+        expect(b.match(/!download\.failed\(\)/g)).toHaveLength(2);
         expect(b).toContain('Date.now() < settleDeadline && eyeIsOpen()');
         expect(b).toContain("page.off('download', onDownload)");
         expect(b).not.toContain('downloadClicks > downloadClicksBefore');

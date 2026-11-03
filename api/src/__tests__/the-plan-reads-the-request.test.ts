@@ -79,7 +79,8 @@ describe('the workspace root is never a project', () => {
 describe('a plan made only of paper is not a plan for an application', () => {
     it('the pipeline detects it and falls back to the deterministic chain', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts');
-        expect(p).toMatch(/const CAN_BUILD_OR_RUN = new Set\(/);
+        expect(p).toMatch(/export const PLAN_STEPS_THAT_BUILD_OR_RUN = new Set\(/);
+        expect(p).toMatch(/const touchesRunnable = planTouchesRunnable\(planPhases\);/);
         expect(p).toMatch(/the plan is all paper/);
         // Gated exactly like the two earlier rescues: a new build, rescue allowed,
         // and never re-judging a plan the deterministic chain itself produced.

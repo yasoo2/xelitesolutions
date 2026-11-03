@@ -91,7 +91,7 @@ export function parseProfileText(text: string): BusinessProfile {
         ['phone', /(الجوال|جوال|الهاتف|هاتف|رقم|التلفون|تلفون|phone|mobile|tel)/i],
         ['email', /(البريد|بريد|الإيميل|ايميل|إيميل|email|mail)/i],
         ['instagram', /(انستغرام|انستقرام|إنستغرام|الانستا|انستا|instagram|insta)/i],
-        ['twitter', /(تويتر|اكس\b|twitter|\bx\b)/i],
+        ['twitter', /(تويتر|[اإ]كس(?![\p{L}\p{N}_])|twitter|\bx\b)/iu],
         ['address', /(العنوان|عنوان|الموقع الجغرافي|address|location)/i],
         ['hours', /(الدوام|ساعات|أوقات\s*العمل|hours)/i],
     ];

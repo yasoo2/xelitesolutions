@@ -10,9 +10,26 @@ import { OpenAIProvider } from './providers/openai';
 import { GeminiProvider } from './providers/gemini';
 import { OpenRouterProvider } from './providers/openrouter';
 import { pickLocalModel, isLocalBrainReady, localWarmupMs } from './local-brain';
+import { classifyExplicitLocalSelection } from './explicit-local-selection';
+import { localVerificationBudgetMs, LOCAL_VERIFICATION_MAX_COMPLETION_TOKENS } from './local-verification-budget';
+import { estimatePromptTokens, localDeadlineMs } from './local-throughput';
+import { servedModelConfig } from './served-local-selection';
+import { modelConfigFor, ChosenProviderError, worthWaiting, chosenProviderFailure, announceChosenProviderFailure, announceChosenProviderWait, providerErrorCode, type ChosenProviderCode } from './run-model-choice';
+import { localPlannerCeilingMs } from '../orchestrator/planner-run-boundary';
+import { localReasoningOptions } from './providers/local';
+import { isManagedOllamaEndpoint, managedOllamaChat, managedContextCeilingTokens } from './providers/managed-ollama-chat';
+import { admitLocalModelCall, isLocalModelEndpoint } from '../resources/local-model-call';
+import { localInferenceFetch } from './providers/loopback-fetch';
+
+/** What a local answer with no output cap may write: the room the managed window leaves its prompt. */
+export function uncappedLocalOutputTokens(messages: any[]): number {
+    const prompt = estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' '));
+    return Math.max(1024, managedContextCeilingTokens() - prompt);
+}
 import OpenAI from 'openai';
-import { parseFirstJson } from '../../shared/utils/json';
-import { safeProviderError, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost, providerCircuitKey, providerCircuitStatus, providerFailureState, providerRetryAfterMs, recordProviderCircuitFailure, releaseProviderCircuitProbe, PROVIDER_RECOVERY_TIMEOUT_MS } from './provider-continuity';
+import { createHash } from 'crypto';
+import { readModelJsonObject } from '../../shared/utils/json';
+import { safeProviderError, claimProviderCircuit, markProviderCircuitHealthy, providerAllowedByCost, usersOwnKeyAllowed, isKeyedVendor, serverKeyFor, providerCircuitKey, providerCircuitStatus, providerFailureState, providerRetryAfterMs, recordProviderCircuitFailure, releaseProviderCircuitProbe, PROVIDER_RECOVERY_TIMEOUT_MS } from './provider-continuity';
 
 let hack: any = pollinationsProvider;
 let openrouter: any = openRouterProvider;
@@ -175,6 +192,27 @@ export const MODELS: Record<string, ModelConfig> = {
         strengths: ['fallback', 'always_available']
     },
 
+    // Vision models - multimodal image analysis
+    'gpt-4o-vision': {
+        name: 'GPT-4o Vision',
+        provider: 'openai',
+        model: 'gpt-4o',
+        maxTokens: 16000,
+        temperature: 0.7,
+        cost: 'high',
+        strengths: ['vision', 'multimodal', 'ui_critique', 'code_fixes']
+    },
+
+    'claude-3.5-sonnet-vision': {
+        name: 'Claude 3.5 Sonnet Vision',
+        provider: 'anthropic',
+        model: 'claude-3-5-sonnet-20241022',
+        maxTokens: 8000,
+        temperature: 0.7,
+        cost: 'medium',
+        strengths: ['vision', 'multimodal', 'ui_critique', 'code_fixes', 'best_quality']
+    },
+
     // Premium tier - Requires API keys
     'claude-3.5-sonnet': {
         name: 'Claude 3.5 Sonnet',
@@ -261,7 +299,7 @@ Return exactly this JSON structure:
                     { role: 'user', content: userMessage }
                 ], analyzeTask(userMessage, history), undefined, undefined, undefined, undefined, undefined,
                 { modelConfig: { provider: 'auto' }, purpose: 'internal' });
-                const parsed = parseFirstJson<any>(result);
+                const parsed = readModelJsonObject<any>(result);
                 if (parsed) return parsed;
             }
             return analyzeTask(userMessage, history);
@@ -284,7 +322,11 @@ Return exactly this JSON structure:
                 undefined,
                 {
                     modelConfig: { provider: 'auto', apiKey: 'auto-mode' },
-                    internalCall: true,
+                    // The router reads `purpose`, never `internalCall`: with the
+                    // old key this analysis counted as a user answer, so a fast
+                    // cloud key put Local behind the cloud and the keyless mesh
+                    // and every long request's analysis spent the answer's quota.
+                    purpose: 'internal',
                     engineeringPipeline: true
                 }
             )
@@ -296,8 +338,9 @@ Return exactly this JSON structure:
         // A greedy `/\{[\s\S]*\}/` reached for the LAST brace in the reply, so a
         // model that added one sentence after its JSON produced
         // «Unexpected non-whitespace character after JSON» on every single run
-        // and the analysis was silently discarded.
-        const analysis = parseFirstJson<any>(responseText);
+        // and the analysis was silently discarded. The analysis is an object: a
+        // list the model showed first is not it (round 21).
+        const analysis = readModelJsonObject<any>(responseText);
         if (analysis) {
             return { ...analysis, estimatedTokens: userMessage.length * 10 };
         }
@@ -467,6 +510,29 @@ export function selectBestModel(analysis: TaskAnalysis, availableKeys?: {
     // Vision Support: valid keys required
     if (analysis.hasImages) {
         console.info('[IntelligentRouter] 📷 Image detected in request - Switching to Vision Model');
+        
+        // Check if paid vision models are allowed by cost policy
+        const openaiVisionAllowed = providerAllowedByCost('openai', 'gpt-4o');
+        const anthropicVisionAllowed = providerAllowedByCost('anthropic', 'claude-3-5-sonnet-20241022');
+        
+        // Check for available keys
+        const hasOpenAIKey = !!(availableKeys?.openai || process.env.OPENAI_API_KEY?.trim());
+        const hasAnthropicKey = !!(availableKeys?.anthropic || process.env.ANTHROPIC_API_KEY?.trim());
+        
+        // Try GPT-4o Vision first (paid, high quality)
+        if (openaiVisionAllowed && hasOpenAIKey) {
+            console.info('[IntelligentRouter] 📷 Using GPT-4o Vision (paid, AI_COST_POLICY=allow_paid)');
+            return MODELS['gpt-4o-vision'];
+        }
+        
+        // Try Claude 3.5 Sonnet Vision (paid, medium cost)
+        if (anthropicVisionAllowed && hasAnthropicKey) {
+            console.info('[IntelligentRouter] 📷 Using Claude 3.5 Sonnet Vision (paid, AI_COST_POLICY=allow_paid)');
+            return MODELS['claude-3.5-sonnet-vision'];
+        }
+        
+        // Fall back to Pollinations (free, but limited vision capability)
+        console.info('[IntelligentRouter] 📷 Using Pollinations (free fallback for vision)');
         return MODELS['pollinations'];
     }
 
@@ -999,25 +1065,36 @@ export function shouldProbeLocalBrain(now = Date.now(), lastProbeAt = localRecov
     return !lastProbeAt || now - lastProbeAt >= LOCAL_RECOVERY_PROBE_WINDOW_MS;
 }
 
-async function probeLocalBrainForRecovery(): Promise<boolean> {
-    if (!isLocalBrainReady() || !localProvider.isConfigured() || !shouldProbeLocalBrain()) return false;
+async function probeLocalBrainForRecovery(signal?: AbortSignal): Promise<boolean> {
+    if (signal?.aborted || !isLocalBrainReady() || !localProvider.isConfigured() || !shouldProbeLocalBrain()) return false;
     // Claim before awaiting so concurrent sessions cannot all wake a paused model.
     localRecoveryProbeAt = Date.now();
+    const controller = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
+    let rejectCancellation!: (error: Error) => void;
+    const cancelled = new Promise<string>((_, reject) => { rejectCancellation = reject; });
+    // Observe even a cancellation that arrives before the SDK promise is dispatched.
+    void cancelled.catch(() => undefined);
+    const cancelProbe = (error: Error) => {
+        rejectCancellation(error);
+        controller.abort(error);
+    };
+    const onOwnerAbort = () => cancelProbe(new Error('local recovery probe cancelled'));
     try {
+        signal?.addEventListener('abort', onOwnerAbort, { once: true });
+        if (signal?.aborted) { onOwnerAbort(); return false; }
+        timer = setTimeout(() => cancelProbe(new Error('local recovery probe timeout')), LOCAL_RECOVERY_PROBE_TIMEOUT_MS);
         const answer = await Promise.race([
             localProvider.chatComplete(
                 [{ role: 'user', content: 'Reply with the single word: OK' }],
                 pickLocalModel('simple_chat'),
                 undefined,
-                undefined,
+                controller.signal,
                 { maxCompletionTokens: 1 },
             ),
-            new Promise<string>((_, reject) => {
-                timer = setTimeout(() => reject(new Error('local recovery probe timeout')), LOCAL_RECOVERY_PROBE_TIMEOUT_MS);
-            }),
+            cancelled,
         ]);
-        if (isUsableAnswer(answer)) {
+        if (!controller.signal.aborted && !signal?.aborted && isUsableAnswer(answer)) {
             noteLocalBrainOk();
             return true;
         }
@@ -1025,6 +1102,7 @@ async function probeLocalBrainForRecovery(): Promise<boolean> {
         // The normal breaker remains authoritative when the recovery probe fails.
     } finally {
         if (timer) clearTimeout(timer);
+        signal?.removeEventListener('abort', onOwnerAbort);
     }
     return false;
 }
@@ -1235,52 +1313,34 @@ export function effectiveKeylessTimeoutMs(
  * to the ordinary 18/25s keyless deadline.
  */
 export function requestedProviderTimeoutMs(context: any): number | undefined {
+    // A deadline for the LOCAL model (named, or Auto on a server pinned to it) may
+    // reach the operator's local ceiling: a sized local plan was cut to 180 s here
+    // (eval 2026-10-23). Cloud deadlines keep their cap.
+    const local = classifyExplicitLocalSelection(context?.modelConfig || {}).eligible
+        || classifyExplicitLocalSelection(servedModelConfig(context || {})?.modelConfig || {}).eligible;
+    const cap = local ? Math.max(300_000, localPlannerCeilingMs()) : MAX_EXPLICIT_PROVIDER_TIMEOUT_MS;
     for (const raw of [context?.providerTimeoutMs, context?.plannerTimeoutMs]) {
         const value = Number(raw);
         if (Number.isFinite(value) && value > 0) {
-            return Math.min(MAX_EXPLICIT_PROVIDER_TIMEOUT_MS, Math.max(8_000, Math.floor(value)));
+            return Math.min(cap, Math.max(8_000, Math.floor(value)));
         }
     }
     return undefined;
 }
 
 /**
- * THE DAY'S QUOTA RAN OUT — AND THE USER IS THE LAST TO KNOW.
+ * ⛔ THE DAY'S QUOTA RAN OUT, AND EVERY USER'S BUTTON MOVED.
  *
- * When the provider the user picked hits its daily limit, Joe quietly moves to
- * the free/local mesh and keeps answering. That is the right behaviour and the
- * wrong silence: the provider button still shows the dead provider, so the user
- * believes they are still on it, cannot explain why answers changed character,
- * and every new session starts by asking for a quota that is gone.
+ * A spent quota on the chosen provider used to switch Joe to the free mesh and
+ * broadcast `provider_quota` WITHOUT a session: on a server every connected
+ * user received it, and the panel moved each one's provider to Auto because
+ * one user's limit was reached. And the user who did hit it got answers from
+ * another model under the name of the one he chose.
  *
- * One notice, once per cooldown window, saying what happened, what Joe switched
- * to, and when the quota comes back. The panel acts on it by moving the button
- * to «تلقائي» — the switch is real, not a message about a switch.
+ * Now the chosen provider stays chosen. The run waits a short limit out on
+ * it, or stops and says why, and the light in HIS session turns red with the
+ * reason and the time it comes back (run-model-choice.ts).
  */
-const quotaAnnounced = new Map<string, number>();
-
-function announceQuotaSwitch(routeKey: string, provider: string, model: string, waitMs: number) {
-    const now = Date.now();
-    const until = now + waitMs;
-    // Once per window: a 429 storm must not become a notification storm.
-    const last = quotaAnnounced.get(routeKey) || 0;
-    if (last > now) return;
-    quotaAnnounced.set(routeKey, until);
-
-    const label = String(provider || '').trim() || 'المزوّد';
-    const mins = Math.max(1, Math.ceil(waitMs / 60_000));
-    const when = mins >= 60 ? `~${Math.round(mins / 60)} ساعة` : `~${mins} دقيقة`;
-    const message = `⚠️ انتهت حصّتك اليومية من **${label}**${model ? ` (${model})` : ''}.\n`
-        + `حوّلتُك تلقائياً إلى **الوضع التلقائي** — الذكاء المحلّي والمزوّدات المجانية — والعمل مستمرّ بلا انقطاع.\n`
-        + `تعود حصّة ${label} بعد ${when}، وعندها يمكنك اختياره مجدداً من زرّ المزوّدين.`;
-    try {
-        const { broadcast } = require('../../api/ws');
-        broadcast({
-            type: 'provider_quota',
-            data: { provider: label, model, switchTo: 'auto', minutes: mins, until, message },
-        });
-    } catch { /* the panel is a window, never a dependency */ }
-}
 
 // A 429 is not an outage — it is a timer. On a machine whose ONLY live brain is
 // rate-limited Groq (Ollama not running, no other keys), failing the whole build
@@ -1349,7 +1409,64 @@ export interface ProviderAttempt {
     error?: string;
 }
 
+/** What the router writes on the caller's context for the caller to read back. */
+const ROUTER_WRITEBACKS = ['providerAttempts', 'deadBrainRecoveryAttempted', 'localEngineeringRecoveryAttempted'] as const;
+
 export async function routeToModel(
+    messages: any[],
+    analysis?: TaskAnalysis,
+    availableKeys?: { anthropic?: string; openai?: string; groq?: string; },
+    onPartial?: (delta: string) => void,
+    onProgress?: (msg: string) => void,
+    onThought?: (msg: string) => void,
+    tools?: any[],
+    context?: any
+): Promise<string> {
+    //  The run's provider, for a call that named none (run-model-choice.ts).
+    //  The caller's own object is never written with another user's choice:
+    //  the call runs on a copy, and what the router reports goes back.
+    const modelConfig = modelConfigFor(context);
+    const own = modelConfig === context?.modelConfig;
+    const routed: any = own ? context : { ...(context && typeof context === 'object' ? context : {}), modelConfig };
+    const signal = routed?.signal as AbortSignal | undefined;
+    try {
+        //  The provider the user chose is waited for, briefly, and never
+        //  swapped: a short limit or a 5xx is retried on it, the rest is said.
+        for (let waits = 0; ; waits++) {
+            try {
+                return await routeOnModel(messages, analysis, availableKeys, onPartial, onProgress, onThought, tools, routed);
+            } catch (error) {
+                const wait = waits < CHOSEN_PROVIDER_WAITS && !signal?.aborted ? worthWaiting(error, CHOSEN_PROVIDER_PATIENCE_MS) : null;
+                if (wait == null) {
+                    const failure = chosenProviderFailure(error, modelConfig);
+                    if (failure) announceChosenProviderFailure(failure);
+                    throw error;
+                }
+                announceChosenProviderWait(error as ChosenProviderError, wait);
+                await abortableDelay(wait, signal);
+            }
+        }
+    } finally {
+        if (!own && context && typeof context === 'object') {
+            for (const field of ROUTER_WRITEBACKS) if (field in routed) context[field] = routed[field];
+        }
+    }
+}
+
+/** How long, and how often, a run waits on the provider the user chose. */
+const CHOSEN_PROVIDER_PATIENCE_MS = 65_000;
+const CHOSEN_PROVIDER_WAITS = 2;
+
+function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
+    return new Promise((resolve, reject) => {
+        if (signal?.aborted) return reject(signal.reason instanceof Error ? signal.reason : new Error('run_cancelled_by_owner'));
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', onAbort); resolve(); }, ms);
+        const onAbort = () => { clearTimeout(timer); reject(signal?.reason instanceof Error ? signal.reason : new Error('run_cancelled_by_owner')); };
+        signal?.addEventListener('abort', onAbort, { once: true });
+    });
+}
+
+async function routeOnModel(
     messages: any[],
     analysis?: TaskAnalysis,
     availableKeys?: { anthropic?: string; openai?: string; groq?: string; },
@@ -1574,26 +1691,65 @@ export async function routeToModel(
 
     // Check for user-selected provider overrides in context
     if (context?.modelConfig) {
-        const { provider: cfgProvider, model: cfgModel, apiKey: cfgApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
-        // A provider selected WITHOUT a real key (placeholder 'auto-mode'/'free-mode'
-        // or blank) must route through the free-first mesh — NOT be sent to the real
-        // provider API with a fake key (which is why the free non-Auto providers like
-        // Groq/Cerebras/Mistral "didn't connect"). Only a real, non-placeholder key
-        // takes the custom route.
-        const keyStr = String(cfgApiKey || '').trim();
+        const { provider: requestedProvider, model: cfgModel, apiKey: typedApiKey, baseUrl: cfgBaseUrl } = context.modelConfig;
+        const cfgProvider = typeof requestedProvider === 'string' && requestedProvider.trim().toLowerCase() === 'local'
+            ? 'local' : requestedProvider;
+        const explicitLocal = classifyExplicitLocalSelection({ provider: cfgProvider, model: cfgModel, baseUrl: cfgBaseUrl, apiKey: typedApiKey });
+        if (explicitLocal.kind === 'invalid-local') {
+            throw new Error(`explicit local selection invalid: ${explicitLocal.reason}`);
+        }
+        if (explicitLocal.kind === 'cloud-local') {
+            throw new Error('explicit local-cloud model fails closed: cloud/Auto/paid fallback refused');
+        }
+        const isExplicitCanonicalLocal = explicitLocal.eligible;
+        const isLocalPicker = cfgProvider === 'local' && explicitLocal.kind === 'not-explicit-local';
+        // A placeholder key ('auto-mode'/'free-mode' or blank) is never sent to a
+        // provider as if it were one (which is why the free non-Auto providers
+        // like Groq/Cerebras/Mistral "didn't connect"). Only a real key, or the
+        // server's own key for that vendor, takes the custom route.
+        const keyStr = String(typedApiKey || '').trim();
         // A real API key is ASCII only. A key containing non-ASCII characters (e.g. an
         // Arabic letter pasted by mistake) would crash header building
         // ("Cannot convert argument to a ByteString"), so treat it as invalid and route
         // through the free/local mesh instead of failing every request.
         const nonAsciiKey = /[^\x00-\x7F]/.test(keyStr);
-        if (nonAsciiKey) {
-            console.warn('[IntelligentRouter] Ignoring custom API key: it contains non-ASCII characters (likely pasted wrong). Using FREE/Local providers.');
+        if (nonAsciiKey && !isExplicitCanonicalLocal) {
+            console.warn('[IntelligentRouter] The API key contains non-ASCII characters (likely pasted wrong); it is not sent.');
         }
-        const placeholderKey = !keyStr || nonAsciiKey || keyStr === 'auto-mode' || keyStr === 'free-mode' || keyStr === 'free' || keyStr === 'dummy';
-        const isAuto = !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || placeholderKey;
+        // Explicit canonical loopback local selections keep their model: local
+        // Ollama needs no key, so blank/auto-mode/free-mode/dummy classes must
+        // not erase a validated endpoint. Cloud-marked local models fail closed.
+        const placeholderKey = isExplicitCanonicalLocal ? false : (!keyStr || nonAsciiKey || keyStr === 'auto-mode' || keyStr === 'free-mode' || keyStr === 'free' || keyStr === 'dummy');
+        /**
+         *  ⛔ A NAMED PROVIDER WITHOUT A KEY IS NOT AUTO.
+         *
+         *  The menu marked Gemini, Groq, Cerebras, OpenRouter, Mistral and
+         *  DeepSeek «free» with the placeholder 'free-mode', and a placeholder
+         *  made the choice Auto: «DeepSeek» answered from whatever free mesh
+         *  member was up. Measured on 2026-11-02 against the vendors: every
+         *  one of them answers 401/400/403 without a key; none serves its
+         *  models keyless, Grok included. So a named vendor runs on the key
+         *  the user typed, or on the server's own key for it where the cost
+         *  policy allows that, or it says it needs a key. Auto is the free
+         *  mesh, and only Auto.
+         */
+        const keyedVendor = !isExplicitCanonicalLocal && !isLocalPicker && isKeyedVendor(String(cfgProvider || ''));
+        const serverKey = keyedVendor && placeholderKey && !nonAsciiKey
+            && providerAllowedByCost(String(cfgProvider), cfgModel, cfgBaseUrl) ? serverKeyFor(String(cfgProvider)) : '';
+        if (keyedVendor && placeholderKey && !serverKey && !(String(cfgProvider).toLowerCase().match(/^(?:anthropic|claude)$/) && keyStr === 'server-key')) {
+            if (context?.strictProviderCheck === true) {
+                throw Object.assign(new Error(`direct_provider_check_failed: ${nonAsciiKey ? 'the key holds characters no key has' : 'the provider needs a key'}`),
+                    { code: nonAsciiKey ? 'PROVIDER_AUTH' : 'PROVIDER_NEEDS_KEY' });
+            }
+            recordProviderAttempt(String(cfgProvider), false, 'skipped: the provider needs a key');
+            throw new ChosenProviderError(String(cfgProvider), cfgModel, nonAsciiKey ? 'PROVIDER_AUTH' : 'PROVIDER_NEEDS_KEY',
+                nonAsciiKey ? 'the key holds characters no key has' : 'the provider serves its models only with a key');
+        }
+        const cfgApiKey = serverKey || typedApiKey;
+        const isAuto = isExplicitCanonicalLocal ? false : (isLocalPicker || !cfgProvider || cfgProvider === 'mock' || cfgProvider === 'auto' || cfgProvider === 'free' || cfgProvider === 'default' || (placeholderKey && !serverKey));
         if (!isAuto) {
-          const circuitKey = providerCircuitKey(cfgProvider, { apiKey: cfgApiKey, baseUrl: cfgBaseUrl, userId: context.userId, workspaceId: context.workspaceId, sessionId: context.sessionId });
-          const routeKey = `${circuitKey}:${cfgModel || ''}`;
+          const circuitKey = providerCircuitKey(cfgProvider, { apiKey: isExplicitCanonicalLocal ? 'dummy' : cfgApiKey, baseUrl: isExplicitCanonicalLocal ? explicitLocal.normalizedBaseUrl : cfgBaseUrl, userId: context.userId, workspaceId: context.workspaceId, sessionId: context.sessionId });
+          const routeKey = `${circuitKey}:${isExplicitCanonicalLocal ? explicitLocal.model : cfgModel || ''}`;
           let circuitClaim: ReturnType<typeof claimProviderCircuit> = { allowed: false, probe: false };
           const customAnswer = (answer: string) => {
               if (!isUsableAnswer(answer)) throw new Error('Provider returned empty response');
@@ -1604,34 +1760,51 @@ export async function routeToModel(
               return answer;
           };
           const quotaPausedUntil = customRouteCooldownUntil.get(routeKey) || 0;
-          const strictProviderCheck = context?.strictProviderCheck === true;
+          const strictProviderCheck = context?.strictProviderCheck === true || isExplicitCanonicalLocal;
           const knownCustomEndpoint = ['openrouter', 'gemini', 'google', 'deepseek', 'grok', 'xai', 'groq', 'mistral', 'cerebras', 'openai', 'anthropic', 'claude'].includes(String(cfgProvider).toLowerCase()) || !!cfgBaseUrl;
-          if (!knownCustomEndpoint || !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl)) {
+          //  Claude spends only through the engine's budget guard, on a key
+          //  someone chose to spend: the key the user typed (their consent,
+          //  their credit) or the server's key asked for by name (the owner's
+          //  budget). The free_only policy guards keys found in the
+          //  environment; it does not refuse a paid model the user chose.
+          const guardedClaude = String(cfgProvider).toLowerCase() === 'anthropic' || String(cfgProvider).toLowerCase() === 'claude';
+          //  ⛔ A PROVIDER THE USER CHOSE IS NEVER SWAPPED IN SILENCE. Every
+          //  branch below used to log «using FREE providers» and fall through
+          //  to the mesh, so the button said DeepSeek while another model
+          //  wrote the answer. Each one now names its reason, and the run
+          //  waits on the same provider or says why it stopped
+          //  (run-model-choice.ts). The hidden helpers are no exception: the
+          //  «intelligence economy» that sent them to the local model while a
+          //  provider was chosen is gone, because the user chose the brain.
+          const refuseChosen = (code: ChosenProviderCode, reason: string, retryAfterMs?: number): never => {
+              throw new ChosenProviderError(String(cfgProvider), cfgModel, code, reason, retryAfterMs);
+          };
+          //  A key the user typed is his consent; free_only guards the server's
+          //  keys (provider-continuity.ts, usersOwnKeyAllowed).
+          const usersOwnKey = usersOwnKeyAllowed(cfgProvider, cfgApiKey, cfgBaseUrl);
+          if (!knownCustomEndpoint || (!guardedClaude && !usersOwnKey && !providerAllowedByCost(cfgProvider, cfgModel, cfgBaseUrl))) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: free_only excludes the selected provider, model or endpoint');
             recordProviderAttempt(cfgProvider, false, 'skipped: free_only policy excludes this provider, model or endpoint');
+            refuseChosen('PROVIDER_UNSUPPORTED', knownCustomEndpoint ? 'the free_only policy excludes this provider, model or endpoint' : 'Joe has no route to this provider');
           } else if (failedCustomRoutes.has(routeKey) && providerCircuitStatus(circuitKey).blocked) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider authentication is unavailable');
-            console.log(`[IntelligentRouter] Skipping known-bad custom route ${cfgProvider}/${cfgModel} (previously failed auth/config) - using FREE providers.`);
-          } else if (internalCall && isLocalBrainReady() && !engineeringPipeline) {
-            // [INTELLIGENCE ECONOMY] Ordinary hidden helpers (intent parsing,
-            // narration, and lightweight tool selection) may use the local
-            // brain to conserve a paid provider. An engineering pipeline is
-            // different: when the user explicitly selected a provider, its
-            // planning, authoring, verification, and repair calls must all use
-            // that provider. Otherwise the provider button lies about the
-            // brain that actually built the artifact.
-            console.log('[IntelligentRouter] 💰 ordinary internal reasoning → local brain first (engineering provider selection remains authoritative)');
+            recordProviderAttempt(cfgProvider, false, 'skipped: the provider refused this key moments ago');
+            refuseChosen('PROVIDER_AUTH', 'the provider refused this key moments ago');
           } else if (quotaPausedUntil > Date.now()) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider quota cooldown is active');
-            const mins = Math.max(1, Math.ceil((quotaPausedUntil - Date.now()) / 60_000));
-            console.log(`[IntelligentRouter] 💰 custom route ${cfgProvider}/${cfgModel} quota-paused ~${mins}min (429 said so) — using free/local mesh meanwhile.`);
+            recordProviderAttempt(cfgProvider, false, 'skipped: the provider\'s limit is still in effect');
+            refuseChosen('PROVIDER_QUOTA', 'the provider\'s rate or daily limit is in effect', quotaPausedUntil - Date.now());
           } else if (!(circuitClaim = claimProviderCircuit(circuitKey)).allowed) {
             if (strictProviderCheck) throw new Error('direct_provider_check_failed: provider circuit is cooling down or probing');
             recordProviderAttempt(cfgProvider, false, 'skipped: provider circuit is cooling down or probing');
+            const status = providerCircuitStatus(circuitKey);
+            refuseChosen(status.state === 'QUOTA_EXHAUSTED' || status.state === 'RATE_LIMITED' ? 'PROVIDER_QUOTA' : status.state === 'AUTH_FAILED' ? 'PROVIDER_AUTH' : 'PROVIDER_COOLING',
+                'the provider failed moments ago; its breaker is closed for a short wait',
+                status.retryAt && status.retryAt > Date.now() ? status.retryAt - Date.now() : 2_000);
           } else {
             console.log(`✨ [IntelligentRouter] Custom Route: Provider=${cfgProvider}, Model=${cfgModel}, HasKey=${!!cfgApiKey}, HasUrl=${!!cfgBaseUrl}`);
             
-            const effectiveApiKey = (cfgApiKey && cfgApiKey !== 'auto-mode') ? cfgApiKey.trim() : 
+            const effectiveApiKey = isExplicitCanonicalLocal ? 'dummy' : (cfgApiKey && cfgApiKey !== 'auto-mode') ? cfgApiKey.trim() :
                 (cfgProvider === 'openai' ? process.env.OPENAI_API_KEY :
                  cfgProvider === 'gemini' || cfgProvider === 'google' ? (process.env.GOOGLE_API_KEY || process.env.GEMINI_API_KEY) :
                  cfgProvider === 'openrouter' ? process.env.OPENROUTER_API_KEY : '');
@@ -1657,18 +1830,15 @@ export async function routeToModel(
              *  gateway in the middle, and his key never leaves his machine.
              */
             if (cfgProvider === 'anthropic' || cfgProvider === 'claude') {
-                const { AnthropicProvider } = require('./providers/anthropic');
-                const key = String(cfgApiKey || '').trim() || process.env.ANTHROPIC_API_KEY || '';
+                //  The engine's connector and its budget guard, on the key the
+                //  user typed or the server's key asked for by name, never a
+                //  key found in the environment (core/engine/anthropic.ts).
+                const typedKey = String(cfgApiKey || '').trim();
                 try {
-                const out = await new AnthropicProvider(key).chatComplete(
-                    flatMessages,
-                    cfgModel || undefined,
-                    //  Its own bound: `providerTimeoutMs` is declared further
-                    //  down for the OpenAI client, and reaching backwards for
-                    //  it would be a use-before-declaration that tsc catches
-                    //  and a reader would not.
-                    { timeoutMs: circuitClaim.probe ? PROVIDER_RECOVERY_TIMEOUT_MS : 120_000 },
-                );
+                const { serverClaudeChat } = require('../engine/anthropic');
+                const out = await serverClaudeChat(flatMessages as any, cfgModel || undefined,
+                    String((context as any)?.runId || (context as any)?.traceId || (context as any)?.sessionId || 'chat'),
+                    (context as any)?.signal, process.env, undefined, typedKey);
                 throwIfCallerAborted();
                 if (isUsableAnswer(out)) return customAnswer(out);
                 //  An unusable answer is not a silent fall-through: the mesh
@@ -1723,7 +1893,9 @@ export async function routeToModel(
                 cerebras: 'https://api.cerebras.ai/v1',
                 openai: 'https://api.openai.com/v1',
             };
-            const effectiveBaseUrl = cfgBaseUrl?.trim() || VENDOR_BASE[String(cfgProvider || '').toLowerCase()] || undefined;
+            const effectiveBaseUrl = (isExplicitCanonicalLocal && explicitLocal.normalizedBaseUrl)
+                ? explicitLocal.normalizedBaseUrl
+                : (cfgBaseUrl?.trim() || VENDOR_BASE[String(cfgProvider || '').toLowerCase()] || undefined);
             // A Promise.race only releases the caller; it does not stop the HTTP
             // request that lost the race. Long NEXUS planning calls then continued
             // in the background and their late completion was logged beside the
@@ -1733,7 +1905,7 @@ export async function routeToModel(
             const requestedCustomTimeout = requestedProviderTimeoutMs(context);
             const providerTimeoutMs = circuitClaim.probe
                 ? Math.min(requestedCustomTimeout || PROVIDER_RECOVERY_TIMEOUT_MS, PROVIDER_RECOVERY_TIMEOUT_MS)
-                : requestedCustomTimeout || 120_000;
+                : requestedCustomTimeout || (isExplicitCanonicalLocal ? 300_000 : 120_000);
             const providerAbortController = new AbortController();
             const providerTimer = providerAbortController && providerTimeoutMs
                 ? setTimeout(() => {
@@ -1761,60 +1933,129 @@ export async function routeToModel(
                     throw new Error('Gemini returned empty response');
                 } else {
                     // OpenAI, OpenRouter, or other OpenAI-compatible endpoint
-                    const client = new OpenAI({
-                        apiKey: effectiveApiKey || 'dummy',
-                        baseURL: effectiveBaseUrl,
-                        maxRetries: 0,
-                    });
-                    const model = cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
-                    // When the caller wants live tokens and no tool-calling is in
-                    // play, actually STREAM. This is the route the user's machine
-                    // takes (custom groq config), and it was buffering complete
-                    // responses — so "live code" arrived a whole section at a time.
-                    if (typeof onPartial === 'function' && !tools?.length) {
-                        // Best effort: an endpoint that rejects streaming falls
-                        // through to the buffered call below — losing liveness,
-                        // never the answer.
-                        try {
-                            const stream: any = await (client.chat.completions.create as any)({
-                                model, messages: flatMessages as any, stream: true,
-                            }, providerRequestOptions);
-                            let text = '';
-                            for await (const chunk of stream) {
-                                const d = chunk?.choices?.[0]?.delta?.content || '';
-                                if (d) { text += d; try { onPartial(d); } catch { /* UI only */ } }
-                            }
-                            if (text.trim()) return customAnswer(cleanOutput(text));
-                        } catch (se: any) {
-                            // Never issue a second request after the deadline. The
-                            // buffered retry is useful for a 400/unsupported stream,
-                            // but harmful once the controller has already aborted.
-                            if (providerAbortController?.signal.aborted || callerSignal?.aborted || providerFailureState(se)) throw se;
-                            console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
+                    if (isManagedOllamaEndpoint(effectiveBaseUrl || '')) {
+                        const managed = await managedOllamaChat({
+                            baseURL: effectiveBaseUrl!,
+                            model: isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel,
+                            // Preserve image and tool-result parts. Text flattening is
+                            // reserved for providers that cannot receive those parts.
+                            messages: applyAnswerLanguage(messages, context?.language),
+                            tools, onDelta: !tools?.length ? onPartial : undefined,
+                            signal: providerAbortController.signal, timeoutMs: providerTimeoutMs,
+                            maxCompletionTokens: context?.maxCompletionTokens,
+                            reasoningEffort: localReasoningOptions(isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel,
+                                effectiveBaseUrl!, context?.localReasoningEffort).reasoning_effort,
+                        });
+                        throwIfCallerAborted();
+                        if (managed.tool_calls?.length) return customAnswer(JSON.stringify({ type: 'tool_calls', tool_calls: managed.tool_calls }));
+                        return customAnswer(cleanOutput(managed.content));
+                    }
+                    // A compatible server on THIS machine at any other spelling
+                    // (LM Studio, llama.cpp, Ollama at 0.0.0.0 or 127.1) is a local
+                    // model call: it holds the heavy lane for its whole run, like the
+                    // managed one above (second review of round 21). The provider
+                    // deadline already counts the wait; a wait that outlives it is a
+                    // queue refusal, never a provider failure.
+                    return await admitLocalModelCall(effectiveBaseUrl, async admission => {
+                        if (admission && providerAbortController.signal.aborted && !callerSignal?.aborted) {
+                            throw Object.assign(new Error('RESOURCE_QUEUE_TIMEOUT'), { code: 'RESOURCE_QUEUE_TIMEOUT', details: { deadlineMs: providerTimeoutMs } });
                         }
-                    }
-                    const completion = await (client.chat.completions.create as any)({
-                        model,
-                        messages: flatMessages as any,
-                        tools: tools as any,
-                        tool_choice: tools ? 'auto' : undefined,
-                    }, providerRequestOptions);
-                    const message = completion.choices[0]?.message;
-                    if (message?.tool_calls && message.tool_calls.length > 0) {
-                        return customAnswer(JSON.stringify({
-                            type: 'tool_calls',
-                            tool_calls: message.tool_calls,
-                        }));
-                    }
-                    return customAnswer(cleanOutput(message?.content || ''));
+                        // The admission's own cancellation (his request closing) stops the request too.
+                        if (admission?.aborted) providerAbortController.abort(callerAbortError());
+                        else admission?.addEventListener('abort', () => providerAbortController.abort(callerAbortError()), { once: true });
+                        const client = new OpenAI({
+                            apiKey: effectiveApiKey || 'dummy',
+                            baseURL: effectiveBaseUrl,
+                            maxRetries: 0,
+                            // A server on this machine: no undici 300 s header timer (round 22).
+                            ...(isLocalModelEndpoint(effectiveBaseUrl) ? { fetch: localInferenceFetch() } : {}),
+                        });
+                        const model = isExplicitCanonicalLocal ? explicitLocal.model! : cfgModel || (cfgProvider === 'openai' ? 'gpt-4o' : 'google/gemma-2-9b-it:free');
+                        // Preserve the caller's output budget on both SDK transports.
+                        // Official OpenAI uses its current field; compatible vendors
+                        // (including NIM) retain the max_tokens contract they expose.
+                        const requestedCompletionBudget = Number(context?.maxCompletionTokens);
+                        const maxCompletionTokens = Number.isFinite(requestedCompletionBudget) && requestedCompletionBudget > 0
+                            ? Math.max(1, Math.min(12000, Math.floor(requestedCompletionBudget))) : undefined;
+                        const completionOptions = maxCompletionTokens
+                            ? (cfgProvider === 'openai' && /^https:\/\/api\.openai\.com\/v1\/?$/.test(effectiveBaseUrl || '')
+                                ? { max_completion_tokens: maxCompletionTokens } : { max_tokens: maxCompletionTokens }) : {};
+                        // Honor explicit non-thinking answers only on canonical local Ollama.
+                        const customReasoningOptions = cfgProvider === 'local'
+                            ? localReasoningOptions(model, effectiveBaseUrl || '', context?.localReasoningEffort) : {};
+                        const assertCustomComplete = (finishReason: unknown) => {
+                            if (isExplicitCanonicalLocal) {
+                                throwIfCallerAborted();
+                                if (providerAbortController.signal.aborted) throw new Error('selected local request aborted');
+                            }
+                            if (finishReason === 'length') {
+                                throw Object.assign(new Error('completion limit reached'), { code: 'CUSTOM_COMPLETION_LIMIT' });
+                            }
+                        };
+                        // When the caller wants live tokens and no tool-calling is in
+                        // play, actually STREAM. This is the route the user's machine
+                        // takes (custom groq config), and it was buffering complete
+                        // responses — so "live code" arrived a whole section at a time.
+                        if (typeof onPartial === 'function' && !tools?.length) {
+                            // Best effort: an endpoint that rejects streaming falls
+                            // through to the buffered call below — losing liveness,
+                            // never the answer.
+                            try {
+                                const stream: any = await (client.chat.completions.create as any)({
+                                    model, messages: flatMessages as any, stream: true,
+                                    ...completionOptions,
+                                    ...customReasoningOptions,
+                                }, providerRequestOptions);
+                                let text = '';
+                                for await (const chunk of stream) {
+                                    assertCustomComplete(chunk?.choices?.[0]?.finish_reason);
+                                    const d = chunk?.choices?.[0]?.delta?.content || '';
+                                    if (d) { text += d; try { onPartial(d); } catch { /* UI only */ } }
+                                }
+                                if (text.trim()) return customAnswer(cleanOutput(text));
+                            } catch (se: any) {
+                                // Never issue a second request after the deadline. The
+                                // buffered retry is useful for a 400/unsupported stream,
+                                // but harmful once the controller has already aborted.
+                                if (providerAbortController?.signal.aborted || callerSignal?.aborted || se?.code === 'CUSTOM_COMPLETION_LIMIT' || providerFailureState(se)) throw se;
+                                console.warn(`[IntelligentRouter] Streaming unsupported by ${cfgProvider} endpoint (${String(se?.message || se).slice(0, 80)}) — using buffered completion.`);
+                            }
+                        }
+                        const completion = await (client.chat.completions.create as any)({
+                            model,
+                            messages: flatMessages as any,
+                            tools: tools as any,
+                            tool_choice: tools ? 'auto' : undefined,
+                            ...completionOptions,
+                            ...customReasoningOptions,
+                        }, providerRequestOptions);
+                        assertCustomComplete(completion.choices[0]?.finish_reason);
+                        const message = completion.choices[0]?.message;
+                        if (message?.tool_calls && message.tool_calls.length > 0) {
+                            return customAnswer(JSON.stringify({
+                                type: 'tool_calls',
+                                tool_calls: message.tool_calls,
+                            }));
+                        }
+                        return customAnswer(cleanOutput(message?.content || ''));
+                    }, { kind: 'custom-local-inference', signal: callerSignal, queueTimeoutMs: providerTimeoutMs });
                 }
             } catch (err: any) {
                 throwIfCallerAborted();
+                // Admission/cancellation is a local resource decision, never a
+                // provider quota event or permission to choose another model.
+                if (/^RESOURCE_/.test(String(err?.code || ''))) throw err;
+                if (err?.code === 'CUSTOM_COMPLETION_LIMIT') {
+                    recordProviderAttempt(cfgProvider, false, 'completion limit reached');
+                    if (strictProviderCheck) throw Object.assign(new Error('direct_provider_check_failed: completion limit reached'), { code: 'CUSTOM_COMPLETION_LIMIT' });
+                    return `${PROVIDER_FAILURE_PREFIX} completion_limit`;
+                }
                 recordProviderCircuitFailure(circuitKey, err);
                 recordProviderAttempt(cfgProvider, false, providerFailureState(err) || 'provider request failed');
-                console.error(`[IntelligentRouter] Direct custom provider routing failed: ${safeProviderError(err, cfgApiKey)}. Falling back to default routing.`);
+                console.error(`[IntelligentRouter] The chosen provider failed: ${safeProviderError(err, cfgApiKey)}. ${isExplicitCanonicalLocal ? 'Selected local route stopped.' : 'No other provider takes its place.'}`);
                 const status = (err && (err.status || err.statusCode)) || 0;
                 const msg = String(err?.message || '');
+                const timedOut = providerAbortController.signal.aborted && !callerSignal?.aborted;
                 // Only an AUTH/permission problem justifies disabling the route for
                 // the session. A 400 is a BAD REQUEST — usually our own malformed
                 // payload (a message missing `content`, a decommissioned model id) —
@@ -1825,19 +2066,37 @@ export async function routeToModel(
                     || /\b(401|403)\b|api[_ -]?key|unauthor|forbidden|invalid[_ -]?api|permission denied/i.test(msg);
                 if (authProblem) {
                     failedCustomRoutes.add(routeKey);
-                    console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
+                    if (isExplicitCanonicalLocal) console.warn('[IntelligentRouter] Selected local route rejected authentication; no other provider is authorized.');
+                    else console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} DISABLED for this session (auth error). Joe will use FREE providers only - fix or remove the key in the model settings.`);
                 } else if (status === 429 || /rate limit|tokens per day|TPD/i.test(msg)) {
                     // The 429 body tells us exactly when the quota returns —
                     // pause the route for that window instead of re-hammering
                     // a dead quota on every single call (field-measured tail).
                     const waitMs = providerRetryAfterMs(err) || Math.min(retryAfterMsFrom(msg) || 5 * 60_000, CUSTOM_ROUTE_COOLDOWN_CAP_MS);
                     customRouteCooldownUntil.set(routeKey, Date.now() + waitMs);
-                    console.warn(`[IntelligentRouter] 💰 Custom route ${cfgProvider}/${cfgModel} hit its quota — paused for ~${Math.ceil(waitMs / 60_000)}min (from the 429 itself). Free/local mesh carries the load meanwhile.`);
-                    announceQuotaSwitch(routeKey, cfgProvider, cfgModel, waitMs);
+                    if (isExplicitCanonicalLocal) console.warn('[IntelligentRouter] Selected local route is quota-paused; no other provider is authorized.');
+                    else console.warn(`[IntelligentRouter] 💰 Custom route ${cfgProvider}/${cfgModel} hit its limit — paused for ~${Math.ceil(waitMs / 60_000)}min (from the 429 itself).`);
                 } else {
                     console.warn(`[IntelligentRouter] Custom route ${cfgProvider}/${cfgModel} failed once (${status || 'no status'}) but the key looks fine — it stays enabled and will be retried.`);
                 }
-                if (strictProviderCheck) throw new Error(`direct_provider_check_failed: ${safeProviderError(err, cfgApiKey)}`);
+                const reason = safeProviderError(err, cfgApiKey);
+                //  One reading of the refusal, for Connect and for a run alike.
+                const code = authProblem ? 'PROVIDER_AUTH' : providerErrorCode(status, msg, timedOut, String(cfgProvider));
+                if (strictProviderCheck) {
+                    throw Object.assign(new Error(`direct_provider_check_failed: ${reason}`), { status, code });
+                }
+                if (code === 'PROVIDER_QUOTA') {
+                    refuseChosen(code, reason, Math.max(0, (customRouteCooldownUntil.get(routeKey) || Date.now()) - Date.now()));
+                }
+                if (code !== 'PROVIDER_DOWN') refuseChosen(code, reason);
+                //  A deadline already spent is not spent twice; a 5xx or a dropped
+                //  connection is tried again once the breaker reopens; an empty
+                //  reply, after a moment.
+                const breaker = providerCircuitStatus(circuitKey);
+                refuseChosen('PROVIDER_DOWN', timedOut ? `no answer within ${Math.round(providerTimeoutMs / 1000)}s` : reason,
+                    timedOut ? undefined
+                        : breaker.blocked && breaker.retryAt ? Math.max(0, breaker.retryAt - Date.now())
+                            : /empty response/i.test(msg) ? 2_000 : status >= 500 ? 2_000 : undefined);
             } finally {
                 if (providerTimer) clearTimeout(providerTimer);
                 callerSignal?.removeEventListener('abort', abortCustom);
@@ -1925,7 +2184,7 @@ export async function routeToModel(
     //   9. DeepSeek / Pollinations (keyless proxy — last resort)
     // ============================================================================
 
-    const meshProviders: Array<{ name: string; run: (signal?: AbortSignal) => Promise<string> }> = [];
+    const meshProviders: Array<{ name: string; run: (signal?: AbortSignal, hooks?: { onAdmitted?: () => void }) => Promise<string> }> = [];
     const preferredProvider = String(process.env.LLM_PROVIDER || '').trim().toLowerCase();
 
     // 0. [PRIORITY] Forced provider via env
@@ -1948,7 +2207,7 @@ export async function routeToModel(
     if (hasLocal) {
         meshProviders.push({
             name: 'Local (Auto)',
-            run: async (signal?: AbortSignal) => {
+            run: async (signal?: AbortSignal, hooks?: { onAdmitted?: () => void }) => {
                 // Task-based model routing: build/code tasks get the strongest
                 // installed coder model; chat gets the fast small model. Falls back
                 // to LOCAL_LLM_MODEL when detection hasn't run.
@@ -1956,7 +2215,8 @@ export async function routeToModel(
                 // With no user-facing task analysis, the old undefined type picked
                 // the chat/vision model and made large source artifacts appear to
                 // hang even though Ollama itself was healthy.
-                const localModel = pickLocalModel(taskAnalysis?.type || (internalCall ? 'code_generation' : undefined));
+                const localModel = pickLocalModel(taskAnalysis?.type || (internalCall ? 'code_generation' : undefined),
+                    context?.localAnswerProfile === 'small_text' ? 'small_text' : undefined);
                 // Streaming Ollama responses can leave a large engineering
                 // completion open without a final message on CPU. Use the
                 // bounded direct response for internal work; ordinary chat keeps
@@ -1965,11 +2225,27 @@ export async function routeToModel(
                 const localMaxCompletionTokens = Number(context?.maxCompletionTokens) > 0
                     ? Math.min(12000, Math.floor(Number(context.maxCompletionTokens)))
                     : undefined;
-                const res = await localProvider.chatComplete(flatMessages, localModel, localOnPartial, signal, {
-                    maxCompletionTokens: localMaxCompletionTokens,
-                });
-                if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
-                return res;
+                const startedAt = Date.now();
+                // Record scheduling evidence without model names, content, keys or identities.
+                const modelFingerprint = createHash('sha256').update(localModel || '').digest('hex').slice(0, 12);
+                console.info('[LocalCall] start', JSON.stringify({ modelFingerprint,
+                    purpose: providerHealthProbe ? 'health_probe' : internalCall ? 'internal' : 'user',
+                    messages: flatMessages.length,
+                    inputChars: flatMessages.reduce((n, m) => n + (typeof m.content === 'string' ? m.content.length : 0), 0),
+                    maxCompletionTokens: localMaxCompletionTokens ?? null,
+                    reasoningEffort: context?.localReasoningEffort === 'none' ? 'none' : 'default', stream: !!localOnPartial }));
+                try {
+                    const res = await localProvider.chatComplete(flatMessages, localModel, localOnPartial, signal, {
+                        maxCompletionTokens: localMaxCompletionTokens,
+                        onAdmitted: hooks?.onAdmitted,
+                        ...(context?.localReasoningEffort === 'none' ? { reasoningEffort: 'none' as const } : {}),
+                    });
+                    if (!isUsableAnswer(res)) throw new Error('Local answered with nothing usable');
+                    return res;
+                } finally {
+                    console.info('[LocalCall] finish', JSON.stringify({ modelFingerprint,
+                        elapsedMs: Date.now() - startedAt, aborted: signal?.aborted === true }));
+                }
             }
         });
     }
@@ -2415,9 +2691,10 @@ export async function routeToModel(
                 // still down. Give a healthy, configured local daemon one small
                 // recovery probe for a fresh chat; never let every concurrent
                 // phase probe it because the probe is claimed per time window.
-                if (await probeLocalBrainForRecovery()) {
+                if (await probeLocalBrainForRecovery(callerSignal)) {
                     console.info('[IntelligentRouter] 🩺 local recovery probe passed — reopening Ollama for this route.');
                 }
+                throwIfCallerAborted();
                 if (isLocalBrainOpen()) {
                     const left = Math.max(1, Math.round((localCircuitUntil - Date.now()) / 1000));
                     console.info(`[IntelligentRouter] ⏭️ skipping the local brain (paused ${left}s more) — going straight to the mesh.`);
@@ -2443,6 +2720,14 @@ export async function routeToModel(
             if ((p.name === 'OpenAI (Direct)' || p.name === 'LLM7 (Keyless)') && requestedTimeout) {
                 timeoutValue = requestedTimeout;
             }
+            // What THIS call needs on this machine: its size over the measured
+            // local read/write speed (local-throughput.ts). Used where the local
+            // model is the only brain, so a fixed cut cannot end a healthy call.
+            const localSizeDeadline = p.name === 'Local (Auto)'
+                ? localDeadlineMs(estimatePromptTokens((messages || []).map((m: any) => typeof m?.content === 'string' ? m.content : JSON.stringify(m?.content ?? '')).join(' ')),
+                    // No cap set: the answer may fill the room the window leaves.
+                    Number(context?.maxCompletionTokens) > 0 ? Number(context.maxCompletionTokens) : uncappedLocalOutputTokens(messages))
+                : 0;
             if (p.name === 'Local (Auto)') {
                 // Local CPU inference — especially the first (cold) request that loads
                 // the model into RAM — can take far longer than a network call. Give it
@@ -2497,11 +2782,18 @@ export async function routeToModel(
                     // Auto to abandon Ollama after a healthy preflight and then
                     // fail against unavailable remote fallbacks.
                     const autoPlanningFloor = (LOCAL_BRAIN_FIRST || autoLocalPreferred) ? 600_000 : 240_000;
-                    const autoPlanningLeash = Math.min(
+                    // Offline there is no other brain to hand off to: the engineering
+                    // cap may not end a call this machine can finish (eval 2026-10-23).
+                    // Online the leash is exactly as before (offlineSizedLeash is 0).
+                    // «Only brain» = offline, or strict local (LOCAL_LLM_STRICT=1, no fallback).
+                    const offlineSizedLeash = (offlineMode || localStrict)
+                        ? Math.min(LOCAL_LEASH_MAX_MS, Math.max(ENGINEERING_LOCAL_TIMEOUT_CAP_MS, localSizeDeadline))
+                        : 0;
+                    const autoPlanningLeash = Math.max(offlineSizedLeash, Math.min(
                         LOCAL_LEASH_MAX_MS,
                         ENGINEERING_LOCAL_TIMEOUT_CAP_MS,
                         Math.max(measuredLeash, autoPlanningFloor),
-                    );
+                    ));
                     // A caller-provided deadline is a real contract, not a hint.
                     // Keep Ollama first, but let the planner reach its deterministic
                     // fallback when the selected local brain cannot answer in time.
@@ -2509,8 +2801,18 @@ export async function routeToModel(
                         ? (requestedTimeout ? Math.min(autoPlanningLeash, requestedTimeout) : autoPlanningLeash)
                         : Math.min(timeoutValue, measuredLeash);
                 }
-                if (offlineMode && p.name === 'Local (Auto)') {
-                    timeoutValue = Math.min(timeoutValue, OFFLINE_LOCAL_TIMEOUT_MS);
+                if ((offlineMode || localStrict) && p.name === 'Local (Auto)') {
+                    // ⛔ Offline, this local model is the ONLY brain: a fixed 45 s cut
+                    // is a certain failure on a slow machine, not a fast one (eval
+                    // 2026-10-22: a two-sentence answer aborted at 45 s on a CPU that
+                    // needs ~75 s to read the prompt). A missing Ollama is refused at
+                    // connect and never waits on this; only a slow-but-alive model does.
+                    // So the cut is never shorter than this machine's measured leash.
+                    const { localWarmupMs: offlineWarmupMs } = require('./local-brain');
+                    const machineLeash = internalLeashMs(Number(offlineWarmupMs?.() || 0));
+                    // Sized to this call (its prompt and output over the measured speed),
+                    // still bounded by the operator's local leash.
+                    timeoutValue = Math.min(timeoutValue, Math.max(OFFLINE_LOCAL_TIMEOUT_MS, Math.min(Math.max(machineLeash, localSizeDeadline), LOCAL_LEASH_MAX_MS)));
                 }
                 // A recovery call must not restore the long first-attempt leash
                 // after the same local brain has just timed out. Give it one
@@ -2549,15 +2851,39 @@ export async function routeToModel(
 
             if (circuitClaim.probe) timeoutValue = Math.min(timeoutValue, PROVIDER_RECOVERY_TIMEOUT_MS);
             lastTimeoutUsed = timeoutValue;
+            // Every local deadline says what decided it: a cut nobody can explain
+            // cost a day of guessing (eval 2026-10-23, «exactly 120 s»).
+            if (p.name === 'Local (Auto)') console.info('[LocalDeadline]', JSON.stringify({ timeoutMs: timeoutValue,
+                requestedMs: requestedTimeout ?? null, sizedMs: localSizeDeadline, internal: !!internalCall,
+                onlyBrain: !!(offlineMode || localStrict), probe: !!circuitClaim.probe }));
             const providerAbort = new AbortController();
             let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
             let callerAbortListener: (() => void) | undefined;
-            const timeoutPromise = new Promise<never>((_, reject) => {
+            /**
+             * ⛔ A LOCAL CALL'S CLOCK STARTS WHEN THE MODEL STARTS ON IT.
+             *
+             * Local inference is one lane. Eval round 14 (2026-10-24, P051): one
+             * React build queued seven local calls at once; each deadline was
+             * sized for its own work (57 min for a 41k-character prompt) but
+             * counted from the moment it entered the queue, so the later calls
+             * expired while still waiting behind the others (RESOURCE_CANCELLED
+             * after 3 424 s queued). The sized deadline now starts at admission;
+             * the queue wait stays bounded by the transport's own queue limit,
+             * the caller's signal and the run deadline. Other providers start now.
+             */
+            const deferUntilAdmitted = p.name === 'Local (Auto)';
+            let admittedAt = 0;
+            let rejectTimeout: ((error: Error) => void) | undefined;
+            const timeoutPromise = new Promise<never>((_, reject) => { rejectTimeout = reject; });
+            const startDeadline = () => {
+                if (timeoutHandle) return;
+                admittedAt = Date.now();
                 timeoutHandle = setTimeout(() => {
                     providerAbort.abort(new Error(`Provider deadline exceeded after ${timeoutValue}ms`));
-                    reject(new Error('TIMEOUT'));
+                    rejectTimeout?.(new Error('TIMEOUT'));
                 }, timeoutValue);
-            });
+            };
+            if (!deferUntilAdmitted) startDeadline();
             const attemptStartedAt = Date.now();
             let rawAns: string;
             try {
@@ -2573,7 +2899,7 @@ export async function routeToModel(
                     })
                     : null;
                 rawAns = await Promise.race([
-                    Promise.resolve().then(() => p.run(providerAbort.signal)).finally(() => releaseProviderCircuitProbe(circuitKey, circuitClaim.lease)),
+                    Promise.resolve().then(() => p.run(providerAbort.signal, { onAdmitted: startDeadline })).finally(() => releaseProviderCircuitProbe(circuitKey, circuitClaim.lease)),
                     timeoutPromise,
                     ...(callerAbortPromise ? [callerAbortPromise] : []),
                 ]) as string;
@@ -2585,7 +2911,7 @@ export async function routeToModel(
             }
             // How long this machine really takes is the only honest input to
             // how long we should be willing to wait for it next time.
-            if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - attemptStartedAt);
+            if (p.name === 'Local (Auto)') noteLocalDuration(Date.now() - (admittedAt || attemptStartedAt));
 
             const ans = cleanOutput(rawAns);
 
@@ -2629,6 +2955,8 @@ export async function routeToModel(
             recordProviderCircuitFailure(circuitKey, new Error('temporarily unavailable: empty response'));
         } catch (e: any) {
             if (callerSignal?.aborted) throw callerAbortError();
+            if (/^RESOURCE_/.test(String(e?.code || ''))) throw e;
+            if (p.name === 'Local (Auto)' && String(process.env.LOCAL_LLM_STRICT || '').trim() === '1') throw e;
             if (p.name !== 'Local (Auto)') recordProviderCircuitFailure(circuitKey, e);
             recordProviderAttempt(p.name, false, e?.message || e);
             console.warn(`[IntelligentRouter] ${p.name} failed or timed out: ${e.message} `);
@@ -2819,9 +3147,9 @@ Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_
         ];
 
         const responseText = await routeToModel(messages, taskAnalysis);
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const correction = JSON.parse(jsonMatch[0]);
+        // The shared reader (round 22, W7), not a greedy first-to-last brace.
+        const correction = readModelJsonObject<any>(String(responseText || ''));
+        if (correction) {
             if (correction.no_correction) return null;
             return { action: correction.name, input: correction.input };
         }
@@ -2836,44 +3164,118 @@ Respond ONLY with a JSON object: { "name": "tool_name", "input": { } } or { "no_
  * borrowing another provider's success (which is what the old mesh-routed verify
  * did, making every free provider look connected even when it wasn't).
  */
+/** Whether this exact model is installed on a local Ollama endpoint; null when it cannot be read. */
+export async function localModelInstalled(baseUrl: string, model: string): Promise<boolean | null> {
+    try {
+        const origin = new URL(String(baseUrl || 'http://127.0.0.1:11434')).origin;
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 4000);
+        try {
+            const r = await fetch(`${origin}/api/tags`, { signal: ctrl.signal });
+            if (!r.ok) return null;
+            const j: any = await r.json();
+            const norm = (s: string) => String(s || '').trim().toLowerCase().replace(/:latest$/, '');
+            const names: string[] = Array.isArray(j?.models) ? j.models.map((m: any) => norm(m?.name || m?.model || '')) : [];
+            return names.includes(norm(model));
+        } finally { clearTimeout(timer); }
+    } catch { return null; }
+}
+
 export async function verifyProviderDirect(
     provider: string,
-    cfg: { apiKey?: string; baseUrl?: string; model?: string } = {}
-): Promise<{ ok: boolean; provider: string; detail: string }> {
+    cfg: { apiKey?: string; baseUrl?: string; model?: string; light?: boolean } = {}
+): Promise<{ ok: boolean; provider: string; detail: string; code?: string }> {
     const p = String(provider || '').trim().toLowerCase();
     const probe = [{ role: 'user', content: 'Reply with the single word: OK' }] as any[];
     const key = String(cfg.apiKey || '').trim();
-    const hasRealKey = !!key && !/^(free-mode|auto-mode|dummy)$/i.test(key);
-    const probeProvider = p === 'deepseek' && !hasRealKey ? 'DeepSeek (Pollinations)' : p;
-    if (p !== 'auto' && !providerAllowedByCost(probeProvider, cfg.model, cfg.baseUrl)) {
-        return { ok: false, provider, detail: 'free_only: selected provider, model or endpoint is unavailable under the cost policy' };
+    const badCharacters = /[^\x21-\x7E]/.test(key);
+    const hasRealKey = !!key && !badCharacters && !/^(free-mode|auto-mode|dummy|free|ollama|server-key)$/i.test(key);
+    const explicitLocal = classifyExplicitLocalSelection({ provider: p, ...cfg });
+    if (p === 'local' && explicitLocal.kind !== 'not-explicit-local') {
+        if (!explicitLocal.eligible) {
+            return { ok: false, provider, detail: `explicit local verification refused: ${explicitLocal.reason}` };
+        }
+        if (!providerAllowedByCost(p, explicitLocal.model, explicitLocal.normalizedBaseUrl)) {
+            return { ok: false, provider, detail: 'free_only: selected local model or endpoint is unavailable under the cost policy' };
+        }
+        // ⛔ A BUSY MODEL IS NOT A DEAD ONE. The probe below is a real generation,
+        // and local inference is one lane: while a 40-minute plan runs, the probe
+        // waited behind it, timed out, and painted a working model red (owner,
+        // 2026-10-23). While the lane is busy, the honest check is the server's
+        // own word: reachable, and this exact model installed.
+        const lanes = (() => { try { return require('../resources/RequestResourceManager').requestResourceManager.status(); } catch { return null; } })();
+        if (lanes && (Number(lanes.inference?.active) > 0 || Number(lanes.heavy?.active) > 0)) {
+            const installed = await localModelInstalled(String(explicitLocal.normalizedBaseUrl || ""), String(explicitLocal.model || ""));
+            if (installed === true) return { ok: true, provider, detail: 'local_ok_busy: the model is installed and serving another request' };
+            if (installed === false) return { ok: false, provider, detail: `local_model_not_installed: ${explicitLocal.model}` };
+        }
+        // A named local probe owns one bounded cold-start request. Key placeholders
+        // cannot erase its model, and metadata or a different provider cannot verify it.
+        const localAbort = new AbortController();
+        const timeoutMs = localVerificationBudgetMs();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        try {
+            const request = routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined, {
+                modelConfig: { provider: p, model: explicitLocal.model, baseUrl: explicitLocal.normalizedBaseUrl, apiKey: 'dummy' },
+                strictProviderCheck: true, providerHealthProbe: true, signal: localAbort.signal,
+                providerTimeoutMs: timeoutMs, maxCompletionTokens: LOCAL_VERIFICATION_MAX_COMPLETION_TOKENS,
+                localReasoningEffort: 'none',
+            });
+            const ans = await Promise.race([
+                request,
+                new Promise<never>((_, reject) => {
+                    timer = setTimeout(() => {
+                        localAbort.abort(new Error('local verification timeout'));
+                        reject(new Error('local verification timeout'));
+                    }, timeoutMs);
+                }),
+            ]);
+            const ok = !localAbort.signal.aborted && providerProbeSucceeded(ans);
+            return { ok, provider, detail: ok ? 'local_ok' : 'local_probe_empty' };
+        } catch (e: any) {
+            return { ok: false, provider, detail: safeProviderError(e, key).slice(0, 160) };
+        } finally {
+            if (timer) clearTimeout(timer);
+        }
     }
-    const probeCircuitKey = providerCircuitKey(probeProvider);
-    const probeClaim = p !== 'auto' && !hasRealKey ? claimProviderCircuit(probeCircuitKey) : { allowed: true, probe: false, lease: undefined };
-    if (!probeClaim.allowed) return { ok: false, provider, detail: 'provider_cooldown: quota or recovery probe is active' };
+    /**
+     *  ⛔ A GREEN LIGHT IS THAT PROVIDER'S OWN ANSWER.
+     *
+     *  Measured 2026-11-02 on the running server: DeepSeek with no key went
+     *  green in 626 ms, answered by Pollinations' 'openai' model (gpt-oss-20b),
+     *  while every vendor given the user's own key went red «free_only» before
+     *  the key was tried, and the reasons came back as fixed Arabic or English
+     *  strings. A named vendor is checked on the key the user typed, or on the
+     *  server's own key for it where the cost policy allows that; with neither
+     *  it needs a key and says so. Every refusal carries a code the interface
+     *  words in the user's language.
+     */
+    if (p !== 'auto') {
+        if (!isKeyedVendor(p)) return { ok: false, provider, code: 'PROVIDER_UNSUPPORTED', detail: 'unsupported_provider: no direct provider probe is registered' };
+        if (key && badCharacters) return { ok: false, provider, code: 'PROVIDER_AUTH', detail: 'bad_key: the key holds characters no key has' };
+        if (hasRealKey && !usersOwnKeyAllowed(p, key, cfg.baseUrl) && !providerAllowedByCost(p, cfg.model, cfg.baseUrl)) {
+            return { ok: false, provider, code: 'PROVIDER_UNSUPPORTED', detail: "free_only: this address is not the provider's own, and the cost policy excludes it" };
+        }
+        if (!hasRealKey && !(providerAllowedByCost(p, cfg.model, cfg.baseUrl) && serverKeyFor(p))) {
+            return { ok: false, provider, code: 'PROVIDER_NEEDS_KEY', detail: 'needs_key: this provider serves its models only with a key' };
+        }
+        if (!hasRealKey && providerCircuitStatus(providerCircuitKey(p)).blocked) {
+            return { ok: false, provider, code: 'PROVIDER_COOLING', detail: 'provider_cooldown: quota or recovery probe is active' };
+        }
+    }
     let probeAbort = new AbortController();
-    let probeRequestStarted = false;
     const withTimeout = async <T,>(pr: Promise<T>, ms = 20000): Promise<T> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
-        probeRequestStarted = true;
         try {
             return await Promise.race([
-                pr.finally(() => releaseProviderCircuitProbe(probeCircuitKey, probeClaim.lease)),
+                pr,
                 new Promise<never>((_, reject) => { timer = setTimeout(() => { probeAbort.abort(new Error('timeout')); reject(new Error('timeout')); }, ms); }),
             ]);
         } finally { if (timer) clearTimeout(timer); }
     };
-    const usable = (s: any) => {
-        const ok = providerProbeSucceeded(s);
-        if (ok && !hasRealKey && p !== 'auto') markProviderCircuitHealthy(probeCircuitKey, probeClaim.lease);
-        return ok;
-    };
-    const envKey = (...names: string[]) => names.map(n => (process.env[n] || '').trim()).find(Boolean) || '';
+    const usable = (s: any) => providerProbeSucceeded(s);
 
     try {
-        // AUTO is the free mesh itself — testing the mesh is the honest meaning here.
-        // This is deliberately a bounded, uncached probe: a slow local model must
-        // not make an otherwise healthy keyless/cloud fallback look unavailable.
         if (p === 'auto') {
             // Auto is explicitly the user's local-first choice. The generic mesh
             // probe caps local work at 8s, which is shorter than a measured cold
@@ -2881,88 +3283,86 @@ export async function verifyProviderDirect(
             // local brain as unavailable before planning even starts. Probe the
             // configured local brain directly first, using the measured warm-up
             // time as evidence, and only then inspect fallback providers.
-            if (providerAllowedByCost('Local (Auto)') && isLocalBrainReady() && localProvider.isConfigured()) {
+            // Configured is enough: a warm-up still running on a slow CPU is not
+            // evidence of absence, and skipping here sent the probe to the mesh,
+            // whose 8 s local cap reported a live model as TIMEOUT (eval 2026-10-22).
+            if (providerAllowedByCost('Local (Auto)') && localProvider.isConfigured()) {
                 const warmup = Number(localWarmupMs?.() || 0);
                 // Boot warm-up already sent a real request to this model. A
                 // second immediate probe can queue behind a slow CPU model and
                 // make a healthy local brain look unavailable before planning.
-                if (warmup > 0) {
+                if (warmup > 0 && isLocalBrainReady()) {
                     return { ok: true, provider, detail: 'local_ready_after_warmup' };
                 }
-                const localProbeTimeout = Math.min(120_000, Math.max(30_000, warmup * 12));
+                // Connection checks are tiny text tasks, not coding turns. Bound their
+                // generation so background verification cannot occupy the coder model.
+                // Offline, local is the only brain: give it the cold-start bound a
+                // named local probe gets (15 s ended live CPU probes before the model
+                // had read the prompt). With fallbacks available, stay short so a
+                // slow local model cannot hold up a healthy free provider.
+                const offlineOnlyLocal = /^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim());
+                const localProbeTimeout = offlineOnlyLocal ? localVerificationBudgetMs() : 15_000;
                 try {
                     const localAnswer = await withTimeout(
-                        localProvider.chatComplete(probe as any, pickLocalModel('code_generation'), undefined, probeAbort.signal),
+                        localProvider.chatComplete(probe as any, pickLocalModel('simple_chat', 'small_text'), undefined, probeAbort.signal,
+                            { maxCompletionTokens: 32, reasoningEffort: 'none' }),
                         localProbeTimeout,
                     );
                     if (usable(localAnswer)) return { ok: true, provider, detail: 'local_ok' };
+                    if (/^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim())) {
+                        return { ok: false, provider, detail: 'local_probe_empty' };
+                    }
                 } catch (e: any) {
+                    // Offline has no alternative provider: retrying the same local
+                    // model through the mesh only queues another background request.
+                    if (/^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim())) {
+                        return { ok: false, provider, detail: safeProviderError(e).slice(0, 160) };
+                    }
                     console.warn(`[IntelligentRouter] Auto local preflight failed (${safeProviderError(e)}); checking fallback providers.`);
                     // The timed-out local request keeps its aborted signal. The
                     // next provider receives a fresh cancellation boundary.
                     probeAbort = new AbortController();
                 }
             }
-            const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
-                { modelConfig: { provider: 'auto', apiKey: 'auto-mode' }, providerHealthProbe: true, signal: probeAbort.signal }), 45_000);
+            const ans = await withTimeout(routeToModel(probe, { ...analyzeTask(probe[0].content), requiresTools: false }, undefined, undefined, undefined, undefined, undefined,
+                { modelConfig: { provider: 'auto', apiKey: 'auto-mode' }, providerHealthProbe: true, signal: probeAbort.signal,
+                    localAnswerProfile: 'small_text', maxCompletionTokens: 32, localReasoningEffort: 'none' }), 45_000);
             return { ok: usable(ans), provider, detail: usable(ans) ? 'mesh_ok' : 'mesh_empty' };
         }
 
-        // A real user key → test THAT provider directly via the custom (non-mesh) route.
-        if (hasRealKey) {
-            const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
-                { modelConfig: { provider: p, apiKey: key, baseUrl: cfg.baseUrl, model: cfg.model }, strictProviderCheck: true, providerHealthProbe: true, signal: probeAbort.signal }));
-            return { ok: usable(ans), provider, detail: usable(ans) ? 'key_ok' : 'key_empty' };
+        //  The check the interface makes on every page load spends nothing:
+        //  the key must list the chosen model (the vendor's own models
+        //  endpoint). Connect makes the one real call. OpenRouter lists its
+        //  models to anyone, so its list proves no key; it gets the call.
+        if (cfg.light && p !== 'openrouter') {
+            const { providerModels } = require('../engine/provider-models');
+            const list = await providerModels({ provider: p, apiKey: hasRealKey ? key : '', baseUrl: cfg.baseUrl });
+            if (list.source === 'live') {
+                const wanted = String(cfg.model || '').trim();
+                if (wanted && list.models.length && !list.models.includes(wanted)) {
+                    return { ok: false, provider, code: 'PROVIDER_MODEL', detail: `model_not_listed: ${wanted}` };
+                }
+                return { ok: true, provider, detail: 'listed' };
+            }
+            const status = Number(list.reason?.status) || 0;
+            //  A models list refused with 400 is a refused key: Gemini and xAI
+            //  answer 400 «API key not valid» where others answer 401.
+            const code = status === 400 || status === 401 || status === 403 ? 'PROVIDER_AUTH'
+                : status ? providerErrorCode(status, String(list.note || '')) : 'PROVIDER_DOWN';
+            return { ok: false, provider, code, detail: String(list.note || 'unreachable').slice(0, 160) };
         }
 
-        // No user key: test the specific provider on its own (its env key, or keyless).
-        switch (p) {
-            case 'deepseek': {
-                const ans = await withTimeout(deepSeekProvider.chatComplete(probe as any, undefined, undefined, { signal: probeAbort.signal, timeoutMs: 20_000 }));
-                return { ok: usable(ans), provider, detail: 'keyless_pollinations' };
-            }
-            case 'openrouter': {
-                // OpenRouter requires a (free) key even for its free models — the
-                // 'dummy' key 401s. Report that honestly instead of a bare failure.
-                if (!envKey('OPENROUTER_API_KEY')) return { ok: false, provider, detail: 'no_key: OpenRouter يحتاج مفتاحاً مجانياً من openrouter.ai/keys.' };
-                const ans = await withTimeout(openRouterProvider.chatComplete(probe, cfg.model || 'moonshotai/kimi-k2:free', undefined, { signal: probeAbort.signal, timeoutMs: 20_000 }));
-                return { ok: usable(ans), provider, detail: 'env_key' };
-            }
-            case 'groq': {
-                if (!envKey('GROQ_API_KEY')) return { ok: false, provider, detail: 'no_key: ضع مفتاح gsk_ في الحقل بالأعلى، أو اضبط GROQ_API_KEY.' };
-                const ans = await withTimeout(callGroq(cfg.model || 'llama-3.3-70b-versatile', probe, undefined, undefined, probeAbort.signal, true));
-                return { ok: usable(ans), provider, detail: 'env_key' };
-            }
-            case 'gemini':
-            case 'google': {
-                if (!envKey('GOOGLE_API_KEY', 'GEMINI_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج GOOGLE_API_KEY.' };
-                const ans = await withTimeout(geminiProvider.chatComplete(probe as any, cfg.model || 'gemini-2.0-flash', undefined, { signal: probeAbort.signal, timeoutMs: 20_000 }));
-                return { ok: usable(ans), provider, detail: 'env_key' };
-            }
-            case 'cerebras': {
-                if (!envKey('CEREBRAS_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج CEREBRAS_API_KEY (مجاني من cloud.cerebras.ai).' };
-                const ans = await withTimeout(cerebrasProvider.chatComplete(probe as any, cfg.model || 'llama-3.3-70b'));
-                return { ok: usable(ans), provider, detail: 'env_key' };
-            }
-            case 'mistral': {
-                if (!envKey('MISTRAL_API_KEY')) return { ok: false, provider, detail: 'no_key: يحتاج MISTRAL_API_KEY (مجاني من console.mistral.ai).' };
-                const ans = await withTimeout(mistralProvider.chatComplete(probe as any, cfg.model || 'mistral-small-latest'));
-                return { ok: usable(ans), provider, detail: 'env_key' };
-            }
-            case 'openai':
-            case 'anthropic':
-            case 'grok':
-                return { ok: false, provider, detail: 'no_key: مزوّد مدفوع — ضع مفتاحه في الحقل بالأعلى للتحقّق منه.' };
-            default: {
-                releaseProviderCircuitProbe(probeCircuitKey, probeClaim.lease);
-                return { ok: false, provider, detail: 'unsupported_provider: no direct provider probe is registered' };
-            }
-        }
+        //  One real call on the provider itself, through the same route a run
+        //  takes (the strict check: no mesh, no other model).
+        const ans = await withTimeout(routeToModel(probe, undefined, undefined, undefined, undefined, undefined, undefined,
+            { modelConfig: { provider: p, apiKey: hasRealKey ? key : 'free-mode', baseUrl: cfg.baseUrl, model: cfg.model }, strictProviderCheck: true, providerHealthProbe: true, signal: probeAbort.signal }));
+        return usable(ans) ? { ok: true, provider, detail: hasRealKey ? 'key_ok' : 'server_key_ok' }
+            : { ok: false, provider, code: 'PROVIDER_DOWN', detail: 'key_empty' };
     } catch (e: any) {
-        if (!hasRealKey && p !== 'auto') recordProviderCircuitFailure(probeCircuitKey, e);
-        return { ok: false, provider, detail: safeProviderError(e, key).slice(0, 160) };
-    } finally {
-        if (!probeRequestStarted) releaseProviderCircuitProbe(probeCircuitKey, probeClaim.lease);
+        const code = /^PROVIDER_/.test(String(e?.code || '')) ? String(e.code)
+            : String(e?.message || '') === 'timeout' ? 'PROVIDER_DOWN'
+                : providerErrorCode(Number(e?.status) || 0, String(e?.message || ''));
+        return { ok: false, provider, code, detail: safeProviderError(e, key).slice(0, 160) };
     }
 }
 

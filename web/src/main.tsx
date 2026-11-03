@@ -20,6 +20,13 @@ import { jwtDecode } from 'jwt-decode';
 import './theme.css';
 import './global.css';
 import './i18n';
+import { useTranslation } from 'react-i18next';
+
+/** The page-loading line, in the interface language. */
+function RouteLoading() {
+  const { t } = useTranslation();
+  return <div className="route-loading">{t('route_loading')}</div>;
+}
 
 const shouldIgnoreNoiseError = (val: any) => {
   const s = String(val?.stack || val?.message || val?.filename || val || '');
@@ -88,10 +95,9 @@ window.addEventListener(
  *  bundle; none of them asks the server. He runs a PRODUCTION web build
  *  against a DEVELOPMENT server, so the side that could not know won.
  *
- *  The answer is cached because the guard below is synchronous and a redirect
- *  cannot wait for a fetch. First paint after a fresh install may still show
- *  the login page once; every one after it knows. That is a stated limit, not
- *  a silent one.
+ *  The answer is cached for every later visit; on a fresh browser with no
+ *  token and no cached answer, the guard waits for the server once instead of
+ *  showing the login page.
  */
 const SINGLE_USER_KEY = 'joe:singleUser';
 async function askServerIfSingleUser(): Promise<void> {
@@ -109,9 +115,39 @@ async function askServerIfSingleUser(): Promise<void> {
     localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
   } catch { /* offline: leave whatever was last known, never invent one */ }
 }
-void askServerIfSingleUser();
+const singleUserAnswer = askServerIfSingleUser();
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
+  //  A FRESH BROWSER ASKS BEFORE IT DECIDES. The guard used to read the cached
+  //  answer synchronously, so the first visit to a single-user install always
+  //  landed on /login (owner, 2026-10-23: «remove the login screen during
+  //  development»). With no token and no answer yet, wait for the server once.
+  const [asked, setAsked] = React.useState(false);
+  let knownMode: string | null = null;
+  try { knownMode = localStorage.getItem(SINGLE_USER_KEY); } catch { }
+  let storedToken: string | null = null;
+  try { storedToken = localStorage.getItem('token'); } catch { }
+  //  And a single-user install signs the developer in with a REAL token from the
+  //  server (/auth/dev) before the page mounts: the unsigned stand-in minted
+  //  below is refused by the API («Invalid token»), which sent the page back to
+  //  /login on its first request.
+  const mustAsk = !storedToken && (knownMode === null || knownMode === '1') && !asked;
+  React.useEffect(() => {
+    if (!mustAsk) return;
+    void singleUserAnswer
+      .then(async () => {
+        let single = false;
+        try { single = localStorage.getItem(SINGLE_USER_KEY) === '1'; } catch { }
+        if (!single) return;
+        const r = await fetch(API_URL + '/auth/dev', { method: 'POST' });
+        const j = r.ok ? await r.json().catch(() => ({})) : {};
+        if (typeof j?.token === 'string' && j.token) localStorage.setItem('token', j.token);
+      })
+      .catch(() => { /* fall through to the existing paths below */ })
+      .finally(() => setAsked(true));
+  }, [mustAsk]);
+  if (mustAsk) return <RouteLoading />;
+
   const getDevBypassToken = () => {
     //  The server's own word first, then the three client-side guesses that
     //  were here before — kept because a dev running `vite` has no server to
@@ -215,16 +251,16 @@ createRoot(document.getElementById('root')!).render(
         <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
           <Routes>
             <Route path="/" element={<App />}>
-              <Route index element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
-              <Route path="login" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><Login /></Suspense>} />
-              <Route path="welcome" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
-              <Route path="landing" element={<Suspense fallback={<div className="route-loading">Loading…</div>}><LandingPage /></Suspense>} />
+              <Route index element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
+              <Route path="login" element={<Suspense fallback={<RouteLoading />}><Login /></Suspense>} />
+              <Route path="welcome" element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
+              <Route path="landing" element={<Suspense fallback={<RouteLoading />}><LandingPage /></Suspense>} />
 
               <Route
                 path="joe"
                 element={
                   <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <Joe />
                     </Suspense>
                   </RequireAuth>
@@ -234,7 +270,7 @@ createRoot(document.getElementById('root')!).render(
                 path="workspace/:workspaceId/settings"
                 element={
                   <RequireAuth>
-                    <Suspense fallback={<div className="route-loading">Loading...</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <WorkspaceSettings />
                     </Suspense>
                   </RequireAuth>
@@ -248,7 +284,7 @@ createRoot(document.getElementById('root')!).render(
                 path="super-admin"
                 element={
                   <RequireSuperAdmin>
-                    <Suspense fallback={<div className="route-loading">Loading…</div>}>
+                    <Suspense fallback={<RouteLoading />}>
                       <SystemManagement />
                     </Suspense>
                   </RequireSuperAdmin>

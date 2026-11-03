@@ -1,0 +1,160 @@
+From 8a8c7cac6115df52ad010354540fc5be8094a00b Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:10:51 +0000
+Subject: [PATCH 2/4] fix(schema): one value in brackets is his note; a default
+ never replaces it
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e:
+  a-bracket-is-his-answers "a single value in brackets is a note, not a
+  list of options":
+    field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة').options
+    Received: ["قيد الانتظار", "قيد الإصلاح", "تم الإصلاح"]
+
+Culprit (bisected): 75e32c75. It made every state-named label a select
+with a default lifecycle (TYPE_MARKS status mark + default options in
+fieldsFromLabels) so "repair status" gets a real filter contract
+(directory-request-contract). The bracket reader already refused to turn
+ONE bracketed value into options, but the default then filled the column
+anyway - with three repair-shop states that cannot even hold «متوفر», the
+one answer he wrote. A default fills a silence; here he spoke.
+Decision: R. The bracket reader records the labels he followed with a
+single value (`noted`), and fieldsFromLabels skips the state mark for
+those labels only, so the column stays his free text (as it read before
+the defaults existed). The state mark is named (NAMES_A_STATE) so the skip
+is explicit. 75e32c75's own contract is kept: a state he leaves open still
+gets its default lifecycle, and two or more bracketed values are still his
+options. Added both halves to the suite: the noted column still exists and
+is text; and NEGATIVE - a bare «الحالة» is still a select with >= 2 options.
+
+Mutation evidence (mutate.py, sha256 identical after each):
+  M6 skip removed (default overrides his note):
+    ✕ a single value in brackets is a note, not a list of options
+      Received: ["قيد الانتظار", "قيد الإصلاح", "تم الإصلاح"]
+    ✕ …and the note keeps the column, as his free text
+      Expected: "text"  Received: "select"
+  M7 skip widened to every state column:
+    ✕ NEGATIVE — a state he left open still gets its default lifecycle
+      Expected: "select"  Received: "text"
+    ✕ directory-request-contract: turns the named status into a real
+      filter contract  Expected: "flag1"  Received: "text3"
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../a-bracket-is-his-answers.test.ts          | 17 +++++++++++
+ api/src/core/design/app-blueprints.ts         | 30 +++++++++++++++++--
+ 2 files changed, 44 insertions(+), 3 deletions(-)
+
+diff --git a/api/src/__tests__/a-bracket-is-his-answers.test.ts b/api/src/__tests__/a-bracket-is-his-answers.test.ts
+index 6f719eed..41309d24 100644
+--- a/api/src/__tests__/a-bracket-is-his-answers.test.ts
++++ b/api/src/__tests__/a-bracket-is-his-answers.test.ts
+@@ -84,6 +84,23 @@ describe('a bracket after a column names its answers', () => {
+         const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة');
+         expect(f?.options).toBeUndefined();
+     });
++
++    it('…and the note keeps the column, as his free text — not a default lifecycle put in its place', () => {
++        //  A state-named column now gets default answers when he names none.
++        //  Measured on this sentence, that default was «قيد الانتظار · قيد
++        //  الإصلاح · تم الإصلاح»: a select that could not even hold «متوفر».
++        //  The line above cannot see that loss if the column vanishes, so
++        //  this one asks that it is still here, and still his.
++        const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة (متوفر)', 'الحالة');
++        expect(f).toBeDefined();
++        expect(f.type).toBe('text');
++    });
++
++    it('NEGATIVE — a state he left open still gets its default lifecycle; only his note turns it off', () => {
++        const f = field('جدول المنتجات فيه اسم الصنف والسعر والحالة', 'الحالة');
++        expect(f.type).toBe('select');
++        expect(f.options.length).toBeGreaterThanOrEqual(2);
++    });
+ });
+ 
+ describe('a bare noun among named columns is a column', () => {
+diff --git a/api/src/core/design/app-blueprints.ts b/api/src/core/design/app-blueprints.ts
+index faecc61d..579491a2 100644
+--- a/api/src/core/design/app-blueprints.ts
++++ b/api/src/core/design/app-blueprints.ts
+@@ -1727,10 +1727,17 @@ type DerivedRole = 'money' | 'count' | 'scalar' | 'date' | 'time' | 'tel' | 'ema
+  */
+ const ASKS_YES_OR_NO = /^(?:هل|is|are|was|were|has|have|did|does)(?=$|\s)|[?؟]\s*$|^(?:تم|مدفوع|مدفوعة|مسدد|مسدّد|منجز|مكتمل|مغلق|paid|done|completed|settled|closed|shipped|delivered)(?=$|\s)/iu;
+ 
++/**
++ *  A column that names a STATE. When he leaves its answers open, the records
++ *  engine offers a default lifecycle for it (see fieldsFromLabels). When he
++ *  wrote an answer in brackets, that default never replaces his words.
++ */
++const NAMES_A_STATE = /status|state|مرحلة|حالة|وضع/iu;
++
+ const TYPE_MARKS: Array<[RegExp, DerivedRole, FieldType]> = [
+     [ASKS_YES_OR_NO, 'flag', 'select'],
+     [/صورة|صور|ملف\s*وسائط|\bimage\b|\bphoto\b|\bpicture\b|media\s*file/iu, 'image', 'image'],
+-    [/status|state|مرحلة|حالة|وضع/iu, 'flag', 'select'],
++    [NAMES_A_STATE, 'flag', 'select'],
+     [/تلفون|هاتف|جوال|موبايل|واتس|\bphone\b|\bmobile\b|\btel\b|whatsapp/iu, 'tel', 'tel'],
+     [/ايميل|إيميل|بريد\s*الكتروني|بريد\s*إلكتروني|\bemail\b|\be-?mail\b/iu, 'email', 'email'],
+     [/تاريخ|يوم\s|انتهاء|صلاحية|\bdate\b|\bday\b|\bexpiry\b|\bexpiration\b|\bexpires?\b|\bdeadline\b|\bdue\s+date\b/iu, 'date', 'date'],
+@@ -3072,6 +3079,17 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
+      *  every row. The cap still guards the name itself, which is its job.
+      */
+     const declaredOptions = new Map();
++    /**
++     *  ONE ANSWER IN BRACKETS IS A NOTE — AND A NOTE IS STILL HIS WORD.
++     *
++     *  «والحالة (متوفر)» is not a choice, so it never became options. But a
++     *  label that names a state now gets a default lifecycle of its own, and
++     *  measured on this exact sentence that default came back as «قيد
++     *  الانتظار · قيد الإصلاح · تم الإصلاح» — a select that cannot even hold
++     *  the one answer he wrote. A default fills a silence; here he spoke. So
++     *  the column stays his free text, the way it read before defaults.
++     */
++    const noted = new Set<string>();
+     parts = parts.map(p => {
+         const m = /^([\s\S]*?)\s*[(（]([^)）]{1,60})[)）]\s*$/.exec(p);
+         if (!m) return p;
+@@ -3079,6 +3097,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
+         const opts = m[2].split(/\s*[،,\/|]\s*|\s+أو\s+|\s+او\s+|\s+or\s+/iu)
+             .map(x => x.trim()).filter(x => x.length >= 1 && x.length <= 24);
+         if (label.length >= 2 && opts.length >= 2) declaredOptions.set(label, opts);
++        if (label.length >= 2 && opts.length === 1) noted.add(label);
+         return label.length >= 2 ? label : p;
+     });
+     //  …and the bracket comes off BEFORE the list is cut, not after.
+@@ -3121,7 +3140,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
+     //  says «أكبر من N» in its own error. Four parts of one chain,
+     //  built, and this link never joined — so «والسعر لا يقبل صفر»
+     //  reached a field with no min and zero was accepted.
+-    const built = fieldsFromLabels(named);
++    const built = fieldsFromLabels(named, noted);
+     //  …and the answers reach the field, so the app renders a select.
+     if (built) for (const f of built) {
+         const opts = declaredOptions.get(String(f.label));
+@@ -3267,7 +3286,11 @@ export function hasExplicitRecordSchema(requestRaw: string): boolean {
+     return Array.isArray(columns) && columns.length >= 2;
+ }
+ 
+-function fieldsFromLabels(parts: string[]): DerivedField[] | null {
++/**
++ *  `noted` holds the labels he followed with ONE value in brackets: his
++ *  word about that column, which a default lifecycle must not replace.
++ */
++function fieldsFromLabels(parts: string[], noted: ReadonlySet<string> = new Set()): DerivedField[] | null {
+     const seen = new Map<DerivedRole, number>();
+     const usedKeys = new Set<string>();
+     const out: DerivedField[] = [];
+@@ -3283,6 +3306,7 @@ function fieldsFromLabels(parts: string[]): DerivedField[] | null {
+             type = 'select';
+         } else {
+             for (const [mark, r, t] of TYPE_MARKS) {
++                if (mark === NAMES_A_STATE && noted.has(label)) continue;
+                 if (mark.test(label)) { role = r; type = t; break; }
+             }
+         }
+-- 
+2.43.0
+

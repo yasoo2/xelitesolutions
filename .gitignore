@@ -67,3 +67,15 @@ api/uploads/
 # The channel ledger: which comments are mine. Local by nature — it is a
 # fact about THIS machine, and pushing it would make two machines disagree.
 .manus-watch/
+
+# RUNTIME OUTPUT IS NOT SOURCE. Each of these was found committed: server logs
+# (nohup.out, .joe-main-api.out/.err), pid files, the PNGs browser_vision writes
+# into the working directory, a workspace's .joe run record, and the files a
+# path-escape test leaves in tmp/. They are made again by running Joe.
+nohup.out
+*.pid
+api/.joe-main-api.out
+api/.joe-main-api.err
+api/screenshots/
+api/.joe/
+/tmp/

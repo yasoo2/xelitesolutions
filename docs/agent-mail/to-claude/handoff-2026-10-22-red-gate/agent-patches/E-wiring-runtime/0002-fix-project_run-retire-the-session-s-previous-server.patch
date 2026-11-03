@@ -1,0 +1,219 @@
+From 2935065b3f54f802fc20837b81ed7b7ed02b96ef Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:11:19 +0000
+Subject: [PATCH 2/2] fix(project_run): retire the session's previous server
+ before EVERY launch
+
+Red: a-server-that-outlives-its-round.test.ts
+  "a retirement exists and runs before the launch" (launch index -1).
+Culprits: aa64954a turned the launch into a managed child
+(ExecutionGateway.startManaged) - pinned text only. 76f66a5d then added
+a second launch, the dependency-free records bundle, ABOVE the single
+retireRecordedServer call, so that path started a new preview beside the
+session's live previous one and overwrote its record: an orphan no later
+round can find - the exact failure this guard was written for.
+
+Decision: P for the spelling (aa64954a), R for the new launch path
+(76f66a5d). The one retirement call now sits right after stopServer and
+after the adoption return, before every launch (records bundle, managed
+launch, verified-bundle fallback). Preflight failures between the two
+positions now also retire the recorded server, matching what stopServer
+already did there for in-memory servers.
+
+Guards: the static order is asserted against all three launches, and two
+behavioural tests run the real tool on real processes: a live previous
+preview recorded in joeProjects, then project_run on (a) a dependency-free
+records bundle and (b) a managed `node server.js` project.
+
+Evidence before the fix (unchanged production code):
+  x a retirement exists... "launch": "startStaticBuildPreview(dependencyFreeBundle, port)",
+    - "retiredFirst": true, + "retiredFirst": false
+  x a dependency-free records bundle does not start beside the previous preview
+    Expected value: "retired previous server pid=19996 port=1"
+    Received array: ["project_run: ignored stale or unowned live record (http://127.0.0.1:1/)",
+    "project_run: serving dependency-free records bundle (.../next-app/dist)",
+    "The dependency-free local records app is live - preview: http://127.0.0.1:32887/"]
+  v ...and neither does a managed server (770 ms)
+After: 8/8 in the file; project-run.test.ts and
+a-preview-that-outlives-every-round.test.ts green; tsc --noEmit exit 0.
+Line endings preserved (numstat == --ignore-cr-at-eol numstat).
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../a-server-that-outlives-its-round.test.ts  | 122 +++++++++++++++++-
+ .../tools/definitions/ProjectRunTool.ts       |  14 +-
+ 2 files changed, 126 insertions(+), 10 deletions(-)
+
+diff --git a/api/src/__tests__/a-server-that-outlives-its-round.test.ts b/api/src/__tests__/a-server-that-outlives-its-round.test.ts
+index 4ba66a79..faa18b49 100644
+--- a/api/src/__tests__/a-server-that-outlives-its-round.test.ts
++++ b/api/src/__tests__/a-server-that-outlives-its-round.test.ts
+@@ -41,11 +41,31 @@ import { canAdoptRecordedLive, theServerThisSessionLeftRunning } from '../module
+ 
+ describe('the previous server is retired before a new one is born', () => {
+     it('a retirement exists and runs before the launch', () => {
+-        const retire = SOURCE.indexOf('await retireRecordedServer(context, cwd, logs);');
+-        const launch = SOURCE.indexOf('const res = await ExecutionGateway.execute(detected.command');
+-        expect(retire).toBeGreaterThan(0);
+-        expect(launch).toBeGreaterThan(0);
+-        expect(retire).toBeLessThan(launch);
++        //  Repointed (aa64954a): the launch is a MANAGED child now
++        //  (ExecutionGateway.startManaged), not a shell command handed to
++        //  ExecutionGateway.execute. And (76f66a5d) it is not the only launch
++        //  in project_run: a dependency-free records bundle is served before
++        //  any launcher is chosen, and a verified bundle may stand in when the
++        //  dev server never answers. The retirement must come after the
++        //  adoption (which must never shoot what it is about to reuse) and
++        //  before EVERY one of them. The same claim is run on real processes
++        //  at the bottom of this file.
++        const execute = SOURCE.slice(
++            SOURCE.indexOf('async execute(input: any, context?: any)'),
++            SOURCE.indexOf('async function killTree'),
++        );
++        const retire = execute.indexOf('await retireRecordedServer(context, cwd, logs);');
++        const adopted = execute.indexOf("adopted: true, kind: 'already-running'");
++        expect(adopted).toBeGreaterThan(0);
++        expect(retire).toBeGreaterThan(adopted);
++        for (const launch of [
++            'startStaticBuildPreview(dependencyFreeBundle, port)',
++            'ExecutionGateway.startManaged(launcher, launcherArgs',
++            'startStaticBuildPreview(builtRoot, port)',
++        ]) {
++            expect({ launch, at: execute.indexOf(launch) > 0 }).toEqual({ launch, at: true });
++            expect({ launch, retiredFirst: retire < execute.indexOf(launch) }).toEqual({ launch, retiredFirst: true });
++        }
+     });
+ 
+     it('it reads the record that survives a restart, not the map that does not', () => {
+@@ -98,3 +118,95 @@ describe('there is one way to end a server, wherever the pid came from', () => {
+         expect(body).toContain('process.kill(-pid');
+     });
+ });
++
++/**
++ *  …AND THE SAME CLAIM, RUN ON REAL PROCESSES — ONCE PER KIND OF LAUNCH.
++ *
++ *  The session's previous preview is a live child process, recorded the way
++ *  a real round records it, and project_run is asked for the next system.
++ *  A dependency-free records bundle used to be served BEFORE the retirement
++ *  line was reached: the previous preview kept running beside the new one,
++ *  and its record was overwritten by the new server's — an orphan that no
++ *  later round could find, which is the exact count this file began with.
++ */
++describe('the previous preview is retired on every launch path, measured', () => {
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const { spawn } = require('child_process');
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const os = require('os');
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const http = require('http');
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const { ProjectRunTool } = require('../modules/tools/definitions/ProjectRunTool');
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const { executionFirewall } = require('../orchestration/AgentExecutionFirewall');
++    // eslint-disable-next-line @typescript-eslint/no-var-requires
++    const { writeJoeProject } = require('../api/page-store');
++
++    const freePort = async (): Promise<number> => {
++        const probe = http.createServer();
++        await new Promise<void>(resolve => probe.listen(0, '127.0.0.1', () => resolve()));
++        const port = Number(probe.address().port);
++        await new Promise<void>(resolve => probe.close(() => resolve()));
++        return port;
++    };
++
++    const nextRoundAfterALivePreview = async (label: string, writeNext: (dir: string) => void) => {
++        const root = fs.mkdtempSync(path.join(os.tmpdir(), `joe-retire-${label}-`));
++        const previous = path.join(root, 'previous-app');
++        const next = path.join(root, 'next-app');
++        fs.mkdirSync(previous, { recursive: true });
++        fs.mkdirSync(next, { recursive: true });
++        writeNext(next);
++        const old = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { cwd: previous, stdio: 'ignore' });
++        const gone = new Promise<string>(resolve => old.once('exit', () => resolve('exited')));
++        const sessionId = `retire-${label}-${process.pid}`;
++        writeJoeProject(sessionId, {
++            dir: previous, type: 'runtime',
++            live: { pid: old.pid, port: 1, url: 'http://127.0.0.1:1/', cwd: previous },
++        });
++        let result: any = null;
++        try {
++            const port = await freePort();
++            result = await executionFirewall.runInContext(`retire-${label}`, () =>
++                new ProjectRunTool().execute({ cwd: next, port }, { sessionId, workspaceRoot: root, workspaceId: `retire-${label}` }));
++            const previousPreview = await Promise.race([
++                gone,
++                new Promise<string>(resolve => setTimeout(() => resolve('still running'), 5000)),
++            ]);
++            return { result, previousPreview, oldPid: old.pid };
++        } finally {
++            try { old.kill('SIGKILL'); } catch { /* already gone */ }
++            const started = Number(result?.output?.pid || 0);
++            if (started > 0) { try { process.kill(started, 'SIGKILL'); } catch { /* already gone */ } }
++            delete (global as any).joeProjects?.[sessionId];
++            fs.rmSync(root, { recursive: true, force: true });
++        }
++    };
++
++    it('a dependency-free records bundle does not start beside the previous preview', async () => {
++        const { result, previousPreview, oldPid } = await nextRoundAfterALivePreview('records', dir => {
++            fs.writeFileSync(path.join(dir, 'package.json'), JSON.stringify({ name: 'next-app', private: true }));
++            fs.mkdirSync(path.join(dir, 'dist'), { recursive: true });
++            fs.writeFileSync(path.join(dir, 'dist', 'index.html'),
++                '<!doctype html><meta name="joe-artifact-mode" content="static-records"><title>records</title>');
++        });
++        expect(result.ok).toBe(true);
++        expect(result.output.kind).toBe('static-records');
++        expect(result.logs).toContain(`retired previous server pid=${oldPid} port=1`);
++        expect(previousPreview).toBe('exited');
++    }, 30_000);
++
++    it('…and neither does a managed server', async () => {
++        const { result, previousPreview, oldPid } = await nextRoundAfterALivePreview('managed', dir => {
++            fs.writeFileSync(path.join(dir, 'package.json'),
++                JSON.stringify({ name: 'next-app', private: true, scripts: { start: 'node server.js' } }));
++            fs.writeFileSync(path.join(dir, 'server.js'),
++                "require('http').createServer((_req, res) => res.end('next')).listen(Number(process.env.PORT), '127.0.0.1');\n");
++        });
++        expect(result.ok).toBe(true);
++        expect(result.output.kind).toBe('npm-start');
++        expect(result.logs).toContain(`retired previous server pid=${oldPid} port=1`);
++        expect(previousPreview).toBe('exited');
++    }, 60_000);
++});
+diff --git a/api/src/modules/tools/definitions/ProjectRunTool.ts b/api/src/modules/tools/definitions/ProjectRunTool.ts
+index 25f6f438..4a859e34 100644
+--- a/api/src/modules/tools/definitions/ProjectRunTool.ts
++++ b/api/src/modules/tools/definitions/ProjectRunTool.ts
+@@ -1410,6 +1410,15 @@ export class ProjectRunTool implements ToolDefinition {
+         const key = runKey(context);
+         // One project, one server: stop a previous run before starting again.
+         await stopServer(key, logs).catch(() => {});
++        //  The previous server for this project dies before a new one is
++        //  born — see retireRecordedServer. Nine of them were alive on his
++        //  machine at once, holding twenty-one ports.
++        //  It runs HERE, before the first launch below, because there is
++        //  more than one launch: a dependency-free records bundle is served
++        //  before any npm launcher is chosen, and while this line sat beside
++        //  the managed launch alone, that bundle was born next to a live
++        //  predecessor that nothing would ever stop.
++        await retireRecordedServer(context, cwd, logs);
+ 
+         const port = Number(input?.port) || await findFreePort();
+         const dependencyFreeBundle = !input?.command ? dependencyFreeRecordsBundleRoot(cwd) : null;
+@@ -1599,11 +1608,6 @@ export class ProjectRunTool implements ToolDefinition {
+          *  the output arrives on a pipe, so it can go where he is looking;
+          *  and there is no window, because there is no console to make.
+          */
+-        //  The previous server for this project dies before a new one is
+-        //  born — see retireRecordedServer. Nine of them were alive on his
+-        //  machine at once, holding twenty-one ports.
+-        await retireRecordedServer(context, cwd, logs);
+-
+         const parsedLauncher = launcherArgv(detected.command);
+         if (!parsedLauncher) {
+             const message = pick(isAr,
+-- 
+2.43.0
+
