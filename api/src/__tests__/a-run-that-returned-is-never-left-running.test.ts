@@ -20,6 +20,9 @@ import { AgentLoopService } from '../modules/services/AgentLoopService';
 import { registerRun } from '../core/session/attended-run';
 import * as store from '../shared/run-evidence-store';
 
+// The first execute() loads the agent loop and measures the machine: seconds, not milliseconds.
+jest.setTimeout(120_000);
+
 jest.mock('dotenv', () => ({ __esModule: true, default: { config: () => ({ parsed: {} }) } }));
 jest.mock('../api/ws', () => ({
     broadcast: jest.fn(), broadcastThinkingDetail: jest.fn(),

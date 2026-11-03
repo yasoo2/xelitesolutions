@@ -111,7 +111,6 @@ async function main() {
 
     await browser.close();
     server.close();
-    g.mockMessages = [];
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);
