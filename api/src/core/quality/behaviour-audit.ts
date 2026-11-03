@@ -821,6 +821,17 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // to restore, leaving later controls absent and falsely reported as
         // unreached.  Return to the exact route we started this probe on.
         const probeStartUrl = page.url();
+        /**
+         * ⛔ THE BASELINE INCLUDES WHERE THE PAGE WAS SCROLLED.
+         *
+         * A reload keeps the scroll position the last press left, not the one
+         * the probe started from. The exam, 2026-11-03 (P204, a gym store at
+         * tablet width): after «Equipment» the page sat 120px down, the
+         * category chips were under the sticky header, and the reload meant
+         * to restore them kept them there — «Supplements», «Apparel» and
+         * «Accessories» were «gone before I could press them», six refusals.
+         */
+        const probeStartScroll = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY })).catch(() => ({ x: 0, y: 0 }));
         const restoreProbeStart = async () => {
             if (page.url() === probeStartUrl) {
                 await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
@@ -830,7 +841,30 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             if (opts?.baselineViewport) {
                 await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height).catch(() => { });
             }
+            await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
+        };
+        /**
+         * Can a person press it here: in view, and the topmost thing at its
+         * centre? A sticky header or a fixed bar covers a control the page has
+         * scrolled under; a person scrolls it to the middle of the screen, so
+         * the probe does that once before calling it covered. A modal, an
+         * overlay or a drawer over the whole row still covers it there.
+         */
+        const reachableNow = (sel: string) => page.evaluate((s: string) => {
+            const node = document.querySelector(s) as HTMLElement | null;
+            if (!node) return false;
+            const r = node.getBoundingClientRect();
+            const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
+            const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
+            const top = document.elementFromPoint(x, y);
+            return r.bottom > 0 && r.top < window.innerHeight && (top === node || !!top && node.contains(top));
+        }, sel).catch(() => false);
+        const reachableOnScreen = async (sel: string) => {
+            if (await reachableNow(sel)) return true;
+            await page.evaluate((s: string) => document.querySelector(s)?.scrollIntoView({ block: 'center', inline: 'nearest' }), sel).catch(() => { });
+            await page.waitForTimeout(80).catch(() => { });
+            return reachableNow(sel);
         };
         for (const c of list) {
             if (c.kind === 'anchor') continue;                       // handled above
@@ -945,16 +979,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         if (document.documentElement.scrollHeight > window.innerHeight + 160) window.scrollBy(0, 120);
                     }).catch(() => { });
                 }
-                let reachable = await page.evaluate((sel: string) => {
-                    const node = document.querySelector(sel) as HTMLElement | null;
-                    if (!node) return false;
-                    const r = node.getBoundingClientRect();
-                    const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
-                    const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
-                    const top = document.elementFromPoint(x, y);
-                    return r.bottom > 0 && r.top < window.innerHeight &&
-                        (top === node || !!top && node.contains(top));
-                }, current.sel).catch(() => false);
+                let reachable = await reachableOnScreen(current.sel);
                 // A details dialog can legitimately cover a control discovered
                 // on the page beneath it. Close only a visible modal, then
                 // re-resolve and re-measure the same semantic control. This is
@@ -974,15 +999,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                             el = await page.$(current.sel);
                             await el?.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
                         }
-                        reachable = await page.evaluate((sel: string) => {
-                            const node = document.querySelector(sel) as HTMLElement | null;
-                            if (!node) return false;
-                            const r = node.getBoundingClientRect();
-                            const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
-                            const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
-                            const top = document.elementFromPoint(x, y);
-                            return r.bottom > 0 && r.top < window.innerHeight && (top === node || !!top && node.contains(top));
-                        }, current.sel).catch(() => false);
+                        reachable = await reachableOnScreen(current.sel);
                     }
                 }
                 // A transient surface may not identify itself as a modal. The
@@ -996,15 +1013,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         current = replacement;
                         el = await page.$(current.sel);
                         await el?.scrollIntoViewIfNeeded({ timeout: 1500 }).catch(() => { });
-                        reachable = await page.evaluate((sel: string) => {
-                            const node = document.querySelector(sel) as HTMLElement | null;
-                            if (!node) return false;
-                            const r = node.getBoundingClientRect();
-                            const x = Math.min(Math.max(r.left + r.width / 2, 1), window.innerWidth - 1);
-                            const y = Math.min(Math.max(r.top + r.height / 2, 1), window.innerHeight - 1);
-                            const top = document.elementFromPoint(x, y);
-                            return r.bottom > 0 && r.top < window.innerHeight && (top === node || !!top && node.contains(top));
-                        }, current.sel).catch(() => false);
+                        reachable = await reachableOnScreen(current.sel);
                     }
                 }
                 if (!reachable) {
@@ -1477,6 +1486,82 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         }).catch(() => []);
         metrics.keyboardUnreachable = keyboardUnreachable.length;
         (metrics as any).keyboardUnreachableSamples = keyboardUnreachable;
+
+        /**
+         * ⛔ A CONTROL THAT CHANGED NOTHING ON THE UNTOUCHED PAGE IS PRESSED
+         * ONCE MORE ON A CHANGED ONE.
+         *
+         * The exam, 2026-11-03 (P204, a gym store): «Shop» clears the search,
+         * the category and the cart drawer. On the page as it loads there is
+         * nothing to clear, so its one press changed nothing, and
+         * «Unresponsive controls: "Shop"» refused the store four times in a
+         * row — the builder cannot make a reset visible on a page that needs
+         * none. The exploration above re-presses a header menu like it in
+         * other states only when its budget reaches that far (90 s: pressed;
+         * 45 s: dead), and a plain button — «Clear filters» — never.
+         *
+         * A fair test gives the control something to undo: a control that
+         * really changed this page is pressed first, the page is let settle,
+         * then this one is pressed and measured the same way. A control with
+         * no handler still changes nothing, and its verdict stands.
+         */
+        const workedSomewhere = new Set(controls.filter(r => r.worked).map(r => `${r.kind}|${r.bare || r.label}|${r.instance ?? 0}`));
+        const pressedQuiet = controls.filter(r => !r.exploratory && ['button', 'menu', 'tab'].includes(r.kind) && !r.worked && r.effect === ''
+            && !workedSomewhere.has(`${r.kind}|${r.label}|${r.instance ?? 0}`));
+        const movers = controls.filter(r => !r.exploratory && r.worked && ['state', 'dom', 'count', 'text', 'open'].includes(r.effect));
+        const catalogued = (r: ControlResult) => list.find(l => l.kind === r.kind && l.label === r.label && (l.ordinal ?? 0) === (r.instance ?? 0));
+        const settled = async (until: number) => {
+            let last = '';
+            let same = 0;
+            while (Date.now() < until && same < 3) {
+                await page.waitForTimeout(200).catch(() => { });
+                const now = JSON.stringify(await page.evaluate(snapshot).catch(() => null));
+                same = now === last ? same + 1 : 0;
+                last = now;
+            }
+            return same >= 3;
+        };
+        // Its own bounded time, so a probe that spent its budget elsewhere
+        // still gives its quiet controls this one fair press.
+        const secondLookUntil = Date.now() + 8_000;
+        metrics.secondLook = [] as Array<{ label: string; after: string; effect: string }>;
+        for (const quiet of pressedQuiet.slice(0, 3)) {
+            const quietItem = catalogued(quiet);
+            if (!quietItem || !eyeIsOpen()) continue;
+            for (const mover of movers.filter(m => m.label !== quiet.label).slice(0, 2)) {
+                if (Date.now() >= secondLookUntil || !eyeIsOpen()) break;
+                const moverItem = catalogued(mover);
+                if (!moverItem) continue;
+                try {
+                    await restoreProbeStart();
+                    const attemptUntil = Math.min(secondLookUntil, Date.now() + 4000);
+                    const moverNow = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), moverItem);
+                    if (!moverNow || !await reachableOnScreen(moverNow.sel)) continue;
+                    await eyes.lookAt(page, await boxOf(page, moverNow.sel), { note: `${KIND_AR[mover.kind] || 'عنصر'}: ${mover.label}`.slice(0, 64), moveMouse: true });
+                    await eyes.press(page);
+                    await (await page.$(moverNow.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                    // A change still arriving from the first press would be
+                    // credited to the second one: measure only a still page.
+                    if (!await settled(attemptUntil) || page.url() !== probeStartUrl) continue;
+                    const quietNow = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                    if (!quietNow || !await reachableOnScreen(quietNow.sel)) continue;
+                    await eyes.lookAt(page, await boxOf(page, quietNow.sel), { note: `${KIND_AR[quiet.kind] || 'عنصر'}: ${quiet.label}`.slice(0, 64), moveMouse: true });
+                    const before = await page.evaluate(snapshot).catch(() => null);
+                    if (!eyeIsOpen()) break;
+                    await eyes.press(page);
+                    await (await page.$(quietNow.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                    let effect = '';
+                    const settleDeadline = Date.now() + 2500;
+                    do {
+                        await page.waitForTimeout(100);
+                        effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
+                    } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                    metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
+                    if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
+                    break;
+                } catch { /* the control under test keeps its first verdict */ }
+            }
+        }
     }
 
     return { controls, metrics, forms: filled };
