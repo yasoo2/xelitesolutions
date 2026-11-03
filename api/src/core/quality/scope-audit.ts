@@ -23,6 +23,7 @@
  */
 import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
 import { intentProbe } from '../orchestrator/promptNormalizer';
+import { requestedRecords } from './request-coverage';
 import fs from 'fs';
 import path from 'path';
 
@@ -36,6 +37,13 @@ export interface Capability {
     evidence: RegExp;
     /** Optional shape-aware evidence for capabilities whose runtime form matters. */
     evidenceCheck?: (source: string, ctx?: ScopeEvidenceContext) => boolean;
+    /**
+     * The record words that ARE this capability when the request manages them
+     * as records («manage menu items, orders, tables»): the records instrument
+     * measures that record — present, served, tested — and this keyword never
+     * judges it a second time.
+     */
+    records?: string[];
 }
 
 /** What the delivered tree is, for evidence that depends on who uses the capability. */
@@ -335,6 +343,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'orders', ar: 'الطلبات', en: 'orders',
         ask: /\b(orders?|checkout|cart|purchase)\b|طلبات|سلة|شراء|الدفع عند/i,
         evidence: /\/api\/orders|orders\s*\(|addToCart|أضف إلى السلة/i,
+        records: ['orders', 'order', 'purchases'],
     },
     {
         id: 'accounts', ar: 'حسابات المستخدمين', en: 'user accounts',
@@ -347,6 +356,7 @@ export const CAPABILITIES: Capability[] = [
         // A generated data model declares its tables — «{"key":"vendors"…}» in
         // entities.js is a real table with real CRUD, not a mention of a word.
         evidence: /vendor_?id|seller_?id|\/api\/vendors|"key":"vendors"|\bvendors\s*\(|VendorDashboard|merchant_?id/i,
+        records: ['vendors', 'vendor', 'sellers', 'seller', 'merchants'],
     },
     {
         id: 'ai_generation', ar: 'توليد المنتجات بالذكاء الاصطناعي', en: 'AI product generation',
@@ -357,6 +367,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'inventory', ar: 'إدارة المخزون', en: 'inventory management',
         ask: /\binventory\b|\bstock\b|المخزون|إدارة المخزون/i,
         evidence: /'stock'|"stock"|stock:\s|stock_?(quantity|level|count)|"key":"movements"|\/api\/inventory|quantity_?on_?hand/i,
+        records: ['inventory', 'stock', 'movements'],
     },
     {
         id: 'payments', ar: 'المدفوعات', en: 'payments',
@@ -379,11 +390,13 @@ export const CAPABILITIES: Capability[] = [
         id: 'shipping', ar: 'الشحن', en: 'shipping',
         ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|التوصيل/i,
         evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
+        records: ['shipments', 'shipment', 'deliveries'],
     },
     {
         id: 'coupons', ar: 'الكوبونات والخصومات', en: 'coupons and discounts',
         ask: /\bcoupons?\b|\bdiscounts?\b|\bpromo\b|كوبون|خصومات|أكواد خصم/i,
         evidence: /"key":"coupons"|promo_?code|discount_?code|\/api\/coupons/i,
+        records: ['coupons', 'coupon', 'discounts'],
     },
     {
         id: 'loyalty', ar: 'برنامج الولاء', en: 'loyalty program',
@@ -404,11 +417,13 @@ export const CAPABILITIES: Capability[] = [
         id: 'support', ar: 'دعم العملاء', en: 'customer support',
         ask: /customer support|\bhelpdesk\b|\btickets?\b|live chat|دعم العملاء|تذاكر الدعم/i,
         evidence: /\/api\/tickets|helpdesk|live_?chat|support_?ticket/i,
+        records: ['tickets', 'ticket'],
     },
     {
         id: 'marketing', ar: 'أتمتة التسويق', en: 'marketing automation',
         ask: /marketing automation|\bcampaigns?\b|\bnewsletter\b|أتمتة التسويق|حملات تسويق|النشرة البريدية/i,
         evidence: /\/api\/campaigns|newsletter|mailchimp|email_?campaign/i,
+        records: ['campaigns', 'campaign'],
     },
     {
         id: 'seo', ar: 'تهيئة محركات البحث', en: 'SEO',
@@ -431,6 +446,7 @@ export const CAPABILITIES: Capability[] = [
         // system. Require review context before opening this capability gate.
         ask: /\breviews\b|\b(?:customer|user|product|item)\s+review\b|\b(?:customer|user|product|item|star)\s+ratings?\b|تقييمات\s*(?:العملاء|المنتجات)|مراجعات/i,
         evidence: /'reviews'|"reviews"|\/api\/reviews|\brating:\s|stars?_?count/i,
+        records: ['reviews', 'review'],
     },
     {
         id: 'search', ar: 'البحث', en: 'search',
@@ -482,11 +498,13 @@ export const CAPABILITIES: Capability[] = [
         id: 'subscriptions', ar: 'الاشتراكات', en: 'subscriptions',
         ask: /\bsubscriptions?\b|\brecurring\b|اشتراكات|اشتراك شهري/i,
         evidence: /subscription|recurring|billing_?cycle/i,
+        records: ['subscriptions', 'subscription'],
     },
     {
         id: 'notifications', ar: 'الإشعارات', en: 'notifications',
         ask: /\bnotifications?\b|\bpush\b|إشعارات|تنبيهات/i,
         evidence: /notification|web-?push|\/api\/notifications/i,
+        records: ['notifications', 'notification'],
     },
 ];
 
@@ -552,6 +570,11 @@ export function readProjectSource(dirs: string[], options: ProjectSourceReadOpti
 
 export interface ScopeReport {
     requested: Capability[];
+    /**
+     * Named capabilities that are records the request manages: judged by the
+     * records instrument (request-coverage), so left out of this comparison.
+     */
+    asRecords?: Capability[];
     built: Capability[];
     missing: Capability[];
     /**
@@ -626,6 +649,19 @@ function foldForCompare(text: string): string {
         .toLocaleLowerCase();
 }
 
+/** The words of the records the request manages, as the records gate reads them. */
+function recordWordsOf(request: string): Set<string> {
+    try {
+        const words = requestedRecords(request).entities
+            .flatMap(e => [String(e.key || ''), ...String(e.en || '').split(/[^A-Za-z0-9]+/u)])
+            .map(w => w.trim().toLowerCase())
+            .filter(w => w.length >= 3);
+        return new Set(words.flatMap(w => [w, w.replace(/s$/u, '')]));
+    } catch {
+        return new Set();
+    }
+}
+
 /** The comparison itself: named against evidenced. */
 export function scopeReport(request: string, projectDirs: string[]): ScopeReport {
     const requested = requestedCapabilities(request);
@@ -679,11 +715,19 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
             return !claimed.some(r => r === c || r.includes(c) || c.includes(r));
         });
     if (!requested.length) return { requested: [], built: [], missing: [], unchecked };
+    //  Measured on 2026-11-03 (P053): «manage menu items, orders, tables» was
+    //  refused four times with «missing: orders» while its Orders page added,
+    //  edited, deleted and searched orders — the records gate had measured
+    //  the orders record and passed it. The keyword wanted a cart. A record he
+    //  manages is the records instrument's to judge.
+    const recordWords = recordWordsOf(request);
+    const asRecords = requested.filter(c => (c.records || []).some(w => recordWords.has(w)));
+    const judged = requested.filter(c => !asRecords.includes(c));
     const src = readProjectSource(projectDirs);
     const ctx: ScopeEvidenceContext = { serviceOnly: !deliveredTreeHasInterface(projectDirs) };
-    const built = requested.filter(c => capabilityEvidence(c, src, ctx));
-    const missing = requested.filter(c => !built.includes(c));
-    return { requested, built, missing, unchecked };
+    const built = judged.filter(c => capabilityEvidence(c, src, ctx));
+    const missing = judged.filter(c => !built.includes(c));
+    return { requested: judged, ...(asRecords.length ? { asRecords } : {}), built, missing, unchecked };
 }
 
 /**
