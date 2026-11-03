@@ -16,7 +16,7 @@ import fs from 'fs';
 import path from 'path';
 import { judgeBehaviour } from '../core/quality/behaviour-audit';
 import { fileForBehaviour, handlerRepairable } from '../core/quality/model-round';
-import { browserWalkBudgetMs, formatAudit } from '../core/quality/app-audit';
+import { browserWalkBudgetMs, COVERAGE_RETRY_TIMEOUT_MS, formatAudit } from '../core/quality/app-audit';
 import { VIEWPORTS, effectiveViewports } from '../core/quality/ui-inspection';
 import { repairMeasuredMobileHeader } from '../core/quality/ui-repair';
 
@@ -194,6 +194,21 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(a).toContain('page.setDefaultNavigationTimeout?.(navigationTimeoutMs)');
         expect(browserWalkBudgetMs(180_000, 0)).toBe(180_000);
         expect(browserWalkBudgetMs(180_000, 20)).toBe(240_000);
+    });
+
+    it('a coverage retry gets a larger walk than the first, not the same one again', () => {
+        //  P053 (2026-11-03): 45 s and the «larger» 90 s retry were both turned
+        //  into 150 s + 6 s a route, so the retry repeated the first walk.
+        const first = browserWalkBudgetMs(45_000, 4);
+        expect(first).toBe(174_000);
+        expect(browserWalkBudgetMs(90_000, 4)).toBe(first);
+        expect(browserWalkBudgetMs(COVERAGE_RETRY_TIMEOUT_MS, 4)).toBe(COVERAGE_RETRY_TIMEOUT_MS);
+        expect(COVERAGE_RETRY_TIMEOUT_MS).toBeGreaterThan(browserWalkBudgetMs(45_000, 20));
+        //  Bounded: a request is never an unbounded walk.
+        expect(browserWalkBudgetMs(3_600_000, 0)).toBe(600_000);
+        //  And both callers use it for their retry.
+        expect(read('core', 'engine', 'verify.ts')).toContain('options(COVERAGE_RETRY_TIMEOUT_MS)');
+        expect(read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts')).toContain('timeoutMs: COVERAGE_RETRY_TIMEOUT_MS,');
     });
 });
 

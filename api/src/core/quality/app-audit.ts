@@ -290,9 +290,20 @@ export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): numb
     // paths, state discovery, and three responsive measurements. A 120s
     // ceiling repeatedly exhausted on a single records page, reporting a
     // coverage defect before the audit had actually finished its job.
+    //  ⛔ AND A RETRY «WITH A LARGER BUDGET» MUST GET ONE. The 500-prompt exam,
+    //  2026-11-03 (P053): a four-page dashboard with 47 controls ran out of
+    //  walk on a loaded machine; the engine and the pipeline both audited
+    //  again «larger» with 90 s — and this formula turned 45 s and 90 s into
+    //  the same 150 s + 6 s a route, so the retry was the first walk again and
+    //  the builder was refused six times for Joe's own clock. A request above
+    //  the first walk's ceiling is now honoured (up to ten minutes).
+    if (requested > 240_000) return Math.min(600_000, requested);
     const base = Math.min(180_000, Math.max(150_000, requested));
     return Math.min(240_000, base + routes * 6_000);
 }
+
+/** The walk a coverage retry asks for: a real step past the first walk's ceiling. */
+export const COVERAGE_RETRY_TIMEOUT_MS = 360_000;
 
 // A slow control must not consume the whole walk before responsive and visual
 // evidence runs. The shared deadline still governs the complete audit.

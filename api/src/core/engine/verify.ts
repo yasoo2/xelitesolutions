@@ -40,7 +40,7 @@ import { runRequestedTests, testsRequestedIn } from '../quality/request-coverage
 import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
 import { runPython } from '../quality/python-runtime';
-import { auditBuiltApp, type AppAudit } from '../quality/app-audit';
+import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../quality/app-audit';
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -514,7 +514,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             let audit = await browserQa.audit(auditDir, options(45_000));
             //  A coverage timeout is the walker's budget, not the app: once more, larger.
             if (!audit.skipped && audit.findings.some(f => f.id === 'qa_budget_exhausted')) {
-                const retry = await browserQa.audit(auditDir, options(90_000));
+                const retry = await browserQa.audit(auditDir, options(COVERAGE_RETRY_TIMEOUT_MS));
                 if (!retry.skipped) audit = retry;
             }
             //  A browser-rig failure says nothing about the app: measured once more.

@@ -18,7 +18,7 @@ import { brandFrom } from '../../../core/design/page-head';
 import { scopeReport } from '../../../core/quality/scope-audit';
 import { verifyProviderDirect } from '../../../core/llm/intelligent-router';
 import { detectStart, missingRuntimeDependencies, reconcileMissingRuntimeTarget, resolveRunnableProject } from './ProjectRunTool';
-import { auditBuiltApp, AppAudit, findingText } from '../../../core/quality/app-audit';
+import { auditBuiltApp, AppAudit, COVERAGE_RETRY_TIMEOUT_MS, findingText } from '../../../core/quality/app-audit';
 import { readJoeProjectForRun } from '../../../api/page-store';
 import { hasExplicitRecordSchema, isCliRequest as isCliRequestFn } from '../../../core/design/app-blueprints';
 import { requestedArtifact } from '../../../core/design/requested-artifact';
@@ -4005,7 +4005,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                         say(pick(isAr,
                             '🔎 لم تكتمل تغطية المتصفح؛ سأعيد الاستكشاف بمهلة موسّعة ومحدودة قبل إصلاح الملفات.',
                             '🔎 Browser coverage was incomplete; I will rerun bounded exploration with a larger budget before editing files.'));
-                        appendBoundedPipelineLog(logs, '[pipeline] browser QA coverage retry start timeoutMs=90000');
+                        appendBoundedPipelineLog(logs, `[pipeline] browser QA coverage retry start timeoutMs=${COVERAGE_RETRY_TIMEOUT_MS}`);
                         const coverageRetry = await auditBuiltApp(auditDir, {
                             request: productRequest,
                             watchSessionId: panelSid || undefined,
@@ -4014,7 +4014,7 @@ export class ProjectPipelineTool implements ToolDefinition {
                             requireVisibleBrowser: true,
                             ...(runtimeProjectHandoff?.externalApi ? { externalApi: runtimeProjectHandoff.externalApi } : {}),
                             ...(runtimeProjectHandoff?.runtimeAuth ? { credentials: runtimeProjectHandoff.runtimeAuth } : {}),
-                            timeoutMs: 90_000,
+                            timeoutMs: COVERAGE_RETRY_TIMEOUT_MS,
                             onProgress: progress,
                         });
                         if (!coverageRetry?.skipped) {
