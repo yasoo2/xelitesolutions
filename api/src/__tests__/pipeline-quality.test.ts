@@ -215,7 +215,8 @@ describe('the self-QA runs where the user can watch it', () => {
             require('path').join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectPipelineTool.ts'), 'utf-8');
         expect(P).toContain("finding.id === 'qa_budget_exhausted'");
         expect(P).toContain('browserQaCoverageRetryAttempted');
-        expect(P).toContain('timeoutMs: 90_000');
+        //  The retry walk is larger than the first (90_000 was turned into the first walk again: P053).
+        expect(P).toContain('timeoutMs: COVERAGE_RETRY_TIMEOUT_MS,');
     });
 
     it('the build asks for the panel, and the interface opens it by name', () => {

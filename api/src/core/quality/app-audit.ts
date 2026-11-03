@@ -290,8 +290,31 @@ export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): numb
     // paths, state discovery, and three responsive measurements. A 120s
     // ceiling repeatedly exhausted on a single records page, reporting a
     // coverage defect before the audit had actually finished its job.
+    //  ⛔ AND A RETRY «WITH A LARGER BUDGET» MUST GET ONE. The 500-prompt exam,
+    //  2026-11-03 (P053): a four-page dashboard with 47 controls ran out of
+    //  walk on a loaded machine; the engine and the pipeline both audited
+    //  again «larger» with 90 s — and this formula turned 45 s and 90 s into
+    //  the same 150 s + 6 s a route, so the retry was the first walk again and
+    //  the builder was refused six times for Joe's own clock. A request above
+    //  the first walk's ceiling is now honoured (up to ten minutes).
+    if (requested > 240_000) return Math.min(600_000, requested);
     const base = Math.min(180_000, Math.max(150_000, requested));
     return Math.min(240_000, base + routes * 6_000);
+}
+
+/** The walk a coverage retry asks for: a real step past the first walk's ceiling. */
+export const COVERAGE_RETRY_TIMEOUT_MS = 360_000;
+
+/**
+ * How much larger this walk is than an ordinary first walk over the same
+ * routes. The walk's inner passes (one page's controls, the tablet and phone
+ * pass) had fixed budgets of their own, so a retry with six minutes still gave
+ * the phone pass its 28–90 s and ran out there again (P053, 2026-11-03: the
+ * first walk ended after 85 s, its overall budget barely touched). They scale
+ * with the walk now; an ordinary walk keeps exactly the budgets it had.
+ */
+export function walkScale(timeoutMs: number, routeCount: number): number {
+    return Math.max(1, browserWalkBudgetMs(timeoutMs, routeCount) / browserWalkBudgetMs(45_000, routeCount));
 }
 
 // A slow control must not consume the whole walk before responsive and visual
@@ -1122,6 +1145,7 @@ export async function auditBuiltApp(
         // responsive passes. Keep one shared deadline so it cannot loop
         // forever, but do not let the old 60s floor truncate real QA runs.
         const walkUntil = Date.now() + browserWalkBudgetMs(timeoutMs, routes.length);
+        const scale = walkScale(timeoutMs, routes.length);
         const seenForms = new Set<string>();
         // One deadline governs the entire visible walk. Do not reset a small
         // per-page minimum after the deadline: on a route-heavy app that made
@@ -1129,7 +1153,7 @@ export async function auditBuiltApp(
         const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
         const probeOpts = (formScope = 'desktop:/', formContext = '/') => ({
             eyes,
-            budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs()),
+            budgetMs: Math.min(CONTROL_PASS_BUDGET_MS * scale, remainingWalkMs()),
             seenForms,
             formScope,
             formContext,
@@ -1422,7 +1446,7 @@ export async function auditBuiltApp(
         // Without this fallback, route-less generated tools never ran the
         // responsive control pass beyond their initial desktop page.
         const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
-        const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000));
+        const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
         for (const r of responsiveRoutes) {
             for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
