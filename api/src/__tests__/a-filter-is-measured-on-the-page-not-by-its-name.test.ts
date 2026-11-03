@@ -151,6 +151,63 @@ describe('filtering, search and sorting are measured on the live page', () => {
         expect(lines.join('\n')).toMatch(/interaction filtering shown: on the live page, (choosing «(3m|6m)» in «الفترة الزمنية» \(select\)|setting «(من|إلى)» \(date\))/u);
     });
 
+    it('a filter that appears once the sample data is loaded is found behind that button (P354)', async () => {
+        //  The page opens empty; «تحميل بيانات تجريبية» loads the rows and only
+        //  then shows the date filter. Measured on the first view alone, that
+        //  was «the live page has no control that filters».
+        const page = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>تقرير الاشتراكات</title></head><body>
+<h1>تقرير اشتراكات النادي</h1>
+<div class="actions"><button id="load">تحميل بيانات تجريبية</button></div>
+<div id="app"></div>
+<script>
+  var subscriptions = [];
+  var from = '';
+  function render() {
+    var app = document.getElementById('app');
+    if (!subscriptions.length) { app.innerHTML = '<p>لا توجد بيانات بعد</p>'; return; }
+    var shown = subscriptions.filter(function (s) { return !from || s.date >= from; });
+    app.innerHTML = '<label for="from">من تاريخ</label><input type="date" id="from" value="' + from + '">'
+      + '<ul>' + shown.map(function (s) { return '<li>' + s.name + ' — ' + s.date + '</li>'; }).join('') + '</ul>';
+    document.getElementById('from').addEventListener('change', function (e) { from = e.target.value; render(); });
+  }
+  document.getElementById('load').addEventListener('click', function () {
+    subscriptions = [{ name: 'سالم', date: '2025-01-10' }, { name: 'منى', date: '2025-06-02' }, { name: 'عادل', date: '2025-11-20' }];
+    render();
+  });
+  render();
+</script></body></html>`;
+        const { scope, lines } = await scopeOf('اعمل صفحة تقرير تفاعلية لنادي رياضي تحمّل بيانات تجريبية عن الاشتراكات، وتسمح بالفلترة حسب الفترة الزمنية.', { 'index.html': page });
+        expect(scope).toMatchObject({ instrument: 'scope', ok: true });
+        expect(lines.join('\n')).toMatch(/interaction filtering shown: on the live page, after pressing «تحميل بيانات تجريبية», setting «من تاريخ» \(date\)/u);
+    });
+
+    it('a search inside another tab is found by opening that tab, and a tab alone is still no search', async () => {
+        const dashboard = (withSearch: boolean) => `<!doctype html><html><head><meta charset="utf-8"><title>Admin</title></head><body>
+<nav><a href="#/summary">Summary</a> <a href="#/orders">Orders</a></nav>
+<main id="view"></main>
+<script>
+  var orders = ['Ali — 3 pizzas', 'Mona — 2 salads', 'Sami — 1 soup', 'Rana — 4 pizzas'];
+  function show() {
+    var v = document.getElementById('view');
+    if (location.hash !== '#/orders') { v.innerHTML = '<h2>Summary</h2><p>Total orders: ' + orders.length + '</p>'; return; }
+    v.innerHTML = '<h2>Orders</h2>' + (${withSearch} ? '<label for="q">Find an order</label><input id="q" type="text">' : '') + '<ul id="list"></ul>';
+    var draw = function () {
+      var q = ((document.getElementById('q') || {}).value || '').toLowerCase();
+      document.getElementById('list').innerHTML = orders.filter(function (o) { return o.toLowerCase().indexOf(q) >= 0; }).map(function (o) { return '<li>' + o + '</li>'; }).join('');
+    };
+    if (document.getElementById('q')) document.getElementById('q').addEventListener('input', draw);
+    draw();
+  }
+  window.addEventListener('hashchange', show);
+  show();
+</script></body></html>`;
+        const request = 'Build an admin dashboard for a restaurant with a summary page and an orders page where staff can search the orders.';
+        const found = await scopeOf(request, { 'index.html': dashboard(true) });
+        expect(found.lines.join('\n')).toMatch(/interaction search shown: on the live page, after pressing «Orders», typing «[^»]+» into «Find an order» \(text\)/u);
+        const none = await scopeOf(request, { 'index.html': dashboard(false) });
+        expect(none.state.scopeAudit?.missing).toContain('search');
+    });
+
     it('an add form beside a list that deletes with .filter is not a filter, and the refusal says what was tried', async () => {
         const request = 'Build a page for a library that lists books and lets the user filter them by genre.';
         const page = `<!doctype html><html><head><meta charset="utf-8"><title>Books</title></head><body>

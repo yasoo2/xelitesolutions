@@ -144,6 +144,7 @@ const PAGE_SNAPSHOT = `(mode => {${PAGE_HELPERS}
  * on that item, not on the collection: it is never a candidate.
  */
 const PAGE_CANDIDATES = `(() => {${PAGE_HELPERS}
+  for (const old of document.querySelectorAll('[data-joe-ip]')) old.removeAttribute('data-joe-ip');
   const items = collection();
   const inItem = el => items.some(it => it.contains(el));
   const labelOf = el => {
@@ -179,6 +180,40 @@ const PAGE_CANDIDATES = `(() => {${PAGE_HELPERS}
     for (const b of buttons.slice(0, 6)) if (!b.hasAttribute('data-joe-ip')) add(b, 'chip');
   }
   for (const th of document.querySelectorAll('th')) if (visible(th) && clean(th.innerText)) add(th, 'header');
+  return out;
+})()`;
+
+/**
+ * WHAT OPENS ANOTHER VIEW OF THE PAGE: its links to itself and its buttons —
+ * never one item's own button, never a form's. P354 (2026-11-03) showed its
+ * date filter only once «تحميل بيانات تجريبية» had loaded the data, and an
+ * admin dashboard keeps its search inside the Orders tab; measured on the
+ * first view alone, both were «no control that filters». Marked in order, so
+ * the same door is found again after a reload.
+ */
+const PAGE_DOORS = `(() => {${PAGE_HELPERS}
+  for (const old of document.querySelectorAll('[data-joe-door]')) old.removeAttribute('data-joe-door');
+  const items = collection();
+  const out = [];
+  const seen = new Set();
+  for (const el of document.querySelectorAll('a[href], button, [role="tab"], [role="button"]')) {
+    if (out.length >= 6) break;
+    // A link that IS one of the repeated items (a nav row of links) is a door; a button inside an item acts on it.
+    if (!visible(el) || el.disabled || el.closest('form') || items.some(it => it !== el && it.contains(el))) continue;
+    const text = clean(el.innerText).slice(0, 40);
+    if (!text) continue;
+    if (el.tagName === 'A') {
+      const href = el.getAttribute('href') || '';
+      if (/^(mailto|tel|javascript):/i.test(href)) continue;
+      const target = new URL(href, location.href);
+      if (target.origin !== location.origin || target.href === location.href) continue;
+    }
+    const key = el.tagName + '|' + text;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    el.setAttribute('data-joe-door', String(out.length));
+    out.push({ index: out.length, label: text });
+  }
   return out;
 })()`;
 
@@ -289,7 +324,7 @@ export async function measureInteractions(
 ): Promise<InteractionMeasurement> {
     const want = Array.from(new Set(wanted.filter(w => INTERACTIVE_CAPABILITIES.includes(w))));
     if (!want.length || !url) return { measured: false, results: [] };
-    const deadline = Date.now() + Math.max(5_000, opts.timeoutMs ?? 45_000);
+    const deadline = Date.now() + Math.max(5_000, opts.timeoutMs ?? 60_000);
     const left = () => deadline - Date.now();
     const stopped = () => left() <= 0 || opts.signal?.aborted === true;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -335,11 +370,20 @@ export async function measureInteractions(
             return last;
         };
         const settle = () => page.waitForTimeout(150);
+        /** The view being measured: the page as it opens, or after one of its doors was pressed. */
+        let door: { index: number; label: string } | null = null;
+        const openView = async () => {
+            await open();
+            if (!door) return;
+            await page.evaluate(PAGE_DOORS);
+            await page.locator(`[data-joe-door="${door.index}"]`).first().click({ timeout: 3_000 }).catch(() => { });
+            await page.waitForTimeout(600);
+        };
         let candidates: Candidate[] = await page.evaluate(PAGE_CANDIDATES);
         let dirty = false;
         const fresh = async () => {
             if (!dirty) return;
-            await open();
+            await openView();
             candidates = await page.evaluate(PAGE_CANDIDATES);
             dirty = false;
         };
@@ -367,7 +411,9 @@ export async function measureInteractions(
         };
         const byLabel = (c: Candidate) => `«${c.label}» (${c.kind === 'toggle' ? 'checkbox' : c.kind === 'chip' ? 'button' : c.kind === 'header' ? 'column header' : c.kind})`;
 
+        const measureView = async () => {
         for (const cap of want) {
+            if (found.has(cap)) continue;
             const kinds: Candidate['kind'][] = cap === 'search' ? ['text']
                 : cap === 'sorting' ? ['select', 'header', 'chip']
                     : ['select', 'date', 'month', 'week', 'datetime-local', 'range', 'number', 'toggle', 'text', 'chip'];
@@ -428,7 +474,24 @@ export async function measureInteractions(
                         if (verdict) verdict = `setting ${byLabel(c)} to ${v}: ${verdict}`;
                     }
                 }
-                if (verdict) found.set(cap, verdict);
+                if (verdict) found.set(cap, door ? `after pressing «${door.label}», ${verdict}` : verdict);
+            }
+        }
+        };
+        await measureView();
+        //  What the first view did not show may be one step away: a «load
+        //  sample data», a tab, a link to another page. Each door is opened
+        //  from a fresh page and measured the same way, within the deadline.
+        if (want.some(cap => !found.has(cap)) && !stopped()) {
+            await open();
+            const doors: Array<{ index: number; label: string }> = await page.evaluate(PAGE_DOORS);
+            for (const d of doors) {
+                if (stopped() || want.every(cap => found.has(cap))) break;
+                door = d;
+                await openView();
+                candidates = await page.evaluate(PAGE_CANDIDATES);
+                dirty = false;
+                await measureView();
             }
         }
     } catch (e: any) {
