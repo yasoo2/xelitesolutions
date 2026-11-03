@@ -104,12 +104,12 @@ export function arabicShare(text: string): number {
 /**
  * The language of the MESSAGE beats the language of the SWITCHER.
  *
- * Field-measured: the UI was set to English, the user typed «حلل هذه الصوره»,
- * and the run carried «[RESPONSE LANGUAGE …]: The user's language is English» —
- * so the model produced fluent English nobody asked for. «يجب أن يرد باللغة
- * التي طُلب منه بها»: the reply follows what the user WROTE. The UI language
+ * Field-measured: the UI was set to English, the user typed \u00AB\u062D\u0644\u0644 \u0647\u0630\u0647 \u0627\u0644\u0635\u0648\u0631\u0647\u00BB,
+ * and the run carried \u00AB[RESPONSE LANGUAGE \u2026]: The user's language is English\u00BB \u2014
+ * so the model produced fluent English nobody asked for. \u00AB\u064A\u062C\u0628 \u0623\u0646 \u064A\u0631\u062F \u0628\u0627\u0644\u0644\u063A\u0629
+ * \u0627\u0644\u062A\u064A \u0637\u064F\u0644\u0628 \u0645\u0646\u0647 \u0628\u0647\u0627\u00BB: the reply follows what the user WROTE. The UI language
  * remains the fallback only when the message's script decides nothing
- * (numbers, code, emoji, a bare URL, a two-letter «ok»).
+ * (numbers, code, emoji, a bare URL, a two-letter \u00ABok\u00BB).
  */
 export function messageLanguage(text: string, uiLanguage: any = 'ar'): SupportedLanguage {
     const fallback = normalizeLanguage(uiLanguage);
@@ -122,111 +122,10 @@ export function messageLanguage(text: string, uiLanguage: any = 'ar'): Supported
     if (letters < 4) return fallback;
     if (cyrillic / letters >= 0.5) return 'ru';
     if (latin / letters >= 0.75) {
-        // Latin script alone cannot tell en/fr/de/es apart — trust the switcher
+        // Latin script alone cannot tell en/fr/de/es apart \u2014 trust the switcher
         // when it already names a Latin-script language; otherwise English is
         // the honest reading of a Latin-script message.
         return fallback === 'ar' || fallback === 'ru' ? 'en' : fallback;
     }
     return fallback;
-}
-
-/**
- * Narrow pure script predicate: did the ANSWER introduce letter-script the
- * user never asked for?
- *
- * Proved case: a local 7B Arabic SQL prose reply carried unrequested Han
- * letters while `arabicShare` stayed ~0.97 (`arabicShare` only counts the
- * Arabic block vs ASCII Latin, so Han/Cyrillic/Hebrew are invisible to it)
- * and the <0.35 prose trigger never fired. This predicate closes that gap;
- * `arabicShare` itself is untouched for its other callers.
- *
- * Policy (enforced on a scan COPY only; the real answer is never stripped,
- * sanitised, or mutated — this function returns a boolean):
- * - Only the normalised base tags `ar`/`en` are judged; any other language
- *   returns false (unknown => no claim).
- * - `ar` allows Arabic + Latin letters (Latin covers technical identifiers;
- *   a fully-English reply is still caught by the existing ratio gate).
- * - `en` allows Latin letters only.
- * - Only Unicode General_Category=Letter counts as a letter; digits, emoji,
- *   punctuation and symbols are never foreign. Script membership is read via
- *   Script_Extensions (UTS #18 rev 25) with u-mode property escapes
- *   (ECMAScript es2026-errata; supported on the installed Node).
- * - Bounded static exemptions on the scan copy only: fenced code blocks,
- *   inline `code` (<=200 chars per span), URLs and slash paths. Model-added
- *   QUOTES are deliberately NOT exempt: quoted prose is still judged.
- * - Exact user-supplied foreign terms/identifiers are exempt by whole-token
- *   equality only (one token-set pass over the question, capped). A user
- *   literal occurring as a substring of a NEW larger contaminated token does
- *   NOT exempt that token. No regex is ever built from question text, and the
- *   answer is scanned linearly with no repeated whole-answer substitutions.
- * - Documented limitation: generated translations the user never supplied
- *   stay flagged; literal code/identifier identities given by the user are
- *   preserved via the whole-token exemption above.
- * - Bounded: answers above 20k chars or 3000 tokens fail this check instead
- *   of accepting an unchecked suffix. At most 300 exact foreign question
- *   literals are retained; question scanning is linear and does not build
- *   an array of all its tokens. Pure scan; no network or content logging.
- */
-const FOREIGN_SCAN_MAX_CHARS = 20000;
-const FOREIGN_QUESTION_TOKENS_MAX = 300;
-const FOREIGN_ANSWER_TOKENS_MAX = 3000;
-const FOREIGN_TOKEN_MAX_LEN = 80;
-const FOREIGN_TOKEN_RE = /[\p{L}\p{N}]+/gu;
-const FOREIGN_FENCE_RE = /```[\s\S]*?```/g;
-const FOREIGN_INLINE_CODE_RE = /`[^`\n]{1,200}`/g;
-const FOREIGN_URL_RE = /(?:https?:\/\/|www\.)[^\s)>\]"']{1,500}/g;
-const FOREIGN_PATH_RE = /(^|[\s(\["'])((?:[A-Za-z]:[\\/]|\.{1,2}[\\/]|\/)[^\s)>\]"']{1,500}|[\p{L}\p{N}_.~\-]{1,80}(?:[\\/][\p{L}\p{N}_.~\-]{1,80})+)/gu;
-const FOREIGN_LETTER_RE = /\p{L}/u;
-const FOREIGN_ARABIC_SCX_RE = /\p{Script_Extensions=Arabic}/u;
-const FOREIGN_LATIN_SCX_RE = /\p{Script_Extensions=Latin}/u;
-
-function foreignLetterAllowed(ch: string, lang: 'ar' | 'en'): boolean {
-    if (FOREIGN_LATIN_SCX_RE.test(ch)) return true;
-    return lang === 'ar' && FOREIGN_ARABIC_SCX_RE.test(ch);
-}
-
-export type AnswerScriptIssue = 'none' | 'unrequested_letter' | 'answer_length_limit' | 'answer_token_limit';
-
-/** Fixed diagnostic code only; the bounded scanner never returns or logs input text. */
-export function diagnoseAnswerScriptIssue(answer: string, question: string, language: string): AnswerScriptIssue {
-    const base = String(language ?? '').trim().toLowerCase().split(/[-_]/)[0];
-    if (base !== 'ar' && base !== 'en') return 'none';
-    const lang = base as 'ar' | 'en';
-    let scan = String(answer ?? '');
-    if (!scan) return 'none';
-    if (scan.length > FOREIGN_SCAN_MAX_CHARS) return 'answer_length_limit';
-    // Exemptions apply to this scan copy only; the caller's answer is untouched.
-    scan = scan
-        .replace(FOREIGN_FENCE_RE, ' ')
-        .replace(FOREIGN_INLINE_CODE_RE, ' ')
-        .replace(FOREIGN_URL_RE, ' ')
-        .replace(FOREIGN_PATH_RE, '$1 ');
-    if (!FOREIGN_LETTER_RE.test(scan)) return 'none';
-    // One token-set pass over the question: exact user-supplied literals only.
-    const allowed = new Set<string>();
-    for (const match of String(question ?? '').matchAll(FOREIGN_TOKEN_RE)) {
-        const tok = match[0];
-        if (tok.length > FOREIGN_TOKEN_MAX_LEN) continue;
-        if (![...tok].some(ch => FOREIGN_LETTER_RE.test(ch) && !foreignLetterAllowed(ch, lang))) continue;
-        allowed.add(tok);
-        if (allowed.size >= FOREIGN_QUESTION_TOKENS_MAX) break;
-    }
-    let count = 0;
-    for (const match of scan.matchAll(FOREIGN_TOKEN_RE)) {
-        if (++count > FOREIGN_ANSWER_TOKENS_MAX) return 'answer_token_limit';
-        const tok = match[0];
-        // Whole-token equality only: a user literal inside a NEW larger token
-        // never exempts that token.
-        if (allowed.has(tok)) continue;
-        for (const ch of tok) {
-            if (!FOREIGN_LETTER_RE.test(ch)) continue; // digits are not letters
-            if (!foreignLetterAllowed(ch, lang)) return 'unrequested_letter';
-        }
-    }
-    return 'none';
-}
-
-/** Preserve the existing boolean contract for every caller. */
-export function hasUnrequestedAnswerScript(answer: string, question: string, language: string): boolean {
-    return diagnoseAnswerScriptIssue(answer, question, language) !== 'none';
 }

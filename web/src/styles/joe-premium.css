@@ -971,7 +971,6 @@ body:not(.rtl) .joe-user-info {
     inset: 0 !important;
     width: 100vw !important;
     height: 100vh !important;
-    height: 100dvh !important;
     z-index: 9999 !important;
     background: rgba(0, 0, 0, 0.6) !important;
     backdrop-filter: blur(4px) !important;
@@ -983,12 +982,10 @@ body:not(.rtl) .joe-user-info {
 
 .providers-modal {
     position: relative !important;
-    inset: auto !important;
     width: 520px !important;
-    max-width: calc(100vw - 24px) !important;
+    max-width: 95vw !important;
     height: auto !important;
     max-height: 85vh !important;
-    max-height: 85dvh !important;
     background: var(--joe-bg-card) !important;
     border: 1px solid var(--joe-gold-primary) !important;
     box-shadow: 0 20px 80px rgba(0, 0, 0, 0.6) !important;
@@ -1013,7 +1010,6 @@ body:not(.rtl) .joe-user-info {
 
 /* Fix modal contents layout */
 .providers-modal .providers-left {
-    min-height: 0 !important;
     width: 180px !important;
     min-width: 180px !important;
     border-right: 1px solid var(--joe-border) !important;
@@ -1026,33 +1022,10 @@ body:not(.rtl) .joe-user-info {
 
 .providers-modal .providers-right {
     flex: 1 !important;
-    min-width: 0 !important;
-    min-height: 0 !important;
     padding: 24px !important;
     background: var(--joe-bg-card) !important;
     overflow-y: auto !important;
     position: relative !important;
-}
-
-@media (max-width: 560px) {
-    .providers-modal {
-        flex-direction: column !important;
-    }
-
-    .providers-modal .providers-left {
-        width: 100% !important;
-        min-width: 0 !important;
-        flex: none !important;
-        max-height: 30vh !important;
-        max-height: 30dvh !important;
-        border-right: none !important;
-        border-bottom: 1px solid var(--joe-border) !important;
-        padding: 20px 12px 12px !important;
-    }
-
-    .providers-modal .providers-right {
-        padding: 16px !important;
-    }
 }
 
 .providers-modal .section-header {
@@ -3471,7 +3444,6 @@ body:not(.rtl) .joe-user-info {
         position: fixed !important;
         top: var(--joe-header-height, 56px);
         left: 0; right: 0; bottom: 0;
-        height: auto !important;
         width: 100% !important;
         max-width: 100% !important;
         z-index: 1500 !important;
@@ -3480,9 +3452,6 @@ body:not(.rtl) .joe-user-info {
         box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
         transform: translateY(0);
         transition: transform var(--joe-transition-speed, 0.3s) cubic-bezier(0.4,0,0.2,1), opacity var(--joe-transition-speed) ease;
-    }
-    .joe-main:not(.chat-collapsed) .joe-workspace-container {
-        bottom: var(--joe-command-clearance, 0px);
     }
     /* The workspace panel fills the overlay so its content isn't see-through */
     .joe-workspace-container > .joe-workspace,

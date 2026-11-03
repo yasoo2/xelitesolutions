@@ -10,7 +10,7 @@ import { extractProfileLearnings, isCorruptedName, normalizeForMatch } from './l
 export interface MemoryEntry {
     id: string;
     userId: string;
-    type: 'conversation' | 'preference' | 'fact' | 'file' | 'code' | 'specification';
+    type: 'conversation' | 'preference' | 'fact' | 'file' | 'code';
     content: string;
     metadata: Record<string, any>;
     embedding?: number[]; // Will be generated later when we add vector DB
@@ -18,48 +18,6 @@ export interface MemoryEntry {
     importance: number; // 0-1, higher = more important
     accessCount: number;
     lastAccessed: number;
-}
-
-/**
- * Specification Memory - stores specification-related data for cross-phase tracking
- */
-export interface SpecificationMemory {
-    id: string;
-    userId: string;
-    specificationId: string;
-    sourceText: string;
-    requirements: any[]; // Requirement[]
-    constraints: any[]; // Constraint[]
-    implicitRequirements: any[]; // ImplicitRequirement[]
-    acceptanceCriteria: any[]; // AcceptanceCriterion[]
-    constraintInteractions: any[]; // ConstraintInteraction[]
-    requirementCoverage: Map<string, RequirementCoverage>;
-    phaseProgress: Map<number, PhaseProgress>;
-    metadata: {
-        createdAt: number;
-        updatedAt: number;
-        version: number;
-    };
-}
-
-export interface RequirementCoverage {
-    requirementId: string;
-    status: 'pending' | 'in_progress' | 'implemented' | 'verified' | 'failed';
-    implementedIn: string[]; // file paths
-    verifiedBy: string[]; // test paths
-    lastUpdated: number;
-    phaseNumber?: number;
-    taskIds?: string[];
-}
-
-export interface PhaseProgress {
-    phaseNumber: number;
-    name: string;
-    status: 'pending' | 'in_progress' | 'completed' | 'failed';
-    requirementsCovered: string[];
-    startedAt?: number;
-    completedAt?: number;
-    taskResults?: any[];
 }
 
 export interface MemoryScope {
@@ -103,7 +61,6 @@ function normalizedWorkspaceId(value?: string): string {
 export class LongTermMemory {
     private memoryStore: Map<string, MemoryEntry[]> = new Map(); // userId -> memories
     private profiles: Map<string, UserProfile> = new Map(); // userId -> profile
-    private specificationStore: Map<string, SpecificationMemory> = new Map(); // specificationId -> specification memory
     private memoryDir: string;
     private initPromise: Promise<void> | null = null;
 
@@ -115,7 +72,6 @@ export class LongTermMemory {
         try {
             await fs.mkdir(this.memoryDir, { recursive: true });
             await this.loadFromDisk();
-            await this.loadSpecificationsFromDisk();
         } catch (error) {
             console.error('[LongTermMemory] Initialization failed:', error);
         }
@@ -355,178 +311,6 @@ export class LongTermMemory {
     async getContextSummary(userId: string, query: string = '', scope: MemoryScope = {}): Promise<string> {
         const details = await this.getContextDetails(userId, query, scope);
         return details.text;
-    }
-
-    /**
-     * Store a specification memory for cross-phase tracking
-     */
-    async storeSpecification(userId: string, spec: any, scope: MemoryScope = {}): Promise<void> {
-        await this.ensureInitialized();
-        const workspaceId = normalizedWorkspaceId(scope.workspaceId);
-        
-        const specMemory: SpecificationMemory = {
-            id: `spec_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-            userId,
-            specificationId: spec.specificationId,
-            sourceText: spec.sourceText,
-            requirements: spec.requirements || [],
-            constraints: spec.constraints || [],
-            implicitRequirements: spec.implicitRequirements || [],
-            acceptanceCriteria: spec.acceptanceCriteria || [],
-            constraintInteractions: spec.constraintInteractions || [],
-            requirementCoverage: new Map(),
-            phaseProgress: new Map(),
-            metadata: {
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-                version: 1
-            }
-        };
-
-        // Initialize requirement coverage
-        for (const req of spec.requirements || []) {
-            specMemory.requirementCoverage.set(req.id, {
-                requirementId: req.id,
-                status: 'pending',
-                implementedIn: [],
-                verifiedBy: [],
-                lastUpdated: Date.now()
-            });
-        }
-
-        this.specificationStore.set(spec.specificationId, specMemory);
-        await this.saveSpecificationToDisk(spec.specificationId);
-    }
-
-    /**
-     * Get a specification memory by ID
-     */
-    async getSpecification(specificationId: string): Promise<SpecificationMemory | null> {
-        await this.ensureInitialized();
-        return this.specificationStore.get(specificationId) || null;
-    }
-
-    /**
-     * Update requirement coverage for a specification
-     */
-    async updateRequirementCoverage(
-        specificationId: string,
-        requirementId: string,
-        coverage: Partial<RequirementCoverage>
-    ): Promise<void> {
-        await this.ensureInitialized();
-        const spec = this.specificationStore.get(specificationId);
-        if (!spec) return;
-
-        const existing = spec.requirementCoverage.get(requirementId);
-        if (existing) {
-            spec.requirementCoverage.set(requirementId, {
-                ...existing,
-                ...coverage,
-                lastUpdated: Date.now()
-            });
-        } else {
-            spec.requirementCoverage.set(requirementId, {
-                requirementId,
-                status: coverage.status || 'pending',
-                implementedIn: coverage.implementedIn || [],
-                verifiedBy: coverage.verifiedBy || [],
-                lastUpdated: Date.now(),
-                phaseNumber: coverage.phaseNumber,
-                taskIds: coverage.taskIds
-            });
-        }
-
-        spec.metadata.updatedAt = Date.now();
-        spec.metadata.version++;
-        await this.saveSpecificationToDisk(specificationId);
-    }
-
-    /**
-     * Update phase progress for a specification
-     */
-    async updatePhaseProgress(
-        specificationId: string,
-        phaseNumber: number,
-        progress: Partial<PhaseProgress>
-    ): Promise<void> {
-        await this.ensureInitialized();
-        const spec = this.specificationStore.get(specificationId);
-        if (!spec) return;
-
-        const existing = spec.phaseProgress.get(phaseNumber);
-        spec.phaseProgress.set(phaseNumber, {
-            phaseNumber,
-            name: progress.name || `Phase ${phaseNumber}`,
-            status: progress.status || 'pending',
-            requirementsCovered: progress.requirementsCovered || [],
-            startedAt: progress.startedAt || (progress.status === 'in_progress' ? Date.now() : undefined),
-            completedAt: progress.completedAt || (progress.status === 'completed' ? Date.now() : undefined),
-            taskResults: progress.taskResults || []
-        });
-
-        spec.metadata.updatedAt = Date.now();
-        spec.metadata.version++;
-        await this.saveSpecificationToDisk(specificationId);
-    }
-
-    /**
-     * Get specification context for cross-phase tracking
-     */
-    async getSpecificationContext(specificationId: string): Promise<SpecificationMemory | null> {
-        await this.ensureInitialized();
-        return this.specificationStore.get(specificationId) || null;
-    }
-
-    /**
-     * Get all specifications for a user
-     */
-    async getUserSpecifications(userId: string): Promise<SpecificationMemory[]> {
-        await this.ensureInitialized();
-        return Array.from(this.specificationStore.values()).filter(s => s.userId === userId);
-    }
-
-    private async saveSpecificationToDisk(specificationId: string): Promise<void> {
-        try {
-            const spec = this.specificationStore.get(specificationId);
-            if (!spec) return;
-
-            const filePath = path.join(this.memoryDir, `spec_${specificationId}.json`);
-            // Convert Maps to objects for serialization
-            const serializable = {
-                ...spec,
-                requirementCoverage: Object.fromEntries(spec.requirementCoverage),
-                phaseProgress: Object.fromEntries(spec.phaseProgress)
-            };
-            await fs.writeFile(filePath, JSON.stringify(serializable, null, 2));
-        } catch (error) {
-            console.error('[LongTermMemory] Specification save failed:', error);
-        }
-    }
-
-    private async loadSpecificationsFromDisk(): Promise<void> {
-        try {
-            const files = await fs.readdir(this.memoryDir);
-            for (const file of files) {
-                if (file.startsWith('spec_') && file.endsWith('.json')) {
-                    const specificationId = file.replace('spec_', '').replace('.json', '');
-                    const content = await fs.readFile(path.join(this.memoryDir, file), 'utf-8');
-                    if (!content || content.trim() === '') continue;
-                    try {
-                        const data = JSON.parse(content);
-                        this.specificationStore.set(specificationId, {
-                            ...data,
-                            requirementCoverage: new Map(Object.entries(data.requirementCoverage || {})),
-                            phaseProgress: new Map(Object.entries(data.phaseProgress || {}))
-                        });
-                    } catch (e) {
-                        console.warn(`[LongTermMemory] Failed to parse specification: ${file}`, e);
-                    }
-                }
-            }
-        } catch (error) {
-            console.error('[LongTermMemory] Specification load failed:', error);
-        }
     }
 
     /**

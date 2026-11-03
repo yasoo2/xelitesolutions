@@ -169,7 +169,7 @@ describe('a recovered local brain gets one bounded re-entry probe', () => {
         expect(src).toContain('probeLocalBrainForRecovery');
         expect(src).toContain('local recovery probe timeout');
         expect(src).toContain('localRecoveryProbeAt = Date.now()');
-        expect(src).toContain('if (await probeLocalBrainForRecovery(callerSignal))');
+        expect(src).toContain('if (await probeLocalBrainForRecovery())');
         expect(src).toContain('if (isLocalBrainOpen())');
     });
 });

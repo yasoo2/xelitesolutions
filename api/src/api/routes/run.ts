@@ -3,7 +3,7 @@ import mongoose from 'mongoose';
 import fs from 'fs';
 import path from 'path';
 import { AgentLoopService } from '../../modules/services/AgentLoopService';
-import { authenticate } from '../middleware/auth';
+import { authenticate, authenticateOptional } from '../middleware/auth';
 import { loadUploadedFiles } from './files';
 import { persistChatStores } from '../chat-store';
 import { Run } from '../../shared/models/run';
@@ -112,11 +112,7 @@ export function attachmentRecallMode(text: string): 'strong' | 'weak' | 'none' {
  * Works for free providers too — a placeholder key routes through the free mesh,
  * so "verify" checks that the free path (keyless proxies / local model) responds.
  */
-router.post('/verify', authenticate as any, async (req: Request, res: Response) => {
-    const userId = (req as any).auth?.sub;
-    if (typeof userId !== 'string' || !userId.trim()) {
-        return res.status(401).json({ error: 'Unauthorized' });
-    }
+router.post('/verify', authenticateOptional as any, async (req: Request, res: Response) => {
     const { provider, apiKey, baseUrl, model } = req.body || {};
     try {
         // HONEST verify: test the SPECIFIC provider, never the whole free mesh — so a
