@@ -242,6 +242,20 @@ describe('filtering, search and sorting are measured on the live page', () => {
         expect(filtered.state.scopeAudit?.missing).toEqual(['filtering']);
     });
 
+    it('a counter that follows the typing is not a search', async () => {
+        //  A message box with «0/120» beside it: every key changes a number on
+        //  the page, and the list never narrows.
+        const page = `<!doctype html><html><head><meta charset="utf-8"><title>Clinic</title></head><body>
+<h1>Our doctors</h1>
+<ul><li>Dr. Salem — teeth</li><li>Dr. Mona — braces</li><li>Dr. Adel — implants</li></ul>
+<label for="msg">Your message</label><input id="msg" type="text" maxlength="120"><span id="count">0/120</span>
+<script>
+  document.getElementById('msg').addEventListener('input', function (e) { document.getElementById('count').textContent = e.target.value.length + '/120'; });
+</script></body></html>`;
+        const { scope } = await scopeOf('Build a clinic page that lists its doctors with a search.', { 'index.html': page });
+        expect(scope?.ok).toBe(false);
+    });
+
     it('a number that changes by itself is noise, not a filter', async () => {
         const page = `<!doctype html><html><head><meta charset="utf-8"><title>Report</title></head><body>
 <h1>Sales report</h1>

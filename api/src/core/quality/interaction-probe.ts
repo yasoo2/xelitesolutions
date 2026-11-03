@@ -232,6 +232,14 @@ export function dataChanged(before: Snapshot, after: Snapshot, noise: Noise = QU
     return '';
 }
 
+/**
+ * What typing must change: the items shown or a chart. A number alone is not
+ * a search — a «12/100» counter beside a message box changes with every key.
+ */
+export function typedChange(before: Snapshot, after: Snapshot, noise: Noise = QUIET): string {
+    return dataChanged(before, after, { ...noise, numbers: true });
+}
+
 const sameSnap = (a: Snapshot, b: Snapshot) => JSON.stringify(a) === JSON.stringify(b);
 
 function valuesFor(c: Candidate): string[] {
@@ -381,7 +389,7 @@ export async function measureInteractions(
                             await at(c).fill(term);
                             await page.waitForTimeout(150);
                             await at(c).press('Enter').catch(() => { });
-                        }, (b, a) => dataChanged(b, a, noise));
+                        }, (b, a) => typedChange(b, a, noise));
                         if (verdict) verdict = `typing «${term}» into ${byLabel(c)}: ${verdict}`;
                         await at(c).fill('').catch(() => { });
                     }
