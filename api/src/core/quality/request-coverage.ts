@@ -915,6 +915,8 @@ export interface RequestCoverageReport {
     unread: string[];
     /** Rules only a live multi-account probe can measure — named, not yet measured. */
     capabilities?: string[];
+    /** The multi-account probe's answers, when «each user sees only their own records» was measured. */
+    isolation?: { ok: boolean; error?: string; evidence: string[] };
     clauses?: string[];
     testsRequested: string | null;
     /** The executed run of his tests, when tests were asked for. */

@@ -29,6 +29,7 @@ import {
     testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
+import { measureIsolation, readIsolationDeclaration } from './isolation-probe';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
 import { say as pick } from '../../shared/reply-language';
@@ -163,11 +164,34 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         }
         const requestCoverage = judgeRequestCoverage({ records, evidence, probe, probeDetails, backendRequested, testsRun });
         state.requestCoverage = requestCoverage;
+        //  «Each user sees only their own records», measured on the live
+        //  server through the doors the project declares (isolation-probe.ts).
+        //  Measured, it is no longer «not measured»: it holds, or it fails
+        //  with what the server answered.
+        let isolationError = '';
+        const isolationRules = (requestCoverage.capabilities || []).filter(c => c.startsWith('per-user record isolation'));
+        if (isolationRules.length && base) {
+            const declared = readIsolationDeclaration(deliveredRoots);
+            if (declared.declaration) {
+                say(pick(isAr, '▶️ أتحقّق أن كل مستخدم يرى سجلاته فقط: أدخل بحسابين وأنشئ سجلاً بالأول…', '▶️ Checking that each user sees only their own records: signing in as two accounts and creating a record as the first…'));
+                const bound = bindRunCancellation(input.cancellation, input.signal);
+                try {
+                    requestCoverage.isolation = await measureIsolation(base, declared.declaration, { signal: bound.signal });
+                } finally {
+                    bound.dispose();
+                }
+                if (!requestCoverage.isolation.ok) isolationError = `per-user record isolation does not hold: ${requestCoverage.isolation.error}`;
+            } else {
+                isolationError = `per-user record isolation: ${declared.error}`;
+            }
+            requestCoverage.capabilities = (requestCoverage.capabilities || []).filter(c => !isolationRules.includes(c));
+        }
         const unverified = coverageUnverified(requestCoverage);
+        const coverageErrors = [requestCoverage.missing.length ? coverageError(requestCoverage) : '', isolationError].filter(Boolean);
         ledger.record({
             instrument: 'coverage',
-            ok: requestCoverage.missing.length === 0,
-            error: requestCoverage.missing.length ? coverageError(requestCoverage) : undefined,
+            ok: coverageErrors.length === 0,
+            error: coverageErrors.length ? coverageErrors.join(' | ') : undefined,
             unread: requestCoverage.unread,
             unverified,
         });
