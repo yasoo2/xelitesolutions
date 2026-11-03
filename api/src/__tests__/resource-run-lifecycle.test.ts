@@ -14,6 +14,7 @@ jest.mock('../api/ws', () => ({
     registerRunSession: jest.fn(), unregisterRunSession: jest.fn(),
 }));
 jest.mock('../shared/run-evidence-store', () => ({
+    closeRunEvidenceIfOpen: jest.fn(async () => {}),
     appendRunEvidenceEvent: jest.fn(async () => {}), createRunEvidence: jest.fn(async () => {}),
     saveRunReceipt: jest.fn(async () => {}),
 }));

@@ -4,15 +4,16 @@
  * (1) LOGS OPEN LIVE — the builder announces build_started (with sessionId),
  *     and the frontend keeps Logs in front during the build: a PARTIAL
  *     preview_ready no longer steals the tab mid-stream.
- * (2) THE CLARIFY DIALOGUE — «ابن لي موقع» gets questions, the next message
- *     merges with the original request, detailed prompts pass untouched.
+ * (2) THE CLARIFY GATE — «ابن لي موقع» is recognised as thin and, since
+ *     2026-11-03 («بدون تدخل بشري»), built with Joe's own choices, said up
+ *     front; detailed prompts pass untouched.
  * (3) MOBILE APPS — «تطبيق اندرويد» builds an INSTALLABLE app: manifest,
  *     offline service worker, real generated PNG icons, iOS meta.
  */
 import fs from 'fs';
 import path from 'path';
 import zlib from 'zlib';
-import { clarifyGate, isVagueBuildRequest, clarifyQuestions, descriptiveTokens } from '../core/orchestrator/clarify';
+import { clarifyGate, isVagueBuildRequest, decisionNote, descriptiveTokens } from '../core/orchestrator/clarify';
 import { wantsMobileApp, iconPng, manifestJson, serviceWorkerJs, ensurePwaMarkup } from '../core/design/pwa';
 import { shouldOpenPreviewOnReady } from '../../../web/src/lib/preview-routing';
 
@@ -40,9 +41,7 @@ describe('(1) the Logs panel opens the moment a build starts', () => {
     });
 });
 
-describe('(2) a thin build prompt starts a dialogue, not a build', () => {
-    afterEach(() => { (global as any).joeClarify = {}; });
-
+describe('(2) a thin build prompt is built with Joe\'s own choices, and says so', () => {
     it('«ابن لي موقع» is vague; a described request is not', () => {
         expect(isVagueBuildRequest('ابن لي موقع')).toBe(true);
         expect(isVagueBuildRequest('اعمل لي صفحة')).toBe(true);
@@ -50,85 +49,41 @@ describe('(2) a thin build prompt starts a dialogue, not a build', () => {
         expect(isVagueBuildRequest('ابن لي موقعاً لمطعم بيتزا إيطالي')).toBe(false);
         expect(isVagueBuildRequest('build a portfolio site for a wedding photographer')).toBe(false);
     });
-    it('«ابدأ مباشرة» and edits and attachments are never questioned', () => {
+    it('«ابدأ مباشرة» and edits and attachments are never treated as thin', () => {
         expect(isVagueBuildRequest('ابن لي موقع مباشرة بدون اسئلة')).toBe(false);
         expect(isVagueBuildRequest('ابن لي موقع', { hasActivePage: true })).toBe(false);
         expect(isVagueBuildRequest('ابن لي موقع\n\n[ATTACHED FILES — the user attached 1 file(s)]')).toBe(false);
     });
-    it('an ordinary question is never questioned', () => {
+    it('an ordinary question is never a build', () => {
         expect(isVagueBuildRequest('ما هي عاصمة فرنسا؟')).toBe(false);
         expect(isVagueBuildRequest('كيف حالك يا جو')).toBe(false);
     });
     /**
-     *  A GUARD NAMES THE PROPERTY, NEVER THE GLYPH THAT CARRIED IT.
-     *
-     *  This test pinned `1️⃣` and `4️⃣`. Those keycaps were removed because
-     *  they fall back to an empty box in the owner's font — he pasted the
-     *  broken `1⃣` back — and because the four questions, written on four
-     *  lines, were folded into one paragraph by the markdown renderer.
-     *
-     *  So the repair turned this suite red and the gate with it, and the
-     *  received string in that failure was the CORRECT output. A test that
-     *  pins a decoration fails whenever the decoration improves and passes
-     *  while the behaviour rots.
-     *
-     *  What the reader is owed, and what is asserted now: four questions,
-     *  each its own list item so no renderer can run them together; the
-     *  Arabic path answering in Arabic; the bypass phrase offered verbatim,
-     *  because that one IS the property — it is what he has to type.
+     *  A GUARD NAMES THE PROPERTY, NEVER THE GLYPH THAT CARRIED IT. The
+     *  decision is one line in his language, naming what Joe is choosing;
+     *  no keycap sequence (it fell back to an empty box in his font) can come
+     *  back in through a redesign.
      */
-    it('the questions are Arabic for an Arabic prompt and name the four things', () => {
-        const q = clarifyQuestions('ابن لي موقع', 'ar');
-        //  Four questions, each an ordered-list item of its own.
-        expect((q.match(/^\s*\d+\.\s+\S/gm) || [])).toHaveLength(4);
-        //  And no keycap sequence can come back in through a redesign.
-        expect(q).not.toMatch(/⃣/);
-        //  Arabic in, Arabic out.
-        expect(/[؀-ۿ]/.test(q)).toBe(true);
-        //  The words he must type to skip the questions are the property.
-        expect(q).toContain('ابدأ مباشرة');
+    it('the decision is Arabic for an Arabic prompt and names what Joe chooses', () => {
+        const note = decisionNote('ابن لي موقع', 'ar');
+        expect(note).not.toMatch(/⃣/);
+        expect(/[؀-ۿ]/.test(note)).toBe(true);
+        expect(note).toMatch(/أختار بنفسي/);
+        expect(note).not.toMatch(/[؟?]/);
     });
-
-    //  NEGATIVE — the English path owes the reader the same four, and a
-    //  guard that only ever watched Arabic would not have noticed.
-    it('and four of them in English too, with no keycaps', () => {
-        const q = clarifyQuestions('build me a site', 'en');
-        expect((q.match(/^\s*\d+\.\s+\S/gm) || [])).toHaveLength(4);
-        expect(q).not.toMatch(/⃣/);
-        expect(/[؀-ۿ]/.test(q)).toBe(false);
-        expect(q).toContain('start now');
+    it('and English for an English prompt, with no keycaps and no question', () => {
+        const note = decisionNote('build me a site', 'en');
+        expect(note).not.toMatch(/⃣/);
+        expect(/[؀-ۿ]/.test(note)).toBe(false);
+        expect(note).toMatch(/I am choosing/);
+        expect(note).not.toMatch(/\?/);
     });
-    it('the full dialogue: ask → merge the answers → build once', () => {
-        const first = clarifyGate('ابن لي موقع', 's-clar', 'ar');
-        expect(first.kind).toBe('ask');
-        const second = clarifyGate('مطعم مأكولات بحرية، أقسام: قائمة الطعام والحجز، ألوان زرقاء', 's-clar', 'ar');
-        expect(second.kind).toBe('merge');
-        expect((second as any).goal).toContain('ابن لي موقع');
-        expect((second as any).goal).toContain('مأكولات بحرية');
-    });
-    it('a NEW detailed build request after the questions replaces the dialogue', () => {
-        clarifyGate('ابن لي موقع', 's-clar2', 'ar');
-        const next = clarifyGate('ابن لي موقعاً لصالون حلاقة رجالي بألوان داكنة', 's-clar2', 'ar');
-        expect(next.kind).toBe('pass');
-    });
-    it('an explicit project-run command replaces a pending vague-build dialogue', () => {
-        const session = 's-clar-run';
-        expect(clarifyGate('ابن لي موقع', session, 'ar').kind).toBe('ask');
-
-        const run = clarifyGate(
-            'شغّل المشروع الموجود داخل مساحة العمل باسم react-لوحة-مهامي. لا تنشئ مشروعاً جديداً ولا تستخدم الشبكة.',
-            session,
-            'ar',
-        );
-        expect(run.kind).toBe('pass');
-
-        // The operational command consumes the stale state: a later ordinary
-        // message is not silently merged back into the unrelated build brief.
-        expect(clarifyGate('الحالة الآن', session, 'ar').kind).toBe('pass');
-    });
-    it('sessions do not leak into each other', () => {
-        clarifyGate('ابن لي موقع', 's-a', 'ar');
-        expect(clarifyGate('أزرق وأبيض', 's-b', 'ar').kind).toBe('pass');
+    it('the gate decides and the build runs: nothing waits for an answer', () => {
+        expect(clarifyGate('ابن لي موقع', 'ar')).toEqual({ kind: 'decide', note: decisionNote('ابن لي موقع', 'ar') });
+        //  The next message is its own request, never merged into the last one.
+        expect(clarifyGate('مطعم مأكولات بحرية، أقسام: قائمة الطعام والحجز، ألوان زرقاء', 'ar').kind).toBe('pass');
+        expect(clarifyGate('ابن لي موقعاً لصالون حلاقة رجالي بألوان داكنة', 'ar').kind).toBe('pass');
+        expect(clarifyGate('شغّل المشروع الموجود داخل مساحة العمل باسم react-لوحة-مهامي. لا تنشئ مشروعاً جديداً ولا تستخدم الشبكة.', 'ar').kind).toBe('pass');
     });
     it('descriptiveTokens ignores the verbs, nouns and pleasantries', () => {
         expect(descriptiveTokens('ابن لي موقع جميل من فضلك').length).toBe(0);

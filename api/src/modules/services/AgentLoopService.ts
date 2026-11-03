@@ -32,7 +32,7 @@ import { composeAnswer, composeFailure } from '../../core/orchestrator/answerCom
 import { failureAnswerOf } from '../../core/orchestrator/failure-answer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
-import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
+import { appendRunEvidenceEvent, closeRunEvidenceIfOpen, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
 import { withRunModelChoice } from '../../core/llm/run-model-choice';
@@ -386,8 +386,10 @@ export class AgentLoopService {
             registerRunOwner(runId, String(options.userId));
             registerSessionOwner(sessionId, String(options.userId));
         }
+        // How the execution ended, for a record no receipt closed (closeRunEvidenceIfOpen).
+        let ended = 'failed';
         try {
-            return await requestResourceManager.run({
+            const outcome: any = await requestResourceManager.run({
                 requestId: runId, sessionId, userId: options.userId, workspaceId: options.workspaceId,
                 signal: cancellation.signal,
                 notify: event => {
@@ -412,6 +414,8 @@ export class AgentLoopService {
                 return withRunModelChoice(options.modelConfig, () => AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
                     resourceSignal: cancellation.signal, resourceLifecycle }), { sessionId, runId, language });
             });
+            ended = outcome?.ok === false ? 'failed' : 'done';
+            return outcome;
         } catch (error: any) {
             // A measurement failure can happen before the ordinary executor has
             // installed its terminal event handler. End the same UI run honestly.
@@ -434,6 +438,8 @@ export class AgentLoopService {
         } finally {
             cancellation.dispose();
             releaseHandle(handle, runId, sessionId);
+            if (handle.cancelled) ended = 'cancelled';
+            await closeRunEvidenceIfOpen(runId, ended, 'the execution returned without saving its receipt');
         }
     }
 
@@ -454,41 +460,18 @@ export class AgentLoopService {
         const looksLikeEngineering = /build|deploy|script|install|server|service|launch|restart|update|setup|مشروع|سكربت|خادم|تشغيل|تحديث|نشر|ابنِ|ابني|موقع|تطبيق|نظام/i.test(goal);
 
         /**
-         * [CLARIFY GATE] A build prompt with almost nothing in it does not
-         * start a build — it starts a CONVERSATION. «ابن لي موقع» gets 4
-         * pointed questions (deterministic, no model call); the next message
-         * is merged with the original request and the build runs once, with
-         * the full picture. Detailed prompts, edits, attachments and «ابدأ
-         * مباشرة» pass straight through.
+         * [CLARIFY GATE] A build prompt with almost nothing in it is built
+         * with Joe's own choices, never stopped on a question (the owner,
+         * 2026-11-03: «بدون تدخل بشري»; core/orchestrator/clarify.ts). The
+         * gate says up front what he did not say and what Joe is choosing.
          */
         try {
             // The interface decides what Joe says; see the note on language0 below.
             const gateLang = replyLanguageCode(options.language, goal);
             const activeKey = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_');
             const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
-            const gate = clarifyGate(goal, sessionId, gateLang, {
-                hasActivePage,
-            });
-            if (gate.kind === 'ask' && !(options.attachments || []).length) {
-                broadcastThinkingDetail(sessionId, gateLang === 'ar'
-                    ? '💬 الطلب مختصر جداً — أسأل توضيحات قبل أن أبني'
-                    : '💬 The brief is thin — asking a few questions before building');
-                const clarifyRunId = `clarify-${Date.now()}`;
-                try {
-                    if (usesLocalChatStore()) {
-                        const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
-                        store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
-                        flushChatStores();
-                    }
-                } catch { /* non-fatal */ }
-                broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
-                broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
-                return { ok: true, result: { answer: gate.text, clarify: true } };
-            }
-            if (gate.kind === 'merge') {
-                console.log(`[AgentLoopService] 💬 clarify: merged the user's answers into the original build request`);
-                goal = gate.goal;
-            }
+            const gate = clarifyGate(goal, gateLang, { hasActivePage });
+            if (gate.kind === 'decide' && !(options.attachments || []).length) broadcastThinkingDetail(sessionId, gate.note);
         } catch { /* the gate must never block a run */ }
 
         const blocks = [goal];
