@@ -26,7 +26,7 @@ import { verifiedLiveUrl, type DeliveryInstrument, type DeliveryLedger } from '.
 import {
     backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage,
     probePathsFor, probeServedResources, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn,
-    testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
+    takenIdentifiers, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
@@ -129,9 +129,9 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
                 const { HTTP_ANSWER_TIMEOUT_MS } = require('../../modules/tools/definitions/ProjectRunTool');
                 probe = await probeServedResources(base, evidence.prefixes,
                     records.entities.map(record => {
-                        const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
+                        const ids = identifiersFor(record, evidence.labelKeys[record.key] || [], records.entities);
                         // The exact path each record's own route registers — never a guessed prefix.
-                        return { key: record.key, ids, paths: probePathsFor(evidence, ids) };
+                        return { key: record.key, ids, paths: probePathsFor(evidence, ids, takenIdentifiers(record, records.entities)) };
                     }),
                     { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
             } finally {

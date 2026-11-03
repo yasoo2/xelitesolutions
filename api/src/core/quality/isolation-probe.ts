@@ -30,7 +30,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import crypto from 'crypto';
-import { requestedRecords } from './request-coverage';
+import { hisWordsFor, requestedRecords } from './request-coverage';
 
 export const ISOLATION_FILE = 'joe-isolation.json';
 
@@ -48,7 +48,7 @@ export function asksPerUserIsolation(request: string): boolean {
 export function requestedRecordWords(request: string): string[] {
     try {
         const entities = requestedRecords(request, { backendRequested: true }).entities;
-        return Array.from(new Set(entities.flatMap(e => [e.key, ...String(e.en || '').toLowerCase().split(/[^a-z0-9]+/u)])
+        return Array.from(new Set(entities.flatMap(e => [e.key, ...String(e.en || '').toLowerCase().split(/[^a-z0-9]+/u), ...hisWordsFor(e).split(' ')])
             .map(w => String(w || '').trim().toLowerCase()).filter(w => w.length >= 3)));
     } catch { return []; }
 }
