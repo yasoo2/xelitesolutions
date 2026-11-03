@@ -50,8 +50,11 @@ describe('workflow capability lists', () => {
             { id: 'privacy', text: 'private issue lists', quote: 'private issue lists' },
             { id: 'comments', text: 'comments', quote: 'comments' },
         ], source, false, async () => '{"verdicts":[]}');
-        expect(verdicts.map(verdict => verdict.verdict)).toEqual(['unmet', 'unmet', 'unmet']);
-        expect(verdicts.every(verdict => verdict.why.includes('generic records form'))).toBe(true);
+        //  Still refused — none is met. Since 2026-11-03 (P155) what the source
+        //  shapes cannot prove goes to the judge, which must quote a line; the
+        //  old sentence about the template's component is no longer the reason.
+        expect(verdicts.map(verdict => verdict.verdict).every(v => v !== 'met')).toBe(true);
+        expect(verdicts.some(verdict => verdict.why.includes('generic records form'))).toBe(false);
     });
 
     it('measures stateful workflow behaviour rather than words alone', () => {

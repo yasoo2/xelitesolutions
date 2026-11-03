@@ -64,6 +64,51 @@ app.post('/api/auth/login', (req, res) => {
     });
 });
 
+describe('a login whose router has its own name (exam P155, 2026-11-03)', () => {
+    //  The library system mounted `authRouter` at /api/auth; scrypt, a random
+    //  token kept as the session — refused four times as «unmet: the build
+    //  rendered a generic records form instead of a workflow engine».
+    const P155 = `
+const crypto = require('crypto');
+function verify(password, user) { return crypto.timingSafeEqual(crypto.scryptSync(String(password), user.salt, 64), Buffer.from(user.hash, 'hex')); }
+const authRouter = express.Router();
+authRouter.post('/login', (req, res) => {
+  const user = db().users.find(u => u.email === req.body.email);
+  if (!user || !verify(req.body.password, user)) return res.status(401).json({ error: 'invalid' });
+  const token = crypto.randomBytes(32).toString('hex');
+  db().sessions[token] = user.id;
+  res.json({ token });
+});
+app.use('/api/auth', authRouter);`;
+
+    it('is a server login route, whatever the router is called', async () => {
+        expect(await judge('User login', P155)).toMatchObject({ verdict: 'met', why: expect.stringMatching(/login route that checks a hashed password/) });
+    });
+
+    it('a client call to the login route is not a server route', async () => {
+        const client = `
+import { scryptSync } from 'crypto';
+const sessions = {}; sessions[crypto.randomBytes(16)] = 1;
+api.post('/api/auth/login', { email, password }).then(r => setToken(r.token));`;
+        expect((await judge('User login', client)).verdict).not.toBe('met');
+    });
+
+    it('what the shapes cannot prove goes to the judge, which must quote the line — never «a generic records form»', async () => {
+        const source = `
+const users = new Map();
+authApi.handle('POST', '/login', async ({ body }) => issueTicket(await checkHash(body.password, users.get(body.email))));`;
+        let asked = 0;
+        const model = async () => {
+            asked++;
+            return JSON.stringify({ verdicts: [{ id: 'c1', verdict: 'met', evidence: "authApi.handle('POST', '/login', async ({ body }) => issueTicket(await checkHash(body.password, users.get(body.email))));", why: 'a server login handler' }] });
+        };
+        const verdict = (await verifyNamed([{ id: 'c1', text: 'User login', quote: 'User login' }], source, false, model))[0];
+        expect(asked).toBeGreaterThan(0);
+        expect(verdict.verdict).toBe('met');
+        expect(verdict.why).not.toMatch(/generic records form/);
+    });
+});
+
 describe('what only looks like a login is still refused', () => {
     it('a password compared in the browser, with no server and no hash, is not a login', async () => {
         const fake = `
