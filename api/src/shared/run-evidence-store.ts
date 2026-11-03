@@ -1,4 +1,5 @@
-import { JsonStore } from './lib/jsondb';
+import fs from 'fs';
+import path from 'path';
 
 export const MAX_EVENTS_PER_RUN = 500;
 export const MAX_EVENT_BYTES = 64 * 1024;
@@ -37,7 +38,161 @@ export interface RunEvidenceRecord {
     receipt?: RunReceiptPayload;
 }
 
-export const runEvidenceStore = new JsonStore<RunEvidenceRecord>('run-evidence');
+/**
+ *  ⛔ ONE FILE PER RUN, READ FROM MEMORY, WRITTEN IN BATCHES.
+ *
+ *  The 500-prompt exam, 2026-11-03 (P155). Every run's evidence lived in ONE
+ *  JSON file, and every event of every run — hundreds per run — read that
+ *  file and parsed it four times (findOne, findOne, updateOne, the rotation's
+ *  find) and wrote all of it back. At 24.6 MB a finished run's receipt could
+ *  not be read forty minutes after the run had ended: the receipt request
+ *  waited behind the run's own event writes, and the exam waited on it. Each
+ *  run made every later event slower; on a server with thousands of users it
+ *  would have stopped Joe.
+ *
+ *  The records now live in memory (bounded by MAX_RUN_RECORDS ×
+ *  MAX_RECORD_BYTES), each in its own file under data/db/run-evidence/. An
+ *  event marks its run dirty and the dirty runs are written together a moment
+ *  later; a status that must be durable (a receipt, a close, an interrupted
+ *  run) is flushed before its call returns. The old single file is moved in
+ *  once and set aside. The interface is the store's old one — find, findOne,
+ *  create, updateOne, deleteOne — so every caller and guard keeps working.
+ */
+export class RunEvidenceShelf {
+    private readonly dir: string;
+    private readonly records = new Map<string, RunEvidenceRecord>();
+    private readonly dirty = new Set<string>();
+    private readonly removed = new Set<string>();
+    private loading: Promise<void> | null = null;
+    private timer: NodeJS.Timeout | null = null;
+    private writing: Promise<void> = Promise.resolve();
+
+    constructor(dir?: string) {
+        this.dir = dir || path.join(process.cwd(), 'data', 'db', 'run-evidence');
+    }
+
+    private fileOf(runId: string): string {
+        return path.join(this.dir, `${encodeURIComponent(runId)}.json`);
+    }
+
+    private load(): Promise<void> {
+        if (!this.loading) this.loading = (async () => {
+            await fs.promises.mkdir(this.dir, { recursive: true });
+            const legacy = path.join(path.dirname(this.dir), `${path.basename(this.dir)}.json`);
+            if (fs.existsSync(legacy)) {
+                try {
+                    const items = JSON.parse(await fs.promises.readFile(legacy, 'utf-8'));
+                    for (const item of Array.isArray(items) ? items : []) {
+                        if (item && typeof item.runId === 'string' && item.runId) {
+                            this.records.set(item.runId, item);
+                            this.dirty.add(item.runId);
+                        }
+                    }
+                } catch { /* an unreadable old store is set aside, not trusted */ }
+                try { await fs.promises.rename(legacy, `${legacy}.migrated-${Date.now()}`); } catch { /* moved next time */ }
+            }
+            for (const name of await fs.promises.readdir(this.dir)) {
+                if (!name.endsWith('.json')) continue;
+                try {
+                    const record = JSON.parse(await fs.promises.readFile(path.join(this.dir, name), 'utf-8'));
+                    if (record && typeof record.runId === 'string' && record.runId && !this.records.has(record.runId)) {
+                        this.records.set(record.runId, record);
+                    }
+                } catch {
+                    try { await fs.promises.rename(path.join(this.dir, name), path.join(this.dir, `${name}.unreadable`)); } catch { /* left as is */ }
+                }
+            }
+            if (this.dirty.size) this.schedule(0);
+        })();
+        return this.loading;
+    }
+
+    private static matches(record: RunEvidenceRecord, query: Record<string, unknown>): boolean {
+        return Object.entries(query || {}).every(([key, value]) => (record as any)[key] === value);
+    }
+
+    async find(query: Record<string, unknown> = {}): Promise<RunEvidenceRecord[]> {
+        await this.load();
+        return Array.from(this.records.values()).filter(record => RunEvidenceShelf.matches(record, query));
+    }
+
+    async findOne(query: Record<string, unknown>): Promise<RunEvidenceRecord | null> {
+        await this.load();
+        if (typeof query?.runId === 'string') {
+            const record = this.records.get(query.runId);
+            return record && RunEvidenceShelf.matches(record, query) ? record : null;
+        }
+        return (await this.find(query))[0] || null;
+    }
+
+    async create(item: RunEvidenceRecord): Promise<RunEvidenceRecord> {
+        await this.load();
+        this.records.set(item.runId, item);
+        this.touch(item.runId);
+        return item;
+    }
+
+    async updateOne(query: Record<string, unknown>, item: Partial<RunEvidenceRecord>): Promise<void> {
+        const current = await this.findOne(query);
+        if (!current) return;
+        const next = { ...current, ...item } as RunEvidenceRecord;
+        this.records.set(current.runId, next);
+        this.touch(current.runId);
+    }
+
+    async deleteOne(query: Record<string, unknown>): Promise<void> {
+        const current = await this.findOne(query);
+        if (!current) return;
+        this.records.delete(current.runId);
+        this.dirty.delete(current.runId);
+        this.removed.add(current.runId);
+        this.schedule(400);
+    }
+
+    /** Write every dirty run now; resolves once they are on disk. */
+    async flush(): Promise<void> {
+        await this.load();
+        if (this.timer) { clearTimeout(this.timer); this.timer = null; }
+        const write = async () => {
+            const dirty = Array.from(this.dirty);
+            const removed = Array.from(this.removed);
+            this.dirty.clear();
+            this.removed.clear();
+            for (const runId of dirty) {
+                const record = this.records.get(runId);
+                if (!record) continue;
+                const file = this.fileOf(runId);
+                const temp = `${file}.${process.pid}.tmp`;
+                try {
+                    await fs.promises.writeFile(temp, JSON.stringify(record));
+                    await fs.promises.rename(temp, file);
+                } catch {
+                    this.dirty.add(runId);
+                    try { await fs.promises.unlink(temp); } catch { /* already gone */ }
+                }
+            }
+            for (const runId of removed) {
+                try { await fs.promises.unlink(this.fileOf(runId)); } catch { /* already gone */ }
+            }
+        };
+        this.writing = this.writing.catch(() => undefined).then(write);
+        return this.writing;
+    }
+
+    private touch(runId: string): void {
+        this.removed.delete(runId);
+        this.dirty.add(runId);
+        this.schedule(400);
+    }
+
+    private schedule(delayMs: number): void {
+        if (this.timer) return;
+        this.timer = setTimeout(() => { this.timer = null; void this.flush(); }, delayMs);
+        this.timer.unref?.();
+    }
+}
+
+export const runEvidenceStore = new RunEvidenceShelf();
 
 const runQueues = new Map<string, Promise<void>>();
 
@@ -87,7 +242,17 @@ function compactValue(value: unknown, depth = 0, cap = 4): unknown {
 /** Deepest first; 4 is today's behaviour and the floor. */
 export const EVIDENCE_DEPTHS = [10, 7, 5, 4] as const;
 
+/** Events already compacted, and their encoded size: an append never re-encodes the whole record. */
+const compacted = new WeakMap<object, number>();
+
 function compactEvent(event: RunEvidenceEvent): RunEvidenceEvent {
+    if (event && typeof event === 'object' && compacted.has(event)) return event;
+    const out = compactEventOnce(event);
+    compacted.set(out, Buffer.byteLength(JSON.stringify(out), 'utf8'));
+    return out;
+}
+
+function compactEventOnce(event: RunEvidenceEvent): RunEvidenceEvent {
     const shape = {
         type: trimString(event?.type, 120),
         runId: trimString(event?.runId, 180) || undefined,
@@ -149,8 +314,14 @@ function boundRecord(record: RunEvidenceRecord): RunEvidenceRecord {
         })(),
         receipt: record.receipt ? compactValue(record.receipt) as RunReceiptPayload : undefined,
     };
-    while (Buffer.byteLength(JSON.stringify(next), 'utf8') > MAX_RECORD_BYTES && next.events.length > 0) {
-        next.events.shift();
+    //  The size from the events' own encoded sizes; the whole record is
+    //  encoded only when that estimate reaches the bound.
+    const head = Buffer.byteLength(JSON.stringify({ ...next, events: [] }), 'utf8');
+    let estimate = head + next.events.reduce((sum, event) => sum + (compacted.get(event) ?? 0) + 1, 0);
+    while (estimate > MAX_RECORD_BYTES * 0.9 && next.events.length > 0
+        && Buffer.byteLength(JSON.stringify(next), 'utf8') > MAX_RECORD_BYTES) {
+        const dropped = next.events.shift()!;
+        estimate -= (compacted.get(dropped) ?? 0) + 1;
     }
     if (Buffer.byteLength(JSON.stringify(next), 'utf8') > MAX_RECORD_BYTES) {
         next.receipt = { status: next.status, selfFixReason: trimString(next.receipt?.selfFixReason, 2_000) };
@@ -265,6 +436,7 @@ export function saveRunReceipt(runId: string, receipt: RunReceiptPayload, status
                 events: [...(existing?.events || []), compactEvent({ type: 'phase_receipt', runId: normalized, ts: Date.now(), data: receipt })],
                 receipt,
             });
+            await runEvidenceStore.flush();
         } catch {
             // A failing receipt write is observable only as missing evidence; the run remains honest.
         }
@@ -324,6 +496,7 @@ export function closeRunEvidenceIfOpen(runId: string, status: string, reason: st
                     data: { status, reason: trimString(reason, 400) },
                 })],
             });
+            await runEvidenceStore.flush();
         } catch {
             // Evidence is a secondary sink: a failed close must not fail the run.
         }
@@ -368,6 +541,7 @@ export async function reconcileInterruptedRunEvidence(): Promise<string[]> {
                         }),
                     ],
                 });
+                await runEvidenceStore.flush();
                 interrupted.push(runId);
             } catch {
                 // Recovery evidence is best-effort; startup must remain available.
