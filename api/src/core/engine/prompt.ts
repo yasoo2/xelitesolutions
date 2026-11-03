@@ -83,7 +83,7 @@ export function firstMessage(request: string, language: string, plan: PlanState,
         lines.push('', formatPlan({ ...plan, steps: [] }));
         lines.push('', 'These requirements were read from the request. Each one must be implemented and proven. You may add requirements with plan_update; you cannot remove these.');
     }
-    if (asksPerUserIsolation(request)) lines.push('', isolationBrief());
+    if (asksPerUserIsolation(request)) lines.push('', isolationBrief(request));
     lines.push('', 'Start by calling plan_update with your steps.');
     return lines.join('\n');
 }

@@ -40,17 +40,34 @@ export function asksPerUserIsolation(request: string): boolean {
     catch { return false; }
 }
 
+/**
+ * The records the request names, by their route words («students»), so a
+ * declaration can be held to them: the probe measures one of HIS records,
+ * never a route made up for Joe.
+ */
+export function requestedRecordWords(request: string): string[] {
+    try {
+        const entities = requestedRecords(request, { backendRequested: true }).entities;
+        return Array.from(new Set(entities.flatMap(e => [e.key, ...String(e.en || '').toLowerCase().split(/[^a-z0-9]+/u)])
+            .map(w => String(w || '').trim().toLowerCase()).filter(w => w.length >= 3)));
+    } catch { return []; }
+}
+
 /** What the builder is told, in the first message, when the request names the rule. */
-export function isolationBrief(): string {
+export function isolationBrief(request = ''): string {
+    //  The example names one of the request's own records. A fixed example
+    //  («/api/patients») was copied into a school system on 2026-11-03 (P152),
+    //  which added /api/patients as an alias of its students to match it.
+    const record = requestedRecords(request, { backendRequested: true }).entities[0]?.key || 'records';
     return [
         `The request says each user sees only their own records. Joe measures that itself on the running server, so ship \`${ISOLATION_FILE}\` at the project root naming the doors (paths are relative to the server's address; "{email}", "{password}" and "{marker}" are filled in by Joe):`,
         '{',
         '  "register": { "path": "/api/auth/register", "body": { "email": "{email}", "password": "{password}", "name": "{email}" } },',
         '  "login": { "path": "/api/auth/login", "body": { "email": "{email}", "password": "{password}" }, "token": "token" },',
         '  "users": [ { "email": "staff.a@example.test", "password": "Passw0rd!a" }, { "email": "staff.b@example.test", "password": "Passw0rd!b" } ],',
-        '  "records": { "create": { "path": "/api/patients", "body": { "name": "{marker}" } }, "list": "/api/patients" }',
+        `  "records": { "create": { "path": "/api/${record}", "body": { "name": "{marker}" } }, "list": "/api/${record}" }`,
         '}',
-        '"register" is optional when the two accounts already exist (seeded). Both users must have the role that sees only its own records (staff, not admin). "token" names the field of the login answer that holds the bearer token; leave it out when the server signs in with a cookie. Joe signs in as each user, creates a record as the first, and checks that the second user and a signed-out visitor cannot see it.',
+        'Use the routes your project already serves, for one of the records the request names, with the fields its create route really requires; never add a route for Joe. "register" is optional when the two accounts already exist (seeded). Both users must have the role that sees only its own records (staff, not admin). "token" names the field of the login answer that holds the bearer token; leave it out when the server signs in with a cookie. Joe signs in as each user, creates a record as the first, and checks that the second user and a signed-out visitor cannot see it.',
     ].join('\n');
 }
 
@@ -70,8 +87,11 @@ export interface IsolationResult {
     evidence: string[];
 }
 
-/** Reads the declaration from the first delivered root that has one. */
-export function readIsolationDeclaration(roots: string[]): { declaration?: IsolationDeclaration; file?: string; error?: string } {
+/**
+ * Reads the declaration from the first delivered root that has one. With the
+ * request's record words, the declared list must be the route of one of them.
+ */
+export function readIsolationDeclaration(roots: string[], recordWords: string[] = []): { declaration?: IsolationDeclaration; file?: string; error?: string } {
     for (const root of roots) {
         const file = path.join(root, ISOLATION_FILE);
         if (!fs.existsSync(file)) continue;
@@ -87,6 +107,12 @@ export function readIsolationDeclaration(roots: string[]): { declaration?: Isola
         if (!door(raw?.records?.create)) problems.push('"records.create" needs a "path" that starts with "/" and a "body" holding "{marker}"');
         else if (!JSON.stringify(raw.records.create.body ?? {}).includes('{marker}')) problems.push('"records.create.body" must hold "{marker}" in a field the list shows');
         if (typeof raw?.records?.list !== 'string' || !raw.records.list.startsWith('/')) problems.push('"records.list" needs a path that starts with "/"');
+        if (!problems.length && recordWords.length) {
+            const segments = String(raw.records.list).toLowerCase().split(/[^a-z0-9]+/u).filter(Boolean);
+            if (!segments.some(s => recordWords.includes(s) || recordWords.includes(s.replace(/s$/u, '')) || recordWords.includes(`${s}s`))) {
+                problems.push(`"records.list" is ${raw.records.list}, which is not the route of a record the request names (${recordWords.slice(0, 6).join(', ')}): declare the route your project serves for one of them`);
+            }
+        }
         if (problems.length) return { file, error: `${ISOLATION_FILE}: ${problems.join('; ')}` };
         return { declaration: raw as IsolationDeclaration, file };
     }

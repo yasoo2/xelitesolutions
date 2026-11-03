@@ -29,7 +29,7 @@ import {
     testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
-import { measureIsolation, readIsolationDeclaration } from './isolation-probe';
+import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
 import { say as pick } from '../../shared/reply-language';
@@ -171,7 +171,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         let isolationError = '';
         const isolationRules = (requestCoverage.capabilities || []).filter(c => c.startsWith('per-user record isolation'));
         if (isolationRules.length && base) {
-            const declared = readIsolationDeclaration(deliveredRoots);
+            const declared = readIsolationDeclaration(deliveredRoots, requestedRecordWords(productRequest));
             if (declared.declaration) {
                 say(pick(isAr, '▶️ أتحقّق أن كل مستخدم يرى سجلاته فقط: أدخل بحسابين وأنشئ سجلاً بالأول…', '▶️ Checking that each user sees only their own records: signing in as two accounts and creating a record as the first…'));
                 const bound = bindRunCancellation(input.cancellation, input.signal);

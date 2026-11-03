@@ -12,7 +12,7 @@ import fs from 'fs';
 import http from 'http';
 import os from 'os';
 import path from 'path';
-import { asksPerUserIsolation, isolationBrief, measureIsolation, readIsolationDeclaration, ISOLATION_FILE, type IsolationDeclaration } from '../core/quality/isolation-probe';
+import { asksPerUserIsolation, isolationBrief, measureIsolation, readIsolationDeclaration, requestedRecordWords, ISOLATION_FILE, type IsolationDeclaration } from '../core/quality/isolation-probe';
 
 type Leak = 'none' | 'list' | 'by-id' | 'signed-out' | 'cookie';
 
@@ -88,9 +88,14 @@ describe('the requests that name the rule', () => {
         expect(asksPerUserIsolation('Build an admin dashboard for a dental clinic to manage patients, appointments and treatments.')).toBe(false);
     });
 
-    it('the builder is told the doors to declare', () => {
-        expect(isolationBrief()).toContain(ISOLATION_FILE);
-        expect(isolationBrief()).toContain('{marker}');
+    it('the builder is told the doors to declare, with one of the request’s own records as the example', () => {
+        const school = 'ابني نظام متكامل لـمدرسة خاصة: واجهة React وخادم Node، تسجيل دخول بصلاحيات (مدير وموظف)، إدارة الطلاب والصفوف والعلامات، وكل موظف يرى سجلاته فقط.';
+        expect(isolationBrief(school)).toContain(ISOLATION_FILE);
+        expect(isolationBrief(school)).toContain('{marker}');
+        //  2026-11-03, P152: a fixed «/api/patients» example was copied into a school system as an alias.
+        expect(isolationBrief(school)).toContain('"list": "/api/students"');
+        expect(isolationBrief(school)).not.toContain('patients');
+        expect(isolationBrief(school)).toContain('never add a route for Joe');
     });
 });
 
@@ -140,6 +145,16 @@ describe('the declaration', () => {
         expect(e).toContain('"users" needs two accounts');
         expect(e).toContain('must hold "{marker}"');
         expect(e).toContain('"records.list" needs a path');
+    });
+
+    it('a route that is not one of the request’s records is refused by name', () => {
+        const d = dir();
+        fs.writeFileSync(path.join(d, ISOLATION_FILE), JSON.stringify(DECLARATION));
+        const school = requestedRecordWords('ابني نظام متكامل لـمدرسة خاصة: واجهة React وخادم Node، تسجيل دخول بصلاحيات (مدير وموظف)، إدارة الطلاب والصفوف والعلامات، وكل موظف يرى سجلاته فقط.');
+        expect(school).toEqual(expect.arrayContaining(['students']));
+        expect(readIsolationDeclaration([d], school).error).toMatch(/"records\.list" is \/api\/patients, which is not the route of a record the request names \(.*students/u);
+        const clinic = requestedRecordWords('Build a complete full-stack system for a dental clinic: React frontend, Node backend, user login with roles (admin and staff), management of patients, appointments, treatments, and each staff member only sees their own records.');
+        expect(readIsolationDeclaration([d], clinic).declaration).toEqual(DECLARATION);
     });
 
     it('complete: read from the first delivered root that has it', () => {
