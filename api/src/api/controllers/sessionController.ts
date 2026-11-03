@@ -9,7 +9,7 @@ import { Tenant } from '../../shared/models/tenant';
 
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { readJoeProjectForRun } from '../page-store';
-import { getRunEvidenceForSession } from '../../shared/run-evidence-store';
+import { engineOfRuns, getRunEvidenceForSession } from '../../shared/run-evidence-store';
 import { sessionLogLines } from '../../core/session/session-log-store';
 import { logTextFor, logStampFor } from '../../core/session/log-line';
 import { publicUrlFor } from '../../shared/utils/publicUrl';
@@ -817,6 +817,26 @@ export async function searchSessions(req: Request, res: Response) {
  *
  *  This is the question nobody could ask before.
  */
+/**
+ * WHAT THIS SESSION RUNS ON.
+ *
+ * 2026-11-04: the owner opened a session the exam was running on Claude Haiku,
+ * and the provider button said «Auto · free» — the browser's choice for his
+ * NEXT message, not the run he was looking at. «المفروض يكون كلود». The
+ * interface asks here which provider and model the session's latest run uses.
+ */
+export async function sessionEngine(req: Request, res: Response) {
+    const sessionId = String(req.params.id || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'session_id_required' });
+    const owned = await requireOwnedSession(req, res, sessionId);
+    if (!owned) return;
+    try {
+        res.json({ engine: engineOfRuns(await getRunEvidenceForSession(sessionId)) });
+    } catch {
+        res.json({ engine: null });
+    }
+}
+
 export async function sessionWorkspace(req: Request, res: Response) {
     const sessionId = String(req.params.id || '').trim();
     if (!sessionId) return res.status(400).json({ error: 'session_id_required' });

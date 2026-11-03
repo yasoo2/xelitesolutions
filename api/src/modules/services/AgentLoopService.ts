@@ -32,7 +32,7 @@ import { composeAnswer, composeFailure } from '../../core/orchestrator/answerCom
 import { failureAnswerOf } from '../../core/orchestrator/failure-answer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
-import { appendRunEvidenceEvent, closeRunEvidenceIfOpen, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
+import { appendRunEvidenceEvent, closeRunEvidenceIfOpen, createRunEvidence, runEngineOf, saveRunReceipt } from '../../shared/run-evidence-store';
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
 import { withRunModelChoice } from '../../core/llm/run-model-choice';
@@ -658,7 +658,8 @@ export class AgentLoopService {
 
         // Evidence is a secondary sink. It observes the same canonical run and
         // must never become a prerequisite for the live wire.
-        await createRunEvidence(runId, { sessionId, status: 'running' });
+        const engine = runEngineOf(options.modelConfig?.provider || 'auto', options.modelConfig?.model);
+        await createRunEvidence(runId, { sessionId, status: 'running', ...(engine ? { engine } : {}) });
         if (options.resumeOriginRunId) {
             await appendRunEvidenceEvent(runId, {
                 type: 'continuation_started',

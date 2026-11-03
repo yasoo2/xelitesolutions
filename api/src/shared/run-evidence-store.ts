@@ -36,6 +36,32 @@ export interface RunEvidenceRecord {
     status?: string;
     events: RunEvidenceEvent[];
     receipt?: RunReceiptPayload;
+    /** What the run runs on — provider and model, never a key. */
+    engine?: RunEngine;
+}
+
+export interface RunEngine { provider: string; model: string }
+
+/** A provider and a model from a request, bounded and with nothing else in it. */
+export function runEngineOf(provider: unknown, model: unknown): RunEngine | undefined {
+    const p = String(provider ?? '').trim().slice(0, 60);
+    if (!p) return undefined;
+    return { provider: p, model: String(model ?? '').trim().slice(0, 120) };
+}
+
+/**
+ * What a session's latest run runs on: the engine its record names, else the
+ * «provider:model» the engine reported when it ended (older records).
+ */
+export function engineOfRuns(runs: RunEvidenceRecord[]): RunEngine | null {
+    for (const run of runs.slice().reverse()) {
+        if (run.engine?.provider) return run.engine;
+        const final = [...(run.events || [])].reverse().find(event => event.type === 'engine_final');
+        const said = String((final?.data as any)?.model || '');
+        const at = said.indexOf(':');
+        if (at > 0) return { provider: said.slice(0, at), model: said.slice(at + 1) };
+    }
+    return null;
 }
 
 /**
@@ -362,7 +388,7 @@ async function upsertRecord(next: RunEvidenceRecord): Promise<void> {
     await rotateOldRuns();
 }
 
-export function createRunEvidence(runId: string, fields: { sessionId?: string; status?: string } = {}): Promise<void> {
+export function createRunEvidence(runId: string, fields: { sessionId?: string; status?: string; engine?: RunEngine } = {}): Promise<void> {
     const normalized = trimString(runId, 180);
     if (!normalized) return Promise.resolve();
     return enqueue(normalized, async () => {
@@ -379,6 +405,7 @@ export function createRunEvidence(runId: string, fields: { sessionId?: string; s
                 status: fields.status || existing?.status || 'running',
                 events: existing?.events || [],
                 receipt: existing?.receipt,
+                ...(fields.engine || existing?.engine ? { engine: fields.engine || existing?.engine } : {}),
             });
         } catch {
             // Evidence is a secondary sink. Never block the live run on disk failure.
