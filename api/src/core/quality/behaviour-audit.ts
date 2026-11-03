@@ -890,6 +890,28 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         el = matches[c.ordinal ?? 0] || null;
                     }
                 }
+                /**
+                 * ⛔ A CONTROL AN EARLIER PRESS REMOVED IS SOUGHT ON THE BASELINE.
+                 *
+                 * The exam, 2026-11-03 (P451, a support chatbot): its quick
+                 * replies are replaced as soon as one is used, so after «Hours»
+                 * the chips «Prices» and «Insurance» were no longer on the page,
+                 * and three working buttons were «gone before I could press
+                 * them» — eight minutes of refusals. Every control was
+                 * discovered on probeStartUrl: restore that baseline once, as a
+                 * covered control is restored below, before calling it
+                 * unreachable.
+                 */
+                if (!el) {
+                    await restoreProbeStart();
+                    baselineMayBeDirty = false;
+                    const fresh = await evalInPage(page, findControls, limit).catch(() => [] as any[]);
+                    const replacement = replacementFor(fresh, c);
+                    if (replacement) {
+                        current = replacement;
+                        el = await page.$(current.sel);
+                    }
+                }
                 if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href }); continue; }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
