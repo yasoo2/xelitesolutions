@@ -1369,6 +1369,18 @@ export async function auditBuiltApp(
         try {
             if (!eyeIsOpen()) return eyeRequiredResult();
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
+            /**
+             * ⛔ THE PHONE PASS STARTS FROM THE HOME PAGE, FRESHLY LOADED.
+             *
+             * It isolates each control by reloading, so it must list them from
+             * the state a reload restores — as the per-route passes below do.
+             * The exam, 2026-11-03 (P051, a React admin whose tabs live in
+             * memory): begun on the Treatments tab the desktop walk left open,
+             * it listed «+ Add treatment», reloaded onto the default tab, and
+             * called a working button «gone before I could press it» four
+             * refusals in a row.
+             */
+            await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) }).catch(() => { });
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');

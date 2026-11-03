@@ -728,22 +728,6 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     const deadline = Date.now() + controlBudgetMs;
     {
         /**
-         * ⛔ A PROBE THAT RETURNS TO ITS BASELINE DISCOVERS ITS CONTROLS THERE.
-         *
-         * The exam, 2026-11-03 (P051, a dental-clinic admin built in React):
-         * the phone pass began on whatever view the desktop walk left open —
-         * the Treatments tab — and listed «+ Add treatment» from it. Isolating
-         * each control then reloaded the page, which opens the default tab,
-         * so the button was «gone before I could press it», four refusals in a
-         * row, for a button that works. The list is taken from the same
-         * state a reload restores, so every control it names can be reached.
-         */
-        if (opts?.isolateBaselineControls) {
-            await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
-            if (opts.baselineViewport) await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height).catch(() => { });
-            await page.waitForTimeout(180).catch(() => { });
-        }
-        /**
          * The functions below are compiled by esbuild before they are handed to
          * the browser, and esbuild names them with a `__name` helper that exists
          * in Node and not in the page. Without this line every evaluate throws
