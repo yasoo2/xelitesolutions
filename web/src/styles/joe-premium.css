@@ -838,6 +838,22 @@ body:not(.rtl) .joe-user-info {
     text-transform: none;
 }
 
+/* What the open session's runs use, when it is not the next message's choice. */
+.joe-chat-input-area .provider-session {
+    align-self: center;
+    font-size: 11px;
+    line-height: 1;
+    padding: 4px 8px;
+    border-radius: 999px;
+    color: #f59e0b;
+    border: 1px solid rgba(245, 158, 11, .45);
+    background: rgba(245, 158, 11, .08);
+    white-space: nowrap;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
 /* Modern, calm status — a subtle static border, NO infinite neon pulse (that
    glowing pulse looked garish). Green = connected, muted = not connected. */
 .joe-chat-input-area .provider-btn.is-connected {

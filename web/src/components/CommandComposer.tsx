@@ -1203,6 +1203,39 @@ export default function CommandComposer({
     return () => { alive = false; };
   }, []);
 
+  /**
+   *  WHAT THE OPEN SESSION RUNS ON.
+   *
+   *  2026-11-04: the owner opened a session the exam ran on Claude Haiku and
+   *  the button said «Auto · free» in red — this browser's choice for his NEXT
+   *  message, not the run he was looking at («المفروض يكون كلود»). The button
+   *  keeps saying what his next message uses (Claude is paid: it is chosen by
+   *  him, never switched on for him); beside it, the session says what its own
+   *  runs use when that is something else.
+   */
+  const [sessionEngine, setSessionEngine] = useState<{ provider: string; model: string } | null>(null);
+  useEffect(() => {
+    const sid = String(sessionId || '').trim();
+    setSessionEngine(null);
+    if (!sid) return;
+    let alive = true;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    fetch(`${API}/sessions/${encodeURIComponent(sid)}/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((info: any) => { if (alive && info?.engine?.provider) setSessionEngine(info.engine); })
+      .catch(() => { /* an older server: the button alone, as before */ });
+    const unsubscribe = SocketService.subscribe((msg: any) => {
+      const msgSession = String(msg?.sessionId || msg?.data?.sessionId || '');
+      if (!alive || msgSession !== sid) return;
+      if (msg?.type === 'run_started' && msg?.data?.engine?.provider) setSessionEngine(msg.data.engine);
+      if (msg?.type === 'engine_final' && typeof msg?.data?.model === 'string' && msg.data.model.includes(':')) {
+        const at = msg.data.model.indexOf(':');
+        setSessionEngine({ provider: msg.data.model.slice(0, at), model: msg.data.model.slice(at + 1) });
+      }
+    });
+    return () => { alive = false; unsubscribe?.(); };
+  }, [sessionId]);
+
   const providerVerificationRevisionRef = useRef<Record<string, number>>({});
   const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
   const providerActivationRevisionRef = useRef(0);
@@ -4923,6 +4956,7 @@ export default function CommandComposer({
                   };
 
                   return (
+                    <>
                     <button
                       className={`provider-btn provider-${activeProvider} ${(() => {
                         const st = providers[activeProvider];
@@ -4984,6 +5018,19 @@ export default function CommandComposer({
                         return providers[activeProvider]?.isFree ? (<span className="provider-free">{t('provFree')}</span>) : null;
                       })()}
                     </button>
+                    {sessionEngine && sessionEngine.provider !== activeProvider && (() => {
+                      const id = sessionEngine.model;
+                      const name = sessionEngine.provider === 'anthropic'
+                        ? (modelLists.anthropic?.names?.[id] || ANTHROPIC_MODELS.find(x => x.id === id)?.name || `Claude ${id}`)
+                        : `${DEFAULT_PROVIDERS[sessionEngine.provider]?.labelKey ? t(String(DEFAULT_PROVIDERS[sessionEngine.provider].labelKey)) : (DEFAULT_PROVIDERS[sessionEngine.provider]?.name || sessionEngine.provider)}${id && id !== 'auto' ? ` · ${id}` : ''}`;
+                      const next = DEFAULT_PROVIDERS[activeProvider]?.labelKey ? t(String(DEFAULT_PROVIDERS[activeProvider].labelKey)) : (DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider);
+                      return (
+                        <span className="provider-session" dir="auto" title={t('provSessionRunsOnTitle', { name, next })}>
+                          {t('provSessionRunsOn', { name })}
+                        </span>
+                      );
+                    })()}
+                    </>
                   );
                 })()}
 

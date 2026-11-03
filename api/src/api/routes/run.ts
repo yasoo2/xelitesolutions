@@ -12,7 +12,7 @@ import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
-import { getRunEvidence, getRunEvidenceForSession } from '../../shared/run-evidence-store';
+import { getRunEvidence, getRunEvidenceForSession, runEngineOf } from '../../shared/run-evidence-store';
 import { getActiveRunSessions, registerRunSession, unregisterRunSession, sessionOwnerOf, runOwnerOf } from '../ws';
 import { registerRun, releaseHandle } from '../../core/session/attended-run';
 import { workspaceService } from '../../modules/services/WorkspaceService';
@@ -376,7 +376,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), engine: runEngineOf(provider || 'auto', model), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
     try {
