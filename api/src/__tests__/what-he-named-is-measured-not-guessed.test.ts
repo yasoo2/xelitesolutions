@@ -330,7 +330,9 @@ describe('the pipeline measures the tests it was asked for', () => {
     const body = shared.slice(shared.indexOf('const measureRequestedRecords = async'), shared.indexOf('const recordLiveAcceptance = async'));
     it('reads the declared backend, probes exact paths, runs and requires the tests, and records what it could not measure', () => {
         expect(body).toContain('const backendRequested = backendRequestedFor(productRequest);');
-        expect(body).toContain('paths: probePathsFor(evidence, ids)');
+        // …each record's exact paths, under his own words, never under a name another of his records owns.
+        expect(body).toContain('const ids = identifiersFor(record, evidence.labelKeys[record.key] || [], records.entities);');
+        expect(body).toContain('paths: probePathsFor(evidence, ids, takenIdentifiers(record, records.entities))');
         expect(body).toMatch(/testsRun = await runRequestedTests\(testsRoot,/);
         // The run asks for 'tests' to be required; the pipeline adds it to what its verdict requires.
         expect(body).toMatch(/requireInstrument\('tests'\);/);

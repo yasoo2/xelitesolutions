@@ -44,7 +44,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import { declaredTables } from '../design/declared-tables';
-import { curatedNounKey, listedRecords, nounKeyOfItem } from '../design/named-entities';
+import { curatedNounKey, listedRecords, nounKeyOfItem, withoutRecordHolder } from '../design/named-entities';
 import { keyForPhrase } from '../design/entity-inference';
 import { requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
 import { emptyTestRun, judgeTestRun } from './test-run-evidence';
@@ -185,10 +185,11 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
         .filter(entity => isRecordLike(String(entity.ar || entity.en || entity.key)) && isRecordLike(String(entity.key)))
         .map(entity => ({ item: String(entity.ar || entity.en || entity.key), key: String(entity.key), ar: String(entity.ar || ''), en: String(entity.en || '') }));
     // A listed table the system already serves («الطلبات» → orders) is still
-    // one of his records: it must be served too.
+    // one of his records: it must be served too — and its item is HIS words
+    // («management of menu items»), never the dictionary's label (P153).
     for (const servedTable of reading.served) {
         if (!entities.some(entity => entity.key === servedTable.key)) {
-            entities.push({ item: servedTable.ar, key: servedTable.key, ar: servedTable.ar, en: servedTable.key });
+            entities.push({ item: servedTable.item || servedTable.ar, key: servedTable.key, ar: servedTable.ar, en: servedTable.key });
         }
     }
 
@@ -568,10 +569,51 @@ function forms(phrase: string): string[] {
     return Array.from(out).filter(f => f.length >= 2);
 }
 
-/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, and keys bound to his label. */
-export function identifiersFor(record: RequestedRecord, labelKeys: string[] = []): string[] {
-    const latin = [record.key, /[a-z]/iu.test(record.en) && !/[؀-ۿ]/u.test(record.en) ? record.en : '', ...labelKeys];
-    return Array.from(new Set(latin.flatMap(forms)));
+/**
+ * HIS OWN WORDS ARE A NAME HIS RECORD IS SERVED UNDER.
+ *
+ * The 500-prompt exam, 2026-11-03, P153: «… management of menu items, orders,
+ * tables …» was served at /api/menu, and refused four times as «products —
+ * المنتجات (not served)»: the list reader keys «menu items» by its head, which
+ * the dictionary calls `products`, and the record was then looked for under
+ * `products` alone — a word he never wrote.
+ *
+ * The record answers to the dictionary's name, to his whole phrase
+ * (menu-items, menu_items, menuItems) and to each word of it that names no
+ * other record of his (menu, items): «order items» beside his «orders» is
+ * never served by /api/orders.
+ */
+const NOT_A_NAME = /^(?:of|for|and|or|the|a|an|with|in|on|to|by|per|all|each|every|their|its|own|new|management|tracking|scheduling|registration|records?|lists?|data|database|directory|table|registry|files?|profiles?|history|histories|logs?)$/u;
+
+const latinEnglish = (record: RequestedRecord) => /[a-z]/iu.test(record.en) && !/[؀-ۿ]/u.test(record.en) ? record.en : '';
+
+/** His Latin words for a record — the item he listed without the head that only holds it («management of menu items» → «menu items»), or ''. */
+export function hisWordsFor(record: Pick<RequestedRecord, 'item'>): string {
+    const item = String(record.item || '').trim();
+    if (!item || /[؀-ۿ]/u.test(item) || !/[a-z]/iu.test(item)) return '';
+    return String(withoutRecordHolder(item) || item).toLowerCase().replace(/[^a-z0-9]+/gu, ' ').trim();
+}
+
+/** The words of a phrase of two words or more that could name the record alone. */
+function hisNamingWords(record: RequestedRecord): string[] {
+    const words = hisWordsFor(record).split(' ').filter(w => w.length >= 3 && !NOT_A_NAME.test(w));
+    return words.length >= 2 ? words : [];
+}
+
+/** Every name another of his records answers to, and every word of its phrase: never evidence for this one. */
+export function takenIdentifiers(record: RequestedRecord, all: RequestedRecord[] = []): string[] {
+    const others = all.filter(other => other.key !== record.key);
+    return Array.from(new Set(others
+        .flatMap(other => [other.key, latinEnglish(other), hisWordsFor(other), ...hisNamingWords(other)].flatMap(forms))
+        .map(id => id.toLowerCase())));
+}
+
+/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, and keys bound to his label. */
+export function identifiersFor(record: RequestedRecord, labelKeys: string[] = [], all: RequestedRecord[] = []): string[] {
+    const named = [record.key, latinEnglish(record), hisWordsFor(record), ...labelKeys].flatMap(forms);
+    const taken = new Set(takenIdentifiers(record, all));
+    const words = hisNamingWords(record).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
+    return Array.from(new Set([...named, ...words]));
 }
 
 /**
@@ -960,13 +1002,26 @@ export function liveTestText(testText: string): string {
     return text;
 }
 
-function staticRouteMatches(routes: HarvestedRoute[], ids: string[]): Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean; readable: boolean; mount: boolean; exact: string }> {
+/**
+ * A compound route name whose last word is one of the record's names, none of
+ * whose words another of his records owns: /api/menu-items serves «الأصناف»
+ * (items); /api/order-items does not, beside his «الطلبات».
+ */
+function compoundNames(segment: string, wanted: Set<string>, owned: Set<string>): boolean {
+    const parts = segment.replace(/([a-z0-9])([A-Z])/gu, '$1 $2').toLowerCase().split(/[-_\s]+/u).filter(Boolean);
+    if (parts.length < 2 || !wanted.has(parts[parts.length - 1])) return false;
+    return !parts.some(part => owned.has(part));
+}
+
+function staticRouteMatches(routes: HarvestedRoute[], ids: string[], taken: string[] = []): Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean; readable: boolean; mount: boolean; exact: string }> {
     const wanted = new Set(ids.map(id => id.toLowerCase()));
+    const owned = new Set(taken.map(id => id.toLowerCase()));
     const matches: Array<{ route: HarvestedRoute; writeOnly: boolean; nested: boolean; readable: boolean; mount: boolean; exact: string }> = [];
     for (const route of routes) {
         const segments = route.path.split('/').filter(Boolean);
         for (let i = 0; i < segments.length; i++) {
-            if (isParamSegment(segments[i]) || !wanted.has(segments[i].toLowerCase())) continue;
+            if (isParamSegment(segments[i])) continue;
+            if (!wanted.has(segments[i].toLowerCase()) && !compoundNames(segments[i], wanted, owned)) continue;
             const nested = segments.slice(0, i).some(isParamSegment);
             const mount = route.method === 'use';
             matches.push({
@@ -982,11 +1037,11 @@ function staticRouteMatches(routes: HarvestedRoute[], ids: string[]): Array<{ ro
     return matches;
 }
 
-/** The exact paths the probe should GET for one record, from its registered routes. */
-export function probePathsFor(evidence: CoverageEvidence, ids: string[]): ProbePath[] {
+/** The exact paths the probe should GET for one record, from its registered routes (`taken`: the names his other records own). */
+export function probePathsFor(evidence: CoverageEvidence, ids: string[], taken: string[] = []): ProbePath[] {
     const out: ProbePath[] = [];
     const mounts = evidence.routes.filter(r => r.method === 'use' && r.known && !r.dynamic).map(r => r.path);
-    for (const match of staticRouteMatches(evidence.routes, ids)) {
+    for (const match of staticRouteMatches(evidence.routes, ids, taken)) {
         if (!match.exact || !(match.readable || match.mount)) continue;
         if (match.route.known && match.readable) out.push({ path: match.exact, refutable: true });
         else {
@@ -1012,13 +1067,14 @@ export function judgeRequestCoverage(input: {
     const liveTests = liveTestText(evidence.testText);
     const out: RecordCoverage[] = records.entities.map(record => {
         const labelKeys = evidence.labelKeys[record.key] || [];
-        const ids = identifiersFor(record, labelKeys);
+        const ids = identifiersFor(record, labelKeys, records.entities);
+        const taken = takenIdentifiers(record, records.entities);
         const onlyTransliterated = transliteratedOnly(record, labelKeys);
         const why: string[] = [];
         let served: boolean | null = null;
         let present: boolean | null = null;
         if (servedApplies) {
-            const matches = staticRouteMatches(evidence.routes, ids);
+            const matches = staticRouteMatches(evidence.routes, ids, taken);
             const readable = matches.filter(m => m.readable);
             const unseen = matches.filter(m => m.writeOnly || m.nested);
             const mounts = matches.filter(m => m.mount);
@@ -1088,7 +1144,10 @@ export function judgeRequestCoverage(input: {
 /** The delivery error for missing records, naming each and what is missing. */
 export function coverageError(report: RequestCoverageReport): string {
     const items = report.missing.map(record => {
-        const label = record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key;
+        // Named in his words too, when the dictionary's name is not his («products — المنتجات «menu items»»).
+        const his = hisWordsFor(record);
+        const own = his && ![record.key, record.en].map(name => String(name || '').toLowerCase()).includes(his) ? ` «${his}»` : '';
+        const label = (record.ar && record.ar !== record.key ? `${record.key} — ${record.ar}` : record.key) + own;
         const what = [
             record.served === false ? 'not served' : '',
             record.tested === false ? 'untested' : '',
