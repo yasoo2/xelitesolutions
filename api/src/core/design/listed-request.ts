@@ -20,11 +20,15 @@ import { FoldedRegExp, listRegion, type ListMarker } from './request-lists';
  * spelling of a word is every spelling of it, so «اضافه», «إضافة» and
  * «اضافة» are one word without being written three times.
  */
-const AR_ACTION = '(?:إضافة|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|تصفح|فلترة|تصفية|فرز|ترتيب|متابعة|إدارة)';
-const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|delete(?:s)?|deleting|remove(?:s)?|removing|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
+const AR_ACTION = '(?:إضافة|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|تصفح|فلترة|تصفية|فرز|ترتيب|متابعة|إدارة|تأكيد|إلغاء)';
+const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|delete(?:s)?|deleting|remove(?:s)?|removing|confirm(?:s|ing)?|cancel(?:s|ling|ing)?|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
 const AR_ACTION_HEAD = new FoldedRegExp(`^و?${AR_ACTION}(?:\\s+(?:في|عن|على|ضمن|بين))?(?=\\s|[،,]|$)`, 'u');
 const EN_ACTION_HEAD = new RegExp(`^(?:and\\s+|or\\s+|then\\s+)?${EN_ACTION}(?:\\s+(?:for|in|through|by))?(?=\\s|,|$)`, 'iu');
-const AR_ACTION_WORD = new FoldedRegExp(`^و?${AR_ACTION}$`, 'u');
+/**
+ * …alone, or with the pronoun of the record it acts on: «تأكيد الحجز وإلغاؤه»
+ * cancels the booking (H10, 2026-11-04: «إلغاؤه» was an unread item).
+ */
+const AR_ACTION_WORD = new FoldedRegExp(`^و?${AR_ACTION}(?:[وي]?(?:ه|ها|هم|هما))?$`, 'u');
 const EN_ACTION_WORD = new RegExp(`^${EN_ACTION}$`, 'iu');
 /** What an action-only clause ends with: «each one», «them», «كل منها». */
 const ACTION_FILLER = new FoldedRegExp('^(?:(?:each|every|all)(?:\\s+(?:one|of\\s+them|item|record|entry))?|them|it|those|these|كل\\s+(?:منها|واحدة?|منهم)|عليها|فيها|منها)?$', 'iu');
