@@ -20,6 +20,12 @@
  * in the loop), the names the loop body builds from the loop's variable
  * (templates, «'/' + name»), and the routes registered with them. A path built
  * from anything else — a call, the database — is left unread: never guessed.
+ *
+ * P158, the same day: `Object.keys(SCHEMAS).forEach(registerCollection)`, the
+ * mount inside `function registerCollection(key)`. A helper the file declares
+ * is read the same way — called by name from such a loop, or called with the
+ * path itself («crud('/api/x', …)») — and a helper also called with what the
+ * source does not say keeps its template an unread route.
  */
 
 /** A table the source declares: its keys (an object's, or a list's names) and, per field, its rows' string values. */
@@ -31,8 +37,8 @@ export interface RouteTable {
     kind: 'object' | 'list';
 }
 
-/** One route the loops register, at the receiver's index in the text. */
-export interface LoopRoute { receiver: string; method: string; path: string; at: number }
+/** One route the loops register, at the receiver's index in the text; `complete` when every pass read it. */
+export interface LoopRoute { receiver: string; method: string; path: string; at: number; complete: boolean }
 
 const IDENT = '[A-Za-z_$][\\w$]*';
 const ROUTE_METHODS = 'get|post|put|patch|delete|all|use|route';
@@ -79,7 +85,7 @@ function templateEnd(text: string, start: number): number {
 }
 
 /** The top-level parts of a bracketed list or object («{a: 1, b: {…}}» → «a: 1», «b: {…}»). */
-function topLevelParts(inner: string): string[] {
+export function topLevelParts(inner: string): string[] {
     const parts: string[] = [];
     let from = 0;
     for (let i = 0; i < inner.length; i++) {
@@ -246,9 +252,82 @@ function topLevelPlus(expr: string): string[] {
     return pieces.map(p => p.trim());
 }
 
-/** The loops in a file over a table it can read, each with its body and the bindings of its passes. */
-function loopsIn(text: string, lookup: (name: string) => RouteTable | undefined): Array<{ body: string; at: number; passes: Binding[] }> {
-    const loops: Array<{ body: string; at: number; passes: Binding[] }> = [];
+/** One loop, or one helper, and its passes: the body, where it starts, and what each pass binds. */
+interface Loop {
+    body: string;
+    at: number;
+    passes: Binding[];
+    /** References to a helper that are no pass the reader can say (a call with a path the source does not write). */
+    unread: number;
+}
+
+/** A function the file declares by name: its parameters, its body, and where its name is declared. */
+interface Declared { params: string[]; body: string; at: number; nameAt: number }
+
+function functionsIn(text: string): Map<string, Declared> {
+    const found = new Map<string, Declared>();
+    const head = new RegExp(`\\bfunction\\s+(${IDENT})\\s*\\(|(?:const|let|var)\\s+(${IDENT})\\s*=\\s*(?:async\\s+)?(?:function\\b\\s*(?:${IDENT})?\\s*)?\\(`, 'gu');
+    for (const m of text.matchAll(head)) {
+        const name = m[1] || m[2];
+        const open = (m.index || 0) + m[0].length - 1;
+        const close = closeOf(text, open);
+        if (close < 0 || found.has(name)) continue;
+        const start = close + (text.slice(close).match(/^\s*(?:=>\s*)?/u)?.[0].length || 0);
+        //  «const total = (a + b) * 2» is no function; an expression body registers nothing.
+        if (text[start] !== '{') continue;
+        const end = closeOf(text, start);
+        if (end < 0) continue;
+        const params = topLevelParts(text.slice(open + 1, close - 1)).map(p => p.replace(/\s*=[\s\S]*$/u, '').trim());
+        found.set(name, { params, body: text.slice(start, end), at: start, nameAt: (m.index || 0) + m[0].indexOf(name) });
+    }
+    return found;
+}
+
+/**
+ * A helper called by name, as its passes: «Object.keys(T).forEach(register)»
+ * binds its first parameter to each element; «crud('/api/x', 'x')» binds each
+ * parameter given a string. Any other reference — a call with what the source
+ * does not say, the helper passed elsewhere — is counted unread.
+ */
+function helperPasses(text: string, name: string, fn: Declared, lookup: (name: string) => RouteTable | undefined): { passes: Binding[]; unread: number } {
+    const out: Binding[] = [];
+    let unread = 0;
+    for (const m of text.matchAll(new RegExp(`(?<![\\w$.])${name.replace(/\$/gu, '\\$')}(?![\\w$])`, 'gu'))) {
+        const at = m.index || 0;
+        if (at === fn.nameAt) continue;
+        const after = text.slice(at + name.length);
+        const before = text.slice(Math.max(0, at - 40), at);
+        const each = before.match(/\.\s*(?:forEach|map)\s*\(\s*$/u);
+        if (each && /^\s*\)/u.test(after)) {
+            const source = sourceBefore(text, at - each[0].length);
+            const found = source ? elementsOf(source, lookup) : null;
+            if (found && fn.params[0]) out.push(...passes(fn.params[0], found.elements, found.entries));
+            else unread++;
+            continue;
+        }
+        const call = after.match(/^\s*\(/u);
+        if (call) {
+            const open = at + name.length + call[0].length - 1;
+            const close = closeOf(text, open);
+            const args = close < 0 ? [] : topLevelParts(text.slice(open + 1, close - 1));
+            const bound: Binding = {};
+            fn.params.forEach((param, i) => {
+                const value = args[i] === undefined ? null : stringOf(args[i]);
+                if (value !== null && new RegExp(`^${IDENT}$`, 'u').test(param)) bound[param] = value;
+            });
+            if (Object.keys(bound).length) out.push(bound);
+            else unread++;
+            continue;
+        }
+        unread++;
+    }
+    return { passes: out, unread };
+}
+
+/** The loops in a file over a table it can read, and the helpers it calls by name, each with its body and passes. */
+function loopsIn(text: string, lookup: (name: string) => RouteTable | undefined): Loop[] {
+    const loops: Loop[] = [];
+    const functions = functionsIn(text);
     const binding = `(\\[[^\\]]*\\]|\\{[^}]*\\}|${IDENT})`;
     //  for (const X of SOURCE) / for (const X in TABLE)
     const forHead = new RegExp(`\\bfor\\s*\\(\\s*(?:const|let|var)\\s+${binding}\\s+(of|in)\\s+`, 'gu');
@@ -265,12 +344,14 @@ function loopsIn(text: string, lookup: (name: string) => RouteTable | undefined)
         const bodyStart = headClose + (text.slice(headClose).match(/^\s*/u)?.[0].length || 0);
         const bodyEnd = text[bodyStart] === '{' ? closeOf(text, bodyStart) : statementEnd(text, bodyStart);
         if (bodyEnd < 0) continue;
-        loops.push({ body: text.slice(bodyStart, bodyEnd), at: bodyStart, passes: passes(m[1], found.elements, found.entries) });
+        loops.push({ body: text.slice(bodyStart, bodyEnd), at: bodyStart, passes: passes(m[1], found.elements, found.entries), unread: 0 });
     }
     //  SOURCE.forEach((X) => …) / SOURCE.map(function (X) {…})
     const each = new RegExp(`\\.\\s*(?:forEach|map)\\s*\\(\\s*(?:async\\s*)?(?:function\\s*${IDENT}?\\s*)?\\(?\\s*${binding}`, 'gu');
     for (const m of text.matchAll(each)) {
         const dot = m.index || 0;
+        //  «.forEach(register)» names a helper: read below, with the helper's body.
+        if (functions.has(m[1]) && /^\s*\)/u.test(text.slice(dot + m[0].length))) continue;
         const source = sourceBefore(text, dot);
         if (!source) continue;
         const found = elementsOf(source, lookup);
@@ -278,7 +359,11 @@ function loopsIn(text: string, lookup: (name: string) => RouteTable | undefined)
         const open = text.indexOf('(', dot);
         const close = closeOf(text, open);
         if (close < 0) continue;
-        loops.push({ body: text.slice(open, close), at: open, passes: passes(m[1], found.elements, found.entries) });
+        loops.push({ body: text.slice(open, close), at: open, passes: passes(m[1], found.elements, found.entries), unread: 0 });
+    }
+    for (const [name, fn] of functions) {
+        const helper = helperPasses(text, name, fn, lookup);
+        if (helper.passes.length) loops.push({ body: fn.body, at: fn.at, passes: helper.passes, unread: helper.unread });
     }
     return loops;
 }
@@ -332,9 +417,11 @@ function closeQuote(text: string, start: number): number {
 }
 
 /**
- * The routes a file registers in loops over the tables it can read. `lookup`
- * names a table this file declares, else one another file of the server does.
- * A registration whose path is not the source's own words is left out.
+ * The routes a file registers in loops over the tables it can read, and in
+ * the helpers it calls by name. `lookup` names a table this file declares,
+ * else one another file of the server does. A registration whose path is not
+ * the source's own words is left out; one read in every pass of a loop that
+ * has no unread reference is `complete` — its template is no second route.
  */
 export function loopRoutes(text: string, lookup: (name: string) => RouteTable | undefined): LoopRoute[] {
     const out: LoopRoute[] = [];
@@ -342,6 +429,8 @@ export function loopRoutes(text: string, lookup: (name: string) => RouteTable | 
     const call = new RegExp(`(${IDENT})\\s*\\.\\s*(${ROUTE_METHODS})\\s*\\(`, 'gu');
     const derived = new RegExp(`(?:const|let|var)\\s+(${IDENT})\\s*=\\s*([^;\\n]+)`, 'gu');
     for (const loop of loopsIn(text, lookup)) {
+        const first = out.length;
+        const readIn = new Map<number, number>();
         for (const pass of loop.passes) {
             if (!Object.keys(pass).length) continue;
             const bound: Binding = { ...pass };
@@ -364,9 +453,12 @@ export function loopRoutes(text: string, lookup: (name: string) => RouteTable | 
                 const key = `${at}|${pathValue}|${m[2]}`;
                 if (seen.has(key)) continue;
                 seen.add(key);
-                out.push({ receiver: m[1], method: m[2].toLowerCase(), path: pathValue, at });
+                readIn.set(at, (readIn.get(at) || 0) + 1);
+                out.push({ receiver: m[1], method: m[2].toLowerCase(), path: pathValue, at, complete: false });
             }
         }
+        const everyPass = loop.passes.filter(pass => Object.keys(pass).length).length;
+        for (const route of out.slice(first)) route.complete = loop.unread === 0 && readIn.get(route.at) === everyPass;
     }
     return out;
 }
