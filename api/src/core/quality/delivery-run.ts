@@ -31,11 +31,14 @@ import {
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
 import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
-import { deliveredTreeHasInterface } from './scope-audit';
+import { CAPABILITIES, deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
 import { say as pick } from '../../shared/reply-language';
 import type { ScopeGateOutcome } from '../../modules/tools/definitions/ProjectPipelineTool';
+
+/** A capability's name in Arabic, for the line the owner reads («product catalogue» → «كتالوج المنتجات»). */
+const arabicCapability = (en: string) => CAPABILITIES.find(c => c.en === en)?.ar || en;
 
 export interface DeliveryRunInput {
     /** The user's full request: every reader reads it, never the agent's plan or summary. */
@@ -254,7 +257,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         //  called missing (interaction-probe.ts: P352–P354, 2026-11-03).
         const unseen = scoped.scopeCoverageFailed ? interactiveMissing(scoped.scopeAudit?.missing || []) : [];
         if (unseen.length && live.liveUrl && deliveredTreeHasInterface(auditRoots)) {
-            say(pick(isAr, `▶️ لم أجد ${unseen.join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
+            say(pick(isAr, `▶️ لم أجد ${unseen.map(arabicCapability).join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
             const bound = bindRunCancellation(input.cancellation, input.signal);
             try {
                 const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal });
