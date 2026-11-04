@@ -623,11 +623,108 @@ export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_C
 export function sliceForMany(reqs: NamedRequirement[], source: string, max = MAX_SOURCE_CHARS): string {
     const src = String(source || '');
     if (src.length <= max) return src;
+    const files = filesOf(src);
+    if (files.length >= 2) {
+        const whole = wholeFilesFor(reqs, files, src, max);
+        if (whole) return whole;
+    }
     const merged = windowsFor(reqs, src);
     //  Nothing of his words anywhere: fall back to the old slice rather than
     //  send an empty prompt. The enforcement downstream is what makes this safe.
     if (!merged.length) return boundedSource(src, max);
     return joinWindows(src, merged, max);
+}
+
+/**
+ *  ⛔ A JUDGE SHOWN HALF A FUNCTION CANNOT SAY THE FUNCTION WORKS.
+ *
+ *  The hard exam, 2026-11-04, H01: a clinic of 45 files. «Appointments with no
+ *  double-booking» was judged nine times over windows cut around his words, and
+ *  every time the judge said what it saw: «a comment says checkSlot rejects
+ *  overlapping bookings with HTTP 409, but the checkSlot body is cut off
+ *  (`.get(doctorId, wee`) and the POST route that calls it is not shown». The
+ *  builder could change nothing that would let it see more, and the delivery
+ *  was refused for a rule the code kept.
+ *
+ *  A project too big to show whole is shown by whole files: the files where the
+ *  requirements' own words are, most first, then the file that defines each
+ *  function those files call, as long as they fit. A requirement none of whose
+ *  words made it in still gets its windows. A file is never cut in the middle.
+ */
+export const JUDGE_FILE_MARK = '// ==== file: ';
+const FILE_MARK_LINE = /^\/\/ ==== file: (.+?) ====$/gmu;
+
+/** The judge's source from named files, each opened by its own marker line. */
+export function judgeSourceOf(files: Array<{ path: string; text: string }>): string {
+    return files.map(f => `${JUDGE_FILE_MARK}${f.path} ====\n${f.text}`).join('\n');
+}
+
+/** The files of a source written by `judgeSourceOf`, each with its marker line. */
+function filesOf(src: string): Array<{ path: string; block: string }> {
+    const marks = Array.from(src.matchAll(FILE_MARK_LINE));
+    return marks.map((m, i) => ({
+        path: m[1],
+        block: src.slice(m.index || 0, i + 1 < marks.length ? (marks[i + 1].index || 0) - 1 : src.length),
+    }));
+}
+
+/** Whole files for these requirements, within `max`; '' when none of their words is in any file. */
+function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; block: string }>, src: string, max: number): string {
+    const words = Array.from(new Set(reqs.flatMap(requirementWords)));
+    const lows = files.map(f => f.block.toLowerCase());
+    //  A word every file says («appointments» in a clinic) locates nothing; the
+    //  rare ones («double-booking») find where the requirement is kept.
+    const weight = new Map(words.map(w => {
+        const df = lows.filter(low => low.includes(w)).length;
+        return [w, df ? Math.log((files.length + 1) / df) : 0];
+    }));
+    const scored = files.map((f, i) => {
+        let score = 0;
+        let hits = 0;
+        for (const w of words) {
+            if (!lows[i].includes(w)) continue;
+            score += weight.get(w) || 0;
+            for (let at = lows[i].indexOf(w); at >= 0; at = lows[i].indexOf(w, at + w.length)) hits++;
+        }
+        return { f, score, density: hits / Math.max(1, f.block.length) };
+    }).filter(x => x.score > 0);
+    if (!scored.length) return '';
+    const ranked = scored.sort((a, b) => b.score - a.score || b.density - a.density).map(x => x.f);
+    //  The file that defines a function another calls.
+    const definedIn = new Map<string, { path: string; block: string }>();
+    const DEFINES = /\bfunction\s+([A-Za-z_$][\w$]{2,})\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]{2,})\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)|\bexports\.([A-Za-z_$][\w$]{2,})\s*=/gu;
+    for (const f of files) for (const m of f.block.matchAll(DEFINES)) {
+        const name = m[1] || m[2] || m[3];
+        if (name && !definedIn.has(name)) definedIn.set(name, f);
+    }
+    const chosen: Array<{ path: string; block: string }> = [];
+    let used = 0;
+    const take = (f: { path: string; block: string }): boolean => {
+        if (chosen.includes(f)) return true;
+        const cost = f.block.length + (chosen.length ? WINDOW_JOIN.length : 0);
+        if (used + cost > max) return false;
+        chosen.push(f);
+        used += cost;
+        return true;
+    };
+    //  Each file, then at once what it calls: a route is shown with the rule it keeps.
+    for (const f of ranked) {
+        if (!take(f)) continue;
+        for (const m of f.block.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/gu)) {
+            const home = definedIn.get(m[1]);
+            if (home && home !== f) take(home);
+        }
+    }
+    if (!chosen.length) return '';
+    //  A requirement none of whose words made it in still gets its windows.
+    const shown = chosen.map(f => f.block).join(WINDOW_JOIN).toLowerCase();
+    const missed = reqs.filter(r => !requirementWords(r).some(w => shown.includes(w)));
+    let out = chosen.map(f => f.block).join(WINDOW_JOIN);
+    if (missed.length && out.length < max) {
+        const extra = joinWindows(src, windowsFor(missed, src), max - out.length - WINDOW_JOIN.length);
+        if (extra) out += WINDOW_JOIN + extra;
+    }
+    return out;
 }
 
 

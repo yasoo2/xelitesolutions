@@ -33,9 +33,9 @@ import {
 } from '../quality/delivery-verdict';
 import { deliveryRun, type DeliveryRunState } from '../quality/delivery-run';
 import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements } from '../quality/acceptance-gate';
-import { acceptanceSource, judgeAcceptance, type Criterion } from '../quality/acceptance';
+import { judgeAcceptance, type Criterion } from '../quality/acceptance';
 import { isAppearanceRequirement, judgeAppearance, type JudgedAppearance, type Look } from '../quality/appearance';
-import { nothingWasJudged, verifyNamed, type JudgedNamed, type NamedRequirement } from '../quality/named-requirements';
+import { judgeSourceOf, nothingWasJudged, verifyNamed, type JudgedNamed, type NamedRequirement } from '../quality/named-requirements';
 import { runRequestedTests, testsRequestedIn } from '../quality/request-coverage';
 import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
@@ -717,29 +717,29 @@ export async function measureProjectSource(root: string, deadlineAt: number, can
 /* ───────────────────────── C11: acceptance ───────────────────────── */
 
 /**
- * The source the judge reads: the builders' reader, plus the other languages a
- * hand-written project may be in. Returns what was left out, by name.
+ * The source the judge reads: the web stack the builders read, plus the other
+ * languages a hand-written project may be in, each file opened by its name
+ * (judgeSourceOf), so a project too big to show whole is shown by whole files.
+ * Returns what was left out, by name.
  */
 async function judgeSource(root: string): Promise<{ text: string; leftOut: string[] }> {
-    const builders = await acceptanceSource(root);
-    //  acceptanceSource reads the web stack only (js, jsx, ts, tsx, html,
-    //  css). A requirement of a Python, Go or Ruby project would be judged on
-    //  no source at all — every verdict «unprovable», the delivery blocked
+    //  A requirement of a Python, Go or Ruby project would be judged on no
+    //  source at all — every verdict «unprovable», the delivery blocked
     //  forever — so its own files are read too, by the same walker.
-    const others = await listProjectFiles(root, {
+    const files = await listProjectFiles(root, {
         skipDirectory: name => name === 'dist' || name.startsWith('.'),
-        keepFile: (_relative, name) => /\.(?:py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu.test(name),
+        keepFile: (_relative, name) => /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu.test(name),
     });
-    const texts: string[] = [];
+    const read: Array<{ path: string; text: string }> = [];
     const leftOut: string[] = [];
-    for (const rel of others) {
+    for (const rel of files) {
         try {
             const stat = await fs.promises.stat(path.join(root, rel));
             if (stat.size > JUDGE_FILE_BYTES) { leftOut.push(rel); continue; }
-            texts.push(await fs.promises.readFile(path.join(root, rel), 'utf8'));
+            read.push({ path: rel.split(path.sep).join('/'), text: await fs.promises.readFile(path.join(root, rel), 'utf8') });
         } catch { /* unreadable is not evidence */ }
     }
-    return { text: [builders, ...texts].filter(Boolean).join('\n'), leftOut };
+    return { text: judgeSourceOf(read), leftOut };
 }
 
 /** The plan's R-id for a requirement the judge knows by its own id. */
