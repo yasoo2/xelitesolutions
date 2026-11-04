@@ -402,10 +402,13 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
             path.join(__dirname, '..', 'core', 'llm', 'intelligent-router.ts'), 'utf-8');
         //  The probe now carries the preflight's own cancellation signal
         //  (97fa9f0d), so a timed-out local probe stops instead of queueing.
-        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('code_generation'), undefined, probeAbort.signal)");
+        //  b906f3bc8 made it a bounded small-text turn instead of a coder turn,
+        //  and 4da88a97f replaced `warmup * 12`: probed even while warm-up runs,
+        //  offline the only brain gets the named local budget, else 15 s.
+        expect(router).toContain("localProvider.chatComplete(probe as any, pickLocalModel('simple_chat', 'small_text'), undefined, probeAbort.signal,");
         expect(router).toContain("detail: 'local_ok'");
         expect(router).toContain('localWarmupMs');
-        expect(router).toContain('warmup * 12');
+        expect(router).toContain('const localProbeTimeout = offlineOnlyLocal ? localVerificationBudgetMs() : 15_000;');
     });
 
     test('bounded live-run repair rediscovers the current incomplete root instead of the greenfield reference set', () => {
