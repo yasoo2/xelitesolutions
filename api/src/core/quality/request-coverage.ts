@@ -559,6 +559,40 @@ function jsReceivers(text: string, wrappers: ReadonlySet<string> = new Set()): (
     };
 }
 
+/**
+ * A SERVER WITH NO FRAMEWORK ROUTES BY COMPARING THE PATH.
+ *
+ * The hard exam, 2026-11-04, H10: a salon platform on `http.createServer`,
+ * routing `if (m === 'POST' && p === '/api/branches')` — ten routes, none read,
+ * so the delivery was measured as a static page. A file that reads the request
+ * (`req.url`, `req.method`, `http.createServer`) and compares a path to a
+ * literal serves that path, with the method compared beside it; `case
+ * '/api/x':` too. A path of a file («/index.html») or the root is the page,
+ * never a route.
+ */
+const READS_REQUEST = /\b(?:req|request)\s*\.\s*(?:url|method)\b|\b(?:http|https)\s*\.\s*createServer\s*\(/u;
+const COMPARED_PATH = /(?:===?|!==?)\s*(['"`])(\/[A-Za-z0-9_\-./:]*)\1|(['"`])(\/[A-Za-z0-9_\-./:]*)\3\s*(?:===?|!==?)|\bcase\s+(['"`])(\/[A-Za-z0-9_\-./:]*)\5\s*:/gu;
+const COMPARED_METHOD = /(?:===?)\s*['"](GET|POST|PUT|PATCH|DELETE)['"]|['"](GET|POST|PUT|PATCH|DELETE)['"]\s*===?/gu;
+
+function harvestComparedPaths(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    for (const m of text.matchAll(COMPARED_PATH)) {
+        const routePath = String(m[2] || m[4] || m[6] || '').replace(/\/+$/u, '');
+        const segments = routePath.split('/').filter(Boolean);
+        if (!segments.length || segments.some(s => s.includes('.'))) continue;
+        // The method compared in the same condition, on the same line.
+        const at = m.index || 0;
+        const lineStart = text.lastIndexOf('\n', at) + 1;
+        const lineEnd = text.indexOf('\n', at);
+        const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+        const methods = Array.from(line.matchAll(COMPARED_METHOD)).map(x => String(x[1] || x[2]).toLowerCase());
+        for (const method of methods.length ? Array.from(new Set(methods)) : ['all']) {
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: true });
+        }
+    }
+}
+
 function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined, wrappers: ReadonlySet<string> = new Set()): void {
     const receiverKind = jsReceivers(text, wrappers);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
@@ -592,6 +626,7 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         routes.push({ path: routePath, method, file, dynamic: routePath.includes('${'), known: kind === 'app' && !routePath.includes('${') });
         if (method === 'use') prefixes.add(routePath.endsWith('/') ? routePath : `${routePath}/`);
     }
+    harvestComparedPaths(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.
     const pyApps = new Set(Array.from(text.matchAll(PY_APP)).map(m => m[1]));
@@ -738,6 +773,7 @@ const RECORD_ALSO: Record<string, string[]> = {
     bookings: ['reservations'], reservations: ['bookings'],
     customers: ['clients'], clients: ['customers'],
     pets: ['animals'], animals: ['pets'],
+    employees: ['staff'], staff: ['employees'],
 };
 
 /** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, the names a build also gives it, and keys bound to his label. */
