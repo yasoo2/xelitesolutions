@@ -321,6 +321,23 @@ export function walkScale(timeoutMs: number, routeCount: number): number {
 // evidence runs. The shared deadline still governs the complete audit.
 export const CONTROL_PASS_BUDGET_MS = 45_000;
 
+/**
+ * The address of one of the app's pages, resolved against the app's own — not
+ * glued to it. The phone and tablet pass walks «/» when the app has no other
+ * route, and «http://127.0.0.1:4312/» + «/» asked the server for «//». The
+ * 500-prompt exam, 2026-11-04 (P456): a correct chatbot server read it with
+ * `new URL(req.url, base)`, which throws on «//»; the server fell over and the
+ * delivery was refused four times for a request no browser ever sends.
+ */
+export function routeUrl(base: string, route: string): string {
+    const r = String(route || '');
+    try {
+        return new URL(r.startsWith('#') ? r : r.replace(/^\/+/, ''), base).href;
+    } catch {
+        return base;
+    }
+}
+
 export async function auditBuiltApp(
     distDir: string,
     opts?: {
@@ -1337,7 +1354,7 @@ export async function auditBuiltApp(
         for (const r of routes) {
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; break; }
             if (!eyeIsOpen()) return eyeRequiredResult();
-            const target = r.startsWith('#') ? url + r : url + r;
+            const target = routeUrl(url, r);
             try {
                 await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
                 await page.waitForTimeout(500);
@@ -1457,7 +1474,7 @@ export async function auditBuiltApp(
                 if (completedResponsiveEvidence.has(evidenceKey)) continue;
                 if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
                 try {
-                    const target = r.startsWith('#') ? url + r : url + r;
+                    const target = routeUrl(url, r);
                     await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
                     await applyViewportSize(page, size.w, size.h);
                     await page.waitForTimeout(260);
