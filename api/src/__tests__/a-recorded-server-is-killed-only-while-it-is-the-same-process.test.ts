@@ -94,12 +94,13 @@ describe('a pid is not an identity', () => {
         expect(src).toMatch(/RUNNING\.delete\(key\);\s*forgetRecordedLive\(current\.sessionKey, pid\);/);
         // Only trackRunning records a server it starts, and adoptRecordedPreviews
         // one a previous start left running (2026-11-04) — only when the record
-        // carries an identity, and only while the pid still has it: every one
-        // carries its identity.
+        // carries an identity, and only while the pid still has it (or, its
+        // launcher gone, while its port's recorded listener still has its own):
+        // every one carries its identity.
         expect((src.match(/RUNNING\.set\(/g) || []).length).toBe(2);
         expect(src.slice(src.indexOf('async function trackRunning'))).toMatch(/^async function trackRunning[\s\S]{0,400}RUNNING\.set\(key, \{[\s\S]{0,300}identity: await pidIdentity\.read/);
         const adopt = src.slice(src.indexOf('export async function adoptRecordedPreviews'), src.indexOf('export function forgetRecordedLive'));
-        expect(adopt).toMatch(/!live\.identity\) continue;[\s\S]{0,200}if \(await read\(pid\) !== live\.identity\) \{[\s\S]{0,600}RUNNING\.set\(sessionKey, \{[\s\S]{0,300}identity: String\(live\.identity\)/);
+        expect(adopt).toMatch(/!live\.identity\) continue;[\s\S]{0,600}let owner = \{ pid, identity: String\(live\.identity\) \};\s*if \(await read\(pid\) !== live\.identity\) \{\s*if \(!listener \|\| await read\(listener\.pid\) !== listener\.identity\) \{[\s\S]{0,700}RUNNING\.set\(sessionKey, \{\s*pid: owner\.pid,[\s\S]{0,300}identity: owner\.identity/);
         expect((src.match(/await trackRunning\(key, context, \{/g) || []).length).toBe(4);
         expect(src).toMatch(/const killed = await killRecorded\(Number\(live\.pid\), live\.identity, logs\);/);
     });
