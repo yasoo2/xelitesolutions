@@ -49,8 +49,55 @@ export interface DeliveryMeasurement {
      * delivered — and never reported as «could not be read»: it was read.
      */
     unverified?: string[];
+    /**
+     * acceptance: his words of each requirement the judge found met, on a line
+     * it copied out of the source. A requested item the records reader could
+     * not read, held in these words, was measured — by the judge.
+     */
+    met?: string[];
     /** live: the URL project_run confirmed. */
     url?: string;
+}
+
+/**
+ * His words compared as words: case, Arabic letter forms, marks and
+ * punctuation aside, and the waw that joins an Arabic list item to the one
+ * before it («علامات وشهادات» lists «شهادات»).
+ */
+function asWords(text: string): string {
+    const words = String(text || '').toLowerCase()
+        .replace(/[ً-ٰٟـ]/gu, '')
+        .replace(/[أإآ]/gu, 'ا').replace(/ة/gu, 'ه').replace(/ى/gu, 'ي')
+        .split(/[^\p{L}\p{N}]+/u).filter(Boolean)
+        .map(word => /^و[؀-ۿ]{3,}$/u.test(word) ? word.slice(1) : word);
+    return ` ${words.join(' ')} `;
+}
+
+/**
+ * ⛔ AN ITEM NO RECORD READER CAN READ IS A REQUIREMENT, AND THE JUDGE MEASURES IT.
+ *
+ * The hard exam, 2026-11-04: «جدول حصص بلا تعارض», «حضور يومي», «شهادات قابلة
+ * للطباعة» (H02) are a rule, a daily record and a printout — no table key the
+ * records reader can give them — and «could not be read» refused the school
+ * eight times over items the builder had no way to make readable. Each one is
+ * in his words of a requirement the acceptance judge rules on, by a line it
+ * must copy out of the source. The items held in a requirement judged met are
+ * read; the rest are still «could not be read», and a requirement judged unmet
+ * or unprovable refuses the delivery on its own.
+ */
+export function readAsRequirements(unread: string[], met: string[]): string[] {
+    const held = (met || []).map(asWords);
+    return (unread || []).filter(item => {
+        const words = asWords(item);
+        return words.trim().length > 0 && held.some(quote => quote.includes(words));
+    });
+}
+
+/** The coverage items that could not be read and no requirement judged met holds. */
+export function stillUnread(measurements: DeliveryMeasurement[]): string[] {
+    const unread = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unread || []) : [])));
+    const read = new Set(readAsRequirements(unread, measurements.flatMap(m => m.instrument === 'acceptance' ? (m.met || []) : [])));
+    return unread.filter(item => !read.has(item));
 }
 
 /** Same instrument + same target → the newer measurement replaces the older one. */
@@ -123,7 +170,7 @@ export function deliveryVerdict(input: DeliveryVerdictInput): DeliveryVerdict {
     const passed = (instrument: DeliveryInstrument) => has(instrument) && measurements.filter(m => m.instrument === instrument).every(m => m.ok === true);
     const required = Array.from(new Set<DeliveryInstrument>([input.primary === 'program' ? 'program' : 'live', ...(input.required || [])]));
     const unmeasured = required.filter(instrument => !has(instrument));
-    const unread = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unread || []) : [])));
+    const unread = stillUnread(measurements);
     const unverified = Array.from(new Set(measurements.flatMap(m => m.instrument === 'coverage' ? (m.unverified || []) : [])));
     const coverageFailed = failures.some(m => m.instrument === 'coverage');
     const base = input.phaseVerified === true && input.requestFidelityBlocked !== true;

@@ -28,7 +28,7 @@ import path from 'path';
 import type { CheckResult, EngineResult, ProcessInfo, Requirement, ToolContext, VerificationReport } from './types';
 import { reportText, type FinishArgs, type Verifier } from './finish';
 import {
-    DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, verifiedLiveUrl,
+    DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, readAsRequirements, stillUnread, verifiedLiveUrl,
     type DeliveryInstrument, type DeliveryMeasurement, type DeliveryVerdict,
 } from '../quality/delivery-verdict';
 import { deliveryRun, type DeliveryRunState } from '../quality/delivery-run';
@@ -482,7 +482,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         }, interfaceDelivered);
         Object.assign(acceptance, judged.summary);
         bySight = judged.bySight;
-        ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined });
+        ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined, met: judged.met });
         const onThePage = bySight.length ? `; ${bySight.length} about how the page looks (${bySight.map(r => planIdOf(ctx, r.id)).join(', ')}) are judged on the page itself, by the Browser QA` : '';
         passed.set('acceptance', judged.requirementsCount
             ? `every one of the ${judged.requirementsCount} requirement(s) read from the request is met in the source${onThePage}`
@@ -773,7 +773,7 @@ async function judgeRequirements(
     note: (line: string) => void,
     evidence: { built: boolean; liveUrl: string },
     pageDelivered = false,
-): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
+): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; met: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
     //  same reader seeded them), or — when the seeding read nothing — a
     //  reading now, which also enters the plan.
@@ -820,8 +820,12 @@ async function judgeRequirements(
         const inPlan = plan.find(r => (r.key || r.id) === c.id);
         return { id: inPlan?.id || c.id, key: c.id, text: c.en, verdict: c.verdict, why: c.why, judgedBy: 'source' as const };
     });
+    //  His words of every requirement found met: an item the records reader could not read is read by them.
+    const met = accepted.criteria.filter(c => c.verdict === 'met')
+        .map(c => named.find(r => r.id === c.id))
+        .flatMap(r => r ? [r.quote, r.text].filter(Boolean) : []);
     note(`acceptance: ${accepted.met}/${accepted.criteria.length} met, ${accepted.unmet} unmet, ${accepted.unprovable} unprovable${requestUnread ? ` — the request was not read (${whyNotRead})` : ''}`);
-    return { blocked, error, requirementsCount: named.length, leftOut: source.leftOut, bySight, summary: { requirements, requestUnread, whyNotRead } };
+    return { blocked, error, requirementsCount: named.length, leftOut: source.leftOut, bySight, met, summary: { requirements, requestUnread, whyNotRead } };
 }
 
 /* ───────────────────────── the report ───────────────────────── */
@@ -874,8 +878,13 @@ function reportChecks(
             let detail = failed.length
                 ? failed.map(m => `${m.target ? `${path.basename(m.target)}: ` : ''}${m.error || 'failed'}`).join(' | ')
                 : (passed.get(instrument) || 'passed');
-            const unread = measured.flatMap(m => m.unread || []);
+            const unread = instrument === 'coverage' ? stillUnread(all) : [];
             const unverified = measured.flatMap(m => m.unverified || []);
+            if (instrument === 'coverage') {
+                const asked = measured.flatMap(m => m.unread || []);
+                const read = readAsRequirements(asked, all.flatMap(m => m.instrument === 'acceptance' ? (m.met || []) : []));
+                if (read.length) detail += ` | read as requirements the judge found met: ${read.join(', ')}`;
+            }
             if (unread.length) detail += ` | requested items that could not be read: ${unread.join(', ')}`;
             if (unverified.length) detail += ` | not measured, so not verified: ${unverified.join('; ')}`;
             if (instrument === 'acceptance' && requirements.length) {
