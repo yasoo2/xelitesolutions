@@ -10,7 +10,7 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isBoundedTerminalDiagnosticRequest } from './buildIntent';
+import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from './buildIntent';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers, hasGlobalExplicitReadDenial } from './file-intent';
@@ -36,6 +36,22 @@ export interface ExecutionStep {
     parallel?: boolean;
     /** Adaptive planner: why this step was chosen and positioned here */
     reasoning?: string;
+}
+
+/**
+ * A no-file-changes request that also says it may only read («read-only
+ * checks», «only read project files», «للقراءة فقط») asks Joe to inspect, so it
+ * belongs at the read-only boundary, not in an answer-only reply. A bare
+ * prohibition («Explain hooks. Do not create any files.») stays a question.
+ */
+const READ_ONLY_PERMISSION = /\bread[-\s]?only\b|\breadonly\b|\bonly\s+(?:read|inspect|analy[sz]e|review|verify)\b|(?:^|[\s،:؛])(?:قراءة|للقراءة)\s+فقط(?=$|[\s،:؛.!؟])/iu;
+function isReadOnlyInspectionRequest(goal: string): boolean {
+    // Both readers: the planner's boundary below asks isReadOnlyStructural, the
+    // pipeline's stop before planning asks isReadOnlyRequest.
+    return READ_ONLY_PERMISSION.test(String(goal || ''))
+        && !hasRequestedAction(goal).isAnswerOnly
+        && isReadOnlyStructural(goal) && isReadOnlyRequest(goal)
+        && !isBoundedTerminalDiagnosticRequest(goal);
 }
 
 /** Does this string actually look like a web address? Free classifier models
@@ -918,6 +934,12 @@ Rules:
         if (requestedAction.isNoFileChanges && !boundedExplicitRead) {
             if (boundedReadNavigationUnderFileConstraint(userGoal)) {
                 console.log('[PlanningEngine] ⚡ No file changes constraint with browser target — preserving constraint, allowing browser navigation.');
+            } else if (isReadOnlyInspectionRequest(userGoal)) {
+                // An audit that says it may only read is an inspection, not a
+                // question: it continues to the read-only safety boundary below,
+                // as it did before this guard arrived (b906f3bc8). The pipeline
+                // stops it before planning through the same isReadOnlyRequest.
+                console.log('[PlanningEngine] ⚡ No file changes constraint on a read-only inspection — routing to the read-only boundary.');
             } else {
                 console.log('[PlanningEngine] ⚡ No file changes contract detected — returning answer-only plan.');
                 return {
