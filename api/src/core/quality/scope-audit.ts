@@ -101,8 +101,12 @@ export function hasContactCtaEvidence(source: string): boolean {
 // “Checkout” is also a legitimate name for non-payment workflows such as
 // lending equipment. Treat it as payments only when payment context is nearby.
 const PAYMENT_CHECKOUT = /\bcheckout\b(?=[^,.]{0,40}\b(?:payment|card|billing|purchase|order|cart)\b)/i;
+// A payment's status, date, due date or history is a field of the record it
+// belongs to («invoices with payment status», H01, 2026-11-04), not a request
+// to take payments.
+const PAYMENT_FIELD = '(?!\\s+(?:status|state|date|dates|due|history|reminders?|records?|terms)\\b)';
 const PAYMENT_REQUEST = new RegExp(
-    `\\bpayments?\\b|\\bstripe\\b|\\bpaypal\\b|المدفوعات|بوابة دفع|${PAYMENT_CHECKOUT.source}`,
+    `\\bpayments?\\b${PAYMENT_FIELD}|\\bstripe\\b|\\bpaypal\\b|المدفوعات|بوابة دفع|${PAYMENT_CHECKOUT.source}`,
     'i',
 );
 
@@ -373,6 +377,8 @@ export const CAPABILITIES: Capability[] = [
         id: 'payments', ar: 'المدفوعات', en: 'payments',
         ask: PAYMENT_REQUEST,
         evidence: /stripe|paypal|payment_?intent|\/api\/payments?|checkout_?session/i,
+        // «spots, entries, payments» of a parking garage (P088, P138, P188): a record he manages.
+        records: ['payments', 'payment'],
     },
     {
         id: 'form_validation', ar: 'التحقق من النموذج', en: 'form validation',

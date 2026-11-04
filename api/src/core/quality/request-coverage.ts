@@ -284,6 +284,13 @@ const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go)$/iu;
 const MARKUP_EXT = /\.(?:html?|vue|svelte)$/iu;
 const TEST_FILE = /(?:^|[\\/])(?:__tests__|tests?|spec)[\\/]|\.(?:test|spec)\.[cm]?[jt]sx?$|(?:^|[\\/])test_[^\\/]+\.py$|_test\.(?:py|go)$|(?:^|[\\/])tests?\.(?:py|[cm]?[jt]s)$/iu;
 const CLIENT_FILE = /from\s+['"](?:react|react-dom|vue|svelte)(?:\/[^'"]*)?['"]|require\(\s*['"](?:react|vue|svelte)['"]\s*\)|\bdocument\.|\bwindow\./u;
+/**
+ * A file that loads a server framework or creates an HTTP server is a server,
+ * whatever pages it sends: H02 (2026-11-04) rendered a certificate with a
+ * «طباعة» button, `onclick="window.print()"`, and its Express routes were
+ * skipped as browser code.
+ */
+const SERVER_FILE = /require\(\s*['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]\s*\)|from\s+['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]|\b(?:http|https)\.createServer\s*\(/u;
 /** Receivers that are HTTP clients, not routers: their .get('/x', …) calls a route, it does not serve one. */
 const CLIENT_RECEIVERS = new Set(['axios', 'ky', 'got', 'fetch', 'superagent', 'supertest', 'agent', 'request', 'http', 'https', 'client', '$http', 'httpclient', 'apiclient', 'instance', 'api', 'service', 'services']);
 const BUNDLER_DEP = /^(?:vite|webpack|parcel|react-scripts|next|nuxt|@angular\/cli|@sveltejs\/kit|astro|esbuild|rollup|gatsby|@vue\/cli-service)$/iu;
@@ -425,7 +432,7 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
     const unique = Array.from(new Set(files));
     const texts = await readSources(unique);
     const stripped = unique.map((file, index) => texts[index] === null ? null : stripComments(String(texts[index]), file));
-    const isServerText = (file: string, text: string) => !isTestFile(file) && !MARKUP_EXT.test(file) && !CLIENT_FILE.test(text);
+    const isServerText = (file: string, text: string) => !isTestFile(file) && !MARKUP_EXT.test(file) && (!CLIENT_FILE.test(text) || SERVER_FILE.test(text));
     // A table one server file declares, read by a loop in another: by its name,
     // when exactly one file declares it.
     const declaredIn = new Map<string, RouteTable | null>();
