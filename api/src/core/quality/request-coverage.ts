@@ -291,6 +291,14 @@ const CLIENT_FILE = /from\s+['"](?:react|react-dom|vue|svelte)(?:\/[^'"]*)?['"]|
  * skipped as browser code.
  */
 const SERVER_FILE = /require\(\s*['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]\s*\)|from\s+['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]|\b(?:http|https)\.createServer\s*\(/u;
+/**
+ * The handler of a route: after any middleware, a function whose first
+ * parameter is the request (`(req, res) =>`, `async (request, reply) =>`,
+ * `function (req, res)`). A client call's callback never takes one.
+ */
+const REQUEST_HANDLER = /^\s*(?:[A-Za-z_$][\w$.]*(?:\([^()]*\))?\s*,\s*){0,4}(?:async\s+)?(?:function\s*[\w$]*\s*)?\(\s*(?:req|request|_req)\b/u;
+/** A file that mocks an API in the browser: its handlers look like routes and serve nothing. */
+const BROWSER_MOCK = /from\s+['"](?:msw|miragejs)(?:\/[^'"]*)?['"]|require\(\s*['"](?:msw|miragejs)['"]\s*\)/u;
 /** Receivers that are HTTP clients, not routers: their .get('/x', …) calls a route, it does not serve one. */
 const CLIENT_RECEIVERS = new Set(['axios', 'ky', 'got', 'fetch', 'superagent', 'supertest', 'agent', 'request', 'http', 'https', 'client', '$http', 'httpclient', 'apiclient', 'instance', 'api', 'service', 'services']);
 const BUNDLER_DEP = /^(?:vite|webpack|parcel|react-scripts|next|nuxt|@angular\/cli|@sveltejs\/kit|astro|esbuild|rollup|gatsby|@vue\/cli-service)$/iu;
@@ -529,14 +537,17 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         routes.push({ path: route.path, method: route.method, file, dynamic: false, known: kind === 'app' });
         if (route.method === 'use') prefixes.add(route.path.endsWith('/') ? route.path : `${route.path}/`);
     }
+    const browserMock = BROWSER_MOCK.test(text);
     for (const m of text.matchAll(JS_ROUTE)) {
         if (readInLoops.has(m.index || 0)) continue;
-        const kind = receiverKind(String(m[1] || ''));
+        const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 240);
+        // A handler that takes the request registers a route, whatever its
+        // receiver is called: H01's route modules received the router as `api`.
+        const kind = receiverKind(String(m[1] || '')) || (!browserMock && m[5] === ',' && REQUEST_HANDLER.test(rest) ? 'router' : null);
         if (!kind) continue;
         const method = String(m[2] || '').toLowerCase();
         const routePath = String(m[4] || '');
         const closer = m[5];
-        const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 120);
         if (closer === ')') {
             // app.route('/x').get(...) — the chained handlers follow.
             if (method !== 'route' || !/^\s*\.\s*(?:get|post|put|patch|delete|all)\s*\(/iu.test(rest)) continue;
@@ -1116,10 +1127,19 @@ export function probePathsFor(evidence: CoverageEvidence, ids: string[], taken: 
     const mounts = evidence.routes.filter(r => r.method === 'use' && r.known && !r.dynamic).map(r => r.path);
     for (const match of staticRouteMatches(evidence.routes, ids, taken)) {
         if (!match.exact || !(match.readable || match.mount)) continue;
-        if (match.route.known && match.readable) out.push({ path: match.exact, refutable: true });
-        else {
-            out.push({ path: match.exact, refutable: false });
-            for (const mount of mounts) if (!match.exact.startsWith(joinPath(mount))) out.push({ path: joinPath(mount, match.exact), refutable: false });
+        // A route that goes on past the record's word with fixed segments is
+        // served at its whole path: «تقارير» at /api/reports/summary (H02).
+        const segments = match.route.path.split('/').filter(Boolean);
+        const whole = match.readable && !segments.some(isParamSegment) ? joinPath(...segments) : '';
+        const paths = whole && whole !== match.exact ? [match.exact, whole] : [match.exact];
+        if (match.route.known && match.readable) {
+            out.push({ path: match.exact, refutable: true });
+            if (paths[1]) out.push({ path: paths[1], refutable: false });
+        } else {
+            for (const p of paths) {
+                out.push({ path: p, refutable: false });
+                for (const mount of mounts) if (!p.startsWith(joinPath(mount))) out.push({ path: joinPath(mount, p), refutable: false });
+            }
         }
     }
     const seen = new Set<string>();
