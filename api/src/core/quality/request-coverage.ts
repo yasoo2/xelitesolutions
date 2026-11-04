@@ -52,6 +52,7 @@ import { pythonExecutable } from './python-executable';
 import { isRealScript } from './placeholder-script';
 import { pythonTestCommand } from './python-test-runner';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
+import { loopRoutes, routeTablesIn, type RouteTable } from './loop-routes';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -180,10 +181,17 @@ export function requestedRecords(request: string, opts: { backendRequested?: boo
      */
     const reading = listedRecords(shaped.text, { backend, actionLed: shaped.actionLed });
     const named = declared.length ? declared : reading.entities;
+    // His own Latin word for a listed record is its item, as for a served table
+    // below: «clients» is the record the dictionary keys `customers`, and a
+    // server that serves /api/clients serves it (P157).
+    const hisItem = (key: string) => {
+        const entry = (reading.entries || []).find(e => e.as === 'record' && e.key === key);
+        return entry && /[a-z]/iu.test(entry.item) && !/[؀-ۿ]/u.test(entry.item) ? entry.item : '';
+    };
     const entities: RequestedRecord[] = named
         .filter(entity => String(entity?.key || '').trim())
         .filter(entity => isRecordLike(String(entity.ar || entity.en || entity.key)) && isRecordLike(String(entity.key)))
-        .map(entity => ({ item: String(entity.ar || entity.en || entity.key), key: String(entity.key), ar: String(entity.ar || ''), en: String(entity.en || '') }));
+        .map(entity => ({ item: hisItem(String(entity.key)) || String(entity.ar || entity.en || entity.key), key: String(entity.key), ar: String(entity.ar || ''), en: String(entity.en || '') }));
     // A listed table the system already serves («الطلبات» → orders) is still
     // one of his records: it must be served too — and its item is HIS words
     // («management of menu items»), never the dictionary's label (P153).
@@ -417,16 +425,30 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
     const labelKeys: Record<string, Set<string>> = {};
     const unique = Array.from(new Set(files));
     const texts = await readSources(unique);
+    const stripped = unique.map((file, index) => texts[index] === null ? null : stripComments(String(texts[index]), file));
+    const isServerText = (file: string, text: string) => !isTestFile(file) && !MARKUP_EXT.test(file) && !CLIENT_FILE.test(text);
+    // A table one server file declares, read by a loop in another: by its name,
+    // when exactly one file declares it.
+    const declaredIn = new Map<string, RouteTable | null>();
+    const tablesOf = new Map<string, Map<string, RouteTable>>();
     for (const [index, file] of unique.entries()) {
-        const raw = texts[index];
-        if (raw === null) continue;
-        const text = stripComments(raw, file);
+        const text = stripped[index];
+        if (text === null || !isServerText(file, text)) continue;
+        const tables = routeTablesIn(text);
+        tablesOf.set(file, tables);
+        for (const [name, table] of tables) declaredIn.set(name, declaredIn.has(name) ? null : table);
+    }
+    for (const [index, file] of unique.entries()) {
+        const text = stripped[index];
+        if (text === null) continue;
         if (isTestFile(file)) { testFiles.push(file); tests.push(text); continue; }
         source.push(text);
         harvestLabelKeys(text, records, labelKeys);
-        if (MARKUP_EXT.test(file) || CLIENT_FILE.test(text)) continue;
+        if (!isServerText(file, text)) continue;
+        const own = tablesOf.get(file);
+        const lookup = (name: string) => own?.get(name) || declaredIn.get(name) || undefined;
         const before = routes.length;
-        harvestRoutes(text, file, routes, prefixes);
+        harvestRoutes(text, file, routes, prefixes, lookup);
         if (routes.length > before) routeCount.set(file, routes.length - before);
     }
     for (const route of routes) {
@@ -488,9 +510,21 @@ function jsReceivers(text: string): (name: string) => ReceiverKind {
     };
 }
 
-function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>): void {
+function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined): void {
     const receiverKind = jsReceivers(text);
+    // Routes registered in a loop over a table the source names (loop-routes.ts,
+    // P157): each pass is a route, and the template it was written with is not
+    // a second, unreadable one.
+    const readInLoops = new Set<number>();
+    for (const route of loopRoutes(text, lookup)) {
+        const kind = receiverKind(route.receiver);
+        if (!kind) continue;
+        readInLoops.add(route.at);
+        routes.push({ path: route.path, method: route.method, file, dynamic: false, known: kind === 'app' });
+        if (route.method === 'use') prefixes.add(route.path.endsWith('/') ? route.path : `${route.path}/`);
+    }
     for (const m of text.matchAll(JS_ROUTE)) {
+        if (readInLoops.has(m.index || 0)) continue;
         const kind = receiverKind(String(m[1] || ''));
         if (!kind) continue;
         const method = String(m[2] || '').toLowerCase();
@@ -1065,6 +1099,10 @@ export function judgeRequestCoverage(input: {
     const { records, evidence } = input;
     const servedApplies = input.backendRequested === true || evidence.routes.length > 0;
     const liveTests = liveTestText(evidence.testText);
+    // A read route whose path the source builds from what it does not say (a
+    // call, the database): it could serve any record, so its silence proves
+    // nothing — the live probe decides, or the record is «not measured» (P157).
+    const unreadRoute = evidence.routes.find(route => route.dynamic && ['get', 'all', 'route', 'use'].includes(route.method));
     const out: RecordCoverage[] = records.entities.map(record => {
         const labelKeys = evidence.labelKeys[record.key] || [];
         const ids = identifiersFor(record, labelKeys, records.entities);
@@ -1089,7 +1127,8 @@ export function judgeRequestCoverage(input: {
                 // write-only or nested route is what the GET probe cannot see.
                 served = readable.length ? false : unseen.length ? true : mounts.length ? null : false;
             } else {
-                served = (readable.length || unseen.length) ? true : mounts.length ? null : evidence.routes.length ? false : null;
+                served = (readable.length || unseen.length) ? true : (mounts.length || unreadRoute) ? null : evidence.routes.length ? false : null;
+                if (served === null && !mounts.length && unreadRoute) why.push(`route ${unreadRoute.method.toUpperCase()} ${unreadRoute.path} (${path.basename(unreadRoute.file)}) — its path is built at run time`);
             }
             if (served === false && onlyTransliterated && !readable.length) served = null;
             if (served === null) why.push(onlyTransliterated ? 'its only Latin name is a transliteration — not measured' : 'the source and the probe could not tell — not measured');
