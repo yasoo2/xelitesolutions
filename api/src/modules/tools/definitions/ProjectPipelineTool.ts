@@ -3344,7 +3344,10 @@ export class ProjectPipelineTool implements ToolDefinition {
                     instrument: 'program',
                     ok: passed,
                     target: programRoot,
-                    error: passed ? undefined : `the program's own tests did not pass: ${String(run?.error || (executed.length ? 'tests failed' : 'no test script to run')).slice(0, 400)}`,
+                    //  A machine that had no memory to run them is not a program whose tests failed (P306).
+                    error: passed ? undefined : /^RESOURCE_/.test(String(run?.error || ''))
+                        ? `the program's own tests could not run — the machine, not the program: ${String(run?.error).slice(0, 400)}`
+                        : `the program's own tests did not pass: ${String(run?.error || (executed.length ? 'tests failed' : 'no test script to run')).slice(0, 400)}`,
                 });
             } catch (programError: any) {
                 ledger.record({ instrument: 'program', ok: false, target: programRoot, error: `the program's own tests could not run: ${String(programError?.message || programError).slice(0, 300)}` });
