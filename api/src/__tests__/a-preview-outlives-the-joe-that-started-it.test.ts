@@ -11,10 +11,12 @@
  * stopped — a real process here, stopped for real.
  */
 import fs from 'fs';
+import http from 'http';
 import path from 'path';
+import type { AddressInfo } from 'net';
 import { ExecutionGateway } from '../kernel/ExecutionGateway';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
-import { _runningServers, adoptRecordedPreviews, pidIdentity } from '../modules/tools/definitions/ProjectRunTool';
+import { _runningServers, adoptRecordedPreviews, pidIdentity, portListener } from '../modules/tools/definitions/ProjectRunTool';
 
 jest.setTimeout(120_000);
 
@@ -77,6 +79,61 @@ describe('the previews of the previous start', () => {
         } finally {
             if (alive(pid)) process.kill(pid);
         }
+    });
+
+    it('a port\'s listener is the process that holds it', async () => {
+        const server = http.createServer((_req, res) => res.end('ok'));
+        await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+        try {
+            const port = (server.address() as AddressInfo).port;
+            expect(await executionFirewall.runInContext('adopt-previews-test', () => portListener.read(port))).toBe(process.pid);
+        } finally {
+            await new Promise<void>(r => server.close(() => r()));
+        }
+    });
+
+    it('a launcher that died with Joe: the server it started is adopted through its port\'s listener, and stopped for real', async () => {
+        //  On Windows the recorded pid is often a cmd that died with Joe; the server it launched kept the port.
+        const server = await executionFirewall.runInContext('adopt-previews-test', async () =>
+            ExecutionGateway.startManaged(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { windowsHide: true }));
+        const pid = Number(server.pid);
+        try {
+            const identity = await executionFirewall.runInContext('adopt-previews-test', () => pidIdentity.read(pid));
+            const projects: Record<string, any> = {
+                orphan: { dir: '/projects/orphan', live: { url: 'http://127.0.0.1:4320/', port: 4320, pid: 70007, cwd: '/projects/orphan', at: 1, identity: 'win32:launcher-gone', listener: { pid, identity } } },
+                newer: record(70008, 'win32:888', 2, 4321),
+            };
+            (global as any).joeProjects = projects;
+            const read = async (p: number) => (p === pid ? pidIdentity.read(p) : p === 70008 ? 'win32:888' : '');
+            const r = await executionFirewall.runInContext('adopt-previews-test', () => adoptRecordedPreviews(projects, { read, cap: 8 }));
+            expect(r).toMatchObject({ adopted: ['orphan', 'newer'], forgotten: [] });
+            expect(_runningServers.get('orphan')).toMatchObject({ pid, identity, port: 4320 });
+            //  The record follows the server it now names.
+            expect((global as any).joeProjects.orphan.live).toMatchObject({ pid, identity, port: 4320 });
+            //  Past the bound it is stopped like any other — the real process.
+            const again = await executionFirewall.runInContext('adopt-previews-test', () => adoptRecordedPreviews((global as any).joeProjects, { read, cap: 1 }));
+            expect(again.retired).toEqual(['orphan']);
+            for (let i = 0; i < 40 && alive(pid); i++) await new Promise(res => setTimeout(res, 250));
+            expect(alive(pid)).toBe(false);
+        } finally {
+            if (alive(pid)) process.kill(pid);
+        }
+    });
+
+    it('a listener that is no longer the process recorded is never adopted', async () => {
+        const projects: Record<string, any> = {
+            gone: { dir: '/p', live: { url: 'http://127.0.0.1:4322/', port: 4322, pid: 70009, cwd: '/p', at: 1, identity: 'win32:a', listener: { pid: 70010, identity: 'win32:b' } } },
+        };
+        (global as any).joeProjects = projects;
+        const r = await adoptRecordedPreviews(projects, { read: async p => (p === 70010 ? 'win32:someone-else' : ''), cap: 8 });
+        expect(r).toEqual({ adopted: [], forgotten: ['gone'], retired: [] });
+        expect(_runningServers.size).toBe(0);
+    });
+
+    it('a launched server records its port\'s listener, and the session record keeps it', () => {
+        const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf-8');
+        expect(src).toMatch(/identity: await pidIdentity\.read\(Number\(server\.pid\)\),\s*\.\.\.\(await listenerOf\(Number\(server\.port\), Number\(server\.pid\)\)\),/);
+        expect(src).toMatch(/if \(tracked\?\.listener && tracked\.pid === live\.pid\) record\.live\.listener = tracked\.listener;/);
     });
 
     it('Joe adopts them as it starts, right after loading the session records', () => {

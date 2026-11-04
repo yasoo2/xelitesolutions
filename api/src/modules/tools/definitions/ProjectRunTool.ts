@@ -42,6 +42,8 @@ export interface RunningServer {
     sessionId?: string;
     /** The pid's start time when it was launched: a reused pid never matches it. */
     identity?: string;
+    /** The process listening on the port, when it is not the launched pid: what outlives a launcher. */
+    listener?: { pid: number; identity: string };
 }
 const RUNNING: Map<string, RunningServer> = new Map();
 
@@ -365,6 +367,8 @@ function rememberLiveProject(context: any, cwd: string, live: { url: string; por
     if (!live.identity && tracked?.identity && tracked.pid === live.pid) live = { ...live, identity: tracked.identity };
     const record = liveProjectRecord(previous, projectCwd, live);
     record.live.cwd = cwd;
+    // …and the server that listens on its port, which a restart can still find.
+    if (tracked?.listener && tracked.pid === live.pid) record.live.listener = tracked.listener;
     writeJoeProject(sessionKey, record, context?.runId ?? null);
     persistJoeProjects();
 }
@@ -2220,7 +2224,56 @@ async function killRecorded(pid: number, identity: string | undefined, logs: str
     return true;
 }
 
-/** Track a server this run started, with its session and its pid's identity. */
+/**
+ * The process listening on a loopback port: the server itself, whatever
+ * launched it. 2026-11-04: Joe records the pid it launched — on Windows a
+ * cmd that dies with Joe — while the server it started (npx → cmd → serve)
+ * keeps the port; after a restart only the listener can be found again.
+ * A listening socket is the one with no remote end: on his machine Windows
+ * reports such a socket with an empty State, so `-State Listen` found
+ * nothing. A miss is asked again, briefly.
+ */
+export const portListener = {
+    async read(port: number, attempts = 3): Promise<number> {
+        for (let i = 0; i < attempts; i++) {
+            if (i) await new Promise(resolve => setTimeout(resolve, 700));
+            const pid = await this.once(port);
+            if (pid) return pid;
+        }
+        return 0;
+    },
+    async once(port: number): Promise<number> {
+        if (!Number.isInteger(port) || port <= 0) return 0;
+        const probe = process.platform === 'win32'
+            ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-NetTCPConnection -LocalPort ${port} -ErrorAction Stop | Where-Object { $_.RemotePort -eq 0 } | Select-Object -First 1).OwningProcess`] }
+            : process.platform === 'linux'
+                ? { command: 'ss', args: ['-ltnpH', `sport = :${port}`] }
+                : { command: 'lsof', args: ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'] };
+        try {
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-port-listener-${port}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 10000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const out = String(result?.data?.output || result?.data?.stdout || '');
+            const pid = Number((process.platform === 'linux' ? out.match(/pid=(\d+)/u)?.[1] : out.trim().split(/\s+/u)[0]) || 0);
+            return result?.success && Number.isInteger(pid) && pid > 0 ? pid : 0;
+        } catch {
+            return 0;
+        }
+    },
+};
+
+/** The listener of a server's port when it is not the launched pid itself, with its identity. */
+async function listenerOf(port: number, launched: number): Promise<{ listener?: { pid: number; identity: string } }> {
+    const pid = await portListener.read(port);
+    if (!pid || pid === launched) return {};
+    const identity = await pidIdentity.read(pid);
+    return identity ? { listener: { pid, identity } } : {};
+}
+
+/** Track a server this run started, with its session, its pid's identity, and its port's listener. */
 async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string }): Promise<void> {
     const sessionId = String(context?.sessionId || '').trim();
     RUNNING.set(key, {
@@ -2228,6 +2281,7 @@ async function trackRunning(key: string, context: any, server: { pid: number; po
         startedAt: Date.now(),
         ...(sessionId ? { sessionKey: sessionId.replace(/[^a-zA-Z0-9._-]/g, '_'), sessionId } : {}),
         identity: await pidIdentity.read(Number(server.pid)),
+        ...(await listenerOf(Number(server.port), Number(server.pid))),
     });
     const logs: string[] = [];
     for (const old of previewsToRetire(Array.from(RUNNING), key, livePreviewCap(), isRunning)) await stopServer(old, logs);
@@ -2292,6 +2346,13 @@ export function previewsToRetire(
  * record whose process is gone, or whose pid now belongs to another process,
  * is forgotten. A record without an identity cannot be told from a reused
  * pid: it is left as it was, and never killed from here.
+ *
+ * On Windows the launched pid is often a cmd that dies with Joe while the
+ * server it started keeps the port (two such were left after the first
+ * adoption measured «18 forgotten, 0 adopted»). The record also names the
+ * port's listener with its own start time; when the launcher is gone and the
+ * listener is still that process, the listener is what is adopted, and the
+ * record is moved onto it.
  */
 export async function adoptRecordedPreviews(
     projects: Record<string, any> = (global as any).joeProjects || {},
@@ -2304,21 +2365,29 @@ export async function adoptRecordedPreviews(
         const live = entry?.live;
         const pid = Number(live?.pid);
         if (!live || !Number.isInteger(pid) || pid <= 0 || !live.identity) continue;
-        if (Array.from(RUNNING.values()).some(server => server.pid === pid)) continue;
+        const listener = live.listener && Number(live.listener.pid) > 0 && live.listener.identity ? { pid: Number(live.listener.pid), identity: String(live.listener.identity) } : null;
+        if (Array.from(RUNNING.values()).some(server => server.pid === pid || (listener && server.pid === listener.pid))) continue;
+        let owner = { pid, identity: String(live.identity) };
         if (await read(pid) !== live.identity) {
-            forgetRecordedLive(sessionKey, pid);
-            forgotten.push(sessionKey);
-            continue;
+            if (!listener || await read(listener.pid) !== listener.identity) {
+                forgetRecordedLive(sessionKey, pid);
+                forgotten.push(sessionKey);
+                continue;
+            }
+            //  The launcher is gone; the server it started is not.
+            owner = listener;
+            writeJoeProject(sessionKey, { ...entry, live: { ...live, pid: listener.pid, identity: listener.identity } }, entry.pipelineRunId ?? null);
+            try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
         }
         RUNNING.set(sessionKey, {
-            pid,
+            pid: owner.pid,
             port: Number(live.port) || 0,
             cwd: String(live.cwd || live.projectCwd || entry.dir || ''),
             command: 'adopted at start',
             startedAt: Number(live.at) || 0,
             sessionKey,
             sessionId: sessionKey,
-            identity: String(live.identity),
+            identity: owner.identity,
         });
         adopted.push(sessionKey);
     }
