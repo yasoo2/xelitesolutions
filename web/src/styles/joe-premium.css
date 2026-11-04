@@ -838,8 +838,20 @@ body:not(.rtl) .joe-user-info {
     text-transform: none;
 }
 
-/* What the open session's runs use, when it is not the next message's choice. */
+/* What the open session's runs use, when it is not the next message's choice.
+   It gives way in a narrow composer (an ellipsis, the whole sentence in its
+   title); the provider button beside it never does. */
+.joe-chat-input-area .provider-btn {
+    flex-shrink: 0;
+}
+/* …and so may the row that holds them, or the label's full width would push
+   the row past the composer's edge (2026-11-04, side panel open: 354px in 277). */
+.joe-chat-input-area .composer-actions > :has(> .provider-session) {
+    min-width: 0;
+}
 .joe-chat-input-area .provider-session {
+    flex: 0 1 auto;
+    min-width: 0;
     align-self: center;
     font-size: 11px;
     line-height: 1;
