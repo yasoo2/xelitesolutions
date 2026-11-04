@@ -63,8 +63,15 @@ describe('every defined tool is reachable', () => {
         const orch = fs.readFileSync(path.join(__dirname, '..', 'orchestration', 'AgentOrchestrator.ts'), 'utf-8');
         const list = orch.match(/DETERMINISTIC_TOOLS = \[([\s\S]*?)\]/)?.[1] || '';
         expect(list).toContain("'git_local_workflow'");
-        const protection = orch.slice(orch.indexOf('const isProtected'), orch.indexOf('node.status = "running"'));
-        expect(protection).toContain('DETERMINISTIC_TOOLS.includes(node.tool)');
+        //  b906f3bc8 replaced the deterministic-only `isProtected` list with one
+        //  rule for every node: a planned tool is never re-routed after the
+        //  agent is re-selected; only a node with no tool falls back to browser_run.
+        const runNode = orch.indexOf('const runNode = async');
+        const protection = orch.slice(runNode, orch.indexOf('node.status = "running"', runNode));
+        expect(protection).toContain('this.selectOptimalAgent(node, memory)');
+        expect(protection).toContain("const hasPlannedTool = typeof node.tool === 'string' && !!node.tool.trim();");
+        expect(protection).toContain("if (!hasPlannedTool && node.agent === 'Browser') node.tool = 'browser_run';");
+        expect(protection.match(/node\.tool\s*=(?!=)/g)).toHaveLength(1);
     });
     it('the registry has no silent duplicates', () => {
         expect(names.size).toBe(tools.length);
