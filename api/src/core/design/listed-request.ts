@@ -63,8 +63,16 @@ export function withoutLeadingAction(item: string): string {
  * A rule clause that ends the records list: «, and each staff member only
  * sees their own records», «، وكل موظف يرى سجلاته فقط», «where …», «حيث …».
  * What follows is behaviour, never a record.
+ *
+ * «Each» and «every» open a rule only after a comma or an «and»: inside an
+ * item they quantify it — "an audit log of every change", "a backup every
+ * night", «تذكير قبل كل موعد». H01 (the hard exam, 2026-11-04) lost the rest
+ * of its list to «… of every change»: the search, the language switch and the
+ * tests were read as one rule.
  */
-export const RULE_OPENER = new FoldedRegExp('(?:,\\s*|\\s+)(?:and\\s+)?(?:each|every|where|whereas|while|so\\s+that|such\\s+that|but)\\s+|(?:،\\s*|\\s+)و?(?:كل|حيث|بحيث|لكن)\\s+', 'iu');
+export const RULE_OPENER = new FoldedRegExp(
+    '(?:,\\s*(?:and\\s+)?|\\s+and\\s+)(?:each|every)\\s+|(?:,\\s*|\\s+)(?:and\\s+)?(?:where|whereas|while|so\\s+that|such\\s+that|but)\\s+'
+    + '|(?:،\\s*و?|\\s+و)(?:كل)\\s+|(?:،\\s*|\\s+)و?(?:حيث|بحيث|لكن)\\s+', 'iu');
 
 /**
  * UI or feature words that head a section, not a record: «زر إعادة»,
