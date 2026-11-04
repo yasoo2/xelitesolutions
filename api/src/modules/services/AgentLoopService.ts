@@ -397,7 +397,13 @@ export class AgentLoopService {
                     // are scheduling facts; they never grant tool/workspace authority.
                     void appendRunEvidenceEvent(runId, { type: 'resource_status', runId, sessionId, ts: Date.now(), data: event });
                     console.info('[RequestResources]', JSON.stringify({ runId, ...event }));
-                    if (event.state === 'queued') {
+                    if (event.state === 'queued' && event.details?.waitingFor === 'memory') {
+                        const freeMiB = Math.floor(Number(event.details?.availableBytes || 0) / 1048576);
+                        const needMiB = Math.floor(Number(event.details?.minFreeBytes || 0) / 1048576);
+                        publishResourceDetail(language === 'ar'
+                            ? `أنتظر أن تتوفر ذاكرة على الجهاز: المتاح ${freeMiB} ميجابايت من ${needMiB} مطلوبة. برنامج آخر يستعملها، ولن أوقفه.`
+                            : `Waiting for memory on this machine: ${freeMiB} MiB free of the ${needMiB} MiB needed. Another program is using it; I will not stop it.`);
+                    } else if (event.state === 'queued') {
                         publishResourceDetail(language === 'ar'
                             ? 'أنتظر انتهاء المهمة الثقيلة الحالية قبل بدء هذه الخطوة. يمكنك إلغاء الطلب أثناء الانتظار.'
                             : 'Waiting for the current heavy task to finish. You can cancel while waiting.');
