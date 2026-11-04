@@ -81,11 +81,21 @@ const FEATURE_HEADS_EN = new Set(['button', 'buttons', 'screen', 'screens', 'pag
     'score', 'scoring', 'view', 'calendar', 'dashboard', 'map', 'summary', 'statistics', 'stats', 'frontend', 'front-end', 'backend', 'back-end',
     'server', 'login', 'logins', 'signin', 'sign-in', 'interface', 'ui', 'gui', 'api', 'cart']);
 
+/**
+ * English names the head last — or right before what qualifies it: "Node
+ * backend with SQLite" is a backend (H01, 2026-11-04: read as a record no
+ * table could hold, its delivery was refused four times over a stack the
+ * build had), as "appointments with no double-booking" is appointments.
+ */
+const EN_QUALIFIER = /^(?:with|using|on|in|via|over|for|of|by|from|backed|powered)$/u;
+
 export function isFeaturePhrase(item: string): boolean {
     const t = String(item || '').trim();
     if (FEATURE_HEAD_AR.test(t)) return true;
     const words = t.toLowerCase().replace(/^(?:a|an|the)\s+/u, '').replace(/\b(front|back|sign|log)\s+(end|in)\b/gu, '$1-$2').split(/\s+/).filter(Boolean);
-    return !!words.length && (FEATURE_HEADS_EN.has(words[0]) || FEATURE_HEADS_EN.has(words[words.length - 1]));
+    const qualified = words.findIndex((word, i) => i > 0 && EN_QUALIFIER.test(word));
+    return !!words.length && (FEATURE_HEADS_EN.has(words[0]) || FEATURE_HEADS_EN.has(words[words.length - 1])
+        || (qualified > 0 && FEATURE_HEADS_EN.has(words[qualified - 1])));
 }
 
 export interface NormalisedRequest {
