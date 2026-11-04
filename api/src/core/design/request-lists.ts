@@ -216,6 +216,13 @@ export function stripAttachedPreposition(token: string): string {
     return t;
 }
 
+/**
+ * A quantifier says how many, never what: «عدة فروع» lists the branches, as
+ * "multiple branches" does (H10, the hard exam, 2026-11-04: «عدة فروع» was
+ * keyed `ada_frwas`, a record no build could serve).
+ */
+const QUANTIFIER = new FoldedRegExp('^(?:عدة|عدد\\s+من|بعض|جميع|كافة|مختلف)\\s+(?=\\S)|^(?:multiple|several|various|numerous|many)\\s+(?=\\S)', 'iu');
+
 /** One list item, cleaned: no leading conjunction or article, its noun out of its preposition. */
 export function cleanListItem(raw: string): string {
     let item = String(raw || '').trim()
@@ -229,6 +236,8 @@ export function cleanListItem(raw: string): string {
     if (!item.includes('»')) item = item.replace(/^«+/u, '');
     if (item.includes('«') && !item.includes('»')) item = `${item}»`;
     item = stripLeadingConjunction(item);
+    const counted = item.match(QUANTIFIER);
+    if (counted && counted.index === 0) item = item.slice(counted[0].length).trim();
     const words = item.split(/\s+/);
     if (words.length) words[0] = stripAttachedPreposition(words[0]);
     item = words.join(' ').trim();
