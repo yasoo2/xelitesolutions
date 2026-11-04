@@ -2276,6 +2276,60 @@ export function previewsToRetire(
     return retire;
 }
 
+/**
+ * A PREVIEW OUTLIVES THE JOE THAT STARTED IT.
+ *
+ * 2026-11-04: each time the exam's Joe was stopped and started again, the
+ * previews it had started kept serving with no owner — nine of them, 27
+ * processes, after a morning of restarts. A killed parent's children live on
+ * (Windows never kills them; Linux reparents them), and RUNNING is memory: the
+ * new Joe neither counted them against the live-preview bound nor could
+ * project_stop them. On a server Joe restarts at every deploy they only add up.
+ *
+ * At start, a session record's live server that is still the process recorded
+ * (its pid AND the start time it was recorded with) is adopted into RUNNING —
+ * counted, stoppable, retired like any other, oldest first past the bound. A
+ * record whose process is gone, or whose pid now belongs to another process,
+ * is forgotten. A record without an identity cannot be told from a reused
+ * pid: it is left as it was, and never killed from here.
+ */
+export async function adoptRecordedPreviews(
+    projects: Record<string, any> = (global as any).joeProjects || {},
+    opts: { read?: (pid: number) => Promise<string>; cap?: number } = {},
+): Promise<{ adopted: string[]; forgotten: string[]; retired: string[] }> {
+    const read = opts.read || ((pid: number) => pidIdentity.read(pid));
+    const adopted: string[] = [];
+    const forgotten: string[] = [];
+    for (const [sessionKey, entry] of Object.entries(projects || {})) {
+        const live = entry?.live;
+        const pid = Number(live?.pid);
+        if (!live || !Number.isInteger(pid) || pid <= 0 || !live.identity) continue;
+        if (Array.from(RUNNING.values()).some(server => server.pid === pid)) continue;
+        if (await read(pid) !== live.identity) {
+            forgetRecordedLive(sessionKey, pid);
+            forgotten.push(sessionKey);
+            continue;
+        }
+        RUNNING.set(sessionKey, {
+            pid,
+            port: Number(live.port) || 0,
+            cwd: String(live.cwd || live.projectCwd || entry.dir || ''),
+            command: 'adopted at start',
+            startedAt: Number(live.at) || 0,
+            sessionKey,
+            sessionId: sessionKey,
+            identity: String(live.identity),
+        });
+        adopted.push(sessionKey);
+    }
+    const retired: string[] = [];
+    const logs: string[] = [];
+    for (const old of previewsToRetire(Array.from(RUNNING), '', opts.cap ?? livePreviewCap(), isRunning)) {
+        if (await stopServer(old, logs)) retired.push(old);
+    }
+    return { adopted, forgotten, retired };
+}
+
 /** Forget the session's recorded live server when it names this pid. */
 export function forgetRecordedLive(sessionKey: string | undefined, pid: number): void {
     if (!sessionKey || !pid) return;
