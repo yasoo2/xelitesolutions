@@ -11,7 +11,9 @@ import { isArabicReply, say as pick } from '../../../shared/reply-language';
 import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as os from 'os';
 import * as path from 'path';
+import { isRunning } from '../../../core/session/attended-run';
 import { builtinModules } from 'module';
 import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../../../api/page-store';
 
@@ -32,12 +34,16 @@ import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../..
 
 // Live processes, keyed by the workspace (or session) so one project owns one
 // server: starting again stops the previous one instead of leaking ports.
-interface RunningServer {
+export interface RunningServer {
     pid: number; port: number; cwd: string; command: string; startedAt: number;
     /** The session whose record names this server, so a stop can forget it there too. */
     sessionKey?: string;
+    /** That session's id as runs register it, to tell whether it is running now. */
+    sessionId?: string;
     /** The pid's start time when it was launched: a reused pid never matches it. */
     identity?: string;
+    /** The process listening on the port, when it is not the launched pid: what outlives a launcher. */
+    listener?: { pid: number; identity: string };
 }
 const RUNNING: Map<string, RunningServer> = new Map();
 
@@ -361,6 +367,8 @@ function rememberLiveProject(context: any, cwd: string, live: { url: string; por
     if (!live.identity && tracked?.identity && tracked.pid === live.pid) live = { ...live, identity: tracked.identity };
     const record = liveProjectRecord(previous, projectCwd, live);
     record.live.cwd = cwd;
+    // …and the server that listens on its port, which a restart can still find.
+    if (tracked?.listener && tracked.pid === live.pid) record.live.listener = tracked.listener;
     writeJoeProject(sessionKey, record, context?.runId ?? null);
     persistJoeProjects();
 }
@@ -2216,15 +2224,179 @@ async function killRecorded(pid: number, identity: string | undefined, logs: str
     return true;
 }
 
-/** Track a server this run started, with its session and its pid's identity. */
+/**
+ * The process listening on a loopback port: the server itself, whatever
+ * launched it. 2026-11-04: Joe records the pid it launched — on Windows a
+ * cmd that dies with Joe — while the server it started (npx → cmd → serve)
+ * keeps the port; after a restart only the listener can be found again.
+ * A listening socket is the one with no remote end: on his machine Windows
+ * reports such a socket with an empty State, so `-State Listen` found
+ * nothing. A miss is asked again, briefly.
+ */
+export const portListener = {
+    async read(port: number, attempts = 3): Promise<number> {
+        for (let i = 0; i < attempts; i++) {
+            if (i) await new Promise(resolve => setTimeout(resolve, 700));
+            const pid = await this.once(port);
+            if (pid) return pid;
+        }
+        return 0;
+    },
+    async once(port: number): Promise<number> {
+        if (!Number.isInteger(port) || port <= 0) return 0;
+        const probe = process.platform === 'win32'
+            ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-NetTCPConnection -LocalPort ${port} -ErrorAction Stop | Where-Object { $_.RemotePort -eq 0 } | Select-Object -First 1).OwningProcess`] }
+            : process.platform === 'linux'
+                ? { command: 'ss', args: ['-ltnpH', `sport = :${port}`] }
+                : { command: 'lsof', args: ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'] };
+        try {
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-port-listener-${port}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 10000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const out = String(result?.data?.output || result?.data?.stdout || '');
+            const pid = Number((process.platform === 'linux' ? out.match(/pid=(\d+)/u)?.[1] : out.trim().split(/\s+/u)[0]) || 0);
+            return result?.success && Number.isInteger(pid) && pid > 0 ? pid : 0;
+        } catch {
+            return 0;
+        }
+    },
+};
+
+/** The listener of a server's port when it is not the launched pid itself, with its identity. */
+async function listenerOf(port: number, launched: number): Promise<{ listener?: { pid: number; identity: string } }> {
+    const pid = await portListener.read(port);
+    if (!pid || pid === launched) return {};
+    const identity = await pidIdentity.read(pid);
+    return identity ? { listener: { pid, identity } } : {};
+}
+
+/** Track a server this run started, with its session, its pid's identity, and its port's listener. */
 async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string }): Promise<void> {
     const sessionId = String(context?.sessionId || '').trim();
     RUNNING.set(key, {
         ...server,
         startedAt: Date.now(),
-        ...(sessionId ? { sessionKey: sessionId.replace(/[^a-zA-Z0-9._-]/g, '_') } : {}),
+        ...(sessionId ? { sessionKey: sessionId.replace(/[^a-zA-Z0-9._-]/g, '_'), sessionId } : {}),
         identity: await pidIdentity.read(Number(server.pid)),
+        ...(await listenerOf(Number(server.port), Number(server.pid))),
     });
+    const logs: string[] = [];
+    for (const old of previewsToRetire(Array.from(RUNNING), key, livePreviewCap(), isRunning)) await stopServer(old, logs);
+    if (logs.length) console.log(`[project_run] live previews over the machine's bound: ${logs.join('; ')}`);
+}
+
+/**
+ * LIVE PREVIEWS ARE BOUNDED BY THE MACHINE, NOT BY HOW MANY SESSIONS EVER RAN.
+ *
+ * The 500-prompt exam, 2026-11-03: after forty prompts, twenty-odd preview
+ * servers of finished sessions were still serving — one per session, kept on
+ * purpose, because the delivery hands him its live address. One per session
+ * stops a project from leaking ports; nothing stopped the sessions from
+ * adding up, and on a server with thousands of users they only grow until the
+ * machine runs out of memory or ports.
+ *
+ * So the previews kept are bounded by the machine: one per 512 MiB of memory,
+ * never fewer than eight (JOE_MAX_LIVE_PREVIEWS overrides it). Starting one
+ * past the bound stops the oldest previews whose session is not running now;
+ * a running session's server is never taken from under it, and the new one
+ * is never the one stopped. A stopped preview is forgotten in its session's
+ * record, so the next project_run there starts it again.
+ */
+export function livePreviewCap(totalMemBytes = os.totalmem(), env: NodeJS.ProcessEnv = process.env): number {
+    const set = Number(env.JOE_MAX_LIVE_PREVIEWS);
+    if (Number.isFinite(set) && set >= 1) return Math.floor(set);
+    return Math.max(8, Math.floor(Number(totalMemBytes || 0) / (512 * 1024 * 1024)));
+}
+
+/** The previews to stop so at most `cap` remain: oldest first, never `keep`, never a running session's. */
+export function previewsToRetire(
+    servers: Array<[string, Pick<RunningServer, 'startedAt' | 'sessionId'>]>,
+    keep: string,
+    cap: number,
+    sessionRunning: (sessionId: string) => boolean,
+): string[] {
+    let excess = servers.length - Math.max(1, cap);
+    if (excess <= 0) return [];
+    const retire: string[] = [];
+    for (const [key, server] of servers.slice().sort((a, b) => a[1].startedAt - b[1].startedAt)) {
+        if (excess <= 0) break;
+        if (key === keep || (server.sessionId && sessionRunning(server.sessionId))) continue;
+        retire.push(key);
+        excess--;
+    }
+    return retire;
+}
+
+/**
+ * A PREVIEW OUTLIVES THE JOE THAT STARTED IT.
+ *
+ * 2026-11-04: each time the exam's Joe was stopped and started again, the
+ * previews it had started kept serving with no owner — nine of them, 27
+ * processes, after a morning of restarts. A killed parent's children live on
+ * (Windows never kills them; Linux reparents them), and RUNNING is memory: the
+ * new Joe neither counted them against the live-preview bound nor could
+ * project_stop them. On a server Joe restarts at every deploy they only add up.
+ *
+ * At start, a session record's live server that is still the process recorded
+ * (its pid AND the start time it was recorded with) is adopted into RUNNING —
+ * counted, stoppable, retired like any other, oldest first past the bound. A
+ * record whose process is gone, or whose pid now belongs to another process,
+ * is forgotten. A record without an identity cannot be told from a reused
+ * pid: it is left as it was, and never killed from here.
+ *
+ * On Windows the launched pid is often a cmd that dies with Joe while the
+ * server it started keeps the port (two such were left after the first
+ * adoption measured «18 forgotten, 0 adopted»). The record also names the
+ * port's listener with its own start time; when the launcher is gone and the
+ * listener is still that process, the listener is what is adopted, and the
+ * record is moved onto it.
+ */
+export async function adoptRecordedPreviews(
+    projects: Record<string, any> = (global as any).joeProjects || {},
+    opts: { read?: (pid: number) => Promise<string>; cap?: number } = {},
+): Promise<{ adopted: string[]; forgotten: string[]; retired: string[] }> {
+    const read = opts.read || ((pid: number) => pidIdentity.read(pid));
+    const adopted: string[] = [];
+    const forgotten: string[] = [];
+    for (const [sessionKey, entry] of Object.entries(projects || {})) {
+        const live = entry?.live;
+        const pid = Number(live?.pid);
+        if (!live || !Number.isInteger(pid) || pid <= 0 || !live.identity) continue;
+        const listener = live.listener && Number(live.listener.pid) > 0 && live.listener.identity ? { pid: Number(live.listener.pid), identity: String(live.listener.identity) } : null;
+        if (Array.from(RUNNING.values()).some(server => server.pid === pid || (listener && server.pid === listener.pid))) continue;
+        let owner = { pid, identity: String(live.identity) };
+        if (await read(pid) !== live.identity) {
+            if (!listener || await read(listener.pid) !== listener.identity) {
+                forgetRecordedLive(sessionKey, pid);
+                forgotten.push(sessionKey);
+                continue;
+            }
+            //  The launcher is gone; the server it started is not.
+            owner = listener;
+            writeJoeProject(sessionKey, { ...entry, live: { ...live, pid: listener.pid, identity: listener.identity } }, entry.pipelineRunId ?? null);
+            try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
+        }
+        RUNNING.set(sessionKey, {
+            pid: owner.pid,
+            port: Number(live.port) || 0,
+            cwd: String(live.cwd || live.projectCwd || entry.dir || ''),
+            command: 'adopted at start',
+            startedAt: Number(live.at) || 0,
+            sessionKey,
+            sessionId: sessionKey,
+            identity: owner.identity,
+        });
+        adopted.push(sessionKey);
+    }
+    const retired: string[] = [];
+    const logs: string[] = [];
+    for (const old of previewsToRetire(Array.from(RUNNING), '', opts.cap ?? livePreviewCap(), isRunning)) {
+        if (await stopServer(old, logs)) retired.push(old);
+    }
+    return { adopted, forgotten, retired };
 }
 
 /** Forget the session's recorded live server when it names this pid. */

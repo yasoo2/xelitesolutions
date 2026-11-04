@@ -90,6 +90,19 @@ export const createApp = () => {
   // the page that was on screen instead of starting a tool circus.
   try { loadJoePages(); } catch { /* best-effort */ }
   try { loadJoeProjects(); } catch { /* best-effort */ }
+  //  The previews a previous Joe started still serve: adopt them, so the
+  //  live-preview bound counts them and project_stop can stop them.
+  setImmediate(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { adoptRecordedPreviews } = require('../modules/tools/definitions/ProjectRunTool');
+      adoptRecordedPreviews()
+        .then((r: { adopted: string[]; forgotten: string[]; retired: string[] }) => {
+          if (r.adopted.length || r.forgotten.length) logger.info({ adopted: r.adopted.length, forgotten: r.forgotten.length, retired: r.retired.length }, '[project_run] previews of the previous start');
+        })
+        .catch(() => { /* best-effort */ });
+    } catch { /* best-effort */ }
+  });
   /**
    *  WRITE DOWN WHAT THE PANEL WOULD HAVE DRAWN.
    *

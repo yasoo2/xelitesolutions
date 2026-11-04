@@ -107,6 +107,12 @@ export interface ContextBudget {
 export interface RequestResourceManagerOptions {
     maxQueued?: number;
     queueTimeoutMs?: number;
+    /**
+     * How long a heavy step refused for memory waits for it to come back,
+     * measuring again every few seconds (another program's memory returns).
+     * 0 refuses at once, as before.
+     */
+    memoryWaitMs?: number;
     minFreeBytes?: number;
     reserveBytes?: number;
     maxContextTokens?: number;
@@ -235,7 +241,7 @@ export class RequestResourceManager {
     private readonly inference: FifoLane;
     private readonly maxQueued: number;
     private readonly liveHeavyLeases = new Set<HeavyLease>();
-    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number };
+    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number; memoryWaitMs: number };
     private readonly sampleMemory: () => MemoryReading;
     private readonly sampleResidentInference: () => Promise<number>;
     private readonly releaseResidentInference: () => Promise<ResidentRelease>;
@@ -252,6 +258,7 @@ export class RequestResourceManager {
         this.heavy = new FifoLane(maxQueued);
         this.inference = new FifoLane(maxQueued);
         this.policy = { queueTimeoutMs: boundedInteger(options.queueTimeoutMs, 120000, 1, 300000),
+            memoryWaitMs: boundedInteger(options.memoryWaitMs, 0, 0, 30 * 60_000),
             minFreeBytes: boundedInteger(options.minFreeBytes, GiB, GiB, Number.MAX_SAFE_INTEGER),
             reserveBytes: boundedInteger(options.reserveBytes, 768 * MiB, 768 * MiB, Number.MAX_SAFE_INTEGER),
             // ⛔ 4096 could not hold Joe's own planner: its prompt measured ~16.6k
@@ -381,9 +388,9 @@ export class RequestResourceManager {
                 // A model call, or work whose heavy parts are model calls, counts the
                 // resident model as its own; work that allocates its own memory may
                 // have an idle one unloaded for it.
-                const memory = localInference || options.modelBound
+                const memory = await this.untilMemory(async () => (localInference || options.modelBound
                     ? this.admitMemory(await this.reclaimableBytes())
-                    : await this.admitBesideIdleModels(signal.signal);
+                    : this.admitBesideIdleModels(signal.signal)), signal.signal, store, kind);
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -591,6 +598,39 @@ export class RequestResourceManager {
         }
     }
 
+    /**
+     * ⛔ A MACHINE SHORT OF MEMORY IS WAITED FOR, NOT BLAMED ON THE WORK.
+     *
+     * The 500-prompt exam, 2026-11-04 (P306): another program on the machine —
+     * a video render — left 0.6 GB of the 1 GB a heavy step needs, and the
+     * program's own tests were refused within a second, four times; the run
+     * ended with «the program's own tests did not pass». Memory another process
+     * holds comes back. A heavy step refused for memory now waits for it
+     * (memoryWaitMs), measuring again every few seconds and saying so; only
+     * when the wait is over is the refusal what it was, with its numbers.
+     */
+    private async untilMemory(admit: () => Promise<MemorySnapshot>, signal: AbortSignal, store: RequestStore, kind: string): Promise<MemorySnapshot> {
+        const deadline = this.now() + this.policy.memoryWaitMs;
+        let said = false;
+        for (;;) {
+            try { return await admit(); } catch (refusal) {
+                if (!(refusal instanceof ResourceAdmissionError) || refusal.code !== 'RESOURCE_LOW_MEMORY') throw refusal;
+                const left = deadline - this.now();
+                if (left <= 0 || signal.aborted) throw refusal;
+                if (!said) {
+                    said = true;
+                    this.emit(store, { lane: 'heavy', state: 'queued', kind, details: { waitingFor: 'memory', ...refusal.details } });
+                }
+                await new Promise<void>(resolve => {
+                    const timer = setTimeout(done, Math.min(MEMORY_RETRY_MS, left));
+                    function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+                    signal.addEventListener('abort', done, { once: true });
+                });
+                if (signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+            }
+        }
+    }
+
     /** The floor admitMemory holds every admission to. */
     private clearsFloor(usableBytes: number): boolean {
         return usableBytes >= this.policy.minFreeBytes && usableBytes > this.policy.reserveBytes;
@@ -668,4 +708,11 @@ export class RequestResourceManager {
     }
 }
 
-export const requestResourceManager = new RequestResourceManager();
+/** Between two readings of memory while a heavy step waits for it. */
+const MEMORY_RETRY_MS = 5_000;
+
+//  Joe's own manager waits up to three minutes for memory another program
+//  holds (JOE_MEMORY_WAIT_MS overrides it; 0 refuses at once).
+export const requestResourceManager = new RequestResourceManager({
+    memoryWaitMs: Number.isFinite(Number(process.env.JOE_MEMORY_WAIT_MS)) && process.env.JOE_MEMORY_WAIT_MS !== '' ? Number(process.env.JOE_MEMORY_WAIT_MS) : 180_000,
+});

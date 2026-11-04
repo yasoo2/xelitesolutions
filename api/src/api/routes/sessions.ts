@@ -32,6 +32,7 @@ router.put('/:id/queue', authenticate as any, SessionController.replaceSessionQu
 //  The chat was always asked for; the work never was, so every reopened
 //  session showed an empty Preview and an empty Logs panel.
 router.get('/:id/workspace', authenticate as any, SessionController.sessionWorkspace);
+router.get('/:id/engine', authenticate as any, SessionController.sessionEngine);
 router.get('/:id/screenshots', authenticate as any, SessionController.sessionScreenshots);
 router.get('/:id/screenshots/:captureId', authenticate as any, SessionController.sessionScreenshot);
 

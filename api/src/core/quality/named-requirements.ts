@@ -445,6 +445,16 @@ export function namedDecisionTrace(verdicts: JudgedNamed[]) {
 const flat = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 /**
+ *  Nor is what a quote is wrapped in. Eval P402 (2026-11-03): the judge
+ *  copied the last item of a question list as `{ q: "…", answer: 0 },` — the
+ *  line was there, without the comma a list item usually has, and a true
+ *  «10 questions» was not counted. A separator or a code fence at either end
+ *  of a quote is how it was written down, not what it proves; everything
+ *  between them must still be in the source character for character.
+ */
+const bare = (s: string) => flat(s).replace(/^(?:[,;\s]|`+)+|(?:[,;\s]|`+)+$/gu, '');
+
+/**
  *  ⛔ THE EVIDENCE MUST BE IN THE SOURCE, NOT MERELY PLAUSIBLE.
  *
  *  Short strings are refused outright: `div`, `form`, `{}` appear in every
@@ -452,9 +462,20 @@ const flat = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerC
  *  again — a token present in every file standing in for a claim.
  */
 export function foundInSource(evidence: string, source: string): boolean {
-    const e = flat(evidence);
-    if (e.length < 12) return false;
+    const e = bare(evidence);
+    if (e.length < EVIDENCE_MIN_CHARS) return false;
     return flat(source).includes(e);
+}
+
+/** The shortest line that can stand as proof (see foundInSource). */
+const EVIDENCE_MIN_CHARS = 12;
+
+/** Why a «met» line was not accepted, in the words the judge is asked again with. */
+function whyNotAccepted(evidence: string): string {
+    const e = bare(evidence);
+    if (!e) return 'you gave no line';
+    if (e.length < EVIDENCE_MIN_CHARS) return `it has ${e.length} characters, too few to tell one feature from another`;
+    return 'it is not in the source character for character';
 }
 
 /**
@@ -631,7 +652,9 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         ``,
         `Rules:`,
         `  · "met" ONLY if you can copy a line OUT OF THE SOURCE ABOVE that`,
-        `    delivers it. Put that line, character for character, in "evidence".`,
+        `    delivers it. Put that line, character for character, in "evidence":`,
+        `    a whole line of at least ${EVIDENCE_MIN_CHARS} characters — a shorter one (\`score++;\`)`,
+        `    together with the line before or after it.`,
         `  · "unmet" if the source does not deliver it.`,
         `  · "unprovable" if you cannot tell from what you were shown. The`,
         `    source above may be CUT — if the part you need is missing, say`,
@@ -644,6 +667,30 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
         `{"verdicts":[{"id":"…","verdict":"met|unmet|unprovable","evidence":"…","why":"…"}]}`,
+    ].join('\n');
+}
+
+/**
+ *  The question asked again, once, about «met» answers whose line was not
+ *  accepted — over the very source those answers were given on, saying why
+ *  each line failed. Its answers are checked exactly as the first ones were.
+ */
+export function requotePrompt(items: Array<{ r: NamedRequirement; evidence: string }>, source: string, isArabic: boolean): string {
+    return [
+        `Here is the source of a project that was just built.`,
+        ``,
+        `SOURCE:`,
+        boundedSource(source),
+        ``,
+        `You answered "met" for the requirements below, but the line you gave as evidence could not be accepted:`,
+        ...items.map(({ r, evidence }, i) => `  ${i + 1}. [${r.id}] ${r.text}   your line: «${String(evidence || '').trim().slice(0, 300)}» — ${whyNotAccepted(evidence)}`),
+        ``,
+        `For each one, copy OUT OF THE SOURCE ABOVE the line that delivers it — a whole line of at least ${EVIDENCE_MIN_CHARS} characters, or several consecutive lines — character for character, into "evidence". Add nothing and drop nothing.`,
+        `If no line of the source delivers it, answer "unprovable".`,
+        `Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
+        ``,
+        `REPLY WITH JSON AND NOTHING ELSE:`,
+        `{"verdicts":[{"id":"…","verdict":"met|unprovable","evidence":"…","why":"…"}]}`,
     ].join('\n');
 }
 
@@ -1189,7 +1236,11 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         //    plain comparison, and a session or token it issues;
         //  - roles: a role on the user, a check of it, and a 403 for the rest.
         const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
-            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src);
+            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src)
+            //  Whatever the router is called — authRouter, api, auth (P155,
+            //  2026-11-03) — a registration whose handler takes the request is
+            //  a server route; a client's `api.post('/auth/login', body)` is not.
+            || /\b[A-Za-z_$][\w$]*\s*\.\s*post\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b[^'"`]*['"`]\s*,[^;]{0,240}?\(\s*(?:req|request|ctx)\b/iu.test(src);
         const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
         const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
             //  A random token the server keeps as the session (randomBytes or randomUUID).
@@ -1209,7 +1260,12 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         const proven = workflowEvidence.find(([asked, present]) => asked.test(fieldPhrase) && present);
         if (proven) return { ...r, verdict: 'met', why: proven[2] };
         if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
-            return { ...r, verdict: 'unmet', why: 'the build rendered a generic records form instead of a workflow engine' };
+            //  Not Joe's old template, and no shape above proved it: the judge
+            //  reads the source and must quote the line. P155 (2026-11-03): a
+            //  real login on authRouter.post was refused four times as «unmet:
+            //  the build rendered a generic records form instead of a workflow
+            //  engine» — a sentence about the old template's component.
+            return null;
         }
         const defects = inspectWorkflowEngineSource(text, src);
         return defects.length
@@ -1646,6 +1702,45 @@ export async function verifyNamed(
             byId.set(a.id, { ...answer, id: a.id });
             shownFor.set(a.id, a.shown);
         } else if (!fromBatch.has(a.id)) shownFor.set(a.id, a.shown);
+    }
+    /**
+     *  ⛔ A TRUE LINE, COPIED SO IT COULD NOT BE ACCEPTED, IS ASKED FOR AGAIN — ONCE.
+     *
+     *  Eval P402 (2026-11-03), a quiz game: «The app tracks the score» was
+     *  answered «met» with `score++;` — a real line of app.js, and too short to
+     *  be accepted as proof. Asked again by hand, three times over the same
+     *  source, the judge gave that same line each time, and the delivery was
+     *  refused four times on a score the game kept.
+     *
+     *  The check stays what it was: a «met» counts only on a line that is in
+     *  the source and long enough to tell one feature from another. What is
+     *  added is the second question: each «met» whose line failed is asked once
+     *  more, over the source that answer was given on, with the reason its line
+     *  failed. Only a «met» whose new line passes the same check replaces it; any
+     *  other reply leaves the first answer to be downgraded exactly as before.
+     */
+    const misquoted = reqs.filter(r => {
+        const v = byId.get(r.id);
+        return !deterministic.has(r.id) && v?.verdict === 'met' && !foundInSource(v.evidence, shownFor.get(r.id) || full);
+    });
+    if (misquoted.length) {
+        const byShown = new Map<string, NamedRequirement[]>();
+        for (const r of misquoted) {
+            const shown = shownFor.get(r.id) || full;
+            byShown.set(shown, [...(byShown.get(shown) || []), r]);
+        }
+        await Promise.all(Array.from(byShown, async ([shown, group]) => {
+            let raw = '';
+            try { raw = await call(requotePrompt(group.map(r => ({ r, evidence: byId.get(r.id)!.evidence })), shown, isArabic)); }
+            catch { return; }
+            const parsed = parseVerdicts(raw);
+            for (const r of group) {
+                const v = parsed.find(p => p.id === r.id) || (group.length === 1 && parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined);
+                if (v?.verdict === 'met' && foundInSource(v.evidence, shown)) {
+                    byId.set(r.id, { id: r.id, verdict: 'met', evidence: v.evidence, why: v.why || byId.get(r.id)!.why });
+                }
+            }
+        }));
     }
     return reqs.map(r => {
         const known = deterministic.get(r.id);

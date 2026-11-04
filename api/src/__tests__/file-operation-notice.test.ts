@@ -29,7 +29,8 @@ jest.mock('../core/orchestrator/phaseAnnounce', () => ({ phaseDetail: () => 'Rea
 jest.mock('../core/orchestrator/answerComposer', () => ({}));
 jest.mock('../core/orchestrator/ExecutionMemory', () => ({}));
 jest.mock('../modules/tools/definitions/ProjectPipelineTool', () => ({}));
-jest.mock('../shared/run-evidence-store', () => ({ createRunEvidence: async () => undefined }));
+jest.mock('../shared/run-evidence-store', () => ({
+    closeRunEvidenceIfOpen: jest.fn(async () => {}), createRunEvidence: async () => undefined }));
 jest.mock('../core/session/attended-run', () => ({ releaseHandle: jest.fn() }));
 jest.mock('../core/orchestrator/PlanningEngine', () => ({ PlanningEngine: { looksLikeBuild: mockBuilding } }));
 // Controlled generic classifier facts; existing scaffold suites separately cover real classifier outcomes.

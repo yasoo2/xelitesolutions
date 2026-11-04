@@ -422,6 +422,44 @@ export function requestedArtifactWithoutStockEngine(request: string): boolean {
     return /\b(?:simulator|simulation|animation)\b|محاكي|محاكاه/u.test(artifact.evidence.object);
 }
 
+/**
+ * Score every registered archetype instead of returning the first keyword
+ * that happens to occur in a long request. A real request often names the
+ * subject and several executable capabilities; the strongest signal set is
+ * the most honest domain, while ties retain the deliberate registry order.
+ * Rebuilding the matcher with `g` avoids state leaking from RegExp.test and
+ * counts repeated evidence without making any domain special-cased.
+ */
+function strongestArchetype(intentRequest: string): AppKind | null {
+    let bestKind: AppKind | null = null;
+    let bestScore = 0;
+    for (const [kind, signal] of APP_KIND_SIGNALS) {
+        const flags = `${signal.flags.replace(/[gy]/g, '')}g`;
+        const matches = intentRequest.match(new RegExp(signal.source, flags));
+        const score = matches?.length || 0;
+        if (score > bestScore) {
+            bestScore = score;
+            bestKind = kind;
+        }
+    }
+    return bestKind;
+}
+
+/**
+ * True when the fields he listed are exactly a fixed archetype's own fields,
+ * by key. Then the archetype adds no column he did not ask for and drops none
+ * he did, so its native contract (order, types, filters) is his list.
+ */
+function listIsTheArchetypeSchema(kind: AppKind, request: string): boolean {
+    if (kind === 'generic' || kind === 'custom') return false;
+    const listed = fieldsFromRequest(request, false);
+    if (!listed || listed.length < 2) return false;
+    const stock = blueprintForKind(kind, request, false).fields;
+    if (stock.length !== listed.length) return false;
+    const stockKeys = new Set(stock.map(field => field.key));
+    return listed.every(field => stockKeys.has(field.key));
+}
+
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
         .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
@@ -513,27 +551,22 @@ export function detectAppKind(requestRaw: string): AppKind | null {
      *  where a name becomes an enumeration, and it needs no vocabulary and
      *  no catalogue to know it.
      */
-    if (hasExplicitRecordSchema(intentRequest)) return 'generic';
-
     /**
-     * Score every registered archetype instead of returning the first keyword
-     * that happens to occur in a long request. A real request often names the
-     * subject and several executable capabilities; the strongest signal set is
-     * the most honest domain, while ties retain the deliberate registry order.
-     * Rebuilding the matcher with `g` avoids state leaking from RegExp.test and
-     * counts repeated evidence without making any domain special-cased.
+     *  …UNLESS HIS LIST IS THE ARCHETYPE'S OWN SCHEMA.
+     *
+     *  «Create a media review board where users upload an image, add title,
+     *  tags, and notes, …» lists exactly the media archetype's four fields.
+     *  Once 76f66a5d3 let a list end at its first capability, this line
+     *  returned 'generic' for the request the media archetype was written for
+     *  (f8cf08521), and he got a board titled «where users» that filtered by
+     *  image. No stock column can replace his when the two lists are one list.
      */
-    let bestKind: AppKind | null = null;
-    let bestScore = 0;
-    for (const [kind, signal] of APP_KIND_SIGNALS) {
-        const flags = `${signal.flags.replace(/[gy]/g, '')}g`;
-        const matches = intentRequest.match(new RegExp(signal.source, flags));
-        const score = matches?.length || 0;
-        if (score > bestScore) {
-            bestScore = score;
-            bestKind = kind;
-        }
+    if (hasExplicitRecordSchema(intentRequest)) {
+        const archetype = strongestArchetype(intentRequest);
+        return archetype && listIsTheArchetypeSchema(archetype, intentRequest) ? archetype : 'generic';
     }
+
+    const bestKind = strongestArchetype(intentRequest);
     if (bestKind) return bestKind;
     // Nothing named, but «نظام إدارة …» / «تطبيق لتتبع …» is unmistakably an
     // application that owns records. It gets the records engine with an entity
@@ -1064,6 +1097,13 @@ export function blueprintFor(kind: AppKind, request: string, isAr: boolean): App
     const requestedColumns = fieldsFromRequest(request, isAr);
     if (requestedColumns) {
         const base = blueprintForKind(kind, request, isAr);
+        // His list names exactly the archetype's fields: nothing to replace,
+        // so the archetype's native contract is his list (see detectAppKind).
+        // A product name he gave still wins over the stock title.
+        if (listIsTheArchetypeSchema(kind, request)) {
+            const productTitle = namedProductTitle(request);
+            return productTitle ? { ...base, title: productTitle } : base;
+        }
         // An explicit schema owns its labels and ordering. When it names one
         // of the archetype's canonical fields exactly, retain that field's
         // native contract too (for example the expense category select and

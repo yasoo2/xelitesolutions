@@ -26,14 +26,19 @@ import { verifiedLiveUrl, type DeliveryInstrument, type DeliveryLedger } from '.
 import {
     backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage,
     probePathsFor, probeServedResources, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn,
-    testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
+    takenIdentifiers, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
+import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
+import { CAPABILITIES, deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
 import { say as pick } from '../../shared/reply-language';
 import type { ScopeGateOutcome } from '../../modules/tools/definitions/ProjectPipelineTool';
+
+/** A capability's name in Arabic, for the line the owner reads («product catalogue» → «كتالوج المنتجات»). */
+const arabicCapability = (en: string) => CAPABILITIES.find(c => c.en === en)?.ar || en;
 
 export interface DeliveryRunInput {
     /** The user's full request: every reader reads it, never the agent's plan or summary. */
@@ -129,9 +134,9 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
                 const { HTTP_ANSWER_TIMEOUT_MS } = require('../../modules/tools/definitions/ProjectRunTool');
                 probe = await probeServedResources(base, evidence.prefixes,
                     records.entities.map(record => {
-                        const ids = identifiersFor(record, evidence.labelKeys[record.key] || []);
+                        const ids = identifiersFor(record, evidence.labelKeys[record.key] || [], records.entities);
                         // The exact path each record's own route registers — never a guessed prefix.
-                        return { key: record.key, ids, paths: probePathsFor(evidence, ids) };
+                        return { key: record.key, ids, paths: probePathsFor(evidence, ids, takenIdentifiers(record, records.entities)) };
                     }),
                     { signal: bound.signal, timeoutMs: Number(HTTP_ANSWER_TIMEOUT_MS) || 2500, details: probeDetails });
             } finally {
@@ -246,7 +251,22 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
                 error: part.ok ? undefined : `project quality contract failed in ${path.basename(root)} — ${part.failures.slice(0, 4).join('; ')}`,
             });
         }
-        const scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
+        let scoped = applyScopeAuditOutcome(productRequest, auditRoots, { verified: true, liveUrl: live.liveUrl, verificationFailed: false });
+        //  Search, filtering and sorting are behaviour. When the source does
+        //  not show one of them, the live page is operated before it is
+        //  called missing (interaction-probe.ts: P352–P354, 2026-11-03).
+        const unseen = scoped.scopeCoverageFailed ? interactiveMissing(scoped.scopeAudit?.missing || []) : [];
+        if (unseen.length && live.liveUrl && deliveredTreeHasInterface(auditRoots)) {
+            say(pick(isAr, `▶️ لم أجد ${unseen.map(arabicCapability).join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
+            const bound = bindRunCancellation(input.cancellation, input.signal);
+            try {
+                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal });
+                scoped = reconcileScope(scoped, measured);
+                for (const r of measured.results) input.log?.(`[pipeline] interaction ${r.capability} ${r.ok ? 'shown' : 'not shown'}: ${r.detail}`);
+            } finally {
+                bound.dispose();
+            }
+        }
         state.scopeAudit = scoped.scopeAudit;
         if (scoped.verified || scoped.scopeCoverageFailed === true) {
             ledger.record({ instrument: 'scope', ok: scoped.verified, error: scoped.error });
