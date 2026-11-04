@@ -30,11 +30,23 @@
  * A change that needs an «Apply» press is tried with the nearest button of the
  * control's form. Nothing is inferred: what was operated and what changed is
  * the evidence, and when nothing changed the builder is told what was tried.
+ *
+ * A PRODUCT CATALOGUE IS WHAT THE PAGE SHOWS, NOT WHAT ITS DATA IS CALLED.
+ *
+ * The 500-prompt exam, 2026-11-04, P207: «ابني متجر إلكتروني لـمكتب عقارات:
+ * عرض المنتجات بالصور والأسعار…». The store showed six property cards, each
+ * with its photo, its name and its price, from `filtered.map(...)`; the scope
+ * audit's catalogue evidence wanted a word «product» beside a .map, a
+ * ProductCard or /api/products. Refused seven times with «missing: product
+ * catalogue»; the builder renamed its data file to products.js, searched the
+ * project for «catalogue», and gave up. On the live page a catalogue is a
+ * group of two or more same-kind items that carry a photo or a price — read,
+ * not operated, on the page as it opens and behind its doors.
  */
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 
-export type InteractiveCapability = 'search' | 'filtering' | 'sorting';
-export const INTERACTIVE_CAPABILITIES: readonly InteractiveCapability[] = ['search', 'filtering', 'sorting'];
+export type InteractiveCapability = 'search' | 'filtering' | 'sorting' | 'product catalogue';
+export const INTERACTIVE_CAPABILITIES: readonly InteractiveCapability[] = ['search', 'filtering', 'sorting', 'product catalogue'];
 
 export interface InteractionEvidence {
     capability: InteractiveCapability;
@@ -204,7 +216,8 @@ const PAGE_DOORS = `(() => {${PAGE_HELPERS}
     if (!text) continue;
     if (el.tagName === 'A') {
       const href = el.getAttribute('href') || '';
-      if (/^(mailto|tel|javascript):/i.test(href)) continue;
+      // A placeholder link («#») leads nowhere; a menu of them took every door of a store (P207).
+      if (/^(mailto|tel|javascript):/i.test(href) || /^#?$/.test(href.trim())) continue;
       const target = new URL(href, location.href);
       if (target.origin !== location.origin || target.href === location.href) continue;
     }
@@ -215,6 +228,45 @@ const PAGE_DOORS = `(() => {${PAGE_HELPERS}
     out.push({ index: out.length, label: text });
   }
   return out;
+})()`;
+
+/** A price as a page writes it: a number beside a currency (on either side), or after the word price. */
+const CURRENCY = String.raw`[$€£¥₹₪₺﷼]|\b(?:USD|EUR|GBP|SAR|AED|EGP|JOD|KWD|QAR|BHD|OMR|MAD|TND|DZD|LBP|IQD|TRY|SYP)\b|ر\.\s?س|د\.\s?إ|د\.\s?ك|د\.\s?أ|ج\.\s?م|ريال|دينار|درهم|جنيه|ليرة|دولار|يورو`;
+const PRICE_SOURCE = String.raw`(?:${CURRENCY})[\s\u200e\u200f]*[0-9\u0660-\u0669]|[0-9\u0660-\u0669][\s\u200e\u200f]*(?:${CURRENCY})|(?:price|السعر|سعر)\s*[:：]?\s*[0-9\u0660-\u0669]`;
+
+/**
+ * The page's catalogue: of every group of two or more same-kind siblings that
+ * carry text, the one whose items most often show a photo (an image that
+ * loaded, a picture, a background image, of a real size) or a price (a number
+ * beside a currency, or in an element called price). Nothing is clicked.
+ */
+const PAGE_CATALOGUE = `(() => {${PAGE_HELPERS}
+  const PRICE = new RegExp(${JSON.stringify(PRICE_SOURCE)}, 'iu');
+  const sized = el => { const r = el.getBoundingClientRect(); return r.width >= 40 && r.height >= 40; };
+  const loaded = e => e.tagName !== 'IMG' || (!!e.getAttribute('src') && (e.naturalWidth > 0 || !e.complete));
+  const photo = it => Array.from(it.querySelectorAll('img, picture, video, svg')).some(e => visible(e) && sized(e) && loaded(e))
+    || [it, ...Array.from(it.querySelectorAll('*')).slice(0, 60)].some(e => sized(e) && /url\\(/.test(getComputedStyle(e).backgroundImage || ''));
+  const price = it => PRICE.test(it.innerText || '') || Array.from(it.querySelectorAll('[class*="price" i], [id*="price" i]')).some(e => /[0-9\\u0660-\\u0669]/.test(e.innerText || ''));
+  let best = null;
+  for (const parent of document.querySelectorAll('body *')) {
+    if (parent.closest('select, script, style, head, nav, form')) continue;
+    const groups = new Map();
+    for (const child of parent.children) {
+      if (/^(SCRIPT|STYLE|OPTION|BR|SELECT|INPUT|BUTTON|LABEL)$/.test(child.tagName) || !visible(child) || !clean(child.innerText)) continue;
+      const key = child.tagName + '.' + String(child.className || '');
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(child);
+    }
+    for (const g of groups.values()) {
+      if (g.length < 2) continue;
+      const withPhoto = g.filter(photo).length;
+      const withPrice = g.filter(price).length;
+      const score = Math.max(withPhoto, withPrice);
+      if (score < 2 || score * 2 < g.length) continue;
+      if (!best || score > best.score) best = { score, count: g.length, withPhoto, withPrice, sample: clean(g[0].innerText).slice(0, 80) };
+    }
+  }
+  return best;
 })()`;
 
 /**
@@ -414,6 +466,19 @@ export async function measureInteractions(
         const measureView = async () => {
         for (const cap of want) {
             if (found.has(cap)) continue;
+            if (cap === 'product catalogue') {
+                //  Read, never operated: what the view shows as it opens.
+                await fresh();
+                await steady();
+                const shown: { count: number; withPhoto: number; withPrice: number; sample: string } | null = await page.evaluate(PAGE_CATALOGUE).catch(() => null);
+                note(cap, door ? `the view behind «${door.label}»` : 'the page as it opens');
+                if (shown) {
+                    const what = [shown.withPhoto ? `${shown.withPhoto} with a photo` : '', shown.withPrice ? `${shown.withPrice} with a price` : ''].filter(Boolean).join(' and ');
+                    const verdict = `the page shows ${shown.count} items, ${what} — e.g. «${shown.sample}»`;
+                    found.set(cap, door ? `after pressing «${door.label}», ${verdict}` : verdict);
+                }
+                continue;
+            }
             const kinds: Candidate['kind'][] = cap === 'search' ? ['text']
                 : cap === 'sorting' ? ['select', 'header', 'chip']
                     : ['select', 'date', 'month', 'week', 'datetime-local', 'range', 'number', 'toggle', 'text', 'chip'];
@@ -505,6 +570,9 @@ export async function measureInteractions(
         results: want.map(cap => {
             const ops = tried.get(cap) || [];
             if (found.has(cap)) return { capability: cap, ok: true, detail: `on the live page, ${found.get(cap)}`, tried: ops.length };
+            if (cap === 'product catalogue') {
+                return { capability: cap, ok: false, tried: ops.length, detail: `on the live page (${ops.slice(0, 4).join(', ')}) no group of two or more items shows a photo or a price` };
+            }
             return {
                 capability: cap,
                 ok: false,
