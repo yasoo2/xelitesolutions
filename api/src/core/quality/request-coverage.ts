@@ -52,7 +52,7 @@ import { pythonExecutable } from './python-executable';
 import { isRealScript } from './placeholder-script';
 import { pythonTestCommand } from './python-test-runner';
 import { isMachineStateDirectory } from '../../shared/utils/project-tree';
-import { loopRoutes, routeTablesIn, type RouteTable } from './loop-routes';
+import { closeOf, loopRoutes, routeTablesIn, topLevelParts, type RouteTable } from './loop-routes';
 
 export interface RequestedRecord {
     /** His own words for it. */
@@ -338,7 +338,6 @@ const PY_PREFIX_ARG = /(?:prefix|url_prefix)\s*=\s*[rf]?['"]([^'"]+)['"]/u;
 const PY_INCLUDE_PREFIX = /\.(?:include_router|register_blueprint)\([^)]*?(?:prefix|url_prefix)\s*=\s*[rf]?['"]([^'"]+)['"]/gu;
 const DJANGO_PATH = /\b(?:re_)?path\(\s*r?['"]\^?([^'"]*)['"]\s*,/gu;
 const GO_HANDLE = /\b(?:HandleFunc|Handle)\(\s*"([^"]+)"/gu;
-const LABEL_KEY = /\b(?:key|table|tableName|resource|collection|slug|path|route|endpoint|plural|name|id|en|english|labelEn|label_en)\s*["']?\s*:\s*["'`]\/?(?:api\/)?([A-Za-z][\w-]{1,40})["'`]/gu;
 const GENERIC_VALUES = new Set(['name', 'title', 'description', 'notes', 'phone', 'email', 'image', 'photo', 'price', 'quantity', 'amount',
     'reference', 'status', 'date', 'time', 'text', 'int', 'real', 'integer', 'string', 'number', 'boolean', 'id', 'key', 'value', 'label']);
 
@@ -514,12 +513,12 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
     const receiverKind = jsReceivers(text);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
     // P157): each pass is a route, and the template it was written with is not
-    // a second, unreadable one.
+    // a second, unreadable one — unless some pass could not be read (P158).
     const readInLoops = new Set<number>();
     for (const route of loopRoutes(text, lookup)) {
         const kind = receiverKind(route.receiver);
         if (!kind) continue;
-        readInLoops.add(route.at);
+        if (route.complete) readInLoops.add(route.at);
         routes.push({ path: route.path, method: route.method, file, dynamic: false, known: kind === 'app' });
         if (route.method === 'use') prefixes.add(route.path.endsWith('/') ? route.path : `${route.path}/`);
     }
@@ -565,23 +564,56 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
     for (const m of text.matchAll(GO_HANDLE)) routes.push({ path: String(m[1] || ''), method: 'route', file, dynamic: false, known: true });
 }
 
+/** A property that holds a label, a language, or a part of a table — never the table's own name. */
+const NOT_A_TABLE_KEY = new Set([...GENERIC_VALUES, 'ar', 'en', 'fr', 'arabic', 'english', 'labelar', 'label_ar', 'title_ar', 'heading', 'caption',
+    'singular', 'plural', 'labels', 'titles', 'translations', 'i18n', 'messages', 'strings', 'columns', 'fields', 'options']);
+/** A key field of the label's own object, as one whole property («key: 'products'», «"path": "/api/students"»). */
+const OWN_LABEL_KEY = /^["']?(?:key|table|tableName|resource|collection|slug|path|route|endpoint|plural|name|id|en|english|labelEn|label_en)["']?\s*:\s*["'`]\/?(?:api\/)?([A-Za-z][\w-]{1,40})["'`]$/u;
+
+/** The «{» that opens the object a text position sits in (a backward count), or -1. */
+function enclosingObject(text: string, at: number): number {
+    let depth = 0;
+    for (let i = at - 1; i >= 0 && at - i <= 4000; i--) {
+        if (text[i] === '}') depth++;
+        else if (text[i] === '{' && depth-- === 0) return i;
+    }
+    return -1;
+}
+
+/**
+ * The keys a build binds his label to: in the object that holds the label,
+ * its own key fields («{ key: 'products', ar: 'المنتجات' }»), the property
+ * whose value it is («{ prescriptions: 'الوصفات' }»), and the property the
+ * object sits under («prescriptions: { title: 'الوصفات', columns: […] }»).
+ * Never a nested object's: P158's `{ key: 'patientName' }` column, read after
+ * «الوصفات», named the table by one of its columns. A plural his word ends in
+ * «ات» is looked for in the singular too («الوصفة», a server's own label).
+ */
 function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<string, Set<string>>): void {
+    const bind = (key: string, value: string) => {
+        const v = String(value || '').toLowerCase();
+        if (v && !NOT_A_TABLE_KEY.has(v)) (out[key] ||= new Set()).add(v);
+    };
     for (const record of records) {
-        const labels = Array.from(new Set([record.ar, record.item, /[a-z]/iu.test(record.en) ? record.en : ''].map(s => String(s || '').trim()).filter(s => s.length >= 2)));
+        const words = [record.ar, record.item, /[a-z]/iu.test(record.en) ? record.en : ''].map(s => String(s || '').trim()).filter(s => s.length >= 2);
+        const labels = Array.from(new Set([...words, ...words.filter(w => /[؀-ۿ]ات$/u.test(w)).map(w => w.replace(/ات$/u, 'ة'))]));
         for (const label of labels) {
             const quoted = new RegExp(`["'\`]${escapeRe(label)}["'\`]`, 'gu');
             for (const hit of text.matchAll(quoted)) {
                 const at = hit.index || 0;
-                const open = text.lastIndexOf('{', at);
-                const closeBefore = text.lastIndexOf('}', at);
-                if (open < 0 || open < closeBefore || at - open > 400) continue;
-                const close = text.indexOf('}', at);
-                const window = text.slice(open, close < 0 ? at + 600 : Math.min(close + 1, at + 600));
-                for (const kv of window.matchAll(LABEL_KEY)) {
-                    const value = String(kv[1] || '').toLowerCase();
-                    if (GENERIC_VALUES.has(value)) continue;
-                    (out[record.key] ||= new Set()).add(value);
+                const open = enclosingObject(text, at);
+                if (open < 0) continue;
+                const close = closeOf(text, open);
+                if (close < 0 || close <= at) continue;
+                const asValue = new RegExp(`^(?:(["'])([A-Za-z][\\w-]{1,40})\\1|([A-Za-z_$][\\w$]{1,40}))\\s*:\\s*["'\`]${escapeRe(label)}["'\`]$`, 'u');
+                for (const part of topLevelParts(text.slice(open + 1, close - 1))) {
+                    const own = part.match(OWN_LABEL_KEY);
+                    if (own) bind(record.key, own[1]);
+                    const holder = part.match(asValue);
+                    if (holder) bind(record.key, holder[2] || holder[3]);
                 }
+                const under = text.slice(Math.max(0, open - 80), open).match(/(?:^|[\s,{(\[])(?:(["'])([A-Za-z][\w-]{1,40})\1|([A-Za-z_$][\w$]{1,40}))\s*:\s*$/u);
+                if (under) bind(record.key, under[2] || under[3]);
             }
         }
     }
