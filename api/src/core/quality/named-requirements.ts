@@ -697,6 +697,38 @@ function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; bl
         const name = m[1] || m[2] || m[3];
         if (name && !definedIn.has(name)) definedIn.set(name, f);
     }
+    //  The server file that registers a route another file calls — a test, a
+    //  page — by the route's fixed part, up to its first parameter (H02: the
+    //  tests called /api/timetable and expected 409, and timetable.js, which
+    //  answers it, held none of his words).
+    const servedIn: Array<{ path: string; home: { path: string; block: string } }> = [];
+    const REGISTERS = /\.\s*(?:get|post|put|patch|delete|all|route)\s*\(\s*(['"`])(\/[^'"`]*)\1\s*,/gu;
+    for (const f of files) {
+        if (/\bdocument\.|\bwindow\./u.test(f.block)) continue;
+        for (const m of f.block.matchAll(REGISTERS)) {
+            const fixed = m[2].split(/\/:|\$\{|[*?]/u)[0].replace(/\/+$/u, '');
+            if (fixed.split('/').filter(Boolean).length < 2) continue;
+            if (!servedIn.some(s => s.path === fixed && s.home === f)) servedIn.push({ path: fixed, home: f });
+        }
+    }
+    //  How near a call of the route is to his words in the calling file: a test
+    //  calls every route, and the one called where «تعارض» is said comes first.
+    const rare = new Set(words.filter(w => lows.filter(low => low.includes(w)).length <= files.length / 2));
+    const nearness = (i: number, route: string): number => {
+        const low = lows[i];
+        const own = words.filter(w => low.includes(w));
+        const marks = (own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own).flatMap(w => {
+            const at: number[] = [];
+            for (let p = low.indexOf(w); p >= 0; p = low.indexOf(w, p + w.length)) at.push(p);
+            return at;
+        });
+        let best = Infinity;
+        for (let at = files[i].block.indexOf(route); at >= 0; at = files[i].block.indexOf(route, at + 1)) {
+            if (/[\w-]/u.test(files[i].block[at + route.length] || '')) continue;
+            best = Math.min(best, marks.length ? Math.min(...marks.map(p => Math.abs(p - at))) : at);
+        }
+        return best;
+    };
     const chosen: Array<{ path: string; block: string }> = [];
     let used = 0;
     const take = (f: { path: string; block: string }): boolean => {
@@ -707,13 +739,21 @@ function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; bl
         used += cost;
         return true;
     };
-    //  Each file, then at once what it calls: a route is shown with the rule it keeps.
+    //  Each file, then at once what it calls: a route is shown with the rule it
+    //  keeps, and a test with the routes it calls.
     for (const f of ranked) {
         if (!take(f)) continue;
         for (const m of f.block.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/gu)) {
             const home = definedIn.get(m[1]);
             if (home && home !== f) take(home);
         }
+        const i = files.indexOf(f);
+        servedIn
+            .filter(s => s.home !== f)
+            .map(s => ({ home: s.home, near: nearness(i, s.path) }))
+            .filter(h => h.near < Infinity)
+            .sort((a, b) => a.near - b.near)
+            .forEach(h => take(h.home));
     }
     if (!chosen.length) return '';
     //  A requirement none of whose words made it in still gets its windows.
