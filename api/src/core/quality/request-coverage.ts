@@ -692,12 +692,27 @@ export function takenIdentifiers(record: RequestedRecord, all: RequestedRecord[]
         .map(id => id.toLowerCase())));
 }
 
-/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, and keys bound to his label. */
+/**
+ * English names a build gives the same record when his word is Arabic: the
+ * dictionary keys «العلامات» `grades`, and H02's school (2026-11-04) called the
+ * students' marks `marks` and its grade levels `grades` — its marks were
+ * tested, and the record was refused as «grades (untested)».
+ */
+const RECORD_ALSO: Record<string, string[]> = {
+    grades: ['marks', 'scores'], marks: ['grades', 'scores'],
+    bookings: ['reservations'], reservations: ['bookings'],
+    customers: ['clients'], clients: ['customers'],
+    pets: ['animals'], animals: ['pets'],
+};
+
+/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, the names a build also gives it, and keys bound to his label. */
 export function identifiersFor(record: RequestedRecord, labelKeys: string[] = [], all: RequestedRecord[] = []): string[] {
     const named = [record.key, latinEnglish(record), hisWordsFor(record), ...labelKeys].flatMap(forms);
     const taken = new Set(takenIdentifiers(record, all));
     const words = hisNamingWords(record).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
-    return Array.from(new Set([...named, ...words]));
+    //  …never a name another of his records owns («grades» and «marks» listed apart stay apart).
+    const also = (RECORD_ALSO[String(record.key).toLowerCase()] || []).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
+    return Array.from(new Set([...named, ...words, ...also]));
 }
 
 /**
