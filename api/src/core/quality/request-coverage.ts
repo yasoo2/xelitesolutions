@@ -445,12 +445,15 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
     // when exactly one file declares it.
     const declaredIn = new Map<string, RouteTable | null>();
     const tablesOf = new Map<string, Map<string, RouteTable>>();
+    // …and a wrapper one server file builds over its router, called by name in the others.
+    const wrappers = new Set<string>();
     for (const [index, file] of unique.entries()) {
         const text = stripped[index];
         if (text === null || !isServerText(file, text)) continue;
         const tables = routeTablesIn(text);
         tablesOf.set(file, tables);
         for (const [name, table] of tables) declaredIn.set(name, declaredIn.has(name) ? null : table);
+        for (const name of routeWrappersIn(text)) wrappers.add(name);
     }
     for (const [index, file] of unique.entries()) {
         const text = stripped[index];
@@ -462,7 +465,7 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
         const own = tablesOf.get(file);
         const lookup = (name: string) => own?.get(name) || declaredIn.get(name) || undefined;
         const before = routes.length;
-        harvestRoutes(text, file, routes, prefixes, lookup);
+        harvestRoutes(text, file, routes, prefixes, lookup, wrappers);
         if (routes.length > before) routeCount.set(file, routes.length - before);
     }
     for (const route of routes) {
@@ -485,8 +488,38 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
 
 type ReceiverKind = 'app' | 'router' | null;
 
+/**
+ * A ROUTER BEHIND A WRAPPER STILL SERVES.
+ *
+ * The hard exam, 2026-11-04, H02: a school of eleven route modules, each
+ * registering its routes as `api.get('/api/timetable', STAFF, ({ query }) =>
+ * …)` on an `api` built in app.js over the Express router — `{ get: (pattern,
+ * roles, handler) => router.get(pattern, …) }` — and handed to every module.
+ * `api` is a client's usual name and its handlers take no request, so not one
+ * route was read: «the request needs a server, but no delivered part registers
+ * server routes», eight times, for a server that answered every one of them.
+ *
+ * An object whose methods register on a router or an application of its own
+ * file is a router, by its name, in every server file of the delivery — unless
+ * a file binds that name to an HTTP client of its own.
+ */
+function routeWrappersIn(text: string): string[] {
+    const receiverKind = jsReceivers(text);
+    const names: string[] = [];
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/gu)) {
+        const open = (m.index || 0) + m[0].length - 1;
+        const close = closeOf(text, open);
+        if (close < 0) continue;
+        const body = text.slice(open + 1, close);
+        const delegates = Array.from(body.matchAll(/\b(?:get|post|put|patch|delete|all)\s*(?::\s*(?:async\s*)?(?:function\s*)?\([^()]*\)\s*(?:=>)?|\([^()]*\))\s*\{?\s*(?:return\s+)?([A-Za-z_$][\w$]*)\s*\.\s*(?:get|post|put|patch|delete|all)\s*\(/gu))
+            .some(d => receiverKind(String(d[1] || '')) !== null);
+        if (delegates) names.push(m[1]);
+    }
+    return names;
+}
+
 /** Is this receiver something that SERVES routes in this file — and is its path the served path? */
-function jsReceivers(text: string): (name: string) => ReceiverKind {
+function jsReceivers(text: string, wrappers: ReadonlySet<string> = new Set()): (name: string) => ReceiverKind {
     const apps = new Set<string>();
     const routers = new Set<string>();
     const clients = new Set<string>();
@@ -512,7 +545,9 @@ function jsReceivers(text: string): (name: string) => ReceiverKind {
         // What this file binds the name to decides first: «const api = express()» serves.
         if (apps.has(name)) return 'app';
         if (routers.has(name)) return 'router';
-        if (clients.has(name) || CLIENT_RECEIVERS.has(lower)) return null;
+        if (clients.has(name)) return null;
+        if (wrappers.has(name)) return 'router';
+        if (CLIENT_RECEIVERS.has(lower)) return null;
         if (params.has(name) || imported.has(name)) {
             if (SERVER_NAME.test(name)) return 'app';
             if (ROUTER_NAME.test(name) || /^router$/iu.test(name)) return 'router';
@@ -524,8 +559,8 @@ function jsReceivers(text: string): (name: string) => ReceiverKind {
     };
 }
 
-function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined): void {
-    const receiverKind = jsReceivers(text);
+function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined, wrappers: ReadonlySet<string> = new Set()): void {
+    const receiverKind = jsReceivers(text, wrappers);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
     // P157): each pass is a route, and the template it was written with is not
     // a second, unreadable one — unless some pass could not be read (P158).
