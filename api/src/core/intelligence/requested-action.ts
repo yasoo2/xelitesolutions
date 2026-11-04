@@ -116,8 +116,13 @@ export function unquotedIntentText(raw: string): string {
  * a database, a login, an interface, a page, a website — and is removed before
  * the denial readers run. With no object, or «anything / code / files», it
  * stays a global denial.
+ *
+ * A backend is a part too: «Build a real weather web application … do not
+ * build a project-owned backend» was refused as a whole build once the global
+ * «do not build» reader arrived (b906f3bc8); the WeatherGo pins (093082cb3)
+ * caught it.
  */
-const EXCLUDED_PART = String.raw`(?:(?:a|an|the|any)\s+)?(?:(?:separate|react|web|mobile|graphical|user|admin|front[- ]?end|login)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth|web\s*app(?:lication)?|website|web\s*site|front[- ]?end|ui|gui|user\s+interface|interface|pages?|dashboard|screens?)`;
+const EXCLUDED_PART = String.raw`(?:(?:a|an|the|any)\s+)?(?:(?:separate|react|web|mobile|graphical|user|admin|front[- ]?end|login|project[- ]owned)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth|web\s*app(?:lication)?|website|web\s*site|front[- ]?end|back[- ]?end|ui|gui|user\s+interface|interface|pages?|dashboard|screens?)`;
 const SCOPED_EXCLUSION_EN = new RegExp(String.raw`\b(?:do\s+not|don['’]?t|never)\s+(?:create|build|generate|write|make|add|include|use)\s+${EXCLUDED_PART}(?:\s*,?\s*(?:or|and|nor)\s+${EXCLUDED_PART})*\s*(?=[.!?;,]|$)`, 'gi');
 const SCOPED_EXCLUSION_AR = /(?:^|(?<=[\s،:؛.!?]))و?لا\s+(?:تنشئ|تنشي|تبني|تبن|تعمل|تصمم|تضيف|تسوي)\s+(?:أي\s+|اي\s+)?(?:واجه[ةه](?:\s+(?:مستخدم|المستخدم|أمامية|امامية|ويب|رسومية))?|موقع|صفح[ةه]|صفحات|تطبيق\s+ويب|لوح[ةه]\s+(?:تحكم|إدارة|ادارة)|قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول)(?=$|[\s،:؛.!?])/gu;
 export function stripScopedExclusions(text: string): string {
