@@ -324,29 +324,46 @@ describe('the bridge tool — plan, execute phases, report honestly', () => {
         expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
     });
 
+    //  b906f3bc8 put the scoped engineering path above the main one, so the
+    //  first discovery and planner calls in the file are now that path's. It is
+    //  issued only for a build or repair request (snapshotEngineeringRequest)
+    //  and its execution refuses read-only evidence; the pins below anchor on
+    //  the main path's own discovery.
+    const mainDiscovery = src.indexOf("const discoveryResult = await executeTool('engineering_discovery'");
+
     test('read-only evidence blocks before planner and phase execution', () => {
-        const readOnlyGuard = src.indexOf('if (evidence.constraints?.readOnly === true)');
-        const planner = src.indexOf("executeTool('project_planner'");
+        const readOnlyGuard = src.indexOf('if (evidence.constraints?.readOnly === true)', mainDiscovery);
+        const planner = src.indexOf("executeTool('project_planner'", mainDiscovery);
+        expect(mainDiscovery).toBeGreaterThan(-1);
         expect(readOnlyGuard).toBeGreaterThan(-1);
         expect(readOnlyGuard).toBeLessThan(planner);
         expect(src).toMatch(/stopReason: 'read_only_request'/);
         expect(src).toMatch(/read-only intent detected — blocking planning and execution/);
+        const policy = fs.readFileSync(
+            path.join(__dirname, '..', 'modules', 'services', 'AutonomousEngineeringPolicy.ts'), 'utf-8');
+        const sealing = policy.slice(policy.indexOf('export function issueEngineeringExecution'), policy.indexOf('const phases = plan?.phases'));
+        expect(sealing).toContain('evidence.constraints?.readOnly === true');
     });
 
     test('read-only workspace overview does not require choosing one child project', () => {
-        expect(src).toMatch(/isWorkspaceOverviewRequest/);
-        expect(src).toMatch(/مساحة\\s\+العمل\\s\+\(\?:الرئيسية\|الأساسية\)/);
+        //  b906f3bc8 moved the reader to core/orchestrator/workspace-overview.ts
+        //  and put the listing itself in the summary instead of a pointer to Logs.
+        const overviewReader = fs.readFileSync(
+            path.join(__dirname, '..', 'core', 'orchestrator', 'workspace-overview.ts'), 'utf-8');
+        expect(src).toMatch(/import \{ isWorkspaceOverviewRequest \} from '\.\.\/\.\.\/\.\.\/core\/orchestrator\/workspace-overview'/);
+        expect(overviewReader).toMatch(/مساحة\\s\+العمل\\s\+\(\?:الرئيسية\|الأساسية\)/);
         expect(src).toMatch(/executeTool\('inspect_directory'/);
         expect(src).toMatch(/executeTool\('read_file'/);
         expect(src).toMatch(/read-only-workspace-overview/);
         expect(src).toMatch(/No README exists at the workspace root/);
-        expect(src).toMatch(/Full discovery details are available in Logs/);
+        expect(src).toMatch(/\*\*Files and directories:\*\*/);
+        expect(src).toMatch(/No files were written, modified, or executed\./);
         expect(src).toMatch(/workspace\.overview\.top_level=/);
     });
 
     test('routes a bounded workspace overview before broad engineering discovery', () => {
         const overview = src.indexOf('if (isWorkspaceOverviewRequest(productRequest))');
-        const discovery = src.indexOf("executeTool('engineering_discovery'");
+        const discovery = mainDiscovery;
         expect(overview).toBeGreaterThan(-1);
         expect(discovery).toBeGreaterThan(-1);
         expect(overview).toBeLessThan(discovery);
