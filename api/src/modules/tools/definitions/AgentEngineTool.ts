@@ -28,6 +28,7 @@ import { projectFolderFor, registerProjectFolder, uiEmitter } from '../../../cor
 import { fileTools } from '../../../core/engine/tools/files';
 import { shellTools, createProcessRegistry } from '../../../core/engine/tools/shell';
 import { browserTools, createBrowserSession } from '../../../core/engine/tools/browser';
+import { webTools } from '../../../core/engine/tools/web';
 import { machineFacts } from './EngineShellTools';
 import { createVerifier, deliveryOutput } from '../../../core/engine/verify';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
@@ -114,7 +115,7 @@ export const AgentEngineTool: ToolDefinition = {
                 joe: { toolContext, runId, sessionId: context.sessionId, userId: context.userId, workspaceId: context.workspaceId },
             }, {
                 model,
-                tools: [planUpdateTool, ...fileTools, ...shellTools, ...browserTools, finishTool(verifier)],
+                tools: [planUpdateTool, ...fileTools, ...shellTools, ...browserTools, ...webTools, finishTool(verifier)],
                 processes: createProcessRegistry(toolContext),
                 browser: () => createBrowserSession(toolContext),
                 machine: await machineFacts(),
