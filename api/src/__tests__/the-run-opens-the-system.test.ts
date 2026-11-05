@@ -103,8 +103,10 @@ describe('the port Joe announces is the port it binds', () => {
     });
 
     it('a static folder is served on OUR port, which is therefore forced', async () => {
+        // Joe's own strict server, told the port it binds (2026-11-05: serve
+        // listened on every interface; see a-site-joe-serves-is-served-on-this-machine-only).
         const d = await detectStart(project({ 'index.html': '<h1>hi</h1>' }), 4700);
-        expect(d.command).toContain('-l 4700');
+        expect(d).toMatchObject({ command: 'node static-preview', kind: 'static', expectPort: 4700 });
         expect(d.forced).toBe(true);
     });
 });

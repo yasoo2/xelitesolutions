@@ -100,6 +100,8 @@ export const STATIC_PREVIEW_SERVER_SOURCE = [
     "  if(!isWithinRoot(candidate,root)){res.statusCode=403;return res.end('forbidden')}",
     "  let file=candidate;",
     "  try{if(fs.statSync(file).isDirectory())file=path.join(file,'index.html')}catch{}",
+    // A page asked for by its name opens its .html, as static hosts do.
+    "  if(!fs.existsSync(file)&&!path.extname(file)&&fs.existsSync(file+'.html'))file+='.html';",
     "  if(!fs.existsSync(file)||!fs.statSync(file).isFile()){if(strict){res.statusCode=404;return res.end('not found')}file=index}",
     "  if(!fs.existsSync(file)){res.statusCode=404;return res.end('not found')}",
     "  if(strict&&!types[path.extname(file).toLowerCase()]){res.statusCode=404;return res.end('not found')}",
@@ -278,11 +280,15 @@ async function startStaticBuildPreview(root: string, port: number, strict = fals
  */
 export async function startStaticSitePreview(context: any, projectDir: string, logs: string[] = []): Promise<string> {
     const root = staticSiteRoot(projectDir, { servedAtRoot: true });
-    if (!root) return '';
+    return root ? serveStaticFolder(context, root, projectDir, logs) : '';
+}
+
+/** Serve `root` for the session's project with the strict server on loopback; the URL, or ''. */
+async function serveStaticFolder(context: any, root: string, projectDir: string, logs: string[], port = 0): Promise<string> {
     const key = runKey(context);
     await stopServer(key, logs).catch(() => {});
     await retireRecordedServer(context, projectDir, logs);
-    const port = await findFreePort();
+    port = port || await findFreePort();
     const served = await startStaticBuildPreview(root, port, true);
     if (!(served.ready && served.url && served.pid)) {
         if (served.pid) await killTree(Number(served.pid)).catch(() => {});
@@ -578,9 +584,10 @@ export async function detectStart(cwd: string, port: number): Promise<{ command:
             }
         }
     }
-    // A static site — serve the folder deterministically on our port.
+    // A static site — served by Joe's own strict server on our port (see the
+    // static branch of project_run), never by a launcher Joe does not control.
     if (fs.existsSync(path.join(cwd, 'index.html'))) {
-        return { command: `npx -y serve -l ${port} -s . --no-clipboard`, kind: 'static', expectPort: port, forced: true };
+        return { command: 'node static-preview', kind: 'static', expectPort: port, forced: true };
     }
     // Last resort: try npm start and let readiness probing sort it out.
     return { command: 'npm start', kind: 'unknown', expectPort: port, forced: false };
@@ -1655,6 +1662,40 @@ export class ProjectRunTool implements ToolDefinition {
         let detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
             : await detectStart(cwd, port);
+        /**
+         * ⛔ A SITE WITH NO START OF ITS OWN IS SERVED BY JOE, ON THIS MACHINE ONLY.
+         *
+         * 2026-11-05: the launcher named here for such a site was
+         * «npx -y serve -l <port> -s .». serve does not read HOST and listens
+         * on every interface, so the machine's Wi-Fi address answered the page
+         * — and .joe/history.json, the requests he typed. It answers a missing
+         * file with the page (-s), which browser QA cannot tell from a working
+         * link. And it is five processes deep, so the pid Joe recorded was
+         * never the server: ten were left running after one day's restarts.
+         * The strict server the fallback already uses is one process on
+         * 127.0.0.1, with honest 404s.
+         */
+        if (detected.kind === 'static') {
+            const url = await serveStaticFolder(context, cwd, cwd, logs, port);
+            if (!url) {
+                const why = logs[logs.length - 1] || 'no answer';
+                const message = pick(isAr,
+                    `تعذّر تشغيل معاينة الموقع على هذا الجهاز: ${why}`,
+                    `The site's preview did not start on this machine: ${why}`);
+                return { ok: false, error: message, output: { cwd, command: detected.command, ready: false, verificationFailed: true, message }, logs };
+            }
+            say(pick(isAr,
+                `✅ الموقع يعمل الآن — المعاينة الحية: ${url}`,
+                `✅ The site is running — live preview: ${url}`));
+            return {
+                ok: true,
+                output: {
+                    url, previewUrl: url, port, ready: true, pid: RUNNING.get(key)?.pid, cwd,
+                    command: detected.command, startedAt: Date.now(), kind: detected.kind,
+                },
+                logs,
+            };
+        }
         let launchability = await launchabilityError(cwd, detected);
         if (launchability && !input?.command && /runtime target is missing/iu.test(launchability)) {
             const reconciliation = await reconcileMissingRuntimeTarget(cwd, launchability);
