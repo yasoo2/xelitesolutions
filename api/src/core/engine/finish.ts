@@ -10,6 +10,7 @@
  */
 import type { EngineTool, ParseResult, ToolContext, VerificationReport } from './types';
 import { parseSignInAccount, type SignInAccount } from '../quality/sign-in';
+import { parseRoleAccounts, type RoleAccount } from '../quality/role-probe';
 
 export interface FinishArgs {
     summary: string;
@@ -23,6 +24,8 @@ export interface FinishArgs {
      * (core/quality/sign-in.ts).
      */
     sign_in?: SignInAccount;
+    /** One seeded account per role, for a system whose roles have their own permissions (core/quality/role-probe.ts). */
+    accounts?: RoleAccount[];
 }
 
 export type Verifier = (ctx: ToolContext, claim: FinishArgs) => Promise<VerificationReport>;
@@ -45,6 +48,11 @@ export function parseFinishArgs(raw: unknown): ParseResult<FinishArgs> {
         const account = parseSignInAccount(a.sign_in);
         if (!account) return { ok: false, error: '"sign_in" must be an account the project seeds, like {"username": "admin", "password": "…"} (or "email" in place of "username").' };
         out.sign_in = account;
+    }
+    if (a.accounts != null) {
+        const accounts = parseRoleAccounts(a.accounts);
+        if (!accounts) return { ok: false, error: '"accounts" must list one account the project seeds for each role, like [{"username": "admin", "password": "…", "role": "admin"}, {"username": "reception", "password": "…", "role": "receptionist"}].' };
+        out.accounts = accounts;
     }
     return { ok: true, value: out };
 }
@@ -88,6 +96,19 @@ export function finishTool(verify: Verifier): EngineTool<FinishArgs> {
                         password: { type: 'string' },
                     },
                     required: ['username', 'password'],
+                },
+                accounts: {
+                    type: 'array',
+                    description: 'For a system whose roles have their own permissions: one account the project seeds for each role. Joe signs in as each and checks that what a role\'s screens hide from it, the server refuses it.',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            username: { type: 'string' },
+                            password: { type: 'string' },
+                            role: { type: 'string', description: 'The role this account has, in the project\'s own words.' },
+                        },
+                        required: ['username', 'password', 'role'],
+                    },
                 },
             },
             required: ['summary'],

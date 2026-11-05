@@ -187,11 +187,11 @@ async function runContext(dir: string, request: string, ask: (p: string) => Prom
     };
 }
 
-async function verify(dir: string, request: string, wanted: Wanted[], qa: BrowserQa, processes?: ProcessRegistry): Promise<{ report: DeliveryVerification; ctx: ToolContext }> {
+async function verify(dir: string, request: string, wanted: Wanted[], qa: BrowserQa, processes?: ProcessRegistry, claim: any = { summary: 'done' }): Promise<{ report: DeliveryVerification; ctx: ToolContext }> {
     const { ask } = model(wanted);
     const ctx = await runContext(dir, request, ask, processes);
     //  task_finish as the engine runs it: inside the orchestrator's execution context, like every tool of the run.
-    const report = await executionFirewall.runInContext('joe-eng-verify-finish', () => createVerifier({ ask, runTool, browserQa: qa })(ctx, { summary: 'done' })) as DeliveryVerification;
+    const report = await executionFirewall.runInContext('joe-eng-verify-finish', () => createVerifier({ ask, runTool, browserQa: qa })(ctx, claim)) as DeliveryVerification;
     return { report, ctx };
 }
 
@@ -419,6 +419,82 @@ describe('a static site', () => {
         expect(failedChecks(report)).toEqual(['browser']);
         expect(check(report, 'browser')?.detail).toBe('the request asks for an interface, but no delivered part serves one (no page is served at the live address)');
         expect(qa.audits).toHaveLength(0);
+    });
+});
+
+/* ───────────────────────── roles with their own permissions ───────────────────────── */
+
+const ROLES_REQUEST = 'Build a clinic system: logins for two roles (admin and receptionist) with different permissions for each, patients for both and the revenue for the admin only.';
+const ROLES_WANTED: Wanted[] = [
+    { text: 'patients', quote: 'patients for both', line: "app.get('/api/patients'" },
+    { text: 'the revenue for the admin', quote: 'the revenue for the admin only', line: "app.get('/api/revenue'" },
+];
+const ROLE_ACCOUNTS = [
+    { username: 'admin', password: 'admin-demo-1', role: 'admin' },
+    { username: 'reception', password: 'reception-demo-1', role: 'receptionist' },
+];
+
+/** A clinic on Express: its page signs in and draws the menu its role may see; `checks` false only hides the menu. */
+function clinicWithRoles(checks: boolean): string {
+    const page = [
+        '<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Clinic</title></head><body><main><h1>Clinic</h1><div id="root"></div></main><script>',
+        "const root = document.getElementById('root');",
+        "const call = (p) => fetch(p, { headers: { authorization: 'Bearer ' + localStorage.getItem('token') } }).then(r => r.json());",
+        "function signIn() { root.innerHTML = '<form id=\"f\"><input name=\"username\" autocomplete=\"username\"><input type=\"password\" name=\"password\"><button type=\"submit\">Sign in</button></form>';",
+        "  document.getElementById('f').onsubmit = async (e) => { e.preventDefault(); const r = await fetch('/api/login', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ username: e.target.username.value, password: e.target.password.value }) }); if (!r.ok) return; localStorage.setItem('token', (await r.json()).token); app(); }; }",
+        "async function app() { const me = await call('/api/me'); root.innerHTML = '<nav>' + me.screens.map(s => '<button type=\"button\" data-s=\"' + s + '\">' + s + '</button>').join('') + '</nav><section id=\"m\"></section>';",
+        "  root.querySelectorAll('[data-s]').forEach(b => b.onclick = async () => { document.getElementById('m').textContent = JSON.stringify(await call('/api/' + b.dataset.s)); }); }",
+        "if (localStorage.getItem('token')) app(); else signIn();",
+        '</script></body></html>',
+    ].join('\n');
+    const server = [
+        "const express = require('express');",
+        'const app = express();',
+        'app.use(express.json());',
+        `const ACCOUNTS = ${JSON.stringify(ROLE_ACCOUNTS)};`,
+        "const SCREENS = { admin: ['patients', 'revenue'], receptionist: ['patients'] };",
+        "const roleOf = (req) => String(req.headers.authorization || '').replace(/^Bearer t-/, '');",
+        "const signedIn = (req, res, next) => SCREENS[roleOf(req)] ? next() : res.status(401).json({ error: 'sign in' });",
+        `const may = (screen) => (req, res, next) => ${checks ? "SCREENS[roleOf(req)].includes(screen) ? next() : res.status(403).json({ error: 'forbidden' })" : 'next()'};`,
+        "app.post('/api/login', (req, res) => { const a = ACCOUNTS.find(x => x.username === req.body.username && x.password === req.body.password); return a ? res.json({ token: 't-' + a.role }) : res.status(401).json({ error: 'invalid' }); });",
+        "app.get('/api/me', signedIn, (req, res) => res.json({ role: roleOf(req), screens: SCREENS[roleOf(req)] }));",
+        "app.get('/api/patients', signedIn, may('patients'), (req, res) => res.json([{ name: 'Layla Hassan' }]));",
+        "app.get('/api/revenue', signedIn, may('revenue'), (req, res) => res.json({ month: '2026-11', total: 4200 }));",
+        `app.get('/', (req, res) => res.type('html').send(${JSON.stringify(page)}));`,
+        "app.listen(Number(process.env.PORT) || 3000, '127.0.0.1');",
+    ].join('\n');
+    return project({
+        'server.js': server,
+        'package.json': JSON.stringify({ name: 'clinic', version: '1.0.0', private: true, scripts: { start: 'node server.js' }, dependencies: { express: '^5.2.1' } }, null, 2),
+    });
+}
+
+describe('a clinic whose roles have their own permissions', () => {
+    it('is refused until task_finish gives an account per role, and says how to give them', async () => {
+        const { report } = await verify(clinicWithRoles(true), ROLES_REQUEST, ROLES_WANTED, panel({ watching: true }), undefined,
+            { summary: 'done', sign_in: { identity: 'admin', password: 'admin-demo-1' } });
+        expect(report.passed).toBe(false);
+        expect(failedChecks(report)).toEqual(['roles']);
+        expect(check(report, 'roles')?.detail).toMatch(/give task_finish "accounts": \[\{"username": …, "password": …, "role": …\}, …\]/u);
+    });
+
+    it('is delivered when every role is refused what its screens hide, and says what each role sees', async () => {
+        const accounts = ROLE_ACCOUNTS.map(a => ({ identity: a.username, password: a.password, role: a.role }));
+        const { report } = await verify(clinicWithRoles(true), ROLES_REQUEST, ROLES_WANTED, panel({ watching: true }), undefined,
+            { summary: 'done', sign_in: accounts[0], accounts });
+        expect(failedChecks(report)).toEqual([]);
+        expect(report.passed).toBe(true);
+        expect(check(report, 'roles')?.detail).toMatch(/^every role signed in, and the server refused each the data of the screens it is not shown \(1 refusal\(s\)\): admin sees 2 screen\(s\), receptionist sees 1 screen\(s\)/u);
+        expect(report.delivery.roleViews).toEqual([{ role: 'admin', screens: ['patients', 'revenue'] }, { role: 'receptionist', screens: ['patients'] }]);
+    });
+
+    it('is refused when the server only hides the menu, naming the role, the address and the screen', async () => {
+        const accounts = ROLE_ACCOUNTS.map(a => ({ identity: a.username, password: a.password, role: a.role }));
+        const { report } = await verify(clinicWithRoles(false), ROLES_REQUEST, ROLES_WANTED, panel({ watching: true }), undefined,
+            { summary: 'done', sign_in: accounts[0], accounts });
+        expect(report.passed).toBe(false);
+        expect(failedChecks(report)).toEqual(['roles']);
+        expect(check(report, 'roles')?.detail).toMatch(/receptionist was given GET \/api\/revenue \(200\) — the data of «revenue», a screen only admin has/u);
     });
 });
 

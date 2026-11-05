@@ -15,6 +15,9 @@ import os from 'os';
 import path from 'path';
 import { judgeTestSuiteByRun } from '../core/quality/test-suite-requirement';
 
+//  The verifier's judge reads the project's source: on a loaded machine that is more than jest's 10 s.
+jest.setTimeout(120_000);
+
 const H13 = 'Build a project management REST API only, with Node, Express and SQLite: organizations, projects, tasks and comments; JWT authentication with refresh tokens; role-based permissions per organization; pagination, filtering and sorting; OpenAPI documentation; and a full test suite.';
 
 const record = (key: string, tested: boolean | null) => ({ key, ar: key, en: key, item: key, served: true, tested, present: null, evidence: [] });

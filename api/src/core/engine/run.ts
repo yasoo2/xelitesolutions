@@ -157,12 +157,17 @@ function clip(value: unknown): string {
     return s.length > UI_TEXT_LIMIT ? `${s.slice(0, UI_TEXT_LIMIT)}… [${s.length - UI_TEXT_LIMIT} more characters in the run record]` : s;
 }
 
-/** A tool call as the live event shows it: task_finish's sign-in password is never shown. */
+/** A tool call as the live event shows it: task_finish's account passwords are never shown. */
 export function shownArgs(name: string, args: unknown): unknown {
     if (name !== 'task_finish' || !args || typeof args !== 'object') return args;
     const a = args as Record<string, any>;
-    if (!a.sign_in || typeof a.sign_in !== 'object') return args;
-    return { ...a, sign_in: { ...a.sign_in, password: '[hidden]' } };
+    const hide = (account: any) => (account && typeof account === 'object' ? { ...account, password: '[hidden]' } : account);
+    if (!a.sign_in && !Array.isArray(a.accounts)) return args;
+    return {
+        ...a,
+        ...(a.sign_in ? { sign_in: hide(a.sign_in) } : {}),
+        ...(Array.isArray(a.accounts) ? { accounts: a.accounts.map(hide) } : {}),
+    };
 }
 
 /**
