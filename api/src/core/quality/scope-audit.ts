@@ -290,6 +290,8 @@ function handlerQueryReads(handler: string): Array<{ name: string; ids: string[]
         const expr = escapeRe(m[0]);
         for (const alias of handler.matchAll(new RegExp(`(?:\\b(?:const|let|var)\\s+|^[ \\t]*)([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*${expr}`, 'gmu'))) add(ANY_FIELD, alias[1]);
     }
+    // A parameter a helper reads by name: `const status = q.parseEnum(req.query, 'status', STATUSES)` (H13, rerun).
+    for (const m of handler.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?[A-Za-z_$][\w$.]*\(\s*req(?:uest)?(?:\.query)?\s*,\s*['"]([A-Za-z_][\w]*)['"]/gu)) add(m[2], m[1]);
     // FastAPI: a decorated handler's defaulted parameters are its query parameters.
     const def = handler.match(/^\s*(?:async\s+)?def\s+\w+\s*\(([^)]*)\)/mu);
     if (def && /^\s*@/mu.test(handler)) {
@@ -318,8 +320,31 @@ function usedBy(handler: string, ids: string[], kind: 'narrow' | 'order'): boole
     }
     if (kind === 'narrow') {
         for (const m of handler.matchAll(/\[[^\]\n]*\bfor\b[^\]\n]*\bif\b[^\]\n]*\]/gu)) if (mentions(m[0])) return true;
+        //  The value bound beside a SQL condition the handler adds to its own
+        //  WHERE list: `if (status) { where.push('t.status = ?'); params.push(status); }`.
+        for (const statement of boundStatements(handler)) if (SQL_CONDITION.test(statement) && mentions(statement)) return true;
     }
     return false;
+}
+
+/** A quoted SQL condition with a bound placeholder: «t.status = ?», «due_date <= $2», «name LIKE @q». */
+const SQL_CONDITION = /['"`][^'"`\n]*?[\w.)\]]\s*(?:=|<=|>=|<>|!=|<|>|\bI?LIKE\b|\bIN\b)\s*\(?\s*(?:\?|\$\d+|@\w+|:\w+)/iu;
+
+/** Each line of a handler, and each `if (…) { … }` with its whole block. */
+function boundStatements(handler: string): string[] {
+    const out = handler.split('\n');
+    for (const m of handler.matchAll(/\bif\s*\(/gu)) {
+        const cond = callText(handler, m.index! + m[0].length - 1);
+        const after = m.index! + m[0].length - 1 + cond.length;
+        const brace = /^\s*\{/u.exec(handler.slice(after, after + 20));
+        if (!brace) continue;
+        let depth = 0;
+        for (let i = after + brace[0].length - 1; i < handler.length; i++) {
+            if (handler[i] === '{') depth++;
+            else if (handler[i] === '}' && --depth === 0) { out.push(handler.slice(m.index!, i + 1)); break; }
+        }
+    }
+    return out;
 }
 
 /** The arguments of a call, «(» through «)», split at its own commas — strings and brackets kept whole. */

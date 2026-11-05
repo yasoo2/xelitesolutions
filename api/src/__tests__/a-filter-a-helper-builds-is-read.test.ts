@@ -153,6 +153,75 @@ describe('H13: an API whose list routes filter, sort and page through one helper
     });
 });
 
+/**
+ * The rerun of H13 the same afternoon built the API another careful way: each
+ * parameter read by a helper that names it, and the value bound to a
+ * condition the handler adds to its own WHERE list —
+ *
+ *     const status = q.parseEnum(req.query, 'status', STATUSES);
+ *     if (status) { where.push('t.status = ?'); params.push(status); }
+ *
+ * — and was refused four times more as «missing: filtering». A value read by
+ * `helper(req.query, 'name')` is that parameter; a statement that binds it
+ * beside a SQL condition with a placeholder narrows by it.
+ */
+describe('H13, rerun: each filter read by a helper that names it, bound to a WHERE condition', () => {
+    const ROUTE = [
+        `const express = require('express');`,
+        `const q = require('../query');`,
+        `function tasksRouter(db) {`,
+        `  const router = express.Router();`,
+        `  router.get('/:orgId/tasks', authn, (req, res) => {`,
+        `    const pagination = q.parsePagination(req.query);`,
+        `    const where = ['t.org_id = ?'];`,
+        `    const params = [req.org.id];`,
+        `    const status = q.parseEnum(req.query, 'status', STATUSES);`,
+        `    if (status) { where.push('t.status = ?'); params.push(status); }`,
+        `    const dueBefore = q.parseDate(req.query, 'due_before');`,
+        `    if (dueBefore) { where.push('t.due_date <= ?'); params.push(dueBefore); }`,
+        `    res.json(q.listResult(db, { select: 't.*', from: 'tasks t', where, params, order: q.parseSort(req.query, TASK_SORT, '-created_at', 't.id'), pagination }));`,
+        `  });`,
+        `  return router;`,
+        `}`,
+    ].join('\n');
+    const QUERY = [
+        `function single(q, name) { const v = q[name]; return v === undefined ? undefined : String(v); }`,
+        `function parseEnum(q, name, values) { const v = single(q, name); return values.includes(v) ? v : undefined; }`,
+        `function parseDate(q, name) { return single(q, name); }`,
+        `function listResult(db, { select, from, where, params, order, pagination }) {`,
+        `  const whereSql = where.length ? \` WHERE \${where.join(' AND ')}\` : '';`,
+        `  return db.prepare(\`SELECT \${select} FROM \${from}\${whereSql} ORDER BY \${order} LIMIT ? OFFSET ?\`).all(...params, pagination.limit, pagination.offset);`,
+        `}`,
+        `module.exports = { parseEnum, parseDate, listResult };`,
+    ].join('\n');
+
+    it('the parameter the helper names, bound to the condition the handler adds, is a filter', () => {
+        expect(hasServiceFilterEvidence(`${ROUTE}\n${QUERY}`)).toBe(true);
+    });
+
+    it('is not «missing: filtering» on the delivered tree', () => {
+        const dir = tree({
+            'package.json': JSON.stringify({ name: 'pm-api', scripts: { start: 'node src/server.js' }, dependencies: { express: '^4.21.2' } }),
+            'src/server.js': `const express = require('express');\nconst app = express();\napp.use('/api/orgs', require('./routes/tasks').tasksRouter(db));\napp.listen(3000);\n`,
+            'src/routes/tasks.js': ROUTE,
+            'src/query.js': QUERY,
+        });
+        expect(scopeReport(H13, [dir]).missing.map(m => m.id)).not.toContain('filtering');
+    });
+
+    it('…but a named parameter that is only logged, beside another\'s condition, is not', () => {
+        const logs = [
+            `router.get('/tasks', (req, res) => {`,
+            `  const status = q.parseEnum(req.query, 'status', STATUSES);`,
+            `  console.log('status asked', status);`,
+            `  const where = ['t.org_id = ?']; const params = [req.org.id];`,
+            `  res.json(q.listResult(db, { where, params }));`,
+            `});`,
+        ].join('\n');
+        expect(hasServiceFilterEvidence(logs)).toBe(false);
+    });
+});
+
 describe('H01: an interface whose own controls set a plural filter state its server narrows by', () => {
     const PAGE = [
         `import { useEffect, useState } from 'react';`,
