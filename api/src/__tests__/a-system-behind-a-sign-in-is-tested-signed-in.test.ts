@@ -103,10 +103,20 @@ afterAll(async () => {
     for (const r of roots) fs.rmSync(r, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 });
 
-async function clinic(): Promise<{ dir: string; url: string }> {
+/**
+ * The rerun of H01's flaw: the saved session is put back only after the page's
+ * first request has gone without it, and a 401 signs the user out — so a
+ * reload throws whoever refreshed the page back to the sign-in form.
+ */
+const LOSES_SESSION_ON_RELOAD = PAGE
+    .replace("headers: { authorization: 'Bearer ' + localStorage.getItem('token') }", "headers: { authorization: 'Bearer ' + (window.__token || '') }")
+    .replace("localStorage.setItem('token', (await r.json()).token);", "window.__token = (await r.json()).token; localStorage.setItem('token', window.__token);")
+    .replace('if (localStorage.getItem(\'token\')) load(); else draw();', "setTimeout(() => { window.__token = localStorage.getItem('token'); }, 50);\nif (localStorage.getItem('token')) load(); else draw();");
+
+async function clinic(page = PAGE): Promise<{ dir: string; url: string }> {
     const dir = fs.mkdtempSync(path.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-sign-in-'));
     roots.push(dir);
-    fs.writeFileSync(path.join(dir, 'index.html'), PAGE);
+    fs.writeFileSync(path.join(dir, 'index.html'), page);
     const server = http.createServer((req, res) => {
         const url = String(req.url || '/').split('?')[0];
         if (url === '/api/login' && req.method === 'POST') {
@@ -128,7 +138,7 @@ async function clinic(): Promise<{ dir: string; url: string }> {
             return;
         }
         res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-        res.end(PAGE);
+        res.end(page);
     });
     servers.push(server);
     await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
@@ -216,6 +226,7 @@ describe('H01: the Browser QA signs in, and presses the language switch last', (
         expect(ids).not.toContain('controls_not_reached');
         expect(ids).not.toContain('auth_failed');
         expect(ids).not.toContain('authenticated_coverage_missing');
+        expect(ids).not.toContain('session_lost_on_reload');
         const pressed = (audit.controls || []).filter((c: any) => c.worked).map((c: any) => String(c.bare || c.label));
         expect(pressed).toEqual(expect.arrayContaining(['Invoices', 'Audit log']));
     });
@@ -224,5 +235,20 @@ describe('H01: the Browser QA signs in, and presses the language switch last', (
         const { dir, url } = await clinic();
         const audit: any = await auditBuiltApp(dir, { serveUrl: url, request: REQUEST, timeoutMs: 30_000, requireAuthenticatedCoverage: true });
         expect(audit.findings.map((f: any) => f.id)).toContain('authenticated_coverage_missing');
+    });
+});
+
+describe('H01, rerun: a product that signs its user out on a reload', () => {
+    it('is told so, with the requests the server refused — and every control behind the sign-in is still measured', async () => {
+        const { dir, url } = await clinic(LOSES_SESSION_ON_RELOAD);
+        const audit: any = await auditBuiltApp(dir, { serveUrl: url, request: REQUEST, timeoutMs: 45_000, credentials: ACCOUNT, requireAuthenticatedCoverage: true });
+        const lost = audit.findings.find((f: any) => f.id === 'session_lost_on_reload');
+        expect(lost?.severity).toBe('high');
+        expect(lost?.detailEn).toMatch(/^After signing in, a reload of the page showed the sign-in form again: whoever refreshes the page is signed out\. The server refused these requests, sent before the saved session was put back: GET \/api\/patients 401/u);
+        //  Said once, as what it is — not as the controls the lost session hid.
+        const ids = audit.findings.map((f: any) => f.id);
+        expect(ids).not.toContain('controls_not_reached');
+        const pressed = (audit.controls || []).filter((c: any) => c.worked).map((c: any) => String(c.bare || c.label));
+        expect(pressed).toEqual(expect.arrayContaining(['Invoices', 'Audit log']));
     });
 });

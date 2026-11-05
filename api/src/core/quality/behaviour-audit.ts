@@ -18,6 +18,7 @@
 
 import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
 import { applyViewportSize } from './ui-inspection';
+import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
 
 /** What the strip over the outlined element calls it, in his language. */
 const KIND_AR: Record<string, string> = {
@@ -193,6 +194,26 @@ function findControls(limit: number) {
     const isLanguageSwitch = (el: Element, text: string) => LANGUAGE_NAME.test(text.replace(/🌐/gu, '').trim())
         || el.hasAttribute('data-lang') || el.hasAttribute('hreflang')
         || !!el.closest('[aria-label*="language" i], [aria-label*="لغة"], [class*="lang-switch"], [class*="language-switch"], [data-lang-switch]');
+    /**
+     * …AND THE LANGUAGE THE PAGE IS ALREADY IN IS ALREADY ON.
+     *
+     * The rerun of H01, 2026-11-05: the clinic marked its current language
+     * with a class («on»), not with aria-pressed, and «English» pressed on an
+     * English page changed nothing — «Unresponsive controls: "English"» about
+     * a switch doing exactly what it should. A language control that names
+     * the document's own language, or carries an «active / on / selected /
+     * current» mark, is the one already on.
+     */
+    const LANGUAGE_CODE: Array<[RegExp, string]> = [
+        [/^(?:english|en|الإنجليزية|الانجليزية|إنجليزي|انجليزي)$/iu, 'en'], [/^(?:arabic|ar|العربية|عربي|عربى|ع)$/iu, 'ar'],
+        [/^(?:français|francais|fr)$/iu, 'fr'], [/^(?:español|espanol|es)$/iu, 'es'], [/^(?:deutsch|de)$/iu, 'de'], [/^(?:türkçe|turkce|tr)$/iu, 'tr'],
+    ];
+    const languageIsCurrent = (el: Element, text: string) => {
+        const pageLang = String(document.documentElement.getAttribute('lang') || '').toLowerCase().split('-')[0];
+        const code = LANGUAGE_CODE.find(([re]) => re.test(text.replace(/🌐/gu, '').trim()))?.[1] || String(el.getAttribute('data-lang') || el.getAttribute('hreflang') || '').toLowerCase().split('-')[0];
+        if (code && pageLang && code === pageLang) return true;
+        return /(?:^|\s)(?:active|is-active|on|selected|current)(?:\s|$)/u.test(String(el.getAttribute('class') || '')) || el.getAttribute('aria-current') === 'true';
+    };
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
         const controlLabel = label(el);
@@ -254,6 +275,7 @@ function findControls(limit: number) {
          * controls: "All"» on a filter that works perfectly.
          */
         if (el.getAttribute('aria-pressed') === 'true') return;
+        if (isLanguageSwitch(el, controlLabel) && languageIsCurrent(el, controlLabel)) return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
@@ -706,6 +728,13 @@ export interface ProbeOptions {
     /** Reapply the borrowed-panel layout size after any isolating reload. */
     baselineViewport?: { width: number; height: number };
     /**
+     * The account the audit signed in with: a restore that lands on the
+     * sign-in form signs in again, so a product that loses its session on a
+     * reload (said once, as `session_lost_on_reload`) still has every control
+     * behind its sign-in measured, not reported «gone» (sign-in.ts).
+     */
+    signIn?: SignInAccount;
+    /**
      * A form is exercised ONCE per audit, not once per route.
      *
      * A hash route does not rebuild the document, so the contact form on page
@@ -861,6 +890,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             }
             if (opts?.baselineViewport) {
                 await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height).catch(() => { });
+            }
+            //  A product that lost its session on the reload is signed in to again (ProbeOptions.signIn).
+            if (opts?.signIn) {
+                await page.waitForTimeout(300).catch(() => { });
+                if (await showsSignInForm(page)) await signInThroughPage(page, opts.signIn, { timeoutMs: 8_000 }).catch(() => undefined);
             }
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
