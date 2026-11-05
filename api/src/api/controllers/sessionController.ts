@@ -10,7 +10,7 @@ import { Tenant } from '../../shared/models/tenant';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { readJoeProjectForRun } from '../page-store';
 import { engineOfRuns, getRunEvidenceForSession } from '../../shared/run-evidence-store';
-import { sessionLogLines } from '../../core/session/session-log-store';
+import { sessionLogLines, sessionTerminal } from '../../core/session/session-log-store';
 import { logTextFor, logStampFor, mergeLogSources } from '../../core/session/log-line';
 import { previewForSession, type SessionPreview } from '../session-preview';
 
@@ -872,6 +872,9 @@ export async function sessionWorkspace(req: Request, res: Response) {
         }
     } catch { /* an unreadable evidence file is an empty log, never a 500 */ }
     const logs = mergeLogSources(sessionLogLines(sessionId), evidenceLines);
+    //  The session's own terminal record survives a restart; the run record
+    //  (above) is the fallback for runs older than it.
+    terminal = sessionTerminal(sessionId) || terminal;
     const MAX_TERMINAL = 256_000;
     if (terminal.length > MAX_TERMINAL) terminal = terminal.slice(-MAX_TERMINAL);
 
