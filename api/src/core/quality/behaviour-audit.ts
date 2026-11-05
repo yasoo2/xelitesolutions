@@ -174,7 +174,25 @@ function findControls(limit: number) {
      */
     document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
 
-    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean; stateful?: boolean }> = [];
+    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean; stateful?: boolean; language?: boolean }> = [];
+    /**
+     * A LANGUAGE SWITCH RENAMES EVERY OTHER CONTROL.
+     *
+     * The hard exam, 2026-11-05, H01: a clinic whose top bar holds «English» and
+     * «العربية» ahead of its sidebar. The walk pressed «العربية» third; every
+     * label on the page changed language, and «Patients», «Appointments»,
+     * «Invoices» … were sought by their English names on an Arabic page —
+     * «22 of 34 controls were gone before I could press them», a blocking
+     * finding about a clinic whose every screen worked. A reload keeps the
+     * chosen language, so restoring the page did not bring them back.
+     *
+     * A control that names a language (or sits in a language group) is marked
+     * here and pressed after every other control of its pass.
+     */
+    const LANGUAGE_NAME = /^(?:english|arabic|العربية|عربي|عربى|الإنجليزية|الانجليزية|إنجليزي|انجليزي|en|ar|fr|de|es|tr|ع|français|francais|español|espanol|deutsch|türkçe|turkce|italiano|português|portugues|русский|中文|(?:en|ar)\s*[|/]\s*(?:en|ar|ع))$/iu;
+    const isLanguageSwitch = (el: Element, text: string) => LANGUAGE_NAME.test(text.replace(/🌐/gu, '').trim())
+        || el.hasAttribute('data-lang') || el.hasAttribute('hreflang')
+        || !!el.closest('[aria-label*="language" i], [aria-label*="لغة"], [class*="lang-switch"], [class*="language-switch"], [data-lang-switch]');
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
         const controlLabel = label(el);
@@ -284,7 +302,8 @@ function findControls(limit: number) {
         const stateful = kind === 'menu' || kind === 'summary' || kind === 'tab'
             || el.hasAttribute('aria-expanded') || el.hasAttribute('aria-haspopup')
             || el.hasAttribute('data-menu') || el.hasAttribute('data-filter');
-        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal, stateful });
+        const language = isLanguageSwitch(el, controlLabel) || undefined;
+        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal, stateful, language });
     };
 
     /**
@@ -735,8 +754,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * found pressing zero buttons while reporting that it had run.
          */
         await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
-        const list: Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number }> =
+        const found: Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number; language?: boolean }> =
             await evalInPage(page, findControls, limit);
+        //  A language switch renames every other control: pressed last (findControls).
+        const list = [...found.filter(c => !c.language), ...found.filter(c => c.language)];
         metrics.controlsFound = list.length;
 
         const controlKey = (c: { kind: string; label: string; href?: string; ordinal?: number }) =>

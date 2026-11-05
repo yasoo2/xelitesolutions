@@ -593,6 +593,69 @@ function harvestComparedPaths(text: string, file: string, routes: HarvestedRoute
     }
 }
 
+/**
+ * A ROUTE TABLE A HELPER FILLS.
+ *
+ * The hard exam, 2026-11-05, H10: the salon server on `http.createServer`
+ * kept its routes in a table of its own — `const on = (method, pattern,
+ * handler) => routes.push({ method, re: new RegExp('^' + pattern + '$'),
+ * handler })`, then `on('GET', '/api/branches', …)` twenty-five times, and a
+ * dispatcher reading `routes.find(r => r.method === req.method …)`. Not one
+ * route was read, and the four records he named were refused as «not served»
+ * four times over.
+ *
+ * A helper declared in a server file whose body puts both its method and its
+ * path into a table (a push, a set, an indexed assignment) registers a route
+ * at every call that names an HTTP method and a path. A part of the path
+ * written as a pattern is a parameter. Where the table is dispatched from
+ * decides the served path, so the route is never `known`: the live probe can
+ * prove it served, never refute it.
+ */
+const REGISTRAR = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)[^)]*\)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b[^(]*)?\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)[^)]*\)\s*=>/gu;
+const PATTERN_PART = /[()[\]\\*+?^$|{}]/u;
+
+/** The helper's body: a braced block, or an arrow's expression through the end of its line. */
+function registrarBody(text: string, from: number): string {
+    const brace = /^\s*(?:=>\s*)?\{/u.exec(text.slice(from, from + 40));
+    if (brace) {
+        const open = from + brace[0].length - 1;
+        const close = closeOf(text, open);
+        return close < 0 ? '' : text.slice(open, close);
+    }
+    const end = text.indexOf('\n', from);
+    return text.slice(from, end < 0 ? text.length : end);
+}
+
+/** «/api/bookings/(\\d+)/cancel» → «/api/bookings/:id/cancel». */
+function patternPath(written: string): string {
+    const bare = written.replace(/^\^/u, '').replace(/\/?\??\$$/u, '');
+    return bare.split('/').map(segment => PATTERN_PART.test(segment) ? ':id' : segment).join('/');
+}
+
+function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    const registrars: string[] = [];
+    for (const m of text.matchAll(REGISTRAR)) {
+        const name = m[1] || m[4];
+        const [method, routePath] = m[1] ? [m[2], m[3]] : [m[5], m[6]];
+        const body = registrarBody(text, (m.index || 0) + m[0].length);
+        const uses = (param: string) => new RegExp(`(?<![\\w$.])${param.replace(/\$/gu, '\\$')}(?![\\w$])`, 'u').test(body);
+        const stores = /\.\s*(?:push|set|unshift)\s*\(|\]\s*=(?!=)/u.test(body);
+        if (name && stores && uses(method) && uses(routePath)) registrars.push(name);
+    }
+    for (const name of new Set(registrars)) {
+        const call = new RegExp(`(?<![\\w$.])${name.replace(/\$/gu, '\\$')}\\s*\\(\\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\\1\\s*,\\s*(['"\`])(\\/[^'"\`]*)\\3\\s*,`, 'giu');
+        for (const m of text.matchAll(call)) {
+            const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 240);
+            if (!HANDLER_AFTER.test(rest)) continue;
+            const method = String(m[2]).toLowerCase();
+            const routePath = patternPath(String(m[4]));
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: false });
+        }
+    }
+}
+
 function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined, wrappers: ReadonlySet<string> = new Set()): void {
     const receiverKind = jsReceivers(text, wrappers);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
@@ -627,6 +690,7 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         if (method === 'use') prefixes.add(routePath.endsWith('/') ? routePath : `${routePath}/`);
     }
     harvestComparedPaths(text, file, routes);
+    harvestRegistrarCalls(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.
     const pyApps = new Set(Array.from(text.matchAll(PY_APP)).map(m => m[1]));

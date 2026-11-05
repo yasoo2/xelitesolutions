@@ -9,12 +9,20 @@
  * acceptance judge, never from the summary it wrote.
  */
 import type { EngineTool, ParseResult, ToolContext, VerificationReport } from './types';
+import { parseSignInAccount, type SignInAccount } from '../quality/sign-in';
 
 export interface FinishArgs {
     summary: string;
     how_to_run?: string;
     url?: string;
     evidence?: { id: string; evidence: string }[];
+    /**
+     * An account the project seeds, for a system behind a sign-in. It is not
+     * a claim about the work: Joe types it into the product's own sign-in
+     * form and tests the screens behind it, and a wrong one fails to sign in
+     * (core/quality/sign-in.ts).
+     */
+    sign_in?: SignInAccount;
 }
 
 export type Verifier = (ctx: ToolContext, claim: FinishArgs) => Promise<VerificationReport>;
@@ -32,6 +40,11 @@ export function parseFinishArgs(raw: unknown): ParseResult<FinishArgs> {
         out.evidence = a.evidence
             .map((e: any) => ({ id: String(e?.id ?? '').trim().toUpperCase(), evidence: String(e?.evidence ?? '').slice(0, 600) }))
             .filter(e => /^R\d+$/.test(e.id));
+    }
+    if (a.sign_in != null) {
+        const account = parseSignInAccount(a.sign_in);
+        if (!account) return { ok: false, error: '"sign_in" must be an account the project seeds, like {"username": "admin", "password": "…"} (or "email" in place of "username").' };
+        out.sign_in = account;
     }
     return { ok: true, value: out };
 }
@@ -52,7 +65,7 @@ export function reportText(report: VerificationReport): string {
 export function finishTool(verify: Verifier): EngineTool<FinishArgs> {
     return {
         name: 'task_finish',
-        description: 'Claim the work is complete. Joe then runs its delivery checks on the project: the files, the build, the served page, and every requirement against the source and the page. If every check passes, the run is delivered. If not, you get the failed checks; fix them and call task_finish again. Give a short summary in the request\'s language, how to run the project, the address you tested, and evidence per requirement id.',
+        description: 'Claim the work is complete. Joe then runs its delivery checks on the project: the files, the build, the served page, and every requirement against the source and the page. If every check passes, the run is delivered. If not, you get the failed checks; fix them and call task_finish again. Give a short summary in the request\'s language, how to run the project, the address you tested, and evidence per requirement id. If the system has a sign-in, give an account it seeds in sign_in: Joe signs in with it through the product\'s own sign-in form and tests the screens behind it.',
         parameters: {
             type: 'object',
             properties: {
@@ -66,6 +79,15 @@ export function finishTool(verify: Verifier): EngineTool<FinishArgs> {
                         properties: { id: { type: 'string' }, evidence: { type: 'string' } },
                         required: ['id', 'evidence'],
                     },
+                },
+                sign_in: {
+                    type: 'object',
+                    description: 'For a system with a sign-in: an account the project seeds (the one with the widest access). Joe signs in with it through the product\'s own form.',
+                    properties: {
+                        username: { type: 'string', description: 'What the sign-in form\'s first field takes: a username, an email or a phone number.' },
+                        password: { type: 'string' },
+                    },
+                    required: ['username', 'password'],
                 },
             },
             required: ['summary'],

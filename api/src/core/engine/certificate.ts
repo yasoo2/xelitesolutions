@@ -105,6 +105,8 @@ export interface CertificateInput {
     at?: number;
     /** The landing view the browser check saw, relative to the project (deliveryProof). */
     screenshots?: { desktop?: string; phone?: string };
+    /** The account the browser check signed in with (its name only). */
+    signedInAs?: string;
 }
 
 export const CERTIFICATE_FILE = 'JOE-DELIVERY.md';
@@ -162,6 +164,12 @@ export function deliveryCertificate(input: CertificateInput): string {
     if (summary) out.push(ar ? '## ما بُني' : '## What was built', '', summary, '');
     out.push(ar ? '## كيف تحقّق جو منه' : '## How Joe proved it', '');
     for (const id of input.passed) out.push(`- ✅ **${words[id]?.short || id}**: ${words[id]?.whole || id}`);
+    const who = String(input.signedInAs || '').trim();
+    if (who && input.passed.includes('browser')) {
+        out.push(ar
+            ? `- ✅ **الدخول**: سجّل جو الدخول بحساب التجربة «${who}» من نموذج الدخول نفسه، وجرّب الشاشات التي خلفه.`
+            : `- ✅ **sign-in**: Joe signed in with the demo account "${who}" through the product's own sign-in form, and tested the screens behind it.`);
+    }
     out.push('');
     const unproven = (input.unproven || []).filter(Boolean);
     if (unproven.length) {

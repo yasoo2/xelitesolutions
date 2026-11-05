@@ -28,6 +28,7 @@ import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
+import { signInThroughPage } from './sign-in';
 
 export interface AppAuditFinding {
     id: string;
@@ -374,6 +375,12 @@ export async function auditBuiltApp(
         credentials?: {
             email?: string;
             password?: string;
+            /**
+             * The account the builder seeded (task_finish `sign_in`): typed
+             * into the product's own sign-in form, whatever its API is
+             * (sign-in.ts). Used when no token is given.
+             */
+            identity?: string;
             /** A short-lived token minted locally from the packaged project. */
             token?: string;
             role?: string;
@@ -897,7 +904,12 @@ export async function auditBuiltApp(
         if (opts?.credentials && !frontDoor?.recovered) {
             const c = opts.credentials;
             try {
-                if (c.token) {
+                if (!c.token && c.identity && c.password) {
+                    opts?.onProgress?.('signing in');
+                    const signed = await signInThroughPage(page, { identity: c.identity, password: c.password }, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                    if (signed.ok) authenticated = true;
+                    else authError = signed.why;
+                } else if (c.token) {
                     await page.evaluate(({ token, role, tokenStorageKey }: any) => {
                         localStorage.setItem(tokenStorageKey, token);
                         if (role) localStorage.setItem(tokenStorageKey + ':role', role);
