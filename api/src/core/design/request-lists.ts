@@ -258,11 +258,12 @@ export function splitListItems(region: string): string[] {
  * «input validation», «proper error codes», «automated tests» — qualities the
  * built software must HAVE. Reading them as tables gave P101 three phantom
  * collections (almdkhlats, shyhas, testings); they are requirements, and the
- * requirement reader carries them.
+ * requirement reader carries them. So is keeping the data: "persistent data"
+ * (H17, 2026-11-05: read as a `persistents` table), «حفظ البيانات».
  */
 export const DELIVERABLE = new FoldedRegExp(
-    `(?:^|\\s)(?:ال)?(?:تحقق|اختبار|رموز\\s+(?:ال)?أخطاء|أكواد\\s+(?:ال)?أخطاء|رسائل\\s+(?:ال)?أخطاء|معالجة\\s+(?:ال)?أخطاء|توثيق)`
-    + '|\\b(?:validat\\w*|tests?|testing|error\\s+(?:codes?|handling|messages?)|status\\s+codes?|documentation|docs)\\b',
+    `(?:^|\\s)(?:ال)?(?:تحقق|اختبار|رموز\\s+(?:ال)?أخطاء|أكواد\\s+(?:ال)?أخطاء|رسائل\\s+(?:ال)?أخطاء|معالجة\\s+(?:ال)?أخطاء|توثيق|(?:حفظ|تخزين)\\s+(?:ال)?بيانات)`
+    + '|\\b(?:validat\\w*|tests?|testing|error\\s+(?:codes?|handling|messages?)|status\\s+codes?|documentation|docs|persist(?:ent|ed)\\s+(?:data|storage|state)|(?:data\\s+)?persistence|(?:sample|seed|demo|mock|dummy)\\s+data)\\b',
     'iu');
 
 export function isDeliverable(phrase: string): boolean {

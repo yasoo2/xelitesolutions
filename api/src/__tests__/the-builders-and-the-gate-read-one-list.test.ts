@@ -205,7 +205,8 @@ describe('R2 — one reading of his list for the builders and the gate', () => {
         const request = 'Build a clinic appointment management system with secure sign-in, admin and receptionist roles, patients and doctors as separate records, appointment scheduling linked to both, status transitions, search and filtering, double-booking prevention, and audit history.';
         expect(namedEntities(request)).toEqual([]);
         expect(keys(namedEntities('Build a backend with: products, search, pagination, CSV export'))).toEqual([]);
-        expect(gate('Build a backend with: products, search, pagination, CSV export').unread).toEqual(['pagination']);
+        // Pagination, like search, is a capability the instruments judge: no record and nothing unread.
+        expect(gate('Build a backend with: products, search, pagination, CSV export').unread).toEqual([]);
     });
 });
 
