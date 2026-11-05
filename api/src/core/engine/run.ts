@@ -75,6 +75,34 @@ export function recordRunHistory(dir: string, run: ProjectRun): void {
 }
 
 /**
+ * «تراجع» put back a version kept before some runs: they no longer describe
+ * the project, so they are marked undone (2026-11-05: after the undo of «أضف
+ * وضعاً ليلياً» the history still said it was delivered, and the next change
+ * and its certificate would have listed it). A second «تراجع» restores the copy
+ * the first one kept (`keptBeforeUndo`), and the runs it undid stand again.
+ */
+export function recordUndo(dir: string, restored: { id: string; at: number }, keptBeforeUndo?: string | null): void {
+    try {
+        const file = path.join(dir, HISTORY_FILE);
+        const kept = JSON.parse(fs.readFileSync(file, 'utf8'));
+        if (!Array.isArray(kept)) return;
+        for (const run of kept) {
+            if (!run || typeof run !== 'object') continue;
+            if (run.undoneBy && run.undoneBy === restored.id) {
+                run.status = run.undoneFrom || 'delivered';
+                delete run.undoneBy;
+                delete run.undoneFrom;
+            } else if (run.status !== 'undone' && Number(run.at) >= restored.at) {
+                run.undoneFrom = run.status;
+                run.status = 'undone';
+                if (keptBeforeUndo) run.undoneBy = keptBeforeUndo;
+            }
+        }
+        fs.writeFileSync(file, JSON.stringify(kept, null, 2), 'utf8');
+    } catch { /* no history: a page, or a project built before it */ }
+}
+
+/**
  * Before a change touches the project: keep it as it is (so «تراجع» puts it
  * back) and gather what the change run is told about it.
  */
