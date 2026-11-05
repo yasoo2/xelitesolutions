@@ -89,6 +89,8 @@ export function deliveryFooter(input: { howToRun?: string; durationMs?: number; 
 
 export interface CertificateInput {
     request: string;
+    /** For a change: the requests the project was delivered for before it, oldest first. */
+    earlier?: string[];
     summary: string;
     language: string;
     /** Instruments that measured and passed, in the verdict's order. */
@@ -145,7 +147,17 @@ export function deliveryCertificate(input: CertificateInput): string {
     const out: string[] = [];
     if (ar) out.push('<div dir="rtl">', '');
     out.push(ar ? '# شهادة تسليم من جو' : '# Joe delivery certificate', '');
-    out.push(ar ? '## ما طلبتَه' : '## What you asked for', '', `> ${String(input.request || '').trim().replace(/\n+/g, '\n> ')}`, '');
+    // After a change the project is still what was first asked for: say that,
+    // then each change since, this one last (2026-11-05: the certificate of
+    // «أضف وضعاً ليلياً» no longer said the project was a counter page).
+    const said = (text: string) => String(text || '').trim().replace(/\s*\n+\s*/g, ' ');
+    const earlier = (input.earlier || []).map(said).filter(Boolean);
+    const first = earlier.length ? earlier[0] : String(input.request || '').trim();
+    out.push(ar ? '## ما طلبتَه' : '## What you asked for', '', `> ${first.replace(/\n+/g, '\n> ')}`, '');
+    if (earlier.length) {
+        const changes = [...earlier.slice(1), `**${said(input.request)}** ${ar ? '← هذا التسليم' : '← this delivery'}`];
+        out.push(ar ? '## التعديلات بعده' : '## Changes since', '', ...changes.map((c, i) => `${i + 1}. ${c}`), '');
+    }
     const summary = String(input.summary || '').trim();
     if (summary) out.push(ar ? '## ما بُني' : '## What was built', '', summary, '');
     out.push(ar ? '## كيف تحقّق جو منه' : '## How Joe proved it', '');

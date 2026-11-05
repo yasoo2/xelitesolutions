@@ -104,6 +104,21 @@ describe('a verified project holds its delivery certificate', () => {
         expect(text).not.toContain('dir="rtl"');
     });
 
+    // Live on 2026-11-05: after «أضف وضعاً ليلياً» the certificate's request
+    // was the change alone — it no longer said the project is a counter page.
+    it('after a change, says what the project was asked to be and each change since, this one last', () => {
+        const text = deliveryCertificate({
+            ...input, request: 'أضف وضعاً ليلياً',
+            earlier: ['ابنِ صفحة فيها عدّاد يزيد عند الضغط', 'كبّر الأزرار'],
+        });
+        expect(text).toContain('## ما طلبتَه\n\n> ابنِ صفحة فيها عدّاد يزيد عند الضغط\n');
+        expect(text).toContain('## التعديلات بعده\n\n1. كبّر الأزرار\n2. **أضف وضعاً ليلياً** ← هذا التسليم\n');
+        const en = deliveryCertificate({ ...input, language: 'en', request: 'Add a dark mode', earlier: ['Build a counter page'] });
+        expect(en).toContain('## What you asked for\n\n> Build a counter page\n');
+        expect(en).toContain('## Changes since\n\n1. **Add a dark mode** ← this delivery\n');
+        expect(deliveryCertificate(input)).not.toContain('التعديلات بعده');
+    });
+
     it('shows the pictures this run\'s browser check took, and none a run before it left', () => {
         const dir = path.join(root, 'with-proof');
         const kept = deliveryProofPaths(path.join(dir, '.joe'));
