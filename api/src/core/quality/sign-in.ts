@@ -146,3 +146,41 @@ export async function signInThroughPage(page: any, account: SignInAccount, opts:
     await page.waitForTimeout(400).catch(() => { });
     return { ok: true };
 }
+
+/**
+ * ⛔ A SIGNED-IN USER WHO RELOADS THE PAGE IS STILL SIGNED IN.
+ *
+ * The hard exam's rerun, 2026-11-05 (H01): the clinic kept its session in
+ * localStorage, and on a reload its screens asked the server for appointments,
+ * doctors and patients before the saved session was put back — three 401s,
+ * and its «session lost» handler signed the user out. Every person who
+ * refreshed the page was thrown back to the sign-in form. Joe's walk, which
+ * restores its baseline by reloading, found its controls gone and said only
+ * «4 of 19 controls were gone before I could press them»; the builder could
+ * not act on that, and was refused four times.
+ *
+ * The page is reloaded once, on purpose, right after signing in. A sign-in
+ * form after it is the defect, said with the requests the server refused on
+ * the way; Joe then signs in again so the rest of the product is measured.
+ */
+export async function reloadKeepsSession(page: any, account: SignInAccount, opts: { timeoutMs?: number } = {}): Promise<{ kept: boolean; refused: string[]; signedInAgain?: boolean }> {
+    const refused: string[] = [];
+    const seen = (response: any) => {
+        try {
+            const status = response.status();
+            const path = new URL(response.url()).pathname;
+            if ((status === 401 || status === 403) && /^\/api\b|\/auth\b/u.test(path)) refused.push(`${response.request().method()} ${path} ${status}`);
+        } catch { /* a response without a URL is not the product's */ }
+    };
+    page.on?.('response', seen);
+    try {
+        await page.reload({ waitUntil: 'load', timeout: Math.min(15_000, opts.timeoutMs ?? 15_000) }).catch(() => { });
+        await page.waitForLoadState?.('networkidle', { timeout: 3_000 }).catch(() => { });
+        await page.waitForTimeout(800).catch(() => { });
+    } finally {
+        page.off?.('response', seen);
+    }
+    if (!await showsSignInForm(page)) return { kept: true, refused };
+    const again = await signInThroughPage(page, account, { timeoutMs: opts.timeoutMs ?? 12_000 });
+    return { kept: false, refused: Array.from(new Set(refused)), signedInAgain: again.ok };
+}
