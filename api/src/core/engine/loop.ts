@@ -128,6 +128,7 @@ function statusText(state: RunState, processes: ProcessRegistry, deadlineAt: num
 
 export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<EngineResult> {
     const now = deps.now ?? Date.now;
+    const startedAt = now();
     const stateDir = path.join(req.projectDir, '.joe');
     await fsp.mkdir(stateDir, { recursive: true });
 
@@ -162,7 +163,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: systemPrompt(deps.machine) });
-    conv.push({ role: 'user', content: firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage) });
+    conv.push({ role: 'user', content: firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
     req.emit({ type: 'plan', plan: state.plan });
 
     const lastErrors: string[] = [];
@@ -178,6 +179,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     let recitedAt = 0;
     let recitedRunning = '';
     let summary = '';
+    let howToRun = '';
     let ending: { status: EngineResult['status']; reason?: string } | null = null;
     let served = deps.processes.list();
     const usage: NonNullable<ModelStep['usage']>[] = [];
@@ -311,6 +313,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     //  Ended above: the rest of the turn is answered as not run.
                 } else if (call.name === 'task_finish' && outcome.facts?.verification?.passed) {
                     summary = (args as FinishArgs | undefined)?.summary || summary;
+                    howToRun = String((args as FinishArgs | undefined)?.how_to_run || '').trim();
                     ending = { status: 'delivered' };
                 } else if (repeats >= REPEAT_LIMIT) {
                     ending = { status: 'failed', reason: `the same failing call was made ${repeats} times: ${call.name} — ${firstLine(outcome.output)}` };
@@ -371,12 +374,14 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         served,
         steps: state.steps,
         model: deps.model.label,
+        ...(status === 'delivered' && howToRun ? { howToRun } : {}),
+        durationMs: Math.max(0, now() - startedAt),
+        ...(deps.model.spentUsd != null ? { costUsd: deps.model.spentUsd } : {}),
     };
     try {
         await fsp.writeFile(path.join(stateDir, 'result.json'), JSON.stringify({
             ...result, plan: state.plan, modelMs: state.modelMs, toolMs: state.toolMs,
             compactions: conv.compactions, usage,
-            ...(deps.model.spentUsd != null ? { costUsd: deps.model.spentUsd } : {}),
         }, null, 2), 'utf8');
     } catch { /* the result is still returned */ }
     req.emit({ type: 'final', result });

@@ -77,6 +77,22 @@ class ApiClient {
         return this.handleResponse(res, endpoint);
     }
 
+    /** A file the server sends as an attachment, with the name it gives it. */
+    async download(endpoint: string, query?: Record<string, string>): Promise<{ blob: Blob; filename: string }> {
+        const url = new URL(this.buildUrl(endpoint));
+        if (query) Object.entries(query).forEach(([k, v]) => url.searchParams.append(k, v));
+        const headers: Record<string, string> = {};
+        const t = this.token;
+        if (t) headers['Authorization'] = `Bearer ${t}`;
+        const res = await fetch(url.toString(), { method: 'GET', headers });
+        if (!res.ok) {
+            const data = await res.json().catch(() => ({}));
+            throw new Error(data.error || `HTTP ${res.status}`);
+        }
+        const cd = res.headers.get('Content-Disposition') || '';
+        return { blob: await res.blob(), filename: (cd.match(/filename="([^"]+)"/) || [])[1] || 'joe-project.zip' };
+    }
+
     async post(endpoint: string, body?: any) {
         const res = await fetch(this.buildUrl(endpoint), {
             method: 'POST',

@@ -393,7 +393,8 @@ describe('the result the orchestrator, the receipt and the exam read', () => {
         expect(ui.output.summary).toMatch(/^⚠️ لم يُسلَّم المشروع/);
         const done = deliveryOutput({ result: result(verifiedReport(), 'delivered'), projectRoot: '/w/p', request: 'ابنِ صفحة فيها عدّاد' });
         expect(done.ok).toBe(true);
-        expect(done.output.summary).toBe('Built the page.\n\n✅ تحقّقت فحوص جو من التسليم (live، acceptance، browser) — المعاينة الحية: http://127.0.0.1:4300/');
+        // The checks are named in his language (2026-11-05: the ids were Latin to an Arabic reader).
+        expect(done.output.summary).toBe('Built the page.\n\n✅ تحقّقت فحوص جو من التسليم (التشغيل الحي، حكم مستقل، التجربة في المتصفح) — المعاينة الحية: http://127.0.0.1:4300/');
     });
 
     it('a verified report from a run that did not end delivered is not a delivery', () => {

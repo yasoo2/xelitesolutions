@@ -9,6 +9,8 @@
  * is read on every call, never at module load, so an operator can switch it
  * without a rebuild.
  */
+import { FoldedRegExp } from '../design/request-lists';
+
 export type EngineName = 'agent' | 'legacy';
 
 export function engineFor(context?: { engine?: unknown } | null, env: NodeJS.ProcessEnv = process.env): EngineName {
@@ -45,10 +47,47 @@ export async function agentEngineRoute(
     const project = await chatProjectFolder(context?.sessionId);
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
-    if (project && isActionableEditRequest(text)) return { kind: 'change', path: project };
+    if (project && !startsAfresh(text) && (isActionableEditRequest(text) || isFollowUpChange(text))) return { kind: 'change', path: project };
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isBuildRequest } = require('../intelligence/intent-classifier');
     return isBuildRequest(text)?.isBuild ? { kind: 'build' } : null;
+}
+
+/**
+ * A FOLLOW-UP THAT LEADS WITH A CHANGE CHANGES THE CHAT'S PROJECT.
+ *
+ * The edit reader wants a target it knows (a button, a colour, a field), so
+ * «أضف وضعاً ليلياً», «خلي الخلفية زرقاء», "make the header sticky" were new
+ * builds in a chat that had a project (2026-11-05). In a chat that has one,
+ * a message that opens with a change verb — after the fillers people type
+ * before it («وكمان», «لو سمحت», "now", "please") — is a change of it, unless
+ * it says it starts afresh.
+ */
+const CHANGE_LEAD_AR = new FoldedRegExp(
+    '^(?:(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو)[\\s،,]+)*و?'
+    + '(?:أضف|أضيف|ضيف|ضيفي|زيد|زد|غير|عدل|احذف|شيل|امسح|اجعل|خلي|حسن|كبر|صغر|بدل|استبدل|أصلح|صلح|انقل|رتب|ترجم|حول|لون|أخف|أظهر|وسط'
+    + '|تضيف|تغير|تعدل|تحذف|تشيل|تخلي|تجعل|تحسن|تكبر|تصغر|تبدل|تصلح|تنقل|ترتب|تترجم|تحول)(?=\\s|$)', 'u');
+const CHANGE_LEAD_EN = /^(?:(?:and|also|now|then|ok|okay|please|pls|could\s+you|can\s+you|would\s+you)[\s,]+)*(?:add|change|make|remove|delete|rename|move|fix|improve|translate|replace|turn|put|show|hide|update|edit|set|use|swap|increase|decrease|center|centre|align|shrink|enlarge)\s+\S/iu;
+/**
+ * …and a message that asks for a whole thing, indefinite, starts one: «اجعل
+ * لي موقعاً لمطعم», "make me a booking app" — where «اجعل الموقع أسرع», "make
+ * the app faster" change the one the chat has.
+ */
+const AFRESH = new FoldedRegExp(
+    '(?:مشروع|تطبيق|موقع|نظام|لعبة|متجر|برنامج)[اًا]?\\s+(?:\\S+\\s+)?جديد|من\\s+الصفر|من\\s+جديد'
+    + '|(?:اعمل|اجعل|خلي|سوي|ابني|ابن|أنشئ|صمم)\\s+(?:لي\\s+|لنا\\s+)?(?:\\S+\\s+)?(?:مشروع|تطبيق|موقع|نظام|لعبة|متجر|برنامج|منصة)(?=[اًا]?(?:\\s|$|[،,.]))'
+    + '|\\bnew\\s+(?:\\S+\\s+)?(?:project|app|application|site|website|game|system|store)\\b|\\bfrom\\s+scratch\\b|\\bstart\\s+over\\b|\\banother\\s+(?:project|app)\\b'
+    + '|\\b(?:make|build|create)\\s+(?:me\\s+|us\\s+)?(?:a|an)\\s+(?:\\S+\\s+){0,3}?(?:site|website|app|application|game|system|store|platform)\\b', 'iu');
+
+/** Does this message say it starts a new project rather than change this one? */
+export function startsAfresh(text: string): boolean {
+    return AFRESH.test(String(text || ''));
+}
+
+export function isFollowUpChange(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    if (t.split(/\s+/).length < 2 || startsAfresh(t)) return false;
+    return CHANGE_LEAD_AR.test(t) || CHANGE_LEAD_EN.test(t);
 }
 
 /** The folder the agent engine last built for this chat, when it still exists. */

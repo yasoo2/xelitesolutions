@@ -11,11 +11,12 @@
  *    neural trace. Tool calls need nothing here: every one runs through
  *    executeTool, which announces itself.
  */
-import { promises as fsp } from 'fs';
+import fs, { promises as fsp } from 'fs';
 import path from 'path';
 import { randomBytes } from 'crypto';
 import { projectRootProblem } from './workspace';
-import type { EngineEvent, PlanState } from './types';
+import { snapshotProject } from '../project/versions';
+import type { ChangeContext, EngineEvent, PlanState, ProjectRun } from './types';
 
 export async function projectFolderFor(activeRoot: string, runId: string, resumePath?: string): Promise<{ dir: string; resumed: boolean } | { error: string }> {
     if (resumePath) {
@@ -31,6 +32,66 @@ export async function projectFolderFor(activeRoot: string, runId: string, resume
     const dir = path.join(activeRoot, `joe-app-${tag}`);
     await fsp.mkdir(dir, { recursive: true });
     return { dir, resumed: false };
+}
+
+/**
+ * THE PROJECT'S OWN HISTORY: EVERY RUN'S REQUEST AND WHAT IT DELIVERED.
+ *
+ * A change run meets a full folder. Without this it knew only the new
+ * sentence: not what the project is for, not what it already does. Each run
+ * adds one line to `.joe/history.json` (the newest twenty are kept); a project
+ * built before the history existed is read from its last result and the
+ * request it was registered with.
+ */
+const HISTORY_FILE = path.join('.joe', 'history.json');
+const HISTORY_LIMIT = 20;
+const HISTORY_TEXT_LIMIT = 1_500;
+
+const clipText = (s: unknown, n = HISTORY_TEXT_LIMIT) => String(s ?? '').trim().slice(0, n);
+
+export function projectHistory(dir: string, registeredRequest = ''): ProjectRun[] {
+    try {
+        const kept = JSON.parse(fs.readFileSync(path.join(dir, HISTORY_FILE), 'utf8'));
+        if (Array.isArray(kept) && kept.length) {
+            return kept.filter(h => h && typeof h.request === 'string')
+                .map(h => ({ request: clipText(h.request), status: clipText(h.status, 40), summary: clipText(h.summary) }));
+        }
+    } catch { /* no history yet */ }
+    if (!clipText(registeredRequest)) return [];
+    let last: any = {};
+    try { last = JSON.parse(fs.readFileSync(path.join(dir, '.joe', 'result.json'), 'utf8')); } catch { /* none */ }
+    return [{ request: clipText(registeredRequest), status: clipText(last.status || 'unknown', 40), summary: clipText(last.summary) }];
+}
+
+export function recordRunHistory(dir: string, run: ProjectRun): void {
+    try {
+        const file = path.join(dir, HISTORY_FILE);
+        let kept: Array<ProjectRun & { at?: number }> = [];
+        try { const read = JSON.parse(fs.readFileSync(file, 'utf8')); if (Array.isArray(read)) kept = read; } catch { /* first run */ }
+        kept.push({ request: clipText(run.request), status: clipText(run.status, 40), summary: clipText(run.summary), at: Date.now() });
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, JSON.stringify(kept.slice(-HISTORY_LIMIT), null, 2), 'utf8');
+    } catch { /* the run is delivered either way; only the next change knows less */ }
+}
+
+/**
+ * Before a change touches the project: keep it as it is (so «تراجع» puts it
+ * back) and gather what the change run is told about it.
+ */
+export function changeContextFor(dir: string, request: string, registeredRequest = ''): ChangeContext {
+    const history = projectHistory(dir, registeredRequest);
+    const kept = snapshotProject(dir, `قبل: ${String(request || '').replace(/\s+/g, ' ').trim().slice(0, 70)}`);
+    return { history, ...(kept ? { snapshot: kept.id } : {}) };
+}
+
+/** The request the chat's project was last registered with, read before this run registers its own. */
+export function registeredRequestFor(sessionId: string | undefined): string {
+    if (!sessionId) return '';
+    try {
+        const { readJoeProjectForRun } = require('../../api/page-store');
+        const { previewKey } = require('../../modules/tools/preview-site');
+        return String(readJoeProjectForRun(previewKey(sessionId), null)?.lastRequest || '');
+    } catch { return ''; }
 }
 
 /** Register the folder where the preview and project_run look for this session's project. */
@@ -88,7 +149,12 @@ const NOTES: Record<string, { passed: string; failed: (ids: string) => string; f
     ru: { passed: '✅ проверки пройдены', failed: ids => `❌ проверки не пройдены: ${ids}`, folded: n => `… ${n} предыдущих сообщений свёрнуты в сводку` },
 };
 
-export function uiEmitter(sessionId: string | undefined, runId: string, language = 'en'): (e: EngineEvent) => void {
+/**
+ * `project` is the run's folder name inside the workspace: the run's card
+ * offers it for download (GET /project/export?project=…), with the run's time
+ * and cost beside its steps.
+ */
+export function uiEmitter(sessionId: string | undefined, runId: string, language = 'en', project = ''): (e: EngineEvent) => void {
     const words = NOTES[String(language || '').toLowerCase().split('-')[0]] || NOTES.en;
     if (!sessionId) return () => { /* nobody to tell */ };
     let ws: any;
@@ -134,7 +200,12 @@ export function uiEmitter(sessionId: string | undefined, runId: string, language
                     note('compacted', words.folded(e.removedMessages));
                     break;
                 case 'final':
-                    send('engine_final', { status: e.result.status, steps: e.result.steps, model: e.result.model, reason: e.result.reason ?? null });
+                    send('engine_final', {
+                        status: e.result.status, steps: e.result.steps, model: e.result.model, reason: e.result.reason ?? null,
+                        ...(project ? { project } : {}),
+                        ...(e.result.durationMs != null ? { durationMs: e.result.durationMs } : {}),
+                        ...(e.result.costUsd != null ? { costUsd: e.result.costUsd } : {}),
+                    });
                     break;
                 default:
                     break;

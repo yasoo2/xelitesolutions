@@ -399,6 +399,8 @@ export async function auditBuiltApp(
         request?: string;
         /** Where to save a screenshot of the landing view, as a visitor first sees it (see AppAudit.look). */
         lookPath?: string;
+        /** Where to save the same landing view on a phone, as the phone pass first loads it: the delivery's proof. */
+        phoneLookPath?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -1424,6 +1426,13 @@ export async function auditBuiltApp(
             await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) }).catch(() => { });
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
+            if (opts?.phoneLookPath) {
+                // The proof he keeps, never a measurement: a failed shot changes no verdict.
+                try {
+                    await fs.promises.mkdir(path.dirname(opts.phoneLookPath), { recursive: true });
+                    await page.screenshot({ path: opts.phoneLookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                } catch { /* no phone picture; the pass goes on */ }
+            }
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
             const phone = await probeControls(page, {
                 eyes,
