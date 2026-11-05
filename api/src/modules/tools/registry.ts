@@ -363,6 +363,13 @@ const baseTools: ToolDefinition[] = [
 // one global heavy lane it shares with model calls.
 import { engineBrowserTools } from './definitions/EngineBrowserTools';
 baseTools.push(...engineBrowserTools);
+
+// ── engine: web ──
+// The agent engine's reader of public pages (core/engine/tools/web.ts reaches
+// it through executeTool); private, local and internal addresses are refused.
+import { ENGINE_WEB_TOOLS } from './definitions/EngineWebTools';
+baseTools.push(...ENGINE_WEB_TOOLS);
+// ── end engine: web ──
 // ── end engine: browser ──
 
 // ── engine: agent ──
