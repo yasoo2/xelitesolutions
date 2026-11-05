@@ -11,8 +11,8 @@ import { workspaceService } from '../../modules/services/WorkspaceService';
 import { readJoeProjectForRun } from '../page-store';
 import { engineOfRuns, getRunEvidenceForSession } from '../../shared/run-evidence-store';
 import { sessionLogLines } from '../../core/session/session-log-store';
-import { logTextFor, logStampFor } from '../../core/session/log-line';
-import { publicUrlFor } from '../../shared/utils/publicUrl';
+import { logTextFor, logStampFor, mergeLogSources } from '../../core/session/log-line';
+import { previewForSession, type SessionPreview } from '../session-preview';
 
 function isOfflineSessionStore(): boolean {
     return usesLocalChatStore();
@@ -844,21 +844,10 @@ export async function sessionWorkspace(req: Request, res: Response) {
     if (!owned) return;
 
     //  A conversation read, not a pipeline read: null run id on purpose.
-    let preview: { url: string; brand?: string; dir?: string; type?: string; at?: number } | null = null;
+    //  The page that is really there: the live server, the built page, or none.
+    let preview: SessionPreview | null = null;
     try {
-        const project: any = readJoeProjectForRun(sessionId, null);
-        //  An API-only project has no page to show. Saying so is the honest
-        //  answer; a URL to a directory that serves nothing is not.
-        if (project && project.dir && project.type !== 'api') {
-            const at = Number(project.updatedAt) || 0;
-            preview = {
-                url: publicUrlFor('/project-preview/' + encodeURIComponent(sessionId) + '/index.html' + (at ? '?v=' + at : '')),
-                brand: project.brand,
-                dir: project.dir,
-                type: project.type,
-                at,
-            };
-        }
+        preview = await previewForSession(sessionId, readJoeProjectForRun(sessionId, null));
     } catch { preview = null; }
 
     //  The same lines the live stream writes, stamped with the moment each
@@ -867,21 +856,29 @@ export async function sessionWorkspace(req: Request, res: Response) {
     //  the whole record for a chat session; run-evidence below only ever
     //  held the agent-run pipeline, and holds nothing at all for the
     //  sessions in the row at the bottom of his screen.
-    const logs: string[] = sessionLogLines(sessionId);
+    const evidenceLines: string[] = [];
+    //  What Joe's terminal printed — each command it ran and its output — so the
+    //  Terminal tab of a reopened conversation is not an empty shell
+    //  (UI/UX check, 2026-11-05: Joe ran dozens of commands, the tab showed none).
+    let terminal = '';
     try {
         const runs = await getRunEvidenceForSession(sessionId);
         for (const run of runs) {
             for (const event of (run.events || [])) {
                 const stamp = logStampFor(event.ts);
-                for (const line of logTextFor(event as any)) logs.push('[' + stamp + '] ' + line);
+                for (const line of logTextFor(event as any)) evidenceLines.push('[' + stamp + '] ' + line);
+                if (event.type === 'terminal_output' && typeof (event as any).data === 'string') terminal += (event as any).data;
             }
         }
     } catch { /* an unreadable evidence file is an empty log, never a 500 */ }
+    const logs = mergeLogSources(sessionLogLines(sessionId), evidenceLines);
+    const MAX_TERMINAL = 256_000;
+    if (terminal.length > MAX_TERMINAL) terminal = terminal.slice(-MAX_TERMINAL);
 
     //  The panel caps its own list; capping here too keeps a long-running
     //  session from sending a megabyte of text to draw four screens.
     const MAX = 500;
-    return res.json({ preview, logs: logs.length > MAX ? logs.slice(-MAX) : logs });
+    return res.json({ preview, logs: logs.length > MAX ? logs.slice(-MAX) : logs, terminal });
 }
 
 async function executeScreenshotRead(context: { sessionId: string; workspaceId: string; userId: string }, input: { captureId?: string }) {

@@ -304,7 +304,11 @@ function autoUpdateEnabled(): boolean {
     } catch { return AUTO_UPDATE_DEFAULT; }
 }
 
-export function UpdateAutoPilot() {
+/**
+ * `inline`: rendered where it is mounted, in the header's flow (JoeHeader).
+ * Without it the notice is portalled to the page and floats, as before.
+ */
+export function UpdateAutoPilot({ inline = false }: { inline?: boolean } = {}) {
     const { t } = useTranslation();
     const allowed = useSelfUpdateAllowed();
     const { available, behind, known, latest } = useUpdateAvailable();
@@ -350,14 +354,17 @@ export function UpdateAutoPilot() {
         try { localStorage.setItem(AUTO_PREF_KEY, next ? '1' : '0'); } catch { /* best effort */ }
     };
 
-    return createPortal(
-        <div className="joe-autoupdate-banner" role="status" data-testid="autoupdate-banner">
+    //  The commit id means nothing to the person reading: it stays in the
+    //  tooltip, and the sentence has the room it needs.
+    const headline = `${t('upd_bannerTitle')}${behind > 1 ? ` ${t('upd_bannerCount', { n: behind })}` : ''}`;
+    const waiting = busy ? t('upd_bannerWaiting') : auto ? t('upd_bannerAutoIn', { n: left }) : '';
+    const banner = (
+        <div className={`joe-autoupdate-banner${inline ? ' is-inline' : ''}`} role="status" data-testid="autoupdate-banner"
+            title={[headline, latest, waiting].filter(Boolean).join(' — ')}>
             <DownloadCloud size={16} />
             <span className="joe-autoupdate-text">
-                {`${t('upd_bannerTitle')}${behind > 1 ? ` ${t('upd_bannerCount', { n: behind })}` : ''}${latest ? ` — ${latest}` : ''}`}
-                {busy ? ` · ${t('upd_bannerWaiting')}`
-                    : auto ? ` · ${t('upd_bannerAutoIn', { n: left })}`
-                        : ''}
+                {headline}
+                {waiting ? ` · ${waiting}` : ''}
             </span>
             <button type="button" className="joe-autoupdate-now" data-testid="autoupdate-now"
                 onClick={() => void startSelfUpdate()} disabled={busy}>
@@ -370,9 +377,9 @@ export function UpdateAutoPilot() {
                 title={t('upd_autoToggleHint')}>
                 {auto ? t('upd_autoOn') : t('upd_autoOff')}
             </button>
-        </div>,
-        document.body,
+        </div>
     );
+    return inline ? banner : createPortal(banner, document.body);
 }
 
 /** Mounted beside the menu, not inside it, so closing the menu cannot kill the run. */

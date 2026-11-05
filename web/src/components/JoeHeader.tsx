@@ -55,11 +55,22 @@ export default function JoeHeader({
     // first; otherwise the email's own Gravatar — resolved async because the
     // hash is computed with WebCrypto. `d=404` + the broken-image fallback
     // below mean an account with no photo anywhere still gets clean initials.
+    //  An address with no Gravatar answers 404, and the browser writes that
+    //  as an error on every page load. A miss is remembered for a day, so the
+    //  console stays clean and the header goes straight to the initials.
     const [gravatar, setGravatar] = useState('');
+    const GRAVATAR_MISS = 'joe-gravatar-miss';
     useEffect(() => {
         let alive = true;
         if (id.picture || userAvatar || !email) { setGravatar(''); return; }
-        void gravatarUrlFor(email).then(url => { if (alive) setGravatar(url); });
+        void gravatarUrlFor(email).then(url => {
+            if (!alive) return;
+            try {
+                const miss = JSON.parse(localStorage.getItem(GRAVATAR_MISS) || 'null');
+                if (miss && miss.url === url && Date.now() - Number(miss.at) < 86_400_000) return;
+            } catch { /* no storage: ask Gravatar as before */ }
+            setGravatar(url);
+        });
         return () => { alive = false; };
     }, [id.picture, userAvatar, email]);
     const photo = id.picture || userAvatar || gravatar || '';
@@ -105,8 +116,12 @@ export default function JoeHeader({
                 </div>
             </div>
 
-            {/* Center: System Status - Removed as requested */}
+            {/* Center: the waiting-update notice, IN the header's own flow.
+                It used to float fixed over the header: on a phone it covered
+                five of its controls, and on a desktop its sentence was cut
+                (UI/UX check, 2026-11-05). In flow it can only take free space. */}
             <div className="joe-header-center">
+                <UpdateAutoPilot inline />
             </div>
 
             {/* Right: Settings & Profile - Reordered to have Profile in Corner */}
@@ -168,7 +183,12 @@ export default function JoeHeader({
                                 alt={displayName}
                                 className="joe-avatar"
                                 referrerPolicy="no-referrer"
-                                onError={() => setPhotoBroken(true)}
+                                onError={() => {
+                                    setPhotoBroken(true);
+                                    if (photo === gravatar) {
+                                        try { localStorage.setItem(GRAVATAR_MISS, JSON.stringify({ url: gravatar, at: Date.now() })); } catch { /* best effort */ }
+                                    }
+                                }}
                             />
                         ) : (
                             <div
@@ -234,10 +254,10 @@ export default function JoeHeader({
                 {/* Outside the dropdown on purpose: the update must survive the
                     menu closing. */}
                 <SelfUpdateOverlay />
-                {/* The automatic half: announces a waiting update on its own and
-                    starts it when Joe is idle — the dropdown row stays as the
+                {/* The automatic half (UpdateAutoPilot) announces a waiting
+                    update on its own and starts it when Joe is idle — it lives
+                    in the header's centre above; the dropdown row stays as the
                     manual door. */}
-                <UpdateAutoPilot />
             </div>
         </header>
     );

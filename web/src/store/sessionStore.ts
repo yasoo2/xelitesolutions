@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { api } from '../services/apiClient';
 import { API_URL } from '../config';
 import { isValidToken } from '../utils/auth';
+import { chooseActiveSession, savedAtBoot } from '../lib/session-selection';
 
 let sessionLoadRetry: ReturnType<typeof window.setTimeout> | null = null;
 let sessionLoadRetryAttempt = 0;
@@ -127,22 +128,18 @@ export const useSessionStore = create<SessionState>((set) => ({
       // session ("all sessions open the same chat"). Here we (1) drop any selection
       // that no longer exists, (2) never keep both set, and (3) only choose a
       // default when nothing is currently active.
-      set(state => {
-        const chatIds = new Set(chatSessions.map((s: any) => s.id));
-        const agentIds = new Set(agentSessions.map((s: any) => s.id));
-        let selected = state.selected && chatIds.has(state.selected) ? state.selected : null;
-        let agentSelected = state.agentSelected && agentIds.has(state.agentSelected) ? state.agentSelected : null;
-        // agentSelected wins in the view, so if both survived, keep only the chat one
-        // when the user was last on chat; otherwise the agent one. We can't know
-        // recency here, so prefer the explicitly-selected chat to avoid the shadow bug.
-        if (selected && agentSelected) agentSelected = null;
-        // Default to a single session only when the user has nothing active at all.
-        if (!selected && !agentSelected) {
-          if (agentSessions[0]) agentSelected = agentSessions[0].id;
-          else if (chatSessions[0]) selected = chatSessions[0].id;
-        }
-        return { sessions: chatSessions, agentSessions, selected, agentSelected };
-      });
+      // A default goes to the conversation open before the reload (lib/session-selection).
+      set(state => ({
+        sessions: chatSessions,
+        agentSessions,
+        ...chooseActiveSession({
+          chatIds: chatSessions.map((s: any) => s.id),
+          agentIds: agentSessions.map((s: any) => s.id),
+          selected: state.selected,
+          agentSelected: state.agentSelected,
+          preferred: savedAtBoot,
+        }),
+      }));
       sessionLoadRetryAttempt = 0;
       if (sessionLoadRetry) {
         window.clearTimeout(sessionLoadRetry);

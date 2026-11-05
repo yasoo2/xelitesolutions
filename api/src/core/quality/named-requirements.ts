@@ -668,6 +668,78 @@ function filesOf(src: string): Array<{ path: string; block: string }> {
     }));
 }
 
+/** The largest block a file is cut into when it cannot be shown whole. */
+const ENCLOSING_BLOCK_MAX = 7_000;
+
+/**
+ *  ⛔ A FILE TOO BIG TO SHOW WHOLE WAS NOT SHOWN AT ALL.
+ *
+ *  The hard exam, 2026-11-05, H01 again: the clinic's server/app.js was 33 KB,
+ *  and the files ranked above it — the API tests, which say «double-booking»
+ *  more often — had already used the room. app.js no longer fit, so it was
+ *  skipped whole, and the judge was shown the test that asserts the rule and
+ *  not the route that keeps it: «R8 unprovable: Only a test asserting the rule
+ *  is shown; the appointment-creation code in server/app.js … is not in the
+ *  source». The builder spent forty minutes moving the rule into a file small
+ *  enough to be seen.
+ *
+ *  Such a file is now shown by its whole blocks: for each place its rare words
+ *  are, the largest enclosing statement that fits — the route handler, the
+ *  function — from the line where it starts to the line that closes it. Never
+ *  half a function (the rule above); never nothing.
+ */
+export function enclosingBlocksFor(words: string[], block: string, max: number): string {
+    const lines = block.split('\n');
+    const low = lines.map(l => l.toLowerCase());
+    const indent = (l: string) => (l.match(/^[ \t]*/) || [''])[0].replace(/\t/g, '    ').length;
+    const blank = (l: string) => !l.trim();
+    const closes = (l: string) => /^[ \t]*[}\])]/.test(l);
+    const comment = (l: string) => /^[ \t]*(?:\/\/|\/\*|\*|#)/.test(l);
+    const ranges: Array<[number, number]> = [];
+    for (let k = 0; k < lines.length; k++) {
+        if (!words.some(w => low[k].includes(w))) continue;
+        if (ranges.some(([a, b]) => k >= a && k < b)) continue;
+        //  Indentation levels at or above this line's, outermost first: the
+        //  first enclosing statement that fits is the largest one that does.
+        const levels = Array.from(new Set(lines.slice(0, k + 1).filter(l => !blank(l)).map(indent))).filter(v => v <= indent(lines[k])).sort((a, b) => a - b);
+        for (const level of levels) {
+            let s = k;
+            while (s > 0 && (blank(lines[s]) || indent(lines[s]) > level || closes(lines[s]))) s--;
+            //  The comment above a statement belongs to it.
+            while (s > 0 && comment(lines[s - 1]) && indent(lines[s - 1]) === level) s--;
+            let e = s + 1;
+            const statementEnd = (from: number): number => {
+                let end = from;
+                while (end < lines.length && (blank(lines[end]) || indent(lines[end]) > level)) end++;
+                //  The line that closes the statement belongs to it.
+                while (end < lines.length && indent(lines[end]) === level && closes(lines[end])) end++;
+                return end;
+            };
+            e = statementEnd(e);
+            //  A comment says what the statement under it does: show both.
+            while (e < lines.length && lines.slice(s, e).every(l => blank(l) || comment(l))) e = statementEnd(e + 1);
+            const size = lines.slice(s, e).join('\n').length;
+            if (size <= ENCLOSING_BLOCK_MAX) { ranges.push([s, e]); break; }
+        }
+    }
+    if (!ranges.length) return '';
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const r of ranges) {
+        const last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push([r[0], r[1]]);
+    }
+    let out = '';
+    for (const [a, b] of merged) {
+        const part = lines.slice(a, b).join('\n');
+        const cost = part.length + (out ? WINDOW_JOIN.length : 0);
+        if (out.length + cost > max) continue;
+        out += (out ? WINDOW_JOIN : '') + part;
+    }
+    return out;
+}
+
 /** Whole files for these requirements, within `max`; '' when none of their words is in any file. */
 function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; block: string }>, src: string, max: number): string {
     const words = Array.from(new Set(reqs.flatMap(requirementWords)));
@@ -739,17 +811,43 @@ function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; bl
         used += cost;
         return true;
     };
+    //  A file that no longer fits whole is shown by the whole blocks where its
+    //  rarest of his words are (enclosingBlocksFor), under its own marker line.
+    const takeBlocks = (f: { path: string; block: string }): { path: string; block: string } | null => {
+        const i = files.indexOf(f);
+        const own = words.filter(w => lows[i].includes(w));
+        const pick = own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own;
+        const marker = f.block.split('\n', 1)[0];
+        const room = max - used - (chosen.length ? WINDOW_JOIN.length : 0) - marker.length - 1;
+        if (room < 400) return null;
+        const body = f.block.slice(marker.length + 1);
+        const first = enclosingBlocksFor(pick, body, room);
+        if (!first) return null;
+        //  …and where those blocks' own functions are called: the rule is shown
+        //  with the route that keeps it (assertBookable → app.post('/api/appointments')).
+        const names = Array.from(first.matchAll(DEFINES)).map(m => (m[1] || m[2] || m[3] || '').toLowerCase()).filter(n => n.length > 3);
+        const blocks = names.length ? (enclosingBlocksFor([...pick, ...names.map(n => `${n}(`)], body, room) || first) : first;
+        const part = { path: f.path, block: `${marker}\n${blocks}` };
+        chosen.push(part);
+        used += part.block.length + (chosen.length > 1 ? WINDOW_JOIN.length : 0);
+        return part;
+    };
     //  Each file, then at once what it calls: a route is shown with the rule it
     //  keeps, and a test with the routes it calls.
-    for (const f of ranked) {
-        if (!take(f)) continue;
+    for (const ranked_f of ranked) {
+        let f = ranked_f;
+        if (!take(f)) {
+            const part = takeBlocks(f);
+            if (!part) continue;
+            f = part;
+        }
         for (const m of f.block.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/gu)) {
             const home = definedIn.get(m[1]);
-            if (home && home !== f) take(home);
+            if (home && home !== f && home !== ranked_f) take(home);
         }
-        const i = files.indexOf(f);
+        const i = files.indexOf(ranked_f);
         servedIn
-            .filter(s => s.home !== f)
+            .filter(s => s.home !== f && s.home !== ranked_f)
             .map(s => ({ home: s.home, near: nearness(i, s.path) }))
             .filter(h => h.near < Infinity)
             .sort((a, b) => a.near - b.near)
