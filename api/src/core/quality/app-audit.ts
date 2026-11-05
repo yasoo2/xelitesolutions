@@ -280,6 +280,16 @@ export function scoreOf(findings: AppAuditFinding[]): number {
  * Route-heavy apps need more time for real navigation and responsive checks,
  * but the hard ceiling prevents a broken page from holding the agent forever.
  */
+/**
+ * One responsive pass's time: an equal share of what is left of the sweep's
+ * pace for the passes still to run — never under 6 s, never past the walk's
+ * own budget (P069: the first pass took the whole sweep and starved the rest).
+ */
+export function responsivePassBudget(sweepDeadline: number, now: number, passesLeft: number, walkLeftMs: number): number {
+    const share = Math.max(0, sweepDeadline - now) / Math.max(1, passesLeft);
+    return Math.max(0, Math.min(Math.max(6_000, share), walkLeftMs));
+}
+
 export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): number {
     const routes = Math.max(0, Math.min(20, Math.floor(Number(routeCount) || 0)));
     // `timeoutMs` is the audit's stated wall-clock budget, not a multiplier for
@@ -1486,14 +1496,29 @@ export async function auditBuiltApp(
         const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
         const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
+        /**
+         * ⛔ EACH WIDTH OF EACH ROUTE GETS ITS SHARE, AND ONLY THE WALK'S OWN
+         * BUDGET ENDS THE WALK.
+         *
+         * The 500-prompt exam, 2026-11-05 (P069, a garage's four-page admin):
+         * the first responsive pass was handed everything left of the sweep's
+         * 32 s, spent it, and every later route at tablet and phone width was
+         * skipped as «qa_budget_exhausted» — at 145 s of a 360 s walk, on the
+         * retry «with a larger budget» too. The sweep's time is a pace, not a
+         * wall: each pass gets an equal share of it, and the walk stops only
+         * when the walk's own budget is spent.
+         */
+        const SIZES = [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }];
+        let passesLeft = responsiveRoutes.reduce((n, r) => n + SIZES.filter(s => !completedResponsiveEvidence.has(`${s.name}:${r}`)).length, 0);
         for (const r of responsiveRoutes) {
-            for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
+            for (const size of SIZES) {
                 const evidenceKey = `${size.name}:${r}`;
                 // The home-phone pass above already exercised this exact state,
                 // including controls hidden at desktop width. Do not spend the
                 // bounded responsive budget replaying it.
                 if (completedResponsiveEvidence.has(evidenceKey)) continue;
-                if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
+                if (!remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
+                const passBudget = responsivePassBudget(responsiveDeadline, Date.now(), passesLeft--, remainingWalkMs());
                 try {
                     const target = routeUrl(url, r);
                     await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
@@ -1502,7 +1527,7 @@ export async function auditBuiltApp(
                     await eyes.say(page, `فحص ${size.name}: ${r === '/' ? 'الصفحة الرئيسية' : r}`);
                     const responsive = await probeControls(page, {
                         eyes,
-                        budgetMs: Math.min(responsiveDeadline - Date.now(), remainingWalkMs()),
+                        budgetMs: passBudget,
                         seenForms,
                         formScope: `${size.name}:${r}`,
                         formContext: r,

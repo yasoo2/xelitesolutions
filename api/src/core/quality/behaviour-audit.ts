@@ -461,7 +461,7 @@ function snapshot() {
     const html = (document.body.innerHTML || '').slice(0, 200000)
         .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
         // These handles belong to Joe's instrument, not the application.
-        .replace(/\sdata-joe-(?:ctl|form|fld|sub|qa-[\w-]+)="[^"]*"/gi, '')
+        .replace(/\sdata-joe-(?:ctl|form|fld|sub|qbox|qa-[\w-]+)="[^"]*"/gi, '')
         .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
@@ -1544,9 +1544,81 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         };
         // Its own bounded time, so a probe that spent its budget elsewhere
         // still gives its quiet controls this one fair press.
-        const secondLookUntil = Date.now() + 8_000;
         metrics.secondLook = [] as Array<{ label: string; after: string; effect: string }>;
-        for (const quiet of pressedQuiet.slice(0, 3)) {
+        /**
+         * ⛔ A SEARCH BUTTON IS PRESSED WITH WORDS IN ITS BOX, A CLEAR BUTTON
+         * WITH SOMETHING TO CLEAR.
+         *
+         * The exam, 2026-11-05 (P069, a garage's admin): every list had a
+         * search box, «Search» and «Clear», and both worked. On the page as it
+         * loads the box is empty: «Search» lists the same rows and «Clear»
+         * clears nothing, and «Unresponsive controls: "Search", "Clear"»
+         * refused the garage five times. A person types before pressing
+         * Search, and clears what they searched.
+         *
+         * A quiet control named for searching or clearing, beside a text box,
+         * has that box filled with a word no record holds: «Search» is
+         * measured from the typed box to after its press, «Clear» from the
+         * search applied by Enter to after its press — or by the box it
+         * emptied. A control wired to nothing still changes nothing.
+         */
+        const SEARCH_LABEL = /^(?:search|find|go|apply|filter|بحث|ابحث|تصفية|تطبيق)$/iu;
+        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|show all|مسح|إعادة تعيين|اعادة تعيين|إلغاء البحث|عرض الكل)$/iu;
+        const QUERY = 'zzqxjv';
+        const queryLookUntil = Date.now() + 10_000;
+        const asked = pressedQuiet.filter(q => SEARCH_LABEL.test(q.label.trim()) || CLEAR_LABEL.test(q.label.trim()));
+        for (const quiet of asked.slice(0, 4)) {
+            const quietItem = catalogued(quiet);
+            if (!quietItem || Date.now() >= queryLookUntil || !eyeIsOpen()) continue;
+            const clearing = CLEAR_LABEL.test(quiet.label.trim());
+            try {
+                await restoreProbeStart();
+                const found = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                if (!found || !await reachableOnScreen(found.sel)) continue;
+                //  Its box: a text field in the control's own form, search bar or toolbar.
+                const hasBox = await page.evaluate((s: string) => {
+                    document.querySelectorAll('[data-joe-qbox]').forEach(el => el.removeAttribute('data-joe-qbox'));
+                    const control = document.querySelector(s);
+                    if (!control) return false;
+                    const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                    const scopes = [control.closest('form, [role="search"], .toolbar, .search, .search-bar, .filters'), control.parentElement, control.parentElement?.parentElement];
+                    for (const scope of scopes) {
+                        const box = scope && Array.from(scope.querySelectorAll('input')).find((el: any) => visible(el) && !el.disabled && !el.readOnly
+                            && /^(?:|text|search)$/i.test(el.getAttribute('type') || ''));
+                        if (box) { box.setAttribute('data-joe-qbox', '1'); return true; }
+                    }
+                    return false;
+                }, found.sel).catch(() => false);
+                if (!hasBox) continue;
+                const box = page.locator('[data-joe-qbox="1"]').first();
+                await box.fill(QUERY, { timeout: 2000 });
+                if (clearing) await box.press('Enter').catch(() => { });
+                await settled(Math.min(queryLookUntil, Date.now() + 2500));
+                const ready = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                if (!ready || !await reachableOnScreen(ready.sel)) continue;
+                const boxValue = () => page.evaluate(() => {
+                    const field = (document.querySelector('[data-joe-qbox="1"]') || document.querySelector('input[type="search"], [role="search"] input')) as HTMLInputElement | null;
+                    return field ? field.value : null;
+                }).catch(() => null);
+                await eyes.lookAt(page, await boxOf(page, ready.sel), { note: `${KIND_AR[quiet.kind] || 'عنصر'}: ${quiet.label}`.slice(0, 64), moveMouse: true });
+                const before = await page.evaluate(snapshot).catch(() => null);
+                if (!eyeIsOpen()) break;
+                await eyes.press(page);
+                await (await page.$(ready.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                let effect = '';
+                const settleDeadline = Date.now() + 2500;
+                do {
+                    await page.waitForTimeout(100);
+                    effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
+                    if (!effect && clearing && await boxValue() === '') effect = 'cleared';
+                } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                metrics.secondLook.push({ label: quiet.label, after: clearing ? `«${QUERY}» searched` : `«${QUERY}» typed`, effect });
+                if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
+            } catch { /* the control under test keeps its first verdict */ }
+        }
+        const answered = new Set(controls.filter(r => r.worked).map(r => `${r.kind}|${r.label}|${r.instance ?? 0}`));
+        const secondLookUntil = Date.now() + 8_000;
+        for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
             const quietItem = catalogued(quiet);
             if (!quietItem || !eyeIsOpen()) continue;
             for (const mover of movers.filter(m => m.label !== quiet.label).slice(0, 2)) {
