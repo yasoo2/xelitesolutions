@@ -313,6 +313,50 @@ describe('filtering, search and sorting are measured on the live page', () => {
         expect(filtered.state.scopeAudit?.missing).toEqual(['filtering']);
     });
 
+    it('a search whose results sit beside a longer list is measured on the results (H11)', async () => {
+        //  The hard exam, 2026-11-05, H11: a blog's search worked — «No posts
+        //  match your search.» — and was refused four times with «the data
+        //  shown never changed». The probe watched the largest list on the
+        //  page, the tag cloud (four tags), not the two posts beside it.
+        const blog = (searches: boolean) => `<!doctype html><html><head><meta charset="utf-8"><title>Blog</title></head><body>
+<nav><a href="/">Home</a> <a href="/admin">Admin</a> <a href="/rss.xml">RSS</a></nav>
+<main id="app"></main>
+<script>
+  var posts = [
+    { title: 'Testing preview and search', body: 'How the live preview works', tags: ['testing', 'search'] },
+    { title: 'Welcome to your blog', body: 'Written in markdown', tags: ['intro', 'markdown'] }];
+  var recent = ['css', 'rss'];
+  function chip(t, n) { return '<a class="tag-chip" href="/?tag=' + t + '">' + t + (n ? ' (1)' : '') + '</a>'; }
+  function route() {
+    var q = ${searches} ? (new URLSearchParams(location.search).get('q') || '') : '';
+    var shown = posts.filter(function (p) { return !q || (p.title + ' ' + p.body + ' ' + p.tags.join(' ')).toLowerCase().indexOf(q.toLowerCase()) >= 0; });
+    document.getElementById('app').innerHTML =
+      '<form id="search-form" role="search"><input type="text" id="search-input" aria-label="Search posts"><button type="submit">Search</button></form>'
+      + '<div class="layout"><section><h2>' + (q ? 'Found posts' : 'Latest posts') + '</h2><div id="post-list">'
+      + (shown.length ? shown.map(function (p) { return '<article class="card"><h3>' + p.title + '</h3><p>' + p.body + '</p><div class="tags">' + p.tags.map(function (t) { return chip(t); }).join('') + '</div></article>'; }).join('') : '<p>No posts match your search.</p>')
+      + '</div></section><aside><h2>Tags</h2><div class="tag-cloud">' + ['intro', 'markdown', 'search', 'testing'].map(function (t) { return chip(t, 1); }).join('') + '</div>'
+      + '<h2>Recent searches</h2><ul class="recent">' + recent.map(function (r) { return '<li>' + r + '</li>'; }).join('') + '</ul></aside></div>';
+    document.getElementById('search-form').addEventListener('submit', function (e) {
+      e.preventDefault();
+      var v = document.getElementById('search-input').value.trim();
+      if (v) recent.push(v);
+      history.pushState({}, '', v ? '/?q=' + encodeURIComponent(v) : '/');
+      route();
+    });
+  }
+  route();
+</script></body></html>`;
+        const request = 'Build a blog that lists its posts with a search.';
+        const found = await scopeOf(request, { 'index.html': blog(true) });
+        expect(found.scope?.ok).toBe(true);
+        expect(found.lines.join('\n')).toMatch(/interaction search shown: on the live page, typing «[^»]+» into «Search posts» \(text\): the items shown went from \d+ to \d+ in the list «[^»]+»/u);
+        //  A list that only grew (the recent searches) and a tag cloud that
+        //  never moves are not a search.
+        const none = await scopeOf(request, { 'index.html': blog(false) });
+        expect(none.scope?.ok).toBe(false);
+        expect(none.state.scopeAudit?.missing).toEqual(['search']);
+    });
+
     it('a counter that follows the typing is not a search', async () => {
         //  A message box with «0/120» beside it: every key changes a number on
         //  the page, and the list never narrows.

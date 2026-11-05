@@ -66,6 +66,10 @@ export interface InteractionMeasurement {
 
 interface Snapshot {
     items: string[];
+    /** The page's other lists, each read where it sits (see PAGE_SNAPSHOT). */
+    others?: string[][];
+    /** Where those lists sit — returned by a «mark» snapshot only. */
+    places?: string[];
     numbers: string[];
     charts: string[];
     frame: string;
@@ -88,31 +92,36 @@ interface Candidate {
 const PAGE_HELPERS = `
   const visible = el => { const r = el.getBoundingClientRect(); const s = getComputedStyle(el); return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none'; };
   const clean = t => String(t || '').replace(/\\s+/g, ' ').trim().slice(0, 200);
-  const collection = () => {
-    let best = [];
+  const keyOf = c => c.tagName + '.' + String(c.className || '');
+  // A row of boxes that mostly hold a field to fill is the form's layout,
+  // not the data: P352 (2026-11-03) wrapped its period select and two
+  // date inputs in three div.field boxes, and the probe took them for the
+  // items and set aside the very controls it had to operate.
+  const fieldBox = el => !!el.querySelector('select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])');
+  /** Every group of two or more same-kind siblings that carry text, largest first (ties in page order). */
+  const sameKindGroups = () => {
+    const found = [];
     for (const parent of document.querySelectorAll('body *')) {
       if (parent.closest('select, script, style, head')) continue;
-      const groups = new Map();
+      const byKey = new Map();
       for (const child of parent.children) {
         if (/^(SCRIPT|STYLE|OPTION|BR|SELECT|INPUT|BUTTON|LABEL)$/.test(child.tagName) || !visible(child)) continue;
         if (!clean(child.innerText)) continue;
-        const key = child.tagName + '.' + String(child.className || '');
-        if (!groups.has(key)) groups.set(key, []);
-        groups.get(key).push(child);
+        const key = keyOf(child);
+        if (!byKey.has(key)) byKey.set(key, []);
+        byKey.get(key).push(child);
       }
-      // A row of boxes that mostly hold a field to fill is the form's layout,
-      // not the data: P352 (2026-11-03) wrapped its period select and two
-      // date inputs in three div.field boxes, and the probe took them for the
-      // items and set aside the very controls it had to operate.
-      const fieldBox = el => !!el.querySelector('select, textarea, input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"])');
-      for (const g of groups.values()) {
-        if (g.length < 2 || g.length <= best.length) continue;
-        if (g.filter(fieldBox).length * 2 >= g.length) continue;
-        best = g;
+      for (const [key, g] of byKey) {
+        if (g.length < 2 || g.filter(fieldBox).length * 2 >= g.length) continue;
+        found.push({ parent, key, els: g });
       }
     }
-    return best;
+    return found.sort((a, b) => b.els.length - a.els.length);
   };
+  const collection = () => { const all = sameKindGroups(); return all.length ? all[0].els : []; };
+  /** Where a list sits: its container's tag, id and classes, and its items' kind. */
+  const placeOf = (parent, key) => parent.tagName + (parent.id ? '#' + parent.id : '')
+    + (typeof parent.className === 'string' && parent.className.trim() ? '.' + parent.className.trim().split(/\\s+/).join('.') : '') + '\\u0001' + key;
 `;
 
 /**
@@ -120,9 +129,16 @@ const PAGE_HELPERS = `
  * «follow» reads the same container's items again, so one row left after a
  * search is read as one row — not as the table's two headers, which became
  * the largest group once the rows were gone.
+ *
+ * ⛔ AND THE LARGEST LIST IS NOT ALWAYS THE ONE A CONTROL ACTS ON. The hard
+ * exam, 2026-11-05, H11: a blog's search worked («No posts match your
+ * search.») and was refused four times with «the data shown never changed» —
+ * the probe watched the tag cloud beside the posts, four tags to two posts.
+ * So the page's other lists are read too, each by where it sits (`places`,
+ * chosen by the «mark» snapshot and passed back to every «follow»): a page
+ * that re-renders replaces its elements, not their place.
  */
-const PAGE_SNAPSHOT = `(mode => {${PAGE_HELPERS}
-  const keyOf = c => c.tagName + '.' + String(c.className || '');
+const PAGE_SNAPSHOT = `((mode, places) => {${PAGE_HELPERS}
   const anchor = mode === 'follow' ? document.querySelector('[data-joe-coll]') : null;
   let els;
   if (anchor) {
@@ -130,10 +146,30 @@ const PAGE_SNAPSHOT = `(mode => {${PAGE_HELPERS}
     els = Array.from(anchor.children).filter(c => keyOf(c) === key && visible(c) && clean(c.innerText));
   } else {
     for (const old of document.querySelectorAll('[data-joe-coll]')) old.removeAttribute('data-joe-coll');
-    els = collection();
+    var groupsNow = sameKindGroups();
+    els = groupsNow.length ? groupsNow[0].els : [];
     if (els.length && els[0].parentElement) els[0].parentElement.setAttribute('data-joe-coll', keyOf(els[0]));
   }
   const best = els.map(el => clean(el.innerText));
+  const mainPlace = els.length && els[0].parentElement ? placeOf(els[0].parentElement, keyOf(els[0])) : '';
+  const where = mode === 'mark'
+    ? Array.from(new Set((groupsNow || []).map(g => placeOf(g.parent, g.key)))).filter(p => p !== mainPlace).slice(0, 8)
+    : (places || []);
+  const at = new Map();
+  for (const p of document.querySelectorAll('body *')) {
+    const place = placeOf(p, '');
+    if (!at.has(place)) at.set(place, []);
+    at.get(place).push(p);
+  }
+  const others = where.map(place => {
+    const cut = place.lastIndexOf('\\u0001');
+    const key = place.slice(cut + 1);
+    const items = [];
+    for (const p of at.get(place.slice(0, cut + 1)) || []) {
+      for (const c of p.children) if (keyOf(c) === key && visible(c) && clean(c.innerText)) items.push(clean(c.innerText));
+    }
+    return items.slice(0, 300);
+  });
   const body = document.body ? document.body.innerText : '';
   const numbers = (body.match(/[0-9\\u0660-\\u0669][0-9\\u0660-\\u0669.,٬٫%]*/g) || []).slice(0, 400);
   const charts = [];
@@ -147,7 +183,7 @@ const PAGE_SNAPSHOT = `(mode => {${PAGE_HELPERS}
   }
   const frame = Array.from(document.querySelectorAll('h1, h2, h3, h4, label, legend, th'))
     .filter(visible).map(e => clean(e.innerText)).join('|') + '#' + document.querySelectorAll('select, input, textarea').length;
-  return { items: best.slice(0, 300), numbers, charts, frame };
+  return Object.assign({ items: best.slice(0, 300), others, numbers, charts, frame }, mode === 'mark' ? { places: where } : {});
 })`;
 
 /**
@@ -403,9 +439,18 @@ export async function measureInteractions(
         try { await open(); } catch (e: any) {
             return { measured: false, results: [], error: `the page did not open: ${String(e?.message || e).slice(0, 200)}` };
         }
-        const snap = async (mode: 'mark' | 'follow' = 'follow'): Promise<Snapshot> => page.evaluate(`(${PAGE_SNAPSHOT})(${JSON.stringify(mode)})`);
+        /** Where the page's other lists sit, as the last «mark» snapshot chose them. */
+        let places: string[] = [];
+        const snap = async (mode: 'mark' | 'follow' = 'follow'): Promise<Snapshot> => {
+            const shot: Snapshot = await page.evaluate(`(${PAGE_SNAPSHOT})(${JSON.stringify(mode)}, ${JSON.stringify(places)})`);
+            if (mode === 'mark') places = shot.places || [];
+            delete shot.places;
+            return shot;
+        };
         /** A snapshot of the page once it stops moving (bounded); what keeps moving is noise. */
         let noise: Noise = { ...QUIET };
+        /** The other lists that moved before anything was touched. */
+        const noisy = new Set<string>();
         const steady = async (mode: 'mark' | 'follow' = 'follow'): Promise<Snapshot> => {
             let last = await snap(mode);
             for (let i = 0; i < 6 && !stopped(); i++) {
@@ -417,6 +462,7 @@ export async function measureInteractions(
                     numbers: noise.numbers || !sameMultiset(last.numbers, next.numbers),
                     charts: noise.charts || last.charts.join() !== next.charts.join(),
                 };
+                if (mode === 'mark') (last.others || []).forEach((list, k) => { if (!sameMultiset(list, next.others?.[k] || [])) noisy.add(places[k]); });
                 last = next;
             }
             return last;
@@ -440,15 +486,31 @@ export async function measureInteractions(
             dirty = false;
         };
         const at = (c: Candidate) => page.locator(`[data-joe-ip="${c.id}"]`).first();
+        type Judge = (b: Snapshot, a: Snapshot, n: Noise) => string;
+        /**
+         * The same judge on the page's other lists, when the largest did not
+         * answer (H11). A list that moved before anything was touched, or that
+         * grew, is never evidence; only its items are compared — the numbers
+         * and charts were judged already, with the whole page.
+         */
+        const elsewhere = (b: Snapshot, a: Snapshot, judge: Judge): string => {
+            for (let k = 0; k < (b.others || []).length; k++) {
+                const was = b.others?.[k] || [], now = a.others?.[k] || [];
+                if (!was.length || noisy.has(places[k]) || now.length > was.length) continue;
+                const verdict = judge({ ...b, items: was }, { ...a, items: now, numbers: b.numbers, charts: b.charts }, { ...noise, items: false });
+                if (verdict) return `${verdict} in the list «${was[0].slice(0, 40)}»`;
+            }
+            return '';
+        };
         /** Operate, then compare; if nothing changed, try the control's «apply». */
-        const attempt = async (c: Candidate, act: () => Promise<void>, judge: (b: Snapshot, a: Snapshot) => string): Promise<string> => {
+        const attempt = async (c: Candidate, act: () => Promise<void>, judge: Judge): Promise<string> => {
             const before = await steady('mark');
             dirty = true;
             try { await act(); } catch { return ''; }
             await settle();
             // A list that grew was added to (an Enter in an entry form submits it), never filtered.
             const first = await steady();
-            let verdict = first.items.length > before.items.length ? '' : judge(before, first);
+            let verdict = first.items.length > before.items.length ? '' : judge(before, first, noise) || elsewhere(before, first, judge);
             if (verdict) return verdict;
             const apply = String(await page.evaluate(`(${PAGE_APPLY})(${JSON.stringify(c.id)})`).catch(() => '') || '');
             if (apply) {
@@ -456,7 +518,7 @@ export async function measureInteractions(
                 await settle();
                 // A list that grew was added to, not filtered.
                 const after = await steady();
-                verdict = after.items.length > before.items.length ? '' : judge(before, after);
+                verdict = after.items.length > before.items.length ? '' : judge(before, after, noise) || elsewhere(before, after, judge);
                 if (verdict) return `${verdict} (after pressing «${apply}»)`;
             }
             return '';
@@ -491,7 +553,7 @@ export async function measureInteractions(
                 note(cap, byLabel(c));
                 let verdict = '';
                 if (cap === 'sorting') {
-                    const order = (b: Snapshot, a: Snapshot) => !noise.items && reordered(b.items, a.items) ? `the same ${a.items.length} items were reordered` : '';
+                    const order: Judge = (b, a, n) => !n.items && reordered(b.items, a.items) ? `the same ${a.items.length} items were reordered` : '';
                     if (c.kind === 'select') {
                         const current = await at(c).inputValue().catch(() => '');
                         for (const v of c.options.filter(o => o !== current).slice(0, 5)) {
@@ -511,7 +573,7 @@ export async function measureInteractions(
                             await at(c).fill(term);
                             await page.waitForTimeout(150);
                             await at(c).press('Enter').catch(() => { });
-                        }, (b, a) => typedChange(b, a, noise));
+                        }, (b, a, n) => typedChange(b, a, n));
                         if (verdict) verdict = `typing «${term}» into ${byLabel(c)}: ${verdict}`;
                         await at(c).fill('').catch(() => { });
                     }
@@ -519,23 +581,23 @@ export async function measureInteractions(
                     const current = await at(c).inputValue().catch(() => '');
                     for (const v of c.options.filter(o => o !== current).slice(0, 5)) {
                         if (verdict || stopped()) break;
-                        verdict = await attempt(c, () => at(c).selectOption(v), (b, a) => dataChanged(b, a, noise));
+                        verdict = await attempt(c, () => at(c).selectOption(v), (b, a, n) => dataChanged(b, a, n));
                         if (verdict) verdict = `choosing «${v}» in ${byLabel(c)}: ${verdict}`;
                     }
                 } else if (c.kind === 'toggle') {
-                    verdict = await attempt(c, () => at(c).click(), (b, a) => dataChanged(b, a, noise));
+                    verdict = await attempt(c, () => at(c).click(), (b, a, n) => dataChanged(b, a, n));
                     if (verdict) verdict = `ticking ${byLabel(c)}: ${verdict}`;
                 } else if (c.kind === 'chip') {
-                    verdict = await attempt(c, () => at(c).click(), (b, a) => {
-                        if (!noise.items && narrowed(b.items, a.items)) return `the items shown went from ${b.items.length} to ${a.items.length}`;
+                    verdict = await attempt(c, () => at(c).click(), (b, a, n) => {
+                        if (!n.items && narrowed(b.items, a.items)) return `the items shown went from ${b.items.length} to ${a.items.length}`;
                         if (b.frame !== a.frame) return '';
-                        return sameMultiset(b.items, a.items) ? dataChanged(b, a, noise) : '';
+                        return sameMultiset(b.items, a.items) ? dataChanged(b, a, n) : '';
                     });
                     if (verdict) verdict = `pressing ${byLabel(c)}: ${verdict}`;
                 } else {
                     for (const v of valuesFor(c)) {
                         if (verdict || stopped()) break;
-                        verdict = await attempt(c, () => at(c).fill(v), (b, a) => dataChanged(b, a, noise));
+                        verdict = await attempt(c, () => at(c).fill(v), (b, a, n) => dataChanged(b, a, n));
                         if (verdict) verdict = `setting ${byLabel(c)} to ${v}: ${verdict}`;
                     }
                 }
