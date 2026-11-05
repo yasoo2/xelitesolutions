@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next';
 import { ChevronDown } from 'lucide-react';
 import type { NeuralTrace, TraceStep } from '../lib/neuralTrace';
 import { TraceTimeline, WorkStageRail, useTraceStyles, useUiDir } from './NeuralTraceView';
-import { type WorkStage, workStageFor, traceDisplayKey, cleanTraceText } from '../lib/neuralTrace';
+import { type WorkStage, workStageFor, traceDisplayKey, cleanTraceText, isForeignNarration } from '../lib/neuralTrace';
 
 interface NeuralThinkingIndicatorProps {
   phase?: 'analyzing' | 'synthesizing' | 'executing' | 'idle';
@@ -146,7 +146,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   const displayStep = (step: TraceStep): string => {
     const key = traceDisplayKey(step.text);
     const cleaned = cleanTraceText(stripPictographs(step.text));
-    return key ? t(key) : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleaned) ? '' : cleaned);
+    return key ? t(key) : (isForeignNarration(cleaned, uiDir) ? '' : cleaned);
   };
 
   return (
@@ -200,7 +200,7 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
           <span className="nc-current-text" dir="auto">{(() => {
             const key = traceDisplayKey(detail);
             const cleaned = cleanTraceText(detail);
-            return key ? t(key) : (uiDir === 'rtl' && /[A-Za-z]/u.test(cleaned) ? t('neuralDetailAction', 'Performing the current action') : cleaned);
+            return key ? t(key) : (isForeignNarration(cleaned, uiDir) ? t('neuralDetailAction', 'Performing the current action') : cleaned);
           })()}</span>
           <span className="nc-now">{t('neuralLiveNow')}</span>
         </div>
