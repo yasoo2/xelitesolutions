@@ -114,7 +114,8 @@ export function isFollowUpChange(text: string): boolean {
 /** Does this message ask to put the project back, or to see its kept versions? */
 export function isUndoRequest(text: string): boolean {
     const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
-    if (!t || startsAfresh(t)) return false;
+    // A commit is git's history, not the copy Joe kept.
+    if (!t || startsAfresh(t) || /\b(?:git|commits?)\b/iu.test(t)) return false;
     return UNDO_LEAD_AR.test(t) || UNDO_LEAD_EN.test(t);
 }
 

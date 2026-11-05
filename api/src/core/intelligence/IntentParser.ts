@@ -10,6 +10,7 @@ import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
+import { isUndoRequest } from '../engine/select';
 import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, clearIntentCache } from './intent-classifier';
 import { hasRequestedAction } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
@@ -451,6 +452,22 @@ Return ONLY a JSON object:
         // the plan and ToolService remains the sole policy/execution gateway.
         // Questions and construction briefs stay out of this path so a noun
         // such as "security" cannot turn an explanation into an action.
+        // «تراجع» puts back a kept version. The registry's matcher hears the
+        // root of «مراجعة» in it and named code_reviewer, which the planner
+        // then put before its undo: Joe asked which files to review (live,
+        // 2026-11-05). An undo names no capability; the planner's undo decides
+        // whose history it is (the chat's project, or its page).
+        if (isUndoRequest(raw)) {
+            return {
+                goal: raw,
+                complexity: 'low',
+                riskLevel: 'low',
+                suggestedAgent: 'Dev',
+                requiredTools: ['project_undo'],
+                constraints: ['Put back a version Joe kept; never rebuild from nothing.'],
+                rawIntent: { primary: raw, undoRequest: true, deterministic: true },
+            };
+        }
         const buildCheck = isBuildRequest(raw);
         const knowledgeCheck = isKnowledgeQuestionStructural(raw);
         if (!buildCheck.isBuild && !knowledgeCheck) {
