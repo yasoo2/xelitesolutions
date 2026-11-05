@@ -19,7 +19,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { agentEngineRoute, isUndoRequest } from '../core/engine/select';
-import { changeContextFor } from '../core/engine/run';
+import { changeContextFor, projectHistory, recordRunHistory } from '../core/engine/run';
 import { writeJoeProject } from '../api/page-store';
 import { previewKey } from '../modules/tools/preview-site';
 import { ProjectUndoTool } from '../modules/tools/definitions/ProjectUndoTool';
@@ -141,5 +141,30 @@ describe('the undo reply says only what it did', () => {
         expect(fs.readFileSync(picture('phone.jpg'), 'utf8')).toBe('counter, light, phone');
         // The run's own record stays the newest one: it says what happened, not what the project is.
         expect(fs.readFileSync(path.join(dir, '.joe', 'result.json'), 'utf8')).toContain('وضع ليلي');
+    });
+
+    // Live on 2026-11-05: after «تراجع» the project's history still said the
+    // dark mode was delivered, so the next change and its certificate would
+    // have listed a change the project no longer has.
+    it('the history says the undone change was taken back, and a second «تراجع» says it is back', async () => {
+        const tick = () => new Promise(resolve => setTimeout(resolve, 5));
+        const dir = project('joe-undo-history');
+        writeJoeProject(previewKey('chat-undo-plain'), { dir, type: 'agent', updatedAt: Date.now() }, 'run-earlier');
+        recordRunHistory(dir, { request: 'ابنِ صفحة عدّاد', status: 'delivered', summary: 'عدّاد' });
+        await tick();
+        changeContextFor(dir, 'أضف وضعاً ليلياً', '');
+        await tick();
+        fs.writeFileSync(path.join(dir, 'index.html'), '<html><body>v2 dark</body></html>');
+        recordRunHistory(dir, { request: 'أضف وضعاً ليلياً', status: 'delivered', summary: 'وضع ليلي' });
+        const said = () => projectHistory(dir).map(run => [run.request, run.status]);
+
+        await tick();
+        expect((await new ProjectUndoTool().execute({}, { sessionId: 'chat-undo-plain', language: 'ar' }) as any).ok).toBe(true);
+        expect(said()).toEqual([['ابنِ صفحة عدّاد', 'delivered'], ['أضف وضعاً ليلياً', 'undone']]);
+
+        await tick();
+        expect((await new ProjectUndoTool().execute({}, { sessionId: 'chat-undo-plain', language: 'ar' }) as any).ok).toBe(true);
+        expect(fs.readFileSync(path.join(dir, 'index.html'), 'utf8')).toContain('v2 dark');
+        expect(said()).toEqual([['ابنِ صفحة عدّاد', 'delivered'], ['أضف وضعاً ليلياً', 'delivered']]);
     });
 });

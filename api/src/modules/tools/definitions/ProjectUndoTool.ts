@@ -19,6 +19,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { listVersions, restoreVersion, snapshotProject } from '../../../core/project/versions';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { recordUndo } from '../../../core/engine/run';
 
 interface SurgicalHistoryEntry {
     file: string;
@@ -193,6 +194,8 @@ export class ProjectUndoTool extends BaseTool {
             return { ok: false, error: res.error || 'restore_failed', logs } as any;
         }
         term(`undo: restored ${res.restored.length} file(s)${res.removed.length ? `, removed ${res.removed.length}` : ''} from ${res.version?.id}`);
+        // The runs after the restored version no longer describe the project.
+        if (res.version) recordUndo(dir, res.version, res.undoOf?.id);
 
         // A restored source with a stale dist lies in the preview panel. A
         // project with no build says nothing about one (2026-11-05: a plain
