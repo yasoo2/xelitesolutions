@@ -139,6 +139,7 @@ export const AgentEngineTool: ToolDefinition = {
                 const receipts: Array<{ tool: string; ok: boolean }> = delivery.output?.results?.[0]?.taskReceipts || [];
                 writeDeliveryCertificate(folder.dir, {
                     request, summary: result.summary, language: replyLanguage,
+                    earlier: (change?.history || []).filter(run => run.status === 'delivered').map(run => run.request),
                     passed: receipts.filter(r => r.ok).map(r => String(r.tool).replace(/^delivery:/u, '')),
                     unproven: (result.verification?.unproven || []).map(u => `${u.text}: ${u.reason}`),
                     howToRun: result.howToRun, liveUrl: delivery.output?.liveUrl,

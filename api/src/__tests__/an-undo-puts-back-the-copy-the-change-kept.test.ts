@@ -114,4 +114,32 @@ describe('the undo reply says only what it did', () => {
         expect(out.output.message).not.toMatch(/[ء-ي]{3}/u);
         expect(out.output.message).toContain('say "undo" again');
     });
+
+    // Live on 2026-11-05: «تراجع» put back the counter page and its certificate,
+    // but the certificate's pictures were still the dark mode just undone —
+    // `.joe` was never kept, pictures included.
+    it('puts back the certificate with the pictures of the version it describes, and no other record', async () => {
+        const dir = project('joe-undo-pictures');
+        const picture = (name: string) => path.join(dir, '.joe', 'delivery', name);
+        fs.mkdirSync(path.dirname(picture('desktop.jpg')), { recursive: true });
+        fs.writeFileSync(path.join(dir, 'JOE-DELIVERY.md'), 'certificate of the counter');
+        fs.writeFileSync(picture('desktop.jpg'), 'counter, light');
+        fs.writeFileSync(picture('phone.jpg'), 'counter, light, phone');
+        writeJoeProject(previewKey('chat-undo-plain'), { dir, type: 'agent', updatedAt: Date.now() }, 'run-earlier');
+        changeContextFor(dir, 'أضف وضعاً ليلياً', 'ابنِ صفحة عدّاد');
+        // The change run: its own page, certificate, pictures and records.
+        fs.writeFileSync(path.join(dir, 'index.html'), '<html><body>v2 dark</body></html>');
+        fs.writeFileSync(path.join(dir, 'JOE-DELIVERY.md'), 'certificate of the dark mode');
+        fs.writeFileSync(picture('desktop.jpg'), 'counter, dark');
+        fs.rmSync(picture('phone.jpg'));
+        fs.writeFileSync(path.join(dir, '.joe', 'result.json'), '{"status":"delivered","summary":"وضع ليلي"}');
+
+        const out: any = await new ProjectUndoTool().execute({}, { sessionId: 'chat-undo-plain', language: 'ar' });
+        expect(out.ok).toBe(true);
+        expect(fs.readFileSync(path.join(dir, 'JOE-DELIVERY.md'), 'utf8')).toBe('certificate of the counter');
+        expect(fs.readFileSync(picture('desktop.jpg'), 'utf8')).toBe('counter, light');
+        expect(fs.readFileSync(picture('phone.jpg'), 'utf8')).toBe('counter, light, phone');
+        // The run's own record stays the newest one: it says what happened, not what the project is.
+        expect(fs.readFileSync(path.join(dir, '.joe', 'result.json'), 'utf8')).toContain('وضع ليلي');
+    });
 });
