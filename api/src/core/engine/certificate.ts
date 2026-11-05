@@ -117,8 +117,15 @@ export function deliveryProofPaths(stateDir: string): { desktop: string; phone: 
     return { desktop: path.join(dir, 'desktop.jpg'), phone: path.join(dir, 'phone.jpg') };
 }
 
+/**
+ * …and the last certificate goes with them: once a run starts changing the
+ * project it no longer describes it, and a judge reading the project must
+ * never take Joe's own earlier «✅» for evidence. A verified run writes it
+ * anew; «تراجع» puts back the version it described, certificate included.
+ */
 export function clearDeliveryProof(projectDir: string): void {
     try { fs.rmSync(path.join(projectDir, '.joe', 'delivery'), { recursive: true, force: true }); } catch { /* nothing kept */ }
+    try { fs.rmSync(path.join(projectDir, CERTIFICATE_FILE), { force: true }); } catch { /* none written */ }
 }
 
 /** The proof pictures this run's check took, relative to the project, when they exist. */

@@ -115,8 +115,11 @@ describe('a verified project holds its delivery certificate', () => {
         expect(text).toContain('## كما رآه جو في المتصفح');
         expect(text).toContain('![على الحاسوب](.joe/delivery/desktop.jpg)');
         expect(text).toContain('![على الجوال](.joe/delivery/phone.jpg)');
+        fs.writeFileSync(path.join(dir, CERTIFICATE_FILE), 'old');
         clearDeliveryProof(dir);
         expect(deliveryProof(dir)).toEqual({});
+        // A run that starts changing the project takes the old certificate away with the old pictures.
+        expect(fs.existsSync(path.join(dir, CERTIFICATE_FILE))).toBe(false);
         expect(deliveryCertificate({ ...input, screenshots: {} })).not.toContain('كما رآه جو');
     });
 
