@@ -1028,6 +1028,19 @@ async function pythonTestFolders(root: string): Promise<string[]> {
 
 const exists = (file: string) => fs.promises.access(file).then(() => true, () => false);
 
+/** Does the project carry tests of its own: a test script that does work, or Python test files? */
+export async function hasOwnTests(root: string): Promise<boolean> {
+    const dir = String(root || '').trim();
+    if (!dir || !(await exists(dir))) return false;
+    if (await exists(path.join(dir, 'package.json'))) {
+        try {
+            const scripts = JSON.parse(await fs.promises.readFile(path.join(dir, 'package.json'), 'utf8'))?.scripts || {};
+            if (hasRealTestScript(scripts)) return true;
+        } catch { /* an unreadable manifest declares nothing */ }
+    }
+    return (await pythonTestFolders(dir)).length > 0;
+}
+
 /**
  * Run his project's own tests once: npm's test script through quality_run, or
  * his Python tests through the one Python test runner (python-test-runner) —
