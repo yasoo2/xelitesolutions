@@ -20,16 +20,51 @@ import { FoldedRegExp, listRegion, type ListMarker } from './request-lists';
  * spelling of a word is every spelling of it, so «اضافه», «إضافة» and
  * «اضافة» are one word without being written three times.
  */
-const AR_ACTION = '(?:إضافة|تعديل|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|تصفح|فلترة|تصفية|فرز|ترتيب|متابعة|إدارة|تأكيد|إلغاء)';
-const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|delete(?:s)?|deleting|remove(?:s)?|removing|confirm(?:s|ing)?|cancel(?:s|ling|ing)?|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
+const AR_ACTION = '(?:إضافة|تعديل|تغيير|حذف|مسح|عرض|استعراض|بحث|البحث|تحديث|إنشاء|تصفح|فلترة|تصفية|فرز|ترتيب|متابعة|إدارة|تأكيد|إلغاء)';
+const EN_ACTION = '(?:add(?:s|ing)?|create(?:s)?|creating|edit(?:s|ing)?|update(?:s)?|updating|change(?:s)?|changing|delete(?:s)?|deleting|remove(?:s)?|removing|confirm(?:s|ing)?|cancel(?:s|ling|ing)?|view(?:s|ing)?|list(?:s|ing)?|search(?:es|ing)?|filter(?:s|ing)?|sort(?:s|ing)?|browse|browsing|manag(?:e|es|ing)|track(?:s|ing)?)';
+/**
+ * The controls of a running thing, standing alone: «start and stop timers per
+ * task» splits into "start" and "stop timers per task" (H17, 2026-11-05: read
+ * as a `starts` table). Alone they act on the record beside them; leading a
+ * phrase they are not stripped, "start date" being a column.
+ */
+const AR_CONTROL = '(?:تشغيل|إيقاف|بدء|استئناف|إنهاء)';
+const EN_CONTROL = '(?:start(?:s|ing)?|stop(?:s|ping)?|pause(?:s)?|pausing|resume(?:s)?|resuming|restart(?:s|ing)?)';
 const AR_ACTION_HEAD = new FoldedRegExp(`^و?${AR_ACTION}(?:\\s+(?:في|عن|على|ضمن|بين))?(?=\\s|[،,]|$)`, 'u');
 const EN_ACTION_HEAD = new RegExp(`^(?:and\\s+|or\\s+|then\\s+)?${EN_ACTION}(?:\\s+(?:for|in|through|by))?(?=\\s|,|$)`, 'iu');
 /**
  * …alone, or with the pronoun of the record it acts on: «تأكيد الحجز وإلغاؤه»
  * cancels the booking (H10, 2026-11-04: «إلغاؤه» was an unread item).
  */
-const AR_ACTION_WORD = new FoldedRegExp(`^و?${AR_ACTION}(?:[وي]?(?:ه|ها|هم|هما))?$`, 'u');
-const EN_ACTION_WORD = new RegExp(`^${EN_ACTION}$`, 'iu');
+const AR_ACTION_WORD = new FoldedRegExp(`^و?(?:${AR_ACTION}|${AR_CONTROL})(?:[وي]?(?:ه|ها|هم|هما))?$`, 'u');
+const EN_ACTION_WORD = new RegExp(`^(?:${EN_ACTION}|${EN_CONTROL})$`, 'iu');
+/**
+ * An action BY something acts in a manner, on no record of that name: "search
+ * by title", «بحث بالكلمات المتقاربة», «بحث حسب التاريخ» search by a field
+ * (2026-11-05: read as `titles` and as a transliterated table). «بحث بين
+ * الطلاب» and "search for books" still name what they search.
+ */
+const AR_ACTION_BY = new FoldedRegExp(`^و?${AR_ACTION}\\s+(?:ب(?!ين(?:\\s|$))\\S{2,}|حسب|عبر|عن\\s+طريق|من\\s+خلال)`, 'u');
+const EN_ACTION_BY = new RegExp(`^(?:and\\s+|or\\s+)?${EN_ACTION}\\s+(?:by|using|via|with)\\s+\\S`, 'iu');
+
+/** Is this item an action done by a field or a means («search by title», «بحث بالاسم»)? */
+export function isActionByManner(item: string): boolean {
+    const t = String(item || '').trim();
+    return AR_ACTION_BY.test(t) || EN_ACTION_BY.test(t);
+}
+
+/**
+ * A verb that says how the app behaves opens a sentence, never a record:
+ * «وتعمل بلوحة المفاتيح وباللمس» (H14: read as a `workings` table), "works
+ * offline", "supports dark mode".
+ */
+const AR_BEHAVIOUR = new FoldedRegExp('^و?(?:ت|ي)(?:عمل|شتغل|دعم|تيح|سمح|توافق|تكيف)(?=\\s|$)', 'u');
+const EN_BEHAVIOUR = /^(?:and\s+)?(?:it\s+)?(?:works|runs|supports|allows|lets)\s+\S/iu;
+
+export function isBehaviourClause(item: string): boolean {
+    const t = String(item || '').trim();
+    return AR_BEHAVIOUR.test(t) || EN_BEHAVIOUR.test(t);
+}
 /** What an action-only clause ends with: «each one», «them», «كل منها». */
 const ACTION_FILLER = new FoldedRegExp('^(?:(?:each|every|all)(?:\\s+(?:one|of\\s+them|item|record|entry))?|them|it|those|these|كل\\s+(?:منها|واحدة?|منهم)|عليها|فيها|منها)?$', 'iu');
 
@@ -87,11 +122,20 @@ export const RULE_OPENER = new FoldedRegExp(
  * said, never skipped in silence. Not «رسوم»: it is fees as often as it is
  * drawings, and «رسوم الطلاب» in a records list is the students' fees.
  */
-const FEATURE_HEAD_AR = new FoldedRegExp('^و?(?:ال)?(?:زر|أزرار|شاشة|صفحة|قسم|نموذج|مؤقت|رسم|رسماً|حساب|عرض|تقويم|لوحة|خريطة|ملخص|إحصائيات|واجهة|خادم|سيرفر|تسجيل|باك|فرونت|سلة)(?=\\s|$)', 'u');
-/** Interface, stack and feature heads: «React frontend», «Node backend», «user login», «a summary page». */
+const FEATURE_HEAD_AR = new FoldedRegExp('^و?(?:ال)?(?:زر|أزرار|شاشة|صفحة|قسم|نموذج|مؤقت|رسم|رسماً|حساب|عرض|تقويم|لوحة|خريطة|ملخص|إحصائيات|واجهة|خادم|سيرفر|تسجيل|باك|فرونت|سلة|تقرير)(?=\\s|$)', 'u');
+/**
+ * Interface, stack and feature heads: «React frontend», «Node backend», «user
+ * login», «a summary page». A report is one computed from the records — "a
+ * weekly timesheet report", "a FIFO stock valuation report", «تقرير بالكتب
+ * الأكثر إعارة» (2026-11-05: each read as a `reports` table). The plural
+ * stays a records word: "incident reports" are filed, «تقارير» kept as read.
+ */
 const FEATURE_HEADS_EN = new Set(['button', 'buttons', 'screen', 'screens', 'page', 'section', 'form', 'timer', 'chart', 'graph', 'calculation',
     'score', 'scoring', 'view', 'calendar', 'dashboard', 'map', 'summary', 'statistics', 'stats', 'frontend', 'front-end', 'backend', 'back-end',
-    'server', 'login', 'logins', 'signin', 'sign-in', 'interface', 'ui', 'gui', 'api', 'cart']);
+    'server', 'login', 'logins', 'signin', 'sign-in', 'interface', 'ui', 'gui', 'api', 'cart', 'report', 'preview', 'editor', 'feed', 'mode']);
+/** …in the plural too where the plural is the same feature: "timers", "charts", "previews" ("editors" are people). */
+const FEATURE_PLURALS_EN = new Set(['timer', 'chart', 'graph', 'preview', 'calculation']);
+const isFeatureHead = (word: string) => FEATURE_HEADS_EN.has(word) || (/s$/u.test(word) && FEATURE_PLURALS_EN.has(word.slice(0, -1)));
 
 /**
  * English names the head last — or right before what qualifies it: "Node
@@ -99,15 +143,15 @@ const FEATURE_HEADS_EN = new Set(['button', 'buttons', 'screen', 'screens', 'pag
  * table could hold, its delivery was refused four times over a stack the
  * build had), as "appointments with no double-booking" is appointments.
  */
-const EN_QUALIFIER = /^(?:with|using|on|in|via|over|for|of|by|from|backed|powered)$/u;
+const EN_QUALIFIER = /^(?:with|using|on|in|via|over|for|of|by|from|backed|powered|per)$/u;
 
 export function isFeaturePhrase(item: string): boolean {
     const t = String(item || '').trim();
     if (FEATURE_HEAD_AR.test(t)) return true;
     const words = t.toLowerCase().replace(/^(?:a|an|the)\s+/u, '').replace(/\b(front|back|sign|log)\s+(end|in)\b/gu, '$1-$2').split(/\s+/).filter(Boolean);
     const qualified = words.findIndex((word, i) => i > 0 && EN_QUALIFIER.test(word));
-    return !!words.length && (FEATURE_HEADS_EN.has(words[0]) || FEATURE_HEADS_EN.has(words[words.length - 1])
-        || (qualified > 0 && FEATURE_HEADS_EN.has(words[qualified - 1])));
+    return !!words.length && (isFeatureHead(words[0]) || isFeatureHead(words[words.length - 1])
+        || (qualified > 0 && isFeatureHead(words[qualified - 1])));
 }
 
 export interface NormalisedRequest {
