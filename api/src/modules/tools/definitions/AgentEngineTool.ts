@@ -24,12 +24,13 @@ import { runEngine } from '../../../core/engine/loop';
 import { planUpdateTool } from '../../../core/engine/plan';
 import { finishTool } from '../../../core/engine/finish';
 import { engineModelChoiceFor, engineBrain } from '../../../core/engine/model';
-import { projectFolderFor, registerProjectFolder, uiEmitter } from '../../../core/engine/run';
+import { changeContextFor, projectFolderFor, recordRunHistory, registerProjectFolder, registeredRequestFor, uiEmitter } from '../../../core/engine/run';
 import { fileTools } from '../../../core/engine/tools/files';
 import { shellTools, createProcessRegistry } from '../../../core/engine/tools/shell';
 import { browserTools, createBrowserSession } from '../../../core/engine/tools/browser';
 import { machineFacts } from './EngineShellTools';
 import { createVerifier, deliveryOutput } from '../../../core/engine/verify';
+import { clearDeliveryProof, deliveryProof, writeDeliveryCertificate } from '../../../core/engine/certificate';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
 import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
 import { replyLanguageCode } from '../../../shared/reply-language';
@@ -89,7 +90,11 @@ export const AgentEngineTool: ToolDefinition = {
         const activeRoot = workspaceService.getActiveRoot(context.workspaceId);
         const folder = await projectFolderFor(activeRoot, runId, input?.path || context.resumeProjectRoot);
         if ('error' in folder) { cancellation.dispose(); return refused(folder.error); }
+        //  A change is kept before it touches the project, and told what the
+        //  project is: read before this run registers its own request.
+        const change = folder.resumed ? changeContextFor(folder.dir, request, registeredRequestFor(context.sessionId)) : undefined;
         registerProjectFolder(context.sessionId, runId, folder.dir, request);
+        clearDeliveryProof(folder.dir);
 
         //  Every engine_* tool sees the run's stop: a search or a command stops
         //  when the owner presses Stop, not when its own timer runs out.
@@ -109,7 +114,7 @@ export const AgentEngineTool: ToolDefinition = {
         try {
             const result = await runEngine({
                 runId, request, language, projectDir: folder.dir, deadlineAt,
-                replyLanguage,
+                replyLanguage, ...(change ? { change } : {}),
                 signal: cancellation.signal, emit: uiEmitter(context.sessionId, runId, replyLanguage),
                 joe: { toolContext, runId, sessionId: context.sessionId, userId: context.userId, workspaceId: context.workspaceId },
             }, {
@@ -126,6 +131,19 @@ export const AgentEngineTool: ToolDefinition = {
             //  rule read them.
             const delivery = deliveryOutput({ result, projectRoot: folder.dir, request, language: replyLanguage });
             const delivered = result.status === 'delivered' && delivery.ok;
+            recordRunHistory(folder.dir, { request, status: delivered ? 'delivered' : result.status, summary: result.summary });
+            //  A verified project says, in his language, how it was proven and how to run it.
+            if (delivered) {
+                const receipts: Array<{ tool: string; ok: boolean }> = delivery.output?.results?.[0]?.taskReceipts || [];
+                writeDeliveryCertificate(folder.dir, {
+                    request, summary: result.summary, language: replyLanguage,
+                    passed: receipts.filter(r => r.ok).map(r => String(r.tool).replace(/^delivery:/u, '')),
+                    unproven: (result.verification?.unproven || []).map(u => `${u.text}: ${u.reason}`),
+                    howToRun: result.howToRun, liveUrl: delivery.output?.liveUrl,
+                    durationMs: result.durationMs, costUsd: result.costUsd, model: result.model,
+                    screenshots: deliveryProof(folder.dir),
+                });
+            }
             return {
                 ok: delivered,
                 ...(delivered ? {} : { error: delivery.error || result.reason || result.summary }),

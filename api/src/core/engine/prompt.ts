@@ -10,7 +10,7 @@
  * build in small runnable steps, run it, look at the result, fix, and prove
  * every requested item before claiming it.
  */
-import type { PlanState, Requirement } from './types';
+import type { ChangeContext, PlanState, Requirement } from './types';
 import { formatPlan } from './context';
 import { asksPerUserIsolation, isolationBrief } from '../quality/isolation-probe';
 
@@ -68,7 +68,32 @@ export function languageName(code: string | undefined): string {
     return LANGUAGE_NAMES[c] || c || 'English';
 }
 
-export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string): string {
+/** At most this many earlier runs are recited to a change run, the newest ones. */
+const CHANGE_HISTORY_SHOWN = 5;
+
+/**
+ * A change names itself: the folder holds a delivered project, this is what
+ * it was built for and what each run delivered, and the change is proven on
+ * the whole app, the features it already had included.
+ */
+function changeBrief(change: ChangeContext): string[] {
+    const shown = change.history.slice(-CHANGE_HISTORY_SHOWN);
+    const lines = ['This request is a CHANGE to the project already in this folder, not a new project.'];
+    if (shown.length) {
+        lines.push(`What earlier runs of this project were asked, and what came of them (oldest first${change.history.length > shown.length ? `, the last ${shown.length} of ${change.history.length}` : ''}):`);
+        shown.forEach((run, i) => lines.push(`${i + 1}. Asked: """${run.request}""" — ${run.status || 'unknown'}${run.summary ? `: ${run.summary}` : ''}`));
+    }
+    lines.push(
+        'How to change it:',
+        '- file_list, then file_read every file you will touch before changing it. Keep the stack, the structure and the style the project already has.',
+        '- Change what this request asks and nothing else. Every feature the project already has must keep working.',
+        '- Then run the project and use it: prove the change, and prove that the features it already had still work.',
+        `- The project as it was before this change is kept${change.snapshot ? ` (version ${change.snapshot})` : ''}: the user can say «تراجع» to put it back. Never delete the project to start clean.`,
+    );
+    return lines;
+}
+
+export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string, change?: ChangeContext): string {
     const lines = [
         'Request (verbatim):',
         '"""',
@@ -79,6 +104,7 @@ export function firstMessage(request: string, language: string, plan: PlanState,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         `Project folder: ${projectDir.split('\\').join('/')}`,
     ];
+    if (change) lines.push('', ...changeBrief(change));
     if (plan.requirements.length) {
         lines.push('', formatPlan({ ...plan, steps: [] }));
         lines.push('', 'These requirements were read from the request. Each one must be implemented and proven. You may add requirements with plan_update; you cannot remove these.');

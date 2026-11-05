@@ -341,7 +341,8 @@ function VerdictCard({ state, t }: { state: ActivityState; t: TFn }) {
                         : c.status === 'failed'
                             ? <XCircle size={14} className="ra-fail ra-mark" aria-hidden />
                             : <Circle size={14} className="ra-off ra-mark" aria-hidden />}
-                    <code dir="ltr">{c.id}</code>
+                    {/* The check by its name in his language; an id with no name keeps its own. */}
+                    <span title={c.id} style={{ fontWeight: 600 }}>{t(`act_inst_${c.id}`, { defaultValue: c.id })}</span>
                     <span className="ra-kind">{t(`act_check_${c.status}`)}</span>
                     <span className="ra-block" dir="ltr" style={{ flex: 1, minWidth: 0 }}>{stripPictographs(c.detail)}</span>
                 </div>

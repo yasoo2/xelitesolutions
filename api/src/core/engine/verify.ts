@@ -27,6 +27,7 @@ import os from 'os';
 import path from 'path';
 import type { CheckResult, EngineResult, ProcessInfo, Requirement, ToolContext, VerificationReport } from './types';
 import { reportText, type FinishArgs, type Verifier } from './finish';
+import { deliveryFooter, deliveryProofPaths, instrumentName } from './certificate';
 import {
     DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, readAsRequirements, stillUnread, verifiedLiveUrl,
     type DeliveryInstrument, type DeliveryMeasurement, type DeliveryVerdict,
@@ -505,11 +506,15 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 return;
             }
             const auditDir = projectAuditDirectory(Array.from(new Set([...auditRoots, ...interfaceRoots])));
-            const lookPath = bySight.length ? path.join(ctx.stateDir || path.join(root, '.joe'), 'look', `page-${Date.now()}.jpg`) : undefined;
+            //  The landing view on a desktop and on a phone is kept as the
+            //  delivery's proof (certificate.ts); a look he asked for is judged
+            //  on a picture of its own, and kept as the desktop proof after.
+            const proof = deliveryProofPaths(ctx.stateDir || path.join(root, '.joe'));
+            const lookPath = bySight.length ? path.join(ctx.stateDir || path.join(root, '.joe'), 'look', `page-${Date.now()}.jpg`) : proof.desktop;
             const options = (timeoutMs: number): AuditOptions => ({
                 request, watchSessionId: eye.sessionId, serveUrl: qaTarget, artifactRootDir: root,
                 requireVisibleBrowser: true, timeoutMs, onProgress: (m: string) => note(`browser QA: ${m}`),
-                ...(lookPath ? { lookPath } : {}),
+                lookPath, phoneLookPath: proof.phone,
             });
             let audit = await browserQa.audit(auditDir, options(45_000));
             //  A coverage timeout is the walker's budget, not the app: once more, larger.
@@ -523,6 +528,12 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 if (!retry.skipped) audit = retry;
             }
             browserAudit = audit;
+            if (audit.look?.path && audit.look.path !== proof.desktop) {
+                try {
+                    await fs.promises.mkdir(path.dirname(proof.desktop), { recursive: true });
+                    await fs.promises.copyFile(audit.look.path, proof.desktop);
+                } catch { /* the proof is kept when it can be */ }
+            }
             //  What the request says about the look, judged on the page the audit opened.
             if (bySight.length && !audit.skipped) {
                 looks = await judgeAppearance(bySight, audit.look, isAr, deps.look,
@@ -1080,7 +1091,8 @@ export function deliveryOutput(input: DeliveryOutputInput): { ok: boolean; error
     const summary = verified
         ? [
             String(result!.summary || '').trim(),
-            words.verified(taskReceipts.map(r => r.tool.replace(/^delivery:/u, '')), record.liveUrl || ''),
+            words.verified(taskReceipts.map(r => instrumentName(r.tool.replace(/^delivery:/u, ''), lang)), record.liveUrl || ''),
+            ...deliveryFooter({ howToRun: result!.howToRun, durationMs: result!.durationMs, costUsd: result!.costUsd, language: lang }),
         ].filter(Boolean).join('\n\n')
         : [
             headline(firstError),
