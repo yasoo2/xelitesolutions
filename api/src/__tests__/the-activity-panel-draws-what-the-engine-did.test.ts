@@ -376,13 +376,60 @@ describe('the Activity line inside Joe’s reply', () => {
             );
             const head = panel.doc.querySelector('.ra-inline .ra-head');
             expect(head?.getAttribute('aria-expanded')).toBe('false');
-            expect(panel.doc.querySelector('.ra-inline .ra-now')?.textContent).toContain('تشغيل أمر');
-            expect(panel.doc.querySelector('.ra-inline .ra-now')?.textContent).toContain('npm run build');
-            //  Closed, it reads nothing; the live events are its record.
-            expect(panel.reads).toEqual([]);
+            //  Folded while it works, the line carries the live strip (2026-11-06),
+            //  which names the step: the head no longer repeats it.
+            const strip = panel.doc.querySelector('.ra-inline .ra-ticker');
+            expect(strip?.textContent).toContain('تشغيل أمر');
+            expect(strip?.textContent).toContain('npm run build');
+            expect(panel.doc.querySelector('.ra-inline .ra-now')).toBeNull();
+            //  A working conversation reads what it missed once (here: a history with no run).
+            expect(panel.reads).toEqual(['/sessions/chat-1/history']);
             await panel.click(head!);
             expect(panel.text()).toContain('shell_run');
-            expect(panel.doc.querySelector('.ra-inline .ra-now')).toBeNull();
+            expect(panel.doc.querySelector('.ra-inline .ra-ticker')).toBeNull();
+            expect(panel.reads).toEqual(['/sessions/chat-1/history']);
+        } finally { await panel.close(); }
+    }, RENDER_TIMEOUT);
+
+    it('the live strip: the last four steps, the newest typed in letter by letter, each with the mark of its kind', async () => {
+        const panel = await mountPanel({ '/sessions/chat-1/history': { events: [] } }, { props: { variant: 'inline' } });
+        try {
+            const calls: Array<[string, string]> = [
+                ['engine:file_read', '{"path":"src/App.tsx"}'],
+                ['engine:file_write', '{"path":"server.js"}'],
+                ['engine:shell_run', '{"command":"npm install"}'],
+                ['engine:web_read', '{"url":"https://react.dev/reference"}'],
+                ['engine:browser_open', '{"url":"http://127.0.0.1:4300/"}'],
+            ];
+            await panel.send(ev(1, 'engine_step', { step: 1 }), ev(2, 'step_started', { name: calls[0][0], callId: 't0', input: calls[0][1] }));
+            for (let i = 1; i < calls.length; i++) {
+                await panel.send(ev(2 + i, 'step_started', { name: calls[i][0], callId: `t${i}`, input: calls[i][1] }));
+                const lines = [...panel.doc.querySelectorAll('.ra-ticker .ra-tick-line')];
+                const newest = lines[lines.length - 1];
+                //  Just arrived: part of it is on screen, with the cursor after it.
+                expect(newest.querySelector('.ra-tick-cursor')).not.toBeNull();
+                const whole = newest.getAttribute('title') || '';
+                expect((newest.textContent || '').length).toBeLessThan(whole.length - 1);
+                //  About a second at full speed; a loaded test machine's timers run late.
+                await panel.wait(3000);
+                expect(newest.querySelector('.ra-tick-cursor')).toBeNull();
+                expect(`${newest.querySelector('.ra-tick-label')?.textContent} ${newest.querySelector('.ra-tick-sum')?.textContent}`).toBe(whole);
+            }
+            const lines = [...panel.doc.querySelectorAll('.ra-ticker .ra-tick-line')];
+            //  Four rows: the oldest left at the top when the fifth came.
+            expect(lines).toHaveLength(4);
+            expect(panel.doc.querySelector('.ra-ticker')?.textContent).not.toContain('src/App.tsx');
+            expect(lines.map(l => l.getAttribute('data-kind'))).toEqual(['write', 'command', 'web', 'page']);
+            expect(lines.map(l => l.querySelector('[data-icon]')?.getAttribute('data-icon'))).toEqual(['FileCode', 'SquareTerminal', 'Globe', 'AppWindow']);
+            expect(lines[2].textContent).toContain('قراءة صفحة من الإنترنت');
+            expect(lines[2].textContent).toContain('https://react.dev/reference');
+            //  A step that failed says so on its line.
+            await panel.send(ev(10, 'step_failed', { name: 'engine:browser_open', callId: 't4', durationMs: 5, result: { ok: false, output: 'refused' } }));
+            expect(panel.doc.querySelector('.ra-ticker .ra-tick-line:last-child')?.classList.contains('fail')).toBe(true);
+            //  The run's end folds the strip away; the line stays to be opened.
+            await panel.send(ev(11, 'engine_final', { status: 'delivered', steps: 5 }));
+            expect(panel.doc.querySelector('.ra-ticker')).toBeNull();
+            expect(panel.doc.querySelector('section.ra-inline')).not.toBeNull();
         } finally { await panel.close(); }
     }, RENDER_TIMEOUT);
 });

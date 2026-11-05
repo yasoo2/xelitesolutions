@@ -28,11 +28,12 @@
  * record the first time it is opened, never before: on a server with
  * thousands of people, most replies are never opened.
  */
-import React, { memo, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import React, { memo, useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-    Activity, AlertTriangle, Brain, CheckCircle2, ChevronDown, ChevronRight, Circle, Copy, CopyCheck,
-    Eye, FileText, Globe, Loader2, ShieldAlert, ShieldCheck, XCircle,
+    Activity, AlertTriangle, AppWindow, Brain, Camera, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleStop, Copy, CopyCheck,
+    Eye, FileCode, FilePen, FileText, FlaskConical, FolderOpen, Globe, ListChecks, Loader2, MousePointerClick, Play, ScrollText,
+    Search, Server, ShieldAlert, ShieldCheck, SquareTerminal, Wrench, XCircle,
 } from 'lucide-react';
 import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
@@ -44,8 +45,8 @@ import {
 } from './ScreenshotResults';
 import {
     ACTIVITY_EVENT_TYPES, emptyActivity, formatStepDuration, hasActivity, inputSummary, latestRunId,
-    reduceActivity, restoreActivity, summaryIsProse, toolLabel,
-    type ActivityFile, type ActivityNote, type ActivityScreenshot, type ActivityState, type ActivityStep, type PlanItem,
+    reduceActivity, restoreActivity, summaryIsProse, tickInterval, toolKind, toolLabel,
+    type ActivityFile, type ActivityNote, type ActivityScreenshot, type ActivityState, type ActivityStep, type PlanItem, type ToolKind,
 } from '../lib/activity-feed';
 
 type TFn = (key: string, options?: any) => string;
@@ -137,6 +138,20 @@ const CSS = `
 @keyframes raSpin{to{transform:rotate(360deg)}}
 @media (prefers-reduced-motion:reduce){.ra-spin{animation:none}}
 [dir="rtl"] .ra-side{transform:scaleX(-1)}
+.ra-ticker{position:relative;height:calc(4 * 22px + 6px);overflow:hidden;padding:2px 10px 4px;border-top:1px solid var(--ra-line);
+  -webkit-mask-image:linear-gradient(to bottom,transparent 0,#000 12px);mask-image:linear-gradient(to bottom,transparent 0,#000 12px)}
+.ra-tick-list{display:flex;flex-direction:column;justify-content:flex-end;min-height:100%}
+.ra-tick-line{height:22px;flex:none;display:flex;align-items:center;gap:6px;font-size:12px;white-space:nowrap;overflow:hidden;min-width:0;color:var(--ra-muted)}
+.ra-tick-line:last-child{color:var(--joe-text-primary,#eceef0)}
+.ra-tick-line.fail{color:var(--ra-fail)}
+.ra-tick-ic{flex:none;color:var(--ra-ok)}
+.ra-tick-line.fail .ra-tick-ic{color:var(--ra-fail)}
+.ra-tick-label{flex:none}
+.ra-tick-sum{min-width:0;overflow:hidden;text-overflow:ellipsis;font-family:${MONO};font-size:11px;color:var(--ra-soft)}
+.ra-tick-cursor{flex:none;width:2px;height:12px;background:var(--ra-ok);animation:raBlink 1s steps(1) infinite}
+.ra-tick-state{flex:none}
+@keyframes raBlink{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.ra-tick-cursor{animation:none}}
 `;
 
 function useActivityStyles() {
@@ -277,6 +292,105 @@ const StepRow = memo(function StepRow({ step, language, open, onToggle, t, secon
         </div>
     );
 });
+
+/* ───────────────────────── the live ticker ───────────────────────── */
+
+/**
+ * THE ACTIVITY, OPEN, AS A RUNNING STRIP.
+ *
+ * «قائمة الاكتيفيتي تكون مفتوحة … 4 أسطر … كل سطر يطلع لفوق، انكتب كلمة كلمة
+ * يخلص سطر يطلع لفوق» — and of the four drafts he picked the one typed
+ * character by character, with a mark for each kind of step (2026-11-06).
+ *
+ * While a run works, the folded Activity line carries the last four steps
+ * under it. A step that arrives while it is on screen types in at the bottom,
+ * one character at a time; when a fifth arrives, the four rise one row and the
+ * oldest leaves at the top. Steps it found already there (a reload, a
+ * returning conversation) appear whole: retyping history would be theatre.
+ * Each line is the step's own words — its tool's name for people and the
+ * command, path or address it was given — never a summary written for show.
+ */
+const TICKER_ROWS = 4;
+const TICKER_ROW_PX = 22;
+const KIND_ICON: Record<ToolKind, React.ComponentType<any>> = {
+    read: FileText, list: FolderOpen, search: Search, write: FileCode, edit: FilePen,
+    command: SquareTerminal, server: Server, log: ScrollText, stop: CircleStop,
+    web: Globe, page: AppWindow, click: MousePointerClick, shot: Camera,
+    plan: ListChecks, finish: ShieldCheck, run: Play, test: FlaskConical, other: Wrench,
+};
+
+function prefersReducedMotion(): boolean {
+    try { return !!window.matchMedia?.('(prefers-reduced-motion: reduce)').matches; } catch { return false; }
+}
+
+const TickerLine = memo(function TickerLine({ step, language, typeIn }: { step: ActivityStep; language: string; typeIn: boolean }) {
+    const label = toolLabel(step.tool, language) || step.tool;
+    const summary = stripPictographs(inputSummary(step.tool, step.input));
+    const total = label.length + (summary ? 1 + summary.length : 0);
+    //  Whether this line types is decided once, when it first appears.
+    const typing = useRef(typeIn);
+    const [shown, setShown] = useState(typeIn ? 0 : total);
+    useEffect(() => {
+        if (!typing.current) { setShown(total); return; }
+        let n = 0;
+        const id = window.setInterval(() => {
+            n += 1;
+            setShown(n);
+            if (n >= total) { window.clearInterval(id); typing.current = false; }
+        }, tickInterval(total));
+        return () => window.clearInterval(id);
+    }, [step.key, total]);
+    const Icon = KIND_ICON[toolKind(step.tool)];
+    const labelShown = label.slice(0, shown);
+    const summaryShown = summary.slice(0, Math.max(0, shown - label.length - 1));
+    const done = shown >= total;
+    return (
+        <div className={`ra-tick-line${step.ok === false ? ' fail' : ''}`} title={summary ? `${label} ${summary}` : label}
+            data-kind={toolKind(step.tool)}>
+            <Icon size={13} className="ra-tick-ic" aria-hidden />
+            <span className="ra-tick-label">{labelShown}</span>
+            {summaryShown && <bdi className="ra-tick-sum" dir={summaryIsProse(step.tool) ? 'auto' : 'ltr'}>{summaryShown}</bdi>}
+            {!done && <span className="ra-tick-cursor" aria-hidden />}
+            {done && step.ok === undefined && <Loader2 size={11} className="ra-spin ra-tick-state" aria-hidden />}
+            {done && step.ok === false && <XCircle size={11} className="ra-tick-state" aria-hidden />}
+        </div>
+    );
+});
+
+function ActivityTicker({ steps, language, label }: { steps: ActivityStep[]; language: string; label: string }) {
+    const rows = steps.slice(-TICKER_ROWS);
+    const reduce = prefersReducedMotion();
+    //  The keys on screen after the last commit. One new step since then types
+    //  in; several at once (a record read back) appear whole.
+    const before = useRef<Set<string> | null>(null);
+    const fresh = before.current ? rows.filter(s => !before.current!.has(s.key)) : [];
+    const typeKey = !reduce && fresh.length === 1 && rows[rows.length - 1] === fresh[0] ? fresh[0].key : '';
+    const listRef = useRef<HTMLDivElement>(null);
+    const newest = rows[rows.length - 1]?.key || '';
+    const wasFull = useRef(false);
+    useLayoutEffect(() => {
+        const el = listRef.current;
+        //  A step joined a full strip: everything rises one row.
+        if (el && typeKey && wasFull.current) {
+            el.style.transition = 'none';
+            el.style.transform = `translateY(${TICKER_ROW_PX}px)`;
+            void el.offsetHeight;
+            el.style.transition = 'transform .32s ease';
+            el.style.transform = 'translateY(0)';
+        }
+    }, [newest, typeKey]);
+    useEffect(() => {
+        before.current = new Set(rows.map(s => s.key));
+        wasFull.current = rows.length >= TICKER_ROWS;
+    });
+    return (
+        <div className="ra-ticker" role="log" aria-live="polite" aria-label={label}>
+            <div className="ra-tick-list" ref={listRef}>
+                {rows.map(step => <TickerLine key={step.key} step={step} language={language} typeIn={step.key === typeKey} />)}
+            </div>
+        </div>
+    );
+}
 
 const NOTE_KEY: Record<ActivityNote['kind'], string> = {
     thought: 'act_note_thought',
@@ -568,8 +682,10 @@ function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', ru
     const [state, dispatch] = useReducer(panelReducer, undefined, () => emptyActivity());
     const inline = variant === 'inline';
     const [open, setOpen] = useState(defaultOpen);
-    //  What «on screen» means: the tab for the panel, the open line inline.
-    const shown = inline ? open : active;
+    const [running, setRunning] = useState(false);
+    //  What «on screen» means: the tab for the panel; inline, the open line —
+    //  or the live ticker under the folded line while its run works.
+    const shown = inline ? open || (running && !fixedRun) : active;
 
     //  A new conversation is a new panel: nothing of the previous one stays.
     useEffect(() => { dispatch({ kind: 'reset' }); }, [sessionId]);
@@ -587,7 +703,6 @@ function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', ru
         }, sessionId);
     }, [sessionId, fixedRun]);
 
-    const [running, setRunning] = useState(false);
     useEffect(() => {
         if (!sessionId || fixedRun) { setRunning(false); return; }
         return subscribeRunningSessions(() => setRunning(isSessionRunning(sessionId)));
@@ -768,6 +883,8 @@ function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', ru
         //  reply's line is there to be opened.
         if (!fixedRun && !hasActivity(state)) return null;
         const current = !state.final && last ? last : undefined;
+        //  While the run works, the folded line shows its last steps as a strip.
+        const ticker = !open && !fixedRun && !state.final && state.steps.length > 0;
         return (
             <section className={`ra-root ra-inline${open ? ' open' : ''}`} dir={uiDir} aria-label={t('act_title')}>
                 <button type="button" className="ra-head" aria-expanded={open} onClick={() => setOpen(v => !v)}
@@ -775,7 +892,7 @@ function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', ru
                     <Activity size={13} aria-hidden />
                     <span className="ra-title">{t('act_title')}</span>
                     {chipEl}
-                    {!open && current && (
+                    {!open && !ticker && current && (
                         <span className="ra-now" dir="auto">
                             {toolLabel(current.tool, language) || ''}
                             <span className="ra-tool" dir="ltr">{stripPictographs(inputSummary(current.tool, current.input)) || current.tool}</span>
@@ -784,6 +901,7 @@ function RunActivityPanel({ sessionId = '', active = true, variant = 'panel', ru
                     {countEl}
                     <ChevronDown size={14} className="ra-chev" aria-hidden />
                 </button>
+                {ticker && <ActivityTicker steps={state.steps} language={language} label={t('neuralLiveActivity')} />}
                 {open && (
                     <div className="ra-body" ref={bodyRef} onScroll={onScroll}>
                         {body}

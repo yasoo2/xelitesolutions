@@ -27,12 +27,35 @@ export type WorkStage = 'understand' | 'plan' | 'build' | 'test' | 'repair' | 'v
 export const WORK_STAGES: WorkStage[] = ['understand', 'plan', 'build', 'test', 'repair', 'verify'];
 
 /**
+ * The server words its status in the run's language: «Running: engine shell
+ * run…» or «جاري تنفيذ: engine shell run…» (ToolService). The rules below read
+ * the English prefix; an Arabic run's status fell through every one of them,
+ * and the Arabic interface said «تنفيذ الإجراء المطلوب» for every step
+ * (UI/UX check, 2026-11-06).
+ */
+function runningPrefix(value: string): string {
+    return value.replace(/^\s*(?:running|جاري تنفيذ)\s*:\s*/iu, 'running: ');
+}
+
+/**
+ * A line the Arabic interface does not show as written: narration in another
+ * language. It used to hide any line with ONE Latin letter, so every Arabic
+ * note of an Arabic run that named a file — «كتبتُ index.html وأشغّله الآن» —
+ * became «تنفيذ الإجراء المطلوب» (UI/UX check, 2026-11-06). A sentence with an
+ * Arabic word in it is Arabic; it is shown, the names in it left to right.
+ */
+export function isForeignNarration(text: string, uiDir: string): boolean {
+    if (uiDir !== 'rtl') return false;
+    return /[A-Za-z]/u.test(text) && !/[؀-ۿ]/u.test(text);
+}
+
+/**
  * Map observed trace text to a product-level stage. This is deliberately a
  * presentation rule, not an execution rule: the backend remains the source
  * of truth, while the user gets a stable vocabulary instead of tool names.
  */
 export function workStageFor(phase: TracePhase, text = ''): WorkStage {
-    const value = String(text).toLocaleLowerCase();
+    const value = runningPrefix(String(text).toLocaleLowerCase());
     // The agent engine's hand-in and its own tries of the project are checks,
     // not building (the words «project» and «task» sent them to Build).
     if (/^running:\s*engine task finish/u.test(value)) return 'verify';
@@ -53,7 +76,7 @@ export function workStageFor(phase: TracePhase, text = ''): WorkStage {
  * silently discarded.
  */
 export function traceDisplayKey(text = ''): string | null {
-    const value = String(text).trim();
+    const value = runningPrefix(String(text).trim());
     if (!value) return null;
     // The agent engine's own actions. Without these every one of them fell to
     // the last rule below, and «Right now» said «Performing the requested
