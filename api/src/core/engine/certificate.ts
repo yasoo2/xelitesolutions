@@ -33,6 +33,7 @@ const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
         source: { short: 'سلامة الشيفرة', whole: 'قُرئت الشيفرة كلها: لا خطأ في صياغتها ولا اسم يُستعمل دون تعريف.' },
         build: { short: 'البناء', whole: 'بُني المشروع دون أخطاء.' },
         acceptance: { short: 'حكم مستقل', whole: 'قرأ حَكَم مستقل الشيفرة ونتائج التجربة، وطابق كل متطلب بكلماتك.' },
+        roles: { short: 'الصلاحيات', whole: 'دخل جو بحساب كل دور، وطلب من الخادم بحساب كل دور بيانات الشاشات المخفية عنه، فرفضها الخادم كلها.' },
     },
     en: {
         live: { short: 'live run', whole: 'The project was started for real and answered at its live address.' },
@@ -47,6 +48,7 @@ const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
         source: { short: 'source check', whole: 'All the source was read: it parses, and it uses no name it never declares.' },
         build: { short: 'build', whole: 'The project builds without errors.' },
         acceptance: { short: 'independent review', whole: 'An independent judge read the code and the test results and matched every requirement to your words.' },
+        roles: { short: 'permissions', whole: 'Joe signed in as every role, asked the server — as each role — for the data of the screens hidden from it, and the server refused all of it.' },
     },
 };
 
@@ -107,6 +109,8 @@ export interface CertificateInput {
     screenshots?: { desktop?: string; phone?: string };
     /** The account the browser check signed in with (its name only). */
     signedInAs?: string;
+    /** What each role's menu offered, when the permissions were measured (role-probe.ts). */
+    roles?: Array<{ role: string; screens: string[] }>;
 }
 
 export const CERTIFICATE_FILE = 'JOE-DELIVERY.md';
@@ -169,6 +173,10 @@ export function deliveryCertificate(input: CertificateInput): string {
         out.push(ar
             ? `- ✅ **الدخول**: سجّل جو الدخول بحساب التجربة «${who}» من نموذج الدخول نفسه، وجرّب الشاشات التي خلفه.`
             : `- ✅ **sign-in**: Joe signed in with the demo account "${who}" through the product's own sign-in form, and tested the screens behind it.`);
+    }
+    if (input.passed.includes('roles') && (input.roles || []).length) {
+        out.push('', ar ? 'ما يراه كل دور:' : 'What each role sees:');
+        for (const r of input.roles || []) out.push(`  - **${r.role}**: ${r.screens.join(ar ? '، ' : ', ') || (ar ? 'لا شاشات' : 'no screens')}`);
     }
     out.push('');
     const unproven = (input.unproven || []).filter(Boolean);

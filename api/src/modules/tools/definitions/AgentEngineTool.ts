@@ -146,6 +146,7 @@ export const AgentEngineTool: ToolDefinition = {
                     durationMs: result.durationMs, costUsd: result.costUsd, model: result.model,
                     screenshots: deliveryProof(folder.dir),
                     signedInAs: (result.verification as DeliveryVerification | undefined)?.delivery?.signedInAs,
+                    roles: (result.verification as DeliveryVerification | undefined)?.delivery?.roleViews,
                 });
             }
             return {

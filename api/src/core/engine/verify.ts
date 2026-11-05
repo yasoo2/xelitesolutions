@@ -39,6 +39,7 @@ import { isAppearanceRequirement, judgeAppearance, type JudgedAppearance, type L
 import { judgeSourceOf, nothingWasJudged, verifyNamed, type JudgedNamed, type NamedRequirement } from '../quality/named-requirements';
 import { judgeTestSuiteByRun, type RunVerdict } from '../quality/test-suite-requirement';
 import type { SignInAccount } from '../quality/sign-in';
+import { asksRolePermissions, measureRoles, roleLeakError, type RoleAccount } from '../quality/role-probe';
 import { runRequestedTests, testsRequestedIn } from '../quality/request-coverage';
 import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
@@ -97,6 +98,8 @@ export interface DeliveryRecord {
     browserQa?: AppAudit;
     /** The account the Browser QA signed in with, when it did (its name only, never its password). */
     signedInAs?: string;
+    /** What each role's menu offered, when the permissions held (quality/role-probe.ts). */
+    roleViews?: Array<{ role: string; screens: string[] }>;
     /** The run's own servers this verification stopped before its live run. */
     stoppedServers: string[];
     /** What the measurements printed along the way (bounded; the count of lines left out is kept). */
@@ -206,7 +209,7 @@ export interface VerifierDeps {
 }
 
 /** The order the report lists the instruments in: the order they are measured. */
-const REPORT_ORDER: DeliveryInstrument[] = ['source', 'quality', 'build', 'live', 'program', 'scope', 'coverage', 'tests', 'service', 'acceptance', 'browser'];
+const REPORT_ORDER: DeliveryInstrument[] = ['source', 'quality', 'build', 'live', 'program', 'scope', 'coverage', 'tests', 'service', 'acceptance', 'browser', 'roles'];
 
 const LOG_LINES = 120;
 /** A source file larger than this is not handed to the judge; the acceptance check names each one left out. */
@@ -234,7 +237,7 @@ export function createVerifier(deps: VerifierDeps): Verifier {
     //  verdict is measured on the project and judged against the request. Its
     //  sign-in account is not a claim but a key the checks try on the
     //  product's own form: a wrong one fails to sign in (quality/sign-in.ts).
-    return (ctx: ToolContext, claim: FinishArgs) => verifyDelivery(ctx, deps, browserQa, claim?.sign_in);
+    return (ctx: ToolContext, claim: FinishArgs) => verifyDelivery(ctx, deps, browserQa, claim?.sign_in, claim?.accounts);
 }
 
 /**
@@ -281,7 +284,7 @@ async function liveRunInput(ctx: ToolContext, root: string): Promise<{ input: Re
     return { input, stopped };
 }
 
-async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount): Promise<DeliveryVerification> {
+async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount, accounts?: RoleAccount[]): Promise<DeliveryVerification> {
     const root = path.resolve(ctx.projectDir);
     //  Law 4: every gate reads the user's full request — never the model's
     //  plan or the summary it wrote in task_finish.
@@ -581,6 +584,28 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         skipped.set('browser', 'no interface is delivered, so there is no page to open');
     }
 
+    //  C13 — roles with their own permissions: what a role's screens hide
+    //  from it, the server refuses it (quality/role-probe.ts).
+    let roleViews: Array<{ role: string; screens: string[] }> | undefined;
+    if (!programOnly && interfaceDelivered && liveUrl && asksRolePermissions(request)) {
+        required.add('roles');
+        await stage(['roles'], async () => {
+            const given = accounts || [];
+            if (given.length < 2) {
+                ledger.record({ instrument: 'roles', ok: false, error: 'the request asks for roles with their own permissions, and task_finish gave no account per role: give task_finish "accounts": [{"username": …, "password": …, "role": …}, …] — one account the project seeds for each role — and Joe signs in as each and checks that what a role\'s screens hide, the server refuses it' });
+                return;
+            }
+            const measured = await measureRoles(liveUrl, given, { signal: ctx.signal });
+            const error = roleLeakError(measured);
+            ledger.record({ instrument: 'roles', ok: !error, error: error || undefined });
+            for (const v of measured.views) note(`roles: ${v.role} ${v.signedIn ? `sees ${v.screens.join(', ') || 'no screen'}` : `did not sign in: ${v.why}`}`);
+            if (!error) {
+                roleViews = measured.views.map(v => ({ role: v.role, screens: v.screens }));
+                passed.set('roles', `every role signed in, and the server refused each the data of the screens it is not shown (${measured.refused.length} refusal(s)): ${measured.views.map(v => `${v.role} sees ${v.screens.length} screen(s)`).join(', ')}`);
+            }
+        });
+    }
+
     //  A look nobody could see is said so, and never blocks.
     if (bySight.length && !looks) {
         looks = await judgeAppearance(bySight, undefined, isAr, deps.look,
@@ -638,6 +663,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         ...(delivery.state.requestCoverage ? { requestCoverage: delivery.state.requestCoverage } : {}),
         ...(browserAudit ? { browserQa: browserAudit } : {}),
         ...(signIn && browserAudit?.authenticated ? { signedInAs: signIn.identity } : {}),
+        ...(roleViews ? { roleViews } : {}),
         stoppedServers,
         log,
     };
