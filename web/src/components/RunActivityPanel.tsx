@@ -300,6 +300,37 @@ type TimelineItem =
 
 /* ───────────────────────── the sections ───────────────────────── */
 
+/** The delivered project, as one zip of its own folder (GET /project/export?project=…). */
+function DownloadProject({ project, t }: { project: string; t: TFn }) {
+    const [busy, setBusy] = useState(false);
+    const [failed, setFailed] = useState('');
+    const download = useCallback(async () => {
+        setBusy(true);
+        setFailed('');
+        try {
+            const { blob, filename } = await api.download('/project/export', { project });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = filename;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1_000);
+        } catch (e: any) {
+            setFailed(String(e?.message || e));
+        } finally {
+            setBusy(false);
+        }
+    }, [project]);
+    return (
+        <div className="ra-meta">
+            <button type="button" className="ra-btn" style={{ margin: 0, display: 'inline-flex', alignItems: 'center', gap: 5 }} onClick={download} disabled={busy} title={project}>
+                {busy ? <Loader2 size={13} className="ra-spin" aria-hidden /> : <FileText size={13} aria-hidden />}
+                <span>{t('act_downloadProject')}</span>
+            </button>
+            {failed && <span className="ra-fail">{t('act_downloadFailed', { error: failed })}</span>}
+        </div>
+    );
+}
+
 function FinalCard({ state, t }: { state: ActivityState; t: TFn }) {
     const final = state.final!;
     const tone = final.status === 'delivered' ? 'ok' : final.status === 'failed' ? 'fail' : 'off';
@@ -317,7 +348,10 @@ function FinalCard({ state, t }: { state: ActivityState; t: TFn }) {
             <div className="ra-meta">
                 <span>{t('act_finalSteps', { n: final.steps })}</span>
                 {final.model && <span>{t('act_finalModel')} <bdi dir="ltr">{final.model}</bdi></span>}
+                {final.durationMs != null && <span>{t('act_finalTime')} <bdi dir="ltr">{formatStepDuration(final.durationMs)}</bdi></span>}
+                {final.costUsd != null && <span>{t('act_finalCost')} <bdi dir="ltr">${final.costUsd.toFixed(final.costUsd < 1 ? 3 : 2)}</bdi></span>}
             </div>
+            {final.status === 'delivered' && final.project && <DownloadProject project={final.project} t={t} />}
         </div>
     );
 }

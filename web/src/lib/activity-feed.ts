@@ -107,6 +107,11 @@ export interface ActivityFinal {
     model: string;
     reason: string | null;
     at: number;
+    /** The run's project folder in the workspace, which the card offers for download. */
+    project: string | null;
+    /** The run's wall time and what its model calls cost, when known. */
+    durationMs: number | null;
+    costUsd: number | null;
 }
 
 /**
@@ -714,6 +719,10 @@ function apply(s: ActivityState, e: Ev, at: number, seq: number, restored: boole
                 model: str(d.model),
                 reason: str(d.reason).trim() || null,
                 at,
+                //  A folder name, never a path: the export route takes nothing else.
+                project: /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(str(d.project)) ? str(d.project) : null,
+                durationMs: num(d.durationMs) ?? null,
+                costUsd: num(d.costUsd) ?? null,
             };
             return !s.final || s.final.at <= at ? { ...s, final } : s;
         }

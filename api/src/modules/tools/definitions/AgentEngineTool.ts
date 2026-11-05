@@ -19,6 +19,7 @@
  * the project root, and the exam reads the run exactly as it reads the first
  * engine's.
  */
+import path from 'path';
 import { ToolDefinition } from '../types';
 import { runEngine } from '../../../core/engine/loop';
 import { planUpdateTool } from '../../../core/engine/plan';
@@ -115,7 +116,7 @@ export const AgentEngineTool: ToolDefinition = {
             const result = await runEngine({
                 runId, request, language, projectDir: folder.dir, deadlineAt,
                 replyLanguage, ...(change ? { change } : {}),
-                signal: cancellation.signal, emit: uiEmitter(context.sessionId, runId, replyLanguage),
+                signal: cancellation.signal, emit: uiEmitter(context.sessionId, runId, replyLanguage, path.basename(folder.dir)),
                 joe: { toolContext, runId, sessionId: context.sessionId, userId: context.userId, workspaceId: context.workspaceId },
             }, {
                 model,

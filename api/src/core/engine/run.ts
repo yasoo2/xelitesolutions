@@ -149,7 +149,12 @@ const NOTES: Record<string, { passed: string; failed: (ids: string) => string; f
     ru: { passed: '✅ проверки пройдены', failed: ids => `❌ проверки не пройдены: ${ids}`, folded: n => `… ${n} предыдущих сообщений свёрнуты в сводку` },
 };
 
-export function uiEmitter(sessionId: string | undefined, runId: string, language = 'en'): (e: EngineEvent) => void {
+/**
+ * `project` is the run's folder name inside the workspace: the run's card
+ * offers it for download (GET /project/export?project=…), with the run's time
+ * and cost beside its steps.
+ */
+export function uiEmitter(sessionId: string | undefined, runId: string, language = 'en', project = ''): (e: EngineEvent) => void {
     const words = NOTES[String(language || '').toLowerCase().split('-')[0]] || NOTES.en;
     if (!sessionId) return () => { /* nobody to tell */ };
     let ws: any;
@@ -195,7 +200,12 @@ export function uiEmitter(sessionId: string | undefined, runId: string, language
                     note('compacted', words.folded(e.removedMessages));
                     break;
                 case 'final':
-                    send('engine_final', { status: e.result.status, steps: e.result.steps, model: e.result.model, reason: e.result.reason ?? null });
+                    send('engine_final', {
+                        status: e.result.status, steps: e.result.steps, model: e.result.model, reason: e.result.reason ?? null,
+                        ...(project ? { project } : {}),
+                        ...(e.result.durationMs != null ? { durationMs: e.result.durationMs } : {}),
+                        ...(e.result.costUsd != null ? { costUsd: e.result.costUsd } : {}),
+                    });
                     break;
                 default:
                     break;
