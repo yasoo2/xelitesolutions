@@ -45,6 +45,8 @@ export async function agentEngineRoute(
     const text = String(goal || '').trim();
     if (!text) return null;
     const project = await chatProjectFolder(context?.sessionId);
+    // The planner's undo (project_undo) puts back the copy the change kept.
+    if (project && isUndoRequest(text)) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
     if (project && !startsAfresh(text) && (isActionableEditRequest(text) || isFollowUpChange(text))) return { kind: 'change', path: project };
@@ -63,11 +65,30 @@ export async function agentEngineRoute(
  * before it («وكمان», «لو سمحت», "now", "please") — is a change of it, unless
  * it says it starts afresh.
  */
+const LEAD_AR = '^(?:(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو)[\\s،,]+)*و?';
+const LEAD_EN = '^(?:(?:and|also|now|then|ok|okay|please|pls|could\\s+you|can\\s+you|would\\s+you)[\\s,]+)*';
 const CHANGE_LEAD_AR = new FoldedRegExp(
-    '^(?:(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو)[\\s،,]+)*و?'
+    LEAD_AR
     + '(?:أضف|أضيف|ضيف|ضيفي|زيد|زد|غير|عدل|احذف|شيل|امسح|اجعل|خلي|حسن|كبر|صغر|بدل|استبدل|أصلح|صلح|انقل|رتب|ترجم|حول|لون|أخف|أظهر|وسط'
     + '|تضيف|تغير|تعدل|تحذف|تشيل|تخلي|تجعل|تحسن|تكبر|تصغر|تبدل|تصلح|تنقل|ترتب|تترجم|تحول)(?=\\s|$)', 'u');
-const CHANGE_LEAD_EN = /^(?:(?:and|also|now|then|ok|okay|please|pls|could\s+you|can\s+you|would\s+you)[\s,]+)*(?:add|change|make|remove|delete|rename|move|fix|improve|translate|replace|turn|put|show|hide|update|edit|set|use|swap|increase|decrease|center|centre|align|shrink|enlarge)\s+\S/iu;
+const CHANGE_LEAD_EN = new RegExp(LEAD_EN
+    + '(?:add|change|make|remove|delete|rename|move|fix|improve|translate|replace|turn|put|show|hide|update|edit|set|use|swap|increase|decrease|center|centre|align|shrink|enlarge)\\s+\\S', 'iu');
+/**
+ * …and one that opens with an undo puts back the copy the last change kept
+ * (2026-11-05: "undo the last change" was read as a change — the edit reader
+ * sees "change" — and the engine would have undone by hand what project_undo
+ * restores exactly). «أرجع» alone is «I come back», so it needs a version or
+ * an edit after it, as the planner's undo reads it; an undo BUTTON is a change.
+ */
+const UNDO_LEAD_AR = new FoldedRegExp(
+    LEAD_AR
+    + '(?:تراجع(?=\\s|$)|استرجع\\s+(?:ال)?(?:نسخ|اصدار|مشروع|تعديل)'
+    + '|(?:ارجع|رجع)\\s+(?:\\S+\\s+){0,2}?\\S*(?:نسخ|اصدار|تعديل|تغيير|وراء|خلف|سابق)'
+    + '|(?:اعرض|اظهر)\\s+(?:ال)?(?:نسخ|اصدارات))', 'u');
+const UNDO_LEAD_EN = new RegExp(LEAD_EN
+    + '(?:undo(?!\\s*(?:\\/|and\\s+|&\\s*)?redo)(?!\\s+(?:button|feature|support|stack|history|functionality))'
+    + '|revert|roll\\s*back|go\\s+back\\s+to\\s+(?:the\\s+)?(?:previous|last|earlier|old)\\s+version'
+    + '|(?:show|list)\\s+(?:me\\s+)?(?:all\\s+)?(?:the\\s+)?versions)\\b', 'iu');
 /**
  * …and a message that asks for a whole thing, indefinite, starts one: «اجعل
  * لي موقعاً لمطعم», "make me a booking app" — where «اجعل الموقع أسرع», "make
@@ -88,6 +109,13 @@ export function isFollowUpChange(text: string): boolean {
     const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
     if (t.split(/\s+/).length < 2 || startsAfresh(t)) return false;
     return CHANGE_LEAD_AR.test(t) || CHANGE_LEAD_EN.test(t);
+}
+
+/** Does this message ask to put the project back, or to see its kept versions? */
+export function isUndoRequest(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    if (!t || startsAfresh(t)) return false;
+    return UNDO_LEAD_AR.test(t) || UNDO_LEAD_EN.test(t);
 }
 
 /** The folder the agent engine last built for this chat, when it still exists. */

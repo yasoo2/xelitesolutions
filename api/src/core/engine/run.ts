@@ -80,7 +80,9 @@ export function recordRunHistory(dir: string, run: ProjectRun): void {
  */
 export function changeContextFor(dir: string, request: string, registeredRequest = ''): ChangeContext {
     const history = projectHistory(dir, registeredRequest);
-    const kept = snapshotProject(dir, `قبل: ${String(request || '').replace(/\s+/g, ' ').trim().slice(0, 70)}`);
+    const said = String(request || '').replace(/\s+/g, ' ').trim().slice(0, 70);
+    // «اعرض النسخ» lists the label in the request's own language.
+    const kept = snapshotProject(dir, `${/[؀-ۿ]/u.test(said) ? 'قبل' : 'before'}: ${said}`);
     return { history, ...(kept ? { snapshot: kept.id } : {}) };
 }
 
