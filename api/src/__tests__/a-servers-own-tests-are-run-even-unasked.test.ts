@@ -101,6 +101,21 @@ describe('a server\'s own tests', () => {
         expect(tests).toEqual([]);
     });
 
+    /**
+     * The rerun of H10, 2026-11-05: «ابني منصة حجز مواعيد لصالونات تجميل …» —
+     * a request the reader does not read as asking for a server. The builder
+     * wrote one anyway, with 25 routes and a test file it ran four times; the
+     * delivery said «tests skipped: the request asks for no tests» and never
+     * ran them. A server is what the delivered tree registers, not only what
+     * the request names.
+     */
+    it('are run for a server the delivered tree registers, though the request named none', async () => {
+        const H10 = 'ابني منصة حجز مواعيد لصالونات تجميل: عدة فروع وموظفين، خدمات بمدد مختلفة، تأكيد الحجز وإلغاؤه، ولوحة للمالك تعرض الإيرادات.';
+        const { tests, calls, root } = await delivered(H10, { service: false, interface: true, program: false }, { 'package.json': manifest('node --test'), 'server.js': SERVER, 'test/api.test.js': 'require("node:test");' });
+        expect(calls).toEqual([{ tool: 'quality_run', input: { path: root, tasks: ['test'] } }]);
+        expect(tests).toEqual([expect.objectContaining({ instrument: 'tests', ok: true })]);
+    });
+
     it('a page with no server keeps its own business', async () => {
         const { tests, calls } = await delivered('Build a landing page for a bakery.', { service: false, interface: true, program: false }, { 'package.json': manifest('node --test'), 'index.html': '<h1>Bakery</h1>' });
         expect(calls).toEqual([]);
