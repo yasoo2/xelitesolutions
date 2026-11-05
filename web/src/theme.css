@@ -92,7 +92,8 @@ html[data-theme="light"] {
   --text-primary: #1C201E;
   /* Green-black, not pure black */
   --text-secondary: #5A645F;
-  --text-muted: #8B958F;
+  /* 4.5:1 on white and on the canvas; #8B958F read at 3.0:1. */
+  --text-muted: #66706B;
 
   --border-color: rgba(28, 40, 35, 0.10);
   --border-light: rgba(28, 40, 35, 0.06);
@@ -272,6 +273,35 @@ html[data-theme="light"] {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* In the header's own middle, in flow (JoeHeader): it takes free space and
+   can never lie over a control. Below 900px only the action stays. */
+.joe-autoupdate-banner.is-inline {
+  position: static;
+  transform: none;
+  z-index: auto;
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px 4px 12px;
+  box-shadow: none;
+}
+
+@media (max-width: 900px) {
+  .joe-autoupdate-banner.is-inline .joe-autoupdate-text,
+  .joe-autoupdate-banner.is-inline .joe-autoupdate-toggle {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+  .joe-autoupdate-banner.is-inline {
+    gap: 6px;
+    padding: 3px 4px 3px 8px;
+  }
+  .joe-autoupdate-banner.is-inline .joe-autoupdate-later {
+    display: none;
+  }
 }
 
 .joe-autoupdate-now,

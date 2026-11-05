@@ -33,6 +33,10 @@ export const WORK_STAGES: WorkStage[] = ['understand', 'plan', 'build', 'test', 
  */
 export function workStageFor(phase: TracePhase, text = ''): WorkStage {
     const value = String(text).toLocaleLowerCase();
+    // The agent engine's hand-in and its own tries of the project are checks,
+    // not building (the words «project» and «task» sent them to Build).
+    if (/^running:\s*engine task finish/u.test(value)) return 'verify';
+    if (/^running:\s*(?:project run|quality run|engine browser)/u.test(value)) return 'test';
     if (/repair|fix|recover|retry|إصلاح|تصحيح|تعاف|إعادة المحاولة/u.test(value)) return 'repair';
     if (/verify|verified|acceptance|deliver|evidence|complete|تحقق|تسليم|دليل|مكتمل|نجح/u.test(value)) return 'verify';
     if (/qa|quality|test|browser|audit|check|فحص|جودة|اختبار|متصفح|تدقيق/u.test(value)) return 'test';
@@ -51,6 +55,21 @@ export function workStageFor(phase: TracePhase, text = ''): WorkStage {
 export function traceDisplayKey(text = ''): string | null {
     const value = String(text).trim();
     if (!value) return null;
+    // The agent engine's own actions. Without these every one of them fell to
+    // the last rule below, and «Right now» said «Performing the requested
+    // action» for an hour of the clinic build (UI/UX check, 2026-11-05).
+    if (/^running:\s*engine shell (?:run|start)/i.test(value)) return 'neuralDetailShell';
+    if (/^running:\s*engine shell (?:logs|stop)/i.test(value)) return 'neuralDetailShellWatch';
+    if (/^running:\s*engine file (?:write|edit|create|patch|delete|move)/i.test(value)) return 'neuralDetailWrite';
+    if (/^running:\s*engine file (?:read|list|search)/i.test(value)) return 'neuralDetailRead';
+    if (/^running:\s*engine browser/i.test(value)) return 'neuralDetailBrowserAction';
+    if (/^running:\s*engine web/i.test(value)) return 'neuralDetailWeb';
+    if (/^running:\s*engine plan/i.test(value)) return 'neuralDetailOrchestration';
+    if (/^running:\s*engine task finish/i.test(value)) return 'neuralDetailFinish';
+    if (/^running:\s*project run/i.test(value)) return 'neuralDetailRunProject';
+    if (/^running:\s*project stop/i.test(value)) return 'neuralDetailStopProject';
+    if (/^running:\s*quality run/i.test(value)) return 'neuralDetailQuality';
+    if (/^running:\s*agent engine/i.test(value)) return 'neuralDetailEngine';
     if (/^running:\s*terminal manager/i.test(value)) return 'neuralDetailTerminal';
     if (/^running:\s*project pipeline/i.test(value)) return 'neuralDetailOrchestration';
     if (/engineering discovery|\[pipeline\].*discovering/i.test(value)) return 'neuralDetailDiscovery';

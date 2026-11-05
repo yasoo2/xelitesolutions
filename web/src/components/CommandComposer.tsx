@@ -3185,8 +3185,17 @@ export default function CommandComposer({
     }
   }
 
-  /** The composer is free to start a new run right now. */
-  const composerIdle = status === 'idle' && !approval && !secretPrompt;
+  /**
+   * The composer is free to start a new run right now — never while the server
+   * says this session's run is still going (`runActive`).
+   *
+   * `status` alone goes back to 'idle' 300 ms after every tool (hideToolSoon),
+   * and the model then thinks for seconds or minutes before the next one. The
+   * UI/UX check of 2026-11-05 caught it ninety-seven steps into the clinic:
+   * the Stop button had turned back into Send, a typed message would have been
+   * sent as a new run, and the queue's 1.2 s timer would have fired mid-run.
+   */
+  const composerIdle = status === 'idle' && !runActive && !approval && !secretPrompt;
 
   // Published for anyone outside the composer who must not act while a task
   // runs — today that is the self-update autopilot, which would otherwise
@@ -5079,9 +5088,9 @@ export default function CommandComposer({
               )}
               {/* Send Button - Pushed to right via CSS space-between */}
               <button
-                className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
+                className={`send-btn ${!composerIdle ? 'is-busy' : ''}`}
                 onClick={() => {
-                  if (status !== 'idle' || !!approval || !!secretPrompt) {
+                  if (!composerIdle) {
                     if ((text.trim() || attachedFiles.length > 0) && !isUploading && !approval && !secretPrompt) {
                       queueCurrentDraft();
                       return;
@@ -5098,11 +5107,11 @@ export default function CommandComposer({
                     console.error('run() threw synchronously:', e);
                   }
                 }}
-                disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                title={status !== 'idle' || !!approval || !!secretPrompt ? t('stop') : t('send')}
+                disabled={!composerIdle ? false : (isUploading || !text.trim() || !!approval)}
+                title={!composerIdle ? t('stop') : t('send')}
                 style={{ position: 'relative' }}
               >
-                {status !== 'idle' || !!approval || !!secretPrompt ? (
+                {!composerIdle ? (
                   // «حلقة التقدّم»: the ring and arc are drawn by the button's
                   // own ::before/::after — only the stop square is content.
                   <Square size={10} fill="currentColor" />

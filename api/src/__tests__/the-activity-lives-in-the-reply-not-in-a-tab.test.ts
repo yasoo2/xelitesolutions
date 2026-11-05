@@ -167,6 +167,7 @@ async function mountLayout(sessionId: string) {
         '../lib/run-activity': { subscribeRunBusy: (l: (b: boolean) => void) => { busyListeners.add(l); l(busy); return () => { busyListeners.delete(l); }; } },
         '../services/AutoOpenManager': autoOpen,
         '../lib/panel-event-ownership': evaluate(web('lib', 'panel-event-ownership.ts'), {}),
+        '../lib/log-restore': evaluate(web('lib', 'log-restore.ts'), {}),
         './ErrorBoundary': { ErrorBoundary: pass },
         './WorkspacePanel': { __esModule: true, default: (props: any) => { workspace = props; return null; } },
         '../styles/joe-premium.css': {}, '../styles/accents.css': {},

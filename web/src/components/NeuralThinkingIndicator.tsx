@@ -62,6 +62,18 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
   //  the incoming one, rolling the same words up against themselves.
   useEffect(() => { activeSessionRef.current = sessionId; }, [sessionId]);
 
+  // Clear all reasoning state the moment the active session changes, so the
+  // previous session's thinking never shows in the new one. BEFORE the
+  // subscription below: effects run in order, and when this ran second it
+  // wiped the picture the subscription had just delivered from the cache —
+  // a returning or reloaded session showed an empty card until the next frame.
+  useEffect(() => {
+    setSteps([]);
+    setStatus('');
+    setCurrentPhase('idle');
+    setExpanded(null);
+  }, [sessionId]);
+
   useEffect(() => {
     const unsubSteps = SocketService.subscribeThinkingSteps((s) => setSteps(s), sessionId);
     const unsubPhase = SocketService.subscribeThinkingPhase((p: any, evSid?: string) => {
@@ -70,15 +82,6 @@ export default function NeuralThinkingIndicator({ phase = 'analyzing', visible, 
     }, sessionId);
     const unsubStatus = SocketService.subscribeThinkingStatus((s: string) => setStatus(s), sessionId);
     return () => { unsubSteps(); unsubPhase(); unsubStatus(); };
-  }, [sessionId]);
-
-  // Clear all reasoning state the moment the active session changes, so the
-  // previous session's thinking never shows in the new one.
-  useEffect(() => {
-    setSteps([]);
-    setStatus('');
-    setCurrentPhase('idle');
-    setExpanded(null);
   }, [sessionId]);
 
   // The elapsed counter has to tick on its own — no event arrives just because

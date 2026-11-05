@@ -124,6 +124,41 @@ export function logTextFor(event: LoggableEvent): string[] {
     return [];
 }
 
+/** A line without its «[HH:MM:SS] » stamp: what two records of one broadcast share. */
+export function unstamped(line: string): string {
+    return String(line || '').replace(/^\[[^\]]*\]\s*/, '');
+}
+
+/**
+ * ONE LOG, NOT TWO COPIES OF IT.
+ *
+ * The session log (session-log-store) and the run record (run-evidence) both
+ * write down the same broadcasts, and the workspace route sent both: 142 of
+ * the 500 lines the Logs tab restored for the clinic were the same line twice
+ * (UI/UX check, 2026-11-05). The session log is the panel's own record; the
+ * run record adds only what the session log lacks — runs older than it — and
+ * those come first, being older. Lines are compared without their stamps,
+ * by count, so a line that genuinely repeats («Step Done») keeps every copy.
+ */
+export function mergeLogSources(sessionLines: string[], evidenceLines: string[]): string[] {
+    if (!sessionLines.length) return evidenceLines.slice();
+    const have = new Map<string, number>();
+    for (const line of sessionLines) have.set(unstamped(line), (have.get(unstamped(line)) || 0) + 1);
+    const seen = new Map<string, number>();
+    const older: string[] = [];
+    const evidenceCount = new Map<string, number>();
+    for (const line of evidenceLines) evidenceCount.set(unstamped(line), (evidenceCount.get(unstamped(line)) || 0) + 1);
+    for (const line of evidenceLines) {
+        const key = unstamped(line);
+        const extra = (evidenceCount.get(key) || 0) - (have.get(key) || 0);
+        const used = seen.get(key) || 0;
+        // The earliest copies are the ones the session log never saw.
+        if (used < extra) older.push(line);
+        seen.set(key, used + 1);
+    }
+    return [...older, ...sessionLines];
+}
+
 /** A locale-free 24h stamp, so a restored line reads like a live one. */
 export function logStampFor(ts: unknown): string {
     const n = Number(ts);

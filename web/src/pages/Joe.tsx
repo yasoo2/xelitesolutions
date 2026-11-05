@@ -773,15 +773,18 @@ export default function Joe() {
         // GUARD: this effect re-runs when workspaceId resolves (null -> id); without
         // this one-time flag the second run would create a SECOND session before the
         // first was committed, so two sessions appeared on first launch.
+        // Keep a reload on the conversation the user was actually reading.
+        // Zustand is in-memory, so without this a refresh silently opened
+        // the first/default session while the old run continued elsewhere.
+        // Read BEFORE the list loads: the load commits a default at once, and
+        // the effect that remembers the open session used to write the newest
+        // id over this one before it was read (2026-11-05, lib/session-selection).
+        const savedId = (() => {
+            try { return String(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || '').trim(); } catch { return ''; }
+        })();
         loadAllSessions().then(() => {
             if (didInitSessionRef.current) return;
-            // Keep a reload on the conversation the user was actually reading.
-            // Zustand is in-memory, so without this a refresh silently opened
-            // the first/default session while the old run continued elsewhere.
             const st = useSessionStore.getState();
-            const savedId = (() => {
-                try { return String(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || '').trim(); } catch { return ''; }
-            })();
             const savedAgent = savedId && st.agentSessions.some(s => s.id === savedId);
             const savedChat = savedId && st.sessions.some(s => s.id === savedId);
             if (savedAgent) {
@@ -1137,6 +1140,31 @@ export default function Joe() {
         startTrackingRuns();
         return subscribeRunningSessions((sessions, runIds) => setRunningSnapshot({ sessions, runIds }));
     }, []);
+
+    /**
+     * A CONVERSATION OPENED WHILE JOE WORKS SHOWS WHAT JOE HAS DONE SO FAR.
+     *
+     * The live card, the plan and the terminal were fed only by socket frames
+     * this page had received, so a reload mid-run showed «Joe is working ·
+     * Understand» forty-eight steps into a build (UI/UX check, 2026-11-05).
+     * The run's record has every frame: ask it once per run, and rebuild the
+     * picture (SocketService.seedRun → lib/run-replay).
+     */
+    const seededRunRef = useRef<string>('');
+    const activeRunningId = activeSessionId ? (runningSnapshot.runIds.get(activeSessionId) || '') : '';
+    useEffect(() => {
+        const sid = activeSessionId;
+        const runId = activeRunningId;
+        if (!sid || !runId || seededRunRef.current === `${sid}:${runId}`) return;
+        seededRunRef.current = `${sid}:${runId}`;
+        api.get(`/runs/${encodeURIComponent(runId)}/receipt`)
+            .then((receipt: any) => {
+                if (activeSessionIdRef.current !== sid) return;
+                if (String(receipt?.status || '') !== 'running') return;
+                SocketService.seedRun(sid, runId, Array.isArray(receipt?.events) ? receipt.events : []);
+            })
+            .catch(() => { seededRunRef.current = ''; });
+    }, [activeSessionId, activeRunningId]);
 
     useEffect(() => {
         const finished = runHistoryRecoveryRef.current.observe(activeSessionId, runningSnapshot.sessions, runningSnapshot.runIds);
