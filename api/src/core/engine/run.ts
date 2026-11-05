@@ -157,6 +157,14 @@ function clip(value: unknown): string {
     return s.length > UI_TEXT_LIMIT ? `${s.slice(0, UI_TEXT_LIMIT)}… [${s.length - UI_TEXT_LIMIT} more characters in the run record]` : s;
 }
 
+/** A tool call as the live event shows it: task_finish's sign-in password is never shown. */
+export function shownArgs(name: string, args: unknown): unknown {
+    if (name !== 'task_finish' || !args || typeof args !== 'object') return args;
+    const a = args as Record<string, any>;
+    if (!a.sign_in || typeof a.sign_in !== 'object') return args;
+    return { ...a, sign_in: { ...a.sign_in, password: '[hidden]' } };
+}
+
 /**
  * The engine's events as the UI's live events, addressed to the chat session.
  *
@@ -209,7 +217,7 @@ export function uiEmitter(sessionId: string | undefined, runId: string, language
                     note('thought', e.text);
                     break;
                 case 'tool_call':
-                    send('step_started', { name: `engine:${e.name}`, callId: e.id, input: clip(e.args) });
+                    send('step_started', { name: `engine:${e.name}`, callId: e.id, input: clip(shownArgs(e.name, e.args)) });
                     break;
                 case 'tool_result':
                     send(e.ok ? 'step_done' : 'step_failed', {

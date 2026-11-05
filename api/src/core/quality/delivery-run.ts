@@ -31,6 +31,7 @@ import {
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
 import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
+import type { SignInAccount } from './sign-in';
 import { CAPABILITIES, deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
@@ -63,6 +64,8 @@ export interface DeliveryRunInput {
     say?: (message: string) => void;
     /** A line for the run's log. */
     log?: (line: string) => void;
+    /** The account the builder seeded, for checks that must pass the product's sign-in (sign-in.ts). */
+    signIn?: SignInAccount;
 }
 
 /** The facts the last measurement established, for the caller's report. */
@@ -297,7 +300,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
             say(pick(isAr, `▶️ لم أجد ${unseen.map(arabicCapability).join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
             const bound = bindRunCancellation(input.cancellation, input.signal);
             try {
-                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal });
+                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal, signIn: input.signIn });
                 scoped = reconcileScope(scoped, measured);
                 for (const r of measured.results) input.log?.(`[pipeline] interaction ${r.capability} ${r.ok ? 'shown' : 'not shown'}: ${r.detail}`);
             } finally {

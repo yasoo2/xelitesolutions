@@ -37,6 +37,8 @@ import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForU
 import { judgeAcceptance, type Criterion } from '../quality/acceptance';
 import { isAppearanceRequirement, judgeAppearance, type JudgedAppearance, type Look } from '../quality/appearance';
 import { judgeSourceOf, nothingWasJudged, verifyNamed, type JudgedNamed, type NamedRequirement } from '../quality/named-requirements';
+import { judgeTestSuiteByRun, type RunVerdict } from '../quality/test-suite-requirement';
+import type { SignInAccount } from '../quality/sign-in';
 import { runRequestedTests, testsRequestedIn } from '../quality/request-coverage';
 import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
@@ -68,9 +70,11 @@ export interface JudgedRequirement {
     /**
      * Where it was judged: on the source, or on a screenshot of the page (a
      * requirement about how the page looks, core/quality/appearance.ts). An
-     * unprovable look never blocks; an unmet one fails the Browser QA.
+     * unprovable look never blocks; an unmet one fails the Browser QA. A
+     * requirement for the project's own tests is judged on Joe's run of them
+     * (core/quality/test-suite-requirement.ts).
      */
-    judgedBy?: 'source' | 'sight';
+    judgedBy?: 'source' | 'sight' | 'tests';
 }
 
 /** Everything the verdict was made from, kept so the run's receipt can be built from it. */
@@ -91,6 +95,8 @@ export interface DeliveryRecord {
     scopeAudit?: DeliveryRunState['scopeAudit'];
     requestCoverage?: DeliveryRunState['requestCoverage'];
     browserQa?: AppAudit;
+    /** The account the Browser QA signed in with, when it did (its name only, never its password). */
+    signedInAs?: string;
     /** The run's own servers this verification stopped before its live run. */
     stoppedServers: string[];
     /** What the measurements printed along the way (bounded; the count of lines left out is kept). */
@@ -146,8 +152,14 @@ function panelSessionOf(ctx: ToolContext): string {
  * One browser finding as the model and the owner read it. Its evidence is
  * often a list of elements: written as JSON, not as «[object Object]».
  */
+/** What the builder can do about a finding, when the finding itself does not say. */
+const FINDING_HINT: Record<string, string> = {
+    authenticated_coverage_missing: 'give task_finish "sign_in": {"username": …, "password": …} — an account the project seeds — and Joe signs in through the product\'s own form and tests the screens behind it',
+};
+
 export function browserFindingLine(f: { id?: unknown; detailEn?: unknown; detail?: unknown; evidence?: unknown }): string {
-    const detail = String(f.detailEn || f.detail || '').trim();
+    const hint = FINDING_HINT[String(f.id || '')];
+    const detail = `${String(f.detailEn || f.detail || '').trim()}${hint ? `: ${hint}` : ''}`;
     const ev = f.evidence == null || f.evidence === '' ? ''
         : typeof f.evidence === 'string' ? f.evidence
         : (() => { try { return JSON.stringify(f.evidence); } catch { return ''; } })();
@@ -219,8 +231,10 @@ const yieldTurn = () => new Promise<void>(resolve => setImmediate(resolve));
 export function createVerifier(deps: VerifierDeps): Verifier {
     const browserQa = deps.browserQa ?? panelBrowserQa();
     //  The claim (task_finish's summary, url and evidence) is never read: the
-    //  verdict is measured on the project and judged against the request.
-    return (ctx: ToolContext, _claim: FinishArgs) => verifyDelivery(ctx, deps, browserQa);
+    //  verdict is measured on the project and judged against the request. Its
+    //  sign-in account is not a claim but a key the checks try on the
+    //  product's own form: a wrong one fails to sign in (quality/sign-in.ts).
+    return (ctx: ToolContext, claim: FinishArgs) => verifyDelivery(ctx, deps, browserQa, claim?.sign_in);
 }
 
 /**
@@ -267,7 +281,7 @@ async function liveRunInput(ctx: ToolContext, root: string): Promise<{ input: Re
     return { input, stopped };
 }
 
-async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa): Promise<DeliveryVerification> {
+async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount): Promise<DeliveryVerification> {
     const root = path.resolve(ctx.projectDir);
     //  Law 4: every gate reads the user's full request — never the model's
     //  plan or the summary it wrote in task_finish.
@@ -322,6 +336,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         isAr,
         say: line => note(line),
         log: line => note(line),
+        signIn,
     });
 
     const stage = async (instruments: DeliveryInstrument[], measure: () => Promise<void>) => {
@@ -479,7 +494,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     let bySight: Array<{ id: string; text: string; quote: string }> = [];
     await stage(['acceptance'], async () => {
         const judged = await judgeRequirements(ctx, request, isAr, root, deps.ask, note, {
-            built: buildsPassed, liveUrl,
+            built: buildsPassed, liveUrl, tests: delivery.state.requestCoverage,
         }, interfaceDelivered);
         Object.assign(acceptance, judged.summary);
         bySight = judged.bySight;
@@ -511,10 +526,15 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             //  on a picture of its own, and kept as the desktop proof after.
             const proof = deliveryProofPaths(ctx.stateDir || path.join(root, '.joe'));
             const lookPath = bySight.length ? path.join(ctx.stateDir || path.join(root, '.joe'), 'look', `page-${Date.now()}.jpg`) : proof.desktop;
+            //  A system behind a sign-in is tested signed in, with the account
+            //  the builder gave (quality/sign-in.ts); without one, a product
+            //  that shows a sign-in is not proven past its door.
             const options = (timeoutMs: number): AuditOptions => ({
                 request, watchSessionId: eye.sessionId, serveUrl: qaTarget, artifactRootDir: root,
                 requireVisibleBrowser: true, timeoutMs, onProgress: (m: string) => note(`browser QA: ${m}`),
                 lookPath, phoneLookPath: proof.phone,
+                ...(signIn ? { credentials: { identity: signIn.identity, password: signIn.password } } : {}),
+                requireAuthenticatedCoverage: true,
             });
             let audit = await browserQa.audit(auditDir, options(45_000));
             //  A coverage timeout is the walker's budget, not the app: once more, larger.
@@ -617,6 +637,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
         ...(delivery.state.scopeAudit ? { scopeAudit: delivery.state.scopeAudit } : {}),
         ...(delivery.state.requestCoverage ? { requestCoverage: delivery.state.requestCoverage } : {}),
         ...(browserAudit ? { browserQa: browserAudit } : {}),
+        ...(signIn && browserAudit?.authenticated ? { signedInAs: signIn.identity } : {}),
         stoppedServers,
         log,
     };
@@ -775,14 +796,14 @@ function adoptRequirements(ctx: ToolContext, named: NamedRequirement[]): void {
     }
 }
 
-async function judgeRequirements(
+export async function judgeRequirements(
     ctx: ToolContext,
     request: string,
     isAr: boolean,
     root: string,
     ask: (prompt: string) => Promise<string>,
     note: (line: string) => void,
-    evidence: { built: boolean; liveUrl: string },
+    evidence: { built: boolean; liveUrl: string; tests?: Pick<NonNullable<DeliveryRunState['requestCoverage']>, 'records' | 'testsRun'> },
     pageDelivered = false,
 ): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; met: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
@@ -808,13 +829,22 @@ async function judgeRequirements(
         named = named.filter(r => !bySight.includes(r));
         note(`acceptance: ${bySight.length} requirement(s) about how the page looks are judged on the page itself: ${bySight.map(r => `«${r.text}»`).join(', ')}`);
     }
+    //  A requirement for the project's own tests is judged on Joe's run of
+    //  them, when that run measured enough to judge it (H13).
+    const byRun = named.map(r => ({ r, run: judgeTestSuiteByRun(r, evidence.tests) }))
+        .filter((x): x is { r: NamedRequirement; run: RunVerdict } => x.run !== null);
+    const onSource = named.filter(r => !byRun.some(x => x.r === r));
+    if (byRun.length) note(`acceptance: ${byRun.map(x => `«${x.r.text}» ${x.run.verdict} on the run of the project's tests`).join(', ')}`);
     //  2-3. The source, and a verdict per requirement grounded in it.
     const source = await judgeSource(root);
-    const verdicts: JudgedNamed[] = named.length ? await verifyNamed(named, source.text, isAr, ask) : [];
+    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask) : [];
     //  4. The verdicts themselves are the criteria — always, even from a blind
     //  judge, so that criteria > 0 and a judge that could rule on nothing
     //  blocks. No catalogue or structural criterion is added.
-    const criteria: Criterion[] = verdicts.map(j => ({ id: j.id, kind: 'feature', ar: j.text, en: j.text, preJudged: { verdict: j.verdict, why: j.why } }));
+    const criteria: Criterion[] = [
+        ...verdicts.map(j => ({ id: j.id, kind: 'feature' as const, ar: j.text, en: j.text, preJudged: { verdict: j.verdict, why: j.why } })),
+        ...byRun.map(x => ({ id: x.r.id, kind: 'feature' as const, ar: x.r.text, en: x.r.text, preJudged: { verdict: x.run.verdict, why: x.run.why } })),
+    ];
     //  5-6. The judgement, and whether it blocks.
     const accepted = judgeAcceptance(criteria, { dir: root, built: evidence.built, liveUrl: evidence.liveUrl || undefined, audit: null, source: source.text }, isAr);
     const blocked = acceptanceBlocksDelivery({
@@ -829,7 +859,8 @@ async function judgeRequirements(
     const plan = ctx.state?.plan?.requirements || [];
     const requirements: JudgedRequirement[] = accepted.criteria.map(c => {
         const inPlan = plan.find(r => (r.key || r.id) === c.id);
-        return { id: inPlan?.id || c.id, key: c.id, text: c.en, verdict: c.verdict, why: c.why, judgedBy: 'source' as const };
+        const judgedBy = byRun.some(x => x.r.id === c.id) ? 'tests' as const : 'source' as const;
+        return { id: inPlan?.id || c.id, key: c.id, text: c.en, verdict: c.verdict, why: c.why, judgedBy };
     });
     //  His words of every requirement found met: an item the records reader could not read is read by them.
     const met = accepted.criteria.filter(c => c.verdict === 'met')

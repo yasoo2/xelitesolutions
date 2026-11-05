@@ -44,6 +44,7 @@
  * not operated, on the page as it opens and behind its doors.
  */
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
+import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
 
 export type InteractiveCapability = 'search' | 'filtering' | 'sorting' | 'product catalogue';
 export const INTERACTIVE_CAPABILITIES: readonly InteractiveCapability[] = ['search', 'filtering', 'sorting', 'product catalogue'];
@@ -408,7 +409,7 @@ function searchTerms(items: string[]): string[] {
 export async function measureInteractions(
     url: string,
     wanted: InteractiveCapability[],
-    opts: { timeoutMs?: number; signal?: AbortSignal } = {},
+    opts: { timeoutMs?: number; signal?: AbortSignal; signIn?: SignInAccount } = {},
 ): Promise<InteractionMeasurement> {
     const want = Array.from(new Set(wanted.filter(w => INTERACTIVE_CAPABILITIES.includes(w))));
     if (!want.length || !url) return { measured: false, results: [] };
@@ -425,6 +426,9 @@ export async function measureInteractions(
     }
     const found = new Map<InteractiveCapability, string>();
     const tried = new Map<InteractiveCapability, string[]>();
+    /** The page opened on a sign-in form and no account was given to pass it (sign-in.ts, H01). */
+    let signInWall = false;
+    let signInFailed = '';
     const note = (cap: InteractiveCapability, what: string) => {
         if (!tried.has(cap)) tried.set(cap, []);
         tried.get(cap)!.push(what);
@@ -435,9 +439,13 @@ export async function measureInteractions(
         const open = async () => {
             await page.goto(url, { waitUntil: 'load', timeout: Math.min(15_000, Math.max(3_000, left())) });
             await page.waitForTimeout(500);
+            if (!await showsSignInForm(page)) return;
+            if (!opts.signIn) { signInWall = true; return; }
+            const signed = await signInThroughPage(page, opts.signIn, { timeoutMs: Math.min(12_000, Math.max(2_000, left())) });
+            if (!signed.ok) { signInFailed = signed.why; throw new Error(`signing in with the account task_finish gave failed: ${signed.why}`); }
         };
         try { await open(); } catch (e: any) {
-            return { measured: false, results: [], error: `the page did not open: ${String(e?.message || e).slice(0, 200)}` };
+            return { measured: false, results: [], error: signInFailed ? `signing in with the account task_finish gave failed: ${signInFailed}` : `the page did not open: ${String(e?.message || e).slice(0, 200)}` };
         }
         /** Where the page's other lists sit, as the last «mark» snapshot chose them. */
         let places: string[] = [];
@@ -632,16 +640,18 @@ export async function measureInteractions(
         results: want.map(cap => {
             const ops = tried.get(cap) || [];
             if (found.has(cap)) return { capability: cap, ok: true, detail: `on the live page, ${found.get(cap)}`, tried: ops.length };
+            //  What was measured was the sign-in page: said so, with how to let Joe past it.
+            const wall = signInWall ? ' — the live page opens on a sign-in form and task_finish gave no account to pass it: give task_finish "sign_in": {"username": …, "password": …} (an account the project seeds), and Joe signs in through that form and operates the screens behind it' : '';
             if (cap === 'product catalogue') {
-                return { capability: cap, ok: false, tried: ops.length, detail: `on the live page (${ops.slice(0, 4).join(', ')}) no group of two or more items shows a photo or a price` };
+                return { capability: cap, ok: false, tried: ops.length, detail: `on the live page (${ops.slice(0, 4).join(', ')}) no group of two or more items shows a photo or a price${wall}` };
             }
             return {
                 capability: cap,
                 ok: false,
                 tried: ops.length,
-                detail: ops.length
+                detail: (ops.length
                     ? `on the live page I operated ${ops.length} control(s) — ${ops.slice(0, 5).join(', ')} — and the data shown never ${cap === 'sorting' ? 'changed order' : 'changed'}`
-                    : `the live page has no control ${cap === 'search' ? 'to type a search into' : cap === 'sorting' ? 'that sorts' : 'that filters'} (no select, date, range, checkbox or text box${cap === 'sorting' ? ', no column header' : ''})`,
+                    : `the live page has no control ${cap === 'search' ? 'to type a search into' : cap === 'sorting' ? 'that sorts' : 'that filters'} (no select, date, range, checkbox or text box${cap === 'sorting' ? ', no column header' : ''})`) + wall,
             };
         }),
     };

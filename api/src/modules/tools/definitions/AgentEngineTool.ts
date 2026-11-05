@@ -31,7 +31,7 @@ import { shellTools, createProcessRegistry } from '../../../core/engine/tools/sh
 import { browserTools, createBrowserSession } from '../../../core/engine/tools/browser';
 import { webTools } from '../../../core/engine/tools/web';
 import { machineFacts } from './EngineShellTools';
-import { createVerifier, deliveryOutput } from '../../../core/engine/verify';
+import { createVerifier, deliveryOutput, type DeliveryVerification } from '../../../core/engine/verify';
 import { clearDeliveryProof, deliveryProof, writeDeliveryCertificate } from '../../../core/engine/certificate';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
 import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
@@ -145,6 +145,7 @@ export const AgentEngineTool: ToolDefinition = {
                     howToRun: result.howToRun, liveUrl: delivery.output?.liveUrl,
                     durationMs: result.durationMs, costUsd: result.costUsd, model: result.model,
                     screenshots: deliveryProof(folder.dir),
+                    signedInAs: (result.verification as DeliveryVerification | undefined)?.delivery?.signedInAs,
                 });
             }
             return {
