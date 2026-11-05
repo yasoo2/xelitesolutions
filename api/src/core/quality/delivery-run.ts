@@ -216,13 +216,19 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
      * them run once per unchanged tree: a pass is in the certificate, a
      * failure is a check the builder repairs. A project with no tests of its
      * own is not refused for it — nothing is demanded that was not asked.
+     *
+     * A server is what the delivered tree registers as well as what the
+     * request names: the rerun of H10 (a salon platform its reader takes for
+     * no server) shipped 25 routes and a test file the builder ran four times,
+     * and the delivery said «the request asks for no tests».
      */
     const ownTestRuns = new Map<string, RequestedTestsRun>();
     const measureOwnTests = async (runRes: any, roots: string[]) => {
-        if (!deliveryRoles.service || testsRequestedIn(productRequest)) return;
+        if (testsRequestedIn(productRequest)) return;
         const runRoot = String(runRes?.output?.cwd || '').trim();
         const scope = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
         const evidence = await collectServerEvidence(scope, []);
+        if (!deliveryRoles.service && !evidence.routes.length) return;
         const testsRoot = requestedTestsRoot(evidence, runRoot, scope);
         if (!(await hasOwnTests(testsRoot))) return;
         const fingerprint = `${testsRoot}|${testTreeFingerprint(testsRoot, evidence)}`;
