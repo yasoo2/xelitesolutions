@@ -110,6 +110,35 @@ const PAYMENT_REQUEST = new RegExp(
     'i',
 );
 
+/**
+ * A LOGIN IS WHAT THE SERVER DOES, WHATEVER ITS ROUTE IS CALLED.
+ *
+ * Measured on 2026-11-01: the agent engine built a clinic system with a real
+ * login, judged unmet because the source had no name from Joe's first
+ * templates. And the hard exam, 2026-11-05, H11: a blog's session login on
+ * POST /api/admin/login (timingSafeEqual, a random token kept as the session,
+ * an HttpOnly cookie) was refused by this audit as «missing: user accounts»,
+ * which wanted «/api/auth/login», «bearer» or «jwt». The named-requirements
+ * gate and this one now read a login the same way:
+ *  - a server route for it;
+ *  - a password check that is not a plain comparison;
+ *  - a session or token it issues.
+ */
+export function hasServerLoginEvidence(src: string): boolean {
+    const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
+        || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src)
+        //  Whatever the router is called — authRouter, api, auth (P155,
+        //  2026-11-03) — a registration whose handler takes the request is
+        //  a server route; a client's `api.post('/auth/login', body)` is not.
+        || /\b[A-Za-z_$][\w$]*\s*\.\s*post\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b[^'"`]*['"`]\s*,[^;]{0,240}?\(\s*(?:req|request|ctx)\b/iu.test(src);
+    const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
+    const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
+        //  A random token the server keeps as the session (randomBytes or randomUUID).
+        || (/\b(?:randomBytes\s*\(\s*\d+\s*\)|randomUUID\s*\(\s*\)|secrets\.token_(?:hex|urlsafe)\s*\()/u.test(src)
+            && /\bsessions?\s*(?:\[|\.set\s*\(|\.insert|\.push\s*\()|INSERT\s+INTO\s+sessions/iu.test(src));
+    return serverLoginRoute && passwordChecked && sessionIssued;
+}
+
 export function hasFormValidationEvidence(source: string): boolean {
     return /fields\s*\.filter\(\s*f\s*=>\s*f\.required|f\.required\s*&&/i.test(source)
         && /setError\(|role\s*=\s*["']alert["']|aria-live/i.test(source);
@@ -353,6 +382,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'accounts', ar: 'حسابات المستخدمين', en: 'user accounts',
         ask: /\b(?:accounts?|account\s+management|sign[- ]?in|log[- ]?in|auth(?:entication|orization)?|register|registration|login)\b|حسابات?\s+(?:المستخدمين|العملاء)|تسجيل\s+(?:الدخول|المستخدم)|المصادقة/i,
         evidence: /\/api\/auth\/login|bearer|jwt/i,
+        evidenceCheck: hasServerLoginEvidence,
     },
     {
         id: 'multi_vendor', ar: 'سوق متعدّد البائعين', en: 'multi-vendor marketplace',
