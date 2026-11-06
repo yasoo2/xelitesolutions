@@ -122,6 +122,11 @@ const NOUNS: Noun[] = [
     { key: 'beneficiaries', ar: 'المستفيدون', en: 'beneficiaries', kind: 'person', re: /^(ال)?مستفيد(ين|ون)?$|^beneficiar(y|ies)$/i },
     { key: 'travelers', ar: 'المسافرون', en: 'travelers', kind: 'person', re: /^(ال)?مسافر(ين|ون)?$|^travell?ers?$/i },
     { key: 'children', ar: 'الأطفال', en: 'children', kind: 'person', re: /^(ال)?[أا]طفال$|^children$|^kids$/i },
+    // «أولياء الأمور» are the parents (the 500 exam, P121, 2026-11-06): keyed
+    // `awlya_amwrs` from its letters, the server's /api/parents never matched
+    // it and a complete kindergarten API was refused four times. «أولياء»
+    // alone is its head; «ولي الأمر» one of them; «الأهالي» the same people.
+    { key: 'parents', ar: 'أولياء الأمور', en: 'parents', kind: 'person', re: /^(ال)?[أا]ولياء( (ال)?[أا]مور)?$|^ولي (ال)?[أا]مر$|^(ال)?[أا]هال[يى]$|^parents$|^guardians?$/i },
     { key: 'players', ar: 'اللاعبون', en: 'players', kind: 'person', re: /^(ال)?لاعب(ين|ون)?$|^players?$/i },
     // Only the human plurals: «المرشح» alone is a candidate or a filter.
     { key: 'candidates', ar: 'المرشحون', en: 'candidates', kind: 'person', re: /^(ال)?مرشح(ين|ون)$|^candidates?$/i },
