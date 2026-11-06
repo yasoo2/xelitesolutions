@@ -3183,9 +3183,30 @@ export async function localModelInstalled(baseUrl: string, model: string): Promi
 
 export async function verifyProviderDirect(
     provider: string,
-    cfg: { apiKey?: string; baseUrl?: string; model?: string; light?: boolean } = {}
+    cfg: { apiKey?: string; baseUrl?: string; model?: string; light?: boolean; signal?: AbortSignal } = {}
 ): Promise<{ ok: boolean; provider: string; detail: string; code?: string }> {
     const p = String(provider || '').trim().toLowerCase();
+    //  A check whose page went away (cfg.signal, the request's close) has no
+    //  one to answer: it stops, instead of holding the local model up to 90 s.
+    if (cfg.signal?.aborted) return { ok: false, provider, detail: 'client_gone' };
+    const onClientGone = (abort: () => void) => cfg.signal?.addEventListener('abort', abort, { once: true });
+    /**
+     *  ⛔ THE CHECK A PAGE LOAD MAKES SPENDS NOTHING, LOCAL TOO.
+     *
+     *  2026-11-06, the test Joe on a 16 GB laptop: every load of Joe's page
+     *  checked Auto with `light`, and for Auto and a named local model that
+     *  check was a real generation — 22 page loads, 54 checks in a morning,
+     *  each loading a 7B model beside a Claude build. llama-server died out of
+     *  memory (0xC0000409) and Joe's own process aborted after it, three
+     *  times, with no word in its log. The light check of a local model is the
+     *  server's own list: this exact model installed. Connect makes the call.
+     */
+    const lightLocal = async (baseUrl: string, model: string) => {
+        const installed = await localModelInstalled(baseUrl, model);
+        if (installed === true) return { ok: true, provider, detail: 'local_listed' };
+        if (installed === false) return { ok: false, provider, code: 'PROVIDER_MODEL', detail: `local_model_not_installed: ${model}` };
+        return { ok: false, provider, code: 'PROVIDER_DOWN', detail: 'local_unreachable: the local model server did not list its models' };
+    };
     const probe = [{ role: 'user', content: 'Reply with the single word: OK' }] as any[];
     const key = String(cfg.apiKey || '').trim();
     const badCharacters = /[^\x21-\x7E]/.test(key);
@@ -3198,6 +3219,7 @@ export async function verifyProviderDirect(
         if (!providerAllowedByCost(p, explicitLocal.model, explicitLocal.normalizedBaseUrl)) {
             return { ok: false, provider, detail: 'free_only: selected local model or endpoint is unavailable under the cost policy' };
         }
+        if (cfg.light) return lightLocal(String(explicitLocal.normalizedBaseUrl || ''), String(explicitLocal.model || ''));
         // ⛔ A BUSY MODEL IS NOT A DEAD ONE. The probe below is a real generation,
         // and local inference is one lane: while a 40-minute plan runs, the probe
         // waited behind it, timed out, and painted a working model red (owner,
@@ -3212,6 +3234,7 @@ export async function verifyProviderDirect(
         // A named local probe owns one bounded cold-start request. Key placeholders
         // cannot erase its model, and metadata or a different provider cannot verify it.
         const localAbort = new AbortController();
+        onClientGone(() => localAbort.abort(new Error('client_gone')));
         const timeoutMs = localVerificationBudgetMs();
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -3264,6 +3287,8 @@ export async function verifyProviderDirect(
         }
     }
     let probeAbort = new AbortController();
+    //  The current boundary: a fallback provider gets a fresh one below.
+    onClientGone(() => probeAbort.abort(new Error('client_gone')));
     const withTimeout = async <T,>(pr: Promise<T>, ms = 20000): Promise<T> => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         try {
@@ -3286,7 +3311,14 @@ export async function verifyProviderDirect(
             // Configured is enough: a warm-up still running on a slow CPU is not
             // evidence of absence, and skipping here sent the probe to the mesh,
             // whose 8 s local cap reported a live model as TIMEOUT (eval 2026-10-22).
-            if (providerAllowedByCost('Local (Auto)') && localProvider.isConfigured()) {
+            const localFirst = providerAllowedByCost('Local (Auto)') && localProvider.isConfigured();
+            if (localFirst && cfg.light) {
+                const listed = await lightLocal(String(localProvider.endpoint() || ''), String(pickLocalModel('simple_chat', 'small_text') || process.env.LOCAL_LLM_MODEL || ''));
+                //  Offline, local is Auto's only brain: its list is the answer.
+                //  Online, a missing local model leaves the free providers to check.
+                if (listed.ok || /^(?:1|true|yes|on)$/i.test(String(process.env.OFFLINE_MODE || '').trim())) return listed;
+            }
+            if (localFirst && !cfg.light) {
                 const warmup = Number(localWarmupMs?.() || 0);
                 // Boot warm-up already sent a real request to this model. A
                 // second immediate probe can queue behind a slow CPU model and

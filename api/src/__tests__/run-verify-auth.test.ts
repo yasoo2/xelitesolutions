@@ -158,8 +158,10 @@ describe('/runs/verify authentication', () => {
       expect(req.auth.sub).toBe(scenario.expectedSub);
       expect(providerImports).toBe(1);
       expect(verifyProviderDirect).toHaveBeenCalledTimes(1);
+      //  The selection, and the signal that ends the check when its page goes
+      //  away (2026-11-06) — still nothing from the forged body fields.
       expect(verifyProviderDirect).toHaveBeenCalledWith(selected.provider, {
-        apiKey: selected.apiKey, baseUrl: selected.baseUrl, model: selected.model,
+        apiKey: selected.apiKey, baseUrl: selected.baseUrl, model: selected.model, signal: expect.any(AbortSignal),
       });
       expect(verifyProviderDirect.mock.calls[0]).toHaveLength(2);
       expect(bodyReads).toBe(1);

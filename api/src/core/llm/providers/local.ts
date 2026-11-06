@@ -61,6 +61,11 @@ export class LocalProvider {
         return !!this.baseUrl();
     }
 
+    /** The configured local endpoint, for a check that reads it without generating. */
+    endpoint(): string | null {
+        return this.baseUrl();
+    }
+
     async chatComplete(
         messages: any[],
         model?: string,
