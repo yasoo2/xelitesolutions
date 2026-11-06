@@ -101,10 +101,43 @@ export function hasContactCtaEvidence(source: string): boolean {
 // “Checkout” is also a legitimate name for non-payment workflows such as
 // lending equipment. Treat it as payments only when payment context is nearby.
 const PAYMENT_CHECKOUT = /\bcheckout\b(?=[^,.]{0,40}\b(?:payment|card|billing|purchase|order|cart)\b)/i;
+// A payment's status, date, due date or history is a field of the record it
+// belongs to («invoices with payment status», H01, 2026-11-04), not a request
+// to take payments.
+const PAYMENT_FIELD = '(?!\\s+(?:status|state|date|dates|due|history|reminders?|records?|terms)\\b)';
 const PAYMENT_REQUEST = new RegExp(
-    `\\bpayments?\\b|\\bstripe\\b|\\bpaypal\\b|المدفوعات|بوابة دفع|${PAYMENT_CHECKOUT.source}`,
+    `\\bpayments?\\b${PAYMENT_FIELD}|\\bstripe\\b|\\bpaypal\\b|المدفوعات|بوابة دفع|${PAYMENT_CHECKOUT.source}`,
     'i',
 );
+
+/**
+ * A LOGIN IS WHAT THE SERVER DOES, WHATEVER ITS ROUTE IS CALLED.
+ *
+ * Measured on 2026-11-01: the agent engine built a clinic system with a real
+ * login, judged unmet because the source had no name from Joe's first
+ * templates. And the hard exam, 2026-11-05, H11: a blog's session login on
+ * POST /api/admin/login (timingSafeEqual, a random token kept as the session,
+ * an HttpOnly cookie) was refused by this audit as «missing: user accounts»,
+ * which wanted «/api/auth/login», «bearer» or «jwt». The named-requirements
+ * gate and this one now read a login the same way:
+ *  - a server route for it;
+ *  - a password check that is not a plain comparison;
+ *  - a session or token it issues.
+ */
+export function hasServerLoginEvidence(src: string): boolean {
+    const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
+        || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src)
+        //  Whatever the router is called — authRouter, api, auth (P155,
+        //  2026-11-03) — a registration whose handler takes the request is
+        //  a server route; a client's `api.post('/auth/login', body)` is not.
+        || /\b[A-Za-z_$][\w$]*\s*\.\s*post\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b[^'"`]*['"`]\s*,[^;]{0,240}?\(\s*(?:req|request|ctx)\b/iu.test(src);
+    const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
+    const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
+        //  A random token the server keeps as the session (randomBytes or randomUUID).
+        || (/\b(?:randomBytes\s*\(\s*\d+\s*\)|randomUUID\s*\(\s*\)|secrets\.token_(?:hex|urlsafe)\s*\()/u.test(src)
+            && /\bsessions?\s*(?:\[|\.set\s*\(|\.insert|\.push\s*\()|INSERT\s+INTO\s+sessions/iu.test(src));
+    return serverLoginRoute && passwordChecked && sessionIssued;
+}
 
 export function hasFormValidationEvidence(source: string): boolean {
     return /fields\s*\.filter\(\s*f\s*=>\s*f\.required|f\.required\s*&&/i.test(source)
@@ -251,6 +284,14 @@ function handlerQueryReads(handler: string): Array<{ name: string; ids: string[]
         add(ANY_FIELD, m[1]);
         add(ANY_FIELD, m[2]);
     }
+    // A field read by a variable key (`query[name]`, over a table of filters): a field the client names.
+    for (const m of handler.matchAll(/\breq(?:uest)?\.query\[\s*([A-Za-z_$][\w$]*)\s*\]/gu)) {
+        add(ANY_FIELD, m[0]);
+        const expr = escapeRe(m[0]);
+        for (const alias of handler.matchAll(new RegExp(`(?:\\b(?:const|let|var)\\s+|^[ \\t]*)([A-Za-z_$][\\w$]*)\\s*=\\s*[^;\\n]*${expr}`, 'gmu'))) add(ANY_FIELD, alias[1]);
+    }
+    // A parameter a helper reads by name: `const status = q.parseEnum(req.query, 'status', STATUSES)` (H13, rerun).
+    for (const m of handler.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:await\s+)?[A-Za-z_$][\w$.]*\(\s*req(?:uest)?(?:\.query)?\s*,\s*['"]([A-Za-z_][\w]*)['"]/gu)) add(m[2], m[1]);
     // FastAPI: a decorated handler's defaulted parameters are its query parameters.
     const def = handler.match(/^\s*(?:async\s+)?def\s+\w+\s*\(([^)]*)\)/mu);
     if (def && /^\s*@/mu.test(handler)) {
@@ -279,27 +320,127 @@ function usedBy(handler: string, ids: string[], kind: 'narrow' | 'order'): boole
     }
     if (kind === 'narrow') {
         for (const m of handler.matchAll(/\[[^\]\n]*\bfor\b[^\]\n]*\bif\b[^\]\n]*\]/gu)) if (mentions(m[0])) return true;
+        //  The value bound beside a SQL condition the handler adds to its own
+        //  WHERE list: `if (status) { where.push('t.status = ?'); params.push(status); }`.
+        for (const statement of boundStatements(handler)) if (SQL_CONDITION.test(statement) && mentions(statement)) return true;
     }
     return false;
 }
 
+/** A quoted SQL condition with a bound placeholder: «t.status = ?», «due_date <= $2», «name LIKE @q». */
+const SQL_CONDITION = /['"`][^'"`\n]*?[\w.)\]]\s*(?:=|<=|>=|<>|!=|<|>|\bI?LIKE\b|\bIN\b)\s*\(?\s*(?:\?|\$\d+|@\w+|:\w+)/iu;
+
+/** Each line of a handler, and each `if (…) { … }` with its whole block. */
+function boundStatements(handler: string): string[] {
+    const out = handler.split('\n');
+    for (const m of handler.matchAll(/\bif\s*\(/gu)) {
+        const cond = callText(handler, m.index! + m[0].length - 1);
+        const after = m.index! + m[0].length - 1 + cond.length;
+        const brace = /^\s*\{/u.exec(handler.slice(after, after + 20));
+        if (!brace) continue;
+        let depth = 0;
+        for (let i = after + brace[0].length - 1; i < handler.length; i++) {
+            if (handler[i] === '{') depth++;
+            else if (handler[i] === '}' && --depth === 0) { out.push(handler.slice(m.index!, i + 1)); break; }
+        }
+    }
+    return out;
+}
+
+/** The arguments of a call, «(» through «)», split at its own commas — strings and brackets kept whole. */
+function callArgs(call: string): string[] {
+    const inner = call.replace(/^\(/u, '').replace(/\)$/u, '');
+    const out: string[] = [];
+    let depth = 0;
+    let part = '';
+    for (let i = 0; i < inner.length; i++) {
+        const c = inner[i];
+        if (c === '"' || c === "'" || c === '`') {
+            let j = i + 1;
+            while (j < inner.length && inner[j] !== c) j += inner[j] === '\\' ? 2 : 1;
+            part += inner.slice(i, j + 1);
+            i = j;
+            continue;
+        }
+        if ('([{'.includes(c)) depth++;
+        else if (')]}'.includes(c)) depth--;
+        if (c === ',' && depth === 0) { out.push(part.trim()); part = ''; continue; }
+        part += c;
+    }
+    if (part.trim()) out.push(part.trim());
+    return out;
+}
+
+/** A declared function's parameter names, in order ('' for a pattern or a rest parameter). */
+function paramsOf(fn: string): string[] {
+    const open = fn.indexOf('(');
+    if (open < 0) return [];
+    return callArgs(callText(fn, open)).map(p => p.replace(/=[\s\S]*$/u, '').trim()).map(p => /^[A-Za-z_$][\w$]*$/u.test(p) ? p : '');
+}
+
+const NOT_A_HELPER = new Set(['if', 'for', 'while', 'switch', 'catch', 'function', 'return', 'require', 'String', 'Number', 'Boolean', 'Object', 'Array', 'JSON', 'next']);
+
+/**
+ * A HANDLER READS WHAT IT HANDS ON (H13, 2026-11-05).
+ *
+ * A careful API reads its list parameters in one module — `parseListQuery(
+ * req.query, PROJECT_LIST)`, or a `listTasks(db, req, …)` that calls it — and
+ * every list route filters, sorts and pages through it. A function declared in
+ * the source that a handler hands its request or its query to is read as part
+ * of the handler, two calls deep, its parameter standing for what it was
+ * given. What counts is still decided by `handlerQueryReads` and `usedBy` on
+ * the result: the value must be used by the operation that narrows or orders.
+ */
+function withHelpers(handler: string, source: string, depth = 2): string {
+    let out = handler;
+    const seen = new Set<string>();
+    let frontier = [handler];
+    for (let level = 0; level < depth && frontier.length; level++) {
+        const next: string[] = [];
+        for (const body of frontier) {
+            for (const m of body.matchAll(/(?<![\w$.])([A-Za-z_$][\w$]*)\s*\(/gu)) {
+                const name = m[1];
+                if (seen.has(name) || NOT_A_HELPER.has(name)) continue;
+                const args = callArgs(callText(body, m.index! + m[0].length - 1));
+                const at = args.findIndex(a => /^req(?:uest)?(?:\.query)?$/u.test(a));
+                if (at < 0) continue;
+                const fn = namedFunctionText(source, name);
+                const param = fn ? paramsOf(fn)[at] : '';
+                if (!fn || !param) continue;
+                seen.add(name);
+                const esc = escapeRe(param);
+                const read = args[at].endsWith('.query')
+                    ? fn.replace(new RegExp(`(?<![\\w$.])${esc}(?=\\s*[.[])`, 'gu'), 'req.query')
+                    : fn.replace(new RegExp(`(?<![\\w$.])${esc}(?![\\w$])`, 'gu'), 'req');
+                out += '\n' + read;
+                next.push(read);
+            }
+        }
+        frontier = next;
+    }
+    return out;
+}
+
+/** Every route handler, with the helpers it hands its request or its query to. */
+const readHandlers = (source: string) => routeHandlers(source).map(h => withHelpers(h, source));
+
 /** The query parameters a server route reads: req.query.x, req.query['x'], const { x } = req.query, request.args.get('x'). */
 export function serviceQueryParams(source: string): string[] {
-    return Array.from(new Set(routeHandlers(source).flatMap(h => handlerQueryReads(h).map(r => r.name)).filter(n => n !== ANY_FIELD)));
+    return Array.from(new Set(readHandlers(source).flatMap(h => handlerQueryReads(h).map(r => r.name)).filter(n => n !== ANY_FIELD)));
 }
 
 export function hasServiceSearchEvidence(source: string): boolean {
-    return routeHandlers(source).some(h => handlerQueryReads(h)
+    return readHandlers(source).some(h => handlerQueryReads(h)
         .some(r => SEARCH_PARAMS.has(r.name) && usedBy(h, r.ids, 'narrow')));
 }
 
 export function hasServiceFilterEvidence(source: string): boolean {
-    return routeHandlers(source).some(h => handlerQueryReads(h)
+    return readHandlers(source).some(h => handlerQueryReads(h)
         .some(r => !SEARCH_PARAMS.has(r.name) && !SORT_PARAMS.has(r.name) && !PAGE_PARAMS.has(r.name) && usedBy(h, r.ids, 'narrow')));
 }
 
 export function hasServiceSortingEvidence(source: string): boolean {
-    return routeHandlers(source).some(h => handlerQueryReads(h)
+    return readHandlers(source).some(h => handlerQueryReads(h)
         .some(r => SORT_PARAMS.has(r.name) && usedBy(h, r.ids, 'order')));
 }
 
@@ -310,15 +451,18 @@ export function hasFilterEvidence(source: string, ctx?: ScopeEvidenceContext): b
     //  seen working in the browser, were refused because only a <select>
     //  or an <input> counted as a filter control. A filter is a state the
     //  user's control sets and the list is filtered by, whatever the control is.
-    const FILTER_NAME = '(?:Filter|Categor(?:y|ies)|Tags?|Status|Types?|Brands?|Range|Price)';
-    const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filter\b|\bset[A-Za-z0-9_]*Filter\b/i.test(source)
+    //  H01, 2026-11-05: a `filters` state (plural) the page's selects set, and
+    //  the rows narrowed by the server it is sent to — not by a `.filter(` in
+    //  the browser.
+    const FILTER_NAME = '(?:Filters?|Categor(?:y|ies)|Tags?|Status|Types?|Brands?|Range|Price)';
+    const hasFilterState = /\b[A-Za-z][A-Za-z0-9_]*Filters?\b|\bset[A-Za-z0-9_]*Filters?\b/i.test(source)
         || new RegExp(`\\bset[A-Za-z0-9_]*${FILTER_NAME}\\b`).test(source)
         || new RegExp(`\\b(?:current|active|selected)${FILTER_NAME}\\b`).test(source);
     const hasFilterControl = /<(?:select|input)\b[^>]*onChange\s*=/i.test(source)
         || new RegExp(`onClick\\s*=\\s*\\{\\s*\\(\\s*\\)\\s*=>\\s*set[A-Za-z0-9_]*${FILTER_NAME}\\s*\\(`).test(source)
         || (/addEventListener\(\s*['"](?:click|change|input)['"]/.test(source)
             && new RegExp(`\\b(?:current|active|selected)${FILTER_NAME}\\s*=(?!=)`).test(source));
-    return (hasFilterState && hasFilterControl && /\.filter\s*\(/i.test(source))
+    return (hasFilterState && hasFilterControl && (/\.filter\s*\(/i.test(source) || hasServiceFilterEvidence(source)))
         || (ctx?.serviceOnly === true && hasServiceFilterEvidence(source));
 }
 
@@ -349,6 +493,7 @@ export const CAPABILITIES: Capability[] = [
         id: 'accounts', ar: 'حسابات المستخدمين', en: 'user accounts',
         ask: /\b(?:accounts?|account\s+management|sign[- ]?in|log[- ]?in|auth(?:entication|orization)?|register|registration|login)\b|حسابات?\s+(?:المستخدمين|العملاء)|تسجيل\s+(?:الدخول|المستخدم)|المصادقة/i,
         evidence: /\/api\/auth\/login|bearer|jwt/i,
+        evidenceCheck: hasServerLoginEvidence,
     },
     {
         id: 'multi_vendor', ar: 'سوق متعدّد البائعين', en: 'multi-vendor marketplace',
@@ -373,6 +518,8 @@ export const CAPABILITIES: Capability[] = [
         id: 'payments', ar: 'المدفوعات', en: 'payments',
         ask: PAYMENT_REQUEST,
         evidence: /stripe|paypal|payment_?intent|\/api\/payments?|checkout_?session/i,
+        // «spots, entries, payments» of a parking garage (P088, P138, P188): a record he manages.
+        records: ['payments', 'payment'],
     },
     {
         id: 'form_validation', ar: 'التحقق من النموذج', en: 'form validation',

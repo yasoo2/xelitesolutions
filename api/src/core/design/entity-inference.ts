@@ -61,12 +61,15 @@ const CAPABILITY = [
     /\b\w+ing\b/i,                                   // streaming, messaging, tracking
     /\b(video|audio|voice|live|realtime|real-time|stream|call|calls)\b/i,
     /\b(moderation|recommendation|recommendations|personalisation|personalization|automation|verification|encryption|analytics|insights|search|notifications?|sync|backup|import|export)\b/i,
+    // "pagination", "barcode generation", "CV file upload", "low-stock alerts",
+    // "stock valuation" (2026-11-05: each read as a table of its own name).
+    /\b(pagination|paging|generation|uploads?|alerts?|valuation|previews?)\b/i,
     /\b(ai|ml|machine learning|gpt|llm|chatbot|assistant)\b/i,
     /\b(dashboard|reports?|reporting|statistics|charts?)\b/i,
     /\b(auth(?:entication)?|sign[- ]?in|logins?|roles?|permissions?|rbac)\b/i,
     /\b(status\s+transitions?|transitions?|workflow|audit(?:\s+(?:log|trail|history))?|histories?)\b/i,
     /\b(double[- ]?book(?:ing)?|conflict(?:s| prevention)?|preventions?|validation)\b/i,
-    /(بثّ?\s*مباشر|مكالم|فيديو|صوت|إشعارات?|تحليلات|لوحة\s*تحكّ?م|تقارير|إحصاء|بحث|ذكاء\s*اصطناعي|توصيات|مزامنة|تشفير)/i,
+    /(بثّ?\s*مباشر|مكالم|فيديو|صوت|إشعارات?|تنبيه|تحليلات|لوحة\s*تحكّ?م|تقارير|إحصاء|بحث|ذكاء\s*اصطناعي|توصيات|مزامنة|تشفير|ترقيم\s*(?:ال)?صفحات|رفع\s*(?:ال)?ملف)/i,
 ];
 
 /** A person, named outright. */

@@ -329,8 +329,12 @@
 .joe-header-center {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 8px;
-    flex-shrink: 0;
+    /* It holds the update notice now: the free middle of the header, never more. */
+    flex: 1 1 auto;
+    min-width: 0;
+    padding: 0 12px;
 }
 
 .joe-mode-toggle {
@@ -1861,7 +1865,9 @@ body:not(.rtl) .joe-user-info {
 
     --joe-text-primary: #1C201E;
     --joe-text-secondary: #5A645F;
-    --joe-text-muted: #8B958F;
+    /* #8B958F read at 3.0:1 on white: the tabs, the tagline and «Copy text»
+       were below the 4.5:1 a body text needs (UI/UX check, 2026-11-05). */
+    --joe-text-muted: #66706B;
     --joe-text-gold: #0B6850;
 
     --joe-blue-primary: #0E7A5F;
@@ -2032,12 +2038,6 @@ body:not(.rtl) .joe-user-info {
     :root {
         --joe-chat-width: 280px;
         --joe-files-width: 220px;
-    }
-
-    .joe-header-center {
-        position: absolute;
-        left: 50%;
-        transform: translateX(-50%);
     }
 
     .hide-tablet {
@@ -3096,6 +3096,19 @@ body:not(.rtl) .joe-user-info {
     color: #a78bfa !important;
 }
 
+/* On white, the dark theme's bright green and amber read at 2.6:1 and 2.2:1:
+   the provider's name and «Claude Haiku · this session» are the words the
+   user checks before sending (UI/UX check, 2026-11-05). Darker shades of the
+   same hues, ≥ 4.5:1. */
+[data-theme="light"] .provider-btn.is-connected .provider-label {
+    color: #0B6850 !important;
+}
+[data-theme="light"] .joe-chat-input-area .provider-session {
+    color: #92400E;
+    border-color: rgba(146, 64, 14, .35);
+    background: rgba(245, 158, 11, .10);
+}
+
 /* ========== Mobile Collapsible Panel Overrides ========== */
 @media (min-width: 769px) {
     .show-mobile-only {
@@ -3486,6 +3499,12 @@ body:not(.rtl) .joe-user-info {
         width: 38px !important;
         height: 38px !important;
         min-width: 38px !important;
+    }
+    /* The provider button holds words («Auto · free»), not one icon: a 38px
+       square let them spill over the session chip beside it (UI/UX check,
+       2026-11-05). It keeps the touch height and grows to its text. */
+    .joe-chat-input-area .provider-btn {
+        width: auto !important;
     }
     .joe-chat-input-area .action-btn svg,
     .joe-chat-input-area .provider-btn svg,

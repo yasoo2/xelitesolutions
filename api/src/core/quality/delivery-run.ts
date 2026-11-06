@@ -24,13 +24,14 @@ import fs from 'fs';
 import path from 'path';
 import { verifiedLiveUrl, type DeliveryInstrument, type DeliveryLedger } from './delivery-verdict';
 import {
-    backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, identifiersFor, judgeRequestCoverage,
+    backendRequestedFor, collectServerEvidence, coverageError, coverageUnverified, hasOwnTests, identifiersFor, judgeRequestCoverage,
     probePathsFor, probeServedResources, requestedRecords, requestedTestsRoot, runRequestedTests, testsRequestedIn,
     takenIdentifiers, testTreeFingerprint, type ProbeResult, type RequestCoverageReport, type RequestedTestsRun,
 } from './request-coverage';
 import { servedByStaticFallback } from './builder-proofs';
 import { measureIsolation, readIsolationDeclaration, requestedRecordWords } from './isolation-probe';
 import { interactiveMissing, measureInteractions, reconcileScope } from './interaction-probe';
+import type { SignInAccount } from './sign-in';
 import { CAPABILITIES, deliveredTreeHasInterface } from './scope-audit';
 import type { DeliveryPart } from './delivery-parts';
 import { bindRunCancellation } from '../session/attended-run';
@@ -63,6 +64,8 @@ export interface DeliveryRunInput {
     say?: (message: string) => void;
     /** A line for the run's log. */
     log?: (line: string) => void;
+    /** The account the builder seeded, for checks that must pass the product's sign-in (sign-in.ts). */
+    signIn?: SignInAccount;
 }
 
 /** The facts the last measurement established, for the caller's report. */
@@ -202,6 +205,49 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
         });
         input.log?.(`[pipeline] request coverage checked=${requestCoverage.checked} missing=${requestCoverage.missing.map(r => r.key).join(',') || 'none'} unread=${requestCoverage.unread.join(',') || 'none'} unverified=${unverified.length} capabilities=${(requestCoverage.capabilities || []).length} tests=${testsRun ? (testsRun.passed ? 'passed' : testsRun.ran ? 'failed' : testsRun.noRunner ? 'no runner' : 'not run') : 'not requested'}`);
     };
+    /**
+     * A SERVER'S OWN TESTS ARE RUN WHENEVER IT HAS THEM, ASKED FOR OR NOT.
+     *
+     * The tests a request asks for are measured with its records. Until
+     * 2026-11-05 nothing else ran a project's tests: a server the engine wrote
+     * tests for (H01, H02) was delivered without them ever running, and a red
+     * suite could ship under a certificate silent about it. So a server's
+     * project that has a test script that does work, or Python test files, has
+     * them run once per unchanged tree: a pass is in the certificate, a
+     * failure is a check the builder repairs. A project with no tests of its
+     * own is not refused for it — nothing is demanded that was not asked.
+     *
+     * A server is what the delivered tree registers as well as what the
+     * request names: the rerun of H10 (a salon platform its reader takes for
+     * no server) shipped 25 routes and a test file the builder ran four times,
+     * and the delivery said «the request asks for no tests».
+     */
+    const ownTestRuns = new Map<string, RequestedTestsRun>();
+    const measureOwnTests = async (runRes: any, roots: string[]) => {
+        if (testsRequestedIn(productRequest)) return;
+        const runRoot = String(runRes?.output?.cwd || '').trim();
+        const scope = Array.from(new Set([runRoot, ...roots].filter(Boolean)));
+        const evidence = await collectServerEvidence(scope, []);
+        if (!deliveryRoles.service && !evidence.routes.length) return;
+        const testsRoot = requestedTestsRoot(evidence, runRoot, scope);
+        if (!(await hasOwnTests(testsRoot))) return;
+        const fingerprint = `${testsRoot}|${testTreeFingerprint(testsRoot, evidence)}`;
+        let run = ownTestRuns.get(fingerprint);
+        if (!run) {
+            say(pick(isAr, '▶️ أشغّل اختبارات المشروع نفسه لأثبت أنها تنجح…', '▶️ Running the project\'s own tests, to prove they pass…'));
+            run = await runRequestedTests(testsRoot, input.runTool);
+            ownTestRuns.set(fingerprint, run);
+        }
+        if (run.noRunner) return;
+        ledger.record({
+            instrument: 'tests',
+            target: run.root,
+            ok: run.passed,
+            error: run.passed ? undefined
+                : `the project's own tests ${run.ran ? 'did not pass' : 'could not run'} in ${path.basename(run.root || '.')}: ${String(run.error || '').slice(0, 400)}`,
+        });
+        input.log?.(`[pipeline] the project's own tests ${run.passed ? 'passed' : run.ran ? 'failed' : 'did not run'} (${run.runner || 'tests'})`);
+    };
     /** live, quality, scope and records for one project_run result — measured separately, never folded into one flag. */
     const recordLiveAcceptance = async (runRes: any, qualityRoot: string, auditRoots: string[]) => {
         // Static files are not a live SYSTEM when the delivery needs a
@@ -260,7 +306,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
             say(pick(isAr, `▶️ لم أجد ${unseen.map(arabicCapability).join(' و')} في الكود، فأجرّبها على الصفحة الحية كما يفعل المستخدم…`, `▶️ The source did not show ${unseen.join(' and ')}, so I am trying it on the live page the way a user would…`));
             const bound = bindRunCancellation(input.cancellation, input.signal);
             try {
-                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal });
+                const measured = await measureInteractions(live.liveUrl, unseen, { signal: bound.signal, signIn: input.signIn });
                 scoped = reconcileScope(scoped, measured);
                 for (const r of measured.results) input.log?.(`[pipeline] interaction ${r.capability} ${r.ok ? 'shown' : 'not shown'}: ${r.detail}`);
             } finally {
@@ -276,6 +322,7 @@ export function deliveryRun(input: DeliveryRunInput): DeliveryRun {
             ledger.record({ instrument: 'live', ok: false, url: live.liveUrl, error: scoped.error });
         }
         await measureRequestedRecords(runRes, deliveredRoots(auditRoots));
+        await measureOwnTests(runRes, deliveredRoots(auditRoots));
     };
     return { state, measureRequestedRecords, recordLiveAcceptance };
 }

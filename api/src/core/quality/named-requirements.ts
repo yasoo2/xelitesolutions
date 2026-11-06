@@ -623,11 +623,246 @@ export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_C
 export function sliceForMany(reqs: NamedRequirement[], source: string, max = MAX_SOURCE_CHARS): string {
     const src = String(source || '');
     if (src.length <= max) return src;
+    const files = filesOf(src);
+    if (files.length >= 2) {
+        const whole = wholeFilesFor(reqs, files, src, max);
+        if (whole) return whole;
+    }
     const merged = windowsFor(reqs, src);
     //  Nothing of his words anywhere: fall back to the old slice rather than
     //  send an empty prompt. The enforcement downstream is what makes this safe.
     if (!merged.length) return boundedSource(src, max);
     return joinWindows(src, merged, max);
+}
+
+/**
+ *  ⛔ A JUDGE SHOWN HALF A FUNCTION CANNOT SAY THE FUNCTION WORKS.
+ *
+ *  The hard exam, 2026-11-04, H01: a clinic of 45 files. «Appointments with no
+ *  double-booking» was judged nine times over windows cut around his words, and
+ *  every time the judge said what it saw: «a comment says checkSlot rejects
+ *  overlapping bookings with HTTP 409, but the checkSlot body is cut off
+ *  (`.get(doctorId, wee`) and the POST route that calls it is not shown». The
+ *  builder could change nothing that would let it see more, and the delivery
+ *  was refused for a rule the code kept.
+ *
+ *  A project too big to show whole is shown by whole files: the files where the
+ *  requirements' own words are, most first, then the file that defines each
+ *  function those files call, as long as they fit. A requirement none of whose
+ *  words made it in still gets its windows. A file is never cut in the middle.
+ */
+export const JUDGE_FILE_MARK = '// ==== file: ';
+const FILE_MARK_LINE = /^\/\/ ==== file: (.+?) ====$/gmu;
+
+/** The judge's source from named files, each opened by its own marker line. */
+export function judgeSourceOf(files: Array<{ path: string; text: string }>): string {
+    return files.map(f => `${JUDGE_FILE_MARK}${f.path} ====\n${f.text}`).join('\n');
+}
+
+/** The files of a source written by `judgeSourceOf`, each with its marker line. */
+function filesOf(src: string): Array<{ path: string; block: string }> {
+    const marks = Array.from(src.matchAll(FILE_MARK_LINE));
+    return marks.map((m, i) => ({
+        path: m[1],
+        block: src.slice(m.index || 0, i + 1 < marks.length ? (marks[i + 1].index || 0) - 1 : src.length),
+    }));
+}
+
+/** The largest block a file is cut into when it cannot be shown whole. */
+const ENCLOSING_BLOCK_MAX = 7_000;
+
+/**
+ *  ⛔ A FILE TOO BIG TO SHOW WHOLE WAS NOT SHOWN AT ALL.
+ *
+ *  The hard exam, 2026-11-05, H01 again: the clinic's server/app.js was 33 KB,
+ *  and the files ranked above it — the API tests, which say «double-booking»
+ *  more often — had already used the room. app.js no longer fit, so it was
+ *  skipped whole, and the judge was shown the test that asserts the rule and
+ *  not the route that keeps it: «R8 unprovable: Only a test asserting the rule
+ *  is shown; the appointment-creation code in server/app.js … is not in the
+ *  source». The builder spent forty minutes moving the rule into a file small
+ *  enough to be seen.
+ *
+ *  Such a file is now shown by its whole blocks: for each place its rare words
+ *  are, the largest enclosing statement that fits — the route handler, the
+ *  function — from the line where it starts to the line that closes it. Never
+ *  half a function (the rule above); never nothing.
+ */
+export function enclosingBlocksFor(words: string[], block: string, max: number): string {
+    const lines = block.split('\n');
+    const low = lines.map(l => l.toLowerCase());
+    const indent = (l: string) => (l.match(/^[ \t]*/) || [''])[0].replace(/\t/g, '    ').length;
+    const blank = (l: string) => !l.trim();
+    const closes = (l: string) => /^[ \t]*[}\])]/.test(l);
+    const comment = (l: string) => /^[ \t]*(?:\/\/|\/\*|\*|#)/.test(l);
+    const ranges: Array<[number, number]> = [];
+    for (let k = 0; k < lines.length; k++) {
+        if (!words.some(w => low[k].includes(w))) continue;
+        if (ranges.some(([a, b]) => k >= a && k < b)) continue;
+        //  Indentation levels at or above this line's, outermost first: the
+        //  first enclosing statement that fits is the largest one that does.
+        const levels = Array.from(new Set(lines.slice(0, k + 1).filter(l => !blank(l)).map(indent))).filter(v => v <= indent(lines[k])).sort((a, b) => a - b);
+        for (const level of levels) {
+            let s = k;
+            while (s > 0 && (blank(lines[s]) || indent(lines[s]) > level || closes(lines[s]))) s--;
+            //  The comment above a statement belongs to it.
+            while (s > 0 && comment(lines[s - 1]) && indent(lines[s - 1]) === level) s--;
+            let e = s + 1;
+            const statementEnd = (from: number): number => {
+                let end = from;
+                while (end < lines.length && (blank(lines[end]) || indent(lines[end]) > level)) end++;
+                //  The line that closes the statement belongs to it.
+                while (end < lines.length && indent(lines[end]) === level && closes(lines[end])) end++;
+                return end;
+            };
+            e = statementEnd(e);
+            //  A comment says what the statement under it does: show both.
+            while (e < lines.length && lines.slice(s, e).every(l => blank(l) || comment(l))) e = statementEnd(e + 1);
+            const size = lines.slice(s, e).join('\n').length;
+            if (size <= ENCLOSING_BLOCK_MAX) { ranges.push([s, e]); break; }
+        }
+    }
+    if (!ranges.length) return '';
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const r of ranges) {
+        const last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push([r[0], r[1]]);
+    }
+    let out = '';
+    for (const [a, b] of merged) {
+        const part = lines.slice(a, b).join('\n');
+        const cost = part.length + (out ? WINDOW_JOIN.length : 0);
+        if (out.length + cost > max) continue;
+        out += (out ? WINDOW_JOIN : '') + part;
+    }
+    return out;
+}
+
+/** Whole files for these requirements, within `max`; '' when none of their words is in any file. */
+function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; block: string }>, src: string, max: number): string {
+    const words = Array.from(new Set(reqs.flatMap(requirementWords)));
+    const lows = files.map(f => f.block.toLowerCase());
+    //  A word every file says («appointments» in a clinic) locates nothing; the
+    //  rare ones («double-booking») find where the requirement is kept.
+    const weight = new Map(words.map(w => {
+        const df = lows.filter(low => low.includes(w)).length;
+        return [w, df ? Math.log((files.length + 1) / df) : 0];
+    }));
+    const scored = files.map((f, i) => {
+        let score = 0;
+        let hits = 0;
+        for (const w of words) {
+            if (!lows[i].includes(w)) continue;
+            score += weight.get(w) || 0;
+            for (let at = lows[i].indexOf(w); at >= 0; at = lows[i].indexOf(w, at + w.length)) hits++;
+        }
+        return { f, score, density: hits / Math.max(1, f.block.length) };
+    }).filter(x => x.score > 0);
+    if (!scored.length) return '';
+    const ranked = scored.sort((a, b) => b.score - a.score || b.density - a.density).map(x => x.f);
+    //  The file that defines a function another calls.
+    const definedIn = new Map<string, { path: string; block: string }>();
+    const DEFINES = /\bfunction\s+([A-Za-z_$][\w$]{2,})\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]{2,})\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)|\bexports\.([A-Za-z_$][\w$]{2,})\s*=/gu;
+    for (const f of files) for (const m of f.block.matchAll(DEFINES)) {
+        const name = m[1] || m[2] || m[3];
+        if (name && !definedIn.has(name)) definedIn.set(name, f);
+    }
+    //  The server file that registers a route another file calls — a test, a
+    //  page — by the route's fixed part, up to its first parameter (H02: the
+    //  tests called /api/timetable and expected 409, and timetable.js, which
+    //  answers it, held none of his words).
+    const servedIn: Array<{ path: string; home: { path: string; block: string } }> = [];
+    const REGISTERS = /\.\s*(?:get|post|put|patch|delete|all|route)\s*\(\s*(['"`])(\/[^'"`]*)\1\s*,/gu;
+    for (const f of files) {
+        if (/\bdocument\.|\bwindow\./u.test(f.block)) continue;
+        for (const m of f.block.matchAll(REGISTERS)) {
+            const fixed = m[2].split(/\/:|\$\{|[*?]/u)[0].replace(/\/+$/u, '');
+            if (fixed.split('/').filter(Boolean).length < 2) continue;
+            if (!servedIn.some(s => s.path === fixed && s.home === f)) servedIn.push({ path: fixed, home: f });
+        }
+    }
+    //  How near a call of the route is to his words in the calling file: a test
+    //  calls every route, and the one called where «تعارض» is said comes first.
+    const rare = new Set(words.filter(w => lows.filter(low => low.includes(w)).length <= files.length / 2));
+    const nearness = (i: number, route: string): number => {
+        const low = lows[i];
+        const own = words.filter(w => low.includes(w));
+        const marks = (own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own).flatMap(w => {
+            const at: number[] = [];
+            for (let p = low.indexOf(w); p >= 0; p = low.indexOf(w, p + w.length)) at.push(p);
+            return at;
+        });
+        let best = Infinity;
+        for (let at = files[i].block.indexOf(route); at >= 0; at = files[i].block.indexOf(route, at + 1)) {
+            if (/[\w-]/u.test(files[i].block[at + route.length] || '')) continue;
+            best = Math.min(best, marks.length ? Math.min(...marks.map(p => Math.abs(p - at))) : at);
+        }
+        return best;
+    };
+    const chosen: Array<{ path: string; block: string }> = [];
+    let used = 0;
+    const take = (f: { path: string; block: string }): boolean => {
+        if (chosen.includes(f)) return true;
+        const cost = f.block.length + (chosen.length ? WINDOW_JOIN.length : 0);
+        if (used + cost > max) return false;
+        chosen.push(f);
+        used += cost;
+        return true;
+    };
+    //  A file that no longer fits whole is shown by the whole blocks where its
+    //  rarest of his words are (enclosingBlocksFor), under its own marker line.
+    const takeBlocks = (f: { path: string; block: string }): { path: string; block: string } | null => {
+        const i = files.indexOf(f);
+        const own = words.filter(w => lows[i].includes(w));
+        const pick = own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own;
+        const marker = f.block.split('\n', 1)[0];
+        const room = max - used - (chosen.length ? WINDOW_JOIN.length : 0) - marker.length - 1;
+        if (room < 400) return null;
+        const body = f.block.slice(marker.length + 1);
+        const first = enclosingBlocksFor(pick, body, room);
+        if (!first) return null;
+        //  …and where those blocks' own functions are called: the rule is shown
+        //  with the route that keeps it (assertBookable → app.post('/api/appointments')).
+        const names = Array.from(first.matchAll(DEFINES)).map(m => (m[1] || m[2] || m[3] || '').toLowerCase()).filter(n => n.length > 3);
+        const blocks = names.length ? (enclosingBlocksFor([...pick, ...names.map(n => `${n}(`)], body, room) || first) : first;
+        const part = { path: f.path, block: `${marker}\n${blocks}` };
+        chosen.push(part);
+        used += part.block.length + (chosen.length > 1 ? WINDOW_JOIN.length : 0);
+        return part;
+    };
+    //  Each file, then at once what it calls: a route is shown with the rule it
+    //  keeps, and a test with the routes it calls.
+    for (const ranked_f of ranked) {
+        let f = ranked_f;
+        if (!take(f)) {
+            const part = takeBlocks(f);
+            if (!part) continue;
+            f = part;
+        }
+        for (const m of f.block.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/gu)) {
+            const home = definedIn.get(m[1]);
+            if (home && home !== f && home !== ranked_f) take(home);
+        }
+        const i = files.indexOf(ranked_f);
+        servedIn
+            .filter(s => s.home !== f && s.home !== ranked_f)
+            .map(s => ({ home: s.home, near: nearness(i, s.path) }))
+            .filter(h => h.near < Infinity)
+            .sort((a, b) => a.near - b.near)
+            .forEach(h => take(h.home));
+    }
+    if (!chosen.length) return '';
+    //  A requirement none of whose words made it in still gets its windows.
+    const shown = chosen.map(f => f.block).join(WINDOW_JOIN).toLowerCase();
+    const missed = reqs.filter(r => !requirementWords(r).some(w => shown.includes(w)));
+    let out = chosen.map(f => f.block).join(WINDOW_JOIN);
+    if (missed.length && out.length < max) {
+        const extra = joinWindows(src, windowsFor(missed, src), max - out.length - WINDOW_JOIN.length);
+        if (extra) out += WINDOW_JOIN + extra;
+    }
+    return out;
 }
 
 
@@ -945,7 +1180,7 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 }
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
-import { capabilityEvidence, requestedCapabilities } from './scope-audit';
+import { capabilityEvidence, hasServerLoginEvidence, requestedCapabilities } from './scope-audit';
 import { externalApiSourceVerdict, type ExternalApiAcceptanceEvidence } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
 import { ownedExpressSource, validateBackendEvidence, type LocalBackendAcceptance } from './local-backend-evidence';
@@ -1232,26 +1467,14 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
         // because the source had no name from Joe's first templates
         // (apiLogin, TOKEN_KEY, CustomApp). Login and roles are judged by
         // what the code does, whatever it is named:
-        //  - a login: a server route for it, a password check that is not a
-        //    plain comparison, and a session or token it issues;
+        //  - a login: hasServerLoginEvidence, the reading the scope audit shares;
         //  - roles: a role on the user, a check of it, and a 403 for the rest.
-        const serverLoginRoute = /\b(?:app|router|server)\s*\.\s*(?:post|route)\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b/iu.test(src)
-            || /@(?:app|router)\.(?:post|route)\(\s*['"][^'"]*\/(?:login|signin|auth)\b/iu.test(src)
-            //  Whatever the router is called — authRouter, api, auth (P155,
-            //  2026-11-03) — a registration whose handler takes the request is
-            //  a server route; a client's `api.post('/auth/login', body)` is not.
-            || /\b[A-Za-z_$][\w$]*\s*\.\s*post\s*\(\s*['"`][^'"`]*\/(?:login|signin|sign-in|auth(?:enticate)?)\b[^'"`]*['"`]\s*,[^;]{0,240}?\(\s*(?:req|request|ctx)\b/iu.test(src);
-        const passwordChecked = /\bbcrypt\b|\bargon2\b|\bscrypt(?:Sync)?\b|\bpbkdf2(?:Sync)?\b|timingSafeEqual|check_password_hash|verify_password|passlib/iu.test(src);
-        const sessionIssued = /jsonwebtoken|\bjwt\s*\.\s*(?:sign|verify)\b|express-session|cookie-session|req\s*\.\s*session\b|res\s*\.\s*cookie\s*\(|create_access_token|flask_login|set_cookie\s*\(/iu.test(src)
-            //  A random token the server keeps as the session (randomBytes or randomUUID).
-            || (/\b(?:randomBytes\s*\(\s*\d+\s*\)|randomUUID\s*\(\s*\)|secrets\.token_(?:hex|urlsafe)\s*\()/u.test(src)
-                && /\bsessions?\s*(?:\[|\.set\s*\(|\.insert|\.push\s*\()|INSERT\s+INTO\s+sessions/iu.test(src));
         const roleOnUser = /\brole\s*[:=]\s*['"`]?(?:admin|staff|manager|user|receptionist|doctor)\b|\broles?\s*:\s*\[|\brole\b[^\n]{0,40}\b(?:TEXT|VARCHAR|String|enum)\b/iu.test(src);
         const roleChecked = /\brole\s*(?:!==|===|!=|==)\s*['"`](?:admin|staff|manager|receptionist|doctor)['"`]|\b(?:requireRole|requireAdmin|authorize|hasRole|checkRole|isAdmin|roleRequired|requiresRole)\s*\(|\.includes\(\s*(?:req\.)?user\.role\s*\)/iu.test(src);
         const forbidden = /status\s*\(\s*403\s*\)|\b403\b|Forbidden|abort\(\s*403\s*\)/iu.test(src);
         workflowEvidence.push(
             [/\bsign[- ]?in\b|\blog[- ]?in\b|\bauth(?:entication)?\b|\baccounts?\b|تسجيل\s*(?:الدخول|دخول)|دخول/iu,
-                serverLoginRoute && passwordChecked && sessionIssued,
+                hasServerLoginEvidence(src),
                 'the server has a login route that checks a hashed password and issues a session or token'],
             [/\badmin\b|\broles?\b|\bpermissions?\b|\bstaff\b|صلاحيات|أدوار|مدير|موظف/iu,
                 roleOnUser && roleChecked && forbidden,

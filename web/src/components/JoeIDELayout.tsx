@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react';
 import { logStamp, logTextFor } from '../lib/plainText';
+import { mergeRestoredLogs } from '../lib/log-restore';
 import { api } from '../services/apiClient';
 import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
@@ -275,9 +276,19 @@ export default function JoeIDELayout({
         return () => clearTimeout(t);
     }, []);
 
+    /**
+     *  ON A PHONE THE CONVERSATION COMES FIRST.
+     *
+     *  On a phone the canvas does not sit beside the chat, it covers it. Every
+     *  agent session has a browser id, and a reopened one has its preview URL
+     *  restored, so both rules below opened the canvas the moment a session was
+     *  opened — and a phone showed the Logs, never Joe's answer (UI/UX check,
+     *  2026-11-05). There, the canvas opens for live work only (preview:ready,
+     *  a tool that starts, a tab the work asks for), or when the user taps it.
+     */
     // When a live preview URL arrives, reveal the canvas so the user sees the result.
     useEffect(() => {
-        if (previewUrl) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
+        if (previewUrl && !isMobile) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
     }, [previewUrl]);
 
     // A real browser session is a direct visibility contract: the live stream must
@@ -285,7 +296,7 @@ export default function JoeIDELayout({
     // not run on close, so a user's manual collapse is respected until a new session
     // or a new browser-tab selection arrives.
     useEffect(() => {
-        if (browserSessionId || workspaceTab === 'browser') {
+        if ((browserSessionId && !isMobile) || workspaceTab === 'browser') {
             autoOpenedRef.current = true;
             setIsWorkspaceCollapsed(false);
         }
@@ -476,8 +487,14 @@ export default function JoeIDELayout({
                 cur.liveFiles = next;
             }
         } else if (event.type === 'terminal_output' || event.type === 'log') {
-            const line = String(event.data?.line ?? event.data?.text ?? event.data?.chunk ?? '');
-            if (line) cur.logs = [...cur.logs, line].slice(-500);
+            //  The same rule as the visible panel (logTextFor): a terminal_output
+            //  carries its text as a plain string, which `data.line` never was,
+            //  so a background session's log froze the moment he left it.
+            const lines = logTextFor(event as any);
+            if (lines.length) {
+                const stamp = logStamp();
+                cur.logs = [...cur.logs, ...lines.map(l => `[${stamp}] ${l}`)].slice(-500);
+            }
         } else if (event.type === 'build_status' && event.data) {
             cur.buildStatus = event.data;
         } else if (event.type === 'problems' && Array.isArray(event.data?.problems)) {
@@ -514,17 +531,26 @@ export default function JoeIDELayout({
          */
         if (sessionId && !(saved?.logs || []).length) {
             const asked = sessionId;
-            api.get(`/sessions/${asked}/workspace`)
+            const restore = (attempt: number) => api.get(`/sessions/${asked}/workspace`)
                 .then((data: any) => {
+                    //  The terminal's record too, for a Terminal tab opened later.
+                    if (typeof data?.terminal === 'string' && data.terminal) {
+                        void import('../services/socket').then(({ SocketService }) => SocketService.seedTerminalHistory(asked, data.terminal));
+                    }
                     const lines: string[] = Array.isArray(data?.logs) ? data.logs : [];
                     if (!lines.length) return;
                     //  He may have moved on while the request was in flight;
                     //  writing another session's log into this panel would be
                     //  worse than showing nothing.
                     if (sessionRef.current !== asked) return;
-                    setLogs(prev => (prev.length ? prev : capLogs(lines)));
+                    //  The record first, then the live lines it does not hold
+                    //  (lib/log-restore): a live line that beat the request
+                    //  used to throw the whole record away.
+                    setLogs(prev => capLogs(mergeRestoredLogs(lines, prev)));
                 })
-                .catch(() => { /* an unreachable server is an empty panel, not a crash */ });
+                //  One more try: a busy server is not an empty log.
+                .catch(() => { if (attempt < 2 && sessionRef.current === asked) window.setTimeout(() => void restore(attempt + 1), 3000); });
+            void restore(1);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);

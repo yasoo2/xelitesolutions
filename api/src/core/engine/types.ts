@@ -316,6 +316,23 @@ export interface EngineRequest {
     signal: AbortSignal;
     emit(event: EngineEvent): void;
     joe: any;
+    /** Set when the run changes a project an earlier run built (see run.ts changeContextFor). */
+    change?: ChangeContext;
+}
+
+/** One earlier run of a project: what was asked, and what came of it. */
+export interface ProjectRun {
+    request: string;
+    status: string;
+    summary: string;
+}
+
+/** What a change run is told about the project it changes. */
+export interface ChangeContext {
+    /** The project's earlier runs, oldest first. */
+    history: ProjectRun[];
+    /** The version kept just before this change, which «تراجع» restores. */
+    snapshot?: string;
 }
 
 export type EngineStatus = 'delivered' | 'failed' | 'cancelled';
@@ -330,4 +347,10 @@ export interface EngineResult {
     served: ProcessInfo[];
     steps: number;
     model: string;
+    /** How to install and start it, as the model told task_finish when it delivered. */
+    howToRun?: string;
+    /** The run's wall time, from its first step to its end. */
+    durationMs?: number;
+    /** What the run's model calls cost, when the provider prices them. */
+    costUsd?: number;
 }

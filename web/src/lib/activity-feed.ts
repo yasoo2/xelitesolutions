@@ -107,6 +107,11 @@ export interface ActivityFinal {
     model: string;
     reason: string | null;
     at: number;
+    /** The run's project folder in the workspace, which the card offers for download. */
+    project: string | null;
+    /** The run's wall time and what its model calls cost, when known. */
+    durationMs: number | null;
+    costUsd: number | null;
 }
 
 /**
@@ -237,7 +242,50 @@ const TOOL_LABELS: Record<string, Record<Lang, string>> = {
     browser_screenshot: { ar: 'لقطة شاشة', en: 'Screenshot', fr: "Capture d'écran", de: 'Bildschirmfoto', ru: 'Снимок экрана', es: 'Captura de pantalla' },
     plan_update: { ar: 'تحديث الخطة', en: 'Update the plan', fr: 'Mettre à jour le plan', de: 'Plan aktualisieren', ru: 'Обновление плана', es: 'Actualizar el plan' },
     task_finish: { ar: 'طلب الفحص النهائي', en: 'Ask for the final checks', fr: 'Demander la vérification finale', de: 'Abschlussprüfung anfordern', ru: 'Запрос финальной проверки', es: 'Pedir la verificación final' },
+    //  The engine's web_read had no name for people; the checks' own runs
+    //  (quality_run, project_run, project_stop) arrive as steps too.
+    web_read: { ar: 'قراءة صفحة من الإنترنت', en: 'Read a web page', fr: 'Lire une page web', de: 'Webseite lesen', ru: 'Чтение веб-страницы', es: 'Leer una página web' },
+    project_run: { ar: 'تشغيل المشروع', en: 'Run the project', fr: 'Lancer le projet', de: 'Projekt starten', ru: 'Запуск проекта', es: 'Arrancar el proyecto' },
+    project_stop: { ar: 'إيقاف المشروع', en: 'Stop the project', fr: 'Arrêter le projet', de: 'Projekt stoppen', ru: 'Остановка проекта', es: 'Detener el proyecto' },
+    quality_run: { ar: 'تشغيل الاختبارات والبناء', en: 'Run the tests and the build', fr: 'Lancer les tests et le build', de: 'Tests und Build ausführen', ru: 'Запуск тестов и сборки', es: 'Ejecutar las pruebas y el build' },
 };
+
+/**
+ * WHAT KIND OF STEP A TOOL IS — the mark the Activity ticker draws before it.
+ *
+ * «ج … ولكن يجب ان يكون حقيقي ومربوط بشكل صحيح مع كل الادوات» (the owner,
+ * 2026-11-06). Every tool the agent engine offers its model, and every run
+ * the final checks make, has a kind here; a test reads the engine's own tool
+ * definitions and fails for a tool that has none.
+ */
+export type ToolKind =
+    | 'read' | 'list' | 'search' | 'write' | 'edit'
+    | 'command' | 'server' | 'log' | 'stop'
+    | 'web' | 'page' | 'click' | 'shot'
+    | 'plan' | 'finish' | 'run' | 'test' | 'other';
+
+const TOOL_KINDS: Record<string, ToolKind> = {
+    file_read: 'read', file_list: 'list', file_search: 'search', file_write: 'write', file_edit: 'edit',
+    shell_run: 'command', shell_start: 'server', shell_logs: 'log', shell_stop: 'stop',
+    web_read: 'web', browser_open: 'page', browser_act: 'click', browser_screenshot: 'shot',
+    plan_update: 'plan', task_finish: 'finish',
+    project_run: 'run', project_stop: 'stop', quality_run: 'test',
+};
+
+/** The tool's kind, whether it is named by the model (`shell_run`) or by its gateway (`engine_shell_run`). */
+export function toolKind(tool: string): ToolKind {
+    const name = String(tool || '').replace(/^engine[_:]/, '');
+    return TOOL_KINDS[name] || 'other';
+}
+
+/** The Activity ticker's pace: a line types in at most this long, a character in at most this long. */
+export const TICK_LINE_MS = 1_200;
+export const TICK_CHAR_MS = 22;
+
+/** Milliseconds between two characters of a line of `length` characters. */
+export function tickInterval(length: number): number {
+    return Math.max(8, Math.min(TICK_CHAR_MS, Math.floor(TICK_LINE_MS / Math.max(1, length))));
+}
 
 function langOf(language: string): Lang {
     const base = String(language || 'en').split('-')[0].toLowerCase();
@@ -267,6 +315,7 @@ const SUMMARY_KEYS_BY_TOOL: Record<string, string[]> = {
     shell_stop: ['name'],
     file_search: ['pattern', 'query', 'text'],
     browser_open: ['url'],
+    web_read: ['url'],
     task_finish: ['summary'],
 };
 const SUMMARY_KEYS = ['command', 'path', 'url', 'pattern', 'query', 'name', 'dir', 'key', 'text', 'summary', 'title', 'note'];
@@ -714,6 +763,10 @@ function apply(s: ActivityState, e: Ev, at: number, seq: number, restored: boole
                 model: str(d.model),
                 reason: str(d.reason).trim() || null,
                 at,
+                //  A folder name, never a path: the export route takes nothing else.
+                project: /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(str(d.project)) ? str(d.project) : null,
+                durationMs: num(d.durationMs) ?? null,
+                costUsd: num(d.costUsd) ?? null,
             };
             return !s.final || s.final.at <= at ? { ...s, final } : s;
         }

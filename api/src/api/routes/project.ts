@@ -39,11 +39,26 @@ router.use(async (req: Request, res: Response, next) => {
 /**
  * [EXPORT] The active project as ONE downloadable zip (with a manifest).
  * The path is decided SERVER-side from the workspace — the client cannot
- * point this at an arbitrary directory.
+ * point this at an arbitrary directory. `?project=<folder>` narrows it to one
+ * project folder directly inside that workspace (the one a run delivered,
+ * 2026-11-05: «تنزيل المشروع» from the run's card): a bare folder name, never
+ * a path, resolved and checked inside the workspace root.
  */
+export function workspaceProjectDir(root: string, project: unknown): string | { error: string; status: number } {
+    const name = String(project ?? '').trim();
+    if (!name) return path.resolve(root);
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/u.test(name) || name.includes('..')) return { error: 'project must be a folder name in this workspace', status: 400 };
+    const dir = path.resolve(root, name);
+    if (!isWithinRoot(dir, path.resolve(root)) || path.dirname(dir) !== path.resolve(root)) return { error: 'project must be a folder name in this workspace', status: 400 };
+    try { if (!fs.statSync(dir).isDirectory()) throw new Error('not a folder'); } catch { return { error: 'no such project in this workspace', status: 404 }; }
+    return dir;
+}
+
 router.get('/export', authenticate as any, (req: Request, res: Response) => {
     try {
-        const root = workspaceService.getActiveRoot(String(req.query.workspaceId || '') || undefined);
+        const workspaceRoot = workspaceService.getActiveRoot(String(req.query.workspaceId || '') || undefined);
+        const root = workspaceProjectDir(workspaceRoot, (req.query as any)?.project);
+        if (typeof root !== 'string') return res.status(root.status).json({ ok: false, error: root.error });
         const out = archiveProject(root);
         const name = `joe-project-${path.basename(root).replace(/[^\w.-]+/g, '-')}-${new Date().toISOString().slice(0, 10)}.zip`;
         res.setHeader('Content-Type', 'application/zip');

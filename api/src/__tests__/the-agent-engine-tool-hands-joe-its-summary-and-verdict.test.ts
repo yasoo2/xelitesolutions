@@ -25,6 +25,7 @@ jest.mock('../core/engine/model', () => ({
     engineBrain: async () => ({ model: { label: 'test', vision: false, contextTokens: () => 16_000, step: async () => { throw new Error('not used'); } }, ask: async () => '' }),
 }));
 jest.mock('../core/engine/run', () => ({
+    ...jest.requireActual('../core/engine/run'),
     projectFolderFor: async () => ({ dir: path.join(root, 'joe-app-1') }),
     registerProjectFolder: () => undefined,
     uiEmitter: () => () => undefined,

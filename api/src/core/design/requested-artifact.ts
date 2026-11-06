@@ -142,6 +142,15 @@ const ARABIC = /[ء-ي]/u;
 /** «لعيادة», «باستخدام»: a preposition glued to a word that is not itself an artifact ends the object. */
 const gluedPreposition = (u: Unit) => !u.pair && /^(?:لل|ل|ب|ك)\S{3,}/u.test(u.text);
 
+/**
+ * «a REST API only», «an API just for my shop»: a word after the head that
+ * limits it, not a head of its own. The hard exam, 2026-11-05, H13: the last
+ * word of «a project management REST API only» was taken for the head, and
+ * the API was read as nothing. Only at the end of the phrase — «an admin only
+ * dashboard» is still a dashboard.
+ */
+const AFTER_HEAD = new Set(['only', 'just', 'alone', 'solely', 'exclusively']);
+
 function objectOf(tokens: string[]): Unit[] {
     const np: Unit[] = [];
     for (const u of units(tokens)) {
@@ -149,6 +158,7 @@ function objectOf(tokens: string[]): Unit[] {
         if (np.length && (BOUNDARY.has(u.text) || gluedPreposition(u))) break;
         np.push(u);
     }
+    while (np.length > 1 && !np[np.length - 1].pair && AFTER_HEAD.has(np[np.length - 1].text)) np.pop();
     return np;
 }
 

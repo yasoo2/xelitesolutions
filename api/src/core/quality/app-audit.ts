@@ -28,6 +28,7 @@ import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
+import { reloadKeepsSession, showsSignInForm, signInThroughPage } from './sign-in';
 
 export interface AppAuditFinding {
     id: string;
@@ -279,6 +280,16 @@ export function scoreOf(findings: AppAuditFinding[]): number {
  * Route-heavy apps need more time for real navigation and responsive checks,
  * but the hard ceiling prevents a broken page from holding the agent forever.
  */
+/**
+ * One responsive pass's time: an equal share of what is left of the sweep's
+ * pace for the passes still to run — never under 6 s, never past the walk's
+ * own budget (P069: the first pass took the whole sweep and starved the rest).
+ */
+export function responsivePassBudget(sweepDeadline: number, now: number, passesLeft: number, walkLeftMs: number): number {
+    const share = Math.max(0, sweepDeadline - now) / Math.max(1, passesLeft);
+    return Math.max(0, Math.min(Math.max(6_000, share), walkLeftMs));
+}
+
 export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): number {
     const routes = Math.max(0, Math.min(20, Math.floor(Number(routeCount) || 0)));
     // `timeoutMs` is the audit's stated wall-clock budget, not a multiplier for
@@ -374,6 +385,12 @@ export async function auditBuiltApp(
         credentials?: {
             email?: string;
             password?: string;
+            /**
+             * The account the builder seeded (task_finish `sign_in`): typed
+             * into the product's own sign-in form, whatever its API is
+             * (sign-in.ts). Used when no token is given.
+             */
+            identity?: string;
             /** A short-lived token minted locally from the packaged project. */
             token?: string;
             role?: string;
@@ -399,6 +416,8 @@ export async function auditBuiltApp(
         request?: string;
         /** Where to save a screenshot of the landing view, as a visitor first sees it (see AppAudit.look). */
         lookPath?: string;
+        /** Where to save the same landing view on a phone, as the phone pass first loads it: the delivery's proof. */
+        phoneLookPath?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -839,6 +858,10 @@ export async function auditBuiltApp(
         const doorStatus = Number(landing?.status?.() || 0);
         let authenticated = false;
         let authError = '';
+        /** The account the audit signed in with, so a walk thrown back to the sign-in form signs in again. */
+        let signInAccount: { identity: string; password: string } | undefined;
+        /** Set when a reload of the signed-in page showed the sign-in form: the requests the server refused on the way. */
+        let sessionLostOnReload: string[] | undefined;
         if (doorStatus >= 400) {
             frontDoor = { url, status: doorStatus, recovered: false };
             // The running system refused its own root. Measure the interface
@@ -895,7 +918,19 @@ export async function auditBuiltApp(
         if (opts?.credentials && !frontDoor?.recovered) {
             const c = opts.credentials;
             try {
-                if (c.token) {
+                if (!c.token && c.identity && c.password) {
+                    opts?.onProgress?.('signing in');
+                    const account = { identity: c.identity, password: c.password };
+                    const signed = await signInThroughPage(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                    if (signed.ok) {
+                        authenticated = true;
+                        signInAccount = account;
+                        //  A reload keeps the user signed in (sign-in.ts reloadKeepsSession).
+                        const reload = await reloadKeepsSession(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                        if (!reload.kept) sessionLostOnReload = reload.refused;
+                        if (!reload.kept && !reload.signedInAgain) { authenticated = false; authError = 'the session was lost on a reload, and signing in again failed'; }
+                    } else authError = signed.why;
+                } else if (c.token) {
                     await page.evaluate(({ token, role, tokenStorageKey }: any) => {
                         localStorage.setItem(tokenStorageKey, token);
                         if (role) localStorage.setItem(tokenStorageKey + ':role', role);
@@ -1180,7 +1215,15 @@ export async function auditBuiltApp(
             // Preserve that evidence at the caller instead of replacing it
             // with a generic "pressing controls" status.
             onProgress: opts?.onProgress,
+            //  A walk thrown back to the sign-in form signs in again (sign-in.ts).
+            ...(signInAccount ? { signIn: signInAccount } : {}),
         });
+        /** After a fresh load of a page, a product that lost its session is signed in to again. */
+        const reenter = async () => {
+            if (!signInAccount) return;
+            await page.waitForTimeout(300).catch(() => { });
+            if (await showsSignInForm(page)) await signInThroughPage(page, signInAccount, { timeoutMs: 8_000 }).catch(() => undefined);
+        };
         const budgetFinding = () => ({
             id: 'qa_budget_exhausted', severity: 'medium' as const,
             detail: 'انتهت ميزانية فحص المتصفح قبل اكتمال كل المسارات والحالات — النتيجة غير مكتملة ولا أعتبر ما لم يُختبر ناجحًا',
@@ -1358,6 +1401,7 @@ export async function auditBuiltApp(
             try {
                 await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
                 await page.waitForTimeout(500);
+                await reenter();
                 const d2 = await inspect();
                 if (d2.deadImgs) dom.deadImgs += d2.deadImgs;
                 if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
@@ -1378,7 +1422,7 @@ export async function auditBuiltApp(
                 else brokenRoutes.push(`${r} (${detail.slice(0, 40)})`);
             }
         }
-        if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
+        if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); await reenter(); } catch { /* home is optional now */ } }
 
         /**
          *  ⛔ AND THE MENU THAT ONLY EXISTS ON A PHONE — «ولا القوائم».
@@ -1422,8 +1466,16 @@ export async function auditBuiltApp(
              * refusals in a row.
              */
             await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) }).catch(() => { });
+            await reenter();
             await applyViewportSize(page, 390, 844);
             await page.waitForTimeout(420);
+            if (opts?.phoneLookPath) {
+                // The proof he keeps, never a measurement: a failed shot changes no verdict.
+                try {
+                    await fs.promises.mkdir(path.dirname(opts.phoneLookPath), { recursive: true });
+                    await page.screenshot({ path: opts.phoneLookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                } catch { /* no phone picture; the pass goes on */ }
+            }
             await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
             const phone = await probeControls(page, {
                 eyes,
@@ -1465,23 +1517,39 @@ export async function auditBuiltApp(
         const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
         const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
+        /**
+         * ⛔ EACH WIDTH OF EACH ROUTE GETS ITS SHARE, AND ONLY THE WALK'S OWN
+         * BUDGET ENDS THE WALK.
+         *
+         * The 500-prompt exam, 2026-11-05 (P069, a garage's four-page admin):
+         * the first responsive pass was handed everything left of the sweep's
+         * 32 s, spent it, and every later route at tablet and phone width was
+         * skipped as «qa_budget_exhausted» — at 145 s of a 360 s walk, on the
+         * retry «with a larger budget» too. The sweep's time is a pace, not a
+         * wall: each pass gets an equal share of it, and the walk stops only
+         * when the walk's own budget is spent.
+         */
+        const SIZES = [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }];
+        let passesLeft = responsiveRoutes.reduce((n, r) => n + SIZES.filter(s => !completedResponsiveEvidence.has(`${s.name}:${r}`)).length, 0);
         for (const r of responsiveRoutes) {
-            for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
+            for (const size of SIZES) {
                 const evidenceKey = `${size.name}:${r}`;
                 // The home-phone pass above already exercised this exact state,
                 // including controls hidden at desktop width. Do not spend the
                 // bounded responsive budget replaying it.
                 if (completedResponsiveEvidence.has(evidenceKey)) continue;
-                if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
+                if (!remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
+                const passBudget = responsivePassBudget(responsiveDeadline, Date.now(), passesLeft--, remainingWalkMs());
                 try {
                     const target = routeUrl(url, r);
                     await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
+                    await reenter();
                     await applyViewportSize(page, size.w, size.h);
                     await page.waitForTimeout(260);
                     await eyes.say(page, `فحص ${size.name}: ${r === '/' ? 'الصفحة الرئيسية' : r}`);
                     const responsive = await probeControls(page, {
                         eyes,
-                        budgetMs: Math.min(responsiveDeadline - Date.now(), remainingWalkMs()),
+                        budgetMs: passBudget,
                         seenForms,
                         formScope: `${size.name}:${r}`,
                         formContext: r,
@@ -1489,6 +1557,7 @@ export async function auditBuiltApp(
                         maxControls: 12,
                         isolateBaselineControls: true,
                         baselineViewport: { width: size.w, height: size.h },
+                        ...(signInAccount ? { signIn: signInAccount } : {}),
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
                     if ((responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
@@ -1791,6 +1860,10 @@ export async function auditBuiltApp(
         // than re-judged, so the two audits never disagree about a dead button.
         const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
         for (const f of behaviour.findings) {
+            //  A product that signs its user out on every reload hides controls
+            //  from a walk that restores by reloading: that is said once, as
+            //  `session_lost_on_reload`, not again as controls «gone».
+            if (sessionLostOnReload && f.code === 'controls_not_reached') continue;
             findings.push({
                 id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en,
                 ...(Array.isArray((f as any).evidence) && (f as any).evidence.length
@@ -1813,6 +1886,15 @@ export async function auditBuiltApp(
             const door = findings.filter(f => f.id === 'server_root_dead');
             findings.length = 0;
             findings.push(...door);
+        }
+        if (sessionLostOnReload) {
+            //  Said once, as what it is — not as the controls a lost session hid.
+            const said = sessionLostOnReload.slice(0, 4).join(', ');
+            findings.push({
+                id: 'session_lost_on_reload', severity: 'high',
+                detail: `بعد تسجيل الدخول، أعدتُ تحميل الصفحة فرجعت إلى نموذج الدخول: من يحدّث الصفحة يخرج من حسابه${said ? `. رفض الخادم هذه الطلبات قبل أن تُستعمل الجلسة المحفوظة: ${said}` : ''}`,
+                detailEn: `After signing in, a reload of the page showed the sign-in form again: whoever refreshes the page is signed out${said ? `. The server refused these requests, sent before the saved session was put back: ${said}` : ''}. Restore the saved session before the first request a screen sends (set the token when the app starts, not in an effect that runs after its children's), and never sign the user out on a 401 sent without it`,
+            });
         }
         if (opts?.credentials && !frontDoor?.recovered && !authenticated) {
             findings.push({

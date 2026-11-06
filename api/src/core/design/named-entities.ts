@@ -27,7 +27,7 @@ import type { ModelEntity, ModelField } from './data-model';
 import { MAX_MODEL_ENTITIES, NEVER, describedTable, englishFor, fieldsForKind, inferKind, isCapability, isRoleInContext, keyForPhrase, requestSells, type EntityKind } from './entity-inference';
 import { RESERVED_TABLES } from './schema-designer';
 import { ENGLISH_PREPOSITION, foldPattern, isDeliverable, isInterfaceNoun, isPossessivePhrase, splitListItems, type ListMarker } from './request-lists';
-import { isActionWord, isFeaturePhrase, normaliseListedRequest, withoutLeadingAction } from './listed-request';
+import { isActionByManner, isActionWord, isBehaviourClause, isFeaturePhrase, normaliseListedRequest, withoutLeadingAction } from './listed-request';
 import { foldChars } from '../orchestrator/promptNormalizer';
 import { stripDeclaredOptions } from './requested-artifact';
 
@@ -87,7 +87,7 @@ const NOUNS: Noun[] = [
 
     // — things on a calendar —
     { key: 'appointments', ar: 'المواعيد', en: 'appointments', kind: 'event', re: /^(ال)?مواعيد$|^appointments?$/i },
-    { key: 'bookings', ar: 'الحجوزات', en: 'bookings', kind: 'event', re: /^(ال)?حجوزات$|^bookings?$|^reservations?$/i },
+    { key: 'bookings', ar: 'الحجوزات', en: 'bookings', kind: 'event', re: /^(ال)?حجوزات$|^الحجز$|^bookings?$|^reservations?$/i },
     { key: 'tasks', ar: 'المهام', en: 'tasks', kind: 'event', re: /^(ال)?مهام$|^tasks?$/i },
     { key: 'visits', ar: 'الزيارات', en: 'visits', kind: 'event', re: /^(ال)?زيارات$|^visits?$/i },
     { key: 'events', ar: 'الفعاليات', en: 'events', kind: 'event', re: /^(ال)?فعاليات$|^(ال)?[أا]حداث$|^(ال)?مناسبات$|^events?$/i },
@@ -572,6 +572,8 @@ export function listedRecords(request: string, opts: { backend?: boolean; action
     let about = 0;
     for (const raw of splitListItems(region)) {
         if (isActionWord(raw) || isFeaturePhrase(raw)) continue;
+        // "search by title", «وتعمل بلوحة المفاتيح»: how the app acts, said as a capability.
+        if (isActionByManner(raw) || isBehaviourClause(raw)) { entries.push({ item: raw, as: 'capability' }); continue; }
         const item = withoutLeadingAction(raw);
         // «التحقق من المدخلات», «input validation», «automated tests» are
         // qualities the software must have — requirements, never tables.

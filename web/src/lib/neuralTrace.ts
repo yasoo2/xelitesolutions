@@ -27,12 +27,39 @@ export type WorkStage = 'understand' | 'plan' | 'build' | 'test' | 'repair' | 'v
 export const WORK_STAGES: WorkStage[] = ['understand', 'plan', 'build', 'test', 'repair', 'verify'];
 
 /**
+ * The server words its status in the run's language: «Running: engine shell
+ * run…» or «جاري تنفيذ: engine shell run…» (ToolService). The rules below read
+ * the English prefix; an Arabic run's status fell through every one of them,
+ * and the Arabic interface said «تنفيذ الإجراء المطلوب» for every step
+ * (UI/UX check, 2026-11-06).
+ */
+function runningPrefix(value: string): string {
+    return value.replace(/^\s*(?:running|جاري تنفيذ)\s*:\s*/iu, 'running: ');
+}
+
+/**
+ * A line the Arabic interface does not show as written: narration in another
+ * language. It used to hide any line with ONE Latin letter, so every Arabic
+ * note of an Arabic run that named a file — «كتبتُ index.html وأشغّله الآن» —
+ * became «تنفيذ الإجراء المطلوب» (UI/UX check, 2026-11-06). A sentence with an
+ * Arabic word in it is Arabic; it is shown, the names in it left to right.
+ */
+export function isForeignNarration(text: string, uiDir: string): boolean {
+    if (uiDir !== 'rtl') return false;
+    return /[A-Za-z]/u.test(text) && !/[؀-ۿ]/u.test(text);
+}
+
+/**
  * Map observed trace text to a product-level stage. This is deliberately a
  * presentation rule, not an execution rule: the backend remains the source
  * of truth, while the user gets a stable vocabulary instead of tool names.
  */
 export function workStageFor(phase: TracePhase, text = ''): WorkStage {
-    const value = String(text).toLocaleLowerCase();
+    const value = runningPrefix(String(text).toLocaleLowerCase());
+    // The agent engine's hand-in and its own tries of the project are checks,
+    // not building (the words «project» and «task» sent them to Build).
+    if (/^running:\s*engine task finish/u.test(value)) return 'verify';
+    if (/^running:\s*(?:project run|quality run|engine browser)/u.test(value)) return 'test';
     if (/repair|fix|recover|retry|إصلاح|تصحيح|تعاف|إعادة المحاولة/u.test(value)) return 'repair';
     if (/verify|verified|acceptance|deliver|evidence|complete|تحقق|تسليم|دليل|مكتمل|نجح/u.test(value)) return 'verify';
     if (/qa|quality|test|browser|audit|check|فحص|جودة|اختبار|متصفح|تدقيق/u.test(value)) return 'test';
@@ -49,8 +76,23 @@ export function workStageFor(phase: TracePhase, text = ''): WorkStage {
  * silently discarded.
  */
 export function traceDisplayKey(text = ''): string | null {
-    const value = String(text).trim();
+    const value = runningPrefix(String(text).trim());
     if (!value) return null;
+    // The agent engine's own actions. Without these every one of them fell to
+    // the last rule below, and «Right now» said «Performing the requested
+    // action» for an hour of the clinic build (UI/UX check, 2026-11-05).
+    if (/^running:\s*engine shell (?:run|start)/i.test(value)) return 'neuralDetailShell';
+    if (/^running:\s*engine shell (?:logs|stop)/i.test(value)) return 'neuralDetailShellWatch';
+    if (/^running:\s*engine file (?:write|edit|create|patch|delete|move)/i.test(value)) return 'neuralDetailWrite';
+    if (/^running:\s*engine file (?:read|list|search)/i.test(value)) return 'neuralDetailRead';
+    if (/^running:\s*engine browser/i.test(value)) return 'neuralDetailBrowserAction';
+    if (/^running:\s*engine web/i.test(value)) return 'neuralDetailWeb';
+    if (/^running:\s*engine plan/i.test(value)) return 'neuralDetailOrchestration';
+    if (/^running:\s*engine task finish/i.test(value)) return 'neuralDetailFinish';
+    if (/^running:\s*project run/i.test(value)) return 'neuralDetailRunProject';
+    if (/^running:\s*project stop/i.test(value)) return 'neuralDetailStopProject';
+    if (/^running:\s*quality run/i.test(value)) return 'neuralDetailQuality';
+    if (/^running:\s*agent engine/i.test(value)) return 'neuralDetailEngine';
     if (/^running:\s*terminal manager/i.test(value)) return 'neuralDetailTerminal';
     if (/^running:\s*project pipeline/i.test(value)) return 'neuralDetailOrchestration';
     if (/engineering discovery|\[pipeline\].*discovering/i.test(value)) return 'neuralDetailDiscovery';

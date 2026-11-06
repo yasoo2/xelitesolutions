@@ -2,6 +2,7 @@ import { API_URL, WS_URL } from '../config';
 import { normalizePlan } from '../lib/planCredits';
 import { AutoOpenManager } from './AutoOpenManager';
 import { saveTrace, type NeuralTrace, type TraceStep } from '../lib/neuralTrace';
+import { replayRunState } from '../lib/run-replay';
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -922,6 +923,13 @@ export const SocketService = {
   clearTerminalHistory(sessionId?: string) {
     getSessionRuntime(sessionId).terminalHistory = '';
   },
+  /** A reopened conversation's terminal, from the server's record; never over live output. */
+  seedTerminalHistory(sessionId: string, text: string) {
+    const runtime = getSessionRuntime(sessionId);
+    if (runtime.terminalHistory || !text) return false;
+    runtime.terminalHistory = String(text).slice(-TERMINAL_HISTORY_CAP);
+    return true;
+  },
   subscribe(cb: (data: any) => void, sessionId?: string) {
     const release = addSessionListener(listeners, cb, sessionId);
     if (!socket && !isConnecting) connect();
@@ -993,5 +1001,40 @@ export const SocketService = {
   // [Wakil 6.1] Get last preview URL (for mount-time read)
   getLastPreviewUrl(sessionId?: string) {
     return getSessionRuntime(sessionId).lastPreviewUrl;
+  },
+  /**
+   * A page opened mid-run: rebuild this session's live card, plan and terminal
+   * from the run's own record (lib/run-replay). State and its listeners only —
+   * no chat event is dispatched. Steps that arrived live meanwhile are kept
+   * after the replayed ones. Returns false when there was nothing to add.
+   */
+  seedRun(sessionId: string, runId: string, events: any[]) {
+    const sid = normalizeSessionId(sessionId);
+    const id = normalizeSessionId(runId);
+    if (!sid || !id) return false;
+    const runtime = getSessionRuntime(sid);
+    if (runtime.activeRunId && runtime.activeRunId !== id) return false;
+    if (runtime.lastFinalizedRunId === id) return false;
+    const replayed = replayRunState(Array.isArray(events) ? events : []);
+    const lastSeeded = replayed.steps.length ? replayed.steps[replayed.steps.length - 1].at : 0;
+    const liveNewer = runtime.thinkingSteps.filter(step => step.at > lastSeeded);
+    if (runtime.thinkingSteps.length >= replayed.steps.length && liveNewer.length === runtime.thinkingSteps.length) return false;
+    runtime.thinkingSteps = [...replayed.steps, ...liveNewer];
+    runtime.activeRunId = id;
+    runtime.runStartedAt = runtime.runStartedAt || replayed.startedAt || Date.now();
+    runtime.runSessionId = sid;
+    runtime.quietMode = true;
+    runtime.closedAt = 0;
+    if (!liveNewer.length) {
+      runtime.thinkingPhase = replayed.phase;
+      runtime.thinkingStatus = replayed.status;
+    }
+    if (!runtime.taskTrackerData.length && replayed.tasks.length) runtime.taskTrackerData = replayed.tasks;
+    if (!runtime.terminalHistory && replayed.terminal) runtime.terminalHistory = replayed.terminal.slice(-TERMINAL_HISTORY_CAP);
+    forSession(thinkingPhaseListeners, sid, cb => cb(runtime.thinkingPhase, sid));
+    forSession(thinkingStatusListeners, sid, cb => cb(runtime.thinkingStatus, sid));
+    forSession(thinkingStepsListeners, sid, cb => cb([...runtime.thinkingSteps], sid));
+    forSession(taskTrackerListeners, sid, cb => cb([...runtime.taskTrackerData], sid));
+    return true;
   }
 };

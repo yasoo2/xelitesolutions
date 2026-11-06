@@ -131,7 +131,8 @@ describe('a control that was never reached is reported as never reached', () => 
 
     it('keeps Joe instrumentation out of application state identity', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'behaviour-audit.ts'), 'utf8');
-        expect(source).toContain('data-joe-(?:ctl|form|fld|sub|qa-[\\w-]+)');
+        //  `qbox`: the search box a quiet Search/Clear control has filled first (P069).
+        expect(source).toContain('data-joe-(?:ctl|form|fld|sub|qbox|qa-[\\w-]+)');
         expect(source).toContain('successfulSemanticKeys');
     });
 

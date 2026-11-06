@@ -18,6 +18,7 @@
 
 import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
 import { applyViewportSize } from './ui-inspection';
+import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
 
 /** What the strip over the outlined element calls it, in his language. */
 const KIND_AR: Record<string, string> = {
@@ -174,7 +175,45 @@ function findControls(limit: number) {
      */
     document.querySelectorAll('[data-joe-ctl]').forEach(el => el.removeAttribute('data-joe-ctl'));
 
-    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean; stateful?: boolean }> = [];
+    const out: Array<{ sel: string; kind: string; label: string; href?: string; ordinal: number; disabled?: boolean; stateful?: boolean; language?: boolean }> = [];
+    /**
+     * A LANGUAGE SWITCH RENAMES EVERY OTHER CONTROL.
+     *
+     * The hard exam, 2026-11-05, H01: a clinic whose top bar holds «English» and
+     * «العربية» ahead of its sidebar. The walk pressed «العربية» third; every
+     * label on the page changed language, and «Patients», «Appointments»,
+     * «Invoices» … were sought by their English names on an Arabic page —
+     * «22 of 34 controls were gone before I could press them», a blocking
+     * finding about a clinic whose every screen worked. A reload keeps the
+     * chosen language, so restoring the page did not bring them back.
+     *
+     * A control that names a language (or sits in a language group) is marked
+     * here and pressed after every other control of its pass.
+     */
+    const LANGUAGE_NAME = /^(?:english|arabic|العربية|عربي|عربى|الإنجليزية|الانجليزية|إنجليزي|انجليزي|en|ar|fr|de|es|tr|ع|français|francais|español|espanol|deutsch|türkçe|turkce|italiano|português|portugues|русский|中文|(?:en|ar)\s*[|/]\s*(?:en|ar|ع))$/iu;
+    const isLanguageSwitch = (el: Element, text: string) => LANGUAGE_NAME.test(text.replace(/🌐/gu, '').trim())
+        || el.hasAttribute('data-lang') || el.hasAttribute('hreflang')
+        || !!el.closest('[aria-label*="language" i], [aria-label*="لغة"], [class*="lang-switch"], [class*="language-switch"], [data-lang-switch]');
+    /**
+     * …AND THE LANGUAGE THE PAGE IS ALREADY IN IS ALREADY ON.
+     *
+     * The rerun of H01, 2026-11-05: the clinic marked its current language
+     * with a class («on»), not with aria-pressed, and «English» pressed on an
+     * English page changed nothing — «Unresponsive controls: "English"» about
+     * a switch doing exactly what it should. A language control that names
+     * the document's own language, or carries an «active / on / selected /
+     * current» mark, is the one already on.
+     */
+    const LANGUAGE_CODE: Array<[RegExp, string]> = [
+        [/^(?:english|en|الإنجليزية|الانجليزية|إنجليزي|انجليزي)$/iu, 'en'], [/^(?:arabic|ar|العربية|عربي|عربى|ع)$/iu, 'ar'],
+        [/^(?:français|francais|fr)$/iu, 'fr'], [/^(?:español|espanol|es)$/iu, 'es'], [/^(?:deutsch|de)$/iu, 'de'], [/^(?:türkçe|turkce|tr)$/iu, 'tr'],
+    ];
+    const languageIsCurrent = (el: Element, text: string) => {
+        const pageLang = String(document.documentElement.getAttribute('lang') || '').toLowerCase().split('-')[0];
+        const code = LANGUAGE_CODE.find(([re]) => re.test(text.replace(/🌐/gu, '').trim()))?.[1] || String(el.getAttribute('data-lang') || el.getAttribute('hreflang') || '').toLowerCase().split('-')[0];
+        if (code && pageLang && code === pageLang) return true;
+        return /(?:^|\s)(?:active|is-active|on|selected|current)(?:\s|$)/u.test(String(el.getAttribute('class') || '')) || el.getAttribute('aria-current') === 'true';
+    };
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
         const controlLabel = label(el);
@@ -236,6 +275,7 @@ function findControls(limit: number) {
          * controls: "All"» on a filter that works perfectly.
          */
         if (el.getAttribute('aria-pressed') === 'true') return;
+        if (isLanguageSwitch(el, controlLabel) && languageIsCurrent(el, controlLabel)) return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
         const id = `joe-ctl-${out.length}`;
@@ -284,7 +324,8 @@ function findControls(limit: number) {
         const stateful = kind === 'menu' || kind === 'summary' || kind === 'tab'
             || el.hasAttribute('aria-expanded') || el.hasAttribute('aria-haspopup')
             || el.hasAttribute('data-menu') || el.hasAttribute('data-filter');
-        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal, stateful });
+        const language = isLanguageSwitch(el, controlLabel) || undefined;
+        out.push({ sel: `[data-joe-ctl="${id}"]`, kind, label: controlLabel, href, ordinal, stateful, language });
     };
 
     /**
@@ -442,7 +483,7 @@ function snapshot() {
     const html = (document.body.innerHTML || '').slice(0, 200000)
         .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
         // These handles belong to Joe's instrument, not the application.
-        .replace(/\sdata-joe-(?:ctl|form|fld|sub|qa-[\w-]+)="[^"]*"/gi, '')
+        .replace(/\sdata-joe-(?:ctl|form|fld|sub|qbox|qa-[\w-]+)="[^"]*"/gi, '')
         .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
@@ -687,6 +728,13 @@ export interface ProbeOptions {
     /** Reapply the borrowed-panel layout size after any isolating reload. */
     baselineViewport?: { width: number; height: number };
     /**
+     * The account the audit signed in with: a restore that lands on the
+     * sign-in form signs in again, so a product that loses its session on a
+     * reload (said once, as `session_lost_on_reload`) still has every control
+     * behind its sign-in measured, not reported «gone» (sign-in.ts).
+     */
+    signIn?: SignInAccount;
+    /**
      * A form is exercised ONCE per audit, not once per route.
      *
      * A hash route does not rebuild the document, so the contact form on page
@@ -735,8 +783,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * found pressing zero buttons while reporting that it had run.
          */
         await page.evaluate('globalThis.__name = globalThis.__name || (function (f) { return f; });').catch(() => { });
-        const list: Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number }> =
+        const found: Array<{ sel: string; kind: string; label: string; href?: string; ordinal?: number; language?: boolean }> =
             await evalInPage(page, findControls, limit);
+        //  A language switch renames every other control: pressed last (findControls).
+        const list = [...found.filter(c => !c.language), ...found.filter(c => c.language)];
         metrics.controlsFound = list.length;
 
         const controlKey = (c: { kind: string; label: string; href?: string; ordinal?: number }) =>
@@ -840,6 +890,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             }
             if (opts?.baselineViewport) {
                 await applyViewportSize(page, opts.baselineViewport.width, opts.baselineViewport.height).catch(() => { });
+            }
+            //  A product that lost its session on the reload is signed in to again (ProbeOptions.signIn).
+            if (opts?.signIn) {
+                await page.waitForTimeout(300).catch(() => { });
+                if (await showsSignInForm(page)) await signInThroughPage(page, opts.signIn, { timeoutMs: 8_000 }).catch(() => undefined);
             }
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
@@ -1523,9 +1578,81 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         };
         // Its own bounded time, so a probe that spent its budget elsewhere
         // still gives its quiet controls this one fair press.
-        const secondLookUntil = Date.now() + 8_000;
         metrics.secondLook = [] as Array<{ label: string; after: string; effect: string }>;
-        for (const quiet of pressedQuiet.slice(0, 3)) {
+        /**
+         * ⛔ A SEARCH BUTTON IS PRESSED WITH WORDS IN ITS BOX, A CLEAR BUTTON
+         * WITH SOMETHING TO CLEAR.
+         *
+         * The exam, 2026-11-05 (P069, a garage's admin): every list had a
+         * search box, «Search» and «Clear», and both worked. On the page as it
+         * loads the box is empty: «Search» lists the same rows and «Clear»
+         * clears nothing, and «Unresponsive controls: "Search", "Clear"»
+         * refused the garage five times. A person types before pressing
+         * Search, and clears what they searched.
+         *
+         * A quiet control named for searching or clearing, beside a text box,
+         * has that box filled with a word no record holds: «Search» is
+         * measured from the typed box to after its press, «Clear» from the
+         * search applied by Enter to after its press — or by the box it
+         * emptied. A control wired to nothing still changes nothing.
+         */
+        const SEARCH_LABEL = /^(?:search|find|go|apply|filter|بحث|ابحث|تصفية|تطبيق)$/iu;
+        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|show all|مسح|إعادة تعيين|اعادة تعيين|إلغاء البحث|عرض الكل)$/iu;
+        const QUERY = 'zzqxjv';
+        const queryLookUntil = Date.now() + 10_000;
+        const asked = pressedQuiet.filter(q => SEARCH_LABEL.test(q.label.trim()) || CLEAR_LABEL.test(q.label.trim()));
+        for (const quiet of asked.slice(0, 4)) {
+            const quietItem = catalogued(quiet);
+            if (!quietItem || Date.now() >= queryLookUntil || !eyeIsOpen()) continue;
+            const clearing = CLEAR_LABEL.test(quiet.label.trim());
+            try {
+                await restoreProbeStart();
+                const found = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                if (!found || !await reachableOnScreen(found.sel)) continue;
+                //  Its box: a text field in the control's own form, search bar or toolbar.
+                const hasBox = await page.evaluate((s: string) => {
+                    document.querySelectorAll('[data-joe-qbox]').forEach(el => el.removeAttribute('data-joe-qbox'));
+                    const control = document.querySelector(s);
+                    if (!control) return false;
+                    const visible = (el: Element) => { const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0; };
+                    const scopes = [control.closest('form, [role="search"], .toolbar, .search, .search-bar, .filters'), control.parentElement, control.parentElement?.parentElement];
+                    for (const scope of scopes) {
+                        const box = scope && Array.from(scope.querySelectorAll('input')).find((el: any) => visible(el) && !el.disabled && !el.readOnly
+                            && /^(?:|text|search)$/i.test(el.getAttribute('type') || ''));
+                        if (box) { box.setAttribute('data-joe-qbox', '1'); return true; }
+                    }
+                    return false;
+                }, found.sel).catch(() => false);
+                if (!hasBox) continue;
+                const box = page.locator('[data-joe-qbox="1"]').first();
+                await box.fill(QUERY, { timeout: 2000 });
+                if (clearing) await box.press('Enter').catch(() => { });
+                await settled(Math.min(queryLookUntil, Date.now() + 2500));
+                const ready = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                if (!ready || !await reachableOnScreen(ready.sel)) continue;
+                const boxValue = () => page.evaluate(() => {
+                    const field = (document.querySelector('[data-joe-qbox="1"]') || document.querySelector('input[type="search"], [role="search"] input')) as HTMLInputElement | null;
+                    return field ? field.value : null;
+                }).catch(() => null);
+                await eyes.lookAt(page, await boxOf(page, ready.sel), { note: `${KIND_AR[quiet.kind] || 'عنصر'}: ${quiet.label}`.slice(0, 64), moveMouse: true });
+                const before = await page.evaluate(snapshot).catch(() => null);
+                if (!eyeIsOpen()) break;
+                await eyes.press(page);
+                await (await page.$(ready.sel))?.click({ timeout: 2500, noWaitAfter: true });
+                let effect = '';
+                const settleDeadline = Date.now() + 2500;
+                do {
+                    await page.waitForTimeout(100);
+                    effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
+                    if (!effect && clearing && await boxValue() === '') effect = 'cleared';
+                } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
+                metrics.secondLook.push({ label: quiet.label, after: clearing ? `«${QUERY}» searched` : `«${QUERY}» typed`, effect });
+                if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
+            } catch { /* the control under test keeps its first verdict */ }
+        }
+        const answered = new Set(controls.filter(r => r.worked).map(r => `${r.kind}|${r.label}|${r.instance ?? 0}`));
+        const secondLookUntil = Date.now() + 8_000;
+        for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
             const quietItem = catalogued(quiet);
             if (!quietItem || !eyeIsOpen()) continue;
             for (const mover of movers.filter(m => m.label !== quiet.label).slice(0, 2)) {

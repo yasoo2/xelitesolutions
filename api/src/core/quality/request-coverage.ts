@@ -284,6 +284,21 @@ const SOURCE_EXT = /\.(?:[cm]?[jt]sx?|py|go)$/iu;
 const MARKUP_EXT = /\.(?:html?|vue|svelte)$/iu;
 const TEST_FILE = /(?:^|[\\/])(?:__tests__|tests?|spec)[\\/]|\.(?:test|spec)\.[cm]?[jt]sx?$|(?:^|[\\/])test_[^\\/]+\.py$|_test\.(?:py|go)$|(?:^|[\\/])tests?\.(?:py|[cm]?[jt]s)$/iu;
 const CLIENT_FILE = /from\s+['"](?:react|react-dom|vue|svelte)(?:\/[^'"]*)?['"]|require\(\s*['"](?:react|vue|svelte)['"]\s*\)|\bdocument\.|\bwindow\./u;
+/**
+ * A file that loads a server framework or creates an HTTP server is a server,
+ * whatever pages it sends: H02 (2026-11-04) rendered a certificate with a
+ * «طباعة» button, `onclick="window.print()"`, and its Express routes were
+ * skipped as browser code.
+ */
+const SERVER_FILE = /require\(\s*['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]\s*\)|from\s+['"](?:express|fastify|koa|hono|restify|polka|@hapi\/hapi)['"]|\b(?:http|https)\.createServer\s*\(/u;
+/**
+ * The handler of a route: after any middleware, a function whose first
+ * parameter is the request (`(req, res) =>`, `async (request, reply) =>`,
+ * `function (req, res)`). A client call's callback never takes one.
+ */
+const REQUEST_HANDLER = /^\s*(?:[A-Za-z_$][\w$.]*(?:\([^()]*\))?\s*,\s*){0,4}(?:async\s+)?(?:function\s*[\w$]*\s*)?\(\s*(?:req|request|_req)\b/u;
+/** A file that mocks an API in the browser: its handlers look like routes and serve nothing. */
+const BROWSER_MOCK = /from\s+['"](?:msw|miragejs)(?:\/[^'"]*)?['"]|require\(\s*['"](?:msw|miragejs)['"]\s*\)/u;
 /** Receivers that are HTTP clients, not routers: their .get('/x', …) calls a route, it does not serve one. */
 const CLIENT_RECEIVERS = new Set(['axios', 'ky', 'got', 'fetch', 'superagent', 'supertest', 'agent', 'request', 'http', 'https', 'client', '$http', 'httpclient', 'apiclient', 'instance', 'api', 'service', 'services']);
 const BUNDLER_DEP = /^(?:vite|webpack|parcel|react-scripts|next|nuxt|@angular\/cli|@sveltejs\/kit|astro|esbuild|rollup|gatsby|@vue\/cli-service)$/iu;
@@ -425,17 +440,20 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
     const unique = Array.from(new Set(files));
     const texts = await readSources(unique);
     const stripped = unique.map((file, index) => texts[index] === null ? null : stripComments(String(texts[index]), file));
-    const isServerText = (file: string, text: string) => !isTestFile(file) && !MARKUP_EXT.test(file) && !CLIENT_FILE.test(text);
+    const isServerText = (file: string, text: string) => !isTestFile(file) && !MARKUP_EXT.test(file) && (!CLIENT_FILE.test(text) || SERVER_FILE.test(text));
     // A table one server file declares, read by a loop in another: by its name,
     // when exactly one file declares it.
     const declaredIn = new Map<string, RouteTable | null>();
     const tablesOf = new Map<string, Map<string, RouteTable>>();
+    // …and a wrapper one server file builds over its router, called by name in the others.
+    const wrappers = new Set<string>();
     for (const [index, file] of unique.entries()) {
         const text = stripped[index];
         if (text === null || !isServerText(file, text)) continue;
         const tables = routeTablesIn(text);
         tablesOf.set(file, tables);
         for (const [name, table] of tables) declaredIn.set(name, declaredIn.has(name) ? null : table);
+        for (const name of routeWrappersIn(text)) wrappers.add(name);
     }
     for (const [index, file] of unique.entries()) {
         const text = stripped[index];
@@ -447,7 +465,7 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
         const own = tablesOf.get(file);
         const lookup = (name: string) => own?.get(name) || declaredIn.get(name) || undefined;
         const before = routes.length;
-        harvestRoutes(text, file, routes, prefixes, lookup);
+        harvestRoutes(text, file, routes, prefixes, lookup, wrappers);
         if (routes.length > before) routeCount.set(file, routes.length - before);
     }
     for (const route of routes) {
@@ -470,8 +488,38 @@ export async function collectServerEvidence(roots: string[], records: RequestedR
 
 type ReceiverKind = 'app' | 'router' | null;
 
+/**
+ * A ROUTER BEHIND A WRAPPER STILL SERVES.
+ *
+ * The hard exam, 2026-11-04, H02: a school of eleven route modules, each
+ * registering its routes as `api.get('/api/timetable', STAFF, ({ query }) =>
+ * …)` on an `api` built in app.js over the Express router — `{ get: (pattern,
+ * roles, handler) => router.get(pattern, …) }` — and handed to every module.
+ * `api` is a client's usual name and its handlers take no request, so not one
+ * route was read: «the request needs a server, but no delivered part registers
+ * server routes», eight times, for a server that answered every one of them.
+ *
+ * An object whose methods register on a router or an application of its own
+ * file is a router, by its name, in every server file of the delivery — unless
+ * a file binds that name to an HTTP client of its own.
+ */
+function routeWrappersIn(text: string): string[] {
+    const receiverKind = jsReceivers(text);
+    const names: string[] = [];
+    for (const m of text.matchAll(/(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*\{/gu)) {
+        const open = (m.index || 0) + m[0].length - 1;
+        const close = closeOf(text, open);
+        if (close < 0) continue;
+        const body = text.slice(open + 1, close);
+        const delegates = Array.from(body.matchAll(/\b(?:get|post|put|patch|delete|all)\s*(?::\s*(?:async\s*)?(?:function\s*)?\([^()]*\)\s*(?:=>)?|\([^()]*\))\s*\{?\s*(?:return\s+)?([A-Za-z_$][\w$]*)\s*\.\s*(?:get|post|put|patch|delete|all)\s*\(/gu))
+            .some(d => receiverKind(String(d[1] || '')) !== null);
+        if (delegates) names.push(m[1]);
+    }
+    return names;
+}
+
 /** Is this receiver something that SERVES routes in this file — and is its path the served path? */
-function jsReceivers(text: string): (name: string) => ReceiverKind {
+function jsReceivers(text: string, wrappers: ReadonlySet<string> = new Set()): (name: string) => ReceiverKind {
     const apps = new Set<string>();
     const routers = new Set<string>();
     const clients = new Set<string>();
@@ -497,7 +545,9 @@ function jsReceivers(text: string): (name: string) => ReceiverKind {
         // What this file binds the name to decides first: «const api = express()» serves.
         if (apps.has(name)) return 'app';
         if (routers.has(name)) return 'router';
-        if (clients.has(name) || CLIENT_RECEIVERS.has(lower)) return null;
+        if (clients.has(name)) return null;
+        if (wrappers.has(name)) return 'router';
+        if (CLIENT_RECEIVERS.has(lower)) return null;
         if (params.has(name) || imported.has(name)) {
             if (SERVER_NAME.test(name)) return 'app';
             if (ROUTER_NAME.test(name) || /^router$/iu.test(name)) return 'router';
@@ -509,8 +559,170 @@ function jsReceivers(text: string): (name: string) => ReceiverKind {
     };
 }
 
-function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined): void {
-    const receiverKind = jsReceivers(text);
+/**
+ * A SERVER WITH NO FRAMEWORK ROUTES BY COMPARING THE PATH.
+ *
+ * The hard exam, 2026-11-04, H10: a salon platform on `http.createServer`,
+ * routing `if (m === 'POST' && p === '/api/branches')` — ten routes, none read,
+ * so the delivery was measured as a static page. A file that reads the request
+ * (`req.url`, `req.method`, `http.createServer`) and compares a path to a
+ * literal serves that path, with the method compared beside it; `case
+ * '/api/x':` too. A path of a file («/index.html») or the root is the page,
+ * never a route.
+ */
+const READS_REQUEST = /\b(?:req|request)\s*\.\s*(?:url|method)\b|\b(?:http|https)\s*\.\s*createServer\s*\(/u;
+const COMPARED_PATH = /(?:===?|!==?)\s*(['"`])(\/[A-Za-z0-9_\-./:]*)\1|(['"`])(\/[A-Za-z0-9_\-./:]*)\3\s*(?:===?|!==?)|\bcase\s+(['"`])(\/[A-Za-z0-9_\-./:]*)\5\s*:/gu;
+const COMPARED_METHOD = /(?:===?)\s*['"](GET|POST|PUT|PATCH|DELETE)['"]|['"](GET|POST|PUT|PATCH|DELETE)['"]\s*===?/gu;
+
+function harvestComparedPaths(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    for (const m of text.matchAll(COMPARED_PATH)) {
+        const routePath = String(m[2] || m[4] || m[6] || '').replace(/\/+$/u, '');
+        const segments = routePath.split('/').filter(Boolean);
+        if (!segments.length || segments.some(s => s.includes('.'))) continue;
+        // The method compared in the same condition, on the same line.
+        const at = m.index || 0;
+        const lineStart = text.lastIndexOf('\n', at) + 1;
+        const lineEnd = text.indexOf('\n', at);
+        const line = text.slice(lineStart, lineEnd < 0 ? text.length : lineEnd);
+        const methods = Array.from(line.matchAll(COMPARED_METHOD)).map(x => String(x[1] || x[2]).toLowerCase());
+        for (const method of methods.length ? Array.from(new Set(methods)) : ['all']) {
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: true });
+        }
+    }
+}
+
+/**
+ * A ROUTE TABLE A HELPER FILLS.
+ *
+ * The hard exam, 2026-11-05, H10: the salon server on `http.createServer`
+ * kept its routes in a table of its own — `const on = (method, pattern,
+ * handler) => routes.push({ method, re: new RegExp('^' + pattern + '$'),
+ * handler })`, then `on('GET', '/api/branches', …)` twenty-five times, and a
+ * dispatcher reading `routes.find(r => r.method === req.method …)`. Not one
+ * route was read, and the four records he named were refused as «not served»
+ * four times over.
+ *
+ * A helper declared in a server file whose body puts both its method and its
+ * path into a table (a push, a set, an indexed assignment) registers a route
+ * at every call that names an HTTP method and a path. A part of the path
+ * written as a pattern is a parameter. Where the table is dispatched from
+ * decides the served path, so the route is never `known`: the live probe can
+ * prove it served, never refute it.
+ */
+const REGISTRAR = /\bfunction\s+([A-Za-z_$][\w$]*)\s*\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)[^)]*\)|\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*(?:async\s*)?(?:function\b[^(]*)?\(\s*([A-Za-z_$][\w$]*)\s*,\s*([A-Za-z_$][\w$]*)[^)]*\)\s*=>/gu;
+const PATTERN_PART = /[()[\]\\*+?^$|{}]/u;
+
+/** The helper's body: a braced block, or an arrow's expression through the end of its line. */
+function registrarBody(text: string, from: number): string {
+    const brace = /^\s*(?:=>\s*)?\{/u.exec(text.slice(from, from + 40));
+    if (brace) {
+        const open = from + brace[0].length - 1;
+        const close = closeOf(text, open);
+        return close < 0 ? '' : text.slice(open, close);
+    }
+    const end = text.indexOf('\n', from);
+    return text.slice(from, end < 0 ? text.length : end);
+}
+
+/** «/api/bookings/(\\d+)/cancel» → «/api/bookings/:id/cancel». */
+function patternPath(written: string): string {
+    const bare = written.replace(/^\^/u, '').replace(/\/?\??\$$/u, '');
+    return bare.split('/').map(segment => PATTERN_PART.test(segment) ? ':id' : segment).join('/');
+}
+
+function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    const registrars: string[] = [];
+    for (const m of text.matchAll(REGISTRAR)) {
+        const name = m[1] || m[4];
+        const [method, routePath] = m[1] ? [m[2], m[3]] : [m[5], m[6]];
+        const body = registrarBody(text, (m.index || 0) + m[0].length);
+        const uses = (param: string) => new RegExp(`(?<![\\w$.])${param.replace(/\$/gu, '\\$')}(?![\\w$])`, 'u').test(body);
+        const stores = /\.\s*(?:push|set|unshift)\s*\(|\]\s*=(?!=)/u.test(body);
+        if (name && stores && uses(method) && uses(routePath)) registrars.push(name);
+    }
+    for (const name of new Set(registrars)) {
+        const call = new RegExp(`(?<![\\w$.])${name.replace(/\$/gu, '\\$')}\\s*\\(\\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\\1\\s*,\\s*(['"\`])(\\/[^'"\`]*)\\3\\s*,`, 'giu');
+        for (const m of text.matchAll(call)) {
+            const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 240);
+            if (!HANDLER_AFTER.test(rest)) continue;
+            const method = String(m[2]).toLowerCase();
+            const routePath = patternPath(String(m[4]));
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: false });
+        }
+    }
+}
+
+/**
+ * A SERVER THAT ROUTES BY THE PATH'S OWN SEGMENTS.
+ *
+ * The 500 exam, 2026-11-06, P070: a travel agency on `http.createServer`
+ * cut the path into its parts — `const parts = url.pathname.split('/')
+ * .filter(Boolean)`, `const coll = parts[1]` — and served every collection a
+ * list named: `if (!COLLECTIONS.includes(coll)) return 404`, with
+ * `COLLECTIONS = ['trips', 'travelers', 'bookings']`. Not one route was read,
+ * and the three records he named were refused as «not served» while the
+ * server answered every one of them.
+ *
+ * In a file that reads the request, a variable taken from a segment of the
+ * split path serves each literal name of the list it is checked against
+ * (`LIST.includes(v)`), and a segment compared to a literal (`parts[1] ===
+ * 'summary'`) serves that name — under the prefix the file tests the path
+ * for (`startsWith('/api/')`), when that prefix holds exactly the segments
+ * before it. Where the dispatch lands is the server's, so the route is never
+ * `known`: the live probe proves it served, never refutes it.
+ */
+const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
+const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
+const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
+
+function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    const esc = (s: string) => s.replace(/[$]/gu, '\\$');
+    const prefixes = Array.from(text.matchAll(PATH_PREFIX)).map(m => String(m[2]).split('/').filter(Boolean));
+    const add = (segmentIndex: number, name: string) => {
+        if (!SEGMENT_NAME.test(name)) return;
+        //  The segments before this one are the prefix the file tests the path for.
+        const before = prefixes.find(p => p.length === segmentIndex) || (segmentIndex === 0 ? [] : null);
+        if (!before) return;
+        const routePath = `/${[...before, name].join('/')}`;
+        if (routes.some(r => r.file === file && r.path === routePath)) return;
+        routes.push({ path: routePath, method: 'all', file, dynamic: false, known: false });
+    };
+    for (const split of text.matchAll(SPLIT_PATH)) {
+        const parts = split[1];
+        //  Without .filter(Boolean), the leading slash leaves an empty first part.
+        const shift = split[3] ? 0 : 1;
+        const segmentVars = new Map<string, number>();
+        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
+            segmentVars.set(m[1], Number(m[2]) - shift);
+        }
+        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) {
+            m[1].split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) segmentVars.set(v, i - shift); });
+        }
+        //  parts[1] === 'summary'
+        for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
+            add(Number(m[1]) - shift, m[3]);
+        }
+        //  LIST.includes(v), with LIST a literal list of names.
+        for (const [v, index] of segmentVars) {
+            if (index < 0) continue;
+            for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
+                const list = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(text);
+                if (!list) continue;
+                const names = Array.from(list[1].matchAll(/(['"])([^'"]+)\1/gu)).map(x => x[2]);
+                if (!names.length || names.some(n => !SEGMENT_NAME.test(n))) continue;
+                names.forEach(n => add(index, n));
+            }
+        }
+    }
+}
+
+function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined, wrappers: ReadonlySet<string> = new Set()): void {
+    const receiverKind = jsReceivers(text, wrappers);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
     // P157): each pass is a route, and the template it was written with is not
     // a second, unreadable one — unless some pass could not be read (P158).
@@ -522,14 +734,17 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         routes.push({ path: route.path, method: route.method, file, dynamic: false, known: kind === 'app' });
         if (route.method === 'use') prefixes.add(route.path.endsWith('/') ? route.path : `${route.path}/`);
     }
+    const browserMock = BROWSER_MOCK.test(text);
     for (const m of text.matchAll(JS_ROUTE)) {
         if (readInLoops.has(m.index || 0)) continue;
-        const kind = receiverKind(String(m[1] || ''));
+        const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 240);
+        // A handler that takes the request registers a route, whatever its
+        // receiver is called: H01's route modules received the router as `api`.
+        const kind = receiverKind(String(m[1] || '')) || (!browserMock && m[5] === ',' && REQUEST_HANDLER.test(rest) ? 'router' : null);
         if (!kind) continue;
         const method = String(m[2] || '').toLowerCase();
         const routePath = String(m[4] || '');
         const closer = m[5];
-        const rest = text.slice((m.index || 0) + m[0].length, (m.index || 0) + m[0].length + 120);
         if (closer === ')') {
             // app.route('/x').get(...) — the chained handlers follow.
             if (method !== 'route' || !/^\s*\.\s*(?:get|post|put|patch|delete|all)\s*\(/iu.test(rest)) continue;
@@ -539,6 +754,9 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
         routes.push({ path: routePath, method, file, dynamic: routePath.includes('${'), known: kind === 'app' && !routePath.includes('${') });
         if (method === 'use') prefixes.add(routePath.endsWith('/') ? routePath : `${routePath}/`);
     }
+    harvestComparedPaths(text, file, routes);
+    harvestRegistrarCalls(text, file, routes);
+    harvestSegmentDispatch(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.
     const pyApps = new Set(Array.from(text.matchAll(PY_APP)).map(m => m[1]));
@@ -674,12 +892,28 @@ export function takenIdentifiers(record: RequestedRecord, all: RequestedRecord[]
         .map(id => id.toLowerCase())));
 }
 
-/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, and keys bound to his label. */
+/**
+ * English names a build gives the same record when his word is Arabic: the
+ * dictionary keys «العلامات» `grades`, and H02's school (2026-11-04) called the
+ * students' marks `marks` and its grade levels `grades` — its marks were
+ * tested, and the record was refused as «grades (untested)».
+ */
+const RECORD_ALSO: Record<string, string[]> = {
+    grades: ['marks', 'scores'], marks: ['grades', 'scores'],
+    bookings: ['reservations'], reservations: ['bookings'],
+    customers: ['clients'], clients: ['customers'],
+    pets: ['animals'], animals: ['pets'],
+    employees: ['staff'], staff: ['employees'],
+};
+
+/** The Latin identifiers a build can use for one record: key, singular, kebab/snake/camel of his English phrase, his own words, the names a build also gives it, and keys bound to his label. */
 export function identifiersFor(record: RequestedRecord, labelKeys: string[] = [], all: RequestedRecord[] = []): string[] {
     const named = [record.key, latinEnglish(record), hisWordsFor(record), ...labelKeys].flatMap(forms);
     const taken = new Set(takenIdentifiers(record, all));
     const words = hisNamingWords(record).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
-    return Array.from(new Set([...named, ...words]));
+    //  …never a name another of his records owns («grades» and «marks» listed apart stay apart).
+    const also = (RECORD_ALSO[String(record.key).toLowerCase()] || []).flatMap(forms).filter(id => !taken.has(id.toLowerCase()));
+    return Array.from(new Set([...named, ...words, ...also]));
 }
 
 /**
@@ -924,6 +1158,19 @@ async function pythonTestFolders(root: string): Promise<string[]> {
 
 const exists = (file: string) => fs.promises.access(file).then(() => true, () => false);
 
+/** Does the project carry tests of its own: a test script that does work, or Python test files? */
+export async function hasOwnTests(root: string): Promise<boolean> {
+    const dir = String(root || '').trim();
+    if (!dir || !(await exists(dir))) return false;
+    if (await exists(path.join(dir, 'package.json'))) {
+        try {
+            const scripts = JSON.parse(await fs.promises.readFile(path.join(dir, 'package.json'), 'utf8'))?.scripts || {};
+            if (hasRealTestScript(scripts)) return true;
+        } catch { /* an unreadable manifest declares nothing */ }
+    }
+    return (await pythonTestFolders(dir)).length > 0;
+}
+
 /**
  * Run his project's own tests once: npm's test script through quality_run, or
  * his Python tests through the one Python test runner (python-test-runner) —
@@ -1109,10 +1356,19 @@ export function probePathsFor(evidence: CoverageEvidence, ids: string[], taken: 
     const mounts = evidence.routes.filter(r => r.method === 'use' && r.known && !r.dynamic).map(r => r.path);
     for (const match of staticRouteMatches(evidence.routes, ids, taken)) {
         if (!match.exact || !(match.readable || match.mount)) continue;
-        if (match.route.known && match.readable) out.push({ path: match.exact, refutable: true });
-        else {
-            out.push({ path: match.exact, refutable: false });
-            for (const mount of mounts) if (!match.exact.startsWith(joinPath(mount))) out.push({ path: joinPath(mount, match.exact), refutable: false });
+        // A route that goes on past the record's word with fixed segments is
+        // served at its whole path: «تقارير» at /api/reports/summary (H02).
+        const segments = match.route.path.split('/').filter(Boolean);
+        const whole = match.readable && !segments.some(isParamSegment) ? joinPath(...segments) : '';
+        const paths = whole && whole !== match.exact ? [match.exact, whole] : [match.exact];
+        if (match.route.known && match.readable) {
+            out.push({ path: match.exact, refutable: true });
+            if (paths[1]) out.push({ path: paths[1], refutable: false });
+        } else {
+            for (const p of paths) {
+                out.push({ path: p, refutable: false });
+                for (const mount of mounts) if (!p.startsWith(joinPath(mount))) out.push({ path: joinPath(mount, p), refutable: false });
+            }
         }
     }
     const seen = new Set<string>();
