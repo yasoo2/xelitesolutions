@@ -467,6 +467,30 @@ export function foundInSource(evidence: string, source: string): boolean {
     return flat(source).includes(e);
 }
 
+/**
+ *  A README PROVES A README, NOT A FEATURE.
+ *
+ *  Since C12 of the Codex exam (2026-11-06) the judge reads the project's
+ *  documentation as well as its code: «…and the README» is a requirement too.
+ *  But a README can claim what the code does not do, and a «met» whose only
+ *  line is a sentence of documentation would let it. So a «met» whose
+ *  evidence stands only in documentation files counts only for a requirement
+ *  about documentation; for any other it is not counted.
+ */
+const DOC_FILE = /(?:^|\/)(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt)$/iu;
+const ASKS_ABOUT_DOCS = /\breadme\b|\bdoc(?:s|uments?|umentation)?\b|\bchangelog\b|توثيق|وثائق|دليل\s+(?:الاستخدام|المستخدم)|اقرأني/iu;
+
+export function evidenceOnlyInDocs(evidence: string, source: string): boolean {
+    const e = bare(evidence);
+    if (!e) return false;
+    const holders = filesOf(source).filter(f => flat(f.block).includes(e));
+    return holders.length > 0 && holders.every(f => DOC_FILE.test(f.path));
+}
+
+export function asksAboutDocumentation(r: Pick<NamedRequirement, 'text' | 'quote'>): boolean {
+    return ASKS_ABOUT_DOCS.test(`${r.text || ''} ${r.quote || ''}`);
+}
+
 /** The shortest line that can stand as proof (see foundInSource). */
 const EVIDENCE_MIN_CHARS = 12;
 
@@ -895,6 +919,9 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         `    source above may be CUT — if the part you need is missing, say`,
         `    "unprovable" rather than guessing.`,
         `  · Do not guess a line. A line you cannot find is "unprovable".`,
+        `  · A line of documentation (a README, a .md or .txt file) proves only a`,
+        `    requirement about that documentation. A feature, a route or a rule is`,
+        `    met only by a line of code or configuration that does it.`,
         `  · A word about how the page LOOKS (elegant, beautiful, modern, calm`,
         `    colours) is judged on a screenshot of the page, not here: judge the`,
         `    rest of the line, and never call a line "unprovable" for its look alone.`,
@@ -1982,6 +2009,15 @@ export async function verifyNamed(
                     why: isArabic
                         ? 'قال إنّه موجود ولم أجد شاهده في المصدر — فلم أحتسبه'
                         : 'it was reported present and its evidence is not in the source — so I did not count it',
+                };
+            }
+            if (evidenceOnlyInDocs(v.evidence, src) && !asksAboutDocumentation(r)) {
+                return {
+                    ...r,
+                    verdict: 'unprovable' as NamedVerdict,
+                    why: isArabic
+                        ? 'شاهده سطر توثيق فقط، والتوثيق يقول ما يدّعيه المشروع لا ما يفعله — فلم أحتسبه'
+                        : 'its only evidence is a line of documentation, which says what the project claims, not what it does — so I did not count it',
                 };
             }
             return {

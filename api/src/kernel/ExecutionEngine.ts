@@ -750,8 +750,16 @@ export class ExecutionEngine {
      */
     runArgvStreaming(file: string, args: string[], options: ExecutionOptions & {
         onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
+        /**
+         * The child is meant to outlive this Joe and has its own keeper: a
+         * project_run preview is recorded with the project and adopted by
+         * the next Joe (adoptRecordedPreviews), so the Preview tab keeps
+         * serving across a restart. It stays out of the process ledger,
+         * which would end it at the next boot.
+         */
+        outlivesJoe?: boolean;
     } = {}): { done: Promise<{ ok: boolean; exitCode: number | null; error?: string }>; kill: () => void; pid?: number } {
-        const { onLine, ...rest } = options;
+        const { onLine, outlivesJoe, ...rest } = options;
         // npm/npx/yarn/pnpm on Windows are .cmd shims, and since the fix for
         // CVE-2024-27980 (Node 18.20.2 / 20.12.2 / 21.7.3 and everything after)
         // spawning a .cmd or .bat WITHOUT a shell throws outright:
@@ -834,7 +842,7 @@ export class ExecutionEngine {
                 shell: false,
                 windowsHide: (rest as any).windowsHide !== false,
             } as any);
-        keepInLedger(child, cmd);
+        if (!outlivesJoe) keepInLedger(child, cmd);
         let settled = false;
         let stopping = false;
         let cancelRequested = false;

@@ -30,7 +30,7 @@ import http from 'http';
 import https from 'https';
 import path from 'path';
 import crypto from 'crypto';
-import { hisWordsFor, requestedRecords } from './request-coverage';
+import { hisWordsFor, requestedRecords, transliteratedOnly } from './request-coverage';
 
 export const ISOLATION_FILE = 'joe-isolation.json';
 
@@ -58,7 +58,12 @@ export function isolationBrief(request = ''): string {
     //  The example names one of the request's own records. A fixed example
     //  («/api/patients») was copied into a school system on 2026-11-03 (P152),
     //  which added /api/patients as an alias of its students to match it.
-    const record = requestedRecords(request, { backendRequested: true }).entities[0]?.key || 'records';
+    //  And never a transliteration: P172's «القطع» had no English name in the
+    //  dictionary, its key was spelled «qtas», and the example «/api/qtas» was
+    //  copied into the project as its real route (2026-11-06). A record with
+    //  a real English name is the example; with none, the word «records».
+    const entities = requestedRecords(request, { backendRequested: true }).entities;
+    const record = entities.find(e => !transliteratedOnly(e))?.key || 'records';
     return [
         `The request says each user sees only their own records. Joe measures that itself on the running server, so ship \`${ISOLATION_FILE}\` at the project root naming the doors (paths are relative to the server's address; "{email}", "{password}" and "{marker}" are filled in by Joe):`,
         '{',

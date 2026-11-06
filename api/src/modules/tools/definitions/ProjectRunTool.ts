@@ -2,6 +2,7 @@ import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot } from '../path-containment';
 import { listsProjectFiles, staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
+import { executionFirewall } from '../../../orchestration/AgentExecutionFirewall';
 import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
 import { findImportedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
@@ -1915,6 +1916,9 @@ export class ProjectRunTool implements ToolDefinition {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
             windowsHide: true,
+            //  The preview is recorded with the project and adopted by the next
+            //  Joe (adoptRecordedPreviews): the process ledger leaves it alone.
+            outlivesJoe: true,
         });
         const pid = managed.pid;
         if (!pid) {
@@ -2438,6 +2442,26 @@ export async function adoptRecordedPreviews(
         if (await stopServer(old, logs)) retired.push(old);
     }
     return { adopted, forgotten, retired };
+}
+
+/**
+ * THE BOOT'S ADOPTION, AS THE TRUSTED SYSTEM TASK IT IS.
+ *
+ * app.ts ran adoptRecordedPreviews in a setImmediate, outside any execution
+ * context. On Windows a pid's identity is read through ExecutionGateway, and
+ * the firewall refused every read there: «[FIREWALL] [BLOCKED]
+ * ExecutionGateway:execute», four lines at every boot of 2026-11-06. An
+ * identity that could not be read is not the recorded one, so every preview
+ * the previous Joe left serving was FORGOTTEN while it kept serving — an
+ * orphan nothing counted or stopped, one more at every restart (the
+ * `python -m http.server 5173` found seven hours later was one). Run as a
+ * system task, the read is allowed and the preview is adopted, as written.
+ */
+export function adoptPreviewsAtStart(
+    projects?: Record<string, any>,
+    opts?: { read?: (pid: number) => Promise<string>; cap?: number },
+): Promise<{ adopted: string[]; forgotten: string[]; retired: string[] }> {
+    return executionFirewall.runAsSystem(() => adoptRecordedPreviews(projects, opts));
 }
 
 /** Forget the session's recorded live server when it names this pid. */
