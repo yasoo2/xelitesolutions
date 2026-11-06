@@ -45,6 +45,8 @@ import { User } from '../shared/models/user';
 import { executeTool } from '../modules/services/ToolService';
 import { initLocalBrain } from '../core/llm/local-brain';
 import { buildIdentity } from '../shared/build-info';
+import { executionEngine } from '../kernel/ExecutionEngine';
+import { enableProcessLedger, ledgerFileFor } from '../kernel/process-ledger';
 import path from 'path';
 import fs from 'fs';
 
@@ -120,6 +122,10 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
+  // Every long-lived child is written down from here on, and what a Joe that
+  // died left running is ended once this one serves (kernel/process-ledger.ts).
+  enableProcessLedger(ledgerFileFor());
+
   // Ensure projects data directory exists
   const isApiDir = path.basename(process.cwd()) === 'api';
   const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
@@ -139,6 +145,12 @@ async function main() {
   server.listen(config.port, bindHost, () => {
     noteActivity('serving');
     logger.info({ port: config.port, bindHost, crashLog: crashLogPath() }, 'API server listening and WebSocket attached');
+
+    executionEngine.reapPreviousLife()
+      .then((r) => {
+        if (r.reaped || r.error) logger.warn(r, 'Ended what the previous API process left running');
+      })
+      .catch(() => { /* best effort: the records stay for the next boot */ });
 
     // Local Brain: detect installed Ollama models, choose a fast chat model +
     // the strongest coding model, and warm them up so the first request is fast.

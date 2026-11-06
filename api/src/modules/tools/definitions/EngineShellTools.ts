@@ -54,7 +54,7 @@ import { broadcastTerminalLine } from '../../../api/ws';
 import { isSecretName, projectRootProblem, resolveInProject } from '../../../core/engine/workspace';
 import { isWithinRoot } from '../path-containment';
 import { NETWORK_INSTALL_TIMEOUTS, installProgressProbe } from '../../../shared/network-install-timeouts';
-import { isRunnerSummaryLine, isTestRunCommand, judgeTestRun } from '../../../core/quality/test-run-evidence';
+import { isRunnerSummaryLine, isTestRunCommand, judgeTestRun, testHangHint } from '../../../core/quality/test-run-evidence';
 import { redactSecretsFromString } from '../../../shared/utils/redaction';
 import { HTTP_ANSWER_TIMEOUT_MS, isLoopbackPortOpen } from './ProjectRunTool';
 import type { CommandFact, ProcessInfo } from '../../../core/engine/types';
@@ -726,6 +726,14 @@ function positiveSeconds(v: unknown): number | undefined | 'invalid' {
 
 const NO_AND_AND = /is not a valid statement separator in this version/u;
 
+/** The package's own `test` script, when the folder has one: it names the runner `npm test` starts. */
+async function packageTestScript(dir: string): Promise<string> {
+    try {
+        const pkg = JSON.parse(await fsp.readFile(path.join(dir, 'package.json'), 'utf8'));
+        return typeof pkg?.scripts?.test === 'string' ? pkg.scripts.test : '';
+    } catch { return ''; }
+}
+
 export async function runShellCommand(input: any, context: any): Promise<Result> {
     const command = typeof input?.command === 'string' ? input.command.trim() : '';
     if (!command) return refuse('engine_shell_run needs a "command" to run.');
@@ -901,6 +909,8 @@ export async function runShellCommand(input: any, context: any): Promise<Result>
     //  a timeout or a cancel its children were part of what was stopped.
     if (leftovers && ending.kind === 'exit') lines.push('It left processes running in the background; they were stopped. shell_run is for commands that finish: start servers and watchers with shell_start.');
     if (judgement) lines.push(judgement.passed ? 'Test run: passed.' : `Test run: NOT a pass. It exited 0, but ${judgement.reason}.`);
+    //  A test run that hit its limit: the usual cause and how to see the results (C08).
+    if (testRun && ending.kind === 'timeout') lines.push(`Hint: ${testHangHint(command, await packageTestScript(scope.cwdAbs))}`);
     if (sawNoAndAnd && WINDOWS) {
         lines.push('Hint: Windows PowerShell 5.1 has no `&&` or `||`, so nothing in this command ran. Chain commands with `;`, or run the next one only after success with `first; if ($?) { second }`.');
     }

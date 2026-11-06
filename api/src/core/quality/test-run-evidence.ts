@@ -193,3 +193,42 @@ const TEST_RUN_COMMAND = /(?:^|[\s;&|(])(?:(?:npm|pnpm|yarn|bun)(?:\s+run)?\s+te
 export function isTestRunCommand(command: string): boolean {
     return TEST_RUN_COMMAND.test(String(command || ''));
 }
+
+/**
+ * A TEST RUN THAT REACHED ITS LIMIT, AND WHAT USUALLY HOLDS ONE OPEN.
+ *
+ * C08 of the Codex exam (2026-11-06): the model wrote attack tests for a path
+ * traversal, the suite started the server and never closed it, and `npm test`
+ * finished its tests and never exited. It was piped into Select-String, which
+ * shows nothing until its input ends, so all Joe heard was «Timed out after
+ * 301 s … It printed nothing», then 121 s, then 90 s: eight minutes of a
+ * thirteen-minute fix spent waiting on a process that had nothing left to do.
+ * The cause is the commonest in test running, and so is the way to see the
+ * results; the tool says both, for the runner the command (or the package's
+ * test script) uses.
+ */
+export function testHangHint(command: string, testScript = ''): string {
+    const both = `${command}\n${testScript}`;
+    const ways: string[] = [];
+    if (/\bvitest\b/u.test(both) && !/\bvitest\s+run\b|\s--run\b/u.test(both)) {
+        ways.push('vitest without `run` watches for changes and never ends: use `npx vitest run`');
+    }
+    if (/\bjest\b/u.test(both)) ways.push('jest: `--forceExit` prints the results, `--detectOpenHandles` names what is still open');
+    if (/node\s+(?:-[^\s;&|]*\s+)*--test\b|\bnode:test\b/u.test(both) || (/\bnpm\s+test\b/u.test(command) && /node\s+--test/u.test(testScript))) {
+        //  Measured on Node 24.18: `--test-force-exit` alone leaves each file's own
+        //  process held open (timed out at 36 s); with `--test-isolation=none` the
+        //  files run in one process and it ends at 5 s with «pass 1» (Node 22.8+).
+        ways.push('node:test: `node --test --test-isolation=none --test-force-exit` runs the files in one process and ends once the tests are done (Node 22.8 or later)');
+    }
+    if (/\bmocha\b/u.test(both)) ways.push('mocha: `--exit`');
+    if (/\bpytest\b/u.test(both)) ways.push('pytest: run one test with `-x -k <name>` to find the one that waits');
+    const lines = [
+        'A test run that reaches its limit has usually finished its tests and is held open by something they started: a server still listening, a timer, an open connection, or a request in a test waiting for an answer that never comes.',
+        ways.length ? `To see the results: ${ways.join('; ')}.` : 'To see the results, run the runner with its force-exit option, or one test file at a time.',
+        'Then close what the tests open (for example `server.close()` in an after hook).',
+    ];
+    if (/\|\s*(?:Select-String|Select-Object|findstr|grep|head|tail|Out-String)\b/iu.test(command)) {
+        lines.push('The pipe held the runner\'s lines back until it ended, which is why nothing was printed: run it without the pipe and read the log.');
+    }
+    return lines.join(' ');
+}

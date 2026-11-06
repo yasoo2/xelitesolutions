@@ -19,6 +19,7 @@ import path from 'path';
 import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
+import { keepJoeFilesOutOfGit } from '../project/git-exclude';
 import type { FinishArgs } from './finish';
 import type {
     BrowserSession, ChatMessage, ContentPart, EngineModel, EngineRequest, EngineResult, EngineTool, ModelStep,
@@ -131,6 +132,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const startedAt = now();
     const stateDir = path.join(req.projectDir, '.joe');
     await fsp.mkdir(stateDir, { recursive: true });
+    //  In the owner's own repository, Joe's state never reaches a commit (git-exclude.ts).
+    await keepJoeFilesOutOfGit(req.projectDir);
 
     let seeds: RequirementSeed[] = [];
     if (deps.seedRequirements) {
