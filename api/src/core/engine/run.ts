@@ -125,14 +125,49 @@ export function registeredRequestFor(sessionId: string | undefined): string {
 }
 
 /** Register the folder where the preview and project_run look for this session's project. */
-export function registerProjectFolder(sessionId: string | undefined, runId: string, dir: string, request: string): void {
+export function registerProjectFolder(sessionId: string | undefined, runId: string, dir: string, request: string, origin?: ProjectOrigin): void {
     if (!sessionId) return;
     try {
-        const { writeJoeProject, persistJoeProjects } = require('../../api/page-store');
+        const { writeJoeProject, persistJoeProjects, readJoeProjectForRun } = require('../../api/page-store');
         const { previewKey } = require('../../modules/tools/preview-site');
-        writeJoeProject(previewKey(sessionId), { dir, type: 'agent', updatedAt: Date.now(), lastRequest: String(request || '').slice(0, 2000) }, runId);
+        //  A change keeps where the project came from: the user's own
+        //  repository stays his repository after Joe has changed it.
+        const was = readJoeProjectForRun(previewKey(sessionId), null);
+        const kept = origin || (was && path.resolve(String(was.dir || '')) === path.resolve(dir) ? was.origin : undefined);
+        writeJoeProject(previewKey(sessionId), {
+            dir, type: 'agent', updatedAt: Date.now(), lastRequest: String(request || '').slice(0, 2000),
+            ...(kept ? { origin: kept } : {}),
+        }, runId);
         persistJoeProjects();
     } catch { /* the run still works; only the preview cannot find it */ }
+}
+
+/**
+ * Where a chat's project came from. `built`: Joe made it in this chat.
+ * `imported`: the user brought it (a zip import, or a folder attached to the
+ * chat) — his repository, which Joe changes in place and judges by its own
+ * tests (the Codex exam, 2026-11-06).
+ */
+export type ProjectOrigin = 'built' | 'imported';
+
+/**
+ * Make an existing folder the chat's project: the next request that asks for
+ * work on it changes it in place (select.ts agentEngineRoute).
+ */
+export function registerImportedProject(sessionId: string, dir: string, note = ''): void {
+    registerProjectFolder(sessionId, `import-${Date.now()}`, dir, note || `The user's own repository, imported into this chat: ${path.basename(dir)}`, 'imported');
+}
+
+/** The origin recorded for this chat's project folder, when it is this folder. */
+export function projectOriginFor(sessionId: string | undefined, dir: string): ProjectOrigin | undefined {
+    if (!sessionId) return undefined;
+    try {
+        const { readJoeProjectForRun } = require('../../api/page-store');
+        const { previewKey } = require('../../modules/tools/preview-site');
+        const entry = readJoeProjectForRun(previewKey(sessionId), null);
+        if (!entry || path.resolve(String(entry.dir || '')) !== path.resolve(dir)) return undefined;
+        return entry.origin === 'imported' ? 'imported' : entry.origin === 'built' ? 'built' : undefined;
+    } catch { return undefined; }
 }
 
 function todosFor(plan: PlanState) {

@@ -1211,10 +1211,15 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
         }
     }
     const projectMarkers = await Promise.all(['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].map(f => exists(path.join(dir, f))));
+    //  A package in its own folder beside a tests/ folder («tripcsv/», «tests/»),
+    //  the layout most Python repositories have, is a Python project too: its
+    //  test files say so (the Codex exam, 2026-11-06).
+    const testFolders = await pythonTestFolders(dir);
     const pythonProject = projectMarkers.some(Boolean)
-        || await fs.promises.readdir(dir).then(names => names.some(name => /\.py$/iu.test(name)), () => false);
+        || await fs.promises.readdir(dir).then(names => names.some(name => /\.py$/iu.test(name)), () => false)
+        || testFolders.length > 0;
     if (pythonProject) {
-        const folders = await pythonTestFolders(dir);
+        const folders = testFolders;
         // The runner as a delivered script would run it; the interpreter is
         // the name this machine — the one running the check — ships.
         const runner = 'python tests (pytest where installed, else the standard-library runner)';

@@ -154,6 +154,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         processes: deps.processes,
         browser: () => (browser ??= deps.browser()),
         state, emit: req.emit, joe: req.joe,
+        ...(req.change ? { change: req.change } : {}),
     };
 
     const tools = new Map(deps.tools.map(t => [t.name, t] as const));

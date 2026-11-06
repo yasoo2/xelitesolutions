@@ -25,13 +25,13 @@ import { runEngine } from '../../../core/engine/loop';
 import { planUpdateTool } from '../../../core/engine/plan';
 import { finishTool } from '../../../core/engine/finish';
 import { engineModelChoiceFor, engineBrain } from '../../../core/engine/model';
-import { changeContextFor, projectFolderFor, recordRunHistory, registerProjectFolder, registeredRequestFor, uiEmitter } from '../../../core/engine/run';
+import { changeContextFor, projectFolderFor, projectOriginFor, recordRunHistory, registerProjectFolder, registeredRequestFor, uiEmitter } from '../../../core/engine/run';
 import { fileTools } from '../../../core/engine/tools/files';
 import { shellTools, createProcessRegistry } from '../../../core/engine/tools/shell';
 import { browserTools, createBrowserSession } from '../../../core/engine/tools/browser';
 import { webTools } from '../../../core/engine/tools/web';
 import { machineFacts } from './EngineShellTools';
-import { createVerifier, deliveryOutput, type DeliveryVerification } from '../../../core/engine/verify';
+import { createVerifier, deliveryOutput, measureProjectSource, type DeliveryVerification } from '../../../core/engine/verify';
 import { clearDeliveryProof, deliveryProof, writeDeliveryCertificate } from '../../../core/engine/certificate';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
 import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
@@ -95,6 +95,14 @@ export const AgentEngineTool: ToolDefinition = {
         //  A change is kept before it touches the project, and told what the
         //  project is: read before this run registers its own request.
         const change = folder.resumed ? changeContextFor(folder.dir, request, registeredRequestFor(context.sessionId)) : undefined;
+        //  The user's own repository: what was already wrong in its source is
+        //  measured now, before the change, so the delivery never charges the
+        //  change with it (verify.ts, repository mode).
+        if (change && projectOriginFor(context.sessionId, folder.dir) === 'imported') {
+            const before = await measureProjectSource(folder.dir, Math.min(deadlineAt, Date.now() + 120_000), () => cancellation.signal.aborted)
+                .catch(() => ({ problems: [] as string[] }));
+            change.repository = { baselineSourceProblems: before.problems };
+        }
         registerProjectFolder(context.sessionId, runId, folder.dir, request);
         clearDeliveryProof(folder.dir);
 

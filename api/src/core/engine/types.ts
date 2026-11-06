@@ -303,6 +303,8 @@ export interface ToolContext {
     emit(event: EngineEvent): void;
     /** Joe's own run context, for execution leases and the provider mesh. */
     joe: any;
+    /** Set when the run changes a project that already exists (EngineRequest.change). */
+    change?: ChangeContext;
 }
 
 export interface EngineRequest {
@@ -333,6 +335,18 @@ export interface ChangeContext {
     history: ProjectRun[];
     /** The version kept just before this change, which «تراجع» restores. */
     snapshot?: string;
+    /**
+     * Set when the folder is the user's own repository, brought into the chat
+     * (an import or an attached folder), not a project Joe built: the change
+     * is judged the way a change to a codebase is (verify.ts, repository mode).
+     */
+    repository?: RepositoryContext;
+}
+
+/** The user's own repository, as it was before this run touched it. */
+export interface RepositoryContext {
+    /** Source problems it already had: they are the repository's, not this change's. */
+    baselineSourceProblems: string[];
 }
 
 export type EngineStatus = 'delivered' | 'failed' | 'cancelled';

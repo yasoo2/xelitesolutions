@@ -80,6 +80,7 @@ const CHANGE_HISTORY_SHOWN = 5;
  * the whole app, the features it already had included.
  */
 function changeBrief(change: ChangeContext): string[] {
+    if (change.repository) return repositoryBrief(change);
     const shown = change.history.slice(-CHANGE_HISTORY_SHOWN);
     const lines = ['This request is a CHANGE to the project already in this folder, not a new project.'];
     if (shown.length) {
@@ -94,6 +95,31 @@ function changeBrief(change: ChangeContext): string[] {
         `- The project as it was before this change is kept${change.snapshot ? ` (version ${change.snapshot})` : ''}: the user can say «تراجع» to put it back. Never delete the project to start clean.`,
     );
     return lines;
+}
+
+/**
+ * THE USER'S OWN REPOSITORY: AN ISSUE, ON A CODEBASE JOE DID NOT WRITE.
+ *
+ * The Codex exam (2026-11-06). The folder is his repository: its layout, its
+ * conventions and its tests are his. The work is the issue, done the way a
+ * careful engineer does it on someone else's code — read first, reproduce,
+ * fix the cause with the smallest change, prove it with the repository's own
+ * tests and a new one for the issue. The delivery is judged by those tests
+ * (verify.ts, repository mode), not by a live page or a list of records.
+ */
+function repositoryBrief(change: ChangeContext): string[] {
+    return [
+        'This request is work on the USER\'S OWN REPOSITORY, already in this folder. It is not a project to build: do not scaffold, restructure or rewrite it.',
+        'How to work on it:',
+        '- Read before you change: file_list, the README, the manifest (package.json, pyproject/setup, requirements), the tests, then every file you will touch.',
+        '- Find how its tests run (npm test / node --test, python -m pytest, python -m unittest) and run them first, so you know what passes before you change anything.',
+        '- Reproduce the issue: a failing test or a command that shows it. Then fix the cause, not the symptom, with the smallest change that does it. Keep its style, names, structure and dependencies; add no dependency unless the issue needs one.',
+        '- Never weaken, delete or skip an existing test to make the suite pass. If the issue says the tests describe the intended behaviour, change the code, not the tests.',
+        '- Add a test for what the issue asks (a regression test for a bug, tests for a feature), in the repository\'s own test style and folder.',
+        '- Run the whole test suite again at the end: every test must pass. Problems the repository already had before you started are not yours to fix unless the issue asks; do not make them worse.',
+        '- In task_finish, say what the cause was, what you changed (files), and what the tests showed.',
+        `- The repository as it was before this change is kept${change.snapshot ? ` (version ${change.snapshot})` : ''}: the user can say «تراجع» to put it back.`,
+    ];
 }
 
 export function firstMessage(request: string, language: string, plan: PlanState, projectDir: string, replyLanguage?: string, change?: ChangeContext): string {
