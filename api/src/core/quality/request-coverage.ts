@@ -656,6 +656,71 @@ function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRout
     }
 }
 
+/**
+ * A SERVER THAT ROUTES BY THE PATH'S OWN SEGMENTS.
+ *
+ * The 500 exam, 2026-11-06, P070: a travel agency on `http.createServer`
+ * cut the path into its parts — `const parts = url.pathname.split('/')
+ * .filter(Boolean)`, `const coll = parts[1]` — and served every collection a
+ * list named: `if (!COLLECTIONS.includes(coll)) return 404`, with
+ * `COLLECTIONS = ['trips', 'travelers', 'bookings']`. Not one route was read,
+ * and the three records he named were refused as «not served» while the
+ * server answered every one of them.
+ *
+ * In a file that reads the request, a variable taken from a segment of the
+ * split path serves each literal name of the list it is checked against
+ * (`LIST.includes(v)`), and a segment compared to a literal (`parts[1] ===
+ * 'summary'`) serves that name — under the prefix the file tests the path
+ * for (`startsWith('/api/')`), when that prefix holds exactly the segments
+ * before it. Where the dispatch lands is the server's, so the route is never
+ * `known`: the live probe proves it served, never refutes it.
+ */
+const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
+const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
+const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
+
+function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    const esc = (s: string) => s.replace(/[$]/gu, '\\$');
+    const prefixes = Array.from(text.matchAll(PATH_PREFIX)).map(m => String(m[2]).split('/').filter(Boolean));
+    const add = (segmentIndex: number, name: string) => {
+        if (!SEGMENT_NAME.test(name)) return;
+        //  The segments before this one are the prefix the file tests the path for.
+        const before = prefixes.find(p => p.length === segmentIndex) || (segmentIndex === 0 ? [] : null);
+        if (!before) return;
+        const routePath = `/${[...before, name].join('/')}`;
+        if (routes.some(r => r.file === file && r.path === routePath)) return;
+        routes.push({ path: routePath, method: 'all', file, dynamic: false, known: false });
+    };
+    for (const split of text.matchAll(SPLIT_PATH)) {
+        const parts = split[1];
+        //  Without .filter(Boolean), the leading slash leaves an empty first part.
+        const shift = split[3] ? 0 : 1;
+        const segmentVars = new Map<string, number>();
+        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
+            segmentVars.set(m[1], Number(m[2]) - shift);
+        }
+        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) {
+            m[1].split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) segmentVars.set(v, i - shift); });
+        }
+        //  parts[1] === 'summary'
+        for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
+            add(Number(m[1]) - shift, m[3]);
+        }
+        //  LIST.includes(v), with LIST a literal list of names.
+        for (const [v, index] of segmentVars) {
+            if (index < 0) continue;
+            for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
+                const list = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(text);
+                if (!list) continue;
+                const names = Array.from(list[1].matchAll(/(['"])([^'"]+)\1/gu)).map(x => x[2]);
+                if (!names.length || names.some(n => !SEGMENT_NAME.test(n))) continue;
+                names.forEach(n => add(index, n));
+            }
+        }
+    }
+}
+
 function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], prefixes: Set<string>, lookup: (name: string) => RouteTable | undefined = () => undefined, wrappers: ReadonlySet<string> = new Set()): void {
     const receiverKind = jsReceivers(text, wrappers);
     // Routes registered in a loop over a table the source names (loop-routes.ts,
@@ -691,6 +756,7 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
     }
     harvestComparedPaths(text, file, routes);
     harvestRegistrarCalls(text, file, routes);
+    harvestSegmentDispatch(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.
     const pyApps = new Set(Array.from(text.matchAll(PY_APP)).map(m => m[1]));
