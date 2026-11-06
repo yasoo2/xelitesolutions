@@ -162,7 +162,13 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
         const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
         //  `light`: the check every page load makes lists the models (free);
         //  Connect makes one real call. The code is what the interface words.
-        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model, ...(light === true ? { light: true } : {}) });
+        //  A page that went away (reload, closed tab) ends its check: on
+        //  2026-11-06 abandoned checks kept a local generation going up to 90 s
+        //  each, queued one after another. `res` close, not `req` close: the
+        //  request's own close fires once its body is read.
+        const clientGone = new AbortController();
+        if (typeof (res as any).on === 'function') res.on('close', () => { if (!res.writableEnded) clientGone.abort(); });
+        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model, signal: clientGone.signal, ...(light === true ? { light: true } : {}) });
         if (!result.ok) {
             return res.status(200).json({ ok: false, ...(result.code ? { code: result.code } : {}), error: result.detail || 'empty_response', provider });
         }
