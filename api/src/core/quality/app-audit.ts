@@ -340,6 +340,51 @@ export const CONTROL_PASS_BUDGET_MS = 45_000;
  * `new URL(req.url, base)`, which throws on «//»; the server fell over and the
  * delivery was refused four times for a request no browser ever sends.
  */
+export interface AppLink { href: string; abs: string; download?: boolean }
+
+/**
+ * THE APP'S OTHER PAGES, HOWEVER IT ADDRESSES THEM.
+ *
+ * The walk visited «#/x» routes and «x.html» files only. A kindergarten admin
+ * (the 500 exam, P071, 2026-11-06) moves between /children, /parents and
+ * /activities — real addresses its server answers, the way every History-API
+ * router and every server-rendered app does. None was walked, the control
+ * probe counts only «#» links, and a dashboard with seven working links, a
+ * search form and an Add button was refused four times as «Not one button,
+ * link or form on the page». A same-origin page address is a route: walked,
+ * probed and judged like any other. Not a route: the page itself and home,
+ * the API, a file to download, and a sign-out (it would end the session the
+ * rest of the walk needs).
+ */
+export function inAppRoutes(links: AppLink[], pageUrl: string): string[] {
+    const out = new Set<string>();
+    let here: URL | null = null;
+    try { here = new URL(pageUrl); } catch { here = null; }
+    const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+    for (const link of links || []) {
+        const h = String(link?.href || '').trim();
+        if (/^#\/.+/.test(h)) { out.add(h); continue; }                                   // hash router
+        if (/^\/?[\w-]+\.html$/i.test(h)) {                                                // multi-file
+            if (!/^\/?index\.html$/i.test(h)) out.add(h.replace(/^\//, ''));                // home is walked first
+            continue;
+        }
+        if (!here || link?.download || !h || h.startsWith('#') || /^(?:mailto|tel|javascript|data|blob):/i.test(h)) continue;
+        let to: URL;
+        try { to = new URL(String(link.abs || h), here); } catch { continue; }
+        if (to.origin !== here.origin || !/^https?:$/.test(to.protocol)) continue;
+        const pathOnly = bare(to.pathname);
+        if (pathOnly === '/' || /^\/index\.html?$/i.test(pathOnly) || pathOnly === bare(here.pathname)) continue;
+        if (/^\/api(?:\/|$)/i.test(pathOnly)) continue;
+        if (/\.(?!html?$)[a-z0-9]{1,5}$/i.test(pathOnly)) continue;                         // a file, not a page
+        if (/(?:^|\/)(?:log-?out|sign-?out)(?:\/|$)/i.test(pathOnly)) continue;
+        out.add(`${pathOnly}${to.search}`);
+    }
+    // Do not silently turn a large application into a five-page smoke
+    // test. Keep the walk bounded, but preserve every route the product
+    // exposes up to the explicit browser budget.
+    return [...out].slice(0, 20);
+}
+
 export function routeUrl(base: string, route: string): string {
     const r = String(route || '');
     try {
@@ -1109,18 +1154,12 @@ export async function auditBuiltApp(
          * It uses the SAME probe now, so «this button does nothing» has one
          * definition in the system rather than two.
          */
-        const routes: string[] = await page.evaluate(() => {
-            const out = new Set<string>();
-            document.querySelectorAll('a[href]').forEach(a => {
-                const h = (a.getAttribute('href') || '').trim();
-                if (/^#\/.+/.test(h)) out.add(h);                       // hash router
-                else if (/^\/?[\w-]+\.html$/i.test(h)) out.add(h.replace(/^\//, ''));   // multi-file
-            });
-            // Do not silently turn a large application into a five-page smoke
-            // test. Keep the walk bounded, but preserve every route the product
-            // exposes up to the explicit browser budget.
-            return [...out].slice(0, 20);
-        }).catch(() => []);
+        const routes: string[] = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '',
+                download: a.hasAttribute('download'),
+            })),
+        ).then((links: AppLink[]) => inAppRoutes(links, String(page.url() || url))).catch(() => []);
 
         const allControls: any[] = [];
         const allForms: FormResult[] = [];
@@ -1394,12 +1433,21 @@ export async function auditBuiltApp(
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
+        //  A page address (inAppRoutes, «/children») whose page has no main
+        //  heading, or two, still opened: an admin sign-in page without an
+        //  <h1>, a blog post titled under the site's own <h1>. On these pages
+        //  that is a remark about the page, never a page that is broken; a
+        //  page that fails to open or answers an HTTP error is broken.
+        const headingRoutes: string[] = [];
         for (const r of routes) {
             if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; break; }
             if (!eyeIsOpen()) return eyeRequiredResult();
             const target = routeUrl(url, r);
+            const pageAddress = r.startsWith('/');
             try {
-                await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                const opened = await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                const status = Number(opened?.status?.() || 0);
+                if (pageAddress && status >= 400) { brokenRoutes.push(`${r} (HTTP ${status})`); continue; }
                 await page.waitForTimeout(500);
                 await reenter();
                 const d2 = await inspect();
@@ -1411,7 +1459,7 @@ export async function auditBuiltApp(
                 if (Array.isArray(d2.smallSel) && d2.smallSel.length) {
                     dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
                 }
-                if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
+                if (d2.h1s !== 1) (pageAddress ? headingRoutes : brokenRoutes).push(`${r} (h1=${d2.h1s})`);
                 const routeProbe = await probeControls(page, probeOpts(`desktop:${r}`, r));
                 mergeProbe(routeProbe, r);
                 if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
@@ -1819,7 +1867,9 @@ export async function auditBuiltApp(
          * control and no form at all, that IS the finding — grading contrast
          * on such a page is how an error page scored 41/100.
          */
-        if (!allControls.length && !allForms.length && !auditErrors.length) {
+        //  Links to the app's own pages are links (inAppRoutes): a page of them
+        //  is a way in, judged by the pages it opens, not an empty page.
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
@@ -1855,6 +1905,7 @@ export async function auditBuiltApp(
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً', detailEn: 'The dark-mode toggle does not actually change any colour' });
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}`, detailEn: `${heavyImages.length} heavy image(s) (>400KB): ${heavyImages[0]}` });
+        if (headingRoutes.length) findings.push({ id: 'route_headings', severity: 'medium', detail: `${headingRoutes.length} صفحة بلا عنوان رئيسي واحد: ${headingRoutes[0]}`, detailEn: `${headingRoutes.length} page(s) without exactly one main heading: ${headingRoutes[0]}` });
         if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}`, detailEn: `${brokenRoutes.length} page(s) did not open or have no main heading: ${brokenRoutes[0]}` });
         // Behaviour speaks in its own vocabulary; it is translated here rather
         // than re-judged, so the two audits never disagree about a dead button.
