@@ -806,19 +806,35 @@ export async function measureProjectSource(root: string, deadlineAt: number, can
  * (judgeSourceOf), so a project too big to show whole is shown by whole files.
  * Returns what was left out, by name.
  */
-async function judgeSource(root: string): Promise<{ text: string; leftOut: string[] }> {
+/** Source code, in every language a project may be written in. */
+const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu;
+/**
+ * The project's own documentation and configuration. C12 of the Codex exam
+ * (2026-11-06): «rename timeout to timeout_seconds in the code, the tests
+ * and the README». The judge was shown the code only, ruled «R1 unprovable:
+ * README.md itself is not shown», and Joe refused his own correct delivery
+ * for 22 minutes; every hidden test passed. A README line, a renamed key in a
+ * config file, a version in package.json are requirements too. Small files
+ * only (a big JSON is data, not configuration), and never a lockfile.
+ */
+const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|json|ya?ml|toml|ini|cfg)$/iu;
+const LOCKFILE = /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|pipfile\.lock|composer\.lock|cargo\.lock)$/iu;
+const JUDGE_DOC_BYTES = 64 * 1024;
+
+export async function judgeSource(root: string): Promise<{ text: string; leftOut: string[] }> {
     //  A requirement of a Python, Go or Ruby project would be judged on no
     //  source at all — every verdict «unprovable», the delivery blocked
     //  forever — so its own files are read too, by the same walker.
     const files = await listProjectFiles(root, {
         skipDirectory: name => name === 'dist' || name.startsWith('.'),
-        keepFile: (_relative, name) => /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu.test(name),
+        keepFile: (_relative, name) => JUDGE_CODE_FILE.test(name) || (JUDGE_DOC_OR_CONFIG_FILE.test(name) && !LOCKFILE.test(name)),
     });
     const read: Array<{ path: string; text: string }> = [];
     const leftOut: string[] = [];
     for (const rel of files) {
         try {
             const stat = await fs.promises.stat(path.join(root, rel));
+            if (!JUDGE_CODE_FILE.test(rel) && stat.size > JUDGE_DOC_BYTES) continue;
             if (stat.size > JUDGE_FILE_BYTES) { leftOut.push(rel); continue; }
             read.push({ path: rel.split(path.sep).join('/'), text: await fs.promises.readFile(path.join(root, rel), 'utf8') });
         } catch { /* unreadable is not evidence */ }
