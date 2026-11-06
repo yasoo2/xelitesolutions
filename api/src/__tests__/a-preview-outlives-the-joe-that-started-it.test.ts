@@ -139,7 +139,7 @@ describe('the previews of the previous start', () => {
     it('Joe adopts them as it starts, right after loading the session records', () => {
         const app = fs.readFileSync(path.join(__dirname, '..', 'api', 'app.ts'), 'utf-8');
         const loaded = app.indexOf('try { loadJoeProjects(); }');
-        const adopted = app.indexOf('adoptRecordedPreviews()');
+        const adopted = app.indexOf('adoptPreviewsAtStart()');
         expect(loaded).toBeGreaterThan(0);
         expect(adopted).toBeGreaterThan(loaded);
     });
