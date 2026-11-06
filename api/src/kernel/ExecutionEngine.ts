@@ -7,6 +7,18 @@ import { engineeringExecution, recheckEngineeringExecutionGateway } from '../mod
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
+import { dropReaped, forgetChild, isOwnRecord, parseProcessListing, parsePsElapsed, planReap, processLedgerFile, readLedger, recordChild } from './process-ledger';
+import type { LiveProcess } from './process-ledger';
+
+/**
+ * A long-lived child goes into the ledger while it lives (process-ledger.ts),
+ * so a Joe that boots after this one died can end what it left running.
+ */
+function keepInLedger(child: any, program: string): void {
+    if (!child?.pid) return;
+    const record = recordChild(child.pid, program, /(^|[\\/])setsid$/u.test(String(program || '')));
+    if (record) child.once('close', () => forgetChild(record));
+}
 
 /** Stop a timed-out shell and its descendants before the next repair starts. */
 function terminateProcessTree(child: any): Promise<void> {
@@ -822,6 +834,7 @@ export class ExecutionEngine {
                 shell: false,
                 windowsHide: (rest as any).windowsHide !== false,
             } as any);
+        keepInLedger(child, cmd);
         let settled = false;
         let stopping = false;
         let cancelRequested = false;
@@ -922,6 +935,58 @@ export class ExecutionEngine {
             child.on('error', onError);
         });
         return { done, kill: () => { void terminateProcessTree(child); }, pid: child.pid };
+    }
+
+    /**
+     * END WHAT A JOE THAT DIED LEFT RUNNING (process-ledger.ts).
+     *
+     * Called once, after the server is listening. Nothing is listed when the
+     * ledger holds no record of another Joe: the listing costs seconds on a
+     * loaded machine (measured 12–30 s), and a boot owes it only when there is
+     * something to look for. Every step is best effort; a failure leaves the
+     * records for the next boot.
+     */
+    async reapPreviousLife(): Promise<{ records: number; reaped: number; ended: number[]; error?: string }> {
+        const records = readLedger();
+        const others = records.filter(r => !isOwnRecord(r));
+        if (!processLedgerFile() || !others.length) return { records: records.length, reaped: 0, ended: [] };
+        let live: LiveProcess[];
+        try {
+            live = await this.listProcessesForReap();
+        } catch (e: any) {
+            return { records: records.length, reaped: 0, ended: [], error: String(e?.message || e) };
+        }
+        if (!live.length) return { records: records.length, reaped: 0, ended: [], error: 'the process list came back empty' };
+        const plan = planReap(records, live);
+        const ended: number[] = [];
+        if (process.platform === 'win32') {
+            for (const pid of plan.trees) {
+                const r: any = await this.runArgvInternal('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 30_000 });
+                if (r?.exitCode === 0) ended.push(pid);
+            }
+        } else {
+            for (const pgid of plan.groups) {
+                try { process.kill(-pgid, 'SIGKILL'); ended.push(pgid); } catch { /* the group is gone */ }
+            }
+            for (const pid of plan.trees) {
+                try { process.kill(pid, 'SIGKILL'); ended.push(pid); } catch { /* already gone */ }
+            }
+        }
+        dropReaped(plan.reaped);
+        return { records: records.length, reaped: plan.reaped.length, ended };
+    }
+
+    /** Every process on the machine as `pid ppid startedMs`. */
+    private async listProcessesForReap(): Promise<LiveProcess[]> {
+        if (process.platform === 'win32') {
+            const script = "Get-CimInstance Win32_Process | ForEach-Object { '' + $_.ProcessId + ' ' + $_.ParentProcessId + ' ' + ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() }";
+            const r: any = await this.runArgvInternal('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { timeout: 90_000 });
+            if (r?.exitCode !== 0) throw new Error(`the process listing failed (exit ${r?.exitCode}): ${String(r?.error || '').slice(0, 200)}`);
+            return parseProcessListing(String(r.output || ''));
+        }
+        const r: any = await this.runArgvInternal('ps', ['-eo', 'pid=,ppid=,etimes='], { timeout: 30_000 });
+        if (r?.exitCode !== 0) throw new Error(`ps failed (exit ${r?.exitCode}): ${String(r?.error || '').slice(0, 200)}`);
+        return parsePsElapsed(String(r.output || ''));
     }
 
     /**
@@ -1122,6 +1187,7 @@ export class ExecutionEngine {
                 };
                 child.once('error', (err) => finish({ ok: false, error: err.message, exitCode: null, pid: child.pid }));
                 if (options.detached) child.unref();
+                else keepInLedger(child, file);
                 setTimeout(() => finish({
                     ok: child.exitCode === null || child.exitCode === 0,
                     pid: child.pid,
@@ -1174,6 +1240,7 @@ export class ExecutionEngine {
                 //  Only a DETACHED child is disowned. A background child is
                 //  still ours: that is the whole difference between the two.
                 if (options.detached) child.unref();
+                else keepInLedger(child, cmd);
                 setTimeout(() => {
                     resolve({
                         ok: child.exitCode === null || child.exitCode === 0,
