@@ -512,6 +512,120 @@ describe('the logs panel follows the newest line past its 220-line window', () =
     });
 });
 
+describe('the chat\'s device work survives a restart of Joe', () => {
+    test('written to its file and read back by a fresh process', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'joe-dw-')), 'data', 'device-work.json');
+        const prev = process.env.JOE_DEVICE_WORK_FILE;
+        process.env.JOE_DEVICE_WORK_FILE = file;
+        try {
+            const dw = require('../core/engine/device-work');
+            dw.reloadDeviceWork();
+            dw.setWorking('chat-restart', { target: 'phone', at: Date.now(), request: 'اغلق الكشاف وشغل الموسيقى' });
+            dw.noteOperateResult('chat-restart', { target: 'phone', request: 'اغلق الكشاف وشغل الموسيقى', summary: 'أُغلق الكشاف وبدأت الموسيقى.', ok: true });
+            expect(JSON.parse(fs.readFileSync(file, 'utf8')).working['chat-restart'].target).toBe('phone');
+            //  A restart: the process forgets, the file remembers.
+            dw.reloadDeviceWork();
+            const op = require('../core/engine/operate');
+            expect(op.recentOperate('chat-restart')).toEqual({ target: 'phone', request: 'اغلق الكشاف وشغل الموسيقى' });
+            expect(op.operateFollowUp('chat-restart', 'ارسل ايميل الى shoroq@example.com')).toBe('phone');
+            expect(dw.deviceWorkFacts('chat-restart')).toContain('أُغلق الكشاف وبدأت الموسيقى.');
+            op.forgetOperate('chat-restart');
+            dw.reloadDeviceWork();
+            expect(op.recentOperate('chat-restart')).toBeNull();
+        } finally {
+            if (prev === undefined) delete process.env.JOE_DEVICE_WORK_FILE; else process.env.JOE_DEVICE_WORK_FILE = prev;
+            require('../core/engine/device-work').reloadDeviceWork();
+        }
+    });
+
+    test('a plan note is said to the model, not shown as a red error', async () => {
+        const { planUpdateTool } = require('../core/engine/plan');
+        const ctx: any = { state: { plan: { steps: [], requirements: [], revision: 0 } }, emit: () => { } };
+        const r = await planUpdateTool.run({ requirements: [{ id: 'R1', status: 'open' }] }, ctx);
+        expect(r.ok).toBe(true);
+        expect(r.output).toContain('Note: There is no requirement R1');
+    });
+});
+
+describe('the preview shows the phone or the computer live while Joe works it', () => {
+    test('one capture at a time, a fresh frame shared, and «no phone» said plainly', async () => {
+        jest.resetModules();
+        const calls: string[] = [];
+        let phones = 'List of devices attached\nSER1 device usb:1 product:KI7-TR model:TECNO_KI7 transport_id:2\n';
+        jest.doMock('../kernel/ExecutionGateway', () => ({
+            ExecutionGateway: {
+                execute: async (_exe: string, args: string[]) => {
+                    const key = (args[0] === '-s' ? args.slice(2) : args).join(' ');
+                    calls.push(key);
+                    if (key.startsWith('pull ')) {
+                        const fs = require('fs');
+                        //  A tiny PNG: the signature, then an IHDR of 1080×2460.
+                        const png = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
+                        png.writeUInt32BE(1080, 16); png.writeUInt32BE(2460, 20);
+                        fs.writeFileSync(args[args.length - 1], png);
+                    }
+                    const out = key.startsWith('devices') ? phones : key === 'shell dumpsys power' ? POWER_AWAKE : '';
+                    return { success: true, data: { exitCode: 0, output: out, error: '' } };
+                },
+            },
+        }));
+        const prev = process.env.JOE_ADB;
+        process.env.JOE_ADB = __filename;
+        try {
+            const { phoneScreenNow } = require('../modules/tools/definitions/EngineAndroidTool');
+            const [a, b] = await Promise.all([phoneScreenNow(), phoneScreenNow()]);
+            expect(a.ok && b.ok).toBe(true);
+            expect(a).toBe(b);
+            expect(calls.filter(c => c.startsWith('shell screencap'))).toHaveLength(1);
+            expect(a.serial).toBe('SER1');
+            expect(a.model).toBe('TECNO KI7');
+            expect(a.awake).toBe(true);
+            const again = await phoneScreenNow();
+            expect(again).toBe(a);
+            phones = 'List of devices attached\n';
+            await new Promise(r => setTimeout(r, 750));
+            const none = await phoneScreenNow();
+            expect(none).toEqual({ ok: false, code: 'no_phone', error: 'No phone is connected and allowed.' });
+        } finally {
+            if (prev === undefined) delete process.env.JOE_ADB; else process.env.JOE_ADB = prev;
+            jest.dontMock('../kernel/ExecutionGateway');
+        }
+    });
+
+    test('the routes are signed in and never cached, and the frames are not counted against the request limit', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const routes = fs.readFileSync(path.join(__dirname, '..', 'api', 'routes', 'devices.ts'), 'utf8');
+        expect(routes).toMatch(/router\.get\('\/phone\/screen', authenticate as any/u);
+        expect(routes).toMatch(/router\.get\('\/computer\/screen', authenticate as any/u);
+        expect((routes.match(/'Cache-Control': 'no-store'/gu) || []).length).toBe(2);
+        const { rateLimitSkips } = require('../api/app');
+        const shared = { NODE_ENV: 'production' } as any;
+        expect(rateLimitSkips({ ip: '203.0.113.9', originalUrl: '/api/devices/phone/screen' }, shared)).toBe(true);
+        expect(rateLimitSkips({ ip: '203.0.113.9', originalUrl: '/api/devices/computer/screen?x=1' }, shared)).toBe(true);
+        expect(rateLimitSkips({ ip: '203.0.113.9', originalUrl: '/api/devices/pair' }, shared)).toBe(false);
+    });
+
+    test('the page: no tab of its own; the preview takes the device when an android_ or device_ step starts, and a finished page takes it back', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const web = (...p: string[]) => fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', ...p), 'utf8');
+        const panel = web('components', 'WorkspacePanel.tsx');
+        expect(panel).not.toMatch(/id: 'device'/u);
+        expect(panel).toContain('<LiveDevicePanel source={liveSource} visible={activeTab === \'preview\' || splitActive} onClose={onLiveClose} />');
+        const page = web('pages', 'Joe.tsx');
+        expect(page).toContain("setLiveSource(live);\n                    setWorkspaceTab('preview');".replace(/\n/g, page.includes('\r\n') ? '\r\n' : '\n'));
+        expect(page).toMatch(/android_\(\?!devices\|pair\|connect\|apps\)/u);
+        expect(page).toMatch(/setLiveSource\(null\);\s+setWorkspaceTab\('preview'\);/u);
+        const live = web('components', 'LiveDevicePanel.tsx');
+        expect(live).toContain('`${API_URL}/devices/${source}/screen`');
+        expect(live).toContain("if (!visible) return;");
+    });
+});
+
 describe('the plan and the log', () => {
     test('a step called blocked, failed or completed is kept, not refused', () => {
         const { parsePlanArgs } = require('../core/engine/plan');

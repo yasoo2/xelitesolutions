@@ -94,6 +94,9 @@ const LOOPBACK = /^(?:127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/;
 export function rateLimitSkips(req: { ip?: string; originalUrl?: string; url?: string; socket?: { remoteAddress?: string } }, env: NodeJS.ProcessEnv = process.env): boolean {
   const path = String(req.originalUrl || req.url || '').split('?')[0];
   if (/^\/api\/health\/?$/.test(path)) return true;
+  //  The live phone view asks for a frame again and again; it is signed in and
+  //  throttles itself (one capture at a time, a frame shared for 700 ms).
+  if (/^\/api\/devices\/(?:phone|computer)\/screen\/?$/.test(path)) return true;
   const ip = String(req.ip || req.socket?.remoteAddress || '');
   return joeRunsWithoutAccounts(env) && LOOPBACK.test(ip);
 }

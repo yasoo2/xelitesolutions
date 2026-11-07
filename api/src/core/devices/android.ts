@@ -290,7 +290,13 @@ export class AndroidPhone {
             const on = await this.run(['shell', 'ime', 'enable', ADB_KEYBOARD]);
             if (on.code !== 0) return { ok: false, error: `the ADB Keyboard is installed but could not be turned on: ${(on.stderr || on.stdout).trim()}` };
         }
-        const current = (await this.run(['shell', 'settings', 'get', 'secure', 'default_input_method'])).stdout.trim();
+        let current = (await this.run(['shell', 'settings', 'get', 'secure', 'default_input_method'])).stdout.trim();
+        if (current === ADB_KEYBOARD) {
+            //  Left on the ADB Keyboard by a run cut in the middle of typing (a restart):
+            //  the owner's keyboard is the first other enabled one, and it comes back after.
+            const enabled = (await this.run(['shell', 'ime', 'list', '-s'])).stdout.split(/\r?\n/u).map(l => l.trim()).filter(Boolean);
+            current = enabled.find(k => k !== ADB_KEYBOARD && !/voice|tts|autofill/iu.test(k)) || '';
+        }
         if (current !== ADB_KEYBOARD) {
             await this.run(['shell', 'ime', 'set', ADB_KEYBOARD]);
             //  The keyboard binds to the field it is set on before it can type there.

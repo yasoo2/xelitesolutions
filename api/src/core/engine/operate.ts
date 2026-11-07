@@ -18,6 +18,7 @@ import { languageName } from './prompt';
 import type { CheckResult, EngineResult, EngineTool, ToolContext, ToolOutcome, VerificationReport } from './types';
 import type { FinishArgs, Verifier } from './finish';
 import { deviceRecordFor } from './tools/devices';
+import { clearWorking, getWorking, setWorking } from './device-work';
 
 /* ───────────────────────── which requests are operate ───────────────────────── */
 
@@ -136,33 +137,30 @@ export function isPhoneRequest(text: string): boolean {
  * gave advice. Once a chat has worked a device, a short command that follows
  * it («افتح واتساب», «اطفيه», «ارجع للرئيسية», "now open YouTube") goes on
  * that device, until the chat asks for something else. Kept for 30 minutes
- * per chat, in this process (a restart forgets it: the next message then
- * names the device again).
+ * per chat, on disk (device-work.ts): a restart of Joe forgot it once and
+ * sent the owner's email to the computer (2026-11-08).
  */
 export type OperateTarget = 'phone' | 'computer';
-const WORKING = new Map<string, { target: OperateTarget; at: number; request: string }>();
 const FOLLOW_UP_MS = 30 * 60_000;
 const LEAD = '^(?:\\s*(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء|يلا)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو|and|also|now|then|ok|okay|please|pls|can\\s+you|could\\s+you)[\\s،,]+)*\\s*و?';
 //  «حاول مره اخرى», «أعدها», «كرّر» and "try again" are follow-ups too (the owner, 2026-11-08).
 const FOLLOW_UP = new RegExp(`${LEAD}(?:(?:${ACT_AR_STEM}|اسحب|كبّ?ر|صغّ?ر|كمّ?ل|حاول|[أا]عد|كرّ?ر)${AR_TAIL}${AR_END}|(?:${ACT_EN}|scroll|swipe|stop|go\\s+back|wake|try|retry|again|redo)\\b)`, 'iu');
 
 export function noteOperate(sessionId: unknown, request: string, target?: OperateTarget): void {
-    const id = String(sessionId || '');
-    if (!id) return;
-    WORKING.set(id, { target: target || (isPhoneRequest(request) ? 'phone' : 'computer'), at: Date.now(), request: String(request || '').slice(0, 300) });
+    setWorking(sessionId, { target: target || (isPhoneRequest(request) ? 'phone' : 'computer'), at: Date.now(), request });
 }
 
-export function forgetOperate(sessionId: unknown): void { WORKING.delete(String(sessionId || '')); }
+export function forgetOperate(sessionId: unknown): void { clearWorking(sessionId); }
 
 /** The device this chat worked last, and what was asked, within the follow-up window. */
 export function recentOperate(sessionId: unknown, now = Date.now()): { target: OperateTarget; request: string } | null {
-    const w = WORKING.get(String(sessionId || ''));
+    const w = getWorking(sessionId);
     return w && now - w.at <= FOLLOW_UP_MS ? { target: w.target, request: w.request } : null;
 }
 
 /** The device a follow-up command in this chat acts on, or null. */
 export function operateFollowUp(sessionId: unknown, text: string, now = Date.now()): OperateTarget | null {
-    const w = WORKING.get(String(sessionId || ''));
+    const w = getWorking(sessionId);
     if (!w || now - w.at > FOLLOW_UP_MS) return null;
     const t = String(text || '').trim();
     if (!t || t.length > 160 || BUILD_VERB.test(t) || ABOUT_A_SITE.test(t)) return null;

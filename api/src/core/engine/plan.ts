@@ -192,9 +192,12 @@ export const planUpdateTool: EngineTool<PlanArgs> = {
         const problems = applyPlanUpdate(ctx.state.plan, args);
         ctx.emit({ type: 'plan', plan: ctx.state.plan });
         const text = formatPlan(ctx.state.plan) || '(the plan is empty)';
+        //  The plan WAS updated: a note about an unknown id or a second step in
+        //  progress is said to the model, not shown to the owner as a red
+        //  «ERROR» (his phone runs, 2026-11-08: «There is no requirement R1»).
         return {
-            ok: problems.length === 0,
-            output: problems.length ? `${problems.join('\n')}\n\n${text}` : text,
+            ok: true,
+            output: problems.length ? `Note: ${problems.join('\n')}\n\n${text}` : text,
             facts: { plan: ctx.state.plan },
         };
     },

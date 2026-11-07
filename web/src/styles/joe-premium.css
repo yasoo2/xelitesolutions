@@ -4248,3 +4248,59 @@ body:not(.rtl) .joe-user-info {
 .shot-export-off { margin-inline-start: auto; opacity: 0.6; }
 [data-theme="light"] .shot-card { background: #ffffff; border-color: rgba(15, 23, 42, 0.12); }
 [data-theme="light"] .shot-meta { border-top-color: rgba(15, 23, 42, 0.08); }
+
+/* ── The phone, live, in the workspace (LiveDevicePanel, 2026-11-08) ── */
+.joe-live-device { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.joe-live-device-bar {
+  display: flex; align-items: center; gap: 10px; padding: 8px 12px;
+  border-bottom: 1px solid var(--joe-border); color: var(--joe-text-secondary); font-size: 12.5px;
+}
+.joe-live-device-title { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; color: var(--joe-text-primary); }
+.joe-live-badge {
+  margin-inline-start: auto; display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 600;
+  color: var(--joe-gold-primary); background: rgba(52, 196, 139, 0.12); border: 1px solid rgba(52, 196, 139, 0.35);
+}
+.joe-live-badge.is-stale { color: var(--joe-text-muted); background: transparent; border-color: var(--joe-border); }
+.joe-live-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; animation: joe-live-pulse 1.4s ease-in-out infinite; }
+.joe-live-badge.is-stale .joe-live-dot { animation: none; opacity: 0.6; }
+@keyframes joe-live-pulse { 0%, 100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.35; transform: scale(0.8); } }
+.joe-live-retry {
+  margin-inline-start: auto; display: inline-flex; align-items: center; gap: 5px; cursor: pointer;
+  padding: 4px 10px; border-radius: 8px; font-size: 12px; color: var(--joe-text-secondary);
+  background: transparent; border: 1px solid var(--joe-border);
+}
+.joe-live-retry:hover { color: var(--joe-gold-primary); border-color: var(--joe-gold-primary); }
+.joe-live-retry:focus-visible { outline: 2px solid var(--joe-gold-primary); outline-offset: 2px; }
+.joe-live-device-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 14px; }
+.joe-phone-frame {
+  position: relative; height: 100%; max-height: 100%; max-width: 100%; aspect-ratio: 9 / 20;
+  padding: 10px; border-radius: 34px; background: #0b0f0d;
+  border: 1px solid var(--joe-border-strong, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), inset 0 0 0 2px rgba(255, 255, 255, 0.04);
+  display: flex; align-items: center; justify-content: center;
+}
+.joe-phone-screen { display: block; width: 100%; height: 100%; object-fit: contain; border-radius: 24px; background: #000; user-select: none; }
+.joe-phone-asleep {
+  position: absolute; inset: 10px; border-radius: 24px; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 16px; font-size: 13px; color: rgba(255, 255, 255, 0.78); background: rgba(0, 0, 0, 0.55);
+}
+.joe-live-empty { display: flex; flex-direction: column; align-items: center; gap: 12px; max-width: 320px; text-align: center; color: var(--joe-text-muted); font-size: 13px; line-height: 1.7; }
+.joe-live-empty svg { opacity: 0.6; }
+[data-theme="light"] .joe-phone-frame { background: #1a1f1c; }
+@media (prefers-reduced-motion: reduce) { .joe-live-dot { animation: none; } }
+.joe-live-close {
+  display: inline-flex; align-items: center; justify-content: center; width: 26px; height: 26px; cursor: pointer;
+  border-radius: 8px; color: var(--joe-text-muted); background: transparent; border: 1px solid transparent;
+}
+.joe-live-badge + .joe-live-close, .joe-live-retry + .joe-live-close { margin-inline-start: 4px; }
+.joe-live-device-bar > .joe-live-close:only-of-type { margin-inline-start: auto; }
+.joe-live-close:hover { color: var(--joe-text-primary); border-color: var(--joe-border); }
+.joe-live-close:focus-visible { outline: 2px solid var(--joe-gold-primary); outline-offset: 2px; }
+.joe-screen-frame {
+  max-width: 100%; max-height: 100%; padding: 8px 8px 14px; border-radius: 14px; background: #0b0f0d;
+  border: 1px solid var(--joe-border-strong, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center;
+}
+.joe-computer-screen { display: block; max-width: 100%; max-height: calc(100% - 2px); object-fit: contain; border-radius: 6px; background: #000; user-select: none; }
+[data-theme="light"] .joe-screen-frame { background: #1a1f1c; }

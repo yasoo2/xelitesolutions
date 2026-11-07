@@ -57,6 +57,9 @@ interface JoeIDELayoutProps {
     // Workspace
     workspaceTab?: WorkspaceTab;
     onWorkspaceTabChange?: (tab: WorkspaceTab) => void;
+    /** What Joe works on now, live in the Preview (the phone or this computer). */
+    liveSource?: 'phone' | 'computer' | null;
+    onLiveClose?: () => void;
     onDeploymentsClick?: () => void;
     onSystemClick?: () => void;
     browserSessionId?: string;
@@ -125,6 +128,8 @@ export default function JoeIDELayout({
     // Workspace
     workspaceTab,
     onWorkspaceTabChange,
+    liveSource,
+    onLiveClose,
     onDeploymentsClick,
     onSystemClick,
     browserSessionId,
@@ -936,6 +941,8 @@ export default function JoeIDELayout({
                             problems={problems}
                             mobileCollapsed={isWorkspaceCollapsed}
                             onMobileToggle={toggleWorkspace}
+                            liveSource={liveSource}
+                            onLiveClose={onLiveClose}
                         >
                             {workspaceChildren}
                         </WorkspacePanel>

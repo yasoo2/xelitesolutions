@@ -5,6 +5,8 @@
  *   GET  /api/devices/link.ps1?code=  the link script, served only while that code is waiting
  *   GET  /api/devices                 this computer and the linked ones
  *   POST /api/devices/:id/disconnect  ends a link from here
+ *   GET  /api/devices/phone/screen    the phone's screen now (a PNG), for the live preview
+ *   GET  /api/devices/computer/screen this computer's screen now (a PNG), for the live preview
  */
 import { Router, Request, Response } from 'express';
 import os from 'os';
@@ -56,6 +58,49 @@ router.get('/', authenticate as any, (req: Request, res: Response) => {
         here: { name: os.hostname(), os: `${os.type()} ${os.release()}`, desktop: process.platform === 'win32' },
         linked: deviceLinks.list(uid(req)),
     });
+});
+
+/**
+ * GET /api/devices/phone/screen — the owner's phone screen now, a PNG, for the
+ * live Device view in Joe's page (EngineAndroidTool phoneScreenNow). Never
+ * cached; the phone, its model and whether its screen is on ride in headers.
+ */
+router.get('/phone/screen', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { phoneScreenNow } = require('../../modules/tools/definitions/EngineAndroidTool');
+        const frame = await phoneScreenNow(String(req.query.serial || '').trim() || undefined);
+        if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
+        return res.status(200).set({
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-store',
+            'X-Joe-Phone': encodeURIComponent(frame.serial),
+            'X-Joe-Phone-Model': encodeURIComponent(frame.model),
+            'X-Joe-Screen-Awake': frame.awake === null ? 'unknown' : String(frame.awake),
+            'X-Joe-Frame-At': String(frame.at),
+            'Access-Control-Expose-Headers': 'X-Joe-Phone, X-Joe-Phone-Model, X-Joe-Screen-Awake, X-Joe-Frame-At',
+        }).send(frame.png);
+    } catch (e: any) {
+        return res.status(500).set('Cache-Control', 'no-store').json({ ok: false, code: 'failed', error: String(e?.message || e) });
+    }
+});
+
+/** GET /api/devices/computer/screen — this computer's whole screen now (1280 wide), for the live preview. */
+router.get('/computer/screen', authenticate as any, async (_req: Request, res: Response) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { computerScreenNow } = require('../../modules/tools/definitions/EngineDeviceTools');
+        const frame = await computerScreenNow();
+        if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
+        return res.status(200).set({
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-store',
+            'X-Joe-Frame-At': String(frame.at),
+            'Access-Control-Expose-Headers': 'X-Joe-Frame-At',
+        }).send(frame.png);
+    } catch (e: any) {
+        return res.status(500).set('Cache-Control', 'no-store').json({ ok: false, code: 'failed', error: String(e?.message || e) });
+    }
 });
 
 router.post('/:id/disconnect', authenticate as any, (req: Request, res: Response) => {
