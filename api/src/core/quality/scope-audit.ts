@@ -477,7 +477,13 @@ export function hasSortingEvidence(source: string, ctx?: ScopeEvidenceContext): 
 export const CAPABILITIES: Capability[] = [
     {
         id: 'catalog', ar: 'كتالوج المنتجات', en: 'product catalogue',
-        ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|متجر/i,
+        //  A store built is a catalogue; a store NAMED is a kind of business.
+        //  The ladder, 2026-11-07, L010: «صفحة ترحيب واحدة لـمتجر عطور فيها الاسم
+        //  وساعات العمل وزر اتصال» was refused for «missing: product catalogue»
+        //  after 17 minutes. Bare «متجر» asked a catalogue of 14 of the two
+        //  exams' 1000 requests that never wanted one (a CLI, a game, a team
+        //  chat, a search engine… «لـمتجر عطور»), and of none that did.
+        ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|(?:ابن[يِ]?|أنشئ|انشئ|اعمل|اصنع|صمّ?م|طوّ?ر)\s+(?:لي\s+)?متجر|متجر\s*(?:إلكتروني|الكتروني|أونلاين|اونلاين|على\s+الإنترنت)|(?:يعرض|تعرض|عرض|قائمة)\s+(?:ال)?منتجات/iu,
         // A catalogue is products rendered as a list, whatever the component
         // is called. Measured on 2026-11-01: an Arabic store's working
         // `ProductCatalogue` (cards, prices, search, filters, all seen in the
