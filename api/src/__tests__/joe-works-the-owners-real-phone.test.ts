@@ -83,6 +83,32 @@ describe('the phone says whether its screen is on and whether it is locked', () 
         expect(adb.calls).toHaveLength(4);
     });
 
+    test('the ADB Keyboard installed but not turned on: Joe turns it on, types Arabic, and the owner\'s keyboard comes back', async () => {
+        //  What the owner's phone listed right after the install, 2026-11-08.
+        const LATIN = 'com.google.android.inputmethod.latin/com.android.inputmethod.latin.LatinIME';
+        const adb = fakeAdb({
+            'shell ime list -s': { stdout: `com.facemoji.lite.transsion/com.baidu.simeji.SimejiIME\n${LATIN}\n` },
+            'shell ime list -a -s': { stdout: `com.facemoji.lite.transsion/com.baidu.simeji.SimejiIME\ncom.android.adbkeyboard/.AdbIME\n${LATIN}\n` },
+            'shell ime enable': { stdout: 'Input method com.android.adbkeyboard/.AdbIME: now enabled for user #0\n' },
+            'shell settings get secure default_input_method': { stdout: `${LATIN}\n` },
+            'shell am broadcast': { stdout: 'Broadcasting: Intent { act=ADB_INPUT_B64 flg=0x400000 }\nBroadcast completed: result=0\n' },
+        });
+        const waits: number[] = [];
+        const phone = new AndroidPhone(adb.run, 'SER1', async ms => { waits.push(ms); });
+        expect(await phone.type('مرحبا من جو')).toEqual({ ok: true });
+        const sent = adb.calls.map(c => c.slice(2).join(' '));
+        expect(sent).toEqual([
+            'shell ime list -s',
+            'shell ime list -a -s',
+            'shell ime enable com.android.adbkeyboard/.AdbIME',
+            'shell settings get secure default_input_method',
+            'shell ime set com.android.adbkeyboard/.AdbIME',
+            `shell am broadcast -a ADB_INPUT_B64 --es msg ${Buffer.from('مرحبا من جو', 'utf8').toString('base64')}`,
+            `shell ime set ${LATIN}`,
+        ]);
+        expect(waits).toEqual([500, 300]);
+    });
+
     test('a build without «policy» keyguard lines falls back to the full window dump', async () => {
         const adb = fakeAdb({
             'shell dumpsys power': { stdout: POWER_AWAKE },
