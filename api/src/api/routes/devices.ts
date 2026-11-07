@@ -13,6 +13,7 @@ import os from 'os';
 import { authenticate } from '../middleware/auth';
 import { config } from '../../shared/config';
 import { deviceLinks, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 
@@ -69,7 +70,10 @@ router.get('/phone/screen', authenticate as any, async (req: Request, res: Respo
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { phoneScreenNow } = require('../../modules/tools/definitions/EngineAndroidTool');
-        const frame = await phoneScreenNow(String(req.query.serial || '').trim() || undefined);
+        //  A fixed capture (adb devices, screencap, pull), no command from the page:
+        //  run as the owner's own system task, the way git.ts runs git (the firewall).
+        const serial = String(req.query.serial || '').trim() || undefined;
+        const frame = await executionFirewall.runAsSystem(() => phoneScreenNow(serial), { userId: uid(req) });
         if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
         return res.status(200).set({
             'Content-Type': 'image/png',
@@ -86,11 +90,11 @@ router.get('/phone/screen', authenticate as any, async (req: Request, res: Respo
 });
 
 /** GET /api/devices/computer/screen — this computer's whole screen now (1280 wide), for the live preview. */
-router.get('/computer/screen', authenticate as any, async (_req: Request, res: Response) => {
+router.get('/computer/screen', authenticate as any, async (req: Request, res: Response) => {
     try {
         // eslint-disable-next-line @typescript-eslint/no-var-requires
         const { computerScreenNow } = require('../../modules/tools/definitions/EngineDeviceTools');
-        const frame = await computerScreenNow();
+        const frame = await executionFirewall.runAsSystem(() => computerScreenNow(), { userId: uid(req) });
         if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
         return res.status(200).set({
             'Content-Type': 'image/png',

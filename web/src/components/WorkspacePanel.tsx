@@ -7,7 +7,7 @@ import {
     Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
-import LiveDevicePanel, { type LiveSource } from './LiveDevicePanel';
+import LiveDevicePanel, { LiveBrowserChip, type LiveSource } from './LiveDevicePanel';
 import { useUiDir } from './NeuralTraceView';
 
 // Lazy load the heavy components
@@ -71,7 +71,7 @@ interface WorkspacePanelProps {
     problems?: any[];
     mobileCollapsed?: boolean;
     onMobileToggle?: () => void;
-    /** What Joe is working on now, shown live in the Preview: the phone or this computer (LiveDevicePanel). */
+    /** What Joe is working on now, shown live in the Preview: the phone, this computer, or his browser (LiveDevicePanel). */
     liveSource?: LiveSource | null;
     /** Back to the page preview from the live view. */
     onLiveClose?: () => void;
@@ -650,7 +650,10 @@ export default function WorkspacePanel({
             return !v;
         });
     };
-    const splitActive = splitView && (activeTab === 'logs' || activeTab === 'preview');
+    //  Joe's browser shown in the Preview takes the whole area: the same mounted
+    //  browser as the Browser tab, never a second one (it opens a real Chromium).
+    const browserInPreview = activeTab === 'preview' && liveSource === 'browser';
+    const splitActive = splitView && (activeTab === 'logs' || (activeTab === 'preview' && !browserInPreview));
 
     const handleMobileToggle = () => {
         if (onMobileToggle) {
@@ -761,7 +764,8 @@ export default function WorkspacePanel({
                     is visible. Browser QA borrows this exact surface; unmounting
                     it for Terminal used to make a real audit invisible just
                     before the first frame arrived. */}
-                <div style={{ display: activeTab === 'browser' ? 'contents' : 'none', width: '100%', height: '100%' }}>
+                {browserInPreview && <LiveBrowserChip onClose={onLiveClose} />}
+                <div style={{ display: activeTab === 'browser' || browserInPreview ? 'contents' : 'none', width: '100%', height: '100%' }}>
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EmbeddedBrowser
@@ -798,15 +802,15 @@ export default function WorkspacePanel({
                     )}
                     <div style={splitActive
                         ? { flex: '1 1 50%', minWidth: 0, display: 'flex', flexDirection: 'column' }
-                        : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
+                        : { display: activeTab === 'preview' && !browserInPreview ? 'contents' : 'none' }}>
                         {/* What Joe is working on, live: the phone or this computer.
                             The page preview stays mounted underneath, its listeners alive. */}
-                        {liveSource && (
+                        {liveSource && liveSource !== 'browser' && (
                             <ErrorBoundary fallbackTitle={t('dev_failed')}>
                                 <LiveDevicePanel source={liveSource} visible={activeTab === 'preview' || splitActive} onClose={onLiveClose} />
                             </ErrorBoundary>
                         )}
-                        <div style={liveSource ? { display: 'none' } : { display: 'contents' }}>
+                        <div style={liveSource && liveSource !== 'browser' ? { display: 'none' } : { display: 'contents' }}>
                         <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                             <Suspense fallback={<LoadingFallback />}>
                                 {/*
