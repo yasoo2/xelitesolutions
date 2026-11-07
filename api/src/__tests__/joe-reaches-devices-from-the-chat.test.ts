@@ -49,6 +49,13 @@ describe('what the chat asks of the devices', () => {
         'Build a store that sells phones',
     ])('«%s» is not', t => expect(isOperateRequest(t) && onlyAboutDevices(t)).toBe(false));
 
+    test('the answer about his devices is said as that, not as «done on your computer»', () => {
+        const { operateOutput } = require('../core/engine/operate');
+        const out = operateOutput({ status: 'delivered', summary: 'أصل إلى هذا الحاسوب وإلى حاسوب المكتب.', verification: { passed: true, checks: [{ id: 'devices', status: 'passed', detail: 'listed' }], unproven: [], at: 1 }, filesChanged: [], served: [], steps: 2, model: 'm', durationMs: 9_000 } as any, 'ar');
+        expect(out.output.summary).toContain('هذا ما أصل إليه الآن من أجهزتك');
+        expect(out.output.summary).not.toContain('نفّذتُه على جهازك');
+    });
+
     test('phones on Wi-Fi are read from adb\'s own announcement', () => {
         expect(parseMdns('List of discovered mdns services\nadb-R58N12ABCDE-AbCdEf\t_adb-tls-pairing._tcp.\t192.168.1.40:41235\nadb-R58N12ABCDE-AbCdEf\t_adb-tls-connect._tcp.\t192.168.1.40:37011\n'))
             .toEqual([

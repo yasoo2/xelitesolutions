@@ -78,6 +78,9 @@ const DevicesPanel: React.FC<{ t: (k: string, f: string) => string }> = ({ t }) 
                 </div>
             </div>
 
+            {/* The chat is where he works (the owner, 2026-11-07): this panel is only another way. */}
+            <div className="dev-hint">{t('devicesAskInChat', 'You can simply ask Joe in the chat: «what devices can you reach?» or «connect to my office computer».')}</div>
+
             <div className="dev-section-title">{t('devicesLinked', 'Linked computers')}</div>
             {linked.length === 0 && <div className="dev-empty">{t('devicesNoneLinked', 'No other computer is linked yet.')}</div>}
             {linked.map(d => (

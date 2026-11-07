@@ -173,14 +173,16 @@ export function operateVerifier(): Verifier {
 
 /* ───────────────────────── what the owner is told ───────────────────────── */
 
-const OPERATE_WORDS: Record<string, { done: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
+const OPERATE_WORDS: Record<string, { done: string; devices: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
     ar: {
         done: '✅ نفّذتُه على جهازك ونظرتُ إلى الشاشة بعده للتأكد.',
+        devices: '✅ هذا ما أصل إليه الآن من أجهزتك.',
         notDone: why => `⚠️ لم يكتمل التنفيذ على الجهاز: ${why}`,
         took: (s, usd) => `⏱️ استغرق ${s < 60 ? `${s} ثانية` : `${Math.round(s / 60)} دقيقة`}${usd != null ? `، كلفة ${usd.toFixed(3)}$` : ''}`,
     },
     en: {
         done: '✅ Done on your computer, and the screen was checked afterwards.',
+        devices: '✅ That is what I can reach of your devices now.',
         notDone: why => `⚠️ Not completed on the device: ${why}`,
         took: (s, usd) => `⏱️ Took ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`}${usd != null ? `, cost $${usd.toFixed(3)}` : ''}`,
     },
@@ -195,7 +197,7 @@ export function operateOutput(result: EngineResult | undefined, language: string
     const receipts = (result?.verification?.checks || []).map(c => ({ tool: `operate:${c.id}`, ok: c.status === 'passed', ...(c.status === 'passed' ? {} : { error: c.detail }) }));
     const seconds = Math.round((result?.durationMs || 0) / 1000);
     const summary = verified
-        ? [String(result!.summary || '').trim(), words.done, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
+        ? [String(result!.summary || '').trim(), (result!.verification?.checks || []).some(c => c.id === 'devices') ? words.devices : words.done, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), String(result?.summary || '').trim()].filter(Boolean).join('\n\n');
     return {
         ok: verified,
