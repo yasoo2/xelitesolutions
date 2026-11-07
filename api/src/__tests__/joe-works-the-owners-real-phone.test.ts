@@ -512,6 +512,44 @@ describe('the logs panel follows the newest line past its 220-line window', () =
     });
 });
 
+describe('the chat\'s device work survives a restart of Joe', () => {
+    test('written to its file and read back by a fresh process', () => {
+        const fs = require('fs');
+        const os = require('os');
+        const path = require('path');
+        const file = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'joe-dw-')), 'data', 'device-work.json');
+        const prev = process.env.JOE_DEVICE_WORK_FILE;
+        process.env.JOE_DEVICE_WORK_FILE = file;
+        try {
+            const dw = require('../core/engine/device-work');
+            dw.reloadDeviceWork();
+            dw.setWorking('chat-restart', { target: 'phone', at: Date.now(), request: 'اغلق الكشاف وشغل الموسيقى' });
+            dw.noteOperateResult('chat-restart', { target: 'phone', request: 'اغلق الكشاف وشغل الموسيقى', summary: 'أُغلق الكشاف وبدأت الموسيقى.', ok: true });
+            expect(JSON.parse(fs.readFileSync(file, 'utf8')).working['chat-restart'].target).toBe('phone');
+            //  A restart: the process forgets, the file remembers.
+            dw.reloadDeviceWork();
+            const op = require('../core/engine/operate');
+            expect(op.recentOperate('chat-restart')).toEqual({ target: 'phone', request: 'اغلق الكشاف وشغل الموسيقى' });
+            expect(op.operateFollowUp('chat-restart', 'ارسل ايميل الى shoroq@example.com')).toBe('phone');
+            expect(dw.deviceWorkFacts('chat-restart')).toContain('أُغلق الكشاف وبدأت الموسيقى.');
+            op.forgetOperate('chat-restart');
+            dw.reloadDeviceWork();
+            expect(op.recentOperate('chat-restart')).toBeNull();
+        } finally {
+            if (prev === undefined) delete process.env.JOE_DEVICE_WORK_FILE; else process.env.JOE_DEVICE_WORK_FILE = prev;
+            require('../core/engine/device-work').reloadDeviceWork();
+        }
+    });
+
+    test('a plan note is said to the model, not shown as a red error', async () => {
+        const { planUpdateTool } = require('../core/engine/plan');
+        const ctx: any = { state: { plan: { steps: [], requirements: [], revision: 0 } }, emit: () => { } };
+        const r = await planUpdateTool.run({ requirements: [{ id: 'R1', status: 'open' }] }, ctx);
+        expect(r.ok).toBe(true);
+        expect(r.output).toContain('Note: There is no requirement R1');
+    });
+});
+
 describe('the plan and the log', () => {
     test('a step called blocked, failed or completed is kept, not refused', () => {
         const { parsePlanArgs } = require('../core/engine/plan');
