@@ -71,6 +71,37 @@ export function languageName(code: string | undefined): string {
     return LANGUAGE_NAMES[c] || c || 'English';
 }
 
+/**
+ * THE OWNER'S LANGUAGE, KEPT FOR THE WHOLE RUN.
+ *
+ * The owner reads Arabic only. On his phone, 2026-11-07, the run's notes
+ * turned English after a few tool answers in English («The tap opened the
+ * flashlight detail panel…»): the language was named once, in the first
+ * message. It is now in the system prompt, which every step reads, and a
+ * note in another script is answered with one line asking for his.
+ */
+export function languageSection(code: string | undefined): string {
+    const name = languageName(code);
+    return `\n\n# Language\nThe owner reads ${name}. Every note you write between tool calls, every question to him and your task_finish summary are in ${name} only, even when the tools, the code and the pages answer in English. Names, code, paths, addresses and commands stay as they are.`;
+}
+
+/** Scripts a reply language is written in; Latin-script languages cannot be told apart this way. */
+const SCRIPTS: Record<string, RegExp> = { ar: /[؀-ۿ]/u, ru: /[Ѐ-ӿ]/u };
+
+/** A note written in Latin letters when the owner's language has its own script, with none of that script. */
+export function noteInWrongScript(note: string, code: string | undefined): boolean {
+    const c = String(code || '').trim().toLowerCase().split('-')[0];
+    const own = SCRIPTS[c];
+    if (!own) return false;
+    const text = String(note || '').replace(/`[^`]*`/gu, '').replace(/https?:\/\/\S+/gu, '');
+    return !own.test(text) && /[A-Za-z]{3,}(?:\s+[A-Za-z']{2,}){2,}/u.test(text);
+}
+
+export function languageReminder(code: string | undefined): string {
+    const name = languageName(code);
+    return `(Joe: your last note was not in ${name}. The owner reads ${name}: write your notes and the task_finish summary in ${name}.)`;
+}
+
 /** At most this many earlier runs are recited to a change run, the newest ones. */
 const CHANGE_HISTORY_SHOWN = 5;
 
