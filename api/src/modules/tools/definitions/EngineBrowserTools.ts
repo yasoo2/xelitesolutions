@@ -1275,10 +1275,13 @@ export class EngineBrowserActTool extends EngineBrowserTool {
 
 export class EngineBrowserScreenshotTool extends EngineBrowserTool {
     name = 'engine_browser_screenshot';
-    description = 'Agent engine only: capture the run\'s browser page, the viewport or the whole page (up to 8000 px tall), save the JPEG in the project\'s .joe folder and show it in the chat\'s screenshot panel.';
+    description = 'Agent engine only: capture the run\'s browser page, the viewport or the whole page (up to 8000 px tall), at its own width or as a phone or a tablet shows it, save the JPEG in the project\'s .joe folder and show it in the chat\'s screenshot panel.';
     inputSchema = {
         type: 'object' as const,
-        properties: { full_page: { type: 'boolean', description: 'Capture the whole page instead of the viewport.' } },
+        properties: {
+            full_page: { type: 'boolean', description: 'Capture the whole page instead of the viewport.' },
+            device: { type: 'string', enum: ['phone', 'tablet'], description: 'Capture the page as a phone (390×844) or a tablet (820×1180) shows it; the page goes back to its own size after.' },
+        },
     };
 
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
@@ -1296,10 +1299,38 @@ export class EngineBrowserScreenshotTool extends EngineBrowserTool {
         if (page.url() === 'about:blank') return refused(refuse('no_page', 'The browser page had been closed and was reopened empty: call browser_open again.'), logs);
         streamForWatchers(t.sid, s, run);
         const fullPage = input?.full_page === true;
+        /**
+         * AS A PHONE SHOWS IT.
+         *
+         * The 500 exam, 2026-11-07, P025: asked for «قائمة تعمل على الجوال», the
+         * builder wrote «the browser tool can't resize the viewport, so I'll
+         * look for a way to load the page at phone width», wrote three
+         * Playwright scripts of its own, and ran out of time. The page is
+         * shown at the device's width for one capture, then given back its
+         * own size.
+         */
+        const device = input?.device === 'phone' ? { name: 'phone', width: 390, height: 844 }
+            : input?.device === 'tablet' ? { name: 'tablet', width: 820, height: 1180 } : null;
         try {
             let bytes: Buffer;
             let note: string | undefined;
-            if (!fullPage) {
+            if (device) {
+                const own = page.viewportSize();
+                const release = await pauseBrowserCaptureForPage(page);
+                try {
+                    await page.setViewportSize({ width: device.width, height: device.height });
+                    await page.waitForTimeout(400);
+                    const tall = fullPage
+                        ? Math.max(1, Math.min(await bounded(page.evaluate(() => document.documentElement.scrollHeight), PAGE_READ_MS, 'Measuring the page'), FULL_PAGE_MAX_HEIGHT))
+                        : device.height;
+                    bytes = await page.screenshot({ type: 'jpeg', quality: SHOT_JPEG_QUALITY, fullPage, ...(fullPage ? { clip: { x: 0, y: 0, width: device.width, height: tall } } : {}), timeout: 30_000 });
+                    const wide = await page.evaluate(() => document.documentElement.scrollWidth).catch(() => device.width);
+                    if (wide > device.width + 2) note = `At ${device.name} width the page is ${wide} px wide: it scrolls sideways, something does not fit.`;
+                } finally {
+                    if (own) await page.setViewportSize(own).catch(() => undefined);
+                    release();
+                }
+            } else if (!fullPage) {
                 bytes = await screenshotSessionJpeg(t.sid, { quality: SHOT_JPEG_QUALITY, timeoutMs: 15_000 });
             } else {
                 const [scrollWidth, scrollHeight, innerWidth] = await bounded(page.evaluate(() => [
@@ -1322,11 +1353,11 @@ export class EngineBrowserScreenshotTool extends EngineBrowserTool {
             const file = await saveJpeg(root.root, bytes);
             const title = await bounded(page.title(), PAGE_READ_MS, 'Reading the title').catch(() => '');
             const panelProblem = await showInPanel(context, bytes, size, title).catch(e => `it could not be stored for the panel (${clip(firstLine(e), 120)})`);
-            logs.push(`engine_browser_screenshot ${fullPage ? 'full page' : 'viewport'} ${size.width}x${size.height}`);
+            logs.push(`engine_browser_screenshot ${fullPage ? 'full page' : 'viewport'}${device ? ` as a ${device.name}` : ''} ${size.width}x${size.height}`);
             return {
                 ok: true,
                 output: {
-                    message: `Captured the ${fullPage ? 'whole page' : 'viewport'} of ${page.url()} (${size.width}×${size.height}).`,
+                    message: `Captured the ${fullPage ? 'whole page' : 'viewport'} of ${page.url()}${device ? ` as a ${device.name} shows it` : ''} (${size.width}×${size.height}).`,
                     path: file, url: page.url(), width: size.width, height: size.height, fullPage,
                     ...(note ? { note } : {}),
                     shownInPanel: !panelProblem,

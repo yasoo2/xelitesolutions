@@ -505,6 +505,21 @@ function snapshot() {
         // «٠ ١ ٢», and `\d` does not match any of them — the click would have
         // looked like it changed nothing.
         digits: hash((text.match(/[0-9٠-٩۰-۹]+/g) || []).join(',')),
+        /**
+         * …AND WHAT THE VISIBLE FIELDS HOLD.
+         *
+         * The exam, 2026-11-07 (P076, a warehouse dashboard): the first «تعديل»
+         * put the form in edit mode; every later «تعديل» loaded another row
+         * into the SAME form — same heading, same scroll, only the values
+         * changed — and five working buttons were «unresponsive», four
+         * refusals, 88 minutes. A value is what a person reads in a field.
+         */
+        fields: hash(Array.from(document.querySelectorAll('input:not([type="hidden"]),select,textarea')).slice(0, 300).map(node => {
+            const f = node as HTMLInputElement;
+            const r = f.getBoundingClientRect();
+            if (r.width <= 2 || r.height <= 2) return '';
+            return `${f.name || f.id}:${f.type === 'checkbox' || f.type === 'radio' ? String(f.checked) : String(f.value)}`;
+        }).join('|')),
     };
 }
 
@@ -517,6 +532,7 @@ function changed(a: any, b: any): string {
     if (Math.abs(b.scroll - a.scroll) > 40) return 'scroll';
     if (b.nodes !== a.nodes || b.visible !== a.visible) return 'dom';
     if (b.digits !== a.digits) return 'count';
+    if (b.fields !== a.fields) return 'fields';
     if (b.html !== a.html) return 'dom';
     if (b.text !== a.text) return 'text';
     return '';
