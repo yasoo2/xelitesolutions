@@ -87,30 +87,38 @@ export const androidLookTool: EngineTool<{ serial?: string }> = {
     },
 };
 
-export interface TapArgs { control?: number; x?: number; y?: number; serial?: string }
+/**
+ * «hold»: press and hold. The owner's lock screen, 2026-11-07: its flashlight
+ * button said «press and hold», and a tap did nothing; so do a message's
+ * menu, an icon's shortcuts, a word to select.
+ */
+export interface TapArgs { control?: number; x?: number; y?: number; hold?: boolean; serial?: string }
 export const androidTapTool: EngineTool<TapArgs> = {
     name: 'android_tap',
-    description: 'Tap a control by its number from the last android_read ("control"), or a point in the phone\'s pixels ("x", "y").',
-    parameters: { type: 'object', properties: { control: { type: 'integer' }, x: { type: 'integer' }, y: { type: 'integer' }, serial: SERIAL } },
+    description: 'Tap a control by its number from the last android_read ("control"), or a point in the phone\'s pixels ("x", "y"). "hold": true presses and holds (about a second) for what says «press and hold» / «اضغط مطولاً», a message\'s menu, an icon\'s shortcuts. A sleeping screen is woken first.',
+    parameters: { type: 'object', properties: { control: { type: 'integer' }, x: { type: 'integer' }, y: { type: 'integer' }, hold: { type: 'boolean' }, serial: SERIAL } },
     parse: raw => {
         const a = obj(raw);
+        const hold = a.hold === true || a.hold === 'true' ? { hold: true } : {};
         const control = Number(a.control);
-        if (Number.isInteger(control) && control > 0) return { ok: true, value: { control, ...withSerial(a) } };
+        if (Number.isInteger(control) && control > 0) return { ok: true, value: { control, ...hold, ...withSerial(a) } };
         const x = Number(a.x), y = Number(a.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) return { ok: true, value: { x, y, ...withSerial(a) } };
+        if (Number.isFinite(x) && Number.isFinite(y)) return { ok: true, value: { x, y, ...hold, ...withSerial(a) } };
         return { ok: false, error: 'android_tap takes "control" (a number from android_read) or "x" and "y".' };
     },
     async run(a, ctx): Promise<ToolOutcome> {
-        let x = a.x, y = a.y, what = `tap ${a.x},${a.y}`;
+        const verb = a.hold ? 'hold' : 'tap';
+        let x = a.x, y = a.y, what = `${verb} ${a.x},${a.y}`;
         if (a.control) {
             const c = (CONTROLS.get(ctx.runId) || []).find(k => k.index === a.control);
             if (!c) return { ok: false, output: `Control ${a.control} is not in the last android_read: read the screen again.` };
             x = Math.round(c.x + c.width / 2); y = Math.round(c.y + c.height / 2);
-            what = `tap [${c.index}] «${c.text || c.description}»`;
+            what = `${verb} [${c.index}] «${c.text || c.description}»`;
         }
-        const r = await phone(ctx, { op: 'tap', x, y, ...withSerial(a as any) });
+        const r = await phone(ctx, { op: 'tap', x, y, ...(a.hold ? { holdMs: 1000 } : {}), ...withSerial(a as any) });
         did(ctx, 'android_tap', r.ok, what);
-        return { ok: r.ok, output: r.ok ? 'Tapped. Read or look again to see what it did.' : `android_tap failed: ${r.text}` };
+        const woke = /^The screen was asleep/u.test(r.text) ? 'The screen was asleep and was woken first. ' : '';
+        return { ok: r.ok, output: r.ok ? `${woke}${a.hold ? 'Pressed and held' : 'Tapped'}. Read or look again to see what it did.` : `android_tap failed: ${r.text}` };
     },
 };
 

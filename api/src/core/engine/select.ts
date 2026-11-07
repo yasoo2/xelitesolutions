@@ -38,8 +38,9 @@ export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | 
 
 export async function agentEngineRoute(
     goal: string,
-    context?: { engine?: unknown; sessionId?: unknown } | null,
+    context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal } | null,
     env: NodeJS.ProcessEnv = process.env,
+    deps: { ask?: (prompt: string) => Promise<string> } = {},
 ): Promise<AgentRoute | null> {
     if (engineFor(context, env) !== 'agent') return null;
     const text = String(goal || '').trim();
@@ -70,7 +71,20 @@ export async function agentEngineRoute(
     if (project && !startsAfresh(text) && chatProjectOrigin(context?.sessionId) === 'imported' && isRepositoryWork(text)) return { kind: 'change', path: project };
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isBuildRequest } = require('../intelligence/intent-classifier');
-    return isBuildRequest(text)?.isBuild ? { kind: 'build' } : null;
+    if (isBuildRequest(text)?.isBuild) return { kind: 'build' };
+    //  What the lists did not decide, the model the owner chose reads, in any
+    //  language and spelling (understand.ts). Small talk needs no reading.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { IntentParser } = require('../intelligence/IntentParser');
+    if (IntentParser.pureConversationKind(text)) return null;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { deviceIntentByModel } = require('./understand');
+    const target = await deviceIntentByModel(text, context || {}, operate.recentOperate(context?.sessionId), deps.ask, env);
+    if (target) {
+        operate.noteOperate(context?.sessionId, text, target);
+        return { kind: 'operate', target };
+    }
+    return null;
 }
 
 /**

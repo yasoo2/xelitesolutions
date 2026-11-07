@@ -75,17 +75,33 @@ export function onlyAboutDevices(text: string): boolean {
  * جيداً على الجوال» is a change to a site). And the flashlight is a phone's
  * own: «شغّل الكشاف» needs no place.
  */
-const ACT_AR = '(?:شغّ?ل|طفّ?ي|اطف[يئ]|أطفئ|افتح|سكّ?ر|أغلق|اغلق|اضغط|صوّ?ر|ارفع|خفّ?ض|وطّ?ي|علّ?ي|فعّ?ل|عطّ?ل|اتّ?صل|ابعث|أرسل|ارسل|اكتب|ابحث|شوف|اقرأ|اقرا|ادخل|روح|ارجع|حمّ?ل|نزّ?ل|ولّ?ع|شيل|امسح)';
+/*
+ * A command verb is read by its stem, whatever ending and spelling follow:
+ * the owner typed «اطفيئ الكشاف» (2026-11-07) and the list knew «اطفي» and
+ * «أطفئ» only, so the chat answered with advice. People write اطفي، اطفئ،
+ * اطفيء، اطفيئ، طفّي، اطفيه، شغله، شغلي، سكّره… The stem «طف» needs the
+ * letter after it (ي، ئ، ء، ّ) so «طفل» is not one.
+ */
+const AR_TAIL = '[\\u0621-\\u064A\\u064B-\\u0652]*';
+const ACT_AR_STEM = '(?:[اأ]?شغّ?ل|[اأإ]?طف[يئءّ]|سكّ?ر|[أا]غلق|اضغط|صوّ?ر|ارفع|خفّ?ض|وطّ?ي|فعّ?ل|عطّ?ل|اتّ?صل|ابعث|[أا]رسل|اكتب|ابحث|شوف|اقر[أا]|ادخل|روح|ارجع|حمّ?ل|نزّ?ل|ولّ?ع|شيل|امسح|افتح|وقّ?ف|افصل)';
+const ACT_AR = `${ACT_AR_STEM}${AR_TAIL}`;
 const ACT_EN = '(?:turn|switch|open|close|call|text|send|take|play|start|launch|press|tap|type|search|go|read|check|enable|disable|toggle)';
+const AR_START = '(?:^|[\\s،,.؟?!])[وف]?';
+const AR_END = '(?=[\\s،,.؟?!]|$)';
 const PHONE_PLACE = '(?:في|على|ب|من|عال)\\s*(?:ال)?(?:هاتف|جوال|جوّال|موبايل|تلفون|تليفون|أندرويد|اندرويد)';
 const PHONE_ACTION = new RegExp(
-    `(?:^|[\\s،,.؟?!])${ACT_AR}(?:\\s|$)[^\\n.؟?!]{0,80}?${PHONE_PLACE}`
+    `${AR_START}${ACT_AR}${AR_END}[^\\n.؟?!]{0,80}?${PHONE_PLACE}`
     + `|\\b${ACT_EN}\\b[^\\n.?!]{0,80}?\\bon\\s+(?:the|this|that)\\s+(?:phone|android|mobile|cell(?:phone)?)\\b`, 'iu');
 const ABOUT_A_SITE = /(?:الموقع|موقع|الصفحة|صفحة|التصميم|الواجهة|المتجر\s+الإلكتروني|responsive)|\b(?:site|website|web\s*page|page|layout|css)\b/iu;
-const FLASHLIGHT = new RegExp(`${ACT_AR}\\s+(?:ال)?(?:كشّ?اف|فلاش|فلاشة|ضو(?:ء)?\\s+(?:ال)?فلاش)|\\b(?:turn|switch)\\s+(?:on|off)\\s+(?:the\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(?:the\\s+)?(?:flashlight|torch)\\b|\\b(?:flashlight|torch)\\s+(?:on|off)\\b`, 'iu');
+/** The flashlight, on or off, the verb before the noun or after it: «اطفي الكشاف», «الكشاف طفيه», "turn the torch off". */
+const FLASH_NOUN = new RegExp(`${AR_START}(?:ال)?(?:كشّ?اف|فلاش|فلاشة)${AR_TAIL}${AR_END}|\\b(?:flashlight|torch)\\b`, 'iu');
+const ON_OFF = new RegExp(`${AR_START}(?:${ACT_AR}|خلّ?ي${AR_TAIL}|ضوّ?ي${AR_TAIL}|يشتغل|ينطفي|ينطفئ)${AR_END}|\\b(?:turn|switch|toggle|put)\\b|\\b(?:on|off)\\b`, 'iu');
+//  JavaScript's \b knows no Arabic letter: the Arabic words end at a space or a mark.
+const HOW_TO = /^\s*(?:كيف|ليش|لماذا|ليه)(?=[\s،,؟?]|$)|^\s*(?:how|why)\b/iu;
 
 function phoneAction(t: string): boolean {
-    return (PHONE_ACTION.test(t) && !ABOUT_A_SITE.test(t)) || FLASHLIGHT.test(t);
+    if (HOW_TO.test(t)) return false;
+    return (PHONE_ACTION.test(t) && !ABOUT_A_SITE.test(t)) || (FLASH_NOUN.test(t) && ON_OFF.test(t));
 }
 
 export function isOperateRequest(text: string): boolean {
@@ -124,18 +140,24 @@ export function isPhoneRequest(text: string): boolean {
  * names the device again).
  */
 export type OperateTarget = 'phone' | 'computer';
-const WORKING = new Map<string, { target: OperateTarget; at: number }>();
+const WORKING = new Map<string, { target: OperateTarget; at: number; request: string }>();
 const FOLLOW_UP_MS = 30 * 60_000;
 const LEAD = '^(?:\\s*(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء|يلا)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو|and|also|now|then|ok|okay|please|pls|can\\s+you|could\\s+you)[\\s،,]+)*\\s*و?';
-const FOLLOW_UP = new RegExp(`${LEAD}(?:${ACT_AR}|ابحث|اسحب|اضغط|كبّ?ر|صغّ?ر|وقّ?ف|كمّ?ل|${ACT_EN}|scroll|swipe|stop|go\\s+back|wake)(?:\\s|$|ه|ها|هم|ي)`, 'iu');
+const FOLLOW_UP = new RegExp(`${LEAD}(?:(?:${ACT_AR_STEM}|اسحب|كبّ?ر|صغّ?ر|كمّ?ل)${AR_TAIL}${AR_END}|(?:${ACT_EN}|scroll|swipe|stop|go\\s+back|wake)\\b)`, 'iu');
 
 export function noteOperate(sessionId: unknown, request: string, target?: OperateTarget): void {
     const id = String(sessionId || '');
     if (!id) return;
-    WORKING.set(id, { target: target || (isPhoneRequest(request) ? 'phone' : 'computer'), at: Date.now() });
+    WORKING.set(id, { target: target || (isPhoneRequest(request) ? 'phone' : 'computer'), at: Date.now(), request: String(request || '').slice(0, 300) });
 }
 
 export function forgetOperate(sessionId: unknown): void { WORKING.delete(String(sessionId || '')); }
+
+/** The device this chat worked last, and what was asked, within the follow-up window. */
+export function recentOperate(sessionId: unknown, now = Date.now()): { target: OperateTarget; request: string } | null {
+    const w = WORKING.get(String(sessionId || ''));
+    return w && now - w.at <= FOLLOW_UP_MS ? { target: w.target, request: w.request } : null;
+}
 
 /** The device a follow-up command in this chat acts on, or null. */
 export function operateFollowUp(sessionId: unknown, text: string, now = Date.now()): OperateTarget | null {
@@ -216,8 +238,8 @@ export function operatorFirstMessage(request: string, language: string, replyLan
         request.trim(),
         '"""',
         '',
-        ...(target === 'phone' && !isPhoneRequest(request) ? ['This message follows work on the owner\'s Android phone in this chat: it is about the phone (the android_ tools).', ''] : []),
-        ...(target === 'computer' && !isOperateRequest(request) ? ['This message follows work on the owner\'s computer in this chat: it is about the computer (the device_ tools).', ''] : []),
+        ...(target === 'phone' && !isPhoneRequest(request) ? ['Joe read this message as being about the owner\'s Android phone (from the chat\'s work on it, or from what the message means): use the android_ tools.', ''] : []),
+        ...(target === 'computer' && !isOperateRequest(request) ? ['Joe read this message as being about the owner\'s computer (from the chat\'s work on it, or from what the message means): use the device_ tools.', ''] : []),
         `Request language: ${languageName(language)}.`,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         '',
