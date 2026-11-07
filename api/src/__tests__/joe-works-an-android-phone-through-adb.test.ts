@@ -137,6 +137,24 @@ describe('which requests are about his phone', () => {
         'ابني تطبيق جوال لمطعم',
         'make the site look right on mobile',
     ])('«%s» is not', t => expect(isPhoneRequest(t) && isOperateRequest(t)).toBe(false));
+
+    //  The owner's phone on the cable, 2026-11-07: the first message pointed
+    //  every operate run at device_windows, the computer's windows, even «اشبك
+    //  على هاتفي».
+    const { operatorFirstTool, operatorFirstMessage } = require('../core/engine/operate');
+    test.each([
+        ['اشبك على هاتفي وقل لي شو الظاهر على شاشته', 'android_devices'],
+        ['اشبك على الهاتف', 'android_devices'],
+        ['شو الهواتف اللي بتقدر توصلها؟', 'android_devices'],
+        ['connect to the phone and read its screen', 'android_devices'],
+        ['ابحث وين كمبيوترات تقدر توصل لها', 'device_computers'],
+        ['اشبك على كمبيوتر المكتب', 'device_computers'],
+        ['افتح المفكرة واكتب مرحبا', 'device_windows'],
+    ])('«%s» starts with %s', (t, tool) => {
+        expect(isOperateRequest(t)).toBe(true);
+        expect(operatorFirstTool(t)).toBe(tool);
+        expect(operatorFirstMessage(t, 'ar')).toContain(`then ${tool}.`);
+    });
 });
 
 describe('adb on this computer', () => {
