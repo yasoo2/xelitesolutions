@@ -5012,7 +5012,7 @@ export default function CommandComposer({
                           <Key
                             size={10}
                             className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
-                            aria-label={need === 'optional' ? t('provKeyOptional') : t('provKeyNeeded')}
+                            aria-label={hasKey ? t('provKeySet') : need === 'optional' ? t('provKeyOptional') : t('provKeyNeeded')}
                           />
                         );
                       })()}

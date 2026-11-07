@@ -199,6 +199,12 @@ export class AndroidPhone {
         return this.adb(['-s', this.serial, ...args], opts);
     }
 
+    /** Whether the screen is on (one light question), or null when the phone did not say. */
+    async awake(): Promise<boolean | null> {
+        const power = await this.run(['shell', 'dumpsys', 'power'], { timeoutMs: 15_000 });
+        return parseScreenState(power.stdout, '').awake;
+    }
+
     /** Whether the screen is on and the phone locked. */
     async screen(): Promise<ScreenState> {
         const power = await this.run(['shell', 'dumpsys', 'power'], { timeoutMs: 15_000 });

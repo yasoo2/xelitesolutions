@@ -134,6 +134,50 @@ describe('the gateway puts the screen\'s state before the controls and after the
         }
     });
 
+    test('a tap on a sleeping screen wakes it first; on a lit one it does not; «hold» presses and holds in place', async () => {
+        jest.resetModules();
+        const calls: string[] = [];
+        let power = POWER_ASLEEP;
+        jest.doMock('../kernel/ExecutionGateway', () => ({
+            ExecutionGateway: {
+                execute: async (_exe: string, args: string[]) => {
+                    const key = (args[0] === '-s' ? args.slice(2) : args).join(' ');
+                    calls.push(key);
+                    if (key === 'shell input keyevent 224') power = POWER_AWAKE;
+                    const out = key.startsWith('devices') ? 'List of devices attached\nSER1 device usb:1 model:TECNO_KI7\n' : key === 'shell dumpsys power' ? power : '';
+                    return { success: true, data: { exitCode: 0, output: out, error: '' } };
+                },
+            },
+        }));
+        const prev = process.env.JOE_ADB;
+        process.env.JOE_ADB = __filename;
+        try {
+            const { EngineAndroidTool } = require('../modules/tools/definitions/EngineAndroidTool');
+            const tool = new EngineAndroidTool();
+            const first = await tool.execute({ op: 'tap', x: 540, y: 2000 });
+            expect(first.ok).toBe(true);
+            expect(first.output.text).toMatch(/^The screen was asleep: Joe woke it first/u);
+            expect(calls.filter(c => !c.startsWith('devices'))).toEqual(['shell dumpsys power', 'shell input keyevent 224', 'shell input tap 540 2000']);
+            calls.length = 0;
+            const held = await tool.execute({ op: 'tap', x: 540, y: 2000, holdMs: 1000 });
+            expect(held.output.text).toBe('OK');
+            expect(calls.filter(c => !c.startsWith('devices'))).toEqual(['shell dumpsys power', 'shell input swipe 540 2000 540 2000 1000']);
+            calls.length = 0;
+            await tool.execute({ op: 'read' });
+            expect(calls).not.toContain('shell input keyevent 224');
+        } finally {
+            if (prev === undefined) delete process.env.JOE_ADB; else process.env.JOE_ADB = prev;
+            jest.dontMock('../kernel/ExecutionGateway');
+        }
+    });
+
+    test('android_tap takes «hold»', () => {
+        const { androidTapTool } = require('../core/engine/tools/android');
+        expect(androidTapTool.parse({ control: 21, hold: true })).toEqual({ ok: true, value: { control: 21, hold: true } });
+        expect(androidTapTool.parse({ x: 1, y: 2 })).toEqual({ ok: true, value: { x: 1, y: 2 } });
+        expect(androidTapTool.description).toMatch(/press and hold/u);
+    });
+
     test('the engine has android_panel, and android_key names wakeup', () => {
         const { androidTools } = require('../core/engine/tools/android');
         const names = androidTools.map((t: any) => t.name);
@@ -154,9 +198,19 @@ describe('a command on «the phone», the flashlight, and a follow-up in a phone
         'شغل الكشاف في الهاتف',
         'شغّل الكشاف',
         'طفي الكشاف',
+        //  The owner's own spelling, 2026-11-07, and its sisters.
+        'اطفيئ الكشاف',
+        'اطفيء الكشاف',
+        'أطفئ الكشاف',
+        'طفّي الفلاش',
+        'الكشاف طفيه',
+        'سكّر الكشاف',
+        'وقف الكشاف',
         'افتح واتساب على الجوال',
+        'شغله على الموبايل',
         'ارفع الصوت بالموبايل',
         'turn on the flashlight',
+        'turn the torch off',
         'open youtube on the phone',
     ])('«%s» is operate, on the phone', t => {
         expect(op.isOperateRequest(t)).toBe(true);
@@ -171,6 +225,9 @@ describe('a command on «the phone», the flashlight, and a follow-up in a phone
         'make the site look right on mobile',
         'what is a flashlight app',
         'اشرح لي كيف يعمل الهاتف',
+        'كيف اشغل الكشاف؟',
+        'طفلي يحب الكشافة',
+        'ما هو الكشاف؟',
     ])('«%s» is not an action on the phone', t => {
         expect(op.isOperateRequest(t) && op.isPhoneRequest(t)).toBe(false);
     });
@@ -178,7 +235,7 @@ describe('a command on «the phone», the flashlight, and a follow-up in a phone
     test('after work on the phone, a short command in the same chat goes to the phone; a question, a build or another chat does not', () => {
         const at = Date.now();
         op.noteOperate('chat-A', 'اشبك على هاتفي وقل لي شو الظاهر على شاشته');
-        for (const t of ['افتح واتساب', 'وكمان اطفيه', 'ارجع للرئيسية', 'now open YouTube', 'لو سمحت صور الشاشة']) {
+        for (const t of ['افتح واتساب', 'وكمان اطفيه', 'اطفيئه', 'ارجع للرئيسية', 'now open YouTube', 'لو سمحت صور الشاشة', 'turn it off']) {
             expect([t, op.operateFollowUp('chat-A', t, at + 60_000)]).toEqual([t, 'phone']);
         }
         for (const t of ['ما هي عاصمة فرنسا؟', 'ابني لي موقع مطعم', 'اكتب لي قصيدة عن البحر طويلة جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً جداً', 'عدّل الصفحة']) {
@@ -192,9 +249,9 @@ describe('a command on «the phone», the flashlight, and a follow-up in a phone
 
     test('a follow-up run is told it is about the phone and starts there', () => {
         const msg = op.operatorFirstMessage('افتح واتساب', 'ar', 'ar', 'phone');
-        expect(msg).toContain('it is about the phone');
+        expect(msg).toContain('as being about the owner\'s Android phone');
         expect(msg).toContain('then android_devices.');
-        expect(op.operatorFirstMessage('اشبك على هاتفي', 'ar', 'ar', 'phone')).not.toContain('This message follows');
+        expect(op.operatorFirstMessage('اشبك على هاتفي', 'ar', 'ar', 'phone')).not.toContain('Joe read this message');
     });
 
     test('the route carries the device, and remembers it for the next message', async () => {
@@ -206,6 +263,57 @@ describe('a command on «the phone», the flashlight, and a follow-up in a phone
         expect(await agentEngineRoute('افتح المفكرة واكتب مرحبا', { engine: 'agent', sessionId: 'chat-pc' })).toEqual({ kind: 'operate', target: 'computer' });
         op.forgetOperate('chat-route');
         op.forgetOperate('chat-pc');
+    });
+});
+
+describe('what the word lists do not know, the chosen model reads (understand.ts)', () => {
+    const { deviceIntentByModel, deviceIntentPrompt, readDeviceIntent } = require('../core/engine/understand');
+    const op = require('../core/engine/operate');
+    const { agentEngineRoute } = require('../core/engine/select');
+
+    test('the prompt carries the message verbatim, the chat\'s recent device and the one answer wanted', () => {
+        const p = deviceIntentPrompt('خلّي الضو اللي ورا التلفون يطفى', { target: 'phone', request: 'شغل الكشاف في الهاتف' });
+        expect(p).toContain('خلّي الضو اللي ورا التلفون يطفى');
+        expect(p).toContain('working on the user\'s PHONE');
+        expect(p).toContain('شغل الكشاف في الهاتف');
+        expect(p).toContain('{"device":"phone"} {"device":"computer"} {"device":"none"}');
+        expect(deviceIntentPrompt('hello')).not.toContain('working on');
+    });
+
+    test('the answer is read whatever wraps it; anything unclear is none', () => {
+        expect(readDeviceIntent('{"device":"phone"}')).toBe('phone');
+        expect(readDeviceIntent('Sure:\n```json\n{"device": "computer"}\n```')).toBe('computer');
+        expect(readDeviceIntent('{"device":"none"}')).toBeNull();
+        expect(readDeviceIntent('{"device":"toaster"}')).toBeNull();
+        expect(readDeviceIntent('I think the phone')).toBeNull();
+    });
+
+    test('no model choice, understanding off, a failing or an aborted model: no route is added', async () => {
+        const never = jest.fn(async () => '{"device":"phone"}');
+        expect(await deviceIntentByModel('اطفي الضو', {}, null, undefined)).toBeNull();
+        expect(await deviceIntentByModel('اطفي الضو', {}, null, never, { JOE_ROUTE_UNDERSTANDING: 'off' })).toBeNull();
+        expect(never).not.toHaveBeenCalled();
+        expect(await deviceIntentByModel('اطفي الضو', {}, null, async () => { throw new Error('429'); })).toBeNull();
+        const aborted = new AbortController(); aborted.abort();
+        expect(await deviceIntentByModel('اطفي الضو', { signal: aborted.signal }, null, () => new Promise<string>(() => { }))).toBeNull();
+    });
+
+    test('a message no list knows reaches the phone when the model reads it so; small talk and questions are not asked', async () => {
+        //  Required here: an earlier test reset the module registry, and the route reads the chat's device from this instance.
+        const op = require('../core/engine/operate');
+        const { agentEngineRoute } = require('../core/engine/select');
+        const AGENT = { JOE_ENGINE: 'agent' };
+        const seen: string[] = [];
+        const ask = async (prompt: string) => { seen.push(prompt); return /الضو/u.test(prompt.split('Message:')[1] || '') ? '{"device":"phone"}' : '{"device":"none"}'; };
+        const ctx = { engine: 'agent', sessionId: 'chat-understand' };
+        op.noteOperate('chat-understand', 'شغل الكشاف في الهاتف', 'phone');
+        expect(await agentEngineRoute('خلّي الضو اللي ورا التلفون يطفى', ctx, AGENT, { ask })).toEqual({ kind: 'operate', target: 'phone' });
+        expect(seen[0]).toContain('working on the user\'s PHONE');
+        expect(await agentEngineRoute('ما هي عاصمة فرنسا؟', ctx, AGENT, { ask })).toBeNull();
+        const asked = seen.length;
+        expect(await agentEngineRoute('شكرا', ctx, AGENT, { ask })).toBeNull();
+        expect(seen.length).toBe(asked);
+        op.forgetOperate('chat-understand');
     });
 });
 

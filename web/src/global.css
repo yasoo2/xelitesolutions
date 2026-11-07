@@ -277,6 +277,30 @@ body {
   transition: all 0.2s ease !important;
 }
 
+/* A narrow chat column (the workspace open beside it, 2026-11-07): the
+   button «Claude · Haiku 5.5 · مدفوع · مفتاح الخادم» pushed itself out of the
+   composer and read «aude». In the composer it now gives up its detail to an
+   ellipsis before it leaves the box; the name always stays whole. */
+.composer-actions > * {
+  min-width: 0;
+}
+.composer-actions .provider-btn {
+  min-width: 0 !important;
+  max-width: 100%;
+  flex: 0 1 auto !important;
+  overflow: hidden;
+}
+.composer-actions .provider-btn .provider-label,
+.composer-actions .provider-btn svg {
+  flex: 0 0 auto;
+}
+.composer-actions .provider-btn .provider-free {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .provider-label {
   font-size: 11px;
   font-weight: 700;

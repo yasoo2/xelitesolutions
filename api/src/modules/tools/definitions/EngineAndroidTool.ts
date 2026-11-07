@@ -99,6 +99,24 @@ export class EngineAndroidTool implements ToolDefinition {
         if (!serial) return fail(ready.length ? `More than one phone is connected (${ready.map(d => d.serial).join(', ')}): name one with "serial".` : 'No phone is connected and allowed: call devices to see why.');
         if (!ready.some(d => d.serial === serial)) return fail(`The phone «${serial}» is not connected and allowed.`);
         const phone = new AndroidPhone(run, serial);
+        /*
+         * A TAP ON A SLEEPING SCREEN DOES NOTHING.
+         *
+         * The owner's phone, 2026-11-07: «شغل الكشاف» — the run opened the
+         * quick settings and tapped the flashlight tile while the screen was
+         * asleep; nothing changed, and it took a look at a black picture to
+         * find out why. Before anything that touches the screen, a sleeping
+         * screen is woken (wakeup only wakes; it never turns the screen off),
+         * and the answer says so.
+         */
+        let woke = '';
+        if (['tap', 'swipe', 'type', 'panel', 'open'].includes(op)) {
+            if (await phone.awake().catch(() => null) === false) {
+                const w = await phone.key('wakeup');
+                if (w.ok) { woke = 'The screen was asleep: Joe woke it first. '; await new Promise(r => setTimeout(r, 400)); }
+            }
+        }
+        const done = (text = 'OK') => ok(`${woke}${text}`);
         switch (op) {
             case 'read': {
                 const r = await phone.read();
@@ -119,19 +137,21 @@ export class EngineAndroidTool implements ToolDefinition {
             }
             case 'panel': {
                 const r = await phone.panel(String(input?.panel || ''));
-                return r.ok ? ok('OK') : fail(r.error || 'the panel did not open');
+                return r.ok ? done() : fail(r.error || 'the panel did not open');
             }
             case 'tap': {
                 const x = n(input?.x), y = n(input?.y);
                 if (!Number.isFinite(x) || !Number.isFinite(y)) return fail('tap needs x and y on the phone\'s screen');
-                const r = await phone.tap(x, y);
-                return r.ok ? ok('OK') : fail(r.error || 'the tap failed');
+                //  A press held in place («press and hold»): a swipe that does not move.
+                const hold = n(input?.holdMs);
+                const r = Number.isFinite(hold) && hold > 0 ? await phone.swipe(x, y, x, y, Math.min(Math.max(hold, 400), 5000)) : await phone.tap(x, y);
+                return r.ok ? done() : fail(r.error || 'the tap failed');
             }
             case 'swipe': {
                 const a = [input?.x, input?.y, input?.toX, input?.toY].map(n);
                 if (a.some(v => !Number.isFinite(v))) return fail('swipe needs x, y, toX, toY');
                 const r = await phone.swipe(a[0], a[1], a[2], a[3], n(input?.ms) || 300);
-                return r.ok ? ok('OK') : fail(r.error || 'the swipe failed');
+                return r.ok ? done() : fail(r.error || 'the swipe failed');
             }
             case 'key': {
                 const r = await phone.key(String(input?.key || ''));
@@ -139,11 +159,11 @@ export class EngineAndroidTool implements ToolDefinition {
             }
             case 'type': {
                 const r = await phone.type(String(input?.text ?? ''));
-                return r.ok ? ok('OK') : fail(r.error || 'typing failed');
+                return r.ok ? done() : fail(r.error || 'typing failed');
             }
             case 'open': {
                 const r = await phone.open(String(input?.package || ''));
-                return r.ok ? ok('OK') : fail(r.error || 'the app did not open');
+                return r.ok ? done() : fail(r.error || 'the app did not open');
             }
             case 'apps': return ok((await phone.apps()).join('\n') || 'No app the owner installed was listed.');
         }
