@@ -35,6 +35,7 @@ import githubRoutes from './routes/github';
 import browserRoutes from './routes/browser';
 import oauthRoutes from './routes/oauth';
 import extensionRoutes from './routes/extension';
+import devicesRoutes from './routes/devices';
 import browserAgentRoutes from './routes/browserAgent';
 import statusRoutes from './routes/status';
 import serverRoutes from './routes/servers';
@@ -310,6 +311,7 @@ export const createApp = () => {
   apiRouter.use('/browser', browserRoutes);
   apiRouter.use('/oauth', oauthRoutes);
   apiRouter.use('/extension', extensionRoutes);
+  apiRouter.use('/devices', devicesRoutes);
   apiRouter.use('/browser-agent', browserAgentRoutes);
   apiRouter.use('/status', statusRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);

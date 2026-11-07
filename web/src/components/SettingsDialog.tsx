@@ -3,10 +3,11 @@ import { useTranslation } from 'react-i18next';
 import {
     Moon, Sun, Check, LogOut, X,
     Palette, Globe, Shield, ChevronLeft,
-    Monitor, Smartphone, Mail, Activity, Terminal, Wand2
+    Monitor, Smartphone, Mail, Activity, Terminal, Wand2, Laptop
 } from 'lucide-react';
 import { API_URL } from '../config';
 import SystemStatusPanel from './SystemStatusPanel';
+import DevicesPanel from './DevicesPanel';
 import { ACCENTS, getAccent, setAccent, type AccentId, type ThemeMode } from '../accents';
 
 interface SettingsDialogProps {
@@ -28,7 +29,7 @@ const LANGUAGES = [
     { code: 'es', label: 'Español', flag: '🇪🇸' }
 ];
 
-type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'account';
+type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'devices' | 'account';
 
 /** One-click preset: makes Joe use the terminal automatically while building.
  *  Its text is `stg_presetTerminalFirstText`, written in the interface language:
@@ -106,6 +107,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
             labelFallback: 'Standing instructions',
             descKey: 'joeInstructionsDesc',
             descFallback: 'Rules Joe applies to every task'
+        },
+        {
+            id: 'devices',
+            icon: <Laptop size={18} />,
+            labelKey: 'devices',
+            labelFallback: 'Devices',
+            descKey: 'devicesDesc',
+            descFallback: 'This computer, and the other computers Joe can work'
         },
         {
             id: 'account',
@@ -335,6 +344,19 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                                 <Check size={13} /> {t('instrSaved')}
                             </span>
                         </div>
+                    </div>
+                );
+            case 'devices':
+                return (
+                    <div className="stg-content-section stg-fade-in">
+                        <div className="stg-content-header">
+                            <Laptop size={22} />
+                            <div>
+                                <h3>{t('devices', 'Devices')}</h3>
+                                <p>{t('devicesDesc', 'This computer, and the other computers Joe can work')}</p>
+                            </div>
+                        </div>
+                        <DevicesPanel t={t} />
                     </div>
                 );
             case 'account':

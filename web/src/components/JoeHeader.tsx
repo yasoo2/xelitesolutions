@@ -53,24 +53,14 @@ export default function JoeHeader({
     const role = (id.role || String(userRole || '').toUpperCase()) as UserRole | '';
     // Photo precedence: a locally-known picture (Google claim / cached avatar)
     // first; otherwise the email's own Gravatar — resolved async because the
-    // hash is computed with WebCrypto. `d=404` + the broken-image fallback
-    // below mean an account with no photo anywhere still gets clean initials.
-    //  An address with no Gravatar answers 404, and the browser writes that
-    //  as an error on every page load. A miss is remembered for a day, so the
-    //  console stays clean and the header goes straight to the initials.
+    // hash is computed with WebCrypto. The initials are always drawn, and the
+    // picture over them: an address with no Gravatar answers a transparent
+    // picture (`d=blank`), so its initials show through — and nothing fails.
     const [gravatar, setGravatar] = useState('');
-    const GRAVATAR_MISS = 'joe-gravatar-miss';
     useEffect(() => {
         let alive = true;
         if (id.picture || userAvatar || !email) { setGravatar(''); return; }
-        void gravatarUrlFor(email).then(url => {
-            if (!alive) return;
-            try {
-                const miss = JSON.parse(localStorage.getItem(GRAVATAR_MISS) || 'null');
-                if (miss && miss.url === url && Date.now() - Number(miss.at) < 86_400_000) return;
-            } catch { /* no storage: ask Gravatar as before */ }
-            setGravatar(url);
-        });
+        void gravatarUrlFor(email).then(url => { if (alive) setGravatar(url); });
         return () => { alive = false; };
     }, [id.picture, userAvatar, email]);
     const photo = id.picture || userAvatar || gravatar || '';
@@ -177,20 +167,7 @@ export default function JoeHeader({
                         aria-haspopup="menu"
                         aria-expanded={menuOpen}
                     >
-                        {photo && !photoBroken ? (
-                            <img
-                                src={photo}
-                                alt={displayName}
-                                className="joe-avatar"
-                                referrerPolicy="no-referrer"
-                                onError={() => {
-                                    setPhotoBroken(true);
-                                    if (photo === gravatar) {
-                                        try { localStorage.setItem(GRAVATAR_MISS, JSON.stringify({ url: gravatar, at: Date.now() })); } catch { /* best effort */ }
-                                    }
-                                }}
-                            />
-                        ) : (
+                        <span className="joe-avatar-stack">
                             <div
                                 className="joe-avatar-placeholder"
                                 aria-label={displayName}
@@ -198,7 +175,16 @@ export default function JoeHeader({
                             >
                                 {initials || '—'}
                             </div>
-                        )}
+                            {photo && !photoBroken && (
+                                <img
+                                    src={photo}
+                                    alt={displayName}
+                                    className="joe-avatar joe-avatar-over"
+                                    referrerPolicy="no-referrer"
+                                    onError={() => setPhotoBroken(true)}
+                                />
+                            )}
+                        </span>
                         <ChevronDown size={14} className="joe-user-chevron" />
                         {/* Visible without opening anything: there is a newer
                             Joe waiting. */}
