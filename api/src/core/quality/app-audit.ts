@@ -29,6 +29,7 @@ import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 import { reloadKeepsSession, showsSignInForm, signInThroughPage } from './sign-in';
+import { readRtl, rtlFindings, type RtlReading } from './rtl-audit';
 
 export interface AppAuditFinding {
     id: string;
@@ -1113,6 +1114,8 @@ export async function auditBuiltApp(
             };
         });
         const dom = await inspect();
+        //  Arabic that reads from the right, measured on the landing view as it is shown (rtl-audit.ts).
+        const rtl: RtlReading | null = await page.evaluate(readRtl).catch(() => null);
 
         let toggleWorks = true;
         if (dom.hasToggle) {
@@ -1906,6 +1909,7 @@ export async function auditBuiltApp(
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}`, detailEn: `${heavyImages.length} heavy image(s) (>400KB): ${heavyImages[0]}` });
         if (headingRoutes.length) findings.push({ id: 'route_headings', severity: 'medium', detail: `${headingRoutes.length} صفحة بلا عنوان رئيسي واحد: ${headingRoutes[0]}`, detailEn: `${headingRoutes.length} page(s) without exactly one main heading: ${headingRoutes[0]}` });
+        findings.push(...rtlFindings(rtl, opts?.request));
         if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}`, detailEn: `${brokenRoutes.length} page(s) did not open or have no main heading: ${brokenRoutes[0]}` });
         // Behaviour speaks in its own vocabulary; it is translated here rather
         // than re-judged, so the two audits never disagree about a dead button.
