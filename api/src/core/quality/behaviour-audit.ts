@@ -146,6 +146,61 @@ function observeDownload(page: any) {
     };
 }
 
+/**
+ * A CALL, A MAIL, A MESSAGE HANDED TO THE PHONE'S OWN APP IS AN EFFECT.
+ *
+ * The ladder, 2026-11-07, L001 (a pharmacy's welcome card): «Call us» opened
+ * `tel:` — exactly right — and changed not one node of the page, because a
+ * browser with no dialler hands the number on and stays where it is. The
+ * probe called it unresponsive, and the builder spent half an hour rewriting
+ * a correct button. Chromium says what happened, in its console: «Failed to
+ * launch 'tel:…' because the scheme does not have a registered handler».
+ */
+export const HANDOFF_SCHEME = /Failed to launch '((?:tel|mailto|sms|whatsapp|geo|maps|facetime|tg|viber|skype|intent):[^']*)'/i;
+/** Headless Chromium says it otherwise: a request to the scheme, at once aborted (measured). */
+export const HANDOFF_URL = /^(?:tel|mailto|sms|whatsapp|geo|maps|facetime|tg|viber|skype|intent):/i;
+
+/**
+ * …and after one hand-off Chromium launches no other in that page, silently:
+ * measured, «Call us» then «Email us» showed a request for tel: and nothing at
+ * all for mailto:. The page's own Navigation API still announces every
+ * navigation it starts, before the browser decides, so the page is asked too.
+ */
+/*
+ * The hand-off is recorded and then held back: a browser with no dialler
+ * leaves the page «leaving» after it (beforeunload fired, the next press
+ * reaches nothing, a reload does not lift it — all measured), while a phone
+ * opens its dialler and keeps the page. Held back, the page stays as a phone
+ * would keep it, and every other control is still pressed.
+ */
+const ARM_HANDOFF = `(() => { const w = window; w.__joeHandoff = '';
+  if (w.__joeHandoffArmed) return; w.__joeHandoffArmed = true;
+  try { w.navigation && w.navigation.addEventListener('navigate', e => { const u = String((e && e.destination && e.destination.url) || '');
+    if (/^(?:tel|mailto|sms|whatsapp|geo|maps|facetime|tg|viber|skype|intent):/i.test(u)) { w.__joeHandoff = u; try { if (e.cancelable) e.preventDefault(); } catch (y) { } } }); } catch (x) { } })();`;
+
+function observeHandoff(page: any) {
+    let target = '';
+    const onConsole = (m: any) => {
+        const hit = String(m?.text?.() || '').match(HANDOFF_SCHEME);
+        if (hit) target = hit[1];
+    };
+    const onRequest = (r: any) => {
+        const u = String(r?.url?.() || '');
+        if (HANDOFF_URL.test(u)) target = u;
+    };
+    page.on('console', onConsole);
+    page.on('request', onRequest);
+    return {
+        /** Before the press: the page listens, and forgets an earlier hand-off. */
+        arm: () => page.evaluate(ARM_HANDOFF).catch(() => undefined),
+        target: async () => target || String(await page.evaluate('window.__joeHandoff || ""').catch(() => '') || ''),
+        stop: () => {
+            try { page.off('console', onConsole); } catch { /* page may be gone */ }
+            try { page.off('request', onRequest); } catch { /* page may be gone */ }
+        },
+    };
+}
+
 /** Runs in the page: catalogue everything a visitor could press. */
 function findControls(limit: number) {
     const vis = (el: Element) => {
@@ -505,6 +560,21 @@ function snapshot() {
         // «٠ ١ ٢», and `\d` does not match any of them — the click would have
         // looked like it changed nothing.
         digits: hash((text.match(/[0-9٠-٩۰-۹]+/g) || []).join(',')),
+        /**
+         * …AND WHAT THE VISIBLE FIELDS HOLD.
+         *
+         * The exam, 2026-11-07 (P076, a warehouse dashboard): the first «تعديل»
+         * put the form in edit mode; every later «تعديل» loaded another row
+         * into the SAME form — same heading, same scroll, only the values
+         * changed — and five working buttons were «unresponsive», four
+         * refusals, 88 minutes. A value is what a person reads in a field.
+         */
+        fields: hash(Array.from(document.querySelectorAll('input:not([type="hidden"]),select,textarea')).slice(0, 300).map(node => {
+            const f = node as HTMLInputElement;
+            const r = f.getBoundingClientRect();
+            if (r.width <= 2 || r.height <= 2) return '';
+            return `${f.name || f.id}:${f.type === 'checkbox' || f.type === 'radio' ? String(f.checked) : String(f.value)}`;
+        }).join('|')),
     };
 }
 
@@ -517,6 +587,7 @@ function changed(a: any, b: any): string {
     if (Math.abs(b.scroll - a.scroll) > 40) return 'scroll';
     if (b.nodes !== a.nodes || b.visible !== a.visible) return 'dom';
     if (b.digits !== a.digits) return 'count';
+    if (b.fields !== a.fields) return 'fields';
     if (b.html !== a.html) return 'dom';
     if (b.text !== a.text) return 'text';
     return '';
@@ -1128,6 +1199,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                  * from a button wired to nothing.
                  */
                 const download = observeDownload(page);
+                const handoff = observeHandoff(page);
+                await handoff.arm();
                 try {
                     if (!eyeIsOpen()) break;
                     el = await stableHandle(c, el).catch(() => null);
@@ -1145,15 +1218,23 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     do {
                         await page.waitForTimeout(100);
                         const after = await page.evaluate(snapshot).catch(() => null);
-                        effect = download.succeeded() ? 'download' : page.url() !== beforeUrl ? 'navigation'
+                        effect = download.succeeded() ? 'download' : (await handoff.target()) ? 'handoff' : page.url() !== beforeUrl ? 'navigation'
                             : (changed(before, after) || (hoverEffect ? `hover:${hoverEffect}` : ''));
                     } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
                 } finally {
                     download.stop();
+                    handoff.stop();
                 }
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
                 if (c.kind === 'submit' && effect === 'navigation') effect = 'reload';
+                //  A hand-off leaves the page «leaving» (beforeunload fired, no
+                //  document came), and the next press reaches nothing (measured).
+                //  A phone opens its dialler and keeps the page; the probe reloads it.
+                if (effect === 'handoff') {
+                    await restoreProbeStart();
+                    baselineMayBeDirty = false;
+                }
                 if (effect === 'navigation') {
                     await restoreProbeStart();
                     await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
@@ -1263,6 +1344,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const before = await page.evaluate(snapshot).catch(() => null);
                 if (!eyeIsOpen()) break;
                 const download = observeDownload(page);
+                const handoff = observeHandoff(page);
+                await handoff.arm();
                 try {
                     await el.click({ timeout: 2500, noWaitAfter: true }).catch((error: any) => {
                         metrics.controlClickErrors = metrics.controlClickErrors || [];
@@ -1274,15 +1357,17 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     do {
                         await page.waitForTimeout(100);
                         const after = await page.evaluate(snapshot).catch(() => null);
-                        effect = download.succeeded() ? 'download' : changed(before, after);
+                        effect = download.succeeded() ? 'download' : (await handoff.target()) ? 'handoff' : changed(before, after);
                     } while (!effect && !download.failed() && Date.now() < settleDeadline && eyeIsOpen());
                 } finally {
                     download.stop();
+                    handoff.stop();
                 }
-                if (effect === 'navigation') {
+                if (effect === 'navigation' || effect === 'handoff') {
                     // Hash routers and replaceState do not reliably create a
                     // history entry. Restore the exact discovery URL so the
                     // next frontier is never sampled from an unrelated route.
+                    // A hand-off leaves the page «leaving»: the same reload.
                     await restoreProbeStart();
                 }
                 const afterState = await page.evaluate(snapshot).catch(() => null);

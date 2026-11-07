@@ -37,10 +37,37 @@ const ON_PHONE = /(?:على|في|ب|من)\s*(?:هاتفي|جوالي|جوّال�
 const DESKTOP_APP = /(?:افتح|شغّ?ل|استخدم|اكتب\s+في|ادخل\s+(?:على|الى|إلى))\s+(?:برنامج\s+|تطبيق\s+)?(?:المفكرة|مفكرة|notepad|الآلة\s+الحاسبة|الحاسبة|calc(?:ulator)?|الرسام|paint|mspaint|إكسل|اكسل|excel|وورد|word|باوربوينت|powerpoint|مستكشف\s+الملفات|explorer|الإعدادات|لوحة\s+التحكم|cmd|الطرفية)|\b(?:open|launch|start|use)\s+(?:the\s+)?(?:notepad|calculator|calc|paint|mspaint|excel|word|powerpoint|file\s+explorer|settings|control\s+panel)\b/iu;
 const BUILD_VERB = /\b(?:build|create|make|develop|write|code|implement)\s+(?:a|an|me\s+a|the)?\s*(?:app|application|website|site|program|tool|script|api|game|system|page)\b|ابن[يِ]?\s|ابني|أنشئ|انشئ|اكتب\s+(?:برنامج|كود|سكربت|أداة)|طوّ?ر\s|صمّ?م\s/iu;
 
+/**
+ * THE DEVICES THEMSELVES, ASKED FOR IN THE CHAT.
+ *
+ * The owner, 2026-11-07: «I give the orders from the command box… I tell it
+ * connect to computer such-and-such, search which computers you can reach…
+ * and the same for phones» — not a button in the settings. A request that
+ * names connecting to a device, or asks which devices Joe can reach, is
+ * operate work: Joe lists them (device_computers), offers the line that links
+ * a new computer (device_link_new), pairs a phone with the code it shows.
+ */
+const DEVICE_NOUN = '(?:ال)?(?:كمبيوتر|كومبيوتر|حاسوب|جهاز|لابتوب|هاتف|جوال|جوّال|موبايل|تلفون|تليفون)';
+const CONNECT = new RegExp(`(?:اشبك|إشبك|شبّ?ك|اتّ?صل|إتّ?صل|وصّ?ل|اربط|إربط)\\s+(?:على|ب|مع|في|الى|إلى)?\\s*${DEVICE_NOUN}|تحكّ?م\\s+(?:ب|في)\\s*${DEVICE_NOUN}|\\b(?:connect|link|pair)\\s+(?:to\\s+|with\\s+)?(?:my\\s+|the\\s+|another\\s+|a\\s+|this\\s+|that\\s+)?(?:other\\s+)?(?:computer|pc|laptop|phone|device|machine|android)\\b`, 'iu');
+const DEVICES_PLURAL = /(?:الأجهزة|الاجهزة|اجهزة|أجهزة|الكمبيوترات|كمبيوترات|الحواسيب|حواسيب|الهواتف|هواتف|الجوالات|جوالات)|\b(?:devices|computers|phones|machines)\b/iu;
+const REACH = /(?:تقدر|بتقدر|يمكنك|تستطيع|بتوصل|توصل|متصل|المتصل|مربوط|المربوط|موصول|الموصول|حولي|بالشبكة|على\s+الشبكة|في\s+الشبكة)|\b(?:can\s+you\s+(?:reach|see|control|access)|connected|linked|reachable|on\s+my\s+(?:network|wi-?fi)|nearby)\b/iu;
+const TASK_VERB = /(?:افتح|اكتب|اضغط|احفظ|انسخ|احذف|أرسل|ارسل|شغّ?ل\s)|\b(?:open|type|click|press|save|write|run|send|copy|delete)\b/iu;
+
+/** The request asks to connect to a device, or which devices Joe can reach. */
+export function isDeviceRequest(text: string): boolean {
+    const t = String(text || '');
+    return CONNECT.test(t) || (DEVICES_PLURAL.test(t) && REACH.test(t));
+}
+
+/** …and nothing more is to be done on it: listing, linking or pairing is the whole of it. */
+export function onlyAboutDevices(text: string): boolean {
+    return isDeviceRequest(text) && !TASK_VERB.test(String(text || ''));
+}
+
 export function isOperateRequest(text: string): boolean {
     const t = String(text || '');
     if (!t.trim() || BUILD_VERB.test(t)) return false;
-    return ON_DEVICE.test(t) || ON_PHONE.test(t) || DESKTOP_APP.test(t);
+    return ON_DEVICE.test(t) || ON_PHONE.test(t) || DESKTOP_APP.test(t) || isDeviceRequest(t);
 }
 
 /** The request is about the owner's phone (the android_ tools), not a computer. */
@@ -65,6 +92,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         `- This computer runs ${machine.platform === 'win32' ? 'Windows' : machine.platform}. You act on it only through the device_ tools.`,
         '- device_windows lists the open windows by handle number; every other device_ tool names its window by that number.',
         '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home…), android_scroll, android_open by package name. When the request is about his phone, use these, not the device_ tools.',
+        '- When the owner asks what you can reach, or to connect to a computer or a phone: call device_computers and tell him, by name, what you can reach. A computer that is not linked yet: device_link_new shows him the one line to run on it, then device_wait_link waits for it, then device_use it and go on with what he asked. A phone on Wi-Fi showing its pairing code: ask him for the six digits (say it in task_finish), then android_pair and android_connect when he gives them. Never ask him to go to the settings for any of this: the chat is where he works.',
         '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',
         '# Method',
@@ -115,7 +143,14 @@ export function operateVerifier(): Verifier {
         const done = rec.actions.filter(a => a.ok);
         const lastAction = done.length ? done[done.length - 1].at : 0;
         const lastLook = rec.looks.length ? rec.looks[rec.looks.length - 1].at : 0;
-        if (looking) {
+        if (onlyAboutDevices(ctx.request)) {
+            //  Listing what Joe can reach, linking a computer or pairing a phone is the whole of it.
+            const linked = done.filter(a => /^(?:device_link_new|device_wait_link|android_pair|android_connect)$/u.test(a.tool));
+            const listed = rec.looks.some(l => l.kind === 'devices');
+            checks.push(linked.length || listed
+                ? { id: 'devices', status: 'passed', detail: linked.length ? linked.map(a => a.what).join('; ') : 'the devices Joe can reach were listed' }
+                : { id: 'devices', status: 'failed', detail: 'the request is about the devices Joe can reach, and none were listed, linked or paired: call device_computers' });
+        } else if (looking) {
             checks.push(lastLook
                 ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${rec.looks.length} look(s))` }
                 : { id: 'looked', status: 'failed', detail: 'the request asks what is on the screen, and no device_look or device_read was made' });
@@ -138,14 +173,16 @@ export function operateVerifier(): Verifier {
 
 /* ───────────────────────── what the owner is told ───────────────────────── */
 
-const OPERATE_WORDS: Record<string, { done: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
+const OPERATE_WORDS: Record<string, { done: string; devices: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
     ar: {
         done: '✅ نفّذتُه على جهازك ونظرتُ إلى الشاشة بعده للتأكد.',
+        devices: '✅ هذا ما أصل إليه الآن من أجهزتك.',
         notDone: why => `⚠️ لم يكتمل التنفيذ على الجهاز: ${why}`,
         took: (s, usd) => `⏱️ استغرق ${s < 60 ? `${s} ثانية` : `${Math.round(s / 60)} دقيقة`}${usd != null ? `، كلفة ${usd.toFixed(3)}$` : ''}`,
     },
     en: {
         done: '✅ Done on your computer, and the screen was checked afterwards.',
+        devices: '✅ That is what I can reach of your devices now.',
         notDone: why => `⚠️ Not completed on the device: ${why}`,
         took: (s, usd) => `⏱️ Took ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`}${usd != null ? `, cost $${usd.toFixed(3)}` : ''}`,
     },
@@ -160,7 +197,7 @@ export function operateOutput(result: EngineResult | undefined, language: string
     const receipts = (result?.verification?.checks || []).map(c => ({ tool: `operate:${c.id}`, ok: c.status === 'passed', ...(c.status === 'passed' ? {} : { error: c.detail }) }));
     const seconds = Math.round((result?.durationMs || 0) / 1000);
     const summary = verified
-        ? [String(result!.summary || '').trim(), words.done, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
+        ? [String(result!.summary || '').trim(), (result!.verification?.checks || []).some(c => c.id === 'devices') ? words.devices : words.done, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), String(result?.summary || '').trim()].filter(Boolean).join('\n\n');
     return {
         ok: verified,

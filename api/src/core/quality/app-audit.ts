@@ -22,6 +22,7 @@ import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
+import { HANDOFF_SCHEME } from './behaviour-audit';
 import { AuditEyes } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -802,6 +803,8 @@ export async function auditBuiltApp(
              * 404 and 500 still count in full: those are real.
              */
             if (/\b40[13]\b|Unauthorized|Forbidden/i.test(String(m.text()))) return;
+            //  A call or a mail handed to the system's own app (behaviour-audit.ts HANDOFF_SCHEME): the browser has none, the page is right.
+            if (HANDOFF_SCHEME.test(String(m.text()))) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
@@ -1098,6 +1101,23 @@ export async function auditBuiltApp(
                 }).length,
                 small,
                 smallSel,
+                /**
+                 * A CALL, A MAIL, A MAP: THE WAYS A CARD LETS ITS VISITOR ACT.
+                 *
+                 * The ladder, 2026-11-07, L002 (a vet clinic's welcome card): its
+                 * one control was «اتصل بنا الآن» → tel:, correct and visible, and
+                 * the page was refused five times as «not one button, link or
+                 * form», because the control walk presses only buttons and in-app
+                 * routes. A visible link that hands the visitor to his phone, his
+                 * mail or another site is a control of the page.
+                 */
+                actionLinks: Array.from(document.querySelectorAll('a[href]')).filter((a: any) => {
+                    const href = String(a.getAttribute('href') || '').trim();
+                    if (!/^(?:tel|mailto|sms|whatsapp|geo|maps):|^https?:\/\//i.test(href)) return false;
+                    const rect = a.getBoundingClientRect();
+                    const style = getComputedStyle(a);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
                 h1s: Array.from(document.querySelectorAll('h1')).filter((el: any) => {
                     const rect = el.getBoundingClientRect();
                     const style = getComputedStyle(el);
@@ -1872,7 +1892,7 @@ export async function auditBuiltApp(
          */
         //  Links to the app's own pages are links (inAppRoutes): a page of them
         //  is a way in, judged by the pages it opens, not an empty page.
-        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length) {
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',

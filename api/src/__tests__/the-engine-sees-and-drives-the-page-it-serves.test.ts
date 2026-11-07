@@ -437,6 +437,27 @@ describeWithChromium('the engine browser on a real page', () => {
         }
     });
 
+    it('a page is seen as a phone shows it, and goes back to its own width after (P025)', async () => {
+        const access = jest.spyOn(workspace, 'canAccessAutonomousFiles').mockResolvedValue(true);
+        const { ctx, close } = engineContext('run-phone');
+        try {
+            await inRun(() => adapter.browserOpenTool.run({ url: `${base}/` }, ctx));
+            const phone = await inRun(() => adapter.browserScreenshotTool.run({ full_page: false, device: 'phone' }, ctx));
+            expect(phone.ok).toBe(true);
+            expect(isJpeg(phone.images![0].path)).toBe(true);
+            expect(phone.output).toMatch(/\(390×844, viewport\)/);
+            const tablet = await inRun(() => adapter.browserScreenshotTool.run({ full_page: false, device: 'tablet' }, ctx));
+            expect(tablet.output).toMatch(/\(820×1180, viewport\)/);
+            //  The owner's panel page is given back its own size.
+            const again = await inRun(() => adapter.browserScreenshotTool.run({ full_page: false }, ctx));
+            expect(again.output).toMatch(/\(1280×720, viewport\)/);
+            expect(adapter.browserScreenshotTool.parse({ device: 'mobile' })).toEqual({ ok: true, value: { full_page: false, device: 'phone' } });
+        } finally {
+            access.mockRestore();
+            await close();
+        }
+    });
+
     it('the session comes from the run, never from the input, and another user\'s session is refused', async () => {
         const call = (input: any, over: Record<string, unknown> = {}) =>
             inRun(() => executeTool('engine_browser_open', input, toolContext('run-identity', over) as any) as Promise<any>);

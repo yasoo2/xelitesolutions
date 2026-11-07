@@ -15,7 +15,7 @@ import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../typ
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { encodedCommand, runDesktop, type DesktopAction, type PowerShellRunner } from '../../../core/devices/windows-desktop';
 import { DesktopHost } from '../../../core/devices/desktop-host';
-import { deviceLinks } from '../../../core/devices/device-link';
+import { deviceLinks, linkCommand, reachableBase } from '../../../core/devices/device-link';
 import { config } from '../../../shared/config';
 import fs from 'fs';
 import os from 'os';
@@ -101,7 +101,7 @@ export class EngineDeviceTool implements ToolDefinition {
     readonly inputSchema = {
         type: 'object',
         properties: {
-            op: { type: 'string', description: 'look | windows | focus | click | move | drag | scroll | type | key | open | ui | act | computers' },
+            op: { type: 'string', description: 'look | windows | focus | click | move | drag | scroll | type | key | open | ui | act | computers | pair | linked' },
             window: { type: 'number', description: 'The window handle the action is for.' },
             computer: { type: 'string', description: 'A linked computer\'s name; absent for this computer.' },
         },
@@ -117,6 +117,16 @@ export class EngineDeviceTool implements ToolDefinition {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const owner = String(context?.userId || context?.auth?.sub || config.localUserId || '').trim();
         if (String(input?.op || '') === 'computers') return { ok: true, output: { text: computersText(owner) } } as any;
+        //  Asked in the chat for a computer that is not linked yet: the line to run there (device-link.ts).
+        if (String(input?.op || '') === 'pair') {
+            const { code, expiresAt } = deviceLinks.newPairingCode(owner);
+            const base = reachableBase('http', `127.0.0.1:${config.port || 5000}`);
+            const command = linkCommand(`${base.http}/api/devices/link.ps1?code=${code}`);
+            return { ok: true, output: { text: `PAIR\t${command}\t${expiresAt}\t${base.via}`, command, expiresAt, via: base.via } } as any;
+        }
+        if (String(input?.op || '') === 'linked') {
+            return { ok: true, output: { text: JSON.stringify(deviceLinks.list(owner).map(d => ({ name: d.name, os: d.os, connectedAt: d.connectedAt }))) } } as any;
+        }
         //  A linked computer (core/devices/device-link.ts): its own helper acts, its own guard decides.
         const computer = String(input?.computer || '').trim();
         if (computer) {

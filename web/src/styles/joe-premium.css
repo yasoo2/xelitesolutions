@@ -2366,7 +2366,7 @@ body:not(.rtl) .joe-user-info {
     display: flex;
     flex-direction: column;
     background: rgba(255, 255, 255, 0.02);
-    border-left: 1px solid rgba(255, 255, 255, 0.06);
+    border-inline-end: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .stg-sidebar-header {
@@ -2423,8 +2423,7 @@ body:not(.rtl) .joe-user-info {
     border-radius: 10px;
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    text-align: right;
-    direction: rtl;
+    text-align: start;
     width: 100%;
 }
 
@@ -2540,8 +2539,7 @@ body:not(.rtl) .joe-user-info {
 }
 
 .stg-content-section {
-    direction: rtl;
-    text-align: right;
+    text-align: start;
 }
 
 .stg-content-header {
@@ -2748,7 +2746,6 @@ body:not(.rtl) .joe-user-info {
     font-size: 13px;
     font-weight: 600;
     color: var(--joe-text-secondary);
-    direction: rtl;
 }
 
 .stg-theme-card.active .stg-theme-info {
@@ -2756,8 +2753,8 @@ body:not(.rtl) .joe-user-info {
 }
 
 .stg-check {
-    margin-right: auto;
-    margin-left: 0;
+    margin-inline-start: auto;
+    margin-inline-end: 0;
     color: var(--joe-gold-primary);
 }
 
@@ -2813,7 +2810,6 @@ body:not(.rtl) .joe-user-info {
     background: transparent;
     cursor: pointer;
     transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-    direction: rtl;
 }
 
 .stg-lang-item:hover {
@@ -2873,7 +2869,6 @@ body:not(.rtl) .joe-user-info {
     display: flex;
     align-items: flex-start;
     gap: 12px;
-    direction: rtl;
 }
 
 .stg-danger-label>svg {
@@ -2931,7 +2926,7 @@ body:not(.rtl) .joe-user-info {
 
 [data-theme="light"] .stg-sidebar {
     background: #f8fafc;
-    border-left-color: rgba(14, 122, 95, 0.1);
+    border-inline-end-color: rgba(14, 122, 95, 0.1);
 }
 
 [data-theme="light"] .stg-nav-item.active {
@@ -4183,6 +4178,7 @@ body:not(.rtl) .joe-user-info {
 .dev-sub { font-size: 12px; color: var(--joe-text-secondary); opacity: 0.8; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .dev-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--joe-text-muted); flex-shrink: 0; }
 .dev-dot.on { background: var(--joe-gold-primary); box-shadow: 0 0 0 4px rgba(52, 196, 139, 0.15); }
+.dev-hint { font-size: 12.5px; line-height: 1.7; color: var(--joe-text-secondary); padding: 10px 12px; border-radius: 10px; background: rgba(52, 196, 139, 0.06); border: 1px dashed var(--joe-border); }
 .dev-section-title { font-size: 12px; font-weight: 600; letter-spacing: 0.3px; color: var(--joe-text-secondary); margin-top: 6px; }
 .dev-empty { font-size: 13px; color: var(--joe-text-secondary); opacity: 0.75; padding: 4px 2px; }
 .dev-btn {
@@ -4210,3 +4206,8 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .dev-card { background: #ffffff; }
 [data-theme="light"] .dev-command { background: #f1f5f9; }
 [data-theme="light"] .dev-btn.primary { color: #ffffff; background: #0e7a5f; }
+
+/* Settings follow the interface language (SettingsDialog sets dir on .stg-panel):
+   the accent bar sits on the side facing the content, the arrow points at it. */
+.stg-panel[dir="ltr"] .stg-nav-item.active { box-shadow: inset -3px 0 0 var(--joe-gold-primary); }
+.stg-panel[dir="ltr"] .stg-nav-arrow { transform: scaleX(-1); }

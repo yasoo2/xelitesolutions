@@ -14,7 +14,7 @@ import os from 'os';
 import path from 'path';
 import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
-import { AndroidPhone, describeAndroid, parseDevices, type AdbRunner } from '../../../core/devices/android';
+import { AndroidPhone, connectPhone, describeAndroid, pairPhone, parseDevices, parseMdns, type AdbRunner } from '../../../core/devices/android';
 
 const EXE = process.platform === 'win32' ? 'adb.exe' : 'adb';
 
@@ -41,7 +41,7 @@ const gatewayAdb = (adb: string): AdbRunner => async (args, opts) => {
     };
 };
 
-const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps']);
+const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
 const fail = (text: string) => ({ ok: false, error: text, output: { text } }) as any;
@@ -72,10 +72,27 @@ export class EngineAndroidTool implements ToolDefinition {
         const adb = findAdb();
         if (!adb) return fail(NO_ADB);
         const run = gatewayAdb(adb);
+        if (op === 'pair') {
+            const r = await pairPhone(run, String(input?.address || '').trim(), String(input?.code || '').trim());
+            return r.ok ? ok('Paired. Now connect to the address the phone\'s Wireless debugging screen shows (android_connect), or call android_devices.') : fail(`pairing failed: ${r.error}`);
+        }
+        if (op === 'connect') {
+            const r = await connectPhone(run, String(input?.address || '').trim());
+            return r.ok ? ok('Connected. android_devices lists it now.') : fail(`the phone did not connect: ${r.error}`);
+        }
         const listed = parseDevices((await run(['devices', '-l'], { timeoutMs: 20_000 })).stdout);
         if (op === 'devices') {
-            if (!listed.length) return ok('No phone is connected. Tell the owner: plug the phone in by cable with USB debugging on (or pair it with Wireless debugging), and allow this computer when the phone asks.');
-            return ok(listed.map(d => `- ${d.serial} ${d.model || d.product || ''} (${d.state === 'device' ? 'connected' : d.state === 'unauthorized' ? 'waiting: the owner must tap «Allow» on the phone' : d.state})`).join('\n'));
+            //  Phones on this network that announce Wireless debugging, beside those already connected.
+            const wifi = parseMdns((await run(['mdns', 'services'], { timeoutMs: 15_000 }).catch(() => ({ stdout: '' }) as any)).stdout)
+                .filter(p => !listed.some(d => d.serial === p.address));
+            const lines = listed.map(d => `- ${d.serial} ${d.model || d.product || ''} (${d.state === 'device' ? 'connected' : d.state === 'unauthorized' ? 'waiting: the owner must tap «Allow» on the phone' : d.state})`);
+            for (const p of wifi) {
+                lines.push(p.kind === 'pair'
+                    ? `- ${p.name} on Wi-Fi at ${p.address}: showing its pairing code now. Ask the owner for the six digits on the phone's screen, then android_pair {"address": "${p.address}", "code": …}`
+                    : `- ${p.name} on Wi-Fi at ${p.address}: ready to connect (android_connect {"address": "${p.address}"}); if it was never paired, the owner opens Wireless debugging › «Pair device with pairing code» on the phone`);
+            }
+            if (!lines.length) return ok('No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
+            return ok(lines.join('\n'));
         }
         const ready = listed.filter(d => d.state === 'device');
         const serial = String(input?.serial || '').trim() || (ready.length === 1 ? ready[0].serial : '');

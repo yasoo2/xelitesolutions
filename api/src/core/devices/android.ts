@@ -115,6 +115,41 @@ export function inputTextArg(text: string): string | null {
 
 export const ADB_KEYBOARD = 'com.android.adbkeyboard/.AdbIME';
 
+/* ───────────── phones on Wi-Fi (Android 11+, «Wireless debugging») ───────────── */
+
+export interface WifiPhone { name: string; kind: 'pair' | 'connect'; address: string }
+
+/**
+ * `adb mdns services` → the phones on this network that announce Wireless
+ * debugging: «pair» while the phone shows its pairing code, «connect» once
+ * this computer is allowed.
+ */
+export function parseMdns(out: string): WifiPhone[] {
+    const phones: WifiPhone[] = [];
+    for (const raw of String(out || '').split(/\r?\n/u)) {
+        const m = raw.trim().match(/^(\S+)\s+_adb-tls-(pairing|connect)\._tcp\.?\s+(\d{1,3}(?:\.\d{1,3}){3}:\d{2,5})$/u);
+        if (m) phones.push({ name: m[1], kind: m[2] === 'pairing' ? 'pair' : 'connect', address: m[3] });
+    }
+    return phones;
+}
+
+const ADDRESS = /^\d{1,3}(?:\.\d{1,3}){3}:\d{2,5}$/u;
+
+/** Pairs this computer with a phone, by the six digits the phone shows under «Pair device with pairing code». */
+export async function pairPhone(adb: AdbRunner, address: string, code: string): Promise<{ ok: boolean; error?: string }> {
+    if (!ADDRESS.test(address)) return { ok: false, error: `«${address}» is not the address the phone shows (like 192.168.1.40:41235)` };
+    if (!/^\d{6}$/u.test(code)) return { ok: false, error: 'the pairing code is the six digits the phone shows' };
+    const r = await adb(['pair', address, code], { timeoutMs: 30_000 });
+    return /Successfully paired/iu.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stdout || r.stderr || 'pairing failed').trim() };
+}
+
+/** Connects to a phone this computer is paired with, at the address its Wireless debugging screen shows. */
+export async function connectPhone(adb: AdbRunner, address: string): Promise<{ ok: boolean; error?: string }> {
+    if (!ADDRESS.test(address)) return { ok: false, error: `«${address}» is not the address the phone shows (like 192.168.1.40:37011)` };
+    const r = await adb(['connect', address], { timeoutMs: 30_000 });
+    return /connected to|already connected/iu.test(r.stdout) && !/failed|cannot|unable/iu.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stdout || r.stderr || 'the phone did not answer').trim() };
+}
+
 export class AndroidPhone {
     constructor(private readonly adb: AdbRunner, readonly serial: string) { }
 

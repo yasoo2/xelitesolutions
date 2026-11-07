@@ -8,6 +8,7 @@ import {
 import { API_URL } from '../config';
 import SystemStatusPanel from './SystemStatusPanel';
 import DevicesPanel from './DevicesPanel';
+import { RTL_LANGUAGES } from '../i18n';
 import { ACCENTS, getAccent, setAccent, type AccentId, type ThemeMode } from '../accents';
 
 interface SettingsDialogProps {
@@ -72,6 +73,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
         (mode === 'dark' ? setAccentDark : setAccentLight)(id);
         setAccent(mode, id, theme);
     };
+
+    //  Escape closes the dialog, as every dialog does (seen 2026-11-07: it did not).
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
@@ -392,7 +401,9 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
 
     return (
         <div className="dialog-overlay" onClick={onClose}>
-            <div className="stg-panel" onClick={(e) => e.stopPropagation()}>
+            {/* The settings read in the interface language's own direction: the page stays LTR
+                (i18n.ts applyLanguageToDocument) so the editor and terminal never mirror. */}
+            <div className="stg-panel" dir={RTL_LANGUAGES.includes(String(lang || 'en').split('-')[0]) ? 'rtl' : 'ltr'} onClick={(e) => e.stopPropagation()}>
                 {/* Sidebar */}
                 <div className="stg-sidebar">
                     <div className="stg-sidebar-header">

@@ -35,7 +35,7 @@ async function phone(ctx: ToolContext, input: Record<string, unknown>): Promise<
 function did(ctx: ToolContext, tool: string, ok: boolean, what: string): void {
     deviceRecordFor(ctx.runId).actions.push({ tool, ok, at: Date.now(), what: what.slice(0, 200) });
 }
-function saw(ctx: ToolContext, kind: 'look' | 'read'): void {
+function saw(ctx: ToolContext, kind: 'look' | 'read' | 'devices'): void {
     deviceRecordFor(ctx.runId).looks.push({ at: Date.now(), kind });
 }
 
@@ -50,6 +50,7 @@ export const androidDevicesTool: EngineTool<Record<string, never>> = {
     parse: () => ({ ok: true, value: {} }),
     async run(_a, ctx): Promise<ToolOutcome> {
         const r = await phone(ctx, { op: 'devices' });
+        if (r.ok) saw(ctx, 'devices');
         return { ok: r.ok, output: r.text };
     },
 };
@@ -189,7 +190,40 @@ export const androidAppsTool: EngineTool<{ serial?: string }> = {
     },
 };
 
+export const androidPairTool: EngineTool<{ address: string; code: string }> = {
+    name: 'android_pair',
+    description: 'Pair this computer with a phone on Wi-Fi: "address" from android_devices (the pairing one), "code" the six digits the phone shows under «Pair device with pairing code» (ask the owner for them). Then android_connect.',
+    parameters: { type: 'object', properties: { address: { type: 'string' }, code: { type: 'string' } }, required: ['address', 'code'] },
+    parse: raw => {
+        const a = obj(raw);
+        const address = String(a.address || '').trim(), code = String(a.code ?? '').replace(/\s+/gu, '');
+        return address && code ? { ok: true, value: { address, code } } : { ok: false, error: 'android_pair needs "address" and the six-digit "code" the phone shows.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'pair', ...a });
+        did(ctx, 'android_pair', r.ok, `pair ${a.address}`);
+        if (r.ok) saw(ctx, 'read');
+        return { ok: r.ok, output: r.text };
+    },
+};
+
+export const androidConnectTool: EngineTool<{ address: string }> = {
+    name: 'android_connect',
+    description: 'Connect to a phone on Wi-Fi that this computer is paired with, at the address its Wireless debugging screen (or android_devices) shows.',
+    parameters: { type: 'object', properties: { address: { type: 'string' } }, required: ['address'] },
+    parse: raw => {
+        const address = String(obj(raw).address || '').trim();
+        return address ? { ok: true, value: { address } } : { ok: false, error: '"address" is the phone\'s address, like 192.168.1.40:37011.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'connect', ...a });
+        did(ctx, 'android_connect', r.ok, `connect ${a.address}`);
+        if (r.ok) saw(ctx, 'read');
+        return { ok: r.ok, output: r.text };
+    },
+};
+
 export const androidTools: EngineTool[] = [
-    androidDevicesTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
+    androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
     androidKeyTool, androidScrollTool, androidOpenTool, androidAppsTool,
 ];
