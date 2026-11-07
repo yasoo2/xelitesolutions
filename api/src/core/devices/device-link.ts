@@ -23,6 +23,7 @@
  * screen comes back inline (`lookdata`), since Joe cannot read a file there.
  */
 import crypto from 'crypto';
+import os from 'os';
 import path from 'path';
 import { hostLine, readHostAnswer } from './desktop-host';
 import { helperDllPath, helperSource, psQuote, type DesktopAction } from './windows-desktop';
@@ -220,6 +221,39 @@ export function linkScript(wsUrl: string): string {
         `$why = [JoeDesktop]::Link(${psQuote(wsUrl)}, $hello)`,
         'Write-Host ("  " + $why)',
     ].join(String.fromCharCode(10));
+}
+
+const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
+
+/** This computer's address on its own network (the first private IPv4), if it has one. */
+export function lanAddress(interfaces = os.networkInterfaces()): string {
+    for (const list of Object.values(interfaces)) {
+        for (const a of list || []) {
+            const family = String((a as any).family);
+            if ((family === 'IPv4' || family === '4') && !a.internal && /^(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(a.address)) return a.address;
+        }
+    }
+    return '';
+}
+
+/**
+ * The address another computer reaches this Joe at. The address given, unless
+ * only this computer knows it (localhost): then PUBLIC_URL when it is set,
+ * else this computer's address on its network (Joe listens on every interface
+ * by default, shared/go-live.ts), else «local», said plainly by the caller.
+ */
+export function reachableBase(proto: string, host: string, env: NodeJS.ProcessEnv = process.env, lan: () => string = lanAddress): { http: string; ws: string; via: 'request' | 'public' | 'lan' | 'local' } {
+    const p = proto === 'https' ? 'https' : 'http';
+    const at = (scheme: string, h: string) => ({ http: `${scheme}://${h}`, ws: `${scheme === 'https' ? 'wss' : 'ws'}://${h}` });
+    if (!LOCAL_HOST.test(host)) return { ...at(p, host), via: 'request' };
+    try {
+        const pub = new URL(String(env.PUBLIC_URL || ''));
+        if (/^https?:$/.test(pub.protocol) && !LOCAL_HOST.test(pub.host)) return { ...at(pub.protocol.replace(':', ''), pub.host), via: 'public' };
+    } catch { /* no public address */ }
+    const ip = String(env.JOE_BIND_HOST || '0.0.0.0').trim() === '0.0.0.0' ? lan() : '';
+    const port = (host.match(/:(\d+)$/) || [])[1];
+    if (ip) return { ...at(p, port ? `${ip}:${port}` : ip), via: 'lan' };
+    return { ...at(p, host), via: 'local' };
 }
 
 /** The one line the owner runs on the other computer. */

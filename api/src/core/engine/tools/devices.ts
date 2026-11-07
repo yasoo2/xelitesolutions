@@ -35,7 +35,7 @@ function gateway(): (name: string, input: any, context?: any) => Promise<any> {
 
 export interface DeviceRecord {
     actions: Array<{ tool: string; ok: boolean; at: number; window?: number; what: string }>;
-    looks: Array<{ at: number; window?: number; kind: 'look' | 'read' | 'windows' }>;
+    looks: Array<{ at: number; window?: number; kind: 'look' | 'read' | 'windows' | 'devices' }>;
     frames: Map<string, LookFrame>;
     controls: Map<number, UiControl[]>;
     windows: Map<number, DesktopWindow>;
@@ -64,7 +64,7 @@ function act(ctx: ToolContext, tool: string, ok: boolean, what: string, window?:
     deviceRecordFor(ctx.runId).actions.push({ tool, ok, at: Date.now(), window, what: what.slice(0, 200) });
 }
 
-function seen(ctx: ToolContext, kind: 'look' | 'read' | 'windows', window?: number): void {
+function seen(ctx: ToolContext, kind: 'look' | 'read' | 'windows' | 'devices', window?: number): void {
     deviceRecordFor(ctx.runId).looks.push({ at: Date.now(), window, kind });
 }
 
@@ -299,12 +299,79 @@ export const deviceFocusTool: EngineTool<{ window: number }> = {
 
 export const deviceComputersTool: EngineTool<Record<string, never>> = {
     name: 'device_computers',
-    description: 'List the computers you can work: this one, and the other computers the owner linked to Joe (by name, with their system and whether they are connected).',
+    description: 'List every device you can reach: this computer, the other computers the owner linked to Joe (by name), and the Android phones connected by cable or visible on this Wi-Fi. Call it first when the owner asks what you can reach, or names another computer or his phone.',
     parameters: { type: 'object', properties: {} },
     parse: () => ({ ok: true, value: {} }),
     async run(_a, ctx): Promise<ToolOutcome> {
         const r = await device(ctx, { op: 'computers' });
-        return { ok: r.ok, output: r.text };
+        let phones = '';
+        try {
+            const p = await gateway()('engine_android', { op: 'devices' }, toolContextFor(ctx));
+            const text = p?.output && typeof p.output.text === 'string' ? p.output.text : String(p?.error || '');
+            phones = text ? `Phones:\n${text}` : '';
+        } catch { /* the computers are still listed */ }
+        seen(ctx, 'devices');
+        const add = 'To add a computer, device_link_new gives the owner one line to run on it; to add a phone, see the Phones lines.';
+        return { ok: r.ok, output: [r.text, phones, add].filter(Boolean).join('\n\n') };
+    },
+};
+
+const LINK_WORDS: Record<string, (command: string, minutes: number, via: string) => string> = {
+    ar: (command, minutes, via) => [
+        'لربط الحاسوب الآخر بجو، افتح عليه PowerShell والصق هذا السطر ثم اضغط Enter:',
+        command,
+        `السطر يعمل مرة واحدة خلال ${minutes} دقائق. ستظهر هناك نافذة تقول إن جو يتحكم بالحاسوب، وإغلاقها ينهي الربط فوراً.`,
+        via === 'lan' ? 'هذا السطر يعمل من حاسوب على الشبكة نفسها (البيت أو المكتب).' : via === 'local' ? 'تنبيه: جو مفتوح على عنوان محلي فقط، فلن يصل إليه حاسوب آخر إلا عبر عنوان شبكة أو عنوان عام.' : '',
+    ].filter(Boolean).join('\n'),
+    en: (command, minutes, via) => [
+        'To link the other computer to Joe, open PowerShell on it, paste this line and press Enter:',
+        command,
+        `The line works once, within ${minutes} minutes. A window there says Joe is in control; closing it ends the link at once.`,
+        via === 'lan' ? 'This line works from a computer on the same network (home or office).' : via === 'local' ? 'Note: Joe is open at a local address only, so another computer reaches it only through a network or public address.' : '',
+    ].filter(Boolean).join('\n'),
+};
+
+export const deviceLinkNewTool: EngineTool<Record<string, never>> = {
+    name: 'device_link_new',
+    description: 'The owner asked for a computer that is not linked yet: show him, now, in his language, the one line to run on that computer (it links it to Joe; a window there says Joe is in control). Then call device_wait_link.',
+    parameters: { type: 'object', properties: {} },
+    parse: () => ({ ok: true, value: {} }),
+    async run(_a, ctx): Promise<ToolOutcome> {
+        const result = await gateway()('engine_device', { op: 'pair' }, toolContextFor(ctx));
+        const out = result?.output || {};
+        if (result?.ok !== true || typeof out.command !== 'string') return { ok: false, output: `device_link_new failed: ${String(out.text || result?.error || 'no line was made')}` };
+        const minutes = Math.max(1, Math.round((Number(out.expiresAt) - Date.now()) / 60_000));
+        const lang = String(ctx.replyLanguage || ctx.language || 'en').startsWith('ar') ? 'ar' : 'en';
+        const message = LINK_WORDS[lang](out.command, minutes, String(out.via || ''));
+        //  Shown in the chat now, while the run waits for the computer.
+        ctx.emit({ type: 'thought', text: message });
+        act(ctx, 'device_link_new', true, 'showed the owner the line that links another computer');
+        return { ok: true, output: `The owner was shown this, in his language:\n${message}\n\nNow call device_wait_link: it returns the computer's name when it connects. Repeat the line in task_finish if it never does.` };
+    },
+};
+
+export const deviceWaitLinkTool: EngineTool<{ minutes: number }> = {
+    name: 'device_wait_link',
+    description: 'Wait for a computer to link after device_link_new (up to "minutes", 10 at most). Returns its name; then device_use it.',
+    parameters: { type: 'object', properties: { minutes: { type: 'integer', description: 'How long to wait, 1 to 10.' } } },
+    parse: raw => ({ ok: true, value: { minutes: Math.max(1, Math.min(10, Math.round(Number(obj(raw)?.minutes) || 5))) } }),
+    async run(a, ctx): Promise<ToolOutcome> {
+        const names = async (): Promise<Array<{ name: string; connectedAt: number }>> => {
+            const r = await gateway()('engine_device', { op: 'linked' }, toolContextFor(ctx));
+            try { return JSON.parse(String(r?.output?.text || '[]')); } catch { return []; }
+        };
+        const before = new Set((await names()).map(d => d.name));
+        const until = Math.min(Date.now() + a.minutes * 60_000, ctx.deadlineAt - 30_000);
+        while (Date.now() < until && !ctx.signal.aborted) {
+            const fresh = (await names()).find(d => !before.has(d.name));
+            if (fresh) {
+                act(ctx, 'device_wait_link', true, `linked «${fresh.name}»`);
+                seen(ctx, 'devices');
+                return { ok: true, output: `«${fresh.name}» is linked (${(fresh as any).os || 'Windows'}). device_use {"computer": "${fresh.name}"} to work on it.` };
+            }
+            await new Promise(r => setTimeout(r, 3000));
+        }
+        return { ok: false, output: `No computer linked within ${a.minutes} minute(s). Tell the owner the line is still waiting (it works for ten minutes from when it was shown), or offer a new one.` };
     },
 };
 
@@ -331,6 +398,6 @@ export const deviceUseTool: EngineTool<{ computer: string }> = {
 };
 
 export const deviceTools: EngineTool[] = [
-    deviceComputersTool, deviceUseTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
+    deviceComputersTool, deviceLinkNewTool, deviceWaitLinkTool, deviceUseTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
     deviceTypeTool, deviceKeysTool, deviceScrollTool, deviceOpenTool, deviceFocusTool,
 ];

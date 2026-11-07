@@ -74,6 +74,14 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
         setAccent(mode, id, theme);
     };
 
+    //  Escape closes the dialog, as every dialog does (seen 2026-11-07: it did not).
+    useEffect(() => {
+        if (!isOpen) return;
+        const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [isOpen, onClose]);
+
     if (!isOpen) return null;
 
     const menuItems: MenuItem[] = [
