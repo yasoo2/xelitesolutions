@@ -348,6 +348,79 @@ describe('the verifier and the closing words fit what was asked', () => {
     });
 });
 
+describe('the chat\'s answerer knows what Joe did on the devices', () => {
+    test('each operate run leaves its result; the answerer is given them as facts, the last five for two hours', () => {
+        const op = require('../core/engine/device-work');
+        const t0 = Date.now();
+        expect(op.deviceWorkFacts('chat-facts', t0)).toBe('');
+        op.noteOperateResult('chat-facts', { target: 'phone', request: 'شغل الكشاف في الهاتف', summary: 'شغّلت الكشاف في هاتف TECNO KI7.', ok: true }, t0);
+        const facts = op.deviceWorkFacts('chat-facts', t0 + 60_000);
+        expect(facts).toContain('never say Joe did nothing there');
+        expect(facts).toContain('1 min ago, on the owner\'s phone: «شغل الكشاف في الهاتف» → done and checked: شغّلت الكشاف');
+        for (let i = 0; i < 6; i++) op.noteOperateResult('chat-facts', { request: `افتح المفكرة ${i}`, summary: 'x', ok: false }, t0 + i);
+        expect(op.deviceWorkFacts('chat-facts', t0 + 10).match(/^- /gmu)).toHaveLength(5);
+        expect(op.deviceWorkFacts('chat-facts', t0 + 3 * 60 * 60_000)).toBe('');
+        expect(op.deviceWorkFacts('another-chat', t0)).toBe('');
+    });
+
+    test('the answerer\'s prompt carries them, and the operate run leaves them', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const answer = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'CentralAnswerTool.ts'), 'utf8');
+        expect(answer).toMatch(/deviceWorkFacts\(context\?\.sessionId\)/u);
+        const engine = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AgentEngineTool.ts'), 'utf8');
+        expect(engine).toMatch(/noteOperateResult\(o\.context\.sessionId/u);
+    });
+});
+
+describe('the owner\'s language is kept for the whole run', () => {
+    const { languageSection, noteInWrongScript, languageReminder } = require('../core/engine/prompt');
+
+    test('the system prompt names it, for every note and the summary', () => {
+        expect(languageSection('ar')).toContain('The owner reads Arabic. Every note you write between tool calls');
+        expect(languageSection('ar')).toContain('in Arabic only, even when the tools');
+        expect(languageSection('en')).toContain('The owner reads English.');
+    });
+
+    test('an English note to an Arabic reader is caught; Arabic with a name in it, code and addresses are not', () => {
+        expect(noteInWrongScript('The tap opened the flashlight detail panel instead of toggling it.', 'ar')).toBe(true);
+        expect(noteInWrongScript('The phone is already connected. I\'ll read its screen.', 'ar')).toBe(true);
+        expect(noteInWrongScript('ضغطتُ بطاقة «الكشاف» في TECNO KI7.', 'ar')).toBe(false);
+        expect(noteInWrongScript('`android_read` http://127.0.0.1:5047/x', 'ar')).toBe(false);
+        expect(noteInWrongScript('The tap opened the panel instead.', 'en')).toBe(false);
+        expect(noteInWrongScript('The tap opened the panel instead.', 'fr')).toBe(false);
+        expect(noteInWrongScript('The tap opened the panel instead.', 'ru')).toBe(true);
+        expect(languageReminder('ar')).toContain('The owner reads Arabic');
+    });
+
+    test('the loop puts it in the system prompt and answers a wrong-script note with the reminder', async () => {
+        const { runEngine } = require('../core/engine/loop');
+        const os = require('os');
+        const fs = require('fs');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-lang-'));
+        const seen: any[][] = [];
+        let n = 0;
+        const model = {
+            vision: false, label: 'script', contextTokens: () => 100_000,
+            async step(messages: any[]) {
+                seen.push(JSON.parse(JSON.stringify(messages)));
+                n++;
+                if (n === 1) return { text: 'The phone is already connected. I will read its screen.', toolCalls: [{ id: 'c1', name: 'echo_tool', arguments: '{}' }], durationMs: 1 };
+                return { text: 'انتهيت.', toolCalls: [{ id: 'c2', name: 'task_finish', arguments: JSON.stringify({ summary: 'تم.' }) }], durationMs: 1 };
+            },
+        };
+        const echo = { name: 'echo_tool', description: 'x', parameters: { type: 'object', properties: {} }, parse: () => ({ ok: true, value: {} }), run: async () => ({ ok: true, output: 'fine' }) };
+        const finish = { name: 'task_finish', description: 'x', parameters: { type: 'object', properties: {} }, parse: (a: any) => ({ ok: true, value: a }), run: async () => ({ ok: true, output: 'ok', facts: { verification: { passed: true, checks: [], unproven: [], at: Date.now() } } }) };
+        await runEngine({ runId: 'lang-run', request: 'اطفي الكشاف', language: 'ar', replyLanguage: 'ar', projectDir: dir, deadlineAt: Date.now() + 60_000, signal: new AbortController().signal, emit: () => { }, joe: {}, operate: true }, {
+            model, tools: [echo, finish], processes: { list: () => [], stopAll: async () => { } } as any, browser: () => ({}) as any, machine: { platform: 'win32', shell: 'powershell' } as any,
+        }).catch(() => { });
+        expect(seen[0][0].content).toContain('The owner reads Arabic');
+        const toolAnswer = seen[1].find((m: any) => m.role === 'tool' && m.tool_call_id === 'c1');
+        expect(toolAnswer.content).toContain('your last note was not in Arabic');
+    });
+});
+
 describe('the plan and the log', () => {
     test('a requirement added and marked in the same call is kept and marked, with no refusal', () => {
         const { applyPlanUpdate } = require('../core/engine/plan');

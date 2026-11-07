@@ -17,7 +17,7 @@
 import { promises as fsp } from 'fs';
 import path from 'path';
 import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
-import { firstMessage, systemPrompt, type MachineFacts } from './prompt';
+import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
@@ -168,7 +168,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     }));
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
-    conv.push({ role: 'system', content: req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine) });
+    conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
     conv.push({ role: 'user', content: req.operate
         ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget)
         : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
@@ -340,6 +340,14 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 recitedRevision = state.plan.revision;
                 recitedRunning = running;
                 recitedAt = state.steps;
+            }
+            //  A note in another script than the owner's language is answered
+            //  with one line asking for his: the owner's phone run, 2026-11-07,
+            //  wrote «The tap opened the flashlight detail panel…» to an Arabic
+            //  reader after a few English tool answers.
+            if (!ending && results.length && turn.text && noteInWrongScript(turn.text, req.replyLanguage || req.language)) {
+                const last = results[results.length - 1];
+                last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
             }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {
