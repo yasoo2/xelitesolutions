@@ -123,18 +123,21 @@ export function applyPlanUpdate(plan: PlanState, args: PlanArgs): string[] {
         }
         plan.steps = args.steps;
     }
+    //  Added before statuses are set: a model that adds a requirement and marks
+    //  it in the same call («add R1, R1 is open») was refused «There is no
+    //  requirement R1» — the owner's phone run, 2026-11-07, its first step red.
+    if (args.add_requirements) {
+        for (const a of args.add_requirements) {
+            if (plan.requirements.some(r => norm(r.text) === norm(a.text))) continue;
+            plan.requirements.push({ id: `R${plan.requirements.length + 1}`, text: a.text, status: 'open', fromRequest: false });
+        }
+    }
     if (args.requirements) {
         for (const u of args.requirements) {
             const r = plan.requirements.find(x => x.id === u.id);
             if (!r) { problems.push(`There is no requirement ${u.id}; the ids are ${plan.requirements.map(x => x.id).join(', ') || 'none yet'}.`); continue; }
             r.status = u.status;
             if (u.evidence !== undefined) r.evidence = u.evidence;
-        }
-    }
-    if (args.add_requirements) {
-        for (const a of args.add_requirements) {
-            if (plan.requirements.some(r => norm(r.text) === norm(a.text))) continue;
-            plan.requirements.push({ id: `R${plan.requirements.length + 1}`, text: a.text, status: 'open', fromRequest: false });
         }
     }
     if (args.note !== undefined) plan.note = args.note || undefined;

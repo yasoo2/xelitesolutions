@@ -95,6 +95,48 @@ export function describeAndroid(controls: AndroidControl[]): string {
 const KEYS: Record<string, number> = {
     home: 3, back: 4, call: 5, endcall: 6, up: 19, down: 20, left: 21, right: 22, center: 23, volumeup: 24, volumedown: 25,
     power: 26, camera: 27, tab: 61, space: 62, enter: 66, delete: 67, backspace: 67, menu: 82, search: 84, recent: 187, apps: 187,
+    //  The owner's phone, 2026-11-07: its screen had gone to sleep, and power
+    //  toggles — a second press puts it back to sleep. wakeup only wakes.
+    wakeup: 224, wake: 224, sleep: 223,
+};
+
+/**
+ * WHETHER THE SCREEN IS ON, AND WHETHER THE PHONE IS LOCKED.
+ *
+ * The owner's phone, 2026-11-07: «what is on my screen?» came back as an
+ * all-black picture, because the screen had gone to sleep, and the run could
+ * only say «the picture is black». Read from `dumpsys power` (mWakefulness)
+ * and `dumpsys window` (isKeyguardShowing); null when the phone did not say.
+ */
+export interface ScreenState { awake: boolean | null; locked: boolean | null; secure: boolean | null }
+
+export function parseScreenState(power: string, window: string): ScreenState {
+    const w = String(power || '').match(/mWakefulness=(\w+)/u)?.[1];
+    const win = String(window || '');
+    //  `dumpsys window policy` says it under KeyguardServiceDelegate; the full dump as isKeyguardShowing.
+    const delegate = win.split(/KeyguardServiceDelegate/u)[1] || '';
+    const k = win.match(/isKeyguardShowing=(true|false)/u)?.[1] ?? delegate.match(/^\s*showing=(true|false)/mu)?.[1];
+    const sec = delegate.match(/^\s*secure=(true|false)/mu)?.[1];
+    return { awake: w ? w === 'Awake' : null, locked: k ? k === 'true' : null, secure: sec ? sec === 'true' : null };
+}
+
+/** What the run is told about the screen before the controls or the picture. */
+export function describeScreen(s: ScreenState): string {
+    const lines: string[] = [];
+    if (s.awake === false) lines.push('The phone\'s screen is OFF (asleep), so a picture of it is black: android_key "wakeup" turns it on (never "power", which turns it off again).');
+    if (s.locked === true) {
+        lines.push(s.secure === false
+            ? 'The phone is on its lock screen with no PIN: a swipe up (android_scroll "down") opens it.'
+            : 'The phone is LOCKED with a PIN, pattern or password. The quick settings (android_panel "quick_settings": flashlight, Wi-Fi, Bluetooth, airplane mode…) and the notifications work on the lock screen; anything else needs the owner to unlock the phone himself. Never type a PIN, pattern or password.');
+    }
+    return lines.join('\n');
+}
+
+/** The phone's pull-down panels, opened the way the status bar opens them. */
+export const PANELS: Record<string, string[]> = {
+    quick_settings: ['cmd', 'statusbar', 'expand-settings'],
+    notifications: ['cmd', 'statusbar', 'expand-notifications'],
+    close: ['cmd', 'statusbar', 'collapse'],
 };
 
 /** A key name → its Android key code, or null. */
@@ -155,6 +197,27 @@ export class AndroidPhone {
 
     private run(args: string[], opts?: { timeoutMs?: number }) {
         return this.adb(['-s', this.serial, ...args], opts);
+    }
+
+    /** Whether the screen is on and the phone locked. */
+    async screen(): Promise<ScreenState> {
+        const power = await this.run(['shell', 'dumpsys', 'power'], { timeoutMs: 15_000 });
+        const window = await this.run(['shell', 'dumpsys', 'window', 'policy'], { timeoutMs: 15_000 });
+        let state = parseScreenState(power.stdout, window.stdout);
+        if (state.locked === null) {
+            //  Some builds keep the keyguard out of «policy».
+            const all = parseScreenState('', (await this.run(['shell', 'dumpsys', 'window'], { timeoutMs: 20_000 })).stdout);
+            state = { ...state, locked: all.locked, secure: state.secure ?? all.secure };
+        }
+        return state;
+    }
+
+    /** Opens the quick settings or the notifications, or closes them. */
+    async panel(which: string): Promise<{ ok: boolean; error?: string }> {
+        const args = PANELS[String(which || '').trim().toLowerCase().replace(/[\s-]/gu, '_')];
+        if (!args) return { ok: false, error: `«${which}» is not a panel: ${Object.keys(PANELS).join(', ')}` };
+        const r = await this.run(['shell', ...args]);
+        return r.code === 0 && !/Unknown command|Exception|not allowed/iu.test(`${r.stdout}${r.stderr}`) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'the panel did not open').trim() };
     }
 
     async read(): Promise<{ ok: true; controls: AndroidControl[] } | { ok: false; error: string }> {
