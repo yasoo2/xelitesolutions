@@ -98,6 +98,31 @@ export default function PreviewPanel({
     } | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    /**
+     * A PREVIEW WHOSE SERVER HAS ENDED SAYS SO.
+     *
+     * The exam's watcher, 2026-11-07: after a run its preview server was
+     * stopped, and the Preview tab kept pointing at it, so he saw a blank frame
+     * (or the browser's own error page) with nothing saying why. The address is
+     * asked every 15 s; one that answers nothing is shown as stopped, with a way
+     * to try again.
+     */
+    const [stopped, setStopped] = useState(false);
+    const checkAlive = useCallback(async () => {
+        if (!previewUrl || mode !== 'web') { setStopped(false); return; }
+        let u: URL;
+        try { u = new URL(previewUrl, window.location.origin); } catch { return; }
+        //  A page Joe serves itself is alive while this page is.
+        if (u.origin === window.location.origin) { setStopped(false); return; }
+        try { await fetch(u.toString(), { mode: 'no-cors', cache: 'no-store' }); setStopped(false); }
+        catch { setStopped(true); }
+    }, [previewUrl, mode]);
+    useEffect(() => {
+        void checkAlive();
+        const every = window.setInterval(() => { void checkAlive(); }, 15000);
+        return () => window.clearInterval(every);
+    }, [checkAlive]);
+
     // Listen for preview events
     useEffect(() => {
         const handlePreviewReady = (e: CustomEvent) => {
@@ -474,7 +499,21 @@ export default function PreviewPanel({
                         />
                     )
                 ) : (
-                    previewUrl ? (
+                    previewUrl && stopped ? (
+                        <div role="status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '100%', width: '100%', padding: 24, color: 'var(--text-muted)', textAlign: 'center' }}>
+                            <Eye size={44} style={{ opacity: 0.3 }} />
+                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary, inherit)' }}>{t('previewStopped')}</div>
+                            <div style={{ fontSize: 12.5, opacity: 0.8, maxWidth: 360, lineHeight: 1.7 }}>{t('previewStoppedHint')}</div>
+                            <button
+                                type="button"
+                                onClick={() => { void checkAlive().then(() => setKey(k => k + 1)); }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 40, padding: '0 16px', borderRadius: 10, border: '1px solid var(--joe-border, rgba(52,196,139,0.25))', background: 'transparent', color: 'inherit', cursor: 'pointer' }}
+                            >
+                                <RefreshCw size={14} />
+                                <span>{t('previewRetry')}</span>
+                            </button>
+                        </div>
+                    ) : previewUrl ? (
                         <div style={{
                             width: currentDevice.width,
                             height: '100%',
