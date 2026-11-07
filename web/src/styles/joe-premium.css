@@ -4211,3 +4211,40 @@ body:not(.rtl) .joe-user-info {
    the accent bar sits on the side facing the content, the arrow points at it. */
 .stg-panel[dir="ltr"] .stg-nav-item.active { box-shadow: inset -3px 0 0 var(--joe-gold-primary); }
 .stg-panel[dir="ltr"] .stg-nav-arrow { transform: scaleX(-1); }
+
+/* --- Screenshots in the chat (ScreenshotResults.tsx) --- */
+.shot-section { margin-top: 12px; }
+.shot-list { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 12px; }
+.shot-card {
+    border: 1px solid var(--joe-border);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.02);
+    overflow: hidden;
+    max-width: 100%;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.shot-card:hover { border-color: var(--joe-border-strong); box-shadow: 0 8px 28px -14px rgba(0, 0, 0, 0.6); }
+.shot-figure { margin: 0; }
+.shot-img { display: block; max-width: 100%; max-height: 360px; width: auto; height: auto; margin: 0 auto; background: #fff; }
+.shot-img.tall { max-height: 460px; }
+.shot-missing { padding: 24px; font-size: 12.5px; color: var(--joe-text-secondary); }
+.shot-meta {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--joe-border);
+    font-size: 12px; color: var(--joe-text-secondary);
+}
+.shot-name { font-weight: 600; color: var(--joe-text-primary, inherit); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.shot-size { opacity: 0.7; font-variant-numeric: tabular-nums; }
+.shot-download {
+    margin-inline-start: auto;
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 30px; height: 30px; border-radius: 8px;
+    color: var(--joe-text-secondary); text-decoration: none;
+    border: 1px solid transparent; transition: all 0.2s ease;
+}
+.shot-download:hover { color: var(--joe-gold-primary); border-color: var(--joe-border); background: rgba(52, 196, 139, 0.08); }
+.shot-download:focus-visible { outline: 2px solid var(--joe-gold-primary); outline-offset: 2px; }
+.shot-export-off { margin-inline-start: auto; opacity: 0.6; }
+[data-theme="light"] .shot-card { background: #ffffff; border-color: rgba(15, 23, 42, 0.12); }
+[data-theme="light"] .shot-meta { border-top-color: rgba(15, 23, 42, 0.08); }
