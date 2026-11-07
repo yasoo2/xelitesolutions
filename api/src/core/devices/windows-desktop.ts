@@ -335,6 +335,67 @@ public static class JoeDesktop {
         else return "UNKNOWN_ACTION";
         return "OK\t" + Safe(() => n.Acc.get_accName(n.Child));
     }
+
+    /* ── THE HOST: one process that answers every action ──
+     * One PowerShell per action spent 1.5 s starting and 2-3 s loading this
+     * helper before it did anything (measured). The host loads once and
+     * answers over a private named pipe: one line in, one line out. Strings
+     * travel as base64 of UTF-8, numbers as they are, fields by tab. It ends
+     * by itself after idleMs with no connection. */
+    static string B64(string s) { return Convert.ToBase64String(Encoding.UTF8.GetBytes(s ?? "")); }
+    static string Un64(string s) { return Encoding.UTF8.GetString(Convert.FromBase64String(s ?? "")); }
+    static int I(string[] f, int k) { return k < f.Length ? int.Parse(f[k]) : 0; }
+    static long L(string[] f, int k) { return k < f.Length ? long.Parse(f[k]) : 0; }
+
+    public static string Dispatch(string line) {
+        string[] f = line.Split('\t');
+        switch (f[0]) {
+            case "ping": return "pong";
+            case "windows": return Windows();
+            case "look": return "LOOK\t" + ScreenshotScaled(Un64(f[1]), I(f, 2), I(f, 3), I(f, 4), I(f, 5), I(f, 6));
+            case "focus": return "FOCUS\t" + Focus(L(f, 1));
+            case "click": return ClickIn(L(f, 1), I(f, 2), I(f, 3), Un64(f[4]), I(f, 5));
+            case "move": Move(I(f, 1), I(f, 2)); return "OK";
+            case "drag": Drag(I(f, 1), I(f, 2), I(f, 3), I(f, 4)); return "OK";
+            case "scroll": return ScrollIn(L(f, 1), I(f, 2), I(f, 3), I(f, 4));
+            case "type": return TypeIn(L(f, 1), Un64(f[2]));
+            case "key": {
+                string[] parts = f[2].Split(',');
+                ushort[] vks = new ushort[parts.Length];
+                for (int k = 0; k < parts.Length; k++) vks[k] = ushort.Parse(parts[k]);
+                return KeysIn(L(f, 1), vks);
+            }
+            case "open": {
+                ProcessStartInfo si = new ProcessStartInfo(Un64(f[1])); si.UseShellExecute = true;
+                Process.Start(si); return "OK";
+            }
+            case "ui": return Ui(L(f, 1) == 0 ? Foreground() : L(f, 1), I(f, 2));
+            case "act": return Act(L(f, 1) == 0 ? Foreground() : L(f, 1), I(f, 2), Un64(f[3]), Un64(f[4]), I(f, 5));
+            default: throw new Exception("unknown action " + f[0]);
+        }
+    }
+
+    public static void Serve(string pipeName, int idleMs) {
+        while (true) {
+            using (System.IO.Pipes.NamedPipeServerStream server = new System.IO.Pipes.NamedPipeServerStream(pipeName, System.IO.Pipes.PipeDirection.InOut, 1, System.IO.Pipes.PipeTransmissionMode.Byte, System.IO.Pipes.PipeOptions.Asynchronous)) {
+                IAsyncResult ar = server.BeginWaitForConnection(null, null);
+                if (!ar.AsyncWaitHandle.WaitOne(idleMs)) return;
+                server.EndWaitForConnection(ar);
+                System.IO.StreamReader reader = new System.IO.StreamReader(server, new UTF8Encoding(false));
+                System.IO.StreamWriter writer = new System.IO.StreamWriter(server, new UTF8Encoding(false));
+                writer.AutoFlush = true;
+                string line;
+                try {
+                    while ((line = reader.ReadLine()) != null) {
+                        if (line == "quit") { writer.WriteLine("OK\t"); return; }
+                        string res;
+                        try { res = "OK\t" + B64(Dispatch(line)); } catch (Exception e) { res = "ERR\t" + B64(e.Message); }
+                        writer.WriteLine(res);
+                    }
+                } catch (System.IO.IOException) { }
+            }
+        }
+    }
 }
 `;
 
@@ -375,7 +436,7 @@ function prelude(dll: string, source: string): string {
         'if (-not ("JoeDesktop" -as [type])) {',
         '  if (-not (Test-Path $dll)) {',
         `    $cs = [System.IO.File]::ReadAllText(${psQuote(source)}, [System.Text.Encoding]::UTF8)`,
-        '    try { Add-Type -TypeDefinition $cs -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility -OutputAssembly $dll -OutputType Library } catch { if (-not (Test-Path $dll)) { throw } }',
+        '    try { Add-Type -TypeDefinition $cs -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility, System.Core -OutputAssembly $dll -OutputType Library } catch { if (-not (Test-Path $dll)) { throw } }',
         '  }',
         '  Add-Type -Path $dll',
         '}',
@@ -511,7 +572,7 @@ export async function runDesktop(run: PowerShellRunner, a: DesktopAction, timeou
 export interface LookFrame { left: number; top: number; width: number; height: number; pictureWidth: number; pictureHeight: number }
 
 export function parseLook(out: string): LookFrame | null {
-    const m = String(out || '').match(/LOOK	(-?d+),(-?d+),(d+),(d+),(d+),(d+)/u);
+    const m = String(out || '').match(/LOOK\t(-?\d+),(-?\d+),(\d+),(\d+),(\d+),(\d+)/u);
     if (!m) return null;
     const [left, top, width, height, pictureWidth, pictureHeight] = m.slice(1).map(Number);
     return { left, top, width, height, pictureWidth, pictureHeight };

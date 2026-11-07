@@ -10,22 +10,30 @@
  *  control's number, and takes a screenshot of every monitor.
  */
 import fs from 'fs';
+import { takeTheScreen } from './fixtures/desktop-lock';
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
+import { DesktopHost } from '../core/devices/desktop-host';
 import {
-    describeUi, desktopScript, encodedCommand, keyCodes, parseUi, parseWindows, psQuote, runDesktop,
+    describeUi, desktopScript, encodedCommand, keyCodes, parseLook, parseUi, parseWindows, psQuote, runDesktop, screenPoint,
     type PowerShellRunner,
 } from '../core/devices/windows-desktop';
 
 jest.setTimeout(180_000);
 const WINDOWS = process.platform === 'win32';
 
-const run: PowerShellRunner = async (script, timeoutMs) => {
+const oneShot: PowerShellRunner = async (script, timeoutMs) => {
     const r = spawnSync('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(script)],
         { encoding: 'utf8', timeout: timeoutMs, windowsHide: true });
     return { exitCode: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
 };
+//  The real-window tests act through the host (desktop-host.ts), as Joe does; its
+//  first answer starts it. The one-shot path is kept by the screenshot test.
+let hostChild: ChildProcess | null = null;
+const host = new DesktopHost(script => { hostChild = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(script)], { stdio: 'ignore' }); }, 120_000);
+afterAll(() => { host.close(); try { hostChild?.kill(); } catch { /* gone */ } });
+const runDesktopVia = async (_r: PowerShellRunner, a: Parameters<typeof runDesktop>[1]) => (await host.send(a)) || { ok: false, out: '', error: 'the host did not answer' };
 
 describe('the pieces', () => {
     test('key names become virtual keys in press order', () => {
@@ -50,6 +58,15 @@ describe('the pieces', () => {
         expect(describeUi(ui)).toContain('[2] Edit «» = «مرحبا» (Value) at 110,22');
     });
 
+    test("a picture's frame is read from the helper's answer, and a point on the picture is a point on the screen", () => {
+        //  This regex once lost its backslashes on the way to disk: every device_look
+        //  answered «failed», and no point on a picture could ever be clicked.
+        const frame = parseLook('LOOK\t-8,100,1920,1080,1280,720');
+        expect(frame).toEqual({ left: -8, top: 100, width: 1920, height: 1080, pictureWidth: 1280, pictureHeight: 720 });
+        expect(screenPoint(frame!, 640, 360)).toEqual({ x: 952, y: 640 });
+        expect(parseLook('dddd')).toBeNull();
+    });
+
     test('every action is one script that loads the helper first', () => {
         const s = desktopScript({ op: 'type', text: "a'b" }, 'C:/tmp/x.dll', 'C:/tmp/x.cs');
         expect(s).toContain("$dll = 'C:/tmp/x.dll'");
@@ -62,7 +79,9 @@ describe('the pieces', () => {
     let form: ChildProcess | null = null;
     const TITLE = `Joe desktop test ${process.pid}`;
 
+    let release: () => void = () => undefined;
     beforeAll(async () => {
+        release = await takeTheScreen();
         dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-desktop-'));
         //  Our own window: a text box, a button that copies the box into a label.
         const formScript = [
@@ -79,28 +98,50 @@ describe('the pieces', () => {
             '[void]$f.ShowDialog()',
         ].join('\n');
         form = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(formScript)], { stdio: 'ignore' });
-        for (let i = 0; i < 60; i++) {
-            const w = await runDesktop(run, { op: 'windows' });
-            if (parseWindows(w.out).some(x => x.title === TITLE)) break;
-            await new Promise(r => setTimeout(r, 500));
+        //  A loaded machine can take minutes to draw a PowerShell window: wait by the clock.
+        const until = Date.now() + 240_000;
+        let shown = false;
+        while (!shown && Date.now() < until) {
+            shown = parseWindows((await runDesktopVia(oneShot, { op: 'windows' })).out).some(x => x.title === TITLE);
+            if (!shown) await new Promise(r => setTimeout(r, 500));
         }
-    });
+        if (!shown) throw new Error(`the test window «${TITLE}» never appeared`);
+    }, 600_000);
     afterAll(() => {
+        release();
         try { form?.kill(); } catch { /* gone */ }
         fs.rmSync(dir, { recursive: true, force: true });
     });
 
-    const ours = async () => parseWindows((await runDesktop(run, { op: 'windows' })).out).find(w => w.title === TITLE);
-    const read = async (handle: number) => parseUi((await runDesktop(run, { op: 'ui', handle, limit: 100 })).out);
+    const ours = async () => parseWindows((await runDesktopVia(oneShot, { op: 'windows' })).out).find(w => w.title === TITLE);
+    const read = async (handle: number) => parseUi((await runDesktopVia(oneShot, { op: 'ui', handle, limit: 100 })).out);
 
     test('a screenshot of every monitor is a real PNG', async () => {
         const file = path.join(dir, 'screen.png');
-        const r = await runDesktop(run, { op: 'screenshot', file });
+        const r = await runDesktop(oneShot, { op: 'screenshot', file });
         expect(r.ok).toBe(true);
         const [, , w, h] = r.out.split('\t')[1].split(',').map(Number);
         expect(w).toBeGreaterThan(300);
         expect(h).toBeGreaterThan(200);
         expect(fs.readFileSync(file).subarray(1, 4).toString()).toBe('PNG');
+    });
+
+    test('a look at the window is a picture of the window, and its centre is inside the window on the screen', async () => {
+        const win = await ours();
+        const file = path.join(dir, 'window.png');
+        const r = await runDesktopVia(oneShot, { op: 'look', file, left: win!.x, top: win!.y, width: win!.width, height: win!.height, maxWidth: 1280 });
+        expect(r.ok).toBe(true);
+        const frame = parseLook(r.out);
+        expect(frame).not.toBeNull();
+        const png = fs.readFileSync(file);
+        expect(png.subarray(1, 4).toString()).toBe('PNG');
+        expect(png.readUInt32BE(16)).toBe(frame!.pictureWidth);
+        expect(png.readUInt32BE(20)).toBe(frame!.pictureHeight);
+        const centre = screenPoint(frame!, frame!.pictureWidth / 2, frame!.pictureHeight / 2);
+        expect(centre.x).toBeGreaterThan(win!.x);
+        expect(centre.x).toBeLessThan(win!.x + win!.width);
+        expect(centre.y).toBeGreaterThan(win!.y);
+        expect(centre.y).toBeLessThan(win!.y + win!.height);
     });
 
     test('Joe finds the window, reads its controls where they really are, sets a value and presses the button by number', async () => {
@@ -118,22 +159,24 @@ describe('the pieces', () => {
             expect(c.x + c.width).toBeLessThanOrEqual(win!.x + win!.width);
             expect(c.y + c.height).toBeLessThanOrEqual(win!.y + win!.height);
         }
-        expect((await runDesktop(run, { op: 'act', handle: win!.handle, index: box!.index, action: 'set_value', value: 'مرحبا من جو', limit: 100 })).ok).toBe(true);
-        expect((await runDesktop(run, { op: 'act', handle: win!.handle, index: button!.index, action: 'invoke', value: '', limit: 100 })).ok).toBe(true);
+        const set = await runDesktopVia(oneShot, { op: 'act', handle: win!.handle, index: box!.index, action: 'set_value', value: 'مرحبا من جو', limit: 100 });
+        if (!set.ok) console.log('SET FAILED', JSON.stringify(set), JSON.stringify(ui.controls));
+        expect(set.ok).toBe(true);
+        expect((await runDesktopVia(oneShot, { op: 'act', handle: win!.handle, index: button!.index, action: 'invoke', value: '', limit: 100 })).ok).toBe(true);
         const after = await read(win!.handle);
         expect(after.controls.some(c => c.name === 'copied: مرحبا من جو')).toBe(true);
     });
 
     test('THE GUARD: a click off the window and keys for a window not in front are refused, and nothing is sent', async () => {
         const win = await ours();
-        await runDesktop(run, { op: 'focus', handle: win!.handle });
-        const off = await runDesktop(run, { op: 'click', x: Math.max(0, win!.x - 40), y: Math.max(0, win!.y - 40), window: win!.handle });
+        await runDesktopVia(oneShot, { op: 'focus', handle: win!.handle });
+        const off = await runDesktopVia(oneShot, { op: 'click', x: Math.max(0, win!.x - 40), y: Math.max(0, win!.y - 40), window: win!.handle });
         expect(off.ok).toBe(false);
         expect(off.error).toMatch(/not on the window asked for/u);
         //  The desktop itself is open and never in front while our window is.
-        const desktop = parseWindows((await runDesktop(run, { op: 'windows' })).out).find(w => w.process === 'explorer' && /Program Manager/u.test(w.title));
+        const desktop = parseWindows((await runDesktopVia(oneShot, { op: 'windows' })).out).find(w => w.process === 'explorer' && /Program Manager/u.test(w.title));
         if (desktop) {
-            const keys = await runDesktop(run, { op: 'type', text: 'لا يجب أن يُكتب', window: desktop.handle });
+            const keys = await runDesktopVia(oneShot, { op: 'type', text: 'لا يجب أن يُكتب', window: desktop.handle });
             expect(keys.ok).toBe(false);
             expect(keys.error).toMatch(/the window in front is/u);
         }
@@ -141,14 +184,14 @@ describe('the pieces', () => {
 
     test('Joe brings it to the front, clicks into the box and types Arabic with the keyboard — only into his window', async () => {
         const win = await ours();
-        expect((await runDesktop(run, { op: 'focus', handle: win!.handle })).ok).toBe(true);
+        expect((await runDesktopVia(oneShot, { op: 'focus', handle: win!.handle })).ok).toBe(true);
         const box = (await read(win!.handle)).controls.find(c => c.kind === 'Edit')!;
         //  An old single-line text box ignores ctrl+a: it is emptied through its value first.
-        expect((await runDesktop(run, { op: 'act', handle: win!.handle, index: box.index, action: 'set_value', value: '', limit: 100 })).ok).toBe(true);
-        const click = await runDesktop(run, { op: 'click', x: box.x + 10, y: box.y + Math.round(box.height / 2), window: win!.handle });
+        expect((await runDesktopVia(oneShot, { op: 'act', handle: win!.handle, index: box.index, action: 'set_value', value: '', limit: 100 })).ok).toBe(true);
+        const click = await runDesktopVia(oneShot, { op: 'click', x: box.x + 10, y: box.y + Math.round(box.height / 2), window: win!.handle });
         expect(click.ok).toBe(true);
-        expect((await runDesktop(run, { op: 'key', codes: keyCodes('end')!, window: win!.handle })).ok).toBe(true);
-        expect((await runDesktop(run, { op: 'type', text: 'جو يكتب بنفسه 123', window: win!.handle })).ok).toBe(true);
+        expect((await runDesktopVia(oneShot, { op: 'key', codes: keyCodes('end')!, window: win!.handle })).ok).toBe(true);
+        expect((await runDesktopVia(oneShot, { op: 'type', text: 'جو يكتب بنفسه 123', window: win!.handle })).ok).toBe(true);
         const after = await read(win!.handle);
         expect(after.controls.find(c => c.kind === 'Edit')?.value).toBe('جو يكتب بنفسه 123');
     });

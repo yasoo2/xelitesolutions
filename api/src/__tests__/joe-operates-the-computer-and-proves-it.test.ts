@@ -11,6 +11,7 @@
  *  text box, press the button, read again, finish — and the window shows it.
  */
 import fs from 'fs';
+import { takeTheScreen } from './fixtures/desktop-lock';
 import os from 'os';
 import path from 'path';
 import { spawn, spawnSync, type ChildProcess } from 'child_process';
@@ -96,7 +97,9 @@ describe('the operate verifier', () => {
         return { exitCode: r.status, stdout: r.stdout || '', stderr: r.stderr || '' };
     };
 
+    let release: () => void = () => undefined;
     beforeAll(async () => {
+        release = await takeTheScreen();
         fx = fileToolsFixture('operate');
         const formScript = [
             'Add-Type -AssemblyName System.Windows.Forms',
@@ -108,16 +111,23 @@ describe('the operate verifier', () => {
             '$l = New-Object System.Windows.Forms.Label; $l.Left = 20; $l.Top = 80; $l.Width = 440; $l.Text = "nothing saved"',
             '$k.Add_Click({ $l.Text = "saved: " + $b.Text })',
             '$f.Controls.AddRange(@($b, $k, $l))',
-            '$t = New-Object System.Windows.Forms.Timer; $t.Interval = 180000; $t.Add_Tick({ $f.Close() }); $t.Start()',
+            '$t = New-Object System.Windows.Forms.Timer; $t.Interval = 480000; $t.Add_Tick({ $f.Close() }); $t.Start()',
             '[void]$f.ShowDialog()',
         ].join('\n');
         form = spawn('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(formScript)], { stdio: 'ignore' });
-        for (let i = 0; i < 60; i++) {
-            if (parseWindows((await runDesktop(run, { op: 'windows' })).out).some(w => w.title === TITLE)) break;
-            await new Promise(r => setTimeout(r, 500));
+        //  A loaded machine can take minutes to draw a PowerShell window: wait by the clock, and say so if it never came.
+        const until = Date.now() + 240_000;
+        let shown = false;
+        while (!shown && Date.now() < until) {
+            shown = parseWindows((await runDesktop(run, { op: 'windows' })).out).some(w => w.title === TITLE);
+            if (!shown) await new Promise(r => setTimeout(r, 500));
         }
-    });
-    afterAll(() => { try { form?.kill(); } catch { /* gone */ } fx.cleanup(); });
+        if (!shown) throw new Error(`the test window «${TITLE}» never appeared`);
+    }, 600_000);
+    afterAll(() => {
+        //  The tool's own desktop host ends with the test, as it ends with a Joe that stops.
+        require('../modules/tools/definitions/EngineDeviceTools').closeDesktopHost();
+        release(); try { form?.kill(); } catch { /* gone */ } fx.cleanup(); });
 
     test('list → read → set → press → read → finish: delivered, and the window shows it', async () => {
         const text = (m: ChatMessage[]) => JSON.stringify(m);
@@ -129,6 +139,7 @@ describe('the operate verifier', () => {
             seen => {
                 const m = seen.match(new RegExp(`\\[(\\d+)\\] powershell «${TITLE}»`, 'u'));
                 handle = m ? Number(m[1]) : 0;
+                if (!handle) console.log(`OPERATE: no «${TITLE}» in what device_windows returned: ${seen.slice(0, 1500)}`);
                 return { name: 'device_read', args: { window: handle } };
             },
             seen => {

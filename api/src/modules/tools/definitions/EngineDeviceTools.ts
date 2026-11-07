@@ -14,6 +14,7 @@
 import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { encodedCommand, runDesktop, type DesktopAction, type PowerShellRunner } from '../../../core/devices/windows-desktop';
+import { DesktopHost } from '../../../core/devices/desktop-host';
 
 const WINDOWS = process.platform === 'win32';
 
@@ -29,6 +30,30 @@ export const gatewayPowerShell: PowerShellRunner = async (script, timeoutMs) => 
         stderr: String(data.error || r?.error || ''),
     };
 };
+
+/**
+ * The one desktop host of this Joe (core/devices/desktop-host.ts), started
+ * through ExecutionGateway the first time an action needs it. Started inside
+ * the run's execution context (the firewall allows it there), kept by the
+ * process ledger, ended by itself after ten idle minutes.
+ */
+let host: DesktopHost | null = null;
+function desktopHost(): DesktopHost {
+    if (!host) {
+        host = new DesktopHost(script => {
+            ExecutionGateway.startManaged('powershell.exe',
+                ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(script)],
+                { windowsHide: true });
+        });
+    }
+    return host;
+}
+
+/** Ends this Joe's desktop host, if one is running (tests, and a Joe shutting down). */
+export function closeDesktopHost(): void {
+    host?.stop();
+    host = null;
+}
 
 const OPS = new Set(['look', 'windows', 'focus', 'click', 'move', 'drag', 'scroll', 'type', 'key', 'open', 'ui', 'act']);
 
@@ -82,7 +107,10 @@ export class EngineDeviceTool implements ToolDefinition {
         }
         const action = desktopActionOf(input);
         if ('error' in action) return { ok: false, error: action.error, output: { text: action.error } } as any;
-        const r = await runDesktop(gatewayPowerShell, action, action.op === 'ui' || action.op === 'act' ? 90_000 : 60_000);
+        const timeout = action.op === 'ui' || action.op === 'act' ? 90_000 : 60_000;
+        //  The host answers in tens of milliseconds; one PowerShell per action
+        //  is the fallback when the host cannot be reached.
+        const r = (await desktopHost().send(action, timeout).catch(() => null)) || await runDesktop(gatewayPowerShell, action, timeout);
         return r.ok
             ? { ok: true, output: { text: r.out } } as any
             : { ok: false, error: r.error || 'the desktop action failed', output: { text: r.error || r.out } } as any;
