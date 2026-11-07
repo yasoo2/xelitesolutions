@@ -172,3 +172,43 @@ export class EngineAndroidTool implements ToolDefinition {
 }
 
 export const ENGINE_ANDROID_TOOLS: ToolDefinition[] = [new EngineAndroidTool()];
+
+/*
+ * THE PHONE'S SCREEN, LIVE, IN JOE'S PAGE.
+ *
+ * The owner, 2026-11-08: «why doesn't Joe's preview show live what Joe is
+ * doing?» — he read log lines while Joe tapped his phone. The page's Device
+ * tab asks for the screen again and again (api/routes/devices.ts); a picture
+ * is taken the way android_look takes one (on the phone, then pulled), through
+ * the same gateway. One capture runs at a time and a frame younger than
+ * 700 ms is shared, so two open tabs never double the phone's work.
+ */
+export type LiveFrame =
+    | { ok: true; png: Buffer; serial: string; model: string; awake: boolean | null; at: number }
+    | { ok: false; code: 'no_adb' | 'no_phone' | 'failed'; error: string };
+
+let lastFrame: (LiveFrame & { ok: true }) | null = null;
+let capturing: Promise<LiveFrame> | null = null;
+
+export async function phoneScreenNow(serial?: string): Promise<LiveFrame> {
+    if (lastFrame && Date.now() - lastFrame.at < 700 && (!serial || serial === lastFrame.serial)) return lastFrame;
+    if (capturing) return capturing;
+    capturing = (async (): Promise<LiveFrame> => {
+        const adb = findAdb();
+        if (!adb) return { ok: false, code: 'no_adb', error: NO_ADB };
+        const run = gatewayAdb(adb);
+        const ready = parseDevices((await run(['devices', '-l'], { timeoutMs: 15_000 })).stdout).filter(d => d.state === 'device');
+        const device = serial ? ready.find(d => d.serial === serial) : ready[0];
+        if (!device) return { ok: false, code: 'no_phone', error: 'No phone is connected and allowed.' };
+        const phone = new AndroidPhone(run, device.serial);
+        const dir = path.join(os.tmpdir(), 'joe-live');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `phone-${device.serial.replace(/[^\w.-]/gu, '_')}.png`);
+        const shot = await phone.look(file, f => fs.readFileSync(f));
+        if (!shot.ok) return { ok: false, code: 'failed', error: shot.error };
+        const awake = await phone.awake().catch(() => null);
+        lastFrame = { ok: true, png: shot.png, serial: device.serial, model: device.model || device.product || '', awake, at: Date.now() };
+        return lastFrame;
+    })().finally(() => { capturing = null; });
+    return capturing;
+}

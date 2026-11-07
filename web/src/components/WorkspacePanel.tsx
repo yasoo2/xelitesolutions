@@ -7,6 +7,7 @@ import {
     Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
+import LiveDevicePanel, { type LiveSource } from './LiveDevicePanel';
 import { useUiDir } from './NeuralTraceView';
 
 // Lazy load the heavy components
@@ -70,6 +71,10 @@ interface WorkspacePanelProps {
     problems?: any[];
     mobileCollapsed?: boolean;
     onMobileToggle?: () => void;
+    /** What Joe is working on now, shown live in the Preview: the phone or this computer (LiveDevicePanel). */
+    liveSource?: LiveSource | null;
+    /** Back to the page preview from the live view. */
+    onLiveClose?: () => void;
 }
 
 // ─── Inline Copy Button ────────────────────────────────────────────
@@ -611,7 +616,9 @@ export default function WorkspacePanel({
     buildStatus = null,
     problems = [],
     mobileCollapsed,
-    onMobileToggle
+    onMobileToggle,
+    liveSource = null,
+    onLiveClose,
 }: WorkspacePanelProps) {
     const { t } = useTranslation();
     const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -658,6 +665,9 @@ export default function WorkspacePanel({
         { id: 'terminal', label: t('panelTerminal'), icon: <TerminalIcon size={16} /> },
         { id: 'preview', label: t('panelPreview'), icon: <Eye size={16} /> },
         { id: 'logs', label: t('wsp_tabLogs'), icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
+        //  No tab of its own for a device: the owner, 2026-11-08, «on the same
+        //  preview, no more menus» — the Preview shows the phone or the
+        //  computer live while Joe works it (liveSource, below).
         // The Problems tab was removed at the owner's request — its findings
         // already reach the chat and the logs, so the extra tab was noise.
         // So was Activity (2026-11-02): what the engine does is drawn inside
@@ -789,6 +799,14 @@ export default function WorkspacePanel({
                     <div style={splitActive
                         ? { flex: '1 1 50%', minWidth: 0, display: 'flex', flexDirection: 'column' }
                         : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
+                        {/* What Joe is working on, live: the phone or this computer.
+                            The page preview stays mounted underneath, its listeners alive. */}
+                        {liveSource && (
+                            <ErrorBoundary fallbackTitle={t('dev_failed')}>
+                                <LiveDevicePanel source={liveSource} visible={activeTab === 'preview' || splitActive} onClose={onLiveClose} />
+                            </ErrorBoundary>
+                        )}
+                        <div style={liveSource ? { display: 'none' } : { display: 'contents' }}>
                         <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                             <Suspense fallback={<LoadingFallback />}>
                                 {/*
@@ -811,6 +829,7 @@ export default function WorkspacePanel({
                                 <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} />
                             </Suspense>
                         </ErrorBoundary>
+                        </div>
                     </div>
                 </div>
 

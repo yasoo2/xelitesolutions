@@ -103,6 +103,10 @@ export default function Joe() {
      * tab a build streams into, and showing it starts no process at all.
      */
     const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
+    //  What Joe works on now, shown live in the Preview: the phone or this computer (LiveDevicePanel).
+    const [liveSource, setLiveSource] = useState<'phone' | 'computer' | null>(null);
+    //  Another chat starts on its own page preview, not on the last chat's device.
+    useEffect(() => { setLiveSource(null); }, [activeSessionId]);
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
@@ -361,6 +365,21 @@ export default function Joe() {
              * the user actually wants to watch it.
              */
 
+            //  Joe works the owner's phone or this computer: the PREVIEW shows that
+            //  screen live (the owner, 2026-11-08: «why doesn't Joe's preview show
+            //  live what Joe is doing?… on the same preview, no more menus»). The
+            //  engine's steps are named engine:android_… and engine:device_…; the
+            //  device_ steps that list or link computers show no screen.
+            if (isToolStart && belongsToActiveSession(msg as any, activeSessionId)) {
+                const live = /^(?:engine:)?android_(?!devices|pair|connect|apps)/.test(toolName) ? 'phone'
+                    : /^(?:engine:)?device_(?:look|read|windows|focus|click|press|type|keys|scroll|open|drag)/.test(toolName) ? 'computer' : null;
+                if (live) {
+                    setLiveSource(live);
+                    setWorkspaceTab('preview');
+                    triggerUncollapse();
+                }
+            }
+
             // Auto switch to browser for browser actions
             if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {
                 setWorkspaceTab('browser');
@@ -446,6 +465,8 @@ export default function Joe() {
                          * page flips the tab to Preview.
                          */
                         if (shouldOpenPreviewOnReady(msg as any) && maySwitchAwayFromBrowser) {
+                            //  A finished page is what Joe works on now: the preview shows it, not a device.
+                            setLiveSource(null);
                             setWorkspaceTab('preview');
                             triggerUncollapse();
                         }
@@ -1216,6 +1237,8 @@ export default function Joe() {
                 isLoading={isLoading || isRunning(activeSessionId || '')}
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
+                liveSource={liveSource}
+                onLiveClose={() => setLiveSource(null)}
                 onDeploymentsClick={() => nav('/super-admin/deployments')}
                 onSystemClick={() => nav('/super-admin/system')}
                 browserSessionId={browserSessionId || undefined}

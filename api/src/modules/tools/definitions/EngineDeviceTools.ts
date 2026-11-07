@@ -162,3 +162,36 @@ export class EngineDeviceTool implements ToolDefinition {
 }
 
 export const ENGINE_DEVICE_TOOLS: ToolDefinition[] = [new EngineDeviceTool()];
+
+/*
+ * THIS COMPUTER'S SCREEN, LIVE, IN JOE'S PREVIEW.
+ *
+ * The owner, 2026-11-08: the preview shows whatever Joe is working on — the
+ * phone, the computer, the browser. While Joe works this computer's desktop
+ * the preview asks for its screen again and again (api/routes/devices.ts).
+ * The whole screen, scaled to 1280 pixels wide, through the desktop host Joe
+ * already runs (or one PowerShell through the gateway when it is not up).
+ * One capture at a time; a frame younger than 500 ms is shared.
+ */
+export type ComputerFrame = { ok: true; png: Buffer; at: number } | { ok: false; code: 'not_windows' | 'failed'; error: string };
+let lastComputer: (ComputerFrame & { ok: true }) | null = null;
+let capturingComputer: Promise<ComputerFrame> | null = null;
+
+export async function computerScreenNow(): Promise<ComputerFrame> {
+    if (!WINDOWS) return { ok: false, code: 'not_windows', error: `This computer runs ${process.platform}; the live view of its screen works on Windows in this version.` };
+    if (lastComputer && Date.now() - lastComputer.at < 500) return lastComputer;
+    if (capturingComputer) return capturingComputer;
+    capturingComputer = (async (): Promise<ComputerFrame> => {
+        const dir = path.join(os.tmpdir(), 'joe-live');
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, 'computer.png');
+        const action: DesktopAction = { op: 'look', file, left: 0, top: 0, width: 0, height: 0, maxWidth: 1280 };
+        const r = (await desktopHost().send(action, 20_000).catch(() => null)) || await runDesktop(gatewayPowerShell, action, 30_000);
+        if (!r.ok) return { ok: false, code: 'failed', error: r.error || 'the screen could not be captured' };
+        let png: Buffer;
+        try { png = fs.readFileSync(file); } catch { return { ok: false, code: 'failed', error: 'the screen picture did not come back' }; }
+        lastComputer = { ok: true, png, at: Date.now() };
+        return lastComputer;
+    })().finally(() => { capturingComputer = null; });
+    return capturingComputer;
+}
