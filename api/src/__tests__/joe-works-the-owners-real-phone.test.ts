@@ -477,6 +477,13 @@ describe('«حاول مره اخرى»: the run knows the chat\'s device work, a
 });
 
 describe('the plan and the log', () => {
+    test('a step called blocked, failed or completed is kept, not refused', () => {
+        const { parsePlanArgs } = require('../core/engine/plan');
+        const r = parsePlanArgs({ steps: [{ title: 'فحص الهاتف', status: 'completed' }, { title: 'فتح البريد', status: 'blocked' }, { title: 'تلخيص', status: 'failed' }] });
+        expect(r).toEqual({ ok: true, value: { steps: [{ title: 'فحص الهاتف', status: 'done' }, { title: 'فتح البريد', status: 'pending' }, { title: 'تلخيص', status: 'pending' }] } });
+        expect(parsePlanArgs({ steps: [{ title: 'x', status: 'flying' }] }).ok).toBe(false);
+    });
+
     test('a requirement added and marked in the same call is kept and marked, with no refusal', () => {
         const { applyPlanUpdate } = require('../core/engine/plan');
         const plan = { steps: [], requirements: [], revision: 0 } as any;
