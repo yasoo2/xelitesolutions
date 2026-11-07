@@ -28,13 +28,24 @@ import { deviceRecordFor } from './tools/devices';
  * never operate: «ابني برنامجاً» is a build even when it mentions the computer.
  */
 const ON_DEVICE = /(?:على|في|ب|من)\s*(?:جهاز(?:ي|ك)?|الجهاز|حاسوب(?:ي|ك)?|الحاسوب|كمبيوتر(?:ي|ك)?|الكمبيوتر|الكومبيوتر|لابتوب(?:ي)?|اللابتوب|شاشت(?:ي|ك)|الشاشة|سطح\s+المكتب)|\bon\s+(?:my|this|the)\s+(?:computer|pc|laptop|desktop|screen|machine)\b|\bon\s+my\s+windows\b/iu;
+/**
+ * The owner's own phone, said as his («على هاتفي», «on my phone»). The bare
+ * «على الجوال» is left out on purpose: «اجعل الموقع يظهر جيداً على الجوال» is
+ * a change to a site, not an action on a phone.
+ */
+const ON_PHONE = /(?:على|في|ب|من)\s*(?:هاتفي|جوالي|جوّالي|موبايلي|تلفوني|تليفوني|تلفوني|الأندرويد\s+تبعي|اندرويدي)|\bon\s+my\s+(?:phone|android|mobile|cell(?:phone)?)\b/iu;
 const DESKTOP_APP = /(?:افتح|شغّ?ل|استخدم|اكتب\s+في|ادخل\s+(?:على|الى|إلى))\s+(?:برنامج\s+|تطبيق\s+)?(?:المفكرة|مفكرة|notepad|الآلة\s+الحاسبة|الحاسبة|calc(?:ulator)?|الرسام|paint|mspaint|إكسل|اكسل|excel|وورد|word|باوربوينت|powerpoint|مستكشف\s+الملفات|explorer|الإعدادات|لوحة\s+التحكم|cmd|الطرفية)|\b(?:open|launch|start|use)\s+(?:the\s+)?(?:notepad|calculator|calc|paint|mspaint|excel|word|powerpoint|file\s+explorer|settings|control\s+panel)\b/iu;
 const BUILD_VERB = /\b(?:build|create|make|develop|write|code|implement)\s+(?:a|an|me\s+a|the)?\s*(?:app|application|website|site|program|tool|script|api|game|system|page)\b|ابن[يِ]?\s|ابني|أنشئ|انشئ|اكتب\s+(?:برنامج|كود|سكربت|أداة)|طوّ?ر\s|صمّ?م\s/iu;
 
 export function isOperateRequest(text: string): boolean {
     const t = String(text || '');
     if (!t.trim() || BUILD_VERB.test(t)) return false;
-    return ON_DEVICE.test(t) || DESKTOP_APP.test(t);
+    return ON_DEVICE.test(t) || ON_PHONE.test(t) || DESKTOP_APP.test(t);
+}
+
+/** The request is about the owner's phone (the android_ tools), not a computer. */
+export function isPhoneRequest(text: string): boolean {
+    return ON_PHONE.test(String(text || ''));
 }
 
 /** A request only to look (what is on my screen?) needs no action, only a look. */
@@ -53,6 +64,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '# Environment',
         `- This computer runs ${machine.platform === 'win32' ? 'Windows' : machine.platform}. You act on it only through the device_ tools.`,
         '- device_windows lists the open windows by handle number; every other device_ tool names its window by that number.',
+        '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home…), android_scroll, android_open by package name. When the request is about his phone, use these, not the device_ tools.',
         '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',
         '# Method',

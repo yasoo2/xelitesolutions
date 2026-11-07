@@ -356,6 +356,9 @@ const baseTools: ToolDefinition[] = [
   // Joe's hands on this computer (core/engine/tools/devices.ts calls it).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   ...(require('./definitions/EngineDeviceTools').ENGINE_DEVICE_TOOLS as ToolDefinition[]),
+  // The owner's Android phone, through adb (core/engine/tools/android.ts calls it).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineAndroidTool').ENGINE_ANDROID_TOOLS as ToolDefinition[]),
   // ── end engine: device ──
 
   // Revived tools (defensively instantiated above)

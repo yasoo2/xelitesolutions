@@ -39,6 +39,7 @@ import { replyLanguageCode } from '../../../shared/reply-language';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
+import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
 import { operateOutput, operateVerifier } from '../../../core/engine/operate';
 import fs from 'fs';
 
@@ -69,7 +70,7 @@ async function runOperate(o: {
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
             model: o.brain.model,
-            tools: [planUpdateTool, ...deviceTools, ...webTools, finishTool(operateVerifier())],
+            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, finishTool(operateVerifier())],
             processes: createProcessRegistry(toolContext),
             browser: () => createBrowserSession(toolContext),
             machine: await machineFacts(),
@@ -83,6 +84,7 @@ async function runOperate(o: {
         };
     } finally {
         forgetDeviceRecord(o.runId);
+        forgetAndroid(o.runId);
     }
 }
 

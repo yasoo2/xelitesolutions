@@ -1,0 +1,197 @@
+/**
+ * ANDROID: THE OWNER'S PHONE, WORKED THE WAY JOE WORKS A WINDOW.
+ *
+ * Through adb, Google's own bridge (platform-tools). The phone is plugged in
+ * by cable, or paired over Wi-Fi (Android 11+, «Wireless debugging»), and the
+ * owner allowed this computer on the phone's own prompt: nothing here goes
+ * around that consent.
+ *
+ *   - devices:  `adb devices -l`
+ *   - read:     `uiautomator dump` → every node with its text, description,
+ *               id, class, bounds and what it can do, numbered like a
+ *               window's controls (windows-desktop.ts UiControl)
+ *   - look:     `exec-out screencap -p` → a PNG of the screen
+ *   - act:      tap the centre of a numbered control or a point, swipe,
+ *               key events (back, home, enter…), open an app by package
+ *   - type:     ASCII through `input text`; any other script (Arabic) through
+ *               the ADB Keyboard app when it is installed, else said plainly
+ *
+ * Every command runs through the runner the caller gives (Joe's gateway), as
+ * an argv, never a shell string.
+ */
+export type AdbRunner = (args: string[], opts?: { timeoutMs?: number }) => Promise<{ code: number | null; stdout: string; stderr: string }>;
+
+export interface AndroidDevice { serial: string; state: string; model: string; product: string; transport: string }
+
+export interface AndroidControl {
+    index: number;
+    kind: string;
+    text: string;
+    description: string;
+    id: string;
+    packageName: string;
+    x: number; y: number; width: number; height: number;
+    clickable: boolean; scrollable: boolean; editable: boolean; checked: boolean | null; enabled: boolean; focused: boolean;
+}
+
+/** `adb devices -l` → the phones, with their state (device | unauthorized | offline). */
+export function parseDevices(out: string): AndroidDevice[] {
+    const devices: AndroidDevice[] = [];
+    for (const raw of String(out || '').split(/\r?\n/u)) {
+        const line = raw.trim();
+        if (!line || /^List of devices/u.test(line) || /^\*/u.test(line)) continue;
+        const [serial, state, ...rest] = line.split(/\s+/u);
+        if (!serial || !state) continue;
+        const field = (k: string) => (rest.find(r => r.startsWith(`${k}:`)) || '').slice(k.length + 1);
+        devices.push({ serial, state, model: field('model').replace(/_/gu, ' '), product: field('product'), transport: field('transport_id') });
+    }
+    return devices;
+}
+
+const ATTR = /([\w-]+)="([^"]*)"/gu;
+const unescapeXml = (s: string) => s.replace(/&lt;/gu, '<').replace(/&gt;/gu, '>').replace(/&quot;/gu, '"').replace(/&apos;/gu, "'").replace(/&#(\d+);/gu, (_m, d) => String.fromCodePoint(Number(d))).replace(/&amp;/gu, '&');
+
+/**
+ * A uiautomator dump → the controls worth naming: those with text, a
+ * description, or something they can do. Numbered in screen order from 1.
+ */
+export function parseUiDump(xml: string): AndroidControl[] {
+    const controls: AndroidControl[] = [];
+    for (const m of String(xml || '').matchAll(/<node\b([^>]*)\/?>/gu)) {
+        const a: Record<string, string> = {};
+        for (const [, k, v] of m[1].matchAll(ATTR)) a[k] = unescapeXml(v);
+        const b = (a.bounds || '').match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/u);
+        if (!b) continue;
+        const [x1, y1, x2, y2] = b.slice(1).map(Number);
+        if (x2 <= x1 || y2 <= y1) continue;
+        const kind = String(a.class || '').split('.').pop() || 'View';
+        const clickable = a.clickable === 'true' || a['long-clickable'] === 'true';
+        const editable = /EditText|AutoCompleteTextView/u.test(a.class || '');
+        const scrollable = a.scrollable === 'true';
+        const checkable = a.checkable === 'true';
+        const text = a.text || '', description = a['content-desc'] || '';
+        if (!text && !description && !clickable && !editable && !scrollable && !checkable) continue;
+        controls.push({
+            index: controls.length + 1, kind, text, description,
+            id: (a['resource-id'] || '').replace(/^.*:id\//u, ''), packageName: a.package || '',
+            x: x1, y: y1, width: x2 - x1, height: y2 - y1,
+            clickable, scrollable, editable, checked: checkable ? a.checked === 'true' : null,
+            enabled: a.enabled !== 'false', focused: a.focused === 'true',
+        });
+    }
+    return controls;
+}
+
+/** The controls as the model reads them: one line each, with what it can do. */
+export function describeAndroid(controls: AndroidControl[]): string {
+    if (!controls.length) return 'The screen shows no control uiautomator can name (a game or a video?): use android_look and tap a point.';
+    return controls.map(c => {
+        const name = c.text || c.description;
+        const can = [c.clickable ? 'tap' : '', c.editable ? 'type' : '', c.scrollable ? 'scroll' : '', c.checked !== null ? (c.checked ? 'checked' : 'unchecked') : ''].filter(Boolean).join(', ');
+        return `[${c.index}] ${c.kind} «${name}»${c.id ? ` #${c.id}` : ''}${can ? ` (${can})` : ''}${c.enabled ? '' : ' (disabled)'} at ${Math.round(c.x + c.width / 2)},${Math.round(c.y + c.height / 2)}`;
+    }).join('\n');
+}
+
+const KEYS: Record<string, number> = {
+    home: 3, back: 4, call: 5, endcall: 6, up: 19, down: 20, left: 21, right: 22, center: 23, volumeup: 24, volumedown: 25,
+    power: 26, camera: 27, tab: 61, space: 62, enter: 66, delete: 67, backspace: 67, menu: 82, search: 84, recent: 187, apps: 187,
+};
+
+/** A key name → its Android key code, or null. */
+export function androidKey(name: string): number | null {
+    const k = String(name || '').trim().toLowerCase().replace(/[\s_-]/gu, '');
+    return KEYS[k] ?? null;
+}
+
+/**
+ * Text `input text` can carry: printable ASCII, with a space as %s and the
+ * shell's own characters escaped (adb passes it through `sh -c` on the phone).
+ * Null for anything else, which goes through the ADB Keyboard instead.
+ */
+export function inputTextArg(text: string): string | null {
+    if (!/^[\x20-\x7e]*$/u.test(text)) return null;
+    return text.replace(/([\\'"`$&|;<>()*?!#~\[\]{}])/gu, '\\$1').replace(/ /gu, '%s');
+}
+
+export const ADB_KEYBOARD = 'com.android.adbkeyboard/.AdbIME';
+
+export class AndroidPhone {
+    constructor(private readonly adb: AdbRunner, readonly serial: string) { }
+
+    private run(args: string[], opts?: { timeoutMs?: number }) {
+        return this.adb(['-s', this.serial, ...args], opts);
+    }
+
+    async read(): Promise<{ ok: true; controls: AndroidControl[] } | { ok: false; error: string }> {
+        const dump = await this.run(['shell', 'uiautomator', 'dump', '/sdcard/joe-ui.xml'], { timeoutMs: 30_000 });
+        if (dump.code !== 0) return { ok: false, error: (dump.stderr || dump.stdout || 'uiautomator dump failed').trim() };
+        const cat = await this.run(['exec-out', 'cat', '/sdcard/joe-ui.xml'], { timeoutMs: 20_000 });
+        if (cat.code !== 0 || !/<hierarchy/u.test(cat.stdout)) return { ok: false, error: (cat.stderr || 'the screen could not be read').trim() };
+        return { ok: true, controls: parseUiDump(cat.stdout) };
+    }
+
+    /**
+     * A picture of the phone's screen, kept in `file` on this computer. Taken
+     * on the phone and pulled as a file, so no binary ever travels through a
+     * text pipe (a runner that reads output as text would break the PNG).
+     */
+    async look(file: string, readFile: (f: string) => Buffer): Promise<{ ok: true; png: Buffer } | { ok: false; error: string }> {
+        const shot = await this.run(['shell', 'screencap', '-p', '/sdcard/joe-shot.png'], { timeoutMs: 30_000 });
+        if (shot.code !== 0) return { ok: false, error: (shot.stderr || 'the phone took no picture').trim() };
+        const pull = await this.run(['pull', '/sdcard/joe-shot.png', file], { timeoutMs: 60_000 });
+        if (pull.code !== 0) return { ok: false, error: (pull.stderr || 'the picture did not come over').trim() };
+        let png: Buffer;
+        try { png = readFile(file); } catch { return { ok: false, error: 'the picture did not come over' }; }
+        if (png.subarray(1, 4).toString() !== 'PNG') return { ok: false, error: 'what came over is not a picture' };
+        return { ok: true, png };
+    }
+
+    async tap(x: number, y: number): Promise<{ ok: boolean; error?: string }> {
+        const r = await this.run(['shell', 'input', 'tap', String(Math.round(x)), String(Math.round(y))]);
+        return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || 'the tap failed').trim() };
+    }
+
+    async swipe(x1: number, y1: number, x2: number, y2: number, ms = 300): Promise<{ ok: boolean; error?: string }> {
+        const r = await this.run(['shell', 'input', 'swipe', ...[x1, y1, x2, y2, ms].map(n => String(Math.round(n)))]);
+        return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || 'the swipe failed').trim() };
+    }
+
+    async key(name: string): Promise<{ ok: boolean; error?: string }> {
+        const code = androidKey(name);
+        if (code === null) return { ok: false, error: `«${name}» is not a key Joe knows on Android: ${Object.keys(KEYS).join(', ')}` };
+        const r = await this.run(['shell', 'input', 'keyevent', String(code)]);
+        return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || 'the key failed').trim() };
+    }
+
+    /** Types where the phone's cursor is. Arabic and other scripts need the ADB Keyboard. */
+    async type(text: string): Promise<{ ok: boolean; error?: string }> {
+        const ascii = inputTextArg(text);
+        if (ascii !== null) {
+            const r = await this.run(['shell', 'input', 'text', ascii]);
+            return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || 'typing failed').trim() };
+        }
+        const ime = await this.run(['shell', 'ime', 'list', '-s']);
+        if (!ime.stdout.includes(ADB_KEYBOARD)) {
+            return { ok: false, error: 'This text is not plain ASCII, and Android types that only through a keyboard app: install «ADB Keyboard» (com.android.adbkeyboard) on the phone once, and Joe types Arabic and every other script.' };
+        }
+        const current = (await this.run(['shell', 'settings', 'get', 'secure', 'default_input_method'])).stdout.trim();
+        if (current !== ADB_KEYBOARD) await this.run(['shell', 'ime', 'set', ADB_KEYBOARD]);
+        const r = await this.run(['shell', 'am', 'broadcast', '-a', 'ADB_INPUT_B64', '--es', 'msg', Buffer.from(text, 'utf8').toString('base64')]);
+        //  The owner's own keyboard comes back.
+        if (current && current !== ADB_KEYBOARD) await this.run(['shell', 'ime', 'set', current]);
+        return r.code === 0 && /result=0|Broadcast completed/u.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'typing failed').trim() };
+    }
+
+    /** Opens an app by its package name (com.whatsapp, com.android.chrome…). */
+    async open(pkg: string): Promise<{ ok: boolean; error?: string }> {
+        if (!/^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$/u.test(pkg)) return { ok: false, error: `«${pkg}» is not an Android package name (like com.android.chrome): android_apps lists them.` };
+        const r = await this.run(['shell', 'monkey', '-p', pkg, '-c', 'android.intent.category.LAUNCHER', '1']);
+        return r.code === 0 && !/No activities found/u.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'the app did not open').trim() };
+    }
+
+    /** The apps the owner installed (third-party packages). */
+    async apps(): Promise<string[]> {
+        const r = await this.run(['shell', 'pm', 'list', 'packages', '-3']);
+        return r.stdout.split(/\r?\n/u).map(l => l.replace(/^package:/u, '').trim()).filter(Boolean).sort();
+    }
+}
