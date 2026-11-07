@@ -22,6 +22,7 @@
  * answer is «not built», because overstating is the failure being fixed here.
  */
 import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
+import { asksAsWords } from '../design/arabic-words';
 import { intentProbe } from '../orchestrator/promptNormalizer';
 import { requestedRecords } from './request-coverage';
 import fs from 'fs';
@@ -656,7 +657,8 @@ export const CAPABILITIES: Capability[] = [
 ];
 
 function capabilityIsRequested(capability: Capability, text: string): boolean {
-    if (!capability.ask.test(text)) return false;
+    //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
+    if (!asksAsWords(capability.ask, text)) return false;
     if (capability.id !== 'accounts') return true;
     return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
 }

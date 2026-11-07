@@ -95,8 +95,10 @@ export const createApp = () => {
   setImmediate(() => {
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const { adoptRecordedPreviews } = require('../modules/tools/definitions/ProjectRunTool');
-      adoptRecordedPreviews()
+      //  As a system task: outside one, the firewall refused the identity reads
+      //  and every preview was forgotten while it served (adoptPreviewsAtStart).
+      const { adoptPreviewsAtStart } = require('../modules/tools/definitions/ProjectRunTool');
+      adoptPreviewsAtStart()
         .then((r: { adopted: string[]; forgotten: string[]; retired: string[] }) => {
           if (r.adopted.length || r.forgotten.length) logger.info({ adopted: r.adopted.length, forgotten: r.forgotten.length, retired: r.retired.length }, '[project_run] previews of the previous start');
         })

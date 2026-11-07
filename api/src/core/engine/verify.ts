@@ -319,12 +319,29 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     //  C1 — which parts the request asked for, from the full request.
     const roles = requestedDeliveryRoles(request);
     const programServesAPage = !!servedInterfaceDirectory(root);
-    const programOnly = roles.program && !roles.interface && !roles.service && !programServesAPage;
+    /**
+     *  ⛔ THE USER'S OWN REPOSITORY IS JUDGED AS A CODEBASE, NOT AS A BUILD.
+     *
+     *  The Codex exam (2026-11-06): an issue on a repository Joe did not write
+     *  — a library, a command-line tool, a server — is proven the way a change
+     *  to a codebase is: its own test suite passes (with the test the issue
+     *  asked for), the acceptance judge finds the issue's requirements met in
+     *  the source, and the source has no problem it did not have before. The
+     *  checks of a build from a request (the live page, the records and routes
+     *  a request names, the Browser QA, the roles, the manifest contract) are
+     *  for products Joe builds: a repository's issue is not a product request,
+     *  and what the repository already was is not this change's to answer for.
+     */
+    const repository = ctx.change?.repository;
+    const programOnly = !!repository || (roles.program && !roles.interface && !roles.service && !programServesAPage);
     const primary: 'live' | 'program' = programOnly ? 'program' : 'live';
-    const required = new Set<DeliveryInstrument>(programOnly ? ['quality'] : []);
+    const required = new Set<DeliveryInstrument>(programOnly && !repository ? ['quality'] : []);
+    if (repository) required.add('program');
     //  The acceptance judge always rules; an unmeasured acceptance is never a pass.
     required.add('acceptance');
-    note(`roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
+    note(repository
+        ? 'repository: the user\'s own repository — judged by its own test suite, the acceptance judge, and no new source problem'
+        : `roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
 
     const delivery = deliveryRun({
         productRequest: request,
@@ -359,7 +376,12 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
 
     //  C2 — the source parses, and its components and names are declared.
     await stage(['source'], async () => {
-        const source = await measureProjectSource(root, ctx.deadlineAt, cancelled);
+        const measuredSource = await measureProjectSource(root, ctx.deadlineAt, cancelled);
+        //  His repository: a problem it had before this change is its own (said, never charged).
+        const before = new Set(repository?.baselineSourceProblems || []);
+        const inherited = measuredSource.problems.filter(p => before.has(p));
+        const source = { ...measuredSource, problems: measuredSource.problems.filter(p => !before.has(p)) };
+        if (inherited.length) remark('source', `the repository already had ${inherited.length} source problem(s) before this change (not this change's): ${inherited.slice(0, 3).join(' | ')}`);
         if (!source.measured.length && !source.problems.length) {
             skipped.set('source', source.notMeasured.length
                 ? `not measured: ${source.notMeasured.join('; ')}`
@@ -383,8 +405,10 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     try { manifest = manifestText === null ? null : JSON.parse(manifestText); } catch { manifest = null; }
     const contract = inspectProjectQualityContract(root, request);
     const contractError = contract.ok ? undefined : `project quality contract failed — ${contract.failures.slice(0, 4).join('; ')}`;
-    if (programOnly) {
+    if (programOnly && !repository) {
         ledger.record({ instrument: 'quality', ok: contract.ok, error: contractError });
+    } else if (repository && !contract.ok) {
+        remark('quality', `the repository's own manifest is not held to Joe's build contract (${contractError})`);
     }
     passed.set('quality', manifestText !== null
         ? 'package.json declares truthful scripts for what the request and the project need'
@@ -424,7 +448,9 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     let stoppedServers: string[] = [];
     let auditRoots: string[] = [root];
     if (programOnly) {
-        skipped.set('live', 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
+        skipped.set('live', repository
+            ? 'the user\'s own repository is proven by its own test suite, not by a page Joe opens'
+            : 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
         await stage(['program'], async () => {
             const run = await runRequestedTests(root, runTool);
             if (run.noRunner) {
@@ -780,19 +806,35 @@ export async function measureProjectSource(root: string, deadlineAt: number, can
  * (judgeSourceOf), so a project too big to show whole is shown by whole files.
  * Returns what was left out, by name.
  */
-async function judgeSource(root: string): Promise<{ text: string; leftOut: string[] }> {
+/** Source code, in every language a project may be written in. */
+const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu;
+/**
+ * The project's own documentation and configuration. C12 of the Codex exam
+ * (2026-11-06): «rename timeout to timeout_seconds in the code, the tests
+ * and the README». The judge was shown the code only, ruled «R1 unprovable:
+ * README.md itself is not shown», and Joe refused his own correct delivery
+ * for 22 minutes; every hidden test passed. A README line, a renamed key in a
+ * config file, a version in package.json are requirements too. Small files
+ * only (a big JSON is data, not configuration), and never a lockfile.
+ */
+const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|json|ya?ml|toml|ini|cfg)$/iu;
+const LOCKFILE = /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|pipfile\.lock|composer\.lock|cargo\.lock)$/iu;
+const JUDGE_DOC_BYTES = 64 * 1024;
+
+export async function judgeSource(root: string): Promise<{ text: string; leftOut: string[] }> {
     //  A requirement of a Python, Go or Ruby project would be judged on no
     //  source at all — every verdict «unprovable», the delivery blocked
     //  forever — so its own files are read too, by the same walker.
     const files = await listProjectFiles(root, {
         skipDirectory: name => name === 'dist' || name.startsWith('.'),
-        keepFile: (_relative, name) => /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu.test(name),
+        keepFile: (_relative, name) => JUDGE_CODE_FILE.test(name) || (JUDGE_DOC_OR_CONFIG_FILE.test(name) && !LOCKFILE.test(name)),
     });
     const read: Array<{ path: string; text: string }> = [];
     const leftOut: string[] = [];
     for (const rel of files) {
         try {
             const stat = await fs.promises.stat(path.join(root, rel));
+            if (!JUDGE_CODE_FILE.test(rel) && stat.size > JUDGE_DOC_BYTES) continue;
             if (stat.size > JUDGE_FILE_BYTES) { leftOut.push(rel); continue; }
             read.push({ path: rel.split(path.sep).join('/'), text: await fs.promises.readFile(path.join(root, rel), 'utf8') });
         } catch { /* unreadable is not evidence */ }

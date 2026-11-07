@@ -83,6 +83,39 @@ router.post('/import', authenticate as any,
             if (!Buffer.isBuffer(body) || body.length < 22) {
                 return res.status(400).json({ ok: false, error: 'no zip payload received' });
             }
+            /**
+             *  ⛔ A PROJECT IMPORTED INTO A CHAT IS THAT CHAT'S PROJECT.
+             *
+             *  The Codex exam (2026-11-06): an import landed beside the
+             *  workspace and was recorded nowhere, so «fix the failing test»
+             *  in the chat built a new project instead of changing his. With
+             *  `?sessionId=`, the zip is extracted inside the workspace the
+             *  chat's runs use, and becomes the chat's project, his own
+             *  repository: the next work request changes it in place and is
+             *  judged by its own tests (core/engine select.ts, verify.ts).
+             */
+            const sessionId = String(req.query.sessionId || '').trim();
+            if (sessionId) {
+                if (!/^[A-Za-z0-9._-]{1,120}$/u.test(sessionId)) return res.status(400).json({ ok: false, error: 'invalid sessionId' });
+                const userId = String((req as any).auth?.sub || '').trim();
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const { mayUseRunSession } = require('./run');
+                Promise.resolve(mayUseRunSession(sessionId, userId)).then((allowed: boolean) => {
+                    if (!allowed) return res.status(403).json({ ok: false, error: 'this chat belongs to another account' });
+                    try {
+                        const runWorkspace = String(req.query.runWorkspaceId || '').trim() || `session-${sessionId}`;
+                        const chatRoot = workspaceService.getActiveRoot(runWorkspace);
+                        const result = extractProject(body, chatRoot);
+                        // eslint-disable-next-line @typescript-eslint/no-var-requires
+                        const { registerImportedProject } = require('../../core/engine/run');
+                        registerImportedProject(sessionId, result.dir);
+                        return res.json({ ok: true, dir: result.dir, files: result.files, bytes: result.bytes, chatProject: true });
+                    } catch (e: any) {
+                        return res.status(400).json({ ok: false, error: e?.message || 'import_failed' });
+                    }
+                }, () => res.status(403).json({ ok: false, error: 'could not confirm the chat belongs to this account' }));
+                return;
+            }
             const root = workspaceService.getActiveRoot(String(req.query.workspaceId || '') || undefined);
             const parent = path.dirname(path.resolve(root));
             const result = extractProject(body, parent);

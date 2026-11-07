@@ -9,6 +9,7 @@
  */
 
 import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { wordMatch } from './arabic-words';
 
 export type PageKind =
     | 'store' | 'landing' | 'portfolio' | 'restaurant' | 'dashboard'
@@ -28,8 +29,9 @@ const DETECTORS: Array<[PageKind, RegExp]> = [
     // Word-bounded Latin keywords, learned the hard way: the injected coaching
     // text contains "compare a STORED hash" and bare /store/ matched it — a
     // measured build of «restaurant website» came out as an online shop with a
-    // cart, because the store pattern is checked first. (Arabic needs no \b:
-    // its keywords are whole distinctive words already.)
+    // cart, because the store pattern is checked first. Arabic is held to
+    // words too (detectPageKind, arabic-words.ts): «مغسلة», a laundry, carries
+    // the letters of «سلة», a cart, and P272's laundry bookings read as a shop.
     // A catalogue can describe a museum, seed library, archive or course
     // collection. It becomes commerce only when the request also names a
     // transaction or explicitly calls it a shop/storefront.
@@ -100,7 +102,7 @@ export function detectPageKind(request: string, probe?: string): PageKind {
      */
     let best: { kind: PageKind; at: number; rank: number } | null = null;
     DETECTORS.forEach(([kind, re], rank) => {
-        const m = text.match(re);
+        const m = wordMatch(re, text);
         if (!m || m.index === undefined) return;
         if (!best || m.index < best.at || (m.index === best.at && rank < best.rank)) {
             best = { kind, at: m.index, rank };

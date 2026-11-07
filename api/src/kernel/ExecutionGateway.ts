@@ -19,7 +19,7 @@ export class ExecutionGateway {
     static startManaged(
         file: string,
         args: string[] = [],
-        options: ExecutionOptions & { onLine?: (line: string, stream: 'stdout' | 'stderr') => void } = {},
+        options: ExecutionOptions & { onLine?: (line: string, stream: 'stdout' | 'stderr') => void; outlivesJoe?: boolean } = {},
     ) {
         // The long-lived path has the same authorization boundary as execute.
         // It must never become a side door around the orchestration firewall.

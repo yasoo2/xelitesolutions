@@ -83,7 +83,10 @@ export default function FileExplorerPanel({
     const handleImportFile = async (file: File) => {
         setTransferBusy('import');
         try {
-            const res = await fetch(`${API_URL}/project/import`, {
+            //  Imported into this chat, it becomes this chat's project: the
+            //  next request («fix the failing test») changes it in place.
+            const chat = String(sessionId || '').trim();
+            const res = await fetch(`${API_URL}/project/import${chat ? `?sessionId=${encodeURIComponent(chat)}` : ''}`, {
                 method: 'POST',
                 headers: { ...authHeaders(), 'Content-Type': 'application/zip' },
                 body: await file.arrayBuffer(),

@@ -50,6 +50,10 @@ export async function agentEngineRoute(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
     if (project && !startsAfresh(text) && (isActionableEditRequest(text) || isFollowUpChange(text))) return { kind: 'change', path: project };
+    //  The user's own repository: an issue is written about the code, not
+    //  opened with a verb («Bug: totals are wrong…», «CI is red…», «عند وجود
+    //  فاصلة…») — work asked of it changes it (isRepositoryWork).
+    if (project && !startsAfresh(text) && chatProjectOrigin(context?.sessionId) === 'imported' && isRepositoryWork(text)) return { kind: 'change', path: project };
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isBuildRequest } = require('../intelligence/intent-classifier');
     return isBuildRequest(text)?.isBuild ? { kind: 'build' } : null;
@@ -109,6 +113,39 @@ export function isFollowUpChange(text: string): boolean {
     const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
     if (t.split(/\s+/).length < 2 || startsAfresh(t)) return false;
     return CHANGE_LEAD_AR.test(t) || CHANGE_LEAD_EN.test(t);
+}
+
+/**
+ * WORK ASKED OF A REPOSITORY, IN THE WORDS AN ISSUE IS WRITTEN IN.
+ *
+ * The Codex exam (2026-11-06): issues name a symptom or a goal, rarely open
+ * with a verb — "Bug: invoice totals are wrong…", "CI is red…", "Performance:
+ * importing … hangs", "Security issue: …", «خطأ في قراءة الملف…», «أضف ترقيم
+ * الصفحات…». In a chat whose project is the user's own repository, a message
+ * that reports a defect, asks for a feature, a fix, tests, speed or safety is
+ * work on that repository. A question about something else is not.
+ */
+const REPO_WORK_EN = /\b(?:bugs?|fix(?:es|ed)?|broken|errors?|exceptions?|crash(?:es|ed)?|fail(?:s|ed|ing|ure)?|wrong|incorrect|regression|issue|ci\b|tests?|pass(?:es|ing)?|feature|implement|add|support|refactor|clean\s*up|optimi[sz]e|performance|slow|hangs?|faster|speed|security|vulnerab\w*|exploit|leak\w*|injection|travers\w*|should|must|expected|instead\s+of|complain\w*|stop(?:s|ped)?\s+working|doesn'?t\s+work|does\s+not\s+work)\b/iu;
+const REPO_WORK_AR = new FoldedRegExp('(?:خطأ|اخطاء|أخطاء|خلل|مشكلة|مشكله|عطل|يفشل|تفشل|فشل|لا\\s+يعمل|لا\\s+تعمل|معطل|بطيء|بطء|يتعطل|ثغرة|ثغره|أمان|امان|تسريب|أصلح|اصلح|صلح|أضف|اضف|ضيف|ميزة|ميزه|اختبار|اختبارات|يجب|ينبغي|بدلا|بدلاً|نفذ|طبق|حسن|سرع|عدل|أعد\\s+كتابة)', 'u');
+
+export function isRepositoryWork(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    if (t.split(/\s+/).length < 3 || startsAfresh(t)) return false;
+    return REPO_WORK_EN.test(t) || REPO_WORK_AR.test(t);
+}
+
+/** Where this chat's project came from (run.ts ProjectOrigin), when it has one. */
+export function chatProjectOrigin(sessionId: unknown): 'built' | 'imported' | undefined {
+    const sid = String(sessionId || '').trim();
+    if (!sid) return undefined;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { readJoeProjectForRun } = require('../../api/page-store');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { previewKey } = require('../../modules/tools/preview-site');
+        const origin = readJoeProjectForRun(previewKey(sid), null)?.origin;
+        return origin === 'imported' ? 'imported' : origin === 'built' ? 'built' : undefined;
+    } catch { return undefined; }
 }
 
 /** Does this message ask to put the project back, or to see its kept versions? */

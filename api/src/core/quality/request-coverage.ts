@@ -835,6 +835,47 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
             }
         }
     }
+    if (text.includes('<')) harvestMarkupLabelKeys(text, records, bind);
+}
+
+/** An element with its attributes and its own short text (no child elements). */
+const MARKUP_ELEMENT = /<([a-zA-Z][\w-]*)(\s[^<>]*)?>([^<>]{1,60})<\/\1\s*>/gu;
+/** The attributes that give a section or a resource its name in markup. */
+const MARKUP_NAME_ATTR = /\s(?:data-[\w-]+|id|aria-controls|href)\s*=\s*(["'])#?([A-Za-z][\w-]{1,40})\1/gu;
+/** The interface's own words around a name: «tab-pickups», «pickups-section» are pickups. */
+const UI_WORD = /^(?:tabs?|sections?|sec|panels?|panes?|page|view|btn|button|link|nav|list|body|form|table|container|wrap(?:per)?|card|content|title|heading|header|menu|screen|area|box|block)$/iu;
+
+function withoutArticle(word: string): string {
+    return word.replace(/^(?:ال|لل)(?=[؀-ۿ]{2})/u, '');
+}
+
+/**
+ * A TAB NAMES THE RESOURCE IT SHOWS (P072). `<button data-tab="pickups">
+ * المواعيد</button>`: the interface says, in so many words, that «المواعيد»
+ * is pickups. An element whose own text (three words at most) opens with his
+ * word binds the name its naming attribute carries, once the interface's own
+ * words are left out — a name that is still two words («pickup-date») is a
+ * field, not a resource, and binds nothing.
+ */
+function harvestMarkupLabelKeys(text: string, records: RequestedRecord[], bind: (key: string, value: string) => void): void {
+    const heads = records.map(record => ({
+        key: record.key,
+        words: new Set([record.ar, record.item].map(s => withoutArticle(String(s || '').trim().split(/\s+/u)[0] || '')).filter(w => /[؀-ۿ]{2}/u.test(w))),
+    }));
+    for (const el of text.matchAll(MARKUP_ELEMENT)) {
+        const attrs = el[2] || '';
+        if (!attrs) continue;
+        const words = el[3].trim().split(/\s+/u).filter(Boolean);
+        if (!words.length || words.length > 3) continue;
+        const head = withoutArticle(words[0]);
+        const owners = heads.filter(h => h.words.has(head));
+        if (!owners.length) continue;
+        for (const attr of attrs.matchAll(MARKUP_NAME_ATTR)) {
+            const parts = attr[2].split(/[-_]/u).filter(p => p && !UI_WORD.test(p));
+            if (parts.length !== 1) continue;
+            for (const owner of owners) bind(owner.key, parts[0]);
+        }
+    }
 }
 
 // ─── identifiers and the runtime probe ──────────────────────────────────────
@@ -1211,10 +1252,15 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
         }
     }
     const projectMarkers = await Promise.all(['pyproject.toml', 'requirements.txt', 'setup.py', 'manage.py'].map(f => exists(path.join(dir, f))));
+    //  A package in its own folder beside a tests/ folder («tripcsv/», «tests/»),
+    //  the layout most Python repositories have, is a Python project too: its
+    //  test files say so (the Codex exam, 2026-11-06).
+    const testFolders = await pythonTestFolders(dir);
     const pythonProject = projectMarkers.some(Boolean)
-        || await fs.promises.readdir(dir).then(names => names.some(name => /\.py$/iu.test(name)), () => false);
+        || await fs.promises.readdir(dir).then(names => names.some(name => /\.py$/iu.test(name)), () => false)
+        || testFolders.length > 0;
     if (pythonProject) {
-        const folders = await pythonTestFolders(dir);
+        const folders = testFolders;
         // The runner as a delivered script would run it; the interpreter is
         // the name this machine — the one running the check — ships.
         const runner = 'python tests (pytest where installed, else the standard-library runner)';
