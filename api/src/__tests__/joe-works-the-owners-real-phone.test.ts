@@ -348,6 +348,31 @@ describe('the verifier and the closing words fit what was asked', () => {
     });
 });
 
+describe('the chat\'s answerer knows what Joe did on the devices', () => {
+    test('each operate run leaves its result; the answerer is given them as facts, the last five for two hours', () => {
+        const op = require('../core/engine/device-work');
+        const t0 = Date.now();
+        expect(op.deviceWorkFacts('chat-facts', t0)).toBe('');
+        op.noteOperateResult('chat-facts', { target: 'phone', request: 'شغل الكشاف في الهاتف', summary: 'شغّلت الكشاف في هاتف TECNO KI7.', ok: true }, t0);
+        const facts = op.deviceWorkFacts('chat-facts', t0 + 60_000);
+        expect(facts).toContain('never say Joe did nothing there');
+        expect(facts).toContain('1 min ago, on the owner\'s phone: «شغل الكشاف في الهاتف» → done and checked: شغّلت الكشاف');
+        for (let i = 0; i < 6; i++) op.noteOperateResult('chat-facts', { request: `افتح المفكرة ${i}`, summary: 'x', ok: false }, t0 + i);
+        expect(op.deviceWorkFacts('chat-facts', t0 + 10).match(/^- /gmu)).toHaveLength(5);
+        expect(op.deviceWorkFacts('chat-facts', t0 + 3 * 60 * 60_000)).toBe('');
+        expect(op.deviceWorkFacts('another-chat', t0)).toBe('');
+    });
+
+    test('the answerer\'s prompt carries them, and the operate run leaves them', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const answer = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'CentralAnswerTool.ts'), 'utf8');
+        expect(answer).toMatch(/deviceWorkFacts\(context\?\.sessionId\)/u);
+        const engine = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AgentEngineTool.ts'), 'utf8');
+        expect(engine).toMatch(/noteOperateResult\(o\.context\.sessionId/u);
+    });
+});
+
 describe('the plan and the log', () => {
     test('a requirement added and marked in the same call is kept and marked, with no refusal', () => {
         const { applyPlanUpdate } = require('../core/engine/plan');
