@@ -4304,3 +4304,11 @@ body:not(.rtl) .joe-user-info {
 }
 .joe-computer-screen { display: block; max-width: 100%; max-height: calc(100% - 2px); object-fit: contain; border-radius: 6px; background: #000; user-select: none; }
 [data-theme="light"] .joe-screen-frame { background: #1a1f1c; }
+/* Joe's browser shown in the Preview: a floating chip, not a bar that takes the browser's room. */
+.joe-workspace-content > .joe-live-chip {
+  position: absolute; top: 8px; inset-inline-end: 10px; z-index: 6; width: auto; height: auto;
+  display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 3px; border-radius: 999px;
+  background: rgba(11, 15, 13, 0.82); border: 1px solid var(--joe-border); backdrop-filter: blur(6px);
+}
+.joe-live-chip .joe-live-badge { margin-inline-start: 0; }
+[data-theme="light"] .joe-workspace-content > .joe-live-chip { background: rgba(255, 255, 255, 0.9); }

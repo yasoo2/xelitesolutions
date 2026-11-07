@@ -104,7 +104,7 @@ export default function Joe() {
      */
     const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
     //  What Joe works on now, shown live in the Preview: the phone or this computer (LiveDevicePanel).
-    const [liveSource, setLiveSource] = useState<'phone' | 'computer' | null>(null);
+    const [liveSource, setLiveSource] = useState<'phone' | 'computer' | 'browser' | null>(null);
     //  Another chat starts on its own page preview, not on the last chat's device.
     useEffect(() => { setLiveSource(null); }, [activeSessionId]);
     // The theme was hardcoded to 'dark' on every mount, so switching to light
@@ -322,12 +322,16 @@ export default function Joe() {
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             };
+            //  Joe's browser, in the Preview: the same browser the Browser tab holds.
+            const showBrowser = () => { setLiveSource('browser'); setWorkspaceTab('preview'); };
             if (msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa') {
                 keepBrowserVisibleRef.current = true;
                 // QA is only trustworthy when its browser is actually on screen.
                 // Keeping the panel mounted in the background is not enough: the
                 // focus event is the server's explicit instruction to reveal it.
-                setWorkspaceTab('browser');
+                // Revealed in the PREVIEW: the owner, 2026-11-08, «the preview
+                // shows everything Joe does», the browser included (showBrowser).
+                showBrowser();
                 triggerUncollapse();
             }
             const maySwitchAwayFromBrowser = !keepBrowserVisibleRef.current;
@@ -380,14 +384,14 @@ export default function Joe() {
                 }
             }
 
-            // Auto switch to browser for browser actions
-            if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {
-                setWorkspaceTab('browser');
+            // Joe browses: the Preview shows his browser (the engine's steps are engine:browser_…).
+            if (isToolStart && (/^(?:engine:)?browser_/.test(toolName) || toolName === 'open_page' || toolName === 'click_element')) {
+                showBrowser();
                 triggerUncollapse();
             }
             // Only the names the server actually broadcasts.
             if (msg.type === 'browser_screenshot' || msg.type === 'stream_frame' || msg.type === 'browser_needs_user') {
-                setWorkspaceTab('browser');
+                showBrowser();
                 triggerUncollapse();
             }
 

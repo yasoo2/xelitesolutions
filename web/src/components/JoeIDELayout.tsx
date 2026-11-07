@@ -58,7 +58,7 @@ interface JoeIDELayoutProps {
     workspaceTab?: WorkspaceTab;
     onWorkspaceTabChange?: (tab: WorkspaceTab) => void;
     /** What Joe works on now, live in the Preview (the phone or this computer). */
-    liveSource?: 'phone' | 'computer' | null;
+    liveSource?: 'phone' | 'computer' | 'browser' | null;
     onLiveClose?: () => void;
     onDeploymentsClick?: () => void;
     onSystemClick?: () => void;

@@ -602,6 +602,10 @@ describe('the preview shows the phone or the computer live while Joe works it', 
         expect(routes).toMatch(/router\.get\('\/phone\/screen', authenticate as any/u);
         expect(routes).toMatch(/router\.get\('\/computer\/screen', authenticate as any/u);
         expect((routes.match(/'Cache-Control': 'no-store'/gu) || []).length).toBe(2);
+        //  The firewall refused the first live frame («Execution bypass detected»): the capture
+        //  runs as the owner's own system task, the way git.ts runs git.
+        expect(routes).toContain('executionFirewall.runAsSystem(() => phoneScreenNow(serial), { userId: uid(req) })');
+        expect(routes).toContain('executionFirewall.runAsSystem(() => computerScreenNow(), { userId: uid(req) })');
         const { rateLimitSkips } = require('../api/app');
         const shared = { NODE_ENV: 'production' } as any;
         expect(rateLimitSkips({ ip: '203.0.113.9', originalUrl: '/api/devices/phone/screen' }, shared)).toBe(true);

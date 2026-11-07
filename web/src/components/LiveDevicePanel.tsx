@@ -17,7 +17,9 @@ import { API_URL } from '../config';
 
 const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` });
 
-export type LiveSource = 'phone' | 'computer';
+/** What the Preview shows live: a device here, or Joe's own browser (shown by EmbeddedBrowser itself). */
+export type LiveSource = 'phone' | 'computer' | 'browser';
+export type DeviceSource = Exclude<LiveSource, 'browser'>;
 type Status = 'connecting' | 'live' | 'no_phone' | 'no_adb' | 'not_windows' | 'failed';
 
 /** The pause between two frames: a phone needs about two seconds to take one anyway. */
@@ -25,7 +27,22 @@ const NEXT_FRAME_MS = 300;
 /** After a failure, ask again more slowly. */
 const RETRY_MS = 4000;
 
-export default function LiveDevicePanel({ source, visible, onClose }: { source: LiveSource; visible: boolean; onClose?: () => void }) {
+/** Joe's browser shown in the Preview: a small floating chip says so, and leads back to the page. */
+export function LiveBrowserChip({ onClose }: { onClose?: () => void }) {
+    const { t } = useTranslation();
+    return (
+        <div className="joe-live-chip" dir="auto">
+            <span className="joe-live-badge"><span className="joe-live-dot" /> {t('dev_browserLive')}</span>
+            {onClose && (
+                <button type="button" className="joe-live-close" onClick={onClose} title={t('dev_backToPreview')} aria-label={t('dev_backToPreview')}>
+                    <X size={14} />
+                </button>
+            )}
+        </div>
+    );
+}
+
+export default function LiveDevicePanel({ source, visible, onClose }: { source: DeviceSource; visible: boolean; onClose?: () => void }) {
     const { t } = useTranslation();
     const [src, setSrc] = useState<string>('');
     const [status, setStatus] = useState<Status>('connecting');
