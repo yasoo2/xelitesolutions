@@ -244,7 +244,9 @@ describe('the door at /ws/device-link', () => {
         expect(d.screen).toMatch(/^\d+x\d+$/u);
         expect(deviceLinks.list('someone-else')).toEqual([]);
         const { computersText } = require('../modules/tools/definitions/EngineDeviceTools');
-        expect(computersText(owner)).toContain(`- ${d.name} (`);
+        //  Named in «», with whether it is online (2026-11-08: the permanent link lists computers that are off too).
+        expect(computersText(owner)).toContain(`- «${d.name}» (linked for this session)`);
+        expect(computersText(owner)).toContain('ONLINE now');
     });
 
     test('computers → use → windows → read → set → press → read → look → finish: delivered, and the remote window shows it', async () => {

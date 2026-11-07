@@ -175,6 +175,31 @@ export class Conversation {
         return [...this.messages];
     }
 
+    /**
+     * A PICTURE THE MODEL REFUSED IS TAKEN OUT, NOT CARRIED FOREVER.
+     *
+     * The owner's phone, 2026-11-08: a cut-short screenshot reached the model,
+     * which answered «Could not process image» — and every retry sent the same
+     * picture again, so a run that had done all it was asked failed three times
+     * in a row. Each picture is replaced by a line saying it could not be read,
+     * so the next call goes on and the model looks again if it needs to.
+     * Returns how many pictures were taken out.
+     */
+    dropImages(note = '(A picture was here; the model could not read it. Look again if you need to see the screen.)'): number {
+        let dropped = 0;
+        for (let i = 0; i < this.messages.length; i++) {
+            const m = this.messages[i];
+            if (!Array.isArray(m.content)) continue;
+            const parts = m.content as ContentPart[];
+            if (!parts.some(p => p.type === 'image_url')) continue;
+            dropped += parts.filter(p => p.type === 'image_url').length;
+            const kept = parts.filter(p => p.type !== 'image_url');
+            this.messages[i] = { ...m, content: [...kept, { type: 'text', text: note }] } as ChatMessage;
+        }
+        if (dropped) this.record({ droppedImages: dropped });
+        return dropped;
+    }
+
     needsCompaction(): boolean {
         return this.tokens() > this.budget.compactAtTokens || this.messages.length > this.budget.maxMessages;
     }

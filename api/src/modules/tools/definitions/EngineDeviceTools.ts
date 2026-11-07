@@ -22,11 +22,20 @@ import os from 'os';
 import path from 'path';
 
 /** This computer and the owner's linked ones, as device_computers says them. */
-export function computersText(owner: string): string {
+export function computersText(owner: string, now = Date.now()): string {
     const linked = deviceLinks.list(owner);
     const here = `This computer: ${os.hostname()} (${WINDOWS ? 'Windows: Joe can work its desktop' : `${process.platform}: no desktop control here`}).`;
-    if (!linked.length) return `${here}\nNo other computer is linked. The owner links one from Joe's settings (Devices): one line run on that computer.`;
-    return [here, 'Linked computers:', ...linked.map(d => `- ${d.name} (${d.os || 'Windows'}${d.user ? `, user ${d.user}` : ''}${d.screen ? `, screen ${d.screen}` : ''}) connected`)].join('\n');
+    if (!linked.length) return `${here}\nNo other computer is linked. To link one for good, device_link_new with the name the owner gives it: he runs one line on it once, and it calls Joe by itself from then on.`;
+    const ago = (t: number) => {
+        if (!t) return 'never seen yet';
+        const m = Math.round((now - t) / 60_000);
+        return m < 2 ? 'seen a moment ago' : m < 120 ? `last seen ${m} min ago` : `last seen ${Math.round(m / 60)} h ago`;
+    };
+    return [here, 'The owner\'s other computers:', ...linked.map(d => {
+        const what = `${d.os || 'Windows'}${d.user ? `, user ${d.user}` : ''}${d.screen ? `, screen ${d.screen}` : ''}`;
+        const state = d.online !== false ? 'ONLINE now: device_use it' : `OFF or without internet (${ago(d.lastSeen)}): it connects by itself when it is on`;
+        return `- «${d.name}»${d.kept ? ' (linked for good)' : ' (linked for this session)'} — ${what} — ${state}`;
+    })].join('\n');
 }
 
 const WINDOWS = process.platform === 'win32';
@@ -119,13 +128,21 @@ export class EngineDeviceTool implements ToolDefinition {
         if (String(input?.op || '') === 'computers') return { ok: true, output: { text: computersText(owner) } } as any;
         //  Asked in the chat for a computer that is not linked yet: the line to run there (device-link.ts).
         if (String(input?.op || '') === 'pair') {
-            const { code, expiresAt } = deviceLinks.newPairingCode(owner);
+            //  With a name, a PERMANENT link (linked-computers.ts): installed once, it calls Joe at every start.
+            const keepAs = String(input?.name || '').trim();
+            const { code, expiresAt } = deviceLinks.newPairingCode(owner, Date.now(), keepAs || undefined);
             const base = reachableBase('http', `127.0.0.1:${config.port || 5000}`);
-            const command = linkCommand(`${base.http}/api/devices/link.ps1?code=${code}`);
-            return { ok: true, output: { text: `PAIR\t${command}\t${expiresAt}\t${base.via}`, command, expiresAt, via: base.via } } as any;
+            const command = linkCommand(`${base.http}/api/devices/${keepAs ? 'install' : 'link'}.ps1?code=${code}`);
+            return { ok: true, output: { text: `PAIR\t${command}\t${expiresAt}\t${base.via}`, command, expiresAt, via: base.via, keep: !!keepAs, name: keepAs } } as any;
         }
         if (String(input?.op || '') === 'linked') {
-            return { ok: true, output: { text: JSON.stringify(deviceLinks.list(owner).map(d => ({ name: d.name, os: d.os, connectedAt: d.connectedAt }))) } } as any;
+            return { ok: true, output: { text: JSON.stringify(deviceLinks.list(owner).map(d => ({ name: d.name, os: d.os, connectedAt: d.connectedAt, online: d.online !== false, kept: !!d.kept }))) } } as any;
+        }
+        if (String(input?.op || '') === 'forget') {
+            const gone = deviceLinks.forget(owner, String(input?.computer || input?.name || ''));
+            return gone
+                ? { ok: true, output: { text: `«${gone.name}» is unlinked for good: its key opens nothing now, and its agent removes itself the next time it calls.` } } as any
+                : { ok: false, error: 'no such computer', output: { text: `No computer of the owner is named «${String(input?.computer || input?.name || '')}»: ${deviceLinks.list(owner).map(d => d.name).join(', ') || 'he has none linked'}.` } } as any;
         }
         //  A linked computer (core/devices/device-link.ts): its own helper acts, its own guard decides.
         const computer = String(input?.computer || '').trim();

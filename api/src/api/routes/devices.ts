@@ -2,7 +2,10 @@
  * The owner's computers: this one, and the ones he linked (core/devices/device-link.ts).
  *
  *   POST /api/devices/pair            a pairing code and the one line to run on the other computer
+ *                                     ({keep: true, name}: a PERMANENT link under that name)
  *   GET  /api/devices/link.ps1?code=  the link script, served only while that code is waiting
+ *   GET  /api/devices/install.ps1?code= the permanent link's installer, served once
+ *   POST /api/devices/:id/forget      unlinks a computer for good
  *   GET  /api/devices                 this computer and the linked ones
  *   POST /api/devices/:id/disconnect  ends a link from here
  *   GET  /api/devices/phone/screen    the phone's screen now (a PNG), for the live preview
@@ -12,7 +15,7 @@ import { Router, Request, Response } from 'express';
 import os from 'os';
 import { authenticate } from '../middleware/auth';
 import { config } from '../../shared/config';
-import { deviceLinks, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
+import { deviceLinks, keepInstallScript, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
@@ -31,11 +34,15 @@ export function publicBase(req: Request, env: NodeJS.ProcessEnv = process.env, l
 }
 
 router.post('/pair', authenticate as any, (req: Request, res: Response) => {
-    const { code, expiresAt } = deviceLinks.newPairingCode(uid(req));
+    //  { keep: true, name: «كمبيوتر المكتب» }: linked for good under that name (install.ps1);
+    //  otherwise a link for this session (link.ps1).
+    const keep = req.body?.keep === true || req.body?.permanent === true;
+    const name = String(req.body?.name || '').trim() || os.hostname();
+    const { code, expiresAt } = deviceLinks.newPairingCode(uid(req), Date.now(), keep ? name : undefined);
     const base = publicBase(req);
-    const scriptUrl = `${base.http}/api/devices/link.ps1?code=${code}`;
+    const scriptUrl = `${base.http}/api/devices/${keep ? 'install' : 'link'}.ps1?code=${code}`;
     return res.json({
-        ok: true, code, expiresAt, scriptUrl, command: linkCommand(scriptUrl),
+        ok: true, code, expiresAt, scriptUrl, command: linkCommand(scriptUrl), keep, ...(keep ? { name } : {}),
         //  Said plainly: a network address reaches only computers on that network,
         //  and an address only this computer knows reaches none.
         via: base.via,
@@ -51,6 +58,30 @@ router.get('/link.ps1', (req: Request, res: Response) => {
     //  The computer that fetched this reached Joe at this very address: it calls back the same way.
     const base = publicBase(req, {}, () => '');
     return res.type('text/plain; charset=utf-8').send(linkScript(`${base.ws}/ws/device-link?code=${encodeURIComponent(code)}`));
+});
+
+/**
+ * GET /api/devices/install.ps1?code= — the installer of a PERMANENT link, served
+ * once: fetching it claims the code, keeps the computer under the name the
+ * owner chose and makes its key, which travels inside this script only.
+ */
+router.get('/install.ps1', (req: Request, res: Response) => {
+    const code = String(req.query.code || '');
+    if (!deviceLinks.isWaitingToKeep(code)) {
+        return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
+    }
+    const kept = deviceLinks.claimForKeeping(code);
+    if (!kept) return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
+    //  The computer that fetched this reached Joe at this very address: it calls back the same way.
+    const base = publicBase(req, {}, () => '');
+    res.set('Cache-Control', 'no-store');
+    return res.type('text/plain; charset=utf-8').send(keepInstallScript(`${base.ws}/ws/device-link`, kept.id, kept.key, kept.name));
+});
+
+/** POST /api/devices/:id/forget — unlinks a computer for good: its key opens nothing, its agent removes itself. */
+router.post('/:id/forget', authenticate as any, (req: Request, res: Response) => {
+    const gone = deviceLinks.forget(uid(req), String(req.params.id || ''));
+    return gone ? res.json({ ok: true, name: gone.name }) : res.status(404).json({ ok: false, error: 'no such computer' });
 });
 
 router.get('/', authenticate as any, (req: Request, res: Response) => {

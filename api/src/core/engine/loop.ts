@@ -220,6 +220,12 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     const c = conv.compact(state, lastErrors);
                     if (c.removed) { req.emit({ type: 'compacted', removedMessages: c.removed, summaryChars: c.summaryChars }); continue; }
                 }
+                //  A picture the model cannot read is taken out, and the call is asked again
+                //  without it (context.ts dropImages): it never fails a run that did its work.
+                if (/could not process image|image (?:is )?(?:invalid|corrupt|could not be)|unable to process (?:the )?image/iu.test(message(e)) && conv.dropImages() > 0) {
+                    lastErrors.push('a picture the model could not read was taken out of the conversation');
+                    continue;
+                }
                 if (FINAL_MODEL_FAILURES.has(code)) { ending = { status: 'failed', reason: `the model call cannot go on (${code}): ${message(e)}` }; break; }
                 if (code === 'LOCAL_COMPLETION_LIMIT' || code === 'COMPLETION_LIMIT') {
                     cutReplies++;

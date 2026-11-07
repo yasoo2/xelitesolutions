@@ -331,18 +331,40 @@ const LINK_WORDS: Record<string, (command: string, minutes: number, via: string)
     ].filter(Boolean).join('\n'),
 };
 
-export const deviceLinkNewTool: EngineTool<Record<string, never>> = {
+/**
+ * The words for a PERMANENT link (linked-computers.ts): run once, and the
+ * computer calls Joe by itself at every start, under the name given.
+ */
+const KEEP_WORDS: Record<string, (command: string, minutes: number, via: string, name: string) => string> = {
+    ar: (command, minutes, via, name) => [
+        `لربط «${name}» بجو ربطاً دائماً: افتح على ذلك الكمبيوتر برنامج PowerShell، والصق هذا السطر، واضغط Enter، مرة واحدة فقط في العمر:`,
+        command,
+        `السطر صالح لمدة ${minutes} دقائق. بعده يبقى الكمبيوتر مربوطاً دائماً باسم «${name}»: يتصل بجو وحده كلما شُغّل ويندوز، وتظهر أيقونة جو قرب الساعة، ومنها يُوقَف أو يُفصل نهائياً. بعدها تكفي جملة «اشبك على ${name}» من أي مكان.`,
+        via === 'lan' ? 'تنبيه: جو الآن على عنوان داخل شبكتك فقط، فهذا الكمبيوتر يصل إليه وهو على الشبكة نفسها. ليصل إليه من مدينة أخرى يحتاج جو عنواناً على الإنترنت.' : via === 'local' ? 'تنبيه: جو مفتوح على عنوان محلي فقط، فلن يصل إليه كمبيوتر آخر إلا عبر عنوان شبكة أو عنوان عام.' : '',
+    ].filter(Boolean).join('\n'),
+    en: (command, minutes, via, name) => [
+        `To link «${name}» to Joe for good: open PowerShell on that computer, paste this line and press Enter — once, ever:`,
+        command,
+        `The line works for ${minutes} minutes. From then on the computer stays linked as «${name}»: it calls Joe by itself whenever Windows starts, and Joe's icon by its clock stops it or unlinks it for good. Then «connect to ${name}» works from anywhere.`,
+        via === 'lan' ? 'Note: Joe is at an address inside your network only, so this computer reaches it while on the same network. From another city, Joe needs an address on the internet.' : via === 'local' ? 'Note: Joe is open at a local address only, so another computer reaches it only through a network or public address.' : '',
+    ].filter(Boolean).join('\n'),
+};
+
+export const deviceLinkNewTool: EngineTool<{ name?: string }> = {
     name: 'device_link_new',
-    description: 'The owner asked for a computer that is not linked yet: show him, now, in his language, the one line to run on that computer (it links it to Joe; a window there says Joe is in control). Then call device_wait_link.',
-    parameters: { type: 'object', properties: {} },
-    parse: () => ({ ok: true, value: {} }),
-    async run(_a, ctx): Promise<ToolOutcome> {
-        const result = await gateway()('engine_device', { op: 'pair' }, toolContextFor(ctx));
+    description: 'The owner asked for a computer that is not linked yet: show him, now, in his language, the one line to run on that computer. With "name" (what the owner calls it: «كمبيوتر المكتب», "home PC") the link is PERMANENT — run once, the computer calls Joe by itself at every start and is known by that name from anywhere; give a name whenever he will use that computer again. Without a name, the link lasts this session. Then call device_wait_link.',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: 'The name the owner gives the computer; makes the link permanent.' } } },
+    parse: raw => {
+        const name = String(obj(raw)?.name ?? '').replace(/\s+/gu, ' ').trim().slice(0, 60);
+        return { ok: true, value: name ? { name } : {} };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const result = await gateway()('engine_device', { op: 'pair', ...(a.name ? { name: a.name } : {}) }, toolContextFor(ctx));
         const out = result?.output || {};
         if (result?.ok !== true || typeof out.command !== 'string') return { ok: false, output: `device_link_new failed: ${String(out.text || result?.error || 'no line was made')}` };
         const minutes = Math.max(1, Math.round((Number(out.expiresAt) - Date.now()) / 60_000));
         const lang = String(ctx.replyLanguage || ctx.language || 'en').startsWith('ar') ? 'ar' : 'en';
-        const message = LINK_WORDS[lang](out.command, minutes, String(out.via || ''));
+        const message = a.name ? KEEP_WORDS[lang](out.command, minutes, String(out.via || ''), a.name) : LINK_WORDS[lang](out.command, minutes, String(out.via || ''));
         //  Shown in the chat now, while the run waits for the computer.
         ctx.emit({ type: 'thought', text: message });
         act(ctx, 'device_link_new', true, 'showed the owner the line that links another computer');
@@ -356,14 +378,16 @@ export const deviceWaitLinkTool: EngineTool<{ minutes: number }> = {
     parameters: { type: 'object', properties: { minutes: { type: 'integer', description: 'How long to wait, 1 to 10.' } } },
     parse: raw => ({ ok: true, value: { minutes: Math.max(1, Math.min(10, Math.round(Number(obj(raw)?.minutes) || 5))) } }),
     async run(a, ctx): Promise<ToolOutcome> {
-        const names = async (): Promise<Array<{ name: string; connectedAt: number }>> => {
+        const names = async (): Promise<Array<{ name: string; connectedAt: number; online?: boolean }>> => {
             const r = await gateway()('engine_device', { op: 'linked' }, toolContextFor(ctx));
             try { return JSON.parse(String(r?.output?.text || '[]')); } catch { return []; }
         };
-        const before = new Set((await names()).map(d => d.name));
+        //  A computer that comes ONLINE: a kept one is listed (off) before it calls the first time.
+        const online = (list: Array<{ name: string; online?: boolean }>) => list.filter(d => d.online !== false);
+        const before = new Set(online(await names()).map(d => d.name));
         const until = Math.min(Date.now() + a.minutes * 60_000, ctx.deadlineAt - 30_000);
         while (Date.now() < until && !ctx.signal.aborted) {
-            const fresh = (await names()).find(d => !before.has(d.name));
+            const fresh = online(await names()).find(d => !before.has(d.name));
             if (fresh) {
                 act(ctx, 'device_wait_link', true, `linked «${fresh.name}»`);
                 seen(ctx, 'devices');
@@ -385,19 +409,55 @@ export const deviceUseTool: EngineTool<{ computer: string }> = {
     }),
     async run(a, ctx): Promise<ToolOutcome> {
         const rec = deviceRecordFor(ctx.runId);
-        const here = /^(this|here|local|this computer|هذا|هذا الحاسوب|جهازي)$/iu.test(a.computer);
+        const here = /^(this|here|local|this computer|هذا|هذا الحاسوب|هذا الكمبيوتر|جهازي)$/iu.test(a.computer);
+        let chosen = a.computer;
         if (!here) {
-            const list = await device(ctx, { op: 'computers' });
-            const names = [...list.text.matchAll(/^- (.+?) \(/gmu)].map(m => m[1].trim().toLowerCase());
-            if (!names.includes(a.computer.toLowerCase())) return { ok: false, output: `No linked computer named «${a.computer}» is connected.\n${list.text}` };
+            //  The owner's computers as Joe keeps them: online now, or kept and off.
+            const r = await gateway()('engine_device', { op: 'linked' }, toolContextFor(ctx));
+            let list: Array<{ name: string; online?: boolean; kept?: boolean }> = [];
+            try { list = JSON.parse(String(r?.output?.text || '[]')); } catch { /* none */ }
+            const want = a.computer.trim().toLowerCase();
+            const match = list.find(d => d.name.toLowerCase() === want)
+                //  «كمبيوتر المكتب» for a computer kept as «المكتب», or the reverse.
+                || list.find(d => d.name.toLowerCase().includes(want) || want.includes(d.name.toLowerCase()));
+            if (!match) {
+                const text = (await device(ctx, { op: 'computers' })).text;
+                return { ok: false, output: `The owner has no computer named «${a.computer}».\n${text}` };
+            }
+            if (match.online === false) {
+                return { ok: false, output: `«${match.name}» is linked for good but is OFF or without internet now: it connects by itself as soon as it is on. Tell the owner so (ask_owner or task_finish); nothing can reach it until then.` };
+            }
+            chosen = match.name;
         }
-        rec.computer = here ? '' : a.computer;
+        rec.computer = here ? '' : chosen;
         rec.windows.clear(); rec.frames.clear(); rec.controls.clear();
-        return { ok: true, output: `Now working on ${here ? 'this computer' : `«${a.computer}»`}. Call device_windows to see its windows.` };
+        return { ok: true, output: `Now working on ${here ? 'this computer' : `«${chosen}»`}. Call device_windows to see its windows.` };
+    },
+};
+
+/**
+ * Unlink a computer for good (the owner: «افصل كمبيوتر المكتب نهائياً»): its
+ * key opens nothing any more, and its agent removes itself from that computer
+ * the next time it calls.
+ */
+export const deviceForgetTool: EngineTool<{ computer: string }> = {
+    name: 'device_forget',
+    description: 'Unlink one of the owner\'s computers FOR GOOD, only when he asks for exactly that («افصل … نهائياً», "unlink … for good"): Joe forgets it, and its agent removes itself from that computer. Name it as device_computers lists it.',
+    parameters: { type: 'object', properties: { computer: { type: 'string' } }, required: ['computer'] },
+    parse: raw => need<{ computer: string }>(raw, 'device_forget', a => {
+        const computer = String(a.computer || '').trim();
+        return computer ? { computer } : { error: '"computer" is the name of the computer to unlink for good.' };
+    }),
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await gateway()('engine_device', { op: 'forget', computer: a.computer }, toolContextFor(ctx));
+        const text = String(r?.output?.text || r?.error || '');
+        act(ctx, 'device_forget', r?.ok === true, `unlinked «${a.computer}» for good`);
+        if (r?.ok === true) seen(ctx, 'devices');
+        return { ok: r?.ok === true, output: text };
     },
 };
 
 export const deviceTools: EngineTool[] = [
-    deviceComputersTool, deviceLinkNewTool, deviceWaitLinkTool, deviceUseTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
+    deviceComputersTool, deviceLinkNewTool, deviceWaitLinkTool, deviceUseTool, deviceForgetTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
     deviceTypeTool, deviceKeysTool, deviceScrollTool, deviceOpenTool, deviceFocusTool,
 ];

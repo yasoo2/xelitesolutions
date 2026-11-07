@@ -19,6 +19,8 @@
  * Every command runs through the runner the caller gives (Joe's gateway), as
  * an argv, never a shell string.
  */
+import crypto from 'crypto';
+
 export type AdbRunner = (args: string[], opts?: { timeoutMs?: number }) => Promise<{ code: number | null; stdout: string; stderr: string }>;
 
 export interface AndroidDevice { serial: string; state: string; model: string; product: string; transport: string }
@@ -192,6 +194,12 @@ export async function connectPhone(adb: AdbRunner, address: string): Promise<{ o
     return /connected to|already connected/iu.test(r.stdout) && !/failed|cannot|unable/iu.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stdout || r.stderr || 'the phone did not answer').trim() };
 }
 
+/** A PNG that ends where a PNG ends: its last chunk is IEND. A cut-short file is not. */
+export function pngComplete(png: Buffer): boolean {
+    return png.length > 20 && png.subarray(1, 4).toString('latin1') === 'PNG'
+        && png.subarray(png.length - 8, png.length - 4).toString('latin1') === 'IEND';
+}
+
 export class AndroidPhone {
     /** pause: injectable, so a test does not wait for the keyboard to bind. */
     constructor(private readonly adb: AdbRunner, readonly serial: string, private readonly pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms))) { }
@@ -228,9 +236,12 @@ export class AndroidPhone {
     }
 
     async read(): Promise<{ ok: true; controls: AndroidControl[] } | { ok: false; error: string }> {
-        const dump = await this.run(['shell', 'uiautomator', 'dump', '/sdcard/joe-ui.xml'], { timeoutMs: 30_000 });
+        //  Its own file on the phone, like look(): two readers at once never share one.
+        const remote = `/sdcard/joe-ui-${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}.xml`;
+        const dump = await this.run(['shell', 'uiautomator', 'dump', remote], { timeoutMs: 30_000 });
         if (dump.code !== 0) return { ok: false, error: (dump.stderr || dump.stdout || 'uiautomator dump failed').trim() };
-        const cat = await this.run(['exec-out', 'cat', '/sdcard/joe-ui.xml'], { timeoutMs: 20_000 });
+        const cat = await this.run(['exec-out', 'cat', remote], { timeoutMs: 20_000 });
+        await this.run(['shell', 'rm', '-f', remote], { timeoutMs: 10_000 }).catch(() => null);
         if (cat.code !== 0 || !/<hierarchy/u.test(cat.stdout)) return { ok: false, error: (cat.stderr || 'the screen could not be read').trim() };
         return { ok: true, controls: parseUiDump(cat.stdout) };
     }
@@ -241,14 +252,31 @@ export class AndroidPhone {
      * text pipe (a runner that reads output as text would break the PNG).
      */
     async look(file: string, readFile: (f: string) => Buffer): Promise<{ ok: true; png: Buffer } | { ok: false; error: string }> {
-        const shot = await this.run(['shell', 'screencap', '-p', '/sdcard/joe-shot.png'], { timeoutMs: 30_000 });
-        if (shot.code !== 0) return { ok: false, error: (shot.stderr || 'the phone took no picture').trim() };
-        const pull = await this.run(['pull', '/sdcard/joe-shot.png', file], { timeoutMs: 60_000 });
-        if (pull.code !== 0) return { ok: false, error: (pull.stderr || 'the picture did not come over').trim() };
-        let png: Buffer;
-        try { png = readFile(file); } catch { return { ok: false, error: 'the picture did not come over' }; }
-        if (png.subarray(1, 4).toString() !== 'PNG') return { ok: false, error: 'what came over is not a picture' };
-        return { ok: true, png };
+        /*
+         * ONE FILE ON THE PHONE PER PICTURE, AND A PICTURE IS WHOLE OR NOTHING.
+         *
+         * The owner's phone, 2026-11-08: the live preview and Joe's own look
+         * took a picture into the same /sdcard file at the same moment; Joe
+         * pulled a half-written PNG, the model refused it («Could not process
+         * image») three times, and a run that had done all it was asked
+         * failed. Each picture now has its own file on the phone (removed
+         * after), and a PNG without its end (IEND) is taken again, once.
+         */
+        let last = 'the phone took no picture';
+        for (let attempt = 0; attempt < 2; attempt++) {
+            const remote = `/sdcard/joe-shot-${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}.png`;
+            const shot = await this.run(['shell', 'screencap', '-p', remote], { timeoutMs: 30_000 });
+            if (shot.code !== 0) return { ok: false, error: (shot.stderr || 'the phone took no picture').trim() };
+            const pull = await this.run(['pull', remote, file], { timeoutMs: 60_000 });
+            await this.run(['shell', 'rm', '-f', remote], { timeoutMs: 10_000 }).catch(() => null);
+            if (pull.code !== 0) return { ok: false, error: (pull.stderr || 'the picture did not come over').trim() };
+            let png: Buffer;
+            try { png = readFile(file); } catch { last = 'the picture did not come over'; continue; }
+            if (png.subarray(1, 4).toString() !== 'PNG') { last = 'what came over is not a picture'; continue; }
+            if (!pngComplete(png)) { last = 'the picture came over cut short'; continue; }
+            return { ok: true, png };
+        }
+        return { ok: false, error: last };
     }
 
     async tap(x: number, y: number): Promise<{ ok: boolean; error?: string }> {

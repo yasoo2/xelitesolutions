@@ -4206,6 +4206,27 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .dev-card { background: #ffffff; }
 [data-theme="light"] .dev-command { background: #f1f5f9; }
 [data-theme="light"] .dev-btn.primary { color: #ffffff; background: #0e7a5f; }
+/* Linking a computer for good: its name, one button, and the session link as a quiet second way. */
+.dev-keep { display: flex; flex-direction: column; gap: 10px; }
+.dev-keep .dev-section-title { margin-top: 0; }
+.dev-keep-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.dev-input {
+    flex: 1 1 200px; min-width: 0; min-height: 40px; padding: 0 12px; border-radius: 10px; font-size: 13.5px;
+    color: var(--joe-text-primary); background: rgba(0, 0, 0, 0.25); border: 1px solid var(--joe-border);
+}
+.dev-input:focus { outline: none; border-color: var(--joe-gold-primary); box-shadow: 0 0 0 3px rgba(52, 196, 139, 0.18); }
+.dev-keep-row .dev-btn.primary { align-self: stretch; }
+.dev-link-btn {
+    align-self: flex-start; background: none; border: none; padding: 2px 0; cursor: pointer;
+    font-size: 12.5px; color: var(--joe-text-secondary); text-decoration: underline; text-underline-offset: 3px;
+}
+.dev-link-btn:hover:not(:disabled) { color: var(--joe-gold-primary); }
+.dev-link-btn:focus-visible, .dev-input:focus-visible { outline: 2px solid var(--joe-gold-primary); outline-offset: 2px; }
+.dev-tag {
+    margin-inline-start: 8px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
+    color: var(--joe-gold-primary); background: rgba(52, 196, 139, 0.12); vertical-align: middle;
+}
+[data-theme="light"] .dev-input { background: #ffffff; }
 
 /* Settings follow the interface language (SettingsDialog sets dir on .stg-panel):
    the accent bar sits on the side facing the content, the arrow points at it. */

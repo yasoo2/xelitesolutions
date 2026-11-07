@@ -26,6 +26,7 @@ import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import { hostLine, readHostAnswer } from './desktop-host';
+import { forgetComputer, keepComputer, keptComputers, sawComputer } from './linked-computers';
 import { helperDllPath, helperSource, psQuote, type DesktopAction } from './windows-desktop';
 
 export interface LinkSocket {
@@ -43,10 +44,15 @@ export interface LinkedDevice {
     screen: string;
     connectedAt: number;
     lastSeen: number;
+    /** Linked for good (linked-computers.ts): it calls Joe by itself each time Windows starts. */
+    kept?: boolean;
+    /** Connected now. A kept computer that is off is listed, not online. */
+    online?: boolean;
 }
 
 interface Live extends LinkedDevice {
     ownerId: string;
+    kept?: boolean;
     socket: LinkSocket;
     pending: Map<string, (line: string | null) => void>;
     chain: Promise<unknown>;
@@ -58,25 +64,49 @@ export interface RemoteLook { frame: string; png: Buffer }
 const CODE_MS = 10 * 60_000;
 
 export class DeviceLinks {
-    private codes = new Map<string, { ownerId: string; expiresAt: number }>();
+    private codes = new Map<string, { ownerId: string; expiresAt: number; keepAs?: string }>();
     private live = new Map<string, Live>();
     private seq = 0;
 
-    /** A code for this owner, valid ten minutes, good once. */
-    newPairingCode(ownerId: string, now = Date.now()): { code: string; expiresAt: number } {
+    /**
+     * A code for this owner, valid ten minutes, good once. With `keepAs` it
+     * installs a PERMANENT link under that name (linked-computers.ts).
+     */
+    newPairingCode(ownerId: string, now = Date.now(), keepAs?: string): { code: string; expiresAt: number } {
         for (const [c, v] of this.codes) if (v.expiresAt <= now) this.codes.delete(c);
         let code = '';
         do { code = crypto.randomBytes(12).toString('hex'); } while (this.codes.has(code));
         const expiresAt = now + CODE_MS;
-        this.codes.set(code, { ownerId, expiresAt });
+        this.codes.set(code, { ownerId, expiresAt, ...(keepAs !== undefined ? { keepAs: String(keepAs) } : {}) });
         return { code, expiresAt };
+    }
+
+    /**
+     * A permanent-link code, claimed once by the installer it fetches: the
+     * computer is kept under the name the owner chose, and its key is made.
+     */
+    claimForKeeping(code: string, now = Date.now()): { ownerId: string; id: string; name: string; key: string } | null {
+        const c = String(code || '').trim();
+        const v = this.codes.get(c);
+        if (!v || v.keepAs === undefined) return null;
+        this.codes.delete(c);
+        if (v.expiresAt <= now) return null;
+        const kept = keepComputer(v.ownerId, v.keepAs, now);
+        return { ownerId: v.ownerId, ...kept };
+    }
+
+    /** True while a permanent-link code is waiting (the installer is served only for one). */
+    isWaitingToKeep(code: string, now = Date.now()): boolean {
+        const v = this.codes.get(String(code || '').trim());
+        return !!v && v.keepAs !== undefined && v.expiresAt > now;
     }
 
     /** The owner a code was given to, once; null when it is unknown, used or expired. */
     claim(code: string, now = Date.now()): string | null {
         const c = String(code || '').trim();
         const v = this.codes.get(c);
-        if (!v) return null;
+        //  A permanent-link code is the installer's, not a session's.
+        if (!v || v.keepAs !== undefined) return null;
         this.codes.delete(c);
         return v.expiresAt > now ? v.ownerId : null;
     }
@@ -91,26 +121,38 @@ export class DeviceLinks {
      * A computer that presented a claimed code. Its hello is what it says it
      * is; the name is cleaned and made unique among this owner's devices.
      */
-    attach(socket: LinkSocket, ownerId: string, hello: Partial<LinkedDevice>, now = Date.now()): LinkedDevice {
+    attach(socket: LinkSocket, ownerId: string, hello: Partial<LinkedDevice>, now = Date.now(), kept?: { id: string; name: string }): LinkedDevice {
         const clean = (s: unknown, max: number) => String(s ?? '').replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, max);
-        let name = clean(hello.name, 60) || 'computer';
-        const taken = new Set([...this.live.values()].filter(d => d.ownerId === ownerId).map(d => d.name.toLowerCase()));
-        for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${clean(hello.name, 56) || 'computer'}-${n}`;
+        let name = kept ? kept.name : clean(hello.name, 60) || 'computer';
+        if (kept) {
+            //  A kept computer that calls again (after a reboot, a lost line) replaces its old line.
+            const old = this.live.get(kept.id);
+            if (old) { try { old.socket.close(1000, 'replaced by a new connection'); } catch { /* gone */ } this.detach(kept.id); }
+            sawComputer(kept.id, { os: hello.os, user: hello.user }, now);
+        } else {
+            const taken = new Set([...this.live.values()].filter(d => d.ownerId === ownerId).map(d => d.name.toLowerCase()));
+            for (const k of keptComputers(ownerId)) taken.add(k.name.toLowerCase());
+            for (let n = 2; taken.has(name.toLowerCase()); n++) name = `${clean(hello.name, 56) || 'computer'}-${n}`;
+        }
         const device: Live = {
-            id: crypto.randomBytes(8).toString('hex'),
+            id: kept ? kept.id : crypto.randomBytes(8).toString('hex'),
             name, os: clean(hello.os, 80), user: clean(hello.user, 60), screen: clean(hello.screen, 40),
             connectedAt: now, lastSeen: now, ownerId, socket, pending: new Map(), chain: Promise.resolve(),
+            ...(kept ? { kept: true } : {}),
         };
         this.live.set(device.id, device);
         socket.on('message', data => {
             device.lastSeen = Date.now();
+            if (device.kept && device.lastSeen - (device as any).savedSeen > 60_000) { (device as any).savedSeen = device.lastSeen; sawComputer(device.id, {}, device.lastSeen); }
             const text = Buffer.isBuffer(data) ? data.toString('utf8') : String(data);
             const tab = text.indexOf('\t');
             if (tab <= 0) return;
             const resolve = device.pending.get(text.slice(0, tab));
             if (resolve) { device.pending.delete(text.slice(0, tab)); resolve(text.slice(tab + 1)); }
         });
-        socket.on('close', () => this.detach(device.id));
+        //  Only this line's close detaches it: a kept computer's NEW line must not be cut by its old one closing.
+        socket.on('close', () => { if (this.live.get(device.id) === device) this.detach(device.id); });
+        (device as any).savedSeen = now;
         return this.view(device);
     }
 
@@ -132,18 +174,41 @@ export class DeviceLinks {
         return true;
     }
 
+    /** The owner's computers: those connected now, and the kept ones that are off (online: false). */
     list(ownerId: string): LinkedDevice[] {
-        return [...this.live.values()].filter(d => d.ownerId === ownerId).map(d => this.view(d));
+        const now = [...this.live.values()].filter(d => d.ownerId === ownerId).map(d => this.view(d));
+        const off = keptComputers(ownerId).filter(k => !this.live.has(k.id)).map(k => ({
+            id: k.id, name: k.name, os: k.os || '', user: k.user || '', screen: '', connectedAt: 0, lastSeen: k.lastSeen, kept: true, online: false,
+        }));
+        return [...now, ...off];
+    }
+
+    /**
+     * Forgets a computer for good: a kept one's key opens nothing any more (its
+     * agent removes itself on that refusal), and a connected line is ended.
+     */
+    forget(ownerId: string, nameOrId: string): LinkedDevice | null {
+        const live = this.find(ownerId, nameOrId);
+        const kept = forgetComputer(ownerId, live ? live.id : nameOrId);
+        if (live) {
+            try { live.socket.send('0\tforget'); } catch { /* gone */ }
+            try { live.socket.close(1000, 'forgotten by the owner'); } catch { /* gone */ }
+            this.detach(live.id);
+        }
+        if (!live && !kept) return null;
+        return live ? { ...this.view(live), online: false } : { id: kept!.id, name: kept!.name, os: kept!.os || '', user: kept!.user || '', screen: '', connectedAt: 0, lastSeen: kept!.lastSeen, kept: true, online: false };
     }
 
     private find(ownerId: string, nameOrId: string): Live | null {
         const key = String(nameOrId || '').trim().toLowerCase();
         const mine = [...this.live.values()].filter(d => d.ownerId === ownerId);
-        return mine.find(d => d.id === key) || mine.find(d => d.name.toLowerCase() === key) || null;
+        return mine.find(d => d.id === key) || mine.find(d => d.name.toLowerCase() === key)
+            //  «كمبيوتر المكتب» for a computer kept as «المكتب», or the reverse.
+            || (key ? mine.find(d => d.name.toLowerCase().includes(key) || key.includes(d.name.toLowerCase())) : undefined) || null;
     }
 
     private view(d: Live): LinkedDevice {
-        return { id: d.id, name: d.name, os: d.os, user: d.user, screen: d.screen, connectedAt: d.connectedAt, lastSeen: d.lastSeen };
+        return { id: d.id, name: d.name, os: d.os, user: d.user, screen: d.screen, connectedAt: d.connectedAt, lastSeen: d.lastSeen, ...(d.kept ? { kept: true } : {}), online: true };
     }
 
     /** One raw line to one device, in turn; null when it is gone or silent. */
@@ -222,6 +287,114 @@ export function linkScript(wsUrl: string): string {
         'Write-Host ("  " + $why)',
     ].join(String.fromCharCode(10));
 }
+
+/* ───────────── the permanent link: installed once, calls Joe at every start ───────────── */
+
+/**
+ * The agent a kept computer runs at every Windows sign-in (written by the
+ * installer below to %LOCALAPPDATA%\Joe\link). It shows Joe's icon by the
+ * clock — «Joe is linked to this computer», with «stop until restart» and
+ * «unlink for good» — and keeps one line to Joe open, calling again after a
+ * break. Its key travels in its first message, never in the address (no log
+ * keeps it). When Joe refuses its id (the owner forgot this computer), it
+ * removes itself: the sign-in entry, its folder, its icon.
+ */
+export function keptAgentScript(): string {
+    return [
+        "$ErrorActionPreference = 'Stop'",
+        '$dir = Split-Path -Parent $MyInvocation.MyCommand.Path',
+        "$cfg = Get-Content (Join-Path $dir 'link.json') -Raw -Encoding UTF8 | ConvertFrom-Json",
+        //  One agent per computer and user.
+        "$mutex = New-Object System.Threading.Mutex($false, ('Local\\JoeLink-' + $cfg.id))",
+        'if (-not $mutex.WaitOne(0)) { exit }',
+        'Add-Type -AssemblyName System.Windows.Forms, System.Drawing',
+        "$dll = Join-Path $dir 'JoeDesktop.dll'",
+        "if (-not (Test-Path $dll)) { Add-Type -TypeDefinition (Get-Content (Join-Path $dir 'helper.cs') -Raw -Encoding UTF8) -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility, System.Core -OutputAssembly $dll -OutputType Library }",
+        "$state = [hashtable]::Synchronized(@{ stop = $false; gone = $false; status = 'connecting' })",
+        '$rs = [runspacefactory]::CreateRunspace(); $rs.Open()',
+        "$rs.SessionStateProxy.SetVariable('state', $state); $rs.SessionStateProxy.SetVariable('cfg', $cfg); $rs.SessionStateProxy.SetVariable('dll', $dll)",
+        '$ps = [powershell]::Create(); $ps.Runspace = $rs',
+        '[void]$ps.AddScript({',
+        '  Add-Type -AssemblyName System.Windows.Forms, System.Drawing',
+        '  Add-Type -Path $dll',
+        '  [JoeDesktop]::Init()',
+        "  $os = 'Windows'; try { $os = (Get-CimInstance Win32_OperatingSystem).Caption } catch {}",
+        '  while (-not $state.stop) {',
+        '    $v = [System.Windows.Forms.SystemInformation]::VirtualScreen',
+        '    $hello = @{ key = $cfg.key; user = $env:USERNAME; os = $os; screen = "$($v.Width)x$($v.Height)" } | ConvertTo-Json -Compress',
+        "    $state.status = 'connecting'",
+        "    $why = [JoeDesktop]::Link(($cfg.url + '?device=' + $cfg.id), $hello)",
+        '    $state.last = $why',
+        //  Joe refuses this computer's id: the owner unlinked it for good.
+        "    if ($why -match '401|Unauthorized') { $state.gone = $true; break }",
+        "    $state.status = 'waiting'",
+        '    Start-Sleep -Seconds 15',
+        '  }',
+        '})',
+        '$null = $ps.BeginInvoke()',
+        'function Remove-JoeLink {',
+        "  try { Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue } catch {}",
+        '  $icon.Visible = $false',
+        "  Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList ('/c timeout /t 3 >nul & rmdir /s /q \"' + $dir + '\"')",
+        '  [Environment]::Exit(0)',
+        '}',
+        '$icon = New-Object System.Windows.Forms.NotifyIcon',
+        '$icon.Icon = [System.Drawing.SystemIcons]::Shield',
+        "$tip = 'Joe · ' + $cfg.name; if ($tip.Length -gt 63) { $tip = $tip.Substring(0, 63) }",
+        '$icon.Text = $tip',
+        '$menu = New-Object System.Windows.Forms.ContextMenuStrip',
+        "$title = $menu.Items.Add('جو مربوط بهذا الكمبيوتر: ' + $cfg.name); $title.Enabled = $false",
+        "$pause = $menu.Items.Add('إيقاف الربط حتى إعادة التشغيل')",
+        '$pause.add_Click({ $state.stop = $true; $icon.Visible = $false; [Environment]::Exit(0) })',
+        "$forget = $menu.Items.Add('فصل هذا الكمبيوتر عن جو نهائياً')",
+        '$forget.add_Click({ Remove-JoeLink })',
+        '$icon.ContextMenuStrip = $menu',
+        '$icon.Visible = $true',
+        "$icon.ShowBalloonTip(4000, 'Joe', ('جو مربوط بهذا الكمبيوتر باسم «' + $cfg.name + '». أيقونته هنا قرب الساعة.'), [System.Windows.Forms.ToolTipIcon]::Info)",
+        '$timer = New-Object System.Windows.Forms.Timer',
+        '$timer.Interval = 3000',
+        '$timer.add_Tick({ if ($state.gone) { Remove-JoeLink } })',
+        '$timer.Start()',
+        '[System.Windows.Forms.Application]::Run()',
+    ].join('\r\n');
+}
+
+/**
+ * The installer the owner runs ONCE on the computer he links for good: it
+ * writes the helper's source, the agent and the link's settings to
+ * %LOCALAPPDATA%\Joe\link (his own profile; no administrator needed), adds
+ * the agent to his Windows sign-in, and starts it now. The files travel as
+ * base64, so no quoting can break them, and are written in UTF-8 with a BOM
+ * so Windows PowerShell reads their Arabic.
+ */
+export function keepInstallScript(wsUrl: string, id: string, key: string, name: string): string {
+    const b64 = (s: string) => Buffer.from(s, 'utf8').toString('base64');
+    const settings = JSON.stringify({ url: wsUrl, id, key, name });
+    return [
+        "$ErrorActionPreference = 'Stop'",
+        'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}',
+        "$dir = Join-Path $env:LOCALAPPDATA 'Joe\\link'",
+        'New-Item -ItemType Directory -Force -Path $dir | Out-Null',
+        '$bom = New-Object System.Text.UTF8Encoding $true',
+        `function Put($file, $b64) { [IO.File]::WriteAllText((Join-Path $dir $file), [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)), $bom) }`,
+        `Put 'helper.cs' '${b64(helperSource())}'`,
+        `Put 'agent.ps1' '${b64(keptAgentScript())}'`,
+        `Put 'link.json' '${b64(settings)}'`,
+        //  A helper compiled for an older link is compiled again from this source.
+        "Remove-Item (Join-Path $dir 'JoeDesktop.dll') -Force -ErrorAction SilentlyContinue",
+        "$run = 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + (Join-Path $dir 'agent.ps1') + '\"'",
+        "New-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -Value $run -PropertyType String -Force | Out-Null",
+        "Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $dir 'agent.ps1'))",
+        "Write-Host ''",
+        `Write-Host ${psQuote(`  تم. هذا الكمبيوتر مربوط بجو دائماً باسم «${name}».`)} -ForegroundColor Green`,
+        `Write-Host ${psQuote('  يتصل بجو وحده كلما شُغّل ويندوز. أيقونة جو قرب الساعة: منها توقفه أو تفصله نهائياً.')} -ForegroundColor Green`,
+        `Write-Host ${psQuote(`  Done. This computer is linked to Joe for good, as «${name}». Joe's icon by the clock stops or unlinks it.`)}`,
+        "Write-Host ''",
+    ].join('\r\n');
+}
+
+/** The one line that installs the permanent link (served by routes/devices.ts install.ps1). */
+export function keepCommand(scriptUrl: string): string { return linkCommand(scriptUrl); }
 
 const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\])(:\d+)?$/i;
 
