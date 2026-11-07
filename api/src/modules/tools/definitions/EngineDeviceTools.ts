@@ -1,0 +1,92 @@
+/**
+ * engine_device: Joe's hands on THIS computer, through his tool gateway.
+ *
+ * One registered tool carries every desktop action of the agent engine
+ * (core/engine/tools/devices.ts), so the firewall, the session owner, the
+ * audit, the rate limit and the run's Stop button apply to each click and
+ * each key exactly as they do to a shell command. The action itself is run by
+ * core/devices/windows-desktop.ts, one PowerShell process through
+ * ExecutionGateway (never child_process here).
+ *
+ * Windows only in this version. On another system the tool says so plainly,
+ * so the model can tell the owner instead of pretending.
+ */
+import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../types';
+import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
+import { encodedCommand, runDesktop, type DesktopAction, type PowerShellRunner } from '../../../core/devices/windows-desktop';
+
+const WINDOWS = process.platform === 'win32';
+
+/** Every desktop action runs as one Windows PowerShell process through the gateway. */
+export const gatewayPowerShell: PowerShellRunner = async (script, timeoutMs) => {
+    const r: any = await ExecutionGateway.execute('powershell.exe',
+        ['-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', encodedCommand(script)],
+        { timeout: timeoutMs, windowsHide: true, shell: false });
+    const data = r?.data || {};
+    return {
+        exitCode: typeof data.exitCode === 'number' ? data.exitCode : (r?.success ? 0 : null),
+        stdout: String(data.output || ''),
+        stderr: String(data.error || r?.error || ''),
+    };
+};
+
+const OPS = new Set(['look', 'windows', 'focus', 'click', 'move', 'drag', 'scroll', 'type', 'key', 'open', 'ui', 'act']);
+
+/** The action as the gateway received it, checked: numbers are numbers, text is text. */
+export function desktopActionOf(input: any): DesktopAction | { error: string } {
+    const op = String(input?.op || '');
+    if (!OPS.has(op)) return { error: `engine_device: unknown action «${op}»` };
+    const n = (v: unknown) => Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN;
+    const window = input?.window === undefined || input?.window === null ? undefined : n(input.window);
+    switch (op) {
+        case 'look': return { op, file: String(input.file || ''), left: n(input.left) || 0, top: n(input.top) || 0, width: n(input.width) || 0, height: n(input.height) || 0, maxWidth: n(input.maxWidth) || 1280 };
+        case 'windows': return { op };
+        case 'focus': return Number.isFinite(window) ? { op, handle: window as number } : { error: 'engine_device focus needs a window' };
+        case 'click': return { op, x: n(input.x), y: n(input.y), button: ['left', 'right', 'middle'].includes(input.button) ? input.button : 'left', count: n(input.count) || 1, window };
+        case 'move': return { op, x: n(input.x), y: n(input.y) };
+        case 'drag': return { op, x: n(input.x), y: n(input.y), toX: n(input.toX), toY: n(input.toY) };
+        case 'scroll': return { op, x: n(input.x), y: n(input.y), notches: n(input.notches) || 0, window };
+        case 'type': return { op, text: String(input.text ?? ''), window };
+        case 'key': return Array.isArray(input.codes) && input.codes.length ? { op, codes: input.codes.map(n), window } : { error: 'engine_device key needs codes' };
+        case 'open': return String(input.target || '').trim() ? { op, target: String(input.target).trim() } : { error: 'engine_device open needs a target' };
+        case 'ui': return { op, handle: Number.isFinite(window) ? window as number : null, limit: n(input.limit) || 150 };
+        case 'act': return { op, handle: Number.isFinite(window) ? window as number : null, index: n(input.index), action: String(input.action || ''), value: String(input.value ?? ''), limit: n(input.limit) || 150 };
+    }
+    return { error: 'engine_device: unreachable' };
+}
+
+export class EngineDeviceTool implements ToolDefinition {
+    readonly name = 'engine_device';
+    readonly version = '1.0.0';
+    readonly description = 'Agent engine only: one action on this computer\'s desktop (look, windows, focus, click, type, keys, scroll, open, read a window\'s controls, act on a control). Input reaches only the window named, and only while it is in front.';
+    readonly tags = ['engine', 'device'];
+    readonly inputSchema = {
+        type: 'object',
+        properties: {
+            op: { type: 'string', description: 'look | windows | focus | click | move | drag | scroll | type | key | open | ui | act' },
+            window: { type: 'number', description: 'The window handle the action is for.' },
+        },
+        required: ['op'],
+    };
+    readonly outputSchema = { type: 'object', properties: { text: { type: 'string' } } };
+    permissions: ToolPermission[] = ['execute'];
+    sideEffects: ToolPermission[] = ['execute'];
+    rateLimitPerMinute = 240;
+    auditFields = ['op', 'window', 'target'];
+    mockSupported = false;
+
+    async execute(input: any): Promise<ToolExecutionResult> {
+        if (!WINDOWS) {
+            const text = `This computer runs ${process.platform}; Joe's desktop control works on Windows in this version. Say so to the owner.`;
+            return { ok: false, error: 'desktop control is Windows-only in this version', output: { text } } as any;
+        }
+        const action = desktopActionOf(input);
+        if ('error' in action) return { ok: false, error: action.error, output: { text: action.error } } as any;
+        const r = await runDesktop(gatewayPowerShell, action, action.op === 'ui' || action.op === 'act' ? 90_000 : 60_000);
+        return r.ok
+            ? { ok: true, output: { text: r.out } } as any
+            : { ok: false, error: r.error || 'the desktop action failed', output: { text: r.error || r.out } } as any;
+    }
+}
+
+export const ENGINE_DEVICE_TOOLS: ToolDefinition[] = [new EngineDeviceTool()];

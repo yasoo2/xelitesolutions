@@ -20,6 +20,7 @@ import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
 import { firstMessage, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
+import { operatorFirstMessage, operatorSystemPrompt } from './operate';
 import type { FinishArgs } from './finish';
 import type {
     BrowserSession, ChatMessage, ContentPart, EngineModel, EngineRequest, EngineResult, EngineTool, ModelStep,
@@ -136,7 +137,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     await keepJoeFilesOutOfGit(req.projectDir);
 
     let seeds: RequirementSeed[] = [];
-    if (deps.seedRequirements) {
+    //  An operate run proves what it did on the device, not a list of features.
+    if (deps.seedRequirements && !req.operate) {
         try { seeds = await deps.seedRequirements(req.request, req.language); } catch { seeds = []; }
     }
     const state: RunState = {
@@ -166,8 +168,10 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     }));
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
-    conv.push({ role: 'system', content: systemPrompt(deps.machine) });
-    conv.push({ role: 'user', content: firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
+    conv.push({ role: 'system', content: req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine) });
+    conv.push({ role: 'user', content: req.operate
+        ? operatorFirstMessage(req.request, req.language, req.replyLanguage)
+        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
     req.emit({ type: 'plan', plan: state.plan });
 
     const lastErrors: string[] = [];

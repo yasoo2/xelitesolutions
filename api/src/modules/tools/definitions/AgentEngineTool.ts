@@ -38,9 +38,53 @@ import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
+import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
+import { operateOutput, operateVerifier } from '../../../core/engine/operate';
+import fs from 'fs';
 
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
 const DEADLINE_MARGIN_MS = 2 * 60_000;
+
+/**
+ * An operate run: the same loop, the device tools, the operate verifier. Its
+ * folder holds only the run's state (screens, logs, the transcript), under
+ * the workspace's «operate» folder; it is never registered as the chat's
+ * project, so a later «change it» does not mistake it for one.
+ */
+async function runOperate(o: {
+    request: string; runId: string; language: string; replyLanguage: string; deadlineAt: number;
+    activeRoot: string; context: any; brain: any; signal: AbortSignal;
+}) {
+    const dir = path.join(o.activeRoot, 'operate', o.runId.replace(/[^A-Za-z0-9_.-]/gu, '_'));
+    fs.mkdirSync(dir, { recursive: true });
+    const toolContext = {
+        ...o.context, runId: o.runId, language: o.language, projectRoot: dir, projectRootRuntimeBound: true,
+        isCancelled: () => o.signal.aborted || (typeof o.context.isCancelled === 'function' && o.context.isCancelled() === true),
+    };
+    try {
+        const result = await runEngine({
+            runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
+            replyLanguage: o.replyLanguage, operate: true,
+            signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
+            joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
+        }, {
+            model: o.brain.model,
+            tools: [planUpdateTool, ...deviceTools, ...webTools, finishTool(operateVerifier())],
+            processes: createProcessRegistry(toolContext),
+            browser: () => createBrowserSession(toolContext),
+            machine: await machineFacts(),
+        });
+        const out = operateOutput(result, o.replyLanguage);
+        return {
+            ok: out.ok,
+            ...(out.ok ? {} : { error: out.error }),
+            output: out.output,
+            logs: [`agent engine (operate): ${result.status} after ${result.steps} steps (${result.model}${o.brain.model.spentUsd != null ? `, $${o.brain.model.spentUsd.toFixed(4)}` : ''})`],
+        };
+    } finally {
+        forgetDeviceRecord(o.runId);
+    }
+}
 
 export const AgentEngineTool: ToolDefinition = {
     name: 'agent_engine',
@@ -90,6 +134,14 @@ export const AgentEngineTool: ToolDefinition = {
         if ('error' in brain) { cancellation.dispose(); return refused(`agent_engine cannot start its model: ${brain.error}`); }
 
         const activeRoot = workspaceService.getActiveRoot(context.workspaceId);
+        //  Operate: something to do on the owner's computer, not a project to build (core/engine/operate.ts).
+        if (input?.mode === 'operate') {
+            try {
+                return await runOperate({ request, runId, language, replyLanguage, deadlineAt, activeRoot, context, brain, signal: cancellation.signal });
+            } finally {
+                cancellation.dispose();
+            }
+        }
         const folder = await projectFolderFor(activeRoot, runId, input?.path || context.resumeProjectRoot);
         if ('error' in folder) { cancellation.dispose(); return refused(folder.error); }
         //  A change is kept before it touches the project, and told what the

@@ -128,6 +128,27 @@ public static class JoeDesktop {
         return v.Left + "," + v.Top + "," + v.Width + "," + v.Height;
     }
 
+    /* A picture the model can read without being resized on the way: the
+     * screen (or one window's rectangle) scaled down to at most maxW pixels
+     * wide. Returns the region on the real screen and the picture's size, so
+     * a point read off the picture maps back exactly. */
+    public static string ScreenshotScaled(string file, int left, int top, int width, int height, int maxW) {
+        if (width <= 0 || height <= 0) { Rectangle v = SystemInformation.VirtualScreen; left = v.Left; top = v.Top; width = v.Width; height = v.Height; }
+        double s = width > maxW ? (double)maxW / width : 1.0;
+        int ow = Math.Max(1, (int)Math.Round(width * s)), oh = Math.Max(1, (int)Math.Round(height * s));
+        using (Bitmap full = new Bitmap(width, height)) {
+            using (Graphics g = Graphics.FromImage(full)) g.CopyFromScreen(left, top, 0, 0, full.Size);
+            using (Bitmap small = new Bitmap(ow, oh)) {
+                using (Graphics g2 = Graphics.FromImage(small)) {
+                    g2.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
+                    g2.DrawImage(full, 0, 0, ow, oh);
+                }
+                small.Save(file, ImageFormat.Png);
+            }
+        }
+        return left + "," + top + "," + width + "," + height + "," + ow + "," + oh;
+    }
+
     static INPUT Mouse(uint flags, uint data) { INPUT i = new INPUT(); i.type = 0; i.u.mi.flags = flags; i.u.mi.data = data; return i; }
     static INPUT Key(ushort vk, ushort scan, uint flags) { INPUT i = new INPUT(); i.type = 1; i.u.ki.vk = vk; i.u.ki.scan = scan; i.u.ki.flags = flags; return i; }
     static void Send(params INPUT[] a) { SendInput((uint)a.Length, a, Marshal.SizeOf(typeof(INPUT))); }
@@ -432,6 +453,7 @@ export function describeUi(ui: { window: string; controls: UiControl[] }, max = 
 
 export type DesktopAction =
     | { op: 'screenshot'; file: string }
+    | { op: 'look'; file: string; left?: number; top?: number; width?: number; height?: number; maxWidth?: number }
     | { op: 'windows' }
     | { op: 'focus'; handle: number }
     | { op: 'click'; x: number; y: number; button?: 'left' | 'right' | 'middle'; count?: number; window?: number }
@@ -451,6 +473,7 @@ export function desktopScript(a: DesktopAction, dll: string = helperDllPath(), s
     const body = ((): string => {
         switch (a.op) {
             case 'screenshot': return `'SHOT' + [char]9 + [JoeDesktop]::Screenshot(${psQuote(a.file)})`;
+            case 'look': return `'LOOK' + [char]9 + [JoeDesktop]::ScreenshotScaled(${psQuote(a.file)}, ${int(a.left || 0)}, ${int(a.top || 0)}, ${int(a.width || 0)}, ${int(a.height || 0)}, ${int(a.maxWidth || 1280)})`;
             case 'windows': return '[JoeDesktop]::Windows()';
             case 'focus': return `'FOCUS' + [char]9 + [JoeDesktop]::Focus([long]${int(a.handle)})`;
             case 'click': return `[JoeDesktop]::ClickIn([long]${int(a.window || 0)}, ${int(a.x)}, ${int(a.y)}, ${psQuote(a.button || 'left')}, ${int(Math.max(1, Math.min(3, a.count || 1)))})`;
@@ -482,4 +505,21 @@ export async function runDesktop(run: PowerShellRunner, a: DesktopAction, timeou
     if (r.exitCode === 0 && out === 'NOTFOUND') return { ok: false, out, error: 'that control number is not in the window any more: read the window again' };
     if (r.exitCode === 0) return { ok: true, out };
     return { ok: false, out, error: (String(r.stderr || '').trim() || out || `exit ${r.exitCode}`).slice(0, 600) };
+}
+
+/** Where a picture taken by «look» sits on the real screen, and how it was scaled. */
+export interface LookFrame { left: number; top: number; width: number; height: number; pictureWidth: number; pictureHeight: number }
+
+export function parseLook(out: string): LookFrame | null {
+    const m = String(out || '').match(/LOOK	(-?d+),(-?d+),(d+),(d+),(d+),(d+)/u);
+    if (!m) return null;
+    const [left, top, width, height, pictureWidth, pictureHeight] = m.slice(1).map(Number);
+    return { left, top, width, height, pictureWidth, pictureHeight };
+}
+
+/** A point read off the picture → the point on the real screen. */
+export function screenPoint(frame: LookFrame, x: number, y: number): { x: number; y: number } {
+    const sx = frame.width / frame.pictureWidth;
+    const sy = frame.height / frame.pictureHeight;
+    return { x: Math.round(frame.left + x * sx), y: Math.round(frame.top + y * sy) };
 }

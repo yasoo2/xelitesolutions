@@ -359,7 +359,7 @@ export class AgentOrchestrator {
         status: 'idle',
         nodes: [{
           id: 'agent_build', traceId, agent: 'Dev' as AgentType, task: String(goalText || '').slice(0, 300), tool: 'project_pipeline',
-          input: { request: goalText, ...(agentRoute.kind === 'change' ? { path: agentRoute.path } : {}) },
+          input: { request: goalText, ...(agentRoute.kind === 'change' ? { path: agentRoute.path } : {}), ...(agentRoute.kind === 'operate' ? { mode: 'operate' } : {}) },
           dependencies: [], status: 'pending',
         }],
       };

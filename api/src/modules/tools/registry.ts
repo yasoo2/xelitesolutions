@@ -352,6 +352,12 @@ const baseTools: ToolDefinition[] = [
   ...(require('./definitions/EngineShellTools').ENGINE_SHELL_TOOLS as ToolDefinition[]),
   // ── end engine: shell ──
 
+  // ── engine: device ──
+  // Joe's hands on this computer (core/engine/tools/devices.ts calls it).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineDeviceTools').ENGINE_DEVICE_TOOLS as ToolDefinition[]),
+  // ── end engine: device ──
+
   // Revived tools (defensively instantiated above)
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
