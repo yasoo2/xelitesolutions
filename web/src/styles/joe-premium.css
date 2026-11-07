@@ -494,6 +494,19 @@ body:not(.rtl) .joe-user-info {
 [data-theme="light"] .joe-role-badge.role-owner { color: #a16207; background: rgba(161, 98, 7, 0.1); border-color: rgba(161, 98, 7, 0.25); }
 [data-theme="light"] .joe-role-badge.role-super-admin { color: #be123c; background: rgba(190, 18, 60, 0.1); border-color: rgba(190, 18, 60, 0.25); }
 
+/* The initials underneath, the picture over them: a blank Gravatar shows the initials. */
+.joe-avatar-stack {
+    position: relative;
+    display: inline-flex;
+    flex-shrink: 0;
+}
+
+.joe-avatar-stack > .joe-avatar-over {
+    position: absolute;
+    inset: 0;
+    background: transparent;
+}
+
 .joe-avatar,
 .joe-avatar-placeholder {
     width: 38px;

@@ -162,7 +162,8 @@ export default function EmbeddedBrowser({
             });
             const result = await response.json().catch(() => null);
             if (navigationId !== navigationSequence.current) return;
-            if (response.status === 409 && result?.error === 'nav_superseded') return;
+            //  A newer navigation replaced this one: an answer, not a failure (routes/browser.ts).
+            if (result?.error === 'nav_superseded') return;
             if (!response.ok || !result?.ok) throw new Error(String(result?.error || 'nav_goto_failed'));
             const resolvedUrl = String(result.url || targetUrl);
             setCurrentUrl(resolvedUrl);
