@@ -34,7 +34,7 @@ export function engineFor(context?: { engine?: unknown } | null, env: NodeJS.Pro
  * The readers are Joe's own: the build reader and the edit reader the first
  * engine uses.
  */
-export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string };
+export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate' };
 
 export async function agentEngineRoute(
     goal: string,
@@ -44,6 +44,9 @@ export async function agentEngineRoute(
     if (engineFor(context, env) !== 'agent') return null;
     const text = String(goal || '').trim();
     if (!text) return null;
+    //  Something to DO on the owner's computer: the engine operates it (operate.ts).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    if (require('./operate').isOperateRequest(text)) return { kind: 'operate' };
     const project = await chatProjectFolder(context?.sessionId);
     // The planner's undo (project_undo) puts back the copy the change kept.
     if (project && isUndoRequest(text)) return null;

@@ -320,6 +320,8 @@ export interface EngineRequest {
     joe: any;
     /** Set when the run changes a project an earlier run built (see run.ts changeContextFor). */
     change?: ChangeContext;
+    /** Operate: the run acts on the owner's computer instead of building (operate.ts). */
+    operate?: boolean;
 }
 
 /** One earlier run of a project: what was asked, and what came of it. */

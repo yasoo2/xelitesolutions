@@ -139,6 +139,17 @@ router.post('/stop', authenticate as any, async (req: Request, res: Response) =>
   }
 });
 
+/**
+ * A NAVIGATION A NEWER ONE REPLACED IS AN ANSWER, NOT A FAILURE.
+ *
+ * The panel and Joe's own QA often navigate the same page moments apart, and
+ * the older request is dropped on purpose. It used to answer 409, and the
+ * browser writes every 4xx as a red console error on Joe's page: the exam's
+ * watcher found «409 (Conflict) @ /api/browser/nav/goto» on run after run.
+ * The panel already ignored it; now it is said as what it is.
+ */
+const SUPERSEDED = { ok: false, superseded: true, error: 'nav_superseded' } as const;
+
 router.post('/nav/back', authenticate as any, async (req: Request, res: Response) => {
   try {
     const sid = String(req.body?.sessionId || '').trim();
@@ -153,7 +164,7 @@ router.post('/nav/back', authenticate as any, async (req: Request, res: Response
       const r = await s.page.goBack({ waitUntil: 'domcontentloaded' });
       ok = !!r;
     } catch { }
-    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
+    if (!navigation.isCurrent()) return res.json(SUPERSEDED);
     return res.json({ ok });
     } finally { navigation.release(); }
   } catch (err: any) {
@@ -175,7 +186,7 @@ router.post('/nav/forward', authenticate as any, async (req: Request, res: Respo
       const r = await s.page.goForward({ waitUntil: 'domcontentloaded' });
       ok = !!r;
     } catch { }
-    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
+    if (!navigation.isCurrent()) return res.json(SUPERSEDED);
     return res.json({ ok });
     } finally { navigation.release(); }
   } catch (err: any) {
@@ -197,10 +208,10 @@ router.post('/nav/refresh', authenticate as any, async (req: Request, res: Respo
     try {
       await s.page.reload({ waitUntil: 'domcontentloaded' });
     } catch (e: any) {
-      if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
+      if (!navigation.isCurrent()) return res.json(SUPERSEDED);
       return res.status(502).json({ ok: false, error: 'nav_refresh_failed', detail: String(e?.message || e), url: s.page.url() });
     }
-    if (!navigation.isCurrent()) return res.status(409).json({ ok: false, error: 'nav_superseded' });
+    if (!navigation.isCurrent()) return res.json(SUPERSEDED);
     return res.json({ ok: true, url: s.page.url() });
     } finally { navigation.release(); }
   } catch (err: any) {
@@ -238,7 +249,7 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
     let lastError: any = null;
     let attempts = 0;
     const navigation = claimNavigation(s.page);
-    const superseded = () => res.status(409).json({ ok: false, error: 'nav_superseded', attempts });
+    const superseded = () => res.json({ ...SUPERSEDED, attempts });
     try {
     for (let attempt = 0; attempt < 2; attempt++) {
       if (!navigation.isCurrent()) return superseded();

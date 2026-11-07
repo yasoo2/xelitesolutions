@@ -170,9 +170,11 @@ export function resolveIdentity(): UserIdentity {
  * EMAIL itself, which is the one identity every sign-in method shares.
  *
  * Gravatar officially serves avatars by the SHA-256 of the lowercased email,
- * and `d=404` means «answer 404 instead of inventing a face» — so the header's
- * existing broken-image fallback lands on the initials, never on a placeholder
- * person. Only a hash ever leaves the machine (not the address, not the name),
+ * and `d=blank` means «answer a transparent picture instead of inventing a
+ * face». The header draws the initials underneath and the picture over them,
+ * so an address with no Gravatar shows its initials through the blank — with
+ * no 404 written to the console on every fresh browser, which `d=404` did
+ * (measured by the exam's watcher on every run). Only a hash ever leaves the machine (not the address, not the name),
  * and only when there is no locally-known picture to show — which keeps the
  * spirit of the no-third-party-avatar decision while honouring the owner's
  * ask: each user sees their own photo, per the email they signed in with.
@@ -184,7 +186,7 @@ export async function gravatarUrlFor(email: string, size = 96): Promise<string> 
         const bytes = new TextEncoder().encode(normalized);
         const digest = await crypto.subtle.digest('SHA-256', bytes);
         const hash = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('');
-        return `https://www.gravatar.com/avatar/${hash}?d=404&s=${size}`;
+        return `https://www.gravatar.com/avatar/${hash}?d=blank&s=${size}`;
     } catch {
         return '';
     }

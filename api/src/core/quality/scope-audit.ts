@@ -692,6 +692,14 @@ export interface ProjectSourceReadOptions {
     codeOnly?: boolean;
 }
 
+/**
+ * A bundler's config beside a `public/` folder: there `public/` holds static
+ * assets the bundler copies, and the interface's source is elsewhere.
+ */
+const BUNDLER_CONFIG = /^(?:vite|webpack|next|nuxt|svelte|astro|rollup|remix|gatsby|vue)\.config\.[cm]?[jt]s$|^angular\.json$|^\.parcelrc$/i;
+/** A library shipped as one minified file is other people's code, never evidence. */
+const VENDORED = /\.min\.(?:js|css)$|^(?:jquery|bootstrap|tailwind|alpine|htmx|chart|vue|react(?:-dom)?)(?:[.-][\w.-]*)?\.(?:js|css)$/i;
+
 /** Read the built system's own source, bounded, so the evidence is real. */
 export function readProjectSource(dirs: string[], options: ProjectSourceReadOptions = {}): string {
     const codeOnly = options.codeOnly === true;
@@ -702,12 +710,18 @@ export function readProjectSource(dirs: string[], options: ProjectSourceReadOpti
         if (out.length > maxScanBytes || depth > 4) return;
         let entries: fs.Dirent[] = [];
         try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { return; }
+        //  P025, 2026-11-07: an Express site whose hand-written page lives in
+        //  public/ was refused for «missing: contact form, responsive» — the
+        //  form, its email field and three @media rules were all in
+        //  public/index.html and public/styles.css, and this walk skipped the
+        //  folder. With no bundler beside it, public/ IS the interface's source.
+        const bundled = entries.some(e => e.isFile() && BUNDLER_CONFIG.test(e.name));
         for (const e of entries) {
             if (out.length > maxScanBytes) return;
-            if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || e.name === 'public' || (codeOnly && e.name === 'build')) continue;
+            if (e.name === 'node_modules' || e.name === '.git' || e.name === 'dist' || (e.name === 'public' && (bundled || codeOnly)) || (codeOnly && e.name === 'build')) continue;
             const full = path.join(dir, e.name);
             if (e.isDirectory()) { visit(full, depth + 1); continue; }
-            if (!extension.test(e.name) || NOT_EVIDENCE.test(e.name)) continue;
+            if (!extension.test(e.name) || NOT_EVIDENCE.test(e.name) || VENDORED.test(e.name)) continue;
             const normalized = full.toLowerCase();
             if (normalized.includes('/__tests__/') || normalized.includes('/tests/') || /(?:^|[._-])(test|spec)(?:[._-]|$)/i.test(e.name)) continue;
             try { out += '\n' + fs.readFileSync(full, 'utf-8'); } catch { /* unreadable is not evidence */ }

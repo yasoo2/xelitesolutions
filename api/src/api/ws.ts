@@ -472,6 +472,11 @@ export function attachWebSocket(server: Server) {
       });
       return;
     }
+    if (url.pathname === '/ws/device-link' || url.pathname === '/api/ws/device-link') {
+      //  A computer the owner linked calls in with its one-use pairing code (device-link-socket.ts).
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      return require('./device-link-socket').acceptDeviceLink(req, socket, head, reject);
+    }
     if (url.pathname === '/ws/extension' || url.pathname === '/api/ws/extension') {
       // The user's installed browser extension connecting to drive their real
       // browser. Authenticated by the user's Joe JWT (token query param).

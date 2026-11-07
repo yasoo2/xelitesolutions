@@ -117,7 +117,7 @@ export function runLink(ctx: Pick<ToolContext, 'runId' | 'projectDir' | 'cancell
 export interface EngineBrowserSession extends BrowserSession {
     open(url: string, link?: RunLink): Promise<EnginePageState>;
     act(action: BrowserAction, link?: RunLink): Promise<EnginePageState>;
-    capture(fullPage?: boolean, link?: RunLink): Promise<EngineScreenshot>;
+    capture(fullPage?: boolean, link?: RunLink, device?: 'phone' | 'tablet'): Promise<EngineScreenshot>;
     screenshot(fullPage?: boolean, link?: RunLink): Promise<string>;
 }
 
@@ -223,8 +223,8 @@ export function createBrowserSession(toolContext: any): EngineBrowserSession {
         async act(action, link) {
             return stateOf(await call('engine_browser_act', { ...action }, link));
         },
-        async capture(fullPage = false, link) {
-            const res = await call('engine_browser_screenshot', { full_page: fullPage === true }, link);
+        async capture(fullPage = false, link, device) {
+            const res = await call('engine_browser_screenshot', { full_page: fullPage === true, ...(device ? { device } : {}) }, link);
             const out = res?.output;
             if (!res?.ok || typeof out?.path !== 'string') throw new BrowserCallError(failureText(res), String(res?.error || 'capture_failed').split('\n')[0]);
             return {
@@ -645,25 +645,28 @@ export const browserActTool: EngineTool<BrowserAction> = {
     },
 };
 
-export const browserScreenshotTool: EngineTool<{ full_page: boolean }> = {
+export const browserScreenshotTool: EngineTool<{ full_page: boolean; device?: 'phone' | 'tablet' }> = {
     name: 'browser_screenshot',
-    description: 'Take a screenshot of the page open in Joe\'s browser: the viewport, or the whole page with "full_page": true (up to 8000 px tall). Use it to check layout and visuals; the image is shown to you when your model can see images.',
+    description: 'Take a screenshot of the page open in Joe\'s browser: the viewport, or the whole page with "full_page": true (up to 8000 px tall). "device": "phone" or "tablet" shows it as a phone or a tablet does (a menu that must work on a phone is checked this way). Use it to check layout and visuals; the image is shown to you when your model can see images.',
     parameters: {
         type: 'object',
         properties: {
             full_page: { type: 'boolean', description: 'Capture the whole page instead of the viewport.' },
+            device: { type: 'string', enum: ['phone', 'tablet'], description: 'See the page at a phone\'s (390 px) or a tablet\'s (820 px) width.' },
         },
     },
-    parse(raw: unknown): ParseResult<{ full_page: boolean }> {
+    parse(raw: unknown): ParseResult<{ full_page: boolean; device?: 'phone' | 'tablet' }> {
         const a = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
         const v = a.full_page ?? a.fullPage;
-        return { ok: true, value: { full_page: v === true || v === 'true' } };
+        const d = String(a.device ?? '').toLowerCase();
+        const device = d === 'phone' || d === 'mobile' ? 'phone' as const : d === 'tablet' ? 'tablet' as const : undefined;
+        return { ok: true, value: { full_page: v === true || v === 'true', ...(device ? { device } : {}) } };
     },
     async run(args, ctx) {
         try {
             const browser = ctx.browser() as Partial<EngineBrowserSession> & BrowserSession;
             const shot: EngineScreenshot = typeof browser.capture === 'function'
-                ? await browser.capture(args.full_page, runLink(ctx))
+                ? await browser.capture(args.full_page, runLink(ctx), args.device)
                 : { path: await browser.screenshot(args.full_page), fullPage: args.full_page };
             //  The page may have moved since the last view (a script, a timer).
             if (shot.url) {

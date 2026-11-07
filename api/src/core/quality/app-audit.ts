@@ -22,6 +22,7 @@ import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
+import { HANDOFF_SCHEME } from './behaviour-audit';
 import { AuditEyes } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -29,6 +30,7 @@ import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
 import { reloadKeepsSession, showsSignInForm, signInThroughPage } from './sign-in';
+import { readRtl, rtlFindings, type RtlReading } from './rtl-audit';
 
 export interface AppAuditFinding {
     id: string;
@@ -801,6 +803,8 @@ export async function auditBuiltApp(
              * 404 and 500 still count in full: those are real.
              */
             if (/\b40[13]\b|Unauthorized|Forbidden/i.test(String(m.text()))) return;
+            //  A call or a mail handed to the system's own app (behaviour-audit.ts HANDOFF_SCHEME): the browser has none, the page is right.
+            if (HANDOFF_SCHEME.test(String(m.text()))) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
@@ -1097,6 +1101,23 @@ export async function auditBuiltApp(
                 }).length,
                 small,
                 smallSel,
+                /**
+                 * A CALL, A MAIL, A MAP: THE WAYS A CARD LETS ITS VISITOR ACT.
+                 *
+                 * The ladder, 2026-11-07, L002 (a vet clinic's welcome card): its
+                 * one control was «اتصل بنا الآن» → tel:, correct and visible, and
+                 * the page was refused five times as «not one button, link or
+                 * form», because the control walk presses only buttons and in-app
+                 * routes. A visible link that hands the visitor to his phone, his
+                 * mail or another site is a control of the page.
+                 */
+                actionLinks: Array.from(document.querySelectorAll('a[href]')).filter((a: any) => {
+                    const href = String(a.getAttribute('href') || '').trim();
+                    if (!/^(?:tel|mailto|sms|whatsapp|geo|maps):|^https?:\/\//i.test(href)) return false;
+                    const rect = a.getBoundingClientRect();
+                    const style = getComputedStyle(a);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
                 h1s: Array.from(document.querySelectorAll('h1')).filter((el: any) => {
                     const rect = el.getBoundingClientRect();
                     const style = getComputedStyle(el);
@@ -1113,6 +1134,8 @@ export async function auditBuiltApp(
             };
         });
         const dom = await inspect();
+        //  Arabic that reads from the right, measured on the landing view as it is shown (rtl-audit.ts).
+        const rtl: RtlReading | null = await page.evaluate(readRtl).catch(() => null);
 
         let toggleWorks = true;
         if (dom.hasToggle) {
@@ -1869,7 +1892,7 @@ export async function auditBuiltApp(
          */
         //  Links to the app's own pages are links (inAppRoutes): a page of them
         //  is a way in, judged by the pages it opens, not an empty page.
-        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length) {
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
@@ -1906,6 +1929,7 @@ export async function auditBuiltApp(
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}`, detailEn: `${heavyImages.length} heavy image(s) (>400KB): ${heavyImages[0]}` });
         if (headingRoutes.length) findings.push({ id: 'route_headings', severity: 'medium', detail: `${headingRoutes.length} صفحة بلا عنوان رئيسي واحد: ${headingRoutes[0]}`, detailEn: `${headingRoutes.length} page(s) without exactly one main heading: ${headingRoutes[0]}` });
+        findings.push(...rtlFindings(rtl, opts?.request));
         if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}`, detailEn: `${brokenRoutes.length} page(s) did not open or have no main heading: ${brokenRoutes[0]}` });
         // Behaviour speaks in its own vocabulary; it is translated here rather
         // than re-judged, so the two audits never disagree about a dead button.
