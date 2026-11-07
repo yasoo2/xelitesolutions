@@ -54,7 +54,7 @@ const DEADLINE_MARGIN_MS = 2 * 60_000;
  */
 async function runOperate(o: {
     request: string; runId: string; language: string; replyLanguage: string; deadlineAt: number;
-    activeRoot: string; context: any; brain: any; signal: AbortSignal;
+    activeRoot: string; context: any; brain: any; signal: AbortSignal; target?: 'phone' | 'computer';
 }) {
     const dir = path.join(o.activeRoot, 'operate', o.runId.replace(/[^A-Za-z0-9_.-]/gu, '_'));
     fs.mkdirSync(dir, { recursive: true });
@@ -65,7 +65,7 @@ async function runOperate(o: {
     try {
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
-            replyLanguage: o.replyLanguage, operate: true,
+            replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
             signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
@@ -139,7 +139,8 @@ export const AgentEngineTool: ToolDefinition = {
         //  Operate: something to do on the owner's computer, not a project to build (core/engine/operate.ts).
         if (input?.mode === 'operate') {
             try {
-                return await runOperate({ request, runId, language, replyLanguage, deadlineAt, activeRoot, context, brain, signal: cancellation.signal });
+                const target = input?.target === 'phone' || input?.target === 'computer' ? input.target : undefined;
+                return await runOperate({ request, runId, language, replyLanguage, deadlineAt, activeRoot, context, brain, signal: cancellation.signal, target });
             } finally {
                 cancellation.dispose();
             }

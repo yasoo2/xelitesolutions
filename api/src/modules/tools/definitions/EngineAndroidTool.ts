@@ -14,7 +14,7 @@ import os from 'os';
 import path from 'path';
 import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
-import { AndroidPhone, connectPhone, describeAndroid, pairPhone, parseDevices, parseMdns, type AdbRunner } from '../../../core/devices/android';
+import { AndroidPhone, connectPhone, describeAndroid, describeScreen, pairPhone, parseDevices, parseMdns, type AdbRunner } from '../../../core/devices/android';
 
 const EXE = process.platform === 'win32' ? 'adb.exe' : 'adb';
 
@@ -41,7 +41,7 @@ const gatewayAdb = (adb: string): AdbRunner => async (args, opts) => {
     };
 };
 
-const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect']);
+const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
 const fail = (text: string) => ({ ok: false, error: text, output: { text } }) as any;
@@ -54,7 +54,7 @@ export class EngineAndroidTool implements ToolDefinition {
     readonly inputSchema = {
         type: 'object',
         properties: {
-            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps' },
+            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps | panel' },
             serial: { type: 'string', description: 'The phone, as devices lists it; absent when only one is connected.' },
         },
         required: ['op'],
@@ -63,7 +63,7 @@ export class EngineAndroidTool implements ToolDefinition {
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute'];
     rateLimitPerMinute = 240;
-    auditFields = ['op', 'serial', 'package'];
+    auditFields = ['op', 'serial', 'package', 'panel'];
     mockSupported = false;
 
     async execute(input: any): Promise<ToolExecutionResult> {
@@ -102,7 +102,10 @@ export class EngineAndroidTool implements ToolDefinition {
         switch (op) {
             case 'read': {
                 const r = await phone.read();
-                return r.ok ? ok(describeAndroid(r.controls), { controls: r.controls }) : fail(`the screen could not be read: ${r.error}`);
+                if (!r.ok) return fail(`the screen could not be read: ${r.error}`);
+                //  Whether the screen is on and the phone locked comes first: a sleeping screen reads as a lock screen and looks black.
+                const state = describeScreen(await phone.screen());
+                return ok([state, describeAndroid(r.controls)].filter(Boolean).join('\n\n'), { controls: r.controls });
             }
             case 'look': {
                 const file = String(input?.file || '');
@@ -111,7 +114,12 @@ export class EngineAndroidTool implements ToolDefinition {
                 const r = await phone.look(file, f => fs.readFileSync(f));
                 if (!r.ok) return fail(`no picture: ${r.error}`);
                 const w = r.png.readUInt32BE(16), h = r.png.readUInt32BE(20);
-                return ok(`PICTURE\t${w}\t${h}`);
+                const state = describeScreen(await phone.screen());
+                return ok(`PICTURE\t${w}\t${h}${state ? `\n${state}` : ''}`);
+            }
+            case 'panel': {
+                const r = await phone.panel(String(input?.panel || ''));
+                return r.ok ? ok('OK') : fail(r.error || 'the panel did not open');
             }
             case 'tap': {
                 const x = n(input?.x), y = n(input?.y);

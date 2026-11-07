@@ -82,7 +82,8 @@ export const androidLookTool: EngineTool<{ serial?: string }> = {
         const size = r.text.match(/^PICTURE\t(\d+)\t(\d+)/u);
         if (!r.ok || !size || !fs.existsSync(file)) return { ok: false, output: `android_look failed: ${r.text}` };
         saw(ctx, 'look');
-        return { ok: true, output: `A picture of the phone's screen, ${size[1]}×${size[2]} (the phone's own pixels).`, images: [{ path: file, mime: 'image/png' }] };
+        const state = r.text.split('\n').slice(1).join('\n').trim();
+        return { ok: true, output: `A picture of the phone's screen, ${size[1]}×${size[2]} (the phone's own pixels).${state ? `\n${state}` : ''}`, images: [{ path: file, mime: 'image/png' }] };
     },
 };
 
@@ -130,7 +131,7 @@ export const androidTypeTool: EngineTool<{ text: string; serial?: string }> = {
 
 export const androidKeyTool: EngineTool<{ key: string; serial?: string }> = {
     name: 'android_key',
-    description: 'Press a phone key: back, home, recent, enter, delete, tab, up, down, left, right, volumeup, volumedown, power, search, menu.',
+    description: 'Press a phone key: wakeup (turns a sleeping screen on), back, home, recent, enter, delete, tab, up, down, left, right, volumeup, volumedown, search, menu, sleep, power (toggles the screen: use wakeup to wake it).',
     parameters: { type: 'object', properties: { key: { type: 'string' }, serial: SERIAL }, required: ['key'] },
     parse: raw => {
         const a = obj(raw);
@@ -140,6 +141,28 @@ export const androidKeyTool: EngineTool<{ key: string; serial?: string }> = {
         const r = await phone(ctx, { op: 'key', ...a });
         did(ctx, 'android_key', r.ok, `key ${a.key}`);
         return { ok: r.ok, output: r.ok ? `Pressed ${a.key}.` : `android_key failed: ${r.text}` };
+    },
+};
+
+/**
+ * The phone's pull-down panels. The owner's phone, 2026-11-07: «شغل الكشاف»
+ * — the flashlight has no app and no shell command; it is a tile in the
+ * quick settings, as are Wi-Fi, Bluetooth, airplane mode, mobile data,
+ * rotation and do-not-disturb. They open on the lock screen too.
+ */
+export const androidPanelTool: EngineTool<{ panel: 'quick_settings' | 'notifications' | 'close'; serial?: string }> = {
+    name: 'android_panel',
+    description: 'Open the phone\'s quick settings (the tiles: flashlight/torch, Wi-Fi, Bluetooth, airplane mode, mobile data, rotation, do not disturb, hotspot…) or its notifications, or close them. Then android_read and tap the tile by its number, and read again to see that it changed. Works on the lock screen.',
+    parameters: { type: 'object', properties: { panel: { type: 'string', enum: ['quick_settings', 'notifications', 'close'] }, serial: SERIAL }, required: ['panel'] },
+    parse: raw => {
+        const a = obj(raw);
+        const p = String(a.panel || '').trim().toLowerCase().replace(/[\s-]/gu, '_');
+        return ['quick_settings', 'notifications', 'close'].includes(p) ? { ok: true, value: { panel: p as any, ...withSerial(a) } } : { ok: false, error: '"panel" is quick_settings, notifications or close.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'panel', ...a });
+        did(ctx, 'android_panel', r.ok, `panel ${a.panel}`);
+        return { ok: r.ok, output: r.ok ? `The ${a.panel === 'close' ? 'panels are closed' : `${a.panel.replace('_', ' ')} panel is open`}. Read the screen to see it.` : `android_panel failed: ${r.text}` };
     },
 };
 
@@ -225,5 +248,5 @@ export const androidConnectTool: EngineTool<{ address: string }> = {
 
 export const androidTools: EngineTool[] = [
     androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
-    androidKeyTool, androidScrollTool, androidOpenTool, androidAppsTool,
+    androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool,
 ];

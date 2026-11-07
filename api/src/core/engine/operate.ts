@@ -64,10 +64,34 @@ export function onlyAboutDevices(text: string): boolean {
     return isDeviceRequest(text) && !TASK_VERB.test(String(text || ''));
 }
 
+/**
+ * AN ACTION ON «THE PHONE», WITHOUT «MY».
+ *
+ * The owner, 2026-11-07, right after Joe had read his phone over the cable:
+ * «شغل الكشاف في الهاتف». Without «هاتفي» it was not an action on a device;
+ * the chat answered with advice to pull the panel down himself. A command
+ * verb, then «في/على/ب/من الهاتف» (or الجوال، الموبايل…), is an action on the
+ * phone, unless the sentence is about a site or a page («اجعل الموقع يظهر
+ * جيداً على الجوال» is a change to a site). And the flashlight is a phone's
+ * own: «شغّل الكشاف» needs no place.
+ */
+const ACT_AR = '(?:شغّ?ل|طفّ?ي|اطف[يئ]|أطفئ|افتح|سكّ?ر|أغلق|اغلق|اضغط|صوّ?ر|ارفع|خفّ?ض|وطّ?ي|علّ?ي|فعّ?ل|عطّ?ل|اتّ?صل|ابعث|أرسل|ارسل|اكتب|ابحث|شوف|اقرأ|اقرا|ادخل|روح|ارجع|حمّ?ل|نزّ?ل|ولّ?ع|شيل|امسح)';
+const ACT_EN = '(?:turn|switch|open|close|call|text|send|take|play|start|launch|press|tap|type|search|go|read|check|enable|disable|toggle)';
+const PHONE_PLACE = '(?:في|على|ب|من|عال)\\s*(?:ال)?(?:هاتف|جوال|جوّال|موبايل|تلفون|تليفون|أندرويد|اندرويد)';
+const PHONE_ACTION = new RegExp(
+    `(?:^|[\\s،,.؟?!])${ACT_AR}(?:\\s|$)[^\\n.؟?!]{0,80}?${PHONE_PLACE}`
+    + `|\\b${ACT_EN}\\b[^\\n.?!]{0,80}?\\bon\\s+(?:the|this|that)\\s+(?:phone|android|mobile|cell(?:phone)?)\\b`, 'iu');
+const ABOUT_A_SITE = /(?:الموقع|موقع|الصفحة|صفحة|التصميم|الواجهة|المتجر\s+الإلكتروني|responsive)|\b(?:site|website|web\s*page|page|layout|css)\b/iu;
+const FLASHLIGHT = new RegExp(`${ACT_AR}\\s+(?:ال)?(?:كشّ?اف|فلاش|فلاشة|ضو(?:ء)?\\s+(?:ال)?فلاش)|\\b(?:turn|switch)\\s+(?:on|off)\\s+(?:the\\s+)?(?:flashlight|torch)\\b|\\b(?:turn|switch|toggle)\\s+(?:the\\s+)?(?:flashlight|torch)\\b|\\b(?:flashlight|torch)\\s+(?:on|off)\\b`, 'iu');
+
+function phoneAction(t: string): boolean {
+    return (PHONE_ACTION.test(t) && !ABOUT_A_SITE.test(t)) || FLASHLIGHT.test(t);
+}
+
 export function isOperateRequest(text: string): boolean {
     const t = String(text || '');
     if (!t.trim() || BUILD_VERB.test(t)) return false;
-    return ON_DEVICE.test(t) || ON_PHONE.test(t) || DESKTOP_APP.test(t) || isDeviceRequest(t);
+    return ON_DEVICE.test(t) || ON_PHONE.test(t) || phoneAction(t) || DESKTOP_APP.test(t) || isDeviceRequest(t);
 }
 
 /**
@@ -82,7 +106,44 @@ const PHONES_PLURAL = /(?:الهواتف|هواتف|الجوالات|جوالا�
 /** The request is about the owner's phone (the android_ tools), not a computer. */
 export function isPhoneRequest(text: string): boolean {
     const t = String(text || '');
-    return ON_PHONE.test(t) || PHONE_CONNECT.test(t) || (PHONES_PLURAL.test(t) && REACH.test(t));
+    if (BUILD_VERB.test(t)) return false;
+    return ON_PHONE.test(t) || PHONE_CONNECT.test(t) || phoneAction(t) || (PHONES_PLURAL.test(t) && REACH.test(t));
+}
+
+/* ───────────── the device this chat is working on ───────────── */
+
+/**
+ * A FOLLOW-UP IN A CHAT THAT IS WORKING A DEVICE ACTS ON THAT DEVICE.
+ *
+ * The owner, 2026-11-07: Joe read his phone, then «شغل الكشاف…» went to the
+ * chat's answerer, which said «I did nothing on the phone in this chat» and
+ * gave advice. Once a chat has worked a device, a short command that follows
+ * it («افتح واتساب», «اطفيه», «ارجع للرئيسية», "now open YouTube") goes on
+ * that device, until the chat asks for something else. Kept for 30 minutes
+ * per chat, in this process (a restart forgets it: the next message then
+ * names the device again).
+ */
+export type OperateTarget = 'phone' | 'computer';
+const WORKING = new Map<string, { target: OperateTarget; at: number }>();
+const FOLLOW_UP_MS = 30 * 60_000;
+const LEAD = '^(?:\\s*(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء|يلا)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو|and|also|now|then|ok|okay|please|pls|can\\s+you|could\\s+you)[\\s،,]+)*\\s*و?';
+const FOLLOW_UP = new RegExp(`${LEAD}(?:${ACT_AR}|ابحث|اسحب|اضغط|كبّ?ر|صغّ?ر|وقّ?ف|كمّ?ل|${ACT_EN}|scroll|swipe|stop|go\\s+back|wake)(?:\\s|$|ه|ها|هم|ي)`, 'iu');
+
+export function noteOperate(sessionId: unknown, request: string, target?: OperateTarget): void {
+    const id = String(sessionId || '');
+    if (!id) return;
+    WORKING.set(id, { target: target || (isPhoneRequest(request) ? 'phone' : 'computer'), at: Date.now() });
+}
+
+export function forgetOperate(sessionId: unknown): void { WORKING.delete(String(sessionId || '')); }
+
+/** The device a follow-up command in this chat acts on, or null. */
+export function operateFollowUp(sessionId: unknown, text: string, now = Date.now()): OperateTarget | null {
+    const w = WORKING.get(String(sessionId || ''));
+    if (!w || now - w.at > FOLLOW_UP_MS) return null;
+    const t = String(text || '').trim();
+    if (!t || t.length > 160 || BUILD_VERB.test(t) || ABOUT_A_SITE.test(t)) return null;
+    return FOLLOW_UP.test(t) ? w.target : null;
 }
 
 /**
@@ -90,8 +151,8 @@ export function isPhoneRequest(text: string): boolean {
  * and a request about the devices themselves with device_computers: pointing
  * either at device_windows sent the model through the computer's windows first.
  */
-export function operatorFirstTool(request: string): 'android_devices' | 'device_computers' | 'device_windows' {
-    if (isPhoneRequest(request)) return 'android_devices';
+export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' {
+    if (target === 'phone' || isPhoneRequest(request)) return 'android_devices';
     if (isDeviceRequest(request)) return 'device_computers';
     return 'device_windows';
 }
@@ -103,6 +164,17 @@ export function onlyLooks(text: string): boolean {
     return ONLY_LOOK.test(String(text || '')) && !/(?:افتح|اكتب|اضغط|احفظ|أغلق|اغلق|open|type|click|press|save|close)/iu.test(String(text || ''));
 }
 
+/**
+ * The request asks, anywhere in it, what the screen shows: «اشبك على هاتفي وقل
+ * لي شو الظاهر على شاشته» connects AND asks to look (2026-11-07), so a list of
+ * the devices alone does not answer it.
+ */
+const ASKS_TO_LOOK = /(?:شو|ما|ماذا|ايش|إيش)\s+(?:هو\s+)?(?:الظاهر|اللي\s+(?:ظاهر|بيظهر|على)|الذي\s+(?:يظهر|على)|يظهر|بيظهر|على\s+(?:ال)?شاش)|(?:اقرأ|اقرا|صف|صوّ?ر)\s+(?:لي\s+)?(?:ال)?شاش|\bwhat(?:'s| is)\s+(?:on|showing)\b|\b(?:read|describe)\s+(?:its|the|my)\s+screen\b/iu;
+
+export function asksToLook(text: string): boolean {
+    return ASKS_TO_LOOK.test(String(text || ''));
+}
+
 /* ───────────────────────── what the model is told ───────────────────────── */
 
 export function operatorSystemPrompt(machine: MachineFacts): string {
@@ -112,7 +184,9 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '# Environment',
         `- This computer runs ${machine.platform === 'win32' ? 'Windows' : machine.platform}. You act on it only through the device_ tools.`,
         '- device_windows lists the open windows by handle number; every other device_ tool names its window by that number.',
-        '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home…), android_scroll, android_open by package name. When the request is about his phone, use these, not the device_ tools.',
+        '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home, wakeup…), android_scroll, android_open by package name, android_panel for the quick settings (flashlight/torch, Wi-Fi, Bluetooth, airplane mode, mobile data, rotation, do not disturb) and the notifications. When the request is about his phone, use these, not the device_ tools.',
+        '- android_read and android_look say first when the phone\'s screen is OFF or the phone is LOCKED. A screen that is off: android_key "wakeup", then read again. A phone locked with a PIN: the quick settings and the notifications still work; for anything else tell the owner to unlock it, and never type a PIN, pattern or password.',
+        '- Some things have no app on a phone: the flashlight is a tile in the quick settings (android_panel "quick_settings", android_read, tap the tile whose name is the flashlight in the phone\'s language: «الكشاف», «Flashlight», «Torch», «Lampe de poche»…, then read again: an «on» or checked tile, or a changed description, shows it worked).',
         '- When the owner asks what you can reach, or to connect to a computer or a phone: call device_computers and tell him, by name, what you can reach. A computer that is not linked yet: device_link_new shows him the one line to run on it, then device_wait_link waits for it, then device_use it and go on with what he asked. A phone on Wi-Fi showing its pairing code: ask him for the six digits (say it in task_finish), then android_pair and android_connect when he gives them. Never ask him to go to the settings for any of this: the chat is where he works.',
         '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',
@@ -135,17 +209,19 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
     ].join('\n');
 }
 
-export function operatorFirstMessage(request: string, language: string, replyLanguage?: string): string {
+export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget): string {
     return [
         'Request (verbatim):',
         '"""',
         request.trim(),
         '"""',
         '',
+        ...(target === 'phone' && !isPhoneRequest(request) ? ['This message follows work on the owner\'s Android phone in this chat: it is about the phone (the android_ tools).', ''] : []),
+        ...(target === 'computer' && !isOperateRequest(request) ? ['This message follows work on the owner\'s computer in this chat: it is about the computer (the device_ tools).', ''] : []),
         `Request language: ${languageName(language)}.`,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         '',
-        `Start by calling plan_update with your steps, then ${operatorFirstTool(request)}.`,
+        `Start by calling plan_update with your steps, then ${operatorFirstTool(request, target)}.`,
     ].join('\n');
 }
 
@@ -163,17 +239,25 @@ export function operateVerifier(): Verifier {
         const looking = onlyLooks(ctx.request);
         const done = rec.actions.filter(a => a.ok);
         const lastAction = done.length ? done[done.length - 1].at : 0;
-        const lastLook = rec.looks.length ? rec.looks[rec.looks.length - 1].at : 0;
+        //  A list of the devices is not a look at a screen.
+        const screenLooks = rec.looks.filter(l => l.kind !== 'devices');
+        const lastLook = screenLooks.length ? screenLooks[screenLooks.length - 1].at : 0;
         if (onlyAboutDevices(ctx.request)) {
-            //  Listing what Joe can reach, linking a computer or pairing a phone is the whole of it.
+            //  Listing what Joe can reach, linking a computer or pairing a phone is the whole of it…
             const linked = done.filter(a => /^(?:device_link_new|device_wait_link|android_pair|android_connect)$/u.test(a.tool));
             const listed = rec.looks.some(l => l.kind === 'devices');
             checks.push(linked.length || listed
                 ? { id: 'devices', status: 'passed', detail: linked.length ? linked.map(a => a.what).join('; ') : 'the devices Joe can reach were listed' }
                 : { id: 'devices', status: 'failed', detail: 'the request is about the devices Joe can reach, and none were listed, linked or paired: call device_computers' });
+            //  …unless it also asks what the screen shows.
+            if (asksToLook(ctx.request)) {
+                checks.push(lastLook
+                    ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
+                    : { id: 'looked', status: 'failed', detail: 'the request also asks what the screen shows, and the screen was not read or looked at' });
+            }
         } else if (looking) {
             checks.push(lastLook
-                ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${rec.looks.length} look(s))` }
+                ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
                 : { id: 'looked', status: 'failed', detail: 'the request asks what is on the screen, and no device_look or device_read was made' });
         } else {
             checks.push(done.length
@@ -194,16 +278,18 @@ export function operateVerifier(): Verifier {
 
 /* ───────────────────────── what the owner is told ───────────────────────── */
 
-const OPERATE_WORDS: Record<string, { done: string; devices: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
+const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
     ar: {
         done: '✅ نفّذتُه على جهازك ونظرتُ إلى الشاشة بعده للتأكد.',
         devices: '✅ هذا ما أصل إليه الآن من أجهزتك.',
+        looked: '✅ قرأتُ الشاشة كما هي، ولم أغيّر فيها شيئاً.',
         notDone: why => `⚠️ لم يكتمل التنفيذ على الجهاز: ${why}`,
         took: (s, usd) => `⏱️ استغرق ${s < 60 ? `${s} ثانية` : `${Math.round(s / 60)} دقيقة`}${usd != null ? `، كلفة ${usd.toFixed(3)}$` : ''}`,
     },
     en: {
         done: '✅ Done on your computer, and the screen was checked afterwards.',
         devices: '✅ That is what I can reach of your devices now.',
+        looked: '✅ I read the screen as it is and changed nothing.',
         notDone: why => `⚠️ Not completed on the device: ${why}`,
         took: (s, usd) => `⏱️ Took ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`}${usd != null ? `, cost $${usd.toFixed(3)}` : ''}`,
     },
@@ -217,8 +303,10 @@ export function operateOutput(result: EngineResult | undefined, language: string
     const why = verified ? '' : (failed[0] || String(result?.reason || '').trim() || 'the run ended before it was done');
     const receipts = (result?.verification?.checks || []).map(c => ({ tool: `operate:${c.id}`, ok: c.status === 'passed', ...(c.status === 'passed' ? {} : { error: c.detail }) }));
     const seconds = Math.round((result?.durationMs || 0) / 1000);
+    const ids = new Set((result?.verification?.checks || []).map(c => c.id));
+    const closing = ids.has('acted') ? words.done : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
     const summary = verified
-        ? [String(result!.summary || '').trim(), (result!.verification?.checks || []).some(c => c.id === 'devices') ? words.devices : words.done, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
+        ? [String(result!.summary || '').trim(), closing, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), String(result?.summary || '').trim()].filter(Boolean).join('\n\n');
     return {
         ok: verified,

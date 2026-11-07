@@ -322,6 +322,8 @@ export interface EngineRequest {
     change?: ChangeContext;
     /** Operate: the run acts on the owner's computer instead of building (operate.ts). */
     operate?: boolean;
+    /** Operate: the device this chat is working on, when the message itself does not name it (operateFollowUp). */
+    operateTarget?: 'phone' | 'computer';
 }
 
 /** One earlier run of a project: what was asked, and what came of it. */
