@@ -123,6 +123,8 @@ export interface PageFact {
 }
 
 export interface ToolFacts {
+    /** ask_owner: the one question the run ends on, for the owner to answer in the chat. */
+    ownerQuestion?: string;
     filesChanged?: FileChange[];
     command?: CommandFact;
     served?: ProcessInfo;
@@ -324,6 +326,8 @@ export interface EngineRequest {
     operate?: boolean;
     /** Operate: the device this chat is working on, when the message itself does not name it (operateFollowUp). */
     operateTarget?: 'phone' | 'computer';
+    /** Operate: what Joe did on the owner's devices earlier in this chat (device-work.ts), so «try again» knows what. */
+    operateHistory?: string;
 }
 
 /** One earlier run of a project: what was asked, and what came of it. */

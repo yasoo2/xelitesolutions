@@ -40,8 +40,8 @@ import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
 import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
-import { isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
-import { noteOperateResult } from '../../../core/engine/device-work';
+import { askOwnerTool, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
+import { deviceWorkFacts, noteOperateResult } from '../../../core/engine/device-work';
 import fs from 'fs';
 
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
@@ -67,18 +67,24 @@ async function runOperate(o: {
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
             replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
+            //  What was done on the devices earlier in this chat: «حاول مره اخرى» knows what.
+            operateHistory: deviceWorkFacts(o.context.sessionId),
             signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
             model: o.brain.model,
-            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, finishTool(operateVerifier())],
+            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, askOwnerTool, finishTool(operateVerifier())],
             processes: createProcessRegistry(toolContext),
             browser: () => createBrowserSession(toolContext),
             machine: await machineFacts(),
         });
         const out = operateOutput(result, o.replyLanguage);
         //  The chat's answerer reads what was done here (operate.ts deviceWorkFacts).
-        noteOperateResult(o.context.sessionId, { target: o.target || (isPhoneRequest(o.request) ? 'phone' : 'computer'), request: o.request, summary: String(result?.summary || out.output?.summary || ''), ok: out.ok });
+        const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
+        noteOperateResult(o.context.sessionId, {
+            target: o.target || (isPhoneRequest(o.request) ? 'phone' : 'computer'), request: o.request,
+            summary: `${asked ? 'Joe asked the owner and waits for his answer: ' : ''}${String(result?.summary || out.output?.summary || '')}`, ok: out.ok && !asked,
+        });
         return {
             ok: out.ok,
             ...(out.ok ? {} : { error: out.error }),

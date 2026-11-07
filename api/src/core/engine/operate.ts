@@ -15,7 +15,7 @@
  */
 import type { MachineFacts } from './prompt';
 import { languageName } from './prompt';
-import type { CheckResult, EngineResult, ToolContext, VerificationReport } from './types';
+import type { CheckResult, EngineResult, EngineTool, ToolContext, ToolOutcome, VerificationReport } from './types';
 import type { FinishArgs, Verifier } from './finish';
 import { deviceRecordFor } from './tools/devices';
 
@@ -143,7 +143,8 @@ export type OperateTarget = 'phone' | 'computer';
 const WORKING = new Map<string, { target: OperateTarget; at: number; request: string }>();
 const FOLLOW_UP_MS = 30 * 60_000;
 const LEAD = '^(?:\\s*(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء|يلا)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو|and|also|now|then|ok|okay|please|pls|can\\s+you|could\\s+you)[\\s،,]+)*\\s*و?';
-const FOLLOW_UP = new RegExp(`${LEAD}(?:(?:${ACT_AR_STEM}|اسحب|كبّ?ر|صغّ?ر|كمّ?ل)${AR_TAIL}${AR_END}|(?:${ACT_EN}|scroll|swipe|stop|go\\s+back|wake)\\b)`, 'iu');
+//  «حاول مره اخرى», «أعدها», «كرّر» and "try again" are follow-ups too (the owner, 2026-11-08).
+const FOLLOW_UP = new RegExp(`${LEAD}(?:(?:${ACT_AR_STEM}|اسحب|كبّ?ر|صغّ?ر|كمّ?ل|حاول|[أا]عد|كرّ?ر)${AR_TAIL}${AR_END}|(?:${ACT_EN}|scroll|swipe|stop|go\\s+back|wake|try|retry|again|redo)\\b)`, 'iu');
 
 export function noteOperate(sessionId: unknown, request: string, target?: OperateTarget): void {
     const id = String(sessionId || '');
@@ -220,6 +221,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '5. Before typing or pressing keys, bring the window to the front (device_focus) and put the cursor in the right field (device_press focus, or a click). Then device_type / device_keys.',
         '6. After every action that should change something, look again (device_look or device_read) and check that it did. If it did not, find out why and try another way.',
         '7. When it is done and you have SEEN it done, call task_finish: what you did, and what the screen shows now.',
+        '8. When you cannot go on without the owner (what he means is unclear even with the chat\'s history, the phone needs his PIN, something needs his «yes»), call ask_owner once with what you did and your one question. Never ask him in notes and keep going.',
         '',
         '# Rules',
         '- Act only on windows the request is about. Never type into, click on or close a window you did not look at in this run.',
@@ -231,13 +233,16 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
     ].join('\n');
 }
 
-export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget): string {
+export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget, history?: string): string {
     return [
         'Request (verbatim):',
         '"""',
         request.trim(),
         '"""',
         '',
+        //  What Joe did on the owner's devices earlier in this chat: «حاول مره
+        //  اخرى» means the last of these, «اطفيه» the thing turned on.
+        ...(history && history.trim() ? [history.trim(), 'A short request («try again», «turn it off», «and now…») refers to these.', ''] : []),
         ...(target === 'phone' && !isPhoneRequest(request) ? ['Joe read this message as being about the owner\'s Android phone (from the chat\'s work on it, or from what the message means): use the android_ tools.', ''] : []),
         ...(target === 'computer' && !isOperateRequest(request) ? ['Joe read this message as being about the owner\'s computer (from the chat\'s work on it, or from what the message means): use the device_ tools.', ''] : []),
         `Request language: ${languageName(language)}.`,
@@ -246,6 +251,33 @@ export function operatorFirstMessage(request: string, language: string, replyLan
         `Start by calling plan_update with your steps, then ${operatorFirstTool(request, target)}.`,
     ].join('\n');
 }
+
+/* ───────────────────────── one question to the owner ───────────────────────── */
+
+/**
+ * ASK THE OWNER, ONCE, AND END.
+ *
+ * The owner, 2026-11-08: «حاول مره اخرى» reached a run that knew nothing of
+ * the chat; it asked him what to retry in its notes, again and again — the
+ * operate tools had no way to end on a question — until the idle limit failed
+ * the run after 24 steps. A run that needs something only the owner can give
+ * (which thing he means, unlocking a phone with a PIN, a «yes» before
+ * sending) asks it here and the run ends; he answers in the chat.
+ */
+export const askOwnerTool: EngineTool<{ question: string }> = {
+    name: 'ask_owner',
+    description: 'End the run with ONE question to the owner, when you cannot go on without him: the request is unclear even with the chat\'s history, the phone must be unlocked with his PIN, or he must confirm something you must not do unasked (sending, paying, deleting). Say first, briefly, what you did and saw. Never use it for what the tools can find out.',
+    parameters: { type: 'object', properties: { question: { type: 'string', description: 'What you did and saw, then the one question, in the owner\'s language.' } }, required: ['question'] },
+    parse: raw => {
+        const q = String((raw as any)?.question ?? '').trim();
+        return q ? { ok: true, value: { question: q.slice(0, 1500) } } : { ok: false, error: '"question" is what to ask the owner.' };
+    },
+    async run(a, ctx: ToolContext): Promise<ToolOutcome> {
+        const report: VerificationReport = { passed: true, checks: [{ id: 'asked_owner', status: 'passed', detail: a.question }], unproven: [], at: Date.now() };
+        ctx.state.verifications.push(report);
+        return { ok: true, output: 'Asked. The run ends here; the owner answers in the chat.', facts: { ownerQuestion: a.question, verification: report } };
+    },
+};
 
 /* ───────────────────────── what proves it was done ───────────────────────── */
 
@@ -317,16 +349,40 @@ const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: str
     },
 };
 
+const ASKED: Record<string, string> = { ar: '❓ أحتاج جوابك لأكمل: اكتبه هنا في المحادثة.', en: '❓ I need your answer to go on: write it here in the chat.' };
+
+/**
+ * An English reason in front of an Arabic reader: the owner read «لم يكتمل
+ * التنفيذ على الجهاز: the model stopped calling tools before the checks
+ * passed» (2026-11-08). The engine's reasons are English; the owner's are not.
+ */
+const REASONS_AR: [RegExp, string][] = [
+    [/stopped calling tools/iu, 'توقّف النموذج عن العمل قبل أن تنجح الفحوص'],
+    [/deadline arrived/iu, 'انتهى الوقت المسموح قبل أن تنجح الفحوص'],
+    [/same failing call|refused the same thing/iu, 'تكررت المحاولة نفسها دون نجاح'],
+    [/nothing changed in/iu, 'لم يتغيّر شيء على الجهاز رغم المحاولات'],
+    [/model call (?:failed|cannot go on)|cut off/iu, 'تعذّر الاتصال بالنموذج'],
+    [/cancelled/iu, 'أُلغي التشغيل'],
+    [/no device_ action succeeded|nothing was done on the device/iu, 'لم ينجح أي إجراء على الجهاز'],
+    [/not followed by a device_look|look at the result/iu, 'لم يُنظر إلى الشاشة بعد آخر إجراء'],
+];
+
+function reasonFor(why: string, language: string): string {
+    if (language !== 'ar' || /[؀-ۿ]/u.test(why)) return why;
+    return REASONS_AR.find(([re]) => re.test(why))?.[1] || 'لم يكتمل العمل على الجهاز';
+}
+
 /** The operate run's answer, in the shape the orchestrator's final-outcome rule reads. */
 export function operateOutput(result: EngineResult | undefined, language: string): { ok: boolean; error?: string; output: Record<string, any> } {
     const words = OPERATE_WORDS[language === 'ar' ? 'ar' : 'en'];
     const verified = !!result && result.status === 'delivered' && result.verification?.passed === true;
     const failed = (result?.verification?.checks || []).filter(c => c.status === 'failed').map(c => c.detail);
-    const why = verified ? '' : (failed[0] || String(result?.reason || '').trim() || 'the run ended before it was done');
+    const why = verified ? '' : reasonFor(failed[0] || String(result?.reason || '').trim() || 'the run ended before it was done', language === 'ar' ? 'ar' : 'en');
     const receipts = (result?.verification?.checks || []).map(c => ({ tool: `operate:${c.id}`, ok: c.status === 'passed', ...(c.status === 'passed' ? {} : { error: c.detail }) }));
     const seconds = Math.round((result?.durationMs || 0) / 1000);
     const ids = new Set((result?.verification?.checks || []).map(c => c.id));
-    const closing = ids.has('acted') ? words.done : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
+    const closing = ids.has('asked_owner') ? ASKED[language === 'ar' ? 'ar' : 'en']
+        : ids.has('acted') ? words.done : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
     const summary = verified
         ? [String(result!.summary || '').trim(), closing, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), String(result?.summary || '').trim()].filter(Boolean).join('\n\n');
