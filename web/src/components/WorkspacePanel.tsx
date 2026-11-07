@@ -376,12 +376,15 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
     const renderedLogs = filter ? filtered : filtered.slice(-RENDERED_LOG_LIMIT);
     const hiddenLogCount = filtered.length - renderedLogs.length;
 
-    // Auto-scroll
+    // Auto-scroll. It follows every new line, not the count on screen: past
+    // RENDERED_LOG_LIMIT the window stays 220 lines long while the lines
+    // change, and the panel stood still on old lines during the owner's phone
+    // run (2026-11-08, 551 lines, the newest ones below the fold).
     useEffect(() => {
         if (autoScroll && scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [renderedLogs.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
+    }, [filtered.length, filtered[filtered.length - 1], autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
 
     const handleCopyAll = () => {
         // Everything the panel SHOWS is what "copy all" copies: the live file
