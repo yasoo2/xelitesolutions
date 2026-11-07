@@ -72,7 +72,11 @@ export function parsePlanArgs(raw: unknown): ParseResult<PlanArgs> {
         out.steps = [];
         for (const s of steps) {
             const title = typeof s === 'string' ? s : String((s as any)?.title ?? (s as any)?.step ?? '').trim();
-            const status = typeof s === 'string' ? 'pending' : String((s as any)?.status ?? 'pending');
+            //  A step the model calls blocked, failed or skipped is not done: it is
+            //  kept as pending instead of refusing the whole update (the owner's
+            //  phone, 2026-11-08: «Step status "blocked" is not one of…», a step lost).
+            const said = typeof s === 'string' ? 'pending' : String((s as any)?.status ?? 'pending').trim().toLowerCase();
+            const status = /^(?:blocked|failed|skipped|waiting|stuck|todo|open)$/u.test(said) ? 'pending' : said === 'completed' ? 'done' : said;
             if (!title) return { ok: false, error: 'Every step needs a "title".' };
             if (!STEP_STATUS.has(status)) return { ok: false, error: `Step status "${status}" is not one of pending, in_progress, done.` };
             out.steps.push({ title, status: status as PlanStep['status'] });

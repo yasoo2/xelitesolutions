@@ -421,7 +421,69 @@ describe('the owner\'s language is kept for the whole run', () => {
     });
 });
 
+describe('«حاول مره اخرى»: the run knows the chat\'s device work, and ends on one question when it needs the owner', () => {
+    test('a retry in a phone chat is a follow-up on the phone', () => {
+        const op = require('../core/engine/operate');
+        op.noteOperate('chat-retry', 'شغل الموسيقى داخل الهاتف', 'phone');
+        for (const t of ['حاول مره اخرى', 'أعدها', 'كرر', 'try again']) expect([t, op.operateFollowUp('chat-retry', t)]).toEqual([t, 'phone']);
+        op.forgetOperate('chat-retry');
+    });
+
+    test('the first message carries what was done on the devices in this chat', () => {
+        const op = require('../core/engine/operate');
+        const dw = require('../core/engine/device-work');
+        dw.noteOperateResult('chat-history', { target: 'phone', request: 'شغل الموسيقى داخل الهاتف', summary: 'لم أتمكن: الهاتف مقفل برمز PIN.', ok: false });
+        const msg = op.operatorFirstMessage('حاول مره اخرى', 'ar', 'ar', 'phone', dw.deviceWorkFacts('chat-history'));
+        expect(msg).toContain('«شغل الموسيقى داخل الهاتف» → not completed: لم أتمكن: الهاتف مقفل برمز PIN.');
+        expect(msg).toContain('A short request («try again»');
+        expect(op.operatorFirstMessage('افتح واتساب على هاتفي', 'ar', 'ar', 'phone', '')).not.toContain('A short request');
+    });
+
+    test('ask_owner ends the run at once, delivered with the question, and the answer says it waits for him', async () => {
+        const op = require('../core/engine/operate');
+        const { runEngine } = require('../core/engine/loop');
+        const os = require('os');
+        const fs = require('fs');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-ask-'));
+        let n = 0;
+        const model = {
+            vision: false, label: 'script', contextTokens: () => 100_000,
+            async step() {
+                n++;
+                return { text: '', toolCalls: [{ id: `q${n}`, name: 'ask_owner', arguments: JSON.stringify({ question: 'الهاتف مقفل برمز PIN. افتح القفل ثم قل لي «تم».' }) }], durationMs: 1 };
+            },
+        };
+        const result = await runEngine({ runId: 'ask-run', request: 'حاول مره اخرى', language: 'ar', replyLanguage: 'ar', projectDir: dir, deadlineAt: Date.now() + 60_000, signal: new AbortController().signal, emit: () => { }, joe: {}, operate: true }, {
+            model, tools: [op.askOwnerTool], processes: { list: () => [], stopAll: async () => { } } as any, browser: () => ({}) as any, machine: { platform: 'win32', shell: 'powershell' } as any,
+        });
+        expect(n).toBe(1);
+        expect(result.status).toBe('delivered');
+        expect(result.summary).toBe('الهاتف مقفل برمز PIN. افتح القفل ثم قل لي «تم».');
+        const out = op.operateOutput(result, 'ar');
+        expect(out.ok).toBe(true);
+        expect(out.output.summary).toContain('افتح القفل');
+        expect(out.output.summary).toContain('❓ أحتاج جوابك لأكمل');
+        expect(op.askOwnerTool.parse({ question: '' }).ok).toBe(false);
+    });
+
+    test('an English reason reaches an Arabic reader in Arabic', () => {
+        const op = require('../core/engine/operate');
+        const out = op.operateOutput({ status: 'failed', reason: 'the model stopped calling tools before the checks passed', summary: '', steps: 24 } as any, 'ar');
+        expect(out.output.summary).toContain('توقّف النموذج عن العمل قبل أن تنجح الفحوص');
+        expect(out.output.summary).not.toMatch(/stopped calling tools/u);
+        expect(op.operateOutput({ status: 'failed', reason: 'the model stopped calling tools before the checks passed', summary: '', steps: 3 } as any, 'en').output.summary).toContain('stopped calling tools');
+    });
+});
+
 describe('the plan and the log', () => {
+    test('a step called blocked, failed or completed is kept, not refused', () => {
+        const { parsePlanArgs } = require('../core/engine/plan');
+        const r = parsePlanArgs({ steps: [{ title: 'فحص الهاتف', status: 'completed' }, { title: 'فتح البريد', status: 'blocked' }, { title: 'تلخيص', status: 'failed' }] });
+        expect(r).toEqual({ ok: true, value: { steps: [{ title: 'فحص الهاتف', status: 'done' }, { title: 'فتح البريد', status: 'pending' }, { title: 'تلخيص', status: 'pending' }] } });
+        expect(parsePlanArgs({ steps: [{ title: 'x', status: 'flying' }] }).ok).toBe(false);
+    });
+
     test('a requirement added and marked in the same call is kept and marked, with no refusal', () => {
         const { applyPlanUpdate } = require('../core/engine/plan');
         const plan = { steps: [], requirements: [], revision: 0 } as any;

@@ -170,7 +170,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
     conv.push({ role: 'user', content: req.operate
-        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget)
+        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory)
         : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
     req.emit({ type: 'plan', plan: state.plan });
 
@@ -319,6 +319,12 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 }
                 if (ending) {
                     //  Ended above: the rest of the turn is answered as not run.
+                } else if (call.name === 'ask_owner' && outcome.facts?.ownerQuestion) {
+                    //  The run ends on one question to the owner, honestly, instead of
+                    //  asking it again and again in notes until the idle limit (the
+                    //  owner's «حاول مره اخرى», 2026-11-08: 24 steps, then «failed»).
+                    summary = outcome.facts.ownerQuestion;
+                    ending = { status: 'delivered' };
                 } else if (call.name === 'task_finish' && outcome.facts?.verification?.passed) {
                     summary = (args as FinishArgs | undefined)?.summary || summary;
                     howToRun = String((args as FinishArgs | undefined)?.how_to_run || '').trim();
