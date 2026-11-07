@@ -353,6 +353,7 @@ public static class JoeDesktop {
             case "ping": return "pong";
             case "windows": return Windows();
             case "look": return "LOOK\t" + ScreenshotScaled(Un64(f[1]), I(f, 2), I(f, 3), I(f, 4), I(f, 5), I(f, 6));
+            case "lookdata": return "LOOKDATA\t" + LookData(I(f, 1), I(f, 2), I(f, 3), I(f, 4), I(f, 5));
             case "focus": return "FOCUS\t" + Focus(L(f, 1));
             case "click": return ClickIn(L(f, 1), I(f, 2), I(f, 3), Un64(f[4]), I(f, 5));
             case "move": Move(I(f, 1), I(f, 2)); return "OK";
@@ -396,8 +397,67 @@ public static class JoeDesktop {
             }
         }
     }
+
+    /* ── THE LINK: this computer, worked by the owner's Joe on another one ──
+     * The computer calls out to Joe (nothing listens here), says what it is,
+     * then answers each numbered line exactly as the pipe host does. Every
+     * action is written to this window, so the person at this computer sees
+     * what Joe does; closing the window ends the link. A picture travels
+     * inline, since Joe cannot read a file on this disk. */
+    public static string LookData(int left, int top, int width, int height, int maxW) {
+        string file = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "joe-link-look-" + Process.GetCurrentProcess().Id + ".png");
+        string frame = ScreenshotScaled(file, left, top, width, height, maxW <= 0 ? 1280 : maxW);
+        string data = Convert.ToBase64String(System.IO.File.ReadAllBytes(file));
+        try { System.IO.File.Delete(file); } catch { }
+        return frame + "\t" + data;
+    }
+
+    static void LinkSend(System.Net.WebSockets.ClientWebSocket ws, string text) {
+        byte[] b = Encoding.UTF8.GetBytes(text);
+        ws.SendAsync(new ArraySegment<byte>(b), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
+    }
+
+    static string LinkReceive(System.Net.WebSockets.ClientWebSocket ws) {
+        byte[] buf = new byte[65536];
+        using (System.IO.MemoryStream ms = new System.IO.MemoryStream()) {
+            while (true) {
+                System.Net.WebSockets.WebSocketReceiveResult r = ws.ReceiveAsync(new ArraySegment<byte>(buf), System.Threading.CancellationToken.None).Result;
+                if (r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) return null;
+                ms.Write(buf, 0, r.Count);
+                if (r.EndOfMessage) return Encoding.UTF8.GetString(ms.ToArray());
+            }
+        }
+    }
+
+    /* Returns why the link ended, for the window to say. */
+    public static string Link(string url, string hello) {
+        using (System.Net.WebSockets.ClientWebSocket ws = new System.Net.WebSockets.ClientWebSocket()) {
+            ws.Options.KeepAliveInterval = TimeSpan.FromSeconds(20);
+            try { ws.ConnectAsync(new Uri(url), System.Threading.CancellationToken.None).Wait(); }
+            catch (Exception e) { return "could not reach Joe: " + (e.InnerException != null ? e.InnerException.Message : e.Message); }
+            LinkSend(ws, "HELLO\t" + B64(hello));
+            Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  connected");
+            while (ws.State == System.Net.WebSockets.WebSocketState.Open) {
+                string msg;
+                try { msg = LinkReceive(ws); } catch (Exception) { return "the connection to Joe was lost"; }
+                if (msg == null) return "Joe closed the link";
+                int tab = msg.IndexOf('\t');
+                if (tab <= 0) continue;
+                string id = msg.Substring(0, tab), line = msg.Substring(tab + 1);
+                if (line == "bye") return "the owner disconnected this computer";
+                string res;
+                try { res = "OK\t" + B64(Dispatch(line)); } catch (Exception e) { res = "ERR\t" + B64(e.Message); }
+                Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  " + line.Split('\t')[0] + (res.StartsWith("OK") ? "" : "  (refused or failed)"));
+                try { LinkSend(ws, id + "\t" + res); } catch (Exception) { return "the connection to Joe was lost"; }
+            }
+            return "the link ended";
+        }
+    }
 }
 `;
+
+/** The helper's C# source, for a computer that compiles it itself (device-link.ts). */
+export function helperSource(): string { return CS; }
 
 /** The C# helper's file, named by its own hash so a changed helper is compiled again. */
 export function helperDllPath(tmp: string = os.tmpdir()): string {

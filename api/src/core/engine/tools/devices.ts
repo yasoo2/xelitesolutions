@@ -39,20 +39,23 @@ export interface DeviceRecord {
     frames: Map<string, LookFrame>;
     controls: Map<number, UiControl[]>;
     windows: Map<number, DesktopWindow>;
+    /** The linked computer this run works on (device_use); empty for this computer. */
+    computer: string;
 }
 
 const RECORDS = new Map<string, DeviceRecord>();
 
 export function deviceRecordFor(runId: string): DeviceRecord {
     let r = RECORDS.get(runId);
-    if (!r) { r = { actions: [], looks: [], frames: new Map(), controls: new Map(), windows: new Map() }; RECORDS.set(runId, r); }
+    if (!r) { r = { actions: [], looks: [], frames: new Map(), controls: new Map(), windows: new Map(), computer: '' }; RECORDS.set(runId, r); }
     return r;
 }
 
 export function forgetDeviceRecord(runId: string): void { RECORDS.delete(runId); }
 
 async function device(ctx: ToolContext, input: Record<string, unknown>): Promise<{ ok: boolean; text: string }> {
-    const result = await gateway()('engine_device', input, toolContextFor(ctx));
+    const computer = deviceRecordFor(ctx.runId).computer;
+    const result = await gateway()('engine_device', computer && input.op !== 'computers' ? { ...input, computer } : input, toolContextFor(ctx));
     const text = result?.output && typeof result.output.text === 'string' ? result.output.text : String(result?.error || 'no answer');
     return { ok: result?.ok === true, text };
 }
@@ -294,7 +297,40 @@ export const deviceFocusTool: EngineTool<{ window: number }> = {
     },
 };
 
+export const deviceComputersTool: EngineTool<Record<string, never>> = {
+    name: 'device_computers',
+    description: 'List the computers you can work: this one, and the other computers the owner linked to Joe (by name, with their system and whether they are connected).',
+    parameters: { type: 'object', properties: {} },
+    parse: () => ({ ok: true, value: {} }),
+    async run(_a, ctx): Promise<ToolOutcome> {
+        const r = await device(ctx, { op: 'computers' });
+        return { ok: r.ok, output: r.text };
+    },
+};
+
+export const deviceUseTool: EngineTool<{ computer: string }> = {
+    name: 'device_use',
+    description: 'Choose the computer every following device_ tool works on: the name of a linked computer from device_computers, or "this" for this computer. Window numbers belong to one computer: after switching, call device_windows again.',
+    parameters: { type: 'object', properties: { computer: { type: 'string' } }, required: ['computer'] },
+    parse: raw => need<{ computer: string }>(raw, 'device_use', a => {
+        const computer = String(a.computer || '').trim();
+        return computer ? { computer } : { error: '"computer" is a name from device_computers, or "this".' };
+    }),
+    async run(a, ctx): Promise<ToolOutcome> {
+        const rec = deviceRecordFor(ctx.runId);
+        const here = /^(this|here|local|this computer|هذا|هذا الحاسوب|جهازي)$/iu.test(a.computer);
+        if (!here) {
+            const list = await device(ctx, { op: 'computers' });
+            const names = [...list.text.matchAll(/^- (.+?) \(/gmu)].map(m => m[1].trim().toLowerCase());
+            if (!names.includes(a.computer.toLowerCase())) return { ok: false, output: `No linked computer named «${a.computer}» is connected.\n${list.text}` };
+        }
+        rec.computer = here ? '' : a.computer;
+        rec.windows.clear(); rec.frames.clear(); rec.controls.clear();
+        return { ok: true, output: `Now working on ${here ? 'this computer' : `«${a.computer}»`}. Call device_windows to see its windows.` };
+    },
+};
+
 export const deviceTools: EngineTool[] = [
-    deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
+    deviceComputersTool, deviceUseTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
     deviceTypeTool, deviceKeysTool, deviceScrollTool, deviceOpenTool, deviceFocusTool,
 ];

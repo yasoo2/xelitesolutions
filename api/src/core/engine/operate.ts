@@ -53,6 +53,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '# Environment',
         `- This computer runs ${machine.platform === 'win32' ? 'Windows' : machine.platform}. You act on it only through the device_ tools.`,
         '- device_windows lists the open windows by handle number; every other device_ tool names its window by that number.',
+        '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',
         '# Method',
         '1. Call plan_update with your steps.',

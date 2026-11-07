@@ -15,6 +15,19 @@ import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../typ
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { encodedCommand, runDesktop, type DesktopAction, type PowerShellRunner } from '../../../core/devices/windows-desktop';
 import { DesktopHost } from '../../../core/devices/desktop-host';
+import { deviceLinks } from '../../../core/devices/device-link';
+import { config } from '../../../shared/config';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+
+/** This computer and the owner's linked ones, as device_computers says them. */
+export function computersText(owner: string): string {
+    const linked = deviceLinks.list(owner);
+    const here = `This computer: ${os.hostname()} (${WINDOWS ? 'Windows: Joe can work its desktop' : `${process.platform}: no desktop control here`}).`;
+    if (!linked.length) return `${here}\nNo other computer is linked. The owner links one from Joe's settings (Devices): one line run on that computer.`;
+    return [here, 'Linked computers:', ...linked.map(d => `- ${d.name} (${d.os || 'Windows'}${d.user ? `, user ${d.user}` : ''}${d.screen ? `, screen ${d.screen}` : ''}) connected`)].join('\n');
+}
 
 const WINDOWS = process.platform === 'win32';
 
@@ -88,8 +101,9 @@ export class EngineDeviceTool implements ToolDefinition {
     readonly inputSchema = {
         type: 'object',
         properties: {
-            op: { type: 'string', description: 'look | windows | focus | click | move | drag | scroll | type | key | open | ui | act' },
+            op: { type: 'string', description: 'look | windows | focus | click | move | drag | scroll | type | key | open | ui | act | computers' },
             window: { type: 'number', description: 'The window handle the action is for.' },
+            computer: { type: 'string', description: 'A linked computer\'s name; absent for this computer.' },
         },
         required: ['op'],
     };
@@ -97,10 +111,30 @@ export class EngineDeviceTool implements ToolDefinition {
     permissions: ToolPermission[] = ['execute'];
     sideEffects: ToolPermission[] = ['execute'];
     rateLimitPerMinute = 240;
-    auditFields = ['op', 'window', 'target'];
+    auditFields = ['op', 'window', 'target', 'computer'];
     mockSupported = false;
 
-    async execute(input: any): Promise<ToolExecutionResult> {
+    async execute(input: any, context?: any): Promise<ToolExecutionResult> {
+        const owner = String(context?.userId || context?.auth?.sub || config.localUserId || '').trim();
+        if (String(input?.op || '') === 'computers') return { ok: true, output: { text: computersText(owner) } } as any;
+        //  A linked computer (core/devices/device-link.ts): its own helper acts, its own guard decides.
+        const computer = String(input?.computer || '').trim();
+        if (computer) {
+            const action = desktopActionOf(input);
+            if ('error' in action) return { ok: false, error: action.error, output: { text: action.error } } as any;
+            const timeout = action.op === 'ui' || action.op === 'act' || action.op === 'look' ? 90_000 : 60_000;
+            if (action.op === 'look') {
+                const seen = await deviceLinks.look(owner, computer, action, timeout);
+                if (!seen.ok) return { ok: false, error: seen.error, output: { text: seen.error } } as any;
+                try { fs.mkdirSync(path.dirname(action.file), { recursive: true }); fs.writeFileSync(action.file, seen.look.png); }
+                catch (e: any) { return { ok: false, error: `the picture could not be kept: ${e?.message || e}`, output: { text: 'the picture could not be kept' } } as any; }
+                return { ok: true, output: { text: seen.look.frame } } as any;
+            }
+            const r = await deviceLinks.send(owner, computer, action, timeout);
+            return r.ok
+                ? { ok: true, output: { text: r.out } } as any
+                : { ok: false, error: r.error || 'the action failed on the linked computer', output: { text: r.error || r.out } } as any;
+        }
         if (!WINDOWS) {
             const text = `This computer runs ${process.platform}; Joe's desktop control works on Windows in this version. Say so to the owner.`;
             return { ok: false, error: 'desktop control is Windows-only in this version', output: { text } } as any;
