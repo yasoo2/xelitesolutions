@@ -476,6 +476,16 @@ describe('«حاول مره اخرى»: the run knows the chat\'s device work, a
     });
 });
 
+describe('the logs panel follows the newest line past its 220-line window', () => {
+    test('the scroll follows the lines, not the length of the window on screen', () => {
+        const fs = require('fs');
+        const path = require('path');
+        const panel = fs.readFileSync(path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'WorkspacePanel.tsx'), 'utf8');
+        expect(panel).toContain('}, [filtered.length, filtered[filtered.length - 1], autoScroll,');
+        expect(panel).not.toContain('}, [renderedLogs.length, autoScroll,');
+    });
+});
+
 describe('the plan and the log', () => {
     test('a step called blocked, failed or completed is kept, not refused', () => {
         const { parsePlanArgs } = require('../core/engine/plan');
