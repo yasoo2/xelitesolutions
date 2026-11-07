@@ -76,9 +76,13 @@ describe('what Joe sends', () => {
         await phone.tap(940.4, 145.6);
         await phone.key('back');
         await phone.swipe(540, 1800, 540, 600);
+        //  The dump has its own file on the phone (2026-11-08: two readers at once never share one), removed after.
+        const dumpFile = adb.calls[0][5];
+        expect(dumpFile).toMatch(/^\/sdcard\/joe-ui-[0-9a-z]+\.xml$/u);
         expect(adb.calls).toEqual([
-            ['-s', 'R58N12ABCDE', 'shell', 'uiautomator', 'dump', '/sdcard/joe-ui.xml'],
-            ['-s', 'R58N12ABCDE', 'exec-out', 'cat', '/sdcard/joe-ui.xml'],
+            ['-s', 'R58N12ABCDE', 'shell', 'uiautomator', 'dump', dumpFile],
+            ['-s', 'R58N12ABCDE', 'exec-out', 'cat', dumpFile],
+            ['-s', 'R58N12ABCDE', 'shell', 'rm', '-f', dumpFile],
             ['-s', 'R58N12ABCDE', 'shell', 'input', 'tap', '940', '146'],
             ['-s', 'R58N12ABCDE', 'shell', 'input', 'keyevent', '4'],
             ['-s', 'R58N12ABCDE', 'shell', 'input', 'swipe', '540', '1800', '540', '600', '300'],
@@ -108,14 +112,23 @@ describe('what Joe sends', () => {
     });
 
     test('a picture is a PNG or a failure, and an app opens by its package name only', async () => {
-        const png = Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG\r\n'), Buffer.alloc(20)]);
+        //  A whole PNG ends with its IEND chunk.
+        const png = Buffer.concat([Buffer.from([0x89]), Buffer.from('PNG\r\n'), Buffer.alloc(20), Buffer.from([0, 0, 0, 0]), Buffer.from('IEND'), Buffer.from([0xae, 0x42, 0x60, 0x82])]);
         const adb = fakeAdb({ 'shell monkey': { stdout: 'Events injected: 1\n' } });
         const phone = new AndroidPhone(adb.run, 'X');
-        //  Taken on the phone, pulled as a file: no binary through a text pipe.
+        //  Taken on the phone into its own file, pulled as a file (no binary through a text pipe), removed there.
         const look = await phone.look('C:/tmp/shot.png', () => png);
         expect(look.ok).toBe(true);
-        expect(adb.calls.slice(0, 2).map(c => c.slice(2).join(' '))).toEqual(['shell screencap -p /sdcard/joe-shot.png', 'pull /sdcard/joe-shot.png C:/tmp/shot.png']);
+        const shot = adb.calls[0][5];
+        expect(shot).toMatch(/^\/sdcard\/joe-shot-[0-9a-z]+\.png$/u);
+        expect(adb.calls.slice(0, 3).map(c => c.slice(2).join(' '))).toEqual([`shell screencap -p ${shot}`, `pull ${shot} C:/tmp/shot.png`, `shell rm -f ${shot}`]);
         expect((await phone.look('C:/tmp/shot.png', () => Buffer.from('not a picture'))).ok).toBe(false);
+        //  A picture cut short (the live view and Joe writing one file at once, 2026-11-08) is taken again, then refused.
+        const cut = png.subarray(0, png.length - 12);
+        const before = adb.calls.length;
+        const r = await phone.look('C:/tmp/shot.png', () => cut);
+        expect(r).toEqual({ ok: false, error: 'the picture came over cut short' });
+        expect(adb.calls.slice(before).filter(c => c.includes('screencap'))).toHaveLength(2);
         expect(await phone.open('com.whatsapp')).toEqual({ ok: true });
         expect((await phone.open('whatsapp; reboot')).ok).toBe(false);
         expect(adb.calls.filter(c => c.includes('monkey'))).toHaveLength(1);

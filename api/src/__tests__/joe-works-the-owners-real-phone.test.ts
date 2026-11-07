@@ -562,9 +562,10 @@ describe('the preview shows the phone or the computer live while Joe works it', 
                     calls.push(key);
                     if (key.startsWith('pull ')) {
                         const fs = require('fs');
-                        //  A tiny PNG: the signature, then an IHDR of 1080×2460.
-                        const png = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(png, 0);
-                        png.writeUInt32BE(1080, 16); png.writeUInt32BE(2460, 20);
+                        //  A tiny PNG: the signature, an IHDR of 1080×2460, and the IEND that ends a whole one.
+                        const head = Buffer.alloc(33); Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(head, 0);
+                        head.writeUInt32BE(1080, 16); head.writeUInt32BE(2460, 20);
+                        const png = Buffer.concat([head, Buffer.from([0, 0, 0, 0]), Buffer.from('IEND'), Buffer.from([0xae, 0x42, 0x60, 0x82])]);
                         fs.writeFileSync(args[args.length - 1], png);
                     }
                     const out = key.startsWith('devices') ? phones : key === 'shell dumpsys power' ? POWER_AWAKE : '';
@@ -627,6 +628,39 @@ describe('the preview shows the phone or the computer live while Joe works it', 
         const live = web('components', 'LiveDevicePanel.tsx');
         expect(live).toContain('`${API_URL}/devices/${source}/screen`');
         expect(live).toContain("if (!visible) return;");
+    });
+});
+
+describe('a picture the model cannot read never fails a run', () => {
+    test('«Could not process image»: the picture is taken out and the run goes on', async () => {
+        const { runEngine } = require('../core/engine/loop');
+        const os = require('os');
+        const fs = require('fs');
+        const path = require('path');
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-img-'));
+        const shot = path.join(dir, 'shot.png');
+        fs.writeFileSync(shot, Buffer.from('not really a png'));
+        let n = 0;
+        let sawImageAfterRefusal = false;
+        const model = {
+            vision: true, label: 'script', contextTokens: () => 100_000,
+            async step(messages: any[]) {
+                n++;
+                const hasImage = messages.some(m => Array.isArray(m.content) && m.content.some((p: any) => p.type === 'image_url'));
+                if (n === 1) return { text: 'أنظر إلى الشاشة.', toolCalls: [{ id: 'l1', name: 'look_tool', arguments: '{}' }], durationMs: 1 };
+                if (n === 2) { expect(hasImage).toBe(true); throw new Error('The Claude API call failed (400): Could not process image'); }
+                sawImageAfterRefusal = hasImage;
+                return { text: 'تم.', toolCalls: [{ id: 'f1', name: 'task_finish', arguments: JSON.stringify({ summary: 'تم.' }) }], durationMs: 1 };
+            },
+        };
+        const look = { name: 'look_tool', description: 'x', parameters: { type: 'object', properties: {} }, parse: () => ({ ok: true, value: {} }), run: async () => ({ ok: true, output: 'a picture', images: [{ path: shot, mime: 'image/png' }] }) };
+        const finish = { name: 'task_finish', description: 'x', parameters: { type: 'object', properties: {} }, parse: (a: any) => ({ ok: true, value: a }), run: async () => ({ ok: true, output: 'ok', facts: { verification: { passed: true, checks: [], unproven: [], at: Date.now() } } }) };
+        const result = await runEngine({ runId: 'img-run', request: 'انظر', language: 'ar', replyLanguage: 'ar', projectDir: dir, deadlineAt: Date.now() + 60_000, signal: new AbortController().signal, emit: () => { }, joe: {}, operate: true }, {
+            model, tools: [look, finish], processes: { list: () => [], stopAll: async () => { } } as any, browser: () => ({}) as any, machine: { platform: 'win32', shell: 'powershell' } as any,
+        });
+        expect(result.status).toBe('delivered');
+        expect(n).toBe(3);
+        expect(sawImageAfterRefusal).toBe(false);
     });
 });
 
