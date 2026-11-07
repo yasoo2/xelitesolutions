@@ -193,7 +193,8 @@ export async function connectPhone(adb: AdbRunner, address: string): Promise<{ o
 }
 
 export class AndroidPhone {
-    constructor(private readonly adb: AdbRunner, readonly serial: string) { }
+    /** pause: injectable, so a test does not wait for the keyboard to bind. */
+    constructor(private readonly adb: AdbRunner, readonly serial: string, private readonly pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms))) { }
 
     private run(args: string[], opts?: { timeoutMs?: number }) {
         return this.adb(['-s', this.serial, ...args], opts);
@@ -276,13 +277,28 @@ export class AndroidPhone {
         }
         const ime = await this.run(['shell', 'ime', 'list', '-s']);
         if (!ime.stdout.includes(ADB_KEYBOARD)) {
-            return { ok: false, error: 'This text is not plain ASCII, and Android types that only through a keyboard app: install «ADB Keyboard» (com.android.adbkeyboard) on the phone once, and Joe types Arabic and every other script.' };
+            /*
+             * Installed is not enabled: Android lists a keyboard app among the
+             * enabled ones only once it is turned on (the owner's phone,
+             * 2026-11-08, right after the install). Joe turns it on himself;
+             * the owner's own keyboard stays his default.
+             */
+            const all = await this.run(['shell', 'ime', 'list', '-a', '-s']);
+            if (!all.stdout.includes(ADB_KEYBOARD)) {
+                return { ok: false, error: 'This text is not plain ASCII, and Android types that only through a keyboard app: install «ADB Keyboard» (com.android.adbkeyboard) on the phone once, and Joe types Arabic and every other script.' };
+            }
+            const on = await this.run(['shell', 'ime', 'enable', ADB_KEYBOARD]);
+            if (on.code !== 0) return { ok: false, error: `the ADB Keyboard is installed but could not be turned on: ${(on.stderr || on.stdout).trim()}` };
         }
         const current = (await this.run(['shell', 'settings', 'get', 'secure', 'default_input_method'])).stdout.trim();
-        if (current !== ADB_KEYBOARD) await this.run(['shell', 'ime', 'set', ADB_KEYBOARD]);
+        if (current !== ADB_KEYBOARD) {
+            await this.run(['shell', 'ime', 'set', ADB_KEYBOARD]);
+            //  The keyboard binds to the field it is set on before it can type there.
+            await this.pause(500);
+        }
         const r = await this.run(['shell', 'am', 'broadcast', '-a', 'ADB_INPUT_B64', '--es', 'msg', Buffer.from(text, 'utf8').toString('base64')]);
-        //  The owner's own keyboard comes back.
-        if (current && current !== ADB_KEYBOARD) await this.run(['shell', 'ime', 'set', current]);
+        //  The owner's own keyboard comes back, once the text is in.
+        if (current && current !== ADB_KEYBOARD) { await this.pause(300); await this.run(['shell', 'ime', 'set', current]); }
         return r.code === 0 && /result=0|Broadcast completed/u.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'typing failed').trim() };
     }
 
