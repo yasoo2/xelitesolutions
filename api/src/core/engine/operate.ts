@@ -70,9 +70,30 @@ export function isOperateRequest(text: string): boolean {
     return ON_DEVICE.test(t) || ON_PHONE.test(t) || DESKTOP_APP.test(t) || isDeviceRequest(t);
 }
 
+/**
+ * Connecting to a phone, or asking which phones Joe reaches, is about a phone
+ * even without «my»: «اشبك على الهاتف», «connect to the phone», «شو الهواتف
+ * اللي بتوصلها».
+ */
+const PHONE_NOUN = '(?:ال)?(?:هاتف|جوال|جوّال|موبايل|تلفون|تليفون|اندرويد|أندرويد)';
+const PHONE_CONNECT = new RegExp(`(?:اشبك|إشبك|شبّ?ك|اتّ?صل|إتّ?صل|وصّ?ل|اربط|إربط)\\s+(?:على|ب|مع|في|الى|إلى)?\\s*${PHONE_NOUN}|تحكّ?م\\s+(?:ب|في)\\s*${PHONE_NOUN}|\\b(?:connect|link|pair)\\s+(?:to\\s+|with\\s+)?(?:my\\s+|the\\s+|a\\s+|this\\s+|that\\s+)?(?:phone|android|mobile)\\b`, 'iu');
+const PHONES_PLURAL = /(?:الهواتف|هواتف|الجوالات|جوالات|الموبايلات|موبايلات)|\bphones\b/iu;
+
 /** The request is about the owner's phone (the android_ tools), not a computer. */
 export function isPhoneRequest(text: string): boolean {
-    return ON_PHONE.test(String(text || ''));
+    const t = String(text || '');
+    return ON_PHONE.test(t) || PHONE_CONNECT.test(t) || (PHONES_PLURAL.test(t) && REACH.test(t));
+}
+
+/**
+ * The first tool the run is pointed at. A phone is reached with android_devices
+ * and a request about the devices themselves with device_computers: pointing
+ * either at device_windows sent the model through the computer's windows first.
+ */
+export function operatorFirstTool(request: string): 'android_devices' | 'device_computers' | 'device_windows' {
+    if (isPhoneRequest(request)) return 'android_devices';
+    if (isDeviceRequest(request)) return 'device_computers';
+    return 'device_windows';
 }
 
 /** A request only to look (what is on my screen?) needs no action, only a look. */
@@ -97,7 +118,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '',
         '# Method',
         '1. Call plan_update with your steps.',
-        '2. Look first: device_windows, then device_look or device_read of the window you need. If the program is not open, device_open it, then device_windows again to find its new window.',
+        '2. Look first: device_windows, then device_look or device_read of the window you need. If the program is not open, device_open it, then device_windows again to find its new window. On the phone: android_devices, then android_read or android_look.',
         '3. Act on controls by their number when device_read names them (device_press: press, set, focus, toggle, select). It is surer than a click.',
         '4. When a control has no name to act on, read the point off a fresh device_look picture of that window and device_click it. Points are always read off the LAST picture of the same window.',
         '5. Before typing or pressing keys, bring the window to the front (device_focus) and put the cursor in the right field (device_press focus, or a click). Then device_type / device_keys.',
@@ -124,7 +145,7 @@ export function operatorFirstMessage(request: string, language: string, replyLan
         `Request language: ${languageName(language)}.`,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         '',
-        'Start by calling plan_update with your steps, then device_windows.',
+        `Start by calling plan_update with your steps, then ${operatorFirstTool(request)}.`,
     ].join('\n');
 }
 
