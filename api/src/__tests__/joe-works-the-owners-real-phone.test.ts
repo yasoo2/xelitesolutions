@@ -66,7 +66,7 @@ describe('the phone says whether its screen is on and whether it is locked', () 
             'shell dumpsys power': { stdout: POWER_ASLEEP },
             'shell dumpsys window policy': { stdout: POLICY_LOCKED },
         });
-        const phone = new AndroidPhone(adb.run, 'SER1');
+        const phone = new AndroidPhone(adb.run, 'SER1', async () => undefined);
         expect(await phone.screen()).toEqual({ awake: false, locked: true, secure: true });
         expect(adb.calls).toEqual([['-s', 'SER1', 'shell', 'dumpsys', 'power'], ['-s', 'SER1', 'shell', 'dumpsys', 'window', 'policy']]);
         adb.calls.length = 0;
@@ -74,13 +74,16 @@ describe('the phone says whether its screen is on and whether it is locked', () 
         expect(await phone.panel('quick settings')).toEqual({ ok: true });
         expect(await phone.panel('notifications')).toEqual({ ok: true });
         expect(await phone.panel('close')).toEqual({ ok: true });
+        //  Locked: the PIN pad is closed with «back» before a panel opens (2026-11-08); closing never presses back.
+        const lockedFirst = ['shell dumpsys power', 'shell dumpsys window policy', 'shell input keyevent KEYCODE_BACK'];
         expect(adb.calls.map(c => c.slice(2).join(' '))).toEqual([
-            'shell cmd statusbar expand-settings', 'shell cmd statusbar expand-settings',
-            'shell cmd statusbar expand-notifications', 'shell cmd statusbar collapse',
+            ...lockedFirst, 'shell cmd statusbar expand-settings', ...lockedFirst, 'shell cmd statusbar expand-settings',
+            ...lockedFirst, 'shell cmd statusbar expand-notifications', 'shell cmd statusbar collapse',
         ]);
         const bad = await phone.panel('everything');
         expect(bad.ok).toBe(false);
-        expect(adb.calls).toHaveLength(4);
+        //  A panel that does not exist asks the phone nothing.
+        expect(adb.calls).toHaveLength(13);
     });
 
     test('the ADB Keyboard installed but not turned on: Joe turns it on, types Arabic, and the owner\'s keyboard comes back', async () => {

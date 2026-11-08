@@ -127,6 +127,31 @@ describe('the phone he writes from is «this phone»', () => {
     });
 });
 
+describe('on a locked phone the PIN pad is closed before a panel opens', () => {
+    //  2026-11-08: over the TECNO's PIN pad the quick settings never opened, and the tool said they had.
+    test('locked: «back» first (it closes the pad only), then the panel; unlocked: the panel alone', async () => {
+        const { AndroidPhone } = require('../core/devices/android');
+        const locked = fakeAdb([
+            ['dumpsys power', { stdout: 'mWakefulness=Awake\n' }],
+            ['dumpsys window policy', { stdout: '    KeyguardServiceDelegate\n      showing=true\n      secure=true\n' }],
+        ]);
+        expect((await new AndroidPhone(locked.run, 'T', async () => undefined).panel('quick_settings')).ok).toBe(true);
+        const l = locked.lines();
+        expect(l.indexOf('-s T shell input keyevent KEYCODE_BACK')).toBeGreaterThan(-1);
+        expect(l.indexOf('-s T shell input keyevent KEYCODE_BACK')).toBeLessThan(l.indexOf('-s T shell cmd statusbar expand-settings'));
+
+        const open = fakeAdb([
+            ['dumpsys power', { stdout: 'mWakefulness=Awake\n' }],
+            ['dumpsys window policy', { stdout: '    KeyguardServiceDelegate\n      showing=false\n      secure=true\n' }],
+        ]);
+        await new AndroidPhone(open.run, 'T', async () => undefined).panel('quick_settings');
+        expect(open.lines().some(x => x.includes('KEYCODE_BACK'))).toBe(false);
+        //  Closing a panel never presses back.
+        await new AndroidPhone(locked.run, 'T', async () => undefined).panel('close');
+        expect(locked.lines().filter(x => x.includes('KEYCODE_BACK'))).toHaveLength(1);
+    });
+});
+
 describe('the openJoeLink address is only Joe\'s', () => {
     it('refuses an address with quotes, spaces or a path, and a code that is not six digits', async () => {
         const { AndroidPhone } = require('../core/devices/android');

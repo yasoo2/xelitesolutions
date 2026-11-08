@@ -227,10 +227,25 @@ export class AndroidPhone {
         return state;
     }
 
-    /** Opens the quick settings or the notifications, or closes them. */
+    /**
+     * Opens the quick settings or the notifications, or closes them.
+     *
+     * ON A LOCKED PHONE THE PIN PAD IS CLOSED FIRST. The owner's TECNO, 2026-11-08:
+     * the lock screen showed its PIN pad, and over it the panel never opened —
+     * while this said it had: «شغل الكشاف» read the PIN pad twice, found no
+     * flashlight and asked him to unlock. One «back» on a locked phone closes the
+     * pad and only the pad (the phone stays locked; nothing opens); the panel
+     * then opens over the lock screen. Measured on the TECNO: Wi-Fi, Bluetooth
+     * and the flashlight tiles shown, the phone still locked.
+     */
     async panel(which: string): Promise<{ ok: boolean; error?: string }> {
-        const args = PANELS[String(which || '').trim().toLowerCase().replace(/[\s-]/gu, '_')];
+        const name = String(which || '').trim().toLowerCase().replace(/[\s-]/gu, '_');
+        const args = PANELS[name];
         if (!args) return { ok: false, error: `«${which}» is not a panel: ${Object.keys(PANELS).join(', ')}` };
+        if (name !== 'close' && (await this.screen().catch(() => null))?.locked === true) {
+            await this.run(['shell', 'input', 'keyevent', 'KEYCODE_BACK']);
+            await this.pause(700);
+        }
         const r = await this.run(['shell', ...args]);
         return r.code === 0 && !/Unknown command|Exception|not allowed/iu.test(`${r.stdout}${r.stderr}`) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'the panel did not open').trim() };
     }
