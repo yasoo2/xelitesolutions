@@ -4398,22 +4398,3 @@ body:not(.rtl) .joe-user-info {
 }
 .joe-live-chip .joe-live-badge { margin-inline-start: 0; }
 [data-theme="light"] .joe-workspace-content > .joe-live-chip { background: rgba(255, 255, 255, 0.9); }
-
-/* --- Settings › Joe's experience (ExperiencePanel.tsx): what he learned, done again without the AI --- */
-.exp-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
-.exp-total {
-    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; text-align: center;
-    padding: 12px 8px; border-radius: 12px; border: 1px solid var(--joe-border); background: rgba(52, 196, 139, 0.05);
-}
-.exp-total b { font-size: 22px; font-weight: 700; color: var(--joe-gold-primary); font-variant-numeric: tabular-nums; line-height: 1.1; }
-.exp-total span { font-size: 11.5px; line-height: 1.4; color: var(--joe-text-secondary); }
-.exp-tag {
-    display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; border-radius: 999px; font-size: 11px; font-weight: 600;
-    border: 1px solid var(--joe-border); color: var(--joe-text-secondary);
-}
-.exp-tag.on { border-color: rgba(52, 196, 139, 0.45); color: var(--joe-gold-primary); background: rgba(52, 196, 139, 0.08); }
-.exp-lesson { opacity: 0.85; }
-.exp-panel .dev-name { white-space: normal; overflow-wrap: anywhere; }
-@media (max-width: 520px) { .exp-totals { gap: 6px; } .exp-total b { font-size: 18px; } .exp-panel .dev-btn span { display: none; } .exp-panel .dev-btn { padding: 0 10px; } }
-[data-theme="light"] .exp-total { background: #f0fbf6; }
-[data-theme="light"] .exp-total b, [data-theme="light"] .exp-tag.on { color: #0e7a5f; }
