@@ -21,7 +21,18 @@
  * JOE_MAIL_WATCH=off turns it off; JOE_MAIL_WATCH_EVERY_MS sets the pace.
  */
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
-import { activeWatches, newReplies, parseMailNotices, replyMessage, type MailReply, type MailWatch } from '../../core/devices/mail-watch';
+import { activeWatches, MAIL_APPS, newReplies, parseMailNotices, replyMessage, type MailNotice, type MailReply, type MailWatch } from '../../core/devices/mail-watch';
+
+/** The mail notices on the phones online through the Joe app, as the watch reads them. */
+function appMailNotices(): MailNotice[] {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { phoneLinks } = require('../../core/devices/phone-link');
+        return phoneLinks.notices()
+            .filter((x: any) => MAIL_APPS[x.notice.pkg])
+            .map((x: any) => ({ ...x.notice, app: MAIL_APPS[x.notice.pkg], key: `app:${x.phoneId}:${x.notice.key}` }));
+    } catch { return []; }
+}
 import { backfillWatchesFromChats, type ChatLine } from '../../core/engine/tools/mail';
 
 /** The chats' messages of the last 14 days, from the store this Joe keeps them in, with each chat's owner. */
@@ -217,6 +228,11 @@ export class MailWatchService {
         //  forgot the tool — becomes a watch first (tools/mail.ts backfillWatchesFromChats); then a
         //  reply that came while Joe was off, still in the phone's list, is looked for soon after.
         setTimeout(() => { void this.backfill().then(() => this.tick()); }, 20_000).unref?.();
+        //  A phone with the Joe app says when its notifications change: Joe looks at once.
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            require('../../core/devices/phone-link').phoneLinks.on('notices', () => { void this.tick(); });
+        } catch { /* no app phones on this Joe */ }
         console.log(`[MailWatch] started: ${activeWatches().length} person(s) watched, every ${Math.round(everyMs() / 1000)} s`);
     }
 
@@ -249,7 +265,11 @@ export class MailWatchService {
         if (!activeWatches(now).length) return Promise.resolve([]);
         this.running = (async () => {
             try {
-                const r = await executionFirewall.runAsSystem(() => this.read());
+                const r0 = await executionFirewall.runAsSystem(() => this.read());
+                //  Phones linked through the Joe app push their notifications themselves (phone-link.ts):
+                //  they are read beside the cable phone's, and keep the watch going without one.
+                const fromApps = appMailNotices();
+                const r: typeof r0 = !r0.ok && fromApps.length ? { ok: true, dumps: [] } : r0;
                 if (!r.ok) {
                     if (r.code !== this.lastProblem) console.warn(`[MailWatch] cannot read the phone now (${r.code}): ${r.error}`);
                     this.lastProblem = r.code;
@@ -266,7 +286,7 @@ export class MailWatchService {
                     this.toldLost = false;
                     try { await this.sayPhone('back', activeWatches(now)); } catch (e: any) { console.warn('[MailWatch] telling the phone is back failed:', e?.message || e); }
                 }
-                const notices = r.dumps.flatMap(d => parseMailNotices(d.text));
+                const notices = [...r.dumps.flatMap(d => parseMailNotices(d.text)), ...fromApps];
                 const replies = newReplies(notices, now);
                 for (const reply of replies) {
                     const text = replyMessage(reply);

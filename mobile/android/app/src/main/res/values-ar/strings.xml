@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">جو</string>
+    <string name="accessibility_label">جو — التحكم في هذا الهاتف</string>
+    <string name="accessibility_description">يسمح لجو الخاص بك بقراءة شاشة هذا الهاتف والنقر والكتابة وتصوير الشاشة عندما تطلب منه ذلك. جو لا يتصرف إلا بطلبك، ومن جو الخاص بك.</string>
+    <string name="notifications_label">جو — سماع الردود</string>
+    <string name="title">اربط هذا الهاتف بجو الخاص بك</string>
+    <string name="server_hint">عنوان جو (http://… أو https://…)</string>
+    <string name="code_hint">الرمز المكوّن من ستة أرقام الذي أعطاك إياه جو</string>
+    <string name="link">اربط</string>
+    <string name="linked_as">مربوط بـ %1$s باسم «%2$s»</string>
+    <string name="not_linked">غير مربوط بعد: اكتب عنوان جو والرمز الذي أعطاك إياه.</string>
+    <string name="online">متصل: جو يستطيع الوصول إلى هذا الهاتف.</string>
+    <string name="offline">غير متصل الآن: أحاول من جديد…</string>
+    <string name="step_accessibility">١. اسمح لجو بالتحكم في الشاشة (إمكانية الوصول)</string>
+    <string name="step_notifications">٢. اسمح لجو بسماع الردود (الوصول إلى الإشعارات)</string>
+    <string name="step_battery">٣. اترك جو متصلًا (بلا تقييد للبطارية)</string>
+    <string name="done">✓ مفعّل</string>
+    <string name="restricted_hint">إذا قال أندرويد إن هذا الإعداد مقيَّد: افتح معلومات التطبيق › ⋮ › «السماح بالإعدادات المقيدة»، ثم حاول من جديد.</string>
+    <string name="unlink">إلغاء ربط هذا الهاتف</string>
+    <string name="service_title">جو متصل</string>
+    <string name="service_text">جو الخاص بك يستطيع الوصول إلى هذا الهاتف حين تطلب منه.</string>
+    <string name="bad_code">يجب كتابة العنوان والرمز المكوّن من ستة أرقام.</string>
+</resources>

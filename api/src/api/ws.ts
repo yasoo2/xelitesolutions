@@ -481,6 +481,11 @@ export function attachWebSocket(server: Server) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('./device-link-socket').acceptDeviceLink(req, socket, head, reject);
     }
+    if (url.pathname === '/ws/phone-link' || url.pathname === '/api/ws/phone-link') {
+      //  The Joe app on the owner's phone calls in: any Android, from anywhere (phone-link-socket.ts).
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      return require('./phone-link-socket').acceptPhoneLink(req, socket, head, reject);
+    }
     if (url.pathname === '/ws/extension' || url.pathname === '/api/ws/extension') {
       // The user's installed browser extension connecting to drive their real
       // browser. Authenticated by the user's Joe JWT (token query param).

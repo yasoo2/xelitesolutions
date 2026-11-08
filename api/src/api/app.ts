@@ -340,6 +340,9 @@ export const createApp = () => {
   apiRouter.use('/oauth', oauthRoutes);
   apiRouter.use('/extension', extensionRoutes);
   apiRouter.use('/devices', devicesRoutes);
+  //  The owner's phones through the Joe app: any Android, from anywhere (routes/phones.ts).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  apiRouter.use('/phones', require('./routes/phones').default);
   apiRouter.use('/browser-agent', browserAgentRoutes);
   apiRouter.use('/status', statusRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);

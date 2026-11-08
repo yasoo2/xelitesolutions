@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Joe</string>
+    <string name="accessibility_label">Joe — act on this phone</string>
+    <string name="accessibility_description">Lets your Joe read this phone\'s screen, tap, type and take a picture of the screen when you ask it to. Joe acts only on your requests, from your own Joe.</string>
+    <string name="notifications_label">Joe — hear replies</string>
+    <string name="title">Link this phone to your Joe</string>
+    <string name="server_hint">Joe\'s address (http://… or https://…)</string>
+    <string name="code_hint">The six-digit code Joe gave you</string>
+    <string name="link">Link</string>
+    <string name="linked_as">Linked to %1$s as «%2$s»</string>
+    <string name="not_linked">Not linked yet: type Joe\'s address and the code Joe gave you.</string>
+    <string name="online">Connected: Joe can reach this phone.</string>
+    <string name="offline">Not connected now: trying again…</string>
+    <string name="step_accessibility">1. Allow Joe to act on the screen (accessibility)</string>
+    <string name="step_notifications">2. Allow Joe to hear replies (notification access)</string>
+    <string name="step_battery">3. Let Joe stay connected (no battery limit)</string>
+    <string name="done">✓ on</string>
+    <string name="restricted_hint">If Android says this setting is restricted: open App info › ⋮ › «Allow restricted settings», then try again.</string>
+    <string name="unlink">Unlink this phone</string>
+    <string name="service_title">Joe is connected</string>
+    <string name="service_text">Your Joe can reach this phone when you ask it to.</string>
+    <string name="bad_code">The address and a six-digit code are both needed.</string>
+</resources>
