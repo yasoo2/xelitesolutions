@@ -36,7 +36,8 @@ import fs from 'fs';
 import path from 'path';
 import type { EngineTool, ToolContext, ToolOutcome } from './types';
 
-export interface StepTarget { text?: string; description?: string; id?: string; kind?: string }
+/** The control a tap pressed: its name, and for a switch its state before the tap. */
+export interface StepTarget { text?: string; description?: string; id?: string; kind?: string; checked?: boolean }
 export interface ExperienceStep { tool: string; args: Record<string, unknown>; target?: StepTarget }
 
 export interface Recipe {
@@ -347,14 +348,15 @@ export interface Trail { steps: ExperienceStep[]; tried: string[] }
  * call becomes a step (a tap with the name of the control it pressed, read off
  * the last android_read), every call a line of what was tried.
  */
-export function recordingTools(tools: EngineTool[], trail: Trail, controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string }>): EngineTool[] {
+export function recordingTools(tools: EngineTool[], trail: Trail, controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string; checked?: boolean | null }>): EngineTool[] {
     return tools.map(t => ({
         ...t,
         async run(args: any, ctx: ToolContext): Promise<ToolOutcome> {
             let target: StepTarget | undefined;
             if (t.name === 'android_tap' && args && Number.isInteger(args.control)) {
                 const c = (controlsOf(ctx.runId) || []).find(k => k.index === args.control);
-                if (c) target = { text: c.text || undefined, description: c.description || undefined, id: c.id || undefined, kind: c.kind || undefined };
+                //  A switch's state before the tap: done again, a switch already the other way is not pressed.
+                if (c) target = { text: c.text || undefined, description: c.description || undefined, id: c.id || undefined, kind: c.kind || undefined, ...(typeof c.checked === 'boolean' ? { checked: c.checked } : {}) };
             }
             const outcome = await t.run(args, ctx);
             const step: ExperienceStep = { tool: t.name, args: cleanArgs(t.name, args), ...(target ? { target } : {}) };
@@ -395,19 +397,28 @@ export function findControl<C extends { index: number; text: string; description
         || null;
 }
 
-export interface ReplayOutcome { done: boolean; ran: number; why?: string; at?: string }
+export interface ReplayOutcome { done: boolean; ran: number; why?: string; at?: string; already?: string[] }
 
 /**
  * Does the recipe's steps again, in this run, through the run's own tools (so
  * the firewall, the audit and the device record see each one), each shown in
  * the run's activity. Stops at the first step that cannot be done.
+ *
+ * A SWITCH ALREADY AS ASKED IS NOT PRESSED. The flashlight tile toggles: «اطفي
+ * الكشاف» learned as one tap on «الكشاف» while it was ON would, done again
+ * while it is already OFF, turn it ON. A tap on a control that had an on/off
+ * state is kept with that state (target.checked); when the control now shows
+ * the other state — the one the tap made — it is not pressed, and `done` says
+ * so (`already`), so the owner is told it already was.
  */
 export async function replaySteps(
     recipe: Recipe, ctx: ToolContext, tools: Map<string, EngineTool>,
-    controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string }>,
+    controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string; checked?: boolean | null }>,
     pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms)),
+    noteDone?: (ctx: ToolContext, tool: string, what: string) => void,
 ): Promise<ReplayOutcome> {
     let ran = 0;
+    const already: string[] = [];
     for (const [i, step] of recipe.steps.entries()) {
         if (ctx.signal.aborted) return { done: false, ran, why: 'the run was cancelled' };
         const tool = tools.get(step.tool);
@@ -416,6 +427,12 @@ export async function replaySteps(
         if (step.tool === 'android_tap' && step.target) {
             const c = findControl(controlsOf(ctx.runId) || [], step.target);
             if (!c) return { done: false, ran, why: `the control «${label(step.target)}» is not on the screen now`, at: stepLine(step) };
+            if (typeof step.target.checked === 'boolean' && typeof c.checked === 'boolean' && c.checked !== step.target.checked) {
+                already.push(label(step.target));
+                noteDone?.(ctx, 'android_tap', `«${label(step.target)}» was already ${c.checked ? 'on' : 'off'}, as asked: not pressed`);
+                ran++;
+                continue;
+            }
             args = { ...args, control: c.index };
         }
         const parsed = tool.parse(args);
@@ -431,15 +448,19 @@ export async function replaySteps(
         const wait = SETTLE_MS[step.tool];
         if (wait) await pause(wait);
     }
-    return { done: true, ran };
+    return { done: true, ran, ...(already.length ? { already } : {}) };
 }
 
 /** What the owner is told when the book did it: his language, no model named, the cost it saved. */
-export function replaySummary(recipe: Recipe, language: string): string {
+export function replaySummary(recipe: Recipe, language: string, already: string[] = []): string {
     const n = recipe.steps.length;
-    return String(language || '').toLowerCase().startsWith('ar')
-        ? `نفّذتُ «${recipe.request}» من خبرتي: أعدتُ الخطوات التي نجحت من قبل (${n} ${n === 1 ? 'خطوة' : n === 2 ? 'خطوتان' : n <= 10 ? 'خطوات' : 'خطوة'})، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.`
-        : `I did «${recipe.request}» from my experience: the ${n} step(s) that worked before, with no AI call, then checked the result with my own checks.`;
+    const ar = String(language || '').toLowerCase().startsWith('ar');
+    const was = already.length
+        ? (ar ? ` وكان ${already.map(a => `«${a}»`).join(' و')} على الحالة المطلوبة أصلًا، فلم أضغطه.` : ` ${already.map(a => `«${a}»`).join(', ')} was already as asked, so I did not press it.`)
+        : '';
+    return ar
+        ? `نفّذتُ «${recipe.request}» من خبرتي: أعدتُ الخطوات التي نجحت من قبل (${n} ${n === 1 ? 'خطوة' : n === 2 ? 'خطوتان' : n <= 10 ? 'خطوات' : 'خطوة'})، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.${was}`
+        : `I did «${recipe.request}» from my experience: the ${n} step(s) that worked before, with no AI call, then checked the result with my own checks.${was}`;
 }
 
 /** What the model is told when the book could not finish: where Joe stopped, so it goes on from there. */
