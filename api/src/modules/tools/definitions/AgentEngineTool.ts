@@ -39,8 +39,9 @@ import { replyLanguageCode } from '../../../shared/reply-language';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
-import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
-import { askOwnerTool, CONTINUED_MARK, continuedRequest, deviceWorkAnchor, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
+import { androidTools, controlsOf, forgetAndroid } from '../../../core/engine/tools/android';
+import { askOwnerTool, CONTINUED_MARK, continuedRequest, deviceWorkAnchor, isPhoneRequest, operateOutput, operateVerifier, requestKind, standsAloneRequest } from '../../../core/engine/operate';
+import { experienceFacts, learnFromRun, noteReplay, recordingTools, replayFor, replayNote, replaySteps, replaySummary, type Trail } from '../../../core/engine/experience';
 import { answeredQuestion, deviceWorkFacts, lastDeviceWork, noteOperateResult, pendingQuestion, questionTakenBy } from '../../../core/engine/device-work';
 import { emailWatchTool, watchAfterSentEmail } from '../../../core/engine/tools/mail';
 import { mailWatchFacts } from '../../../core/devices/mail-watch';
@@ -129,22 +130,59 @@ async function runOperate(o: {
         const about = operateAboutFor(words, previous);
         //  A watch on the mail counts for this run only when it was made after this moment.
         const since = Date.now();
+        /*
+         * JOE'S EXPERIENCE (core/engine/experience.ts, the owner, 2026-11-08: «Joe learns by
+         * himself from his work»). What the request is, standing alone: his words, or what his
+         * short message continued. The book gives the run the ways that worked for it and what
+         * failed; the same fixed action again is done from the book with no model call.
+         */
+        const owner = String(o.context.userId || '');
+        const targetKind: 'phone' | 'computer' = o.target || (isPhoneRequest(about) ? 'phone' : 'computer');
+        const kind = requestKind(words, about);
+        const learnedAs = standsAloneRequest(words) ? words : previous && standsAloneRequest(previous) ? previous : '';
+        const experience = learnedAs ? experienceFacts(owner, learnedAs, targetKind) : '';
+        const recipe = !pending && learnedAs === words && kind === 'act' ? replayFor(owner, words, targetKind) : null;
+        const trail: Trail = { steps: [], tried: [] };
+        let replayRan = false;
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
             replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
-            operateHistory: history, ...(about !== o.request ? { operateAbout: about } : {}),
+            operateHistory: [history, experience].filter(Boolean).join('\n\n'), ...(about !== o.request ? { operateAbout: about } : {}),
             signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
             model: o.brain.model,
-            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, emailWatchTool, askOwnerTool, finishTool(operateVerifier({ about, own: words, since }))],
+            tools: recordingTools([planUpdateTool, ...deviceTools, ...androidTools, ...webTools, emailWatchTool, askOwnerTool, finishTool(operateVerifier({ about, own: words, since }))], trail, controlsOf),
             processes: createProcessRegistry(toolContext),
             browser: () => createBrowserSession(toolContext),
             machine: await machineFacts(),
+            ...(recipe ? {
+                before: async (ctx: any, tools: Map<string, any>) => {
+                    replayRan = true;
+                    const r = await replaySteps(recipe, ctx, tools, controlsOf);
+                    return r.done
+                        ? { finish: replaySummary(recipe, o.replyLanguage || o.language), refused: (failed: string) => replayNote(recipe, r, failed) }
+                        : { note: replayNote(recipe, r) };
+                },
+            } : {}),
         });
         const out = operateOutput(result, o.replyLanguage);
         //  The chat's answerer reads what was done here (operate.ts deviceWorkFacts).
         const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
+        //  The book learns: a replay that delivered with no model step counts for the recipe;
+        //  any other run is a recipe when proven done, a lesson when it failed.
+        try {
+            const replayWon = !!recipe && replayRan && out.ok && result.status === 'delivered' && result.steps === 0;
+            if (recipe && replayRan) noteReplay(recipe.id, replayWon);
+            if (!replayWon && learnedAs && !asked && result.status !== 'cancelled') {
+                learnFromRun({
+                    ownerId: owner, request: learnedAs, target: targetKind, kind, ok: out.ok, steps: trail.steps, tried: trail.tried,
+                    summary: String(result?.summary || ''), reason: out.ok ? undefined : String(out.error || result?.reason || ''),
+                    language: String(o.replyLanguage || o.language || ''), model: String(result.model || ''),
+                    costUsd: o.brain.model.spentUsd ?? undefined, durationMs: result.durationMs,
+                });
+            }
+        } catch (e: any) { console.warn('[Experience] not kept:', e?.message || e); }
         noteOperateResult(o.context.sessionId, {
             target: o.target || (isPhoneRequest(about) ? 'phone' : 'computer'),
             //  His answer is kept with what it answered («الاقتران اللاسلكي — حاول مره اخرى»), so the

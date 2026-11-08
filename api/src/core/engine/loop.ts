@@ -38,6 +38,13 @@ export interface EngineDeps {
     /** Reads the requested items. A failure leaves the ledger empty, never the run stopped. */
     seedRequirements?: (request: string, language: string) => Promise<RequirementSeed[]>;
     now?: () => number;
+    /**
+     * Before the first model call: work done without a model (experience.ts, a
+     * request done again from Joe's book). `finish` claims it done — the run's
+     * own task_finish checks it, and a pass delivers with no model call; `note`
+     * tells the model, in its first message, what was done and where it stopped.
+     */
+    before?: (ctx: ToolContext, tools: Map<string, EngineTool>) => Promise<{ finish?: string; note?: string; refused?: (failed: string) => string } | null>;
 }
 
 /** Steps with no file changed, no command passing and no page served before the engine steps in. */
@@ -167,14 +174,43 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
+
+    //  Work done before any model call (experience.ts: a request done again from Joe's book).
+    //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+    let preDelivered: string | null = null;
+    let preNote = '';
+    const lastErrorsBefore: string[] = [];
+    if (deps.before) {
+        try {
+            const pre = await deps.before(ctx, tools);
+            const fin = tools.get('task_finish');
+            if (pre?.finish && fin) {
+                const parsed = fin.parse({ summary: pre.finish });
+                if (parsed.ok) {
+                    const outcome = await fin.run(parsed.value, ctx);
+                    absorbFacts(state, outcome.facts);
+                    if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
+                    else {
+                        const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                        preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
+                    }
+                }
+            } else if (pre?.note) preNote = pre.note;
+        } catch (e) {
+            preNote = '';
+            lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+        }
+    }
+
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
-    conv.push({ role: 'user', content: req.operate
+    const opening = req.operate
         ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
+        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change);
+    conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
     req.emit({ type: 'plan', plan: state.plan });
 
-    const lastErrors: string[] = [];
+    const lastErrors: string[] = [...lastErrorsBefore];
     const failures = new Map<string, number>();
     let idle = 0;
     let modelFailures = 0;
@@ -189,6 +225,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     let summary = '';
     let howToRun = '';
     let ending: { status: EngineResult['status']; reason?: string } | null = null;
+    //  Done from Joe's book and passed his checks: delivered with no model call.
+    if (preDelivered !== null) { summary = preDelivered; ending = { status: 'delivered' }; }
     let served = deps.processes.list();
     const usage: NonNullable<ModelStep['usage']>[] = [];
 

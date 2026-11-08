@@ -36,6 +36,7 @@ import browserRoutes from './routes/browser';
 import oauthRoutes from './routes/oauth';
 import extensionRoutes from './routes/extension';
 import devicesRoutes from './routes/devices';
+import experienceRoutes from './routes/experience';
 import browserAgentRoutes from './routes/browserAgent';
 import statusRoutes from './routes/status';
 import serverRoutes from './routes/servers';
@@ -343,6 +344,8 @@ export const createApp = () => {
   //  The owner's phones through the Joe app: any Android, from anywhere (routes/phones.ts).
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   apiRouter.use('/phones', require('./routes/phones').default);
+  //  Joe's experience book: what he learned from his own work (routes/experience.ts).
+  apiRouter.use('/experience', experienceRoutes);
   apiRouter.use('/browser-agent', browserAgentRoutes);
   apiRouter.use('/status', statusRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);
