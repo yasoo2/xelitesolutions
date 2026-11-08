@@ -169,7 +169,8 @@ describe('1. dictation listens in the language he speaks, not in the default Eng
         expect(rec.interimResults).toBe(false);
         const effect = effectWith('createDictation(');
         expect(effect).toMatch(/lang: dictationLang,/);
-        expect(effect).toMatch(/\}, \[dictationLang, t\]\);?$/);
+        // Rebuilt for another dictation language only, never for the menus' (t is read through a ref).
+        expect(effect).toMatch(/\}, \[dictationLang\]\);?$/);
         // The old mapping from the interface language is gone.
         expect(composerSource()).not.toMatch(/recognition\.lang = \(\{ ar: 'ar-SA'/);
     });
@@ -383,7 +384,7 @@ describe('4. voice mode off stops a microphone that is still waiting on the brow
         expect(toggle).toContain('isVoiceModeRef.current = on;');
     });
 
-    it('a second press on the big microphone finishes, or cancels a start still waiting', () => {
+    it('a second press on a listening microphone finishes it (a start still waiting is not cancelled: the-microphone-waits-for-allow.test.ts)', () => {
         const toggle = declared('toggleListening');
         expect(toggle).toMatch(/if \(mic\?\.wanted\(\)\) \{\s*mic\.stop\(\);\s*return;\s*\}/);
     });
@@ -403,7 +404,8 @@ describe('5. a replaced recognizer is closed and forgotten', () => {
 
     it('the effect returns that cleanup, and resets the ref and the listening flag', () => {
         const effect = effectWith('createDictation(');
-        expect(effect).toMatch(/return \(\) => \{\s*mic\.dispose\(\);\s*if \(recognitionRef\.current === mic\) recognitionRef\.current = null;\s*setIsListening\(false\);\s*\};/);
+        // A start still wanted is carried to the next recognizer first (the-microphone-waits-for-allow.test.ts).
+        expect(effect).toMatch(/return \(\) => \{[\s\S]*?mic\.dispose\(\);\s*if \(recognitionRef\.current === mic\) recognitionRef\.current = null;\s*setIsListening\(false\);\s*setMicPending\(''\);\s*\};/);
     });
 
     it('what he says still reaches the box', () => {
