@@ -10,7 +10,7 @@
  */
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Mail, X } from 'lucide-react';
+import { Mail, Smartphone, X } from 'lucide-react';
 import { SocketService, type JoeNotice } from '../services/socket';
 
 export default function JoeNoticeBanner() {
@@ -18,8 +18,10 @@ export default function JoeNoticeBanner() {
     const [notices, setNotices] = useState<JoeNotice[]>([]);
 
     useEffect(() => SocketService.subscribeNotices(n => {
-        if (!n || n.kind !== 'mail_reply') return;
-        setNotices(list => [...list.filter(x => !(x.chatId === n.chatId && x.who === n.who && x.subject === n.subject)), n].slice(-3));
+        if (!n || !['mail_reply', 'phone_lost', 'phone_back'].includes(String(n.kind))) return;
+        //  The phone came back: the «phone lost» notice goes, and the news that it is back shows.
+        setNotices(list => [...list.filter(x => !(x.kind !== 'mail_reply' && n.kind !== 'mail_reply')
+            && !(x.chatId === n.chatId && x.who === n.who && x.subject === n.subject && x.kind === n.kind)), n].slice(-3));
     }), []);
 
     const n = notices[notices.length - 1];
@@ -30,12 +32,14 @@ export default function JoeNoticeBanner() {
         dismiss();
     };
     const who = n.who || n.address || '';
+    //  The phone the watch reads from was lost, or came back (MailWatchService, 2026-11-08).
+    const phone = n.kind === 'phone_lost' ? t('notice_phoneLost') : n.kind === 'phone_back' ? t('notice_phoneBack') : '';
     return (
-        <div className="joe-notice-banner" role="status" aria-live="polite">
-            <Mail size={15} aria-hidden="true" className="joe-notice-icon" />
-            <span className="joe-notice-text" title={n.subject ? `${who} — ${n.subject}` : who}>
-                {t('notice_mailReplyFrom', { who })}
-                {n.subject ? <span className="joe-notice-subject"> — {n.subject}</span> : null}
+        <div className={`joe-notice-banner${n.kind === 'phone_lost' ? ' is-warning' : ''}`} role="status" aria-live="polite">
+            {phone ? <Smartphone size={15} aria-hidden="true" className="joe-notice-icon" /> : <Mail size={15} aria-hidden="true" className="joe-notice-icon" />}
+            <span className="joe-notice-text" title={phone || (n.subject ? `${who} — ${n.subject}` : who)}>
+                {phone || t('notice_mailReplyFrom', { who })}
+                {!phone && n.subject ? <span className="joe-notice-subject"> — {n.subject}</span> : null}
             </span>
             {n.chatId ? (
                 <button type="button" className="joe-notice-open" onClick={open}>{t('notice_openChat')}</button>

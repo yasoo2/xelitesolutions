@@ -1118,6 +1118,22 @@ export async function auditBuiltApp(
                     const style = getComputedStyle(a);
                     return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
                 }).length,
+                /**
+                 * FIELDS ARE CONTROLS TOO.
+                 *
+                 * The ladder, 2026-11-08, L061: «a price calculator: quantity,
+                 * unit price, discount percent and tax, with the total updating
+                 * as you type» — four number fields, no button (the total
+                 * follows the typing), no <form> — was refused as «not one
+                 * button, link or form on the page». A visible field the
+                 * visitor types in or chooses from is a control of the page.
+                 */
+                fields: Array.from(document.querySelectorAll('input, select, textarea, [contenteditable="true"]')).filter((el: any) => {
+                    if (el.tagName === 'INPUT' && /^(?:hidden|submit|reset|button|image)$/i.test(String(el.getAttribute('type') || ''))) return false;
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
                 h1s: Array.from(document.querySelectorAll('h1')).filter((el: any) => {
                     const rect = el.getBoundingClientRect();
                     const style = getComputedStyle(el);
@@ -1892,7 +1908,7 @@ export async function auditBuiltApp(
          */
         //  Links to the app's own pages are links (inAppRoutes): a page of them
         //  is a way in, judged by the pages it opens, not an empty page.
-        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks) {
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks && !dom.fields) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',

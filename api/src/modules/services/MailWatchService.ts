@@ -21,7 +21,7 @@
  * JOE_MAIL_WATCH=off turns it off; JOE_MAIL_WATCH_EVERY_MS sets the pace.
  */
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
-import { activeWatches, newReplies, parseMailNotices, replyMessage, type MailReply } from '../../core/devices/mail-watch';
+import { activeWatches, newReplies, parseMailNotices, replyMessage, type MailReply, type MailWatch } from '../../core/devices/mail-watch';
 import { backfillWatchesFromChats, type ChatLine } from '../../core/engine/tools/mail';
 
 /** The chats' messages of the last 14 days, from the store this Joe keeps them in, with each chat's owner. */
@@ -67,10 +67,77 @@ const everyMs = (): number => {
 
 export type NoticeReader = () => Promise<{ ok: true; dumps: Array<{ serial: string; text: string }> } | { ok: false; code: string; error: string }>;
 export type OwnerTeller = (reply: MailReply, text: string) => Promise<void>;
+/** The phone was lost while someone is watched, or came back: say so to each owner, in his latest watched chat. */
+export type PhoneTeller = (state: 'lost' | 'back', watches: MailWatch[]) => Promise<void>;
+
+const PHONE_WORDS = {
+    ar: {
+        lost: '📵 لا أرى هاتفك الآن (انفصل الكابل، أو أُطفئ «تصحيح USB»)، فلا أستطيع مراقبة ردود الإيميل حتى يعود. صِله من جديد، وأكمل المراقبة وحدي.',
+        back: '📱 عاد هاتفك متصلًا، وعدت أراقب ردود الإيميل.',
+    },
+    en: {
+        lost: '📵 I cannot see your phone now (the cable came out, or USB debugging is off), so I cannot watch for email replies until it is back. Connect it again and I go on watching by myself.',
+        back: '📱 Your phone is connected again, and I am watching for email replies again.',
+    },
+};
+
+/*
+ * A WATCH THAT CANNOT SEE THE PHONE SAYS SO.
+ *
+ * The owner, 2026-11-08: the phone came off the computer while Joe was
+ * watching for Shoroq's reply, and nothing told him — he would have waited
+ * for a message that could not come. After a minute without the phone (two
+ * looks), each owner with a watch is told once, in his latest watched chat
+ * and in the header; and told again when it is back.
+ */
+async function sayPhoneStateInJoe(state: 'lost' | 'back', watches: MailWatch[]): Promise<void> {
+    const latest = new Map<string, MailWatch>();
+    for (const w of watches) {
+        const key = w.userId || w.sessionId;
+        const old = latest.get(key);
+        if (!old || w.sentAt > old.sentAt) latest.set(key, w);
+    }
+    for (const w of latest.values()) {
+        await postFromJoe(w.sessionId, w.userId || '', PHONE_WORDS[w.lang === 'en' ? 'en' : 'ar'][state], { kind: state === 'lost' ? 'phone_lost' : 'phone_back', chatId: w.sessionId });
+    }
+}
 
 function defaultReader(): NoticeReader {
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return () => require('../tools/definitions/EngineAndroidTool').phoneNotificationsNow();
+}
+
+/** A message from Joe in a chat (kept, live if open) and a notice to its owner wherever he is in Joe. */
+async function postFromJoe(sessionId: string, userIdIn: string, text: string, notice: Record<string, unknown>): Promise<void> {
+    let userId = userIdIn;
+    if (!userId && sessionId) {
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            userId = String((await require('./session-identity').resolveAutonomousSessionIdentity(sessionId))?.userId || '');
+        } catch { /* told in the chat only */ }
+    }
+    await executionFirewall.runAsSystem(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const ws = require('../../api/ws');
+        if (sessionId && userId) ws.registerSessionOwner(sessionId, userId);
+        if (sessionId) {
+            try {
+                // eslint-disable-next-line @typescript-eslint/no-var-requires
+                const { usesLocalChatStore, flushChatStores } = require('../../api/chat-store');
+                if (usesLocalChatStore()) {
+                    const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
+                    store.push({ _id: `mw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: text, createdAt: new Date() });
+                    flushChatStores();
+                } else {
+                    // eslint-disable-next-line @typescript-eslint/no-var-requires
+                    const { Message } = require('../../shared/models/message');
+                    await Message.create({ sessionId, role: 'assistant', content: text, createdAt: new Date() });
+                }
+            } catch (e: any) { console.warn('[MailWatch] the message could not be kept in the chat:', e?.message || e); }
+            ws.broadcast({ type: 'text', sessionId, data: { text, sessionId } } as any);
+        }
+        if (userId) ws.broadcast({ type: 'joe_notice', id: `${String(notice.kind)}:${sessionId}:${Date.now()}`, userId, data: { ...notice, at: Date.now() } } as any);
+    }, { userId, sessionId });
 }
 
 /** The message goes into the chat (kept, and live if open), a notice to the owner wherever he is, and the chat's device memory. */
@@ -132,7 +199,15 @@ export class MailWatchService {
     private running: Promise<MailReply[]> | null = null;
     private lastProblem = '';
 
-    constructor(private readonly read: NoticeReader = defaultReader(), private readonly tell: OwnerTeller = tellOwnerInJoe) {}
+    /** Looks in a row that could not read the phone; whether the owners were told it is lost. */
+    private misses = 0;
+    private toldLost = false;
+
+    constructor(
+        private readonly read: NoticeReader = defaultReader(),
+        private readonly tell: OwnerTeller = tellOwnerInJoe,
+        private readonly sayPhone: PhoneTeller = sayPhoneStateInJoe,
+    ) {}
 
     start(): void {
         if (this.timer || process.env.JOE_MAIL_WATCH === 'off') return;
@@ -178,9 +253,19 @@ export class MailWatchService {
                 if (!r.ok) {
                     if (r.code !== this.lastProblem) console.warn(`[MailWatch] cannot read the phone now (${r.code}): ${r.error}`);
                     this.lastProblem = r.code;
+                    //  Two looks without the phone (a minute): the owners are told, once.
+                    if (++this.misses >= 2 && !this.toldLost && (r.code === 'no_phone' || r.code === 'no_adb')) {
+                        this.toldLost = true;
+                        try { await this.sayPhone('lost', activeWatches(now)); } catch (e: any) { console.warn('[MailWatch] telling the phone is lost failed:', e?.message || e); }
+                    }
                     return [];
                 }
                 this.lastProblem = '';
+                this.misses = 0;
+                if (this.toldLost) {
+                    this.toldLost = false;
+                    try { await this.sayPhone('back', activeWatches(now)); } catch (e: any) { console.warn('[MailWatch] telling the phone is back failed:', e?.message || e); }
+                }
                 const notices = r.dumps.flatMap(d => parseMailNotices(d.text));
                 const replies = newReplies(notices, now);
                 for (const reply of replies) {
