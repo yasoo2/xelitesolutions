@@ -531,8 +531,31 @@ export async function replaySteps(
         if (!tool) return { done: false, ran, why: `${step.tool} is not among this run's tools`, at: stepLine(step) };
         let args: Record<string, unknown> = { ...step.args };
         if (step.tool === 'android_tap' && step.target) {
-            const screen = controlsOf(ctx.runId) || [];
-            const c = findControl(screen, step.target);
+            let screen = controlsOf(ctx.runId) || [];
+            let c = findControl(screen, step.target);
+            /*
+             * A switch not on the screen is looked for once in the quick settings, where the
+             * phone's switches live (flashlight, Wi-Fi, Bluetooth, airplane mode…). Live on the
+             * TECNO, 2026-11-08: «اطفي الكشاف» was learned with the panel already open, so its
+             * recipe never opened it; done again with the panel closed, the tile was not there.
+             */
+            if (!c && typeof step.target.checked === 'boolean' && tools.has('android_panel') && tools.has('android_read')) {
+                const serial = typeof step.args.serial === 'string' ? { serial: step.args.serial } : {};
+                for (const [name, a] of [['android_panel', { panel: 'quick_settings', ...serial }], ['android_read', serial]] as const) {
+                    const t = tools.get(name)!;
+                    const p = t.parse(a);
+                    if (!p.ok) break;
+                    const id = `replay-${recipe.id}-${i}-${name}`;
+                    ctx.emit({ type: 'tool_call', id, name, args: p.value } as any);
+                    let o: ToolOutcome;
+                    try { o = await t.run(p.value, ctx); } catch (e: any) { o = { ok: false, output: String(e?.message || e) }; }
+                    ctx.emit({ type: 'tool_result', id, name, ok: o.ok, output: String(o.output || '').slice(0, 2000), durationMs: 0, facts: o.facts } as any);
+                    if (!o.ok) break;
+                    if (name === 'android_panel') await pause(SETTLE_MS.android_panel);
+                }
+                screen = controlsOf(ctx.runId) || [];
+                c = findControl(screen, step.target);
+            }
             if (!c) return { done: false, ran, why: `the control «${label(step.target)}» is not on the screen now`, at: stepLine(step) };
             const now = currentState(screen, c);
             if (typeof step.target.checked === 'boolean' && typeof now === 'boolean' && now !== step.target.checked) {

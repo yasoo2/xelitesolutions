@@ -311,6 +311,41 @@ describe('a control with no name of its own is known by the word beside it (the 
     });
 });
 
+describe('a switch not on the screen is looked for once in the quick settings', () => {
+    test('«اطفي الكشاف» learned with the panel open, done again with it closed: the panel is opened, the switch found and pressed', async () => {
+        const { replaySteps } = ex();
+        const recipe = learn({
+            request: 'اطفي الكشاف', steps: [
+                { tool: 'android_devices', args: {} },
+                { tool: 'android_read', args: { serial: 'T' } },
+                { tool: 'android_tap', args: { serial: 'T' }, target: { description: 'الكشاف', kind: 'Switch', checked: true } },
+                { tool: 'android_read', args: { serial: 'T' } },
+            ],
+        });
+        const home = [{ index: 1, kind: 'TextView', text: 'الساعة', description: '', id: '' }];
+        const panel = [{ index: 33, kind: 'Switch', text: '', description: 'الكشاف', id: '', checked: true }];
+        const log: string[] = [];
+        //  read 1 → home; the panel opens; read 2 → the panel; read 3 → after the tap.
+        const f = fakeTools([home, home, panel, panel], log);
+        const r = await replaySteps(recipe, { runId: 'qs', signal: new AbortController().signal, emit: () => undefined } as any,
+            new Map(f.tools.map(t => [t.name, t] as const)) as any, f.controlsOf as any, async () => undefined);
+        expect(r).toEqual({ done: true, ran: 4 });
+        expect(log.map(l => l.split(' ')[0])).toEqual(['android_devices', 'android_read', 'android_panel', 'android_read', 'android_tap', 'android_read']);
+        expect(log).toContain('android_panel {"panel":"quick_settings","serial":"T"}');
+    });
+
+    test('a control that is no switch is not looked for there: the run goes to the model', async () => {
+        const { replaySteps } = ex();
+        const recipe = learn({ request: 'افتح البحث', steps: [{ tool: 'android_read', args: {} }, { tool: 'android_tap', args: {}, target: { text: 'Search' } }] });
+        const log: string[] = [];
+        const f = fakeTools([[], []], log);
+        const r = await replaySteps(recipe, { runId: 'np', signal: new AbortController().signal, emit: () => undefined } as any,
+            new Map(f.tools.map(t => [t.name, t] as const)) as any, f.controlsOf as any, async () => undefined);
+        expect(r.done).toBe(false);
+        expect(log.some(l => l.startsWith('android_panel'))).toBe(false);
+    });
+});
+
 describe('a detour is not part of the way', () => {
     test('a tap undone by «back» is taken out with the looks between; repeated looks are kept once', () => {
         //  «اطفي الكشاف» as learned live on the TECNO, 2026-11-08.
