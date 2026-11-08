@@ -605,7 +605,14 @@ export function replayNote(recipe: Recipe, r: ReplayOutcome, checksFailed?: stri
     ].join('\n');
 }
 
-/* ───────────────────────── what the page shows ───────────────────────── */
+/*
+ * ───────────────────────── the book's own account ─────────────────────────
+ *
+ * No menu, tab or button shows it: the owner, 2026-11-08, «I do not want menus
+ * and an experience tab — fewer menus and buttons, everything inside Joe,
+ * automatic». It is read by the tests and the logs, and is what Joe would tell
+ * him in the chat if he asked.
+ */
 
 export interface ExperienceView {
     recipes: Array<Pick<Recipe, 'id' | 'request' | 'target' | 'replayable' | 'whyNot' | 'replays' | 'replayWins' | 'failsInARow' | 'shown' | 'savedUsd' | 'createdAt' | 'lastAt' | 'summary'> & { steps: number }>;

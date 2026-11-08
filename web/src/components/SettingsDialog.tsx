@@ -3,12 +3,11 @@ import { useTranslation } from 'react-i18next';
 import {
     Moon, Sun, Check, LogOut, X,
     Palette, Globe, Shield, ChevronLeft,
-    Monitor, Smartphone, Mail, Activity, Terminal, Wand2, Laptop, GraduationCap
+    Monitor, Smartphone, Mail, Activity, Terminal, Wand2, Laptop
 } from 'lucide-react';
 import { API_URL } from '../config';
 import SystemStatusPanel from './SystemStatusPanel';
 import DevicesPanel from './DevicesPanel';
-import ExperiencePanel from './ExperiencePanel';
 import { RTL_LANGUAGES } from '../i18n';
 import { ACCENTS, getAccent, setAccent, type AccentId, type ThemeMode } from '../accents';
 
@@ -31,7 +30,7 @@ const LANGUAGES = [
     { code: 'es', label: 'Español', flag: '🇪🇸' }
 ];
 
-type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'devices' | 'experience' | 'account';
+type SettingsTab = 'status' | 'appearance' | 'language' | 'instructions' | 'devices' | 'account';
 
 /** One-click preset: makes Joe use the terminal automatically while building.
  *  Its text is `stg_presetTerminalFirstText`, written in the interface language:
@@ -125,14 +124,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
             labelFallback: 'Devices',
             descKey: 'devicesDesc',
             descFallback: 'This computer, and the other computers Joe can work'
-        },
-        {
-            id: 'experience',
-            icon: <GraduationCap size={18} />,
-            labelKey: 'exp_title',
-            labelFallback: 'Joe\'s experience',
-            descKey: 'exp_desc',
-            descFallback: 'What Joe learned from his own work, and does again without the AI'
         },
         {
             id: 'account',
@@ -375,19 +366,6 @@ const SettingsDialog: React.FC<SettingsDialogProps> = ({
                             </div>
                         </div>
                         <DevicesPanel t={t} />
-                    </div>
-                );
-            case 'experience':
-                return (
-                    <div className="stg-content-section stg-fade-in">
-                        <div className="stg-content-header">
-                            <GraduationCap size={22} />
-                            <div>
-                                <h3>{t('exp_title', 'Joe\'s experience')}</h3>
-                                <p>{t('exp_desc', 'What Joe learned from his own work, and does again without the AI')}</p>
-                            </div>
-                        </div>
-                        <ExperiencePanel t={t} lang={lang} />
                     </div>
                 );
             case 'account':
