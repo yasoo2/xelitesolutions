@@ -25,6 +25,7 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';
+import { keepChatTurnInDatabase } from '../../core/engine/chat-history';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -433,6 +434,9 @@ export class AgentLoopService {
                         store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId,
                             role: 'assistant', content: text, createdAt: new Date(), runId });
                         flushChatStores();
+                    } else {
+                        //  On a server with Mongo the answer goes where the web and the chat's memory read it (2026-11-08).
+                        await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: text, runId });
                     }
                 } catch { /* An archive failure must not leave the live run spinning. */ }
                 broadcast({ type: 'text', sessionId, runId, data: { text, sessionId } } as any);
@@ -453,7 +457,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
+    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; ownerText?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -754,6 +758,10 @@ export class AgentLoopService {
                     // مستقل عن sessionId: هذا هو جذر مساحة العمل المختارة من الواجهة.
                     workspaceId: workspaceId || undefined,
                     resumeProjectRoot: String(options.resumeProjectRoot || '').trim() || undefined,
+                    //  What the owner typed: the goal above may be a resumed one, and carries
+                    //  his files' block. An answer to Joe's waiting question is read on these
+                    //  words, and the chat so far leaves them out once (select.ts, 2026-11-08).
+                    ownerText: String(options.ownerText ?? goal).trim() || undefined,
                     modelConfig,
                     memoryContext,
                     language,
@@ -798,6 +806,11 @@ export class AgentLoopService {
                     // durable copy synchronous before cleanup so a session
                     // switch cannot reopen without the reply.
                     flushChatStores();
+                } else {
+                    //  On a server with Mongo the answer was kept nowhere (2026-11-08): the web
+                    //  reads a chat's history from Message, and so does the next run's memory
+                    //  of the chat (core/engine/chat-history.ts). Kept before run_finished, as above.
+                    await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: finalText, runId });
                 }
             } catch { /* non-fatal */ }
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
@@ -874,6 +887,9 @@ export class AgentLoopService {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
                     flushChatStores();
+                } else {
+                    //  On a server with Mongo, where the web and the chat's memory read it (2026-11-08).
+                    await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: failText, runId });
                 }
             } catch { /* persistence must not prevent cleanup */ }
             // Still tell the UI so it stops "thinking" and shows what went wrong.

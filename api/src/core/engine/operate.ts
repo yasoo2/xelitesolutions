@@ -19,6 +19,7 @@ import type { CheckResult, EngineResult, EngineTool, ToolContext, ToolOutcome, V
 import type { FinishArgs, Verifier } from './finish';
 import { deviceRecordFor } from './tools/devices';
 import { clearWorking, getWorking, setWorking } from './device-work';
+import { IS_NEW_BUILD } from './select';
 
 /* ───────────────────────── which requests are operate ───────────────────────── */
 
@@ -57,14 +58,52 @@ const TASK_VERB = /(?:افتح|اكتب|اضغط|احفظ|انسخ|احذف|أر
 
 /**
  * The devices on his Wi-Fi or network (network_devices): «هل توجد أجهزة على نفس
- * الواي فاي؟», «افحص كم جهاز على شبكة الواي فاي», "what is on my wifi".
+ * الواي فاي؟», «افحص كم جهاز على شبكة الواي فاي», "what devices are on my wifi".
+ *
+ * A QUESTION ABOUT THE DEVICES, NOT A MESSAGE THAT NAMES THE NETWORK.
+ *
+ * Found on 2026-11-08: «جهاز» matched inside «جهازي» and «لجهاز», and
+ * "things" and "connected" counted as devices, so «اطفي الواي فاي في جهازي»,
+ * "turn on wifi on my device", «أضف صفحة تعرض الأجهزة المتصلة بالشبكة» and
+ * advice about the router went to a Wi-Fi scan, and the scan's checks passed
+ * them. Now it takes three things together: the network, a device word
+ * standing alone, and a cue that asks to count, name, list or scan them,
+ * close to that word («كم جهاز», «شو الأجهزة», «هل توجد أجهزة», "how many
+ * devices", "scan my wifi for devices"). Turning the Wi-Fi on or off, a build,
+ * a fix or an addition to a project, a site, and advice are not this question.
  */
 const NETWORK = /(?:واي\s*فاي|الوايفاي|وايفاي|wi-?fi|الشبكة|شبكة\s+(?:البيت|المنزل|الواي|الانترنت|الإنترنت)|الراوتر|راوتر)|\b(?:network|router|lan)\b/iu;
-const ANY_DEVICE = /(?:أجهزة|اجهزة|الأجهزة|الاجهزة|جهاز|اجهزه|أجهزه)|\b(?:devices?|things|connected)\b/iu;
+//  JavaScript's \b knows no Arabic letter: an Arabic word starts after a space or a mark and ends before one.
+const NET_START = '(?:^|[\\s،,.؟?!:;(«"\'])';
+const NET_TAIL = '[\\u0621-\\u064A\\u064B-\\u0652]*';
+const NET_END = '(?=[\\s،,.؟?!:;)»"\']|$)';
+//  «جهاز», «جهازاً», «أجهزة», «الأجهزة», «والأجهزة» — never «جهازي» (my device) or «لجهاز».
+const DEVICE_WORD = `(?:(?:و?(?:ال)?(?:أجهزة|اجهزة|اجهزه|أجهزه)|جهاز(?:اً|ًا|ا)?)${NET_END}|devices?\\b)`;
+const COUNT_CUE = '(?:و?(?:كم|شو|ايش|إيش|مين)|أي|أيّ|اي|ما\\s+(?:هي|هو)|ماهي|which|how\\s+many|what)';
+const THERE_CUE = '(?:و?هل(?:\\s+\\S+)?\\s+(?:توجد|يوجد|في|فيه|هناك)|are\\s+there|is\\s+there)';
+const LIST_CUE = `(?:[اإ]?فحص${NET_TAIL}|اعرض${NET_TAIL}|قائمة|list|scan|show)`;
+const NETWORK_QUESTION = new RegExp(
+    `${NET_START}(?:${COUNT_CUE}|${THERE_CUE})(?:\\s+\\S+){0,2}?\\s+${DEVICE_WORD}`
+    + `|${NET_START}ما\\s+${DEVICE_WORD}`
+    //  Asked as a bare noun, the device word first: «الأجهزة المتصلة بالواي فاي؟», "devices on my wifi?".
+    + `|^\\s*${DEVICE_WORD}`
+    + `|${NET_START}${LIST_CUE}(?:\\s+\\S+){0,4}?\\s+${DEVICE_WORD}`
+    //  …and who or what is on it, asked of the network itself: "what's on my wifi", «مين متصل على الواي فاي».
+    + '|\\bwhat(?:\'s|\\s+is)\\s+(?:on|connected\\s+to)\\s+(?:my|our|the)\\s+(?:home\\s+)?(?:wi-?fi|network|router|lan)\\b'
+    + '|\\bwho(?:\'s|\\s+is)\\s+(?:on|connected\\s+to|using)\\s+(?:my|our|the)\\s+(?:home\\s+)?(?:wi-?fi|network|router)\\b'
+    + `|${NET_START}(?:شو|ايش|إيش|مين)\\s+(?:(?:في|فيه|موجود|متصل|المتصل|بيستخدم|يستخدم)\\s+)?(?:على|ب|في)\\s*(?:ال)?(?:واي\\s*فاي|وايفاي|شبكة|راوتر)`, 'iu');
+//  On or off is an action on the Wi-Fi, never a list of what is on it: «اطفي الواي فاي في جهازي», "turn on wifi on my device".
+//  «فعلاً» (really) is not «فعّل».
+const NET_TOGGLE = new RegExp(`${NET_START}[وف]?(?:[اأ]?شغّ?ل|[اأإ]?طف[يئءّ]|سكّ?ر|فعّ?ل(?!ا)|عطّ?ل|[اأإ]?فصل|وقّ?ف)${NET_TAIL}${NET_END}|\\b(?:turn|switch|enable|disable|toggle)\\b`, 'iu');
+//  A fix or an addition leads a change to a project: «أضف صفحة تعرض الأجهزة المتصلة بالشبكة».
+const NET_CHANGE_LEAD = new RegExp(`^\\s*[وف]?(?:(?:please|pls|can\\s+you|could\\s+you)\\s+)?(?:(?:أصلح|اصلح|صلح|أضف|اضف|ضيف|عدّ?ل)${NET_TAIL}${NET_END}|(?:fix|add|change)\\b)`, 'iu');
+//  Advice about the network is answered, not scanned: «كم جهاز يتحمل الراوتر؟», "the best router for many devices".
+const NET_ADVICE = /(?:يتحمّ?ل|يستوعب|[أا]قصى|[أا]فضل|[أا]نصح|نصيحة|نصائح)|\b(?:best|recommend\w*|advice|maximum|max|support|handle)\b/iu;
 
 export function isNetworkRequest(text: string): boolean {
     const t = String(text || '');
-    return NETWORK.test(t) && ANY_DEVICE.test(t) && !BUILD_VERB.test(t);
+    if (!NETWORK.test(t) || !NETWORK_QUESTION.test(t)) return false;
+    return !NET_TOGGLE.test(t) && !BUILD_VERB.test(t) && !IS_NEW_BUILD.test(t) && !NET_CHANGE_LEAD.test(t) && !ABOUT_A_SITE.test(t) && !NET_ADVICE.test(t);
 }
 
 /** The request asks to connect to a device, which devices Joe can reach, or what is on the network. */
@@ -186,9 +225,12 @@ export function operateFollowUp(sessionId: unknown, text: string, now = Date.now
  * either at device_windows sent the model through the computer's windows first.
  */
 export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' | 'network_devices' {
-    //  The Wi-Fi first: «افحص كم جهاز على شبكة الواي فاي» once counted the devices in a phone app.
-    if (isNetworkRequest(request)) return 'network_devices';
+    //  The phone first: «اطفي الواي فاي في هاتفي» and "turn on wifi on my phone" are
+    //  the phone's own Wi-Fi (2026-11-08: they were pointed at a scan). A question
+    //  about the devices on the Wi-Fi is routed to the computer (select.ts), so
+    //  «افحص كم جهاز على شبكة الواي فاي» is not counted in a phone app again.
     if (target === 'phone' || isPhoneRequest(request)) return 'android_devices';
+    if (isNetworkRequest(request)) return 'network_devices';
     if (isDeviceRequest(request)) return 'device_computers';
     return 'device_windows';
 }

@@ -19,6 +19,7 @@ import { workspaceService } from '../../modules/services/WorkspaceService';
 import { Message } from '../../shared/models/message';
 import { continuationExecutionGoal, findInterruptedContinuation, isContinuationCommand } from '../../core/resume/continuation-command';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { keepChatTurnInDatabase } from '../../core/engine/chat-history';
 
 const router = Router();
 
@@ -349,6 +350,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
+        } else {
+            //  On a server with Mongo the message was kept nowhere (2026-11-08): the
+            //  web reads a chat's history from Message, and so does a run's memory of
+            //  the chat (core/engine/chat-history.ts). Kept once, here, without making
+            //  the owner wait for the database before his run starts.
+            void keepChatTurnInDatabase({ sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta() });
         }
     } catch { /* non-fatal */ }
 
@@ -400,6 +407,9 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             workspaceId: resolvedWorkspaceId,
             resumeProjectRoot: resumeProjectRoot || undefined,
             resumeOriginRunId: resumedRunId || undefined,
+            //  What he typed, apart from the goal the run carries (a resumed goal, a file's
+            //  block): an answer to Joe's question is read on his words (select.ts, 2026-11-08).
+            ownerText: submittedText,
             userId,
             userName,
             systemInstructions,

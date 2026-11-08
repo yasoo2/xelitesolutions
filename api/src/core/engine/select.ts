@@ -34,36 +34,98 @@ export function engineFor(context?: { engine?: unknown } | null, env: NodeJS.Pro
  * The readers are Joe's own: the build reader and the edit reader the first
  * engine uses.
  */
-export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate'; target?: 'phone' | 'computer' };
+//  `answers`: the route read this message as the answer to Joe's waiting question
+//  (device-work.ts pendingQuestion); only such a run is given the question.
+export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate'; target?: 'phone' | 'computer'; answers?: boolean };
 
 /** A message that plainly starts something new is not an answer to Joe's waiting question. */
-const IS_NEW_BUILD = /^\s*(?:ابن[يِ]?|ابني|أنشئ|انشئ|اعمل\s+(?:لي\s+)?(?:موقع|تطبيق|صفحة|برنامج)|صمّ?م|build|create|make\s+(?:me\s+)?an?\s+(?:app|site|website|page))(?=[\s،,.!?؟]|$)/iu;
+export const IS_NEW_BUILD = /^\s*(?:ابن[يِ]?|ابني|أنشئ|انشئ|اعمل\s+(?:لي\s+)?(?:موقع|تطبيق|صفحة|برنامج)|صمّ?م|build|create|make\s+(?:me\s+)?an?\s+(?:app|site|website|page))(?=[\s،,.!?؟]|$)/iu;
+
+/**
+ * DOES THIS MESSAGE ANSWER JOE'S WAITING QUESTION?
+ *
+ * Found on 2026-11-08: while a question waited, almost any next message was
+ * taken as its answer — a new build, a change to the chat's project, a
+ * question about something else, «شكرا» — for half an hour. A message
+ * answers it when it reads as an answer: it opens with yes or no («اجل»,
+ * «نعم», «لا», "ok"), it gives what was asked (an address, a number, a
+ * code), or it is short («ارسلها», «افحص», «هذا shoroq…»). A build, small
+ * talk, a change or an undo of the chat's project, and a question about
+ * something else («ما هي عاصمة فرنسا؟») are not answers. One that opens with
+ * yes or no answers even when the change readers see a change in it: «نعم،
+ * وأضف في النص أني سأتأخر» is about the email, not the project.
+ */
+const ANSWER_LEAD = /^\s*(?:نعم|اجل|أجل|ايوه|أيوه|ايوا|أيوا|اي|إي|ايه|إيه|أكيد|اكيد|تمام|طيب|ماشي|موافق|صح|لا|لأ|لاء|كلا|yes|yeah|yep|yup|sure|ok|okay|no|nope|nah|go\s+ahead|do\s+it|send\s+it)(?=[\s،,.!?؟]|$)/iu;
+const ANSWER_DATA = /[^\s@]+@[^\s@]+\.[^\s@]+|\d{3,}/u;
+const OTHER_QUESTION = /^\s*(?:ما\s+(?:هي|هو|معنى)|ماهي|ماهو|من\s+(?:هو|هي)|متى|أين|اين|وين|لماذا|كيف|what\s+(?:is|are|was|were|does)|who\s+(?:is|was|are)|when|where|why|how\s+(?:do|does|can|to|is|are|much))(?=[\s،,.!?؟]|$)/iu;
+const SHORT_ANSWER_WORDS = 8;
+
+export function answersWaitingQuestion(own: string, text: string, sessionId: unknown, project: string | null): boolean {
+    const t = String(own || '').trim();
+    //  A resumed run carries the earlier goal, not what he typed: the resume decided what it continues.
+    if (!t || t.length > 400 || !String(text || '').startsWith(t)) return false;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isBuildRequest } = require('../intelligence/intent-classifier');
+    if (IS_NEW_BUILD.test(t) || startsAfresh(t) || isBuildRequest(t)?.isBuild) return false;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { IntentParser } = require('../intelligence/IntentParser');
+    if (IntentParser.pureConversationKind(t)) return false;
+    if (ANSWER_LEAD.test(t)) return true;
+    if (project) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
+        if (isUndoRequest(t) || isActionableEditRequest(t) || isFollowUpChange(t)) return false;
+        if (chatProjectOrigin(sessionId) === 'imported' && isRepositoryWork(t)) return false;
+    }
+    if (ANSWER_DATA.test(t)) return true;
+    const words = t.split(/\s+/u).filter(Boolean).length;
+    if (words >= 3 && OTHER_QUESTION.test(t)) return false;
+    return words <= SHORT_ANSWER_WORDS;
+}
 
 export async function agentEngineRoute(
     goal: string,
-    context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal } | null,
+    context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal; ownerText?: unknown } | null,
     env: NodeJS.ProcessEnv = process.env,
     deps: { ask?: (prompt: string) => Promise<string> } = {},
 ): Promise<AgentRoute | null> {
     if (engineFor(context, env) !== 'agent') return null;
     const text = String(goal || '').trim();
     if (!text) return null;
+    //  What the owner typed, without the file block a message with a file carries (chat-history.ts ownerWords).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { chatTurnsText, ownerWords, recentChatTurns } = require('./chat-history');
+    const own: string = ownerWords(text, context?.ownerText);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const work = require('./device-work');
+    //  Joe asked the owner on a device and waits for his answer (device-work.ts pendingQuestion).
+    const waiting = work.pendingQuestion(context?.sessionId);
     //  Something to DO on the owner's computer or phone: the engine operates it (operate.ts).
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const operate = require('./operate');
     if (operate.isOperateRequest(text)) {
         const target = operate.isPhoneRequest(text) ? 'phone' : 'computer';
         operate.noteOperate(context?.sessionId, text, target);
+        //  A new command on a device is not the answer, unless it opens with yes or no: «اجل، ارسلها من هاتفي».
+        if (waiting && ANSWER_LEAD.test(own) && text.startsWith(own)) {
+            work.takeQuestion(context?.sessionId, context?.runId);
+            return { kind: 'operate', target, answers: true };
+        }
+        if (waiting) work.answeredQuestion(context?.sessionId);
         return { kind: 'operate', target };
     }
-    //  Joe asked the owner on a device and waits: this message answers him (device-work.ts
-    //  pendingQuestion). «اجل», «ارسلها», «هذا shoroq…» go back to that work (2026-11-08).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const waiting = require('./device-work').pendingQuestion(context?.sessionId);
-    if (waiting && text.length <= 400 && !IS_NEW_BUILD.test(text)) {
-        const target = waiting.target || 'phone';
-        operate.noteOperate(context?.sessionId, waiting.request, target);
-        return { kind: 'operate', target };
+    const project = await chatProjectFolder(context?.sessionId);
+    //  This message answers him: «اجل», «ارسلها», «هذا shoroq…» go back to that work, on that
+    //  device (2026-11-08). The run the route gives it to is the one that reads the question.
+    if (waiting) {
+        if (answersWaitingQuestion(own, text, context?.sessionId, project)) {
+            const target = waiting.target || 'phone';
+            operate.noteOperate(context?.sessionId, waiting.request, target);
+            work.takeQuestion(context?.sessionId, context?.runId);
+            return { kind: 'operate', target, answers: true };
+        }
+        //  …and a message that went elsewhere leaves it answered: it does not take the next one.
+        work.answeredQuestion(context?.sessionId);
     }
     //  A short command that follows work on a device in this chat goes on that device.
     const following = operate.operateFollowUp(context?.sessionId, text);
@@ -71,7 +133,6 @@ export async function agentEngineRoute(
         operate.noteOperate(context?.sessionId, text, following);
         return { kind: 'operate', target: following };
     }
-    const project = await chatProjectFolder(context?.sessionId);
     // The planner's undo (project_undo) puts back the copy the change kept.
     if (project && isUndoRequest(text)) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -92,9 +153,8 @@ export async function agentEngineRoute(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { deviceIntentByModel } = require('./understand');
     //  The chat's last turns go with it: «افحص» after a question about the Wi-Fi is a scan.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { chatTurnsText, recentChatTurns } = require('./chat-history');
-    const chat = chatTurnsText(await recentChatTurns(context?.sessionId, 6), text, 300);
+    //  His own words are left out of them, with or without a file (2026-11-08: shown twice).
+    const chat = chatTurnsText(await recentChatTurns(context?.sessionId, 6), own, 300);
     const target = await deviceIntentByModel(text, context || {}, operate.recentOperate(context?.sessionId), deps.ask, env, chat);
     if (target) {
         operate.noteOperate(context?.sessionId, text, target);
