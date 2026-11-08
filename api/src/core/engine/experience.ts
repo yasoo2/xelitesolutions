@@ -1,0 +1,494 @@
+/**
+ * JOE'S EXPERIENCE BOOK: WHAT HE DID THAT WORKED, AND WHAT DID NOT.
+ *
+ * The owner, 2026-11-08: «I want Joe to learn by himself from his work: a
+ * database of his own experience, so that when someone asks what he did
+ * before, he does it at once — open the phone, he goes in by himself because
+ * he learned it — and uses the AI only for what he does not know. One day we
+ * do without Claude, or make the local model strong at Joe's own work.»
+ * Nothing like it existed (the review of 2026-11-08: a «smart reflex» cache
+ * and a «self-evolution engine» were deleted in 2026 as never wired and full
+ * of made-up answers).
+ *
+ * Stage one, for the work on his devices (operate runs):
+ *
+ *   - A RECIPE is kept for every request Joe's own checks proved done: the
+ *     request, the device, and each successful step in order — a tap by the
+ *     NAME of the control it pressed, never by where it was. A LESSON is kept
+ *     for a run that failed: what was tried and why it stopped.
+ *   - The same request again (the same words, read alike: «شغّل الكشاف» and
+ *     «شغل الكشاف يا جو») is done FROM THE RECIPE, with no model call: each
+ *     step again, then the same checks. Only an action that is fixed and safe:
+ *     nothing that sends, deletes, pays or calls, nothing typed into a
+ *     message, nothing on the computer's screen by position. A step that
+ *     cannot be done (the phone changed) hands the run to the model, told
+ *     where Joe stopped; a recipe that fails twice in a row is not replayed
+ *     until a run teaches it again.
+ *   - Every run is given the closest recipes and lessons as examples, so the
+ *     model (Claude, or the local one) starts from what worked.
+ *
+ * Kept per owner in data/experience/book.json (JOE_EXPERIENCE_FILE);
+ * JOE_EXPERIENCE=off stops learning and using it, JOE_EXPERIENCE_REPLAY=off
+ * keeps the examples and stops the replays.
+ */
+import crypto from 'crypto';
+import fs from 'fs';
+import path from 'path';
+import type { EngineTool, ToolContext, ToolOutcome } from './types';
+
+export interface StepTarget { text?: string; description?: string; id?: string; kind?: string }
+export interface ExperienceStep { tool: string; args: Record<string, unknown>; target?: StepTarget }
+
+export interface Recipe {
+    id: string;
+    ownerId: string;
+    /** The request read alike (requestKey): what a new request is matched on. */
+    key: string;
+    /** His words, as he wrote them the time it was learned. */
+    request: string;
+    target: 'phone' | 'computer';
+    kind: string;
+    steps: ExperienceStep[];
+    /** What Joe told him then, in his language. */
+    summary: string;
+    /** Whether it may be done again with no model, and if not, why. */
+    replayable: boolean;
+    whyNot?: string;
+    language: string;
+    model: string;
+    createdAt: number;
+    lastAt: number;
+    /** What learning it cost: the model's spend and the time. */
+    learnedCostUsd: number;
+    learnedMs: number;
+    /** Done again from the book: how often, how often it worked, and the failures in a row now. */
+    replays: number;
+    replayWins: number;
+    failsInARow: number;
+    /** Given to a run as an example. */
+    shown: number;
+    savedUsd: number;
+}
+
+export interface Lesson {
+    id: string;
+    ownerId: string;
+    key: string;
+    request: string;
+    target: 'phone' | 'computer';
+    reason: string;
+    tried: string[];
+    at: number;
+}
+
+interface Book { recipes: Recipe[]; lessons: Lesson[] }
+
+const MAX_RECIPES_PER_OWNER = 500;
+const MAX_LESSONS_PER_OWNER = 300;
+/** A recipe whose replay failed this many times in a row is not replayed until a run teaches it again. */
+export const REPLAY_FAILS_TO_RETIRE = 2;
+
+export function experienceOn(env: NodeJS.ProcessEnv = process.env): boolean {
+    return String(env.JOE_EXPERIENCE || '').toLowerCase() !== 'off';
+}
+export function replayOn(env: NodeJS.ProcessEnv = process.env): boolean {
+    return experienceOn(env) && String(env.JOE_EXPERIENCE_REPLAY || '').toLowerCase() !== 'off';
+}
+
+/* ───────────────────────── reading a request alike ───────────────────────── */
+
+/** Words that say nothing of what is asked: who is called, politeness, «now», where (the device is kept apart). */
+const FILLERS = new Set([
+    'يا', 'جو', 'لو', 'سمحت', 'فضلك', 'رجاء', 'الان', 'هلا', 'هلق', 'الحين', 'هسا', 'هسه', 'حاليا', 'بسرعه',
+    'هاتفي', 'جوالي', 'تلفوني', 'موبايلي', 'تليفوني', 'الهاتف', 'الجوال', 'التلفون', 'الموبايل', 'هاتف', 'جوال',
+    'في', 'على', 'عال', 'لي', 'من',
+    'please', 'joe', 'now', 'hey', 'my', 'on', 'the', 'a', 'an', 'phone', 'for', 'me', 'pls', 'plz',
+]);
+
+/** Arabic written alike: no marks, one alef, ى → ي, ة → ه; Latin lower case; punctuation out. */
+export function normalizeWords(text: string): string[] {
+    const t = String(text || '')
+        .replace(/[ً-ٰٟـ]/gu, '')
+        .replace(/[آأإٱ]/gu, 'ا')
+        .replace(/ى/gu, 'ي')
+        .replace(/ة/gu, 'ه')
+        .replace(/ؤ/gu, 'و')
+        .replace(/ئ/gu, 'ي')
+        .toLowerCase()
+        .replace(/[^\p{L}\p{N}\s]+/gu, ' ');
+    return t.split(/\s+/u).filter(Boolean);
+}
+
+/** The request read alike: the words that say what is asked, the article off, in one order. */
+export function requestKey(text: string): string {
+    const words = normalizeWords(text)
+        .filter(w => !FILLERS.has(w))
+        .map(w => (w.length >= 5 && w.startsWith('ال') ? w.slice(2) : w));
+    return [...new Set(words)].sort().join(' ');
+}
+
+function similarity(a: string, b: string): number {
+    const x = new Set(a.split(' ').filter(Boolean)), y = new Set(b.split(' ').filter(Boolean));
+    if (!x.size || !y.size) return 0;
+    let both = 0;
+    for (const w of x) if (y.has(w)) both++;
+    return both / (x.size + y.size - both);
+}
+
+/* ───────────────────────── which steps may be done again ───────────────────────── */
+
+/** Steps whose arguments do not depend on what a model read off the screen. */
+const REPLAYABLE = new Set([
+    'android_devices', 'android_read', 'android_look', 'android_torch', 'android_volume', 'android_open', 'android_key',
+    'android_panel', 'android_scroll', 'android_link', 'android_tap', 'android_type', 'android_clear', 'android_apps',
+    'network_devices', 'device_computers',
+]);
+/** Kept out of a recipe: the plan, the finish, and the question asked. */
+const META = new Set(['plan_update', 'task_finish']);
+/** What only he decides, every time: a control with such a name is never pressed from the book. */
+const SENSITIVE = /\b(?:send|delete|remove|erase|pay|buy|purchase|order|checkout|call|dial|confirm|submit|transfer|uninstall|reset|format|sign\s*out|log\s*out)\b|إرسال|ارسال|أرسل|ارسل|حذف|احذف|مسح|امسح|دفع|ادفع|شراء|اشتر|اطلب|اتصال|اتصل|تأكيد|تاكيد|أكّد|تحويل|إلغاء التثبيت|الغاء التثبيت|ضبط المصنع|تسجيل الخروج/iu;
+/** Waits after a step that moves the screen, so the next one finds it settled. */
+const SETTLE_MS: Record<string, number> = { android_panel: 900, android_open: 1500, android_link: 1500, android_tap: 800, android_key: 600, android_scroll: 600, android_type: 400, android_clear: 300 };
+
+function label(t?: StepTarget): string {
+    return String(t?.text || t?.description || t?.id || '').trim();
+}
+
+/** Whether the steps may be done again with no model; if not, why (in English, for the book). */
+export function replayability(steps: ExperienceStep[], kind: string): { ok: boolean; why?: string } {
+    if (kind !== 'act') return { ok: false, why: 'it asks what the screen shows or about the devices: the answer is read anew each time' };
+    if (!steps.length) return { ok: false, why: 'no step to do again' };
+    for (const s of steps) {
+        if (s.tool === 'ask_owner') return { ok: false, why: 'Joe asked the owner something on the way' };
+        if (!REPLAYABLE.has(s.tool)) return { ok: false, why: `${s.tool} is done only by a model reading the moment` };
+        if (s.tool === 'android_tap') {
+            if (!label(s.target)) return { ok: false, why: 'a tap by position, not by a control\'s name' };
+            if (SENSITIVE.test(label(s.target))) return { ok: false, why: `it presses «${label(s.target)}», which he decides each time` };
+        }
+        if (s.tool === 'android_type' && SENSITIVE.test(String(s.args.text || ''))) return { ok: false, why: 'it types what he decides each time' };
+        if (s.tool === 'android_link' && /^(?:tel|sms|smsto|mailto|whatsapp):/iu.test(String(s.args.uri || ''))) return { ok: false, why: 'it opens a call or a message' };
+    }
+    if (!steps.some(s => !/^(?:android_devices|android_read|android_look|android_apps|network_devices|device_computers)$/u.test(s.tool))) {
+        return { ok: false, why: 'it only looked' };
+    }
+    return { ok: true };
+}
+
+/* ───────────────────────── the book on disk ───────────────────────── */
+
+let book: Book | null = null;
+
+function bookFile(): string | null {
+    if (process.env.JOE_EXPERIENCE_FILE) return process.env.JOE_EXPERIENCE_FILE;
+    if (process.env.JEST_WORKER_ID) return null;
+    return path.join(process.cwd(), 'data', 'experience', 'book.json');
+}
+
+function load(): Book {
+    if (book) return book;
+    book = { recipes: [], lessons: [] };
+    const f = bookFile();
+    if (f) {
+        try {
+            const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+            book = {
+                recipes: Array.isArray(j?.recipes) ? j.recipes.filter((r: Recipe) => r && r.id && r.ownerId && Array.isArray(r.steps)) : [],
+                lessons: Array.isArray(j?.lessons) ? j.lessons.filter((l: Lesson) => l && l.id && l.ownerId) : [],
+            };
+        } catch { /* no book yet, or unreadable: start empty */ }
+    }
+    return book;
+}
+
+function save(): void {
+    const f = bookFile();
+    if (!f) return;
+    const b = load();
+    try {
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        const tmp = `${f}.${process.pid}.tmp`;
+        fs.writeFileSync(tmp, JSON.stringify(b));
+        fs.renameSync(tmp, f);
+    } catch (e: any) {
+        console.warn('[Experience] the book could not be saved:', e?.message || e);
+    }
+}
+
+/** For tests: forget what is in memory and read the file again. */
+export function reloadExperience(): void { book = null; }
+
+const newId = () => crypto.randomBytes(6).toString('hex');
+
+/* ───────────────────────── learning ───────────────────────── */
+
+export interface RunLesson {
+    ownerId: string;
+    /** The request that stands alone: his words, or what his short message continued. */
+    request: string;
+    target: 'phone' | 'computer';
+    kind: string;
+    ok: boolean;
+    steps: ExperienceStep[];
+    /** Every call tried, failed ones included, for a lesson: «android_tap «Wi-Fi» → failed: …». */
+    tried?: string[];
+    summary: string;
+    reason?: string;
+    language: string;
+    model: string;
+    costUsd?: number;
+    durationMs?: number;
+}
+
+/** After a run: a recipe when Joe's checks proved it done, a lesson when it failed. Returns what was kept. */
+export function learnFromRun(r: RunLesson, now = Date.now()): Recipe | Lesson | null {
+    if (!experienceOn() || !r.ownerId) return null;
+    const key = requestKey(r.request);
+    if (!key) return null;
+    const b = load();
+    if (!r.ok) {
+        const lesson: Lesson = {
+            id: newId(), ownerId: r.ownerId, key, request: r.request.slice(0, 300), target: r.target,
+            reason: String(r.reason || r.summary || 'it was not done').slice(0, 400), tried: (r.tried || []).slice(-8).map(t => t.slice(0, 160)), at: now,
+        };
+        b.lessons.push(lesson);
+        const mine = b.lessons.filter(l => l.ownerId === r.ownerId);
+        if (mine.length > MAX_LESSONS_PER_OWNER) b.lessons.splice(b.lessons.indexOf(mine[0]), 1);
+        save();
+        return lesson;
+    }
+    const steps = r.steps.filter(s => !META.has(s.tool));
+    const can = replayability(steps, r.kind);
+    const old = b.recipes.find(x => x.ownerId === r.ownerId && x.key === key && x.target === r.target);
+    const fresh: Recipe = {
+        id: old?.id || newId(), ownerId: r.ownerId, key, request: r.request.slice(0, 300), target: r.target, kind: r.kind,
+        steps, summary: String(r.summary || '').slice(0, 600), replayable: can.ok, ...(can.ok ? {} : { whyNot: can.why }),
+        language: r.language, model: r.model, createdAt: old?.createdAt || now, lastAt: now,
+        learnedCostUsd: Math.max(0, Number(r.costUsd) || 0) || old?.learnedCostUsd || 0, learnedMs: Math.max(0, Number(r.durationMs) || 0),
+        replays: old?.replays || 0, replayWins: old?.replayWins || 0, failsInARow: 0, shown: old?.shown || 0, savedUsd: old?.savedUsd || 0,
+    };
+    if (old) b.recipes[b.recipes.indexOf(old)] = fresh; else b.recipes.push(fresh);
+    const mine = b.recipes.filter(x => x.ownerId === r.ownerId);
+    if (mine.length > MAX_RECIPES_PER_OWNER) {
+        const oldest = mine.reduce((a, c) => (c.lastAt < a.lastAt ? c : a));
+        b.recipes.splice(b.recipes.indexOf(oldest), 1);
+    }
+    save();
+    return fresh;
+}
+
+/** The recipe to do again for this request, with no model: the same words read alike, safe, and still trusted. */
+export function replayFor(ownerId: string, request: string, target: 'phone' | 'computer'): Recipe | null {
+    if (!replayOn() || !ownerId) return null;
+    const key = requestKey(request);
+    if (!key) return null;
+    const r = load().recipes.find(x => x.ownerId === ownerId && x.key === key && x.target === target);
+    return r && r.replayable && r.failsInARow < REPLAY_FAILS_TO_RETIRE ? r : null;
+}
+
+/** A replay ended: worked (with what learning it had cost, now saved) or not. */
+export function noteReplay(id: string, worked: boolean, now = Date.now()): void {
+    const r = load().recipes.find(x => x.id === id);
+    if (!r) return;
+    r.replays++;
+    if (worked) { r.replayWins++; r.failsInARow = 0; r.savedUsd += r.learnedCostUsd; r.lastAt = now; }
+    else r.failsInARow++;
+    save();
+}
+
+/* ───────────────────────── examples for a run ───────────────────────── */
+
+function stepLine(s: ExperienceStep): string {
+    const args = { ...s.args };
+    delete (args as any).serial;
+    const shown = s.tool === 'android_tap' && label(s.target) ? `«${label(s.target)}»` : Object.keys(args).length ? JSON.stringify(args).slice(0, 120) : '';
+    return `${s.tool}${shown ? ` ${shown}` : ''}`;
+}
+
+/**
+ * The closest ways that worked and the closest failures, for the run's first
+ * message: the model, Claude or local, starts from what Joe already knows.
+ * Empty when the book has nothing near.
+ */
+export function experienceFacts(ownerId: string, request: string, target: 'phone' | 'computer', n = 3): string {
+    if (!experienceOn() || !ownerId) return '';
+    const key = requestKey(request);
+    if (!key) return '';
+    const b = load();
+    const near = <T extends { key: string; target: string; ownerId: string }>(rows: T[]) => rows
+        .filter(x => x.ownerId === ownerId && x.target === target)
+        .map(x => ({ x, s: similarity(key, x.key) }))
+        .filter(v => v.s >= 0.34)
+        .sort((p, q) => q.s - p.s)
+        .slice(0, n)
+        .map(v => v.x);
+    const recipes = near(b.recipes);
+    const lessons = near(b.lessons);
+    if (!recipes.length && !lessons.length) return '';
+    for (const r of recipes) r.shown++;
+    if (recipes.length) save();
+    const lines: string[] = [];
+    if (recipes.length) {
+        lines.push('JOE\'S EXPERIENCE: ways that worked before for requests like this one, proven by Joe\'s checks. Start from them; the screen may differ now, so read it before you tap.');
+        for (const r of recipes) lines.push(`- «${r.request}» (${r.target}): ${r.steps.map(stepLine).join(' → ')}`);
+    }
+    if (lessons.length) {
+        lines.push('WHAT FAILED BEFORE for requests like this one (do not repeat it as it was):');
+        for (const l of lessons) lines.push(`- «${l.request}»: ${l.reason.replace(/\s+/gu, ' ').slice(0, 200)}${l.tried.length ? ` — tried: ${l.tried.slice(-3).join('; ')}` : ''}`);
+    }
+    return lines.join('\n');
+}
+
+/* ───────────────────────── recording a run's steps ───────────────────────── */
+
+export interface Trail { steps: ExperienceStep[]; tried: string[] }
+
+/**
+ * The run's tools, each kept as it is and recording what it did: a successful
+ * call becomes a step (a tap with the name of the control it pressed, read off
+ * the last android_read), every call a line of what was tried.
+ */
+export function recordingTools(tools: EngineTool[], trail: Trail, controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string }>): EngineTool[] {
+    return tools.map(t => ({
+        ...t,
+        async run(args: any, ctx: ToolContext): Promise<ToolOutcome> {
+            let target: StepTarget | undefined;
+            if (t.name === 'android_tap' && args && Number.isInteger(args.control)) {
+                const c = (controlsOf(ctx.runId) || []).find(k => k.index === args.control);
+                if (c) target = { text: c.text || undefined, description: c.description || undefined, id: c.id || undefined, kind: c.kind || undefined };
+            }
+            const outcome = await t.run(args, ctx);
+            const step: ExperienceStep = { tool: t.name, args: cleanArgs(t.name, args), ...(target ? { target } : {}) };
+            trail.tried.push(`${stepLine(step)} → ${outcome.ok ? 'ok' : `failed: ${String(outcome.output || '').split('\n')[0].slice(0, 100)}`}`);
+            if (outcome.ok && !META.has(t.name)) trail.steps.push(step);
+            return outcome;
+        },
+    }));
+}
+
+/** The arguments as a recipe keeps them: a tap by name drops its number; long text is cut. */
+function cleanArgs(tool: string, args: unknown): Record<string, unknown> {
+    const a: Record<string, unknown> = {};
+    if (!args || typeof args !== 'object') return a;
+    for (const [k, v] of Object.entries(args as Record<string, unknown>)) {
+        if (tool === 'android_tap' && (k === 'control' || k === 'x' || k === 'y')) continue;
+        if (typeof v === 'string') a[k] = v.slice(0, 400);
+        else if (typeof v === 'number' || typeof v === 'boolean') a[k] = v;
+        else if (Array.isArray(v)) a[k] = v.slice(0, 20).map(x => (typeof x === 'string' ? x.slice(0, 200) : x));
+    }
+    if (tool === 'android_tap' && !('control' in (args as any)) && 'x' in (args as any)) { a.x = (args as any).x; a.y = (args as any).y; }
+    return a;
+}
+
+/* ───────────────────────── doing it again ───────────────────────── */
+
+function sameText(a?: string, b?: string): boolean {
+    const n = (s?: string) => normalizeWords(String(s || '')).join(' ');
+    return !!n(a) && n(a) === n(b);
+}
+
+/** The control a recorded tap pressed, on the screen as it is now: by id and name, then by name. */
+export function findControl<C extends { index: number; text: string; description: string; id: string; kind: string }>(controls: C[], t: StepTarget): C | null {
+    const named = (c: C) => (t.text ? sameText(c.text, t.text) : false) || (t.description ? sameText(c.description, t.description) : false);
+    return controls.find(c => !!t.id && c.id === t.id && named(c))
+        || controls.find(c => named(c) && (!t.kind || c.kind === t.kind))
+        || controls.find(c => named(c))
+        || null;
+}
+
+export interface ReplayOutcome { done: boolean; ran: number; why?: string; at?: string }
+
+/**
+ * Does the recipe's steps again, in this run, through the run's own tools (so
+ * the firewall, the audit and the device record see each one), each shown in
+ * the run's activity. Stops at the first step that cannot be done.
+ */
+export async function replaySteps(
+    recipe: Recipe, ctx: ToolContext, tools: Map<string, EngineTool>,
+    controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string }>,
+    pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms)),
+): Promise<ReplayOutcome> {
+    let ran = 0;
+    for (const [i, step] of recipe.steps.entries()) {
+        if (ctx.signal.aborted) return { done: false, ran, why: 'the run was cancelled' };
+        const tool = tools.get(step.tool);
+        if (!tool) return { done: false, ran, why: `${step.tool} is not among this run's tools`, at: stepLine(step) };
+        let args: Record<string, unknown> = { ...step.args };
+        if (step.tool === 'android_tap' && step.target) {
+            const c = findControl(controlsOf(ctx.runId) || [], step.target);
+            if (!c) return { done: false, ran, why: `the control «${label(step.target)}» is not on the screen now`, at: stepLine(step) };
+            args = { ...args, control: c.index };
+        }
+        const parsed = tool.parse(args);
+        if (!parsed.ok) return { done: false, ran, why: parsed.error, at: stepLine(step) };
+        const id = `replay-${recipe.id}-${i}`;
+        ctx.emit({ type: 'tool_call', id, name: step.tool, args: parsed.value } as any);
+        const started = Date.now();
+        let out: ToolOutcome;
+        try { out = await tool.run(parsed.value, ctx); } catch (e: any) { out = { ok: false, output: String(e?.message || e) }; }
+        ctx.emit({ type: 'tool_result', id, name: step.tool, ok: out.ok, output: String(out.output || '').slice(0, 2000), durationMs: Date.now() - started, facts: out.facts } as any);
+        if (!out.ok) return { done: false, ran, why: String(out.output || 'it failed').split('\n')[0].slice(0, 300), at: stepLine(step) };
+        ran++;
+        const wait = SETTLE_MS[step.tool];
+        if (wait) await pause(wait);
+    }
+    return { done: true, ran };
+}
+
+/** What the owner is told when the book did it: his language, no model named, the cost it saved. */
+export function replaySummary(recipe: Recipe, language: string): string {
+    const n = recipe.steps.length;
+    return String(language || '').toLowerCase().startsWith('ar')
+        ? `نفّذتُ «${recipe.request}» من خبرتي: أعدتُ الخطوات التي نجحت من قبل (${n} ${n === 1 ? 'خطوة' : n === 2 ? 'خطوتان' : n <= 10 ? 'خطوات' : 'خطوة'})، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.`
+        : `I did «${recipe.request}» from my experience: the ${n} step(s) that worked before, with no AI call, then checked the result with my own checks.`;
+}
+
+/** What the model is told when the book could not finish: where Joe stopped, so it goes on from there. */
+export function replayNote(recipe: Recipe, r: ReplayOutcome, checksFailed?: string): string {
+    const done = recipe.steps.slice(0, r.ran).map(stepLine).join(' → ');
+    return [
+        `JOE FIRST REPEATED THE WAY THAT WORKED BEFORE for this same request (his experience): ${done ? `these steps were done: ${done}` : 'no step could be done'}.`,
+        checksFailed ? `Every step ran, but Joe's checks did not pass: ${checksFailed}` : `Then ${r.at ? `«${r.at}»` : 'the next step'} could not be done: ${r.why || 'it failed'}.`,
+        'The device may have changed since. Go on from its state now: read the screen first, and do not repeat a step that is already done.',
+    ].join('\n');
+}
+
+/* ───────────────────────── what the page shows ───────────────────────── */
+
+export interface ExperienceView {
+    recipes: Array<Pick<Recipe, 'id' | 'request' | 'target' | 'replayable' | 'whyNot' | 'replays' | 'replayWins' | 'failsInARow' | 'shown' | 'savedUsd' | 'createdAt' | 'lastAt' | 'summary'> & { steps: number }>;
+    lessons: Array<Pick<Lesson, 'id' | 'request' | 'target' | 'reason' | 'at'>>;
+    totals: { recipes: number; replayable: number; replays: number; replayWins: number; savedUsd: number; lessons: number };
+}
+
+export function experienceView(ownerId: string): ExperienceView {
+    const b = load();
+    const recipes = b.recipes.filter(r => r.ownerId === ownerId).sort((p, q) => q.lastAt - p.lastAt);
+    const lessons = b.lessons.filter(l => l.ownerId === ownerId).sort((p, q) => q.at - p.at).slice(0, 50);
+    return {
+        recipes: recipes.map(r => ({
+            id: r.id, request: r.request, target: r.target, replayable: r.replayable && r.failsInARow < REPLAY_FAILS_TO_RETIRE,
+            ...(r.whyNot ? { whyNot: r.whyNot } : r.failsInARow >= REPLAY_FAILS_TO_RETIRE ? { whyNot: 'its last replays failed: a run will teach it again' } : {}),
+            replays: r.replays, replayWins: r.replayWins, failsInARow: r.failsInARow, shown: r.shown, savedUsd: r.savedUsd,
+            createdAt: r.createdAt, lastAt: r.lastAt, summary: r.summary, steps: r.steps.length,
+        })),
+        lessons: lessons.map(l => ({ id: l.id, request: l.request, target: l.target, reason: l.reason, at: l.at })),
+        totals: {
+            recipes: recipes.length,
+            replayable: recipes.filter(r => r.replayable && r.failsInARow < REPLAY_FAILS_TO_RETIRE).length,
+            replays: recipes.reduce((s, r) => s + r.replays, 0),
+            replayWins: recipes.reduce((s, r) => s + r.replayWins, 0),
+            savedUsd: Math.round(recipes.reduce((s, r) => s + r.savedUsd, 0) * 10000) / 10000,
+            lessons: b.lessons.filter(l => l.ownerId === ownerId).length,
+        },
+    };
+}
+
+/** He deletes a recipe or a lesson from his book. True when it was his and is gone. */
+export function forgetExperience(ownerId: string, id: string): boolean {
+    const b = load();
+    const ri = b.recipes.findIndex(r => r.id === id && r.ownerId === ownerId);
+    if (ri >= 0) { b.recipes.splice(ri, 1); save(); return true; }
+    const li = b.lessons.findIndex(l => l.id === id && l.ownerId === ownerId);
+    if (li >= 0) { b.lessons.splice(li, 1); save(); return true; }
+    return false;
+}

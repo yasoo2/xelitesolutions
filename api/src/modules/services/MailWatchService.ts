@@ -21,7 +21,7 @@
  * JOE_MAIL_WATCH=off turns it off; JOE_MAIL_WATCH_EVERY_MS sets the pace.
  */
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
-import { activeWatches, MAIL_APPS, newReplies, parseMailNotices, replyMessage, type MailNotice, type MailReply, type MailWatch } from '../../core/devices/mail-watch';
+import { activeWatches, MAIL_APPS, newReplies, notePhoneLost, parseMailNotices, phoneLostTold, replyMessage, type MailNotice, type MailReply, type MailWatch } from '../../core/devices/mail-watch';
 
 /** The mail notices on the phones online through the Joe app, as the watch reads them. */
 function appMailNotices(): MailNotice[] {
@@ -83,11 +83,11 @@ export type PhoneTeller = (state: 'lost' | 'back', watches: MailWatch[]) => Prom
 
 const PHONE_WORDS = {
     ar: {
-        lost: '📵 لا أرى هاتفك الآن (انفصل الكابل، أو أُطفئ «تصحيح USB»)، فلا أستطيع مراقبة ردود الإيميل حتى يعود. صِله من جديد، وأكمل المراقبة وحدي.',
+        lost: '📵 لا أرى هاتفك الآن (انفصل الكابل، أو انطفأ «تصحيح الأخطاء»)، فلا أستطيع مراقبة ردود الإيميل حتى يعود. صِله من جديد، أو اربطه بتطبيق جو فلا ينقطع، وأكمل المراقبة وحدي.',
         back: '📱 عاد هاتفك متصلًا، وعدت أراقب ردود الإيميل.',
     },
     en: {
-        lost: '📵 I cannot see your phone now (the cable came out, or USB debugging is off), so I cannot watch for email replies until it is back. Connect it again and I go on watching by myself.',
+        lost: '📵 I cannot see your phone now (the cable came out, or debugging is off), so I cannot watch for email replies until it is back. Connect it again, or link it with the Joe app so it stays connected, and I go on watching by myself.',
         back: '📱 Your phone is connected again, and I am watching for email replies again.',
     },
 };
@@ -212,7 +212,9 @@ export class MailWatchService {
 
     /** Looks in a row that could not read the phone; whether the owners were told it is lost. */
     private misses = 0;
-    private toldLost = false;
+    /** Kept in the watch's store (mail-watch.ts): a Joe restarted while the phone is away does not say it again. */
+    private get toldLost(): boolean { return phoneLostTold(); }
+    private set toldLost(v: boolean) { notePhoneLost(v ? Date.now() : null); }
 
     constructor(
         private readonly read: NoticeReader = defaultReader(),

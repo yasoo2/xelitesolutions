@@ -120,10 +120,17 @@ export async function agentEngineRoute(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const operate = require('./operate');
     if (operate.isOperateRequest(words)) {
-        const target = operate.isPhoneRequest(words) ? 'phone' : 'computer';
+        /*
+         * A short follow-up that names nothing of its own («تحقق الان مرة اخرى», «حاول مره
+         * اخرى») while Joe waits on his question goes on with that work, on that device. The
+         * owner, 2026-11-08: Joe asked for his phone's pairing code; «تحقق الان مرة اخرى» was
+         * read alone, on the computer, and the run turned on a flashlight asked hours before.
+         */
+        const continuesQuestion = !!waiting && !operate.standsAloneRequest(words);
+        const target = continuesQuestion && waiting.target ? waiting.target : operate.isPhoneRequest(words) ? 'phone' : 'computer';
         operate.noteOperate(context?.sessionId, words, target);
         //  A new command on a device is not the answer, unless it opens with yes or no: «اجل، ارسلها من هاتفي».
-        if (waiting && ANSWER_LEAD.test(own) && text.startsWith(own)) {
+        if (waiting && ((ANSWER_LEAD.test(own) && text.startsWith(own)) || continuesQuestion)) {
             work.takeQuestion(context?.sessionId, context?.runId);
             return { kind: 'operate', target, answers: true };
         }

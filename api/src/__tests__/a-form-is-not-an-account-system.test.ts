@@ -51,3 +51,22 @@ describe('a discount field asks for the field, not for coupons', () => {
         expect(ids(request)).toContain('coupons');
     });
 });
+
+describe('deliveries as a report\'s data ask for the report, not for a shipping system', () => {
+    //  L128, 2026-11-08: refused for «missing: shipping» while every exam check passed.
+    test.each([
+        'اعمل صفحة تقرير تفاعلية لـمحل ورود تحمّل بيانات تجريبية عن التوصيلات وتعرض ثلاثة رسوم (حسب الشهر وحسب التصنيف وأعلى 5) مع فلترة حسب الفترة.',
+        'Build an interactive report page for a flower shop that loads sample delivery data and shows three charts with a date filter.',
+        'A dashboard of last month\'s shipments by region, with charts.',
+    ])('«%s» does not ask for shipping', request => {
+        expect(ids(request)).not.toContain('shipping');
+    });
+
+    test.each([
+        'ابني متجر الكتروني للورود مع سلة وخيارات التوصيل وتتبع الطلبات',
+        'Build an online store with cart, shipping options and order tracking',
+        'A dashboard for a courier with delivery tracking and delivery statuses',
+    ])('«%s» still asks for shipping', request => {
+        expect(ids(request)).toContain('shipping');
+    });
+});

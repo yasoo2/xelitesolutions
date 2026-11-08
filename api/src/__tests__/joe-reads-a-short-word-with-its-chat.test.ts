@@ -272,7 +272,34 @@ describe('a short message continues the last device work that says what it is ab
         expect(engine).toContain('lastDeviceWork(o.context.sessionId, Date.now(), deviceWorkAnchor)?.request');
         expect(engine).toContain('const about = operateAboutFor(words, previous);');
         expect(engine).toContain('finishTool(operateVerifier({ about, own: words, since }))');
-        expect(engine).toContain('request: pending ? pending.request : recordedOperateRequest(words, about, previous),');
+        //  An answer is kept with what it answered (2026-11-08): «الاقتران اللاسلكي — حاول مره اخرى».
+        expect(engine).toContain('request: pending && words !== pending.request ? `${words}${CONTINUED_MARK}${pending.request}` : recordedOperateRequest(words, about, previous),');
+    });
+
+    test('a short follow-up while Joe waits on his question goes on with that work, on that device', () => {
+        //  2026-11-08: Joe asked for the phone's pairing code; «تحقق الان مرة اخرى» was read alone,
+        //  on the computer, and the run turned on a flashlight asked hours before.
+        const operate = require('../core/engine/operate');
+        expect(operate.standsAloneRequest('تحقق الان مرة اخرى')).toBe(false);
+        expect(operate.standsAloneRequest('حاول مره اخرى')).toBe(false);
+        expect(operate.standsAloneRequest('شغل الكشاف في هاتفي')).toBe(true);
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const select = require('fs').readFileSync(require('path').join(__dirname, '..', 'core', 'engine', 'select.ts'), 'utf8');
+        expect(select).toContain('const continuesQuestion = !!waiting && !operate.standsAloneRequest(words);');
+        expect(select).toContain('((ANSWER_LEAD.test(own) && text.startsWith(own)) || continuesQuestion)');
+    });
+
+    test('a look that also changed something does not say «changed nothing»', async () => {
+        const { operateVerifier, operateOutput } = require('../core/engine/operate');
+        const { deviceRecordFor } = require('../core/engine/tools/devices');
+        const rec = deviceRecordFor('run-look-acted');
+        rec.looks.push({ at: 1, kind: 'read' });
+        rec.actions.push({ tool: 'android_tap', ok: true, at: 2, what: 'tap the flashlight tile' });
+        const report = await operateVerifier({ own: 'تحقق الان مرة اخرى' })({ runId: 'run-look-acted', request: 'تحقق الان مرة اخرى' } as any, {} as any);
+        expect(report.checks.map((c: any) => c.id)).toEqual(expect.arrayContaining(['looked', 'acted_too']));
+        const out = operateOutput({ status: 'delivered', summary: 'شغّلت الكشاف.', verification: report, durationMs: 1000 } as any, 'ar');
+        expect(out.output.summary).toContain('ونفّذتُ على جهازك ما ذكرتُه أعلاه');
+        expect(out.output.summary).not.toContain('لم أغيّر فيها شيئاً');
     });
 });
 

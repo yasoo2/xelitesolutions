@@ -24,6 +24,8 @@ function gateway(): (name: string, input: any, context?: any) => Promise<any> {
 
 const CONTROLS = new Map<string, AndroidControl[]>();
 export function forgetAndroid(runId: string): void { CONTROLS.delete(runId); }
+/** The controls of the run's last android_read: a tap's name is kept from them (experience.ts). */
+export function controlsOf(runId: string): AndroidControl[] { return CONTROLS.get(runId) || []; }
 
 async function phone(ctx: ToolContext, input: Record<string, unknown>): Promise<{ ok: boolean; text: string; output: any }> {
     const result = await gateway()('engine_android', input, toolContextFor(ctx));
