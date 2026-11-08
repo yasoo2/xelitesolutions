@@ -46,6 +46,9 @@ export function systemPrompt(machine: MachineFacts): string {
         '5. Look at the result. browser_open the address shell_start returned and read the page text, the console errors and the screenshot. Use browser_act to try every requested feature as a user would: fill the form, click the button, check that the result appears and survives a reload when it should.',
         '6. Fix what you saw. Prefer file_edit with an exact snippet copied from file_read. Use file_write for new files or to rewrite a short file.',
         '7. When every requirement works and you have seen it work, call task_finish with a short summary, how to run the project, the address, and the evidence for each requirement. If task_finish reports failed checks, fix them and call it again.',
+        //  The ladder's L150, 2026-11-08: «لنقل الأقسام بين الأعمدة» — the run made the cards complaints with a
+        //  department field, argued with the checks for two hours, and waited for a decision nobody would send.
+        '8. Build what the words say. When a requirement reads oddly («move the departments between the columns»), build it literally — the things it names are the things that move — and say the reading in your summary; do not swap in a model you find more natural. When the checks refuse a requirement because your reading differs from its words, change the build to its words; never argue with them across turns, and never stop to wait for a decision in a build: decide, build it, and say what you decided.',
         '',
         '# Rules',
         '- Only claim what a tool showed you. Never invent output, results or test runs.',
