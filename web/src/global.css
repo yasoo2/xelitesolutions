@@ -4205,6 +4205,7 @@ html[data-theme="light"] .input-actions {
   background: rgba(255, 255, 255, 0.03);
   padding: 10px 12px;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 12px;
 }
@@ -4227,10 +4228,50 @@ html[data-theme="light"] .input-actions {
   background: rgba(34, 197, 94, 0.12);
 }
 
+/* A start still waiting on the browser (its «Allow?» question, or the speech
+   service connecting) pulses in the amber of the «press Allow» sentence under
+   it. Before, the button looked untouched, so the owner pressed again and
+   that press cancelled the start (review of 2026-11-08). */
+.voice-record-btn.starting {
+  border-color: rgba(245, 158, 11, 0.60);
+  background: rgba(245, 158, 11, 0.12);
+  cursor: progress;
+  animation: voiceMicStarting 1.2s ease-in-out infinite;
+}
+
+html[data-theme="light"] .voice-record-btn.starting {
+  border-color: rgba(146, 64, 14, 0.60);
+  background: rgba(146, 64, 14, 0.08);
+}
+
+@keyframes voiceMicStarting {
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45);
+  }
+
+  50% {
+    box-shadow: 0 0 0 6px rgba(245, 158, 11, 0);
+  }
+}
+
+/* Without motion the waiting state must still differ from the idle button:
+   a dashed amber border instead of the pulse. */
+@media (prefers-reduced-motion: reduce) {
+  .voice-record-btn.starting {
+    animation: none;
+    border-style: dashed;
+  }
+}
+
 .voice-info {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  /* Takes the free width, so a long «why the microphone does not listen»
+     wraps here instead of pushing the language switch off a phone screen. */
+  flex: 1 1 160px;
+  min-width: 0;
 }
 
 .voice-status {
@@ -4249,6 +4290,50 @@ html[data-theme="light"] .input-actions {
   font-size: 12.5px;
   line-height: 1.6;
   color: #f59e0b;
+}
+
+/* The amber above is 2.15:1 on the light theme's white, unreadable for the
+   very sentence that says how to fix the microphone (review of 2026-11-08).
+   This darker amber is 7.1:1 there. */
+html[data-theme="light"] .voice-problem {
+  color: #92400E;
+}
+
+/* The language the microphone listens in, chosen apart from the interface's
+   (the owner, 2026-11-08: an English interface heard his Arabic as English). */
+.voice-lang-switch {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.voice-lang-btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  /* --text-secondary, not --text-muted: the muted grey is about 4:1 on the
+     dark theme, too faint for a 12px word he has to read to choose. */
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.voice-lang-btn:hover {
+  color: var(--text-primary);
+}
+
+.voice-lang-btn.active {
+  border-color: rgba(var(--accent-primary-rgb), 0.55);
+  background: rgba(var(--accent-primary-rgb), 0.14);
+  color: var(--text-primary);
+}
+
+.voice-lang-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 @keyframes sessionMenuPop {

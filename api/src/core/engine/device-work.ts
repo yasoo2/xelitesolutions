@@ -22,7 +22,7 @@ import path from 'path';
 
 export type DeviceKind = 'phone' | 'computer';
 
-interface Done { at: number; target?: DeviceKind; request: string; summary: string; ok: boolean; question?: string }
+interface Done { at: number; target?: DeviceKind; request: string; summary: string; ok: boolean; question?: string; takenBy?: string }
 interface Working { target: DeviceKind; at: number; request: string }
 interface Store { done: Record<string, Done[]>; working: Record<string, Working> }
 
@@ -96,18 +96,67 @@ export function pendingQuestion(sessionId: unknown, now = Date.now()): { target?
     return { target: last.target, request: last.request, question: last.question };
 }
 
-/** The chat's last device work within 30 minutes: what a short message («افحص») continues. */
-export function lastDeviceWork(sessionId: unknown, now = Date.now()): { target?: DeviceKind; request: string; ok: boolean } | null {
-    const list = load().done[String(sessionId || '')] || [];
-    const last = list[list.length - 1];
-    return last && now - last.at <= ANSWER_MS ? { target: last.target, request: last.request, ok: last.ok } : null;
+/**
+ * The chat's last device work within 30 minutes: what a short message («افحص») continues.
+ *
+ * With `anchor` (operate.ts deviceWorkAnchor), the most recent one that STANDS
+ * ALONE, walked back through the chat's work, as the anchor reads it (its own
+ * words, or what a recorded «X — Y» continued). The owner's engineer,
+ * 2026-11-08: «افحص» after a failed «افحص» continued «افحص» and lost the Wi-Fi
+ * question before it. The reader is passed in: this file must not load
+ * operate.ts (the answerer loads it on every question).
+ */
+export function lastDeviceWork(sessionId: unknown, now = Date.now(), anchor?: (request: string) => string | null): { target?: DeviceKind; request: string; ok: boolean } | null {
+    const list = (load().done[String(sessionId || '')] || []).filter(e => now - e.at <= ANSWER_MS);
+    if (!anchor) {
+        const last = list[list.length - 1];
+        return last ? { target: last.target, request: last.request, ok: last.ok } : null;
+    }
+    for (let i = list.length - 1; i >= 0; i--) {
+        const request = anchor(list[i].request);
+        if (request) return { target: list[i].target, request, ok: list[i].ok };
+    }
+    return null;
 }
 
-/** The question was answered (a new run took it up): it no longer waits. */
+/**
+ * The question was answered (a new run took it up), or the owner's next
+ * message went elsewhere (select.ts): it no longer waits. Found on 2026-11-08:
+ * left waiting after a message that was not its answer, it took the message
+ * after that one too, for half an hour.
+ */
 export function answeredQuestion(sessionId: unknown): void {
     const list = load().done[String(sessionId || '')] || [];
     const last = list[list.length - 1];
-    if (last && last.question) { delete last.question; save(); }
+    if (last && last.question) { delete last.question; delete last.takenBy; save(); }
+}
+
+/**
+ * THE ROUTE GIVES THE QUESTION TO ONE RUN.
+ *
+ * Found on 2026-11-08: every operate run in the chat read the waiting
+ * question as answered by its own message, and was recorded under the old
+ * request — «افتح المفكرة» after «shall I send it?» was told «the owner's
+ * message answers it». Only the route that read the message as the answer
+ * (select.ts) hands the question on, and only to the run it routed: that
+ * run's id is kept with the question, and the run asks for it by its id
+ * (AgentEngineTool runOperate).
+ */
+export function takeQuestion(sessionId: unknown, runId: unknown): void {
+    const id = String(runId || '').trim();
+    const list = load().done[String(sessionId || '')] || [];
+    const last = list[list.length - 1];
+    if (!id || !last || !last.question) return;
+    last.takenBy = id;
+    save();
+}
+
+/** Did the route give the waiting question to this run? */
+export function questionTakenBy(sessionId: unknown, runId: unknown, now = Date.now()): boolean {
+    const id = String(runId || '').trim();
+    const list = load().done[String(sessionId || '')] || [];
+    const last = list[list.length - 1];
+    return !!id && !!last && !!last.question && now - last.at <= ANSWER_MS && last.takenBy === id;
 }
 
 /** The facts block: empty when this chat worked no device. */

@@ -16,6 +16,8 @@ import os from 'os';
 import { authenticate } from '../middleware/auth';
 import { config } from '../../shared/config';
 import { deviceLinks, keepInstallScript, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
+import { KeptStoreError } from '../../core/devices/linked-computers';
+import { psQuote } from '../../core/devices/windows-desktop';
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
@@ -38,7 +40,14 @@ router.post('/pair', authenticate as any, (req: Request, res: Response) => {
     //  otherwise a link for this session (link.ps1).
     const keep = req.body?.keep === true || req.body?.permanent === true;
     const name = String(req.body?.name || '').trim() || os.hostname();
-    const { code, expiresAt } = deviceLinks.newPairingCode(uid(req), Date.now(), keep ? name : undefined);
+    let paired: { code: string; expiresAt: number };
+    try { paired = deviceLinks.newPairingCode(uid(req), Date.now(), keep ? name : undefined); }
+    catch (e: any) {
+        //  The record of kept computers cannot be read: no line, and the reason said (linked-computers.ts).
+        if (e instanceof KeptStoreError) return res.status(503).json({ ok: false, code: e.code, error: e.message });
+        throw e;
+    }
+    const { code, expiresAt } = paired;
     const base = publicBase(req);
     const scriptUrl = `${base.http}/api/devices/${keep ? 'install' : 'link'}.ps1?code=${code}`;
     return res.json({
@@ -70,7 +79,18 @@ router.get('/install.ps1', (req: Request, res: Response) => {
     if (!deviceLinks.isWaitingToKeep(code)) {
         return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
     }
-    const kept = deviceLinks.claimForKeeping(code);
+    let kept: ReturnType<typeof deviceLinks.claimForKeeping>;
+    try { kept = deviceLinks.claimForKeeping(code); }
+    catch (e: any) {
+        //  Nothing was saved, so no key is served: an installer whose key no restart remembers left
+        //  an agent refused (4403) for ever (2026-11-08). The window on that computer says why, and
+        //  the code stays good for a retry once the record reads.
+        if (!(e instanceof KeptStoreError)) throw e;
+        console.warn(`[DeviceLink] a permanent link was refused: ${e.message}`);
+        return res.status(503).set('Cache-Control', 'no-store').type('text/plain; charset=utf-8').send(
+            `Write-Host ${psQuote(`Joe could not link this computer for good: ${e.message}`)} -ForegroundColor Red\n`
+            + `Write-Host ${psQuote('لم يستطع جو ربط هذا الكمبيوتر ربطاً دائماً: سجلّ الحواسيب المربوطة عنده لا يُقرأ أو لا يُحفظ الآن. لم يُثبَّت شيء.')} -ForegroundColor Red\n`);
+    }
     if (!kept) return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
     //  The computer that fetched this reached Joe at this very address: it calls back the same way.
     const base = publicBase(req, {}, () => '');
@@ -78,10 +98,20 @@ router.get('/install.ps1', (req: Request, res: Response) => {
     return res.type('text/plain; charset=utf-8').send(keepInstallScript(`${base.ws}/ws/device-link`, kept.id, kept.key, kept.name));
 });
 
-/** POST /api/devices/:id/forget — unlinks a computer for good: its key opens nothing, its agent removes itself. */
+/**
+ * POST /api/devices/:id/forget — unlinks a computer for good: its key opens
+ * nothing, its agent removes itself. By its exact id or exact name only
+ * (device-link.ts forgetExactly); anything else forgets nothing and answers
+ * with the names that come close, for the page or the chat to ask which one.
+ */
 router.post('/:id/forget', authenticate as any, (req: Request, res: Response) => {
-    const gone = deviceLinks.forget(uid(req), String(req.params.id || ''));
-    return gone ? res.json({ ok: true, name: gone.name }) : res.status(404).json({ ok: false, error: 'no such computer' });
+    const r = deviceLinks.forgetExactly(uid(req), String(req.params.id || ''));
+    if (r.ok) return res.json({ ok: true, name: r.device.name, id: r.device.id });
+    const status = r.reason === 'store' ? 503 : r.reason === 'ambiguous' ? 409 : 404;
+    return res.status(status).json({
+        ok: false, code: r.reason, error: r.error, close: r.close,
+        ...(r.reason === 'store' ? {} : { ask: r.close.length ? `Which one is meant: ${r.close.map(n => `«${n}»`).join(', ')}?` : `No computer is named exactly «${r.asked}».` }),
+    });
 });
 
 router.get('/', authenticate as any, (req: Request, res: Response) => {

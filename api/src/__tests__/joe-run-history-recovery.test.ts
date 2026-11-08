@@ -63,6 +63,9 @@ async function mountJoe() {
     const { createRoot } = loadWeb('react-dom/client');
     const subscribers = new Set<() => void>();
     const socketListeners = new Set<(event: any) => void>();
+    //  Joe's own notices to the owner (SocketService.subscribeNotices, 2026-11-08):
+    //  Joe.tsx listens to them for the open chat, so the fixture carries them too.
+    const noticeListeners = new Set<(notice: any) => void>();
     const snapshotListeners = new Set<(sessions: Set<string>, ids: Map<string, string>) => void>();
     let snapshot = { sessions: new Set<string>(), ids: new Map<string, string>() };
     const persisted: Record<string, any[]> = { A: [prompt('A')], B: [prompt('B'), answer('B')] };
@@ -107,6 +110,8 @@ async function mountJoe() {
         '../store/sessionStore': { useSessionStore: store }, '../hooks/useSessionActions': { useSessionActions: () => ({ createSession: async () => {} }) },
         '../services/socket': { SocketService: { connect() {}, subscribe(callback: (event: any) => void) {
             socketListeners.add(callback); return () => socketListeners.delete(callback);
+        }, subscribeNotices(callback: (notice: any) => void) {
+            noticeListeners.add(callback); return () => { noticeListeners.delete(callback); };
         } } },
         '../services/runningSessions': { startTrackingRuns() {}, subscribeRunningSessions(callback: any) {
             snapshotListeners.add(callback); callback(snapshot.sessions, snapshot.ids); return () => snapshotListeners.delete(callback);
@@ -161,6 +166,8 @@ async function mountJoe() {
             });
         },
         async event(event: any) { await act(async () => socketListeners.forEach(callback => callback(event))); },
+        async notice(notice: any) { await act(async () => noticeListeners.forEach(callback => callback(notice))); },
+        noticeListeners: () => noticeListeners.size,
         async select(sid: string) { await act(async () => { update({ agentSelected: sid }); }); },
         async resolveHistory(index: number) {
             await act(async () => { const pending = deferred[index]; pending.resolve({ events: [...persisted[pending.sid]] }); });
@@ -325,6 +332,38 @@ describe('Joe recovers its visible saved reply after deliberate final socket fra
             await joe.event({ type: 'step_failed', sessionId: 'A', runId: 'run-A', data: { name: 'execute:shell_execute', sessionId: 'A' } });
             expect(joe.historyReads.slice(before)).toEqual(['A']);
         } finally { await joe.close(); }
+    });
+
+    /**
+     * 2026-11-08, MailWatchService: a reply to Joe's email arrived. Joe kept
+     * his message in the chat the email was sent from; its live frame is
+     * dropped by that chat's finished-run gate, so the open chat is read again
+     * from its history — and a notice about another chat reads nothing.
+     */
+    it('a reply to Joe\'s email re-reads the open chat once, and never another chat', async () => {
+        const joe = await mountJoe();
+        try {
+            expect(joe.noticeListeners()).toBe(1);
+            const before = joe.historyReads.length;
+            joe.persisted.A.push({ id: 'mail-A', type: 'text', runId: 'mail-watch', data: { text: 'A reply arrived from Shurooq' }, ts: 3 });
+            await joe.notice({ kind: 'mail_reply', chatId: 'B', who: 'Shurooq', subject: 'Re: B' });
+            expect(joe.historyReads.slice(before)).toEqual([]);
+            await joe.notice({ kind: 'mail_reply', chatId: 'A', who: 'Shurooq', subject: 'Re: A' });
+            expect(joe.historyReads.slice(before)).toEqual(['A']);
+            expect(joe.props().sessionId).toBe('A');
+            expect(joe.text()).toContain('A reply arrived from Shurooq');
+            expect(joe.text()).not.toContain('Saved reply B');
+        } finally { await joe.close(); }
+    });
+
+    it('lets go of the notices when the page goes', async () => {
+        const joe = await mountJoe();
+        let released = false;
+        try {
+            await joe.close();
+            released = true;
+            expect(joe.noticeListeners()).toBe(0);
+        } finally { if (!released) await joe.close(); }
     });
 
     it('requires an identified visible predecessor and never treats a pending/new successor as its removal', () => {

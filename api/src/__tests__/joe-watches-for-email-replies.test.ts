@@ -218,11 +218,22 @@ describe('Joe watches by himself, in the background', () => {
         expect(mw.activeWatches(T0 + 1000)).toHaveLength(1);
     });
 
-    test('the owner\'s own account (the mail\'s «to») is never a person to watch', () => {
-        mw.watchReplies('chat-1', { to: ['younis.soudi@inovar.com', 'shoroq.suwan@gmail.com'] }, T0);
+    test('the owner\'s own account (the mail\'s «to»), read off a run\'s summary, is never a person to watch', () => {
+        mw.watchReplies('chat-1', { to: ['younis.soudi@inovar.com', 'shoroq.suwan@gmail.com'], auto: true }, T0);
         mw.newReplies(mw.parseMailNotices(dump([outlookReply])), T0 + 6 * 60_000);
         expect(mw.activeWatches(T0 + 7 * 60_000).map(w => w.to)).toEqual(['shoroq.suwan@gmail.com']);
-        expect(mw.watchReplies('chat-1', { to: ['Younis.Soudi@inovar.com'] }, T0 + 8 * 60_000)).toEqual([]);
+        expect(mw.watchReplies('chat-1', { to: ['Younis.Soudi@inovar.com'], auto: true }, T0 + 8 * 60_000)).toEqual([]);
+    });
+
+    test('his own account named by HIM is watched as he asked; mail from it is known by its sender, not by the account in a grouped notice', () => {
+        const [w] = mw.watchReplies('chat-me', { to: ['younes.sowady2011@gmail.com'], userId: 'owner-1' }, T0);
+        expect(w.auto).toBeUndefined();
+        //  The grouped Gmail notice names his account in its text: that is not mail from him.
+        expect(mw.newReplies(mw.parseMailNotices(dump([gmailGroup])), T0 + 8 * 60_000)).toHaveLength(0);
+        expect(mw.activeWatches(T0 + 9 * 60_000).map(x => x.to)).toEqual(['younes.sowady2011@gmail.com']);
+        const fromHim = record({ pkg: 'com.microsoft.office.outlook', created: T0 + 10 * 60_000, extras: ['android.title=String (Younes Sowady)', 'android.text=String (test from my Gmail)', 'android.subText=String (Younis.Soudi@inovar.com)'] });
+        const r = mw.newReplies(mw.parseMailNotices(dump([fromHim])), T0 + 11 * 60_000);
+        expect(r.map(x => x.why)).toEqual(['sender']);
     });
 });
 
@@ -249,5 +260,43 @@ describe('the run tells Joe whom it emailed', () => {
         expect(watchAfterSentEmail('chat-8', 'لخص لي آخر الايميلات', 'من a.odeh@company.jo: عرض السعر', 'ar', 'owner-8', T0)).toEqual([]);
         //  The run's own tool made it a minute ago: not made twice.
         expect(watchAfterSentEmail('chat-8', 'ارسل ايميل الى shoroq.suwan@gmail.com', '', 'ar', 'owner-8', T0 + 60_000)).toEqual([]);
+    });
+});
+
+describe('the notice reaches the owner in any chat, and only him', () => {
+    test('«joe_notice» names no session, so no subscription holds it back; it is not a run event', () => {
+        const ws = require('../api/ws');
+        expect(ws.eventRequiresSession({ type: 'joe_notice' })).toBe(false);
+        expect(ws.canDeliverLiveEventToSession({ type: 'joe_notice', userId: 'owner-1', data: { chatId: 'chat-1' } }, ['another-chat'])).toBe(true);
+        expect(ws.liveEventSessionId({ type: 'joe_notice', data: { chatId: 'chat-1' } })).toBe('');
+    });
+});
+
+describe('the owner asks Joe to tell him when someone writes', () => {
+    test.each([
+        'انتظر حتى ترد واعلمني',
+        'اذا رد عليك اخبرني',
+        'خبرني لما يوصلني ايميل من احمد',
+        'تابع ردود شروق',
+        'راقب بريدي واذا وصل شي من المدير نبهني',
+        'ارسل ايميل لشروق واخبرني اذا ردت',
+        'let me know when she replies',
+        'watch for an email from Ahmad',
+    ])('«%s» is a watch on the mail', t => {
+        const { isMailWatchRequest } = require('../core/engine/tools/mail');
+        expect(isMailWatchRequest(t)).toBe(true);
+    });
+
+    test.each([
+        'تابع',
+        'تابع كتابة الإيميل',
+        'اخبرني ما الرد المناسب على رسالتها',
+        'اكتب لي ايميل لشروق',
+        'tell me the answer',
+        'write an email to Ahmad',
+        'ابني موقع فيه نموذج يرسل ايميل',
+    ])('«%s» is not', t => {
+        const { isMailWatchRequest } = require('../core/engine/tools/mail');
+        expect(isMailWatchRequest(t)).toBe(false);
     });
 });

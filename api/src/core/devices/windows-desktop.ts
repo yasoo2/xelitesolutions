@@ -412,17 +412,47 @@ public static class JoeDesktop {
         return frame + "\t" + data;
     }
 
+    /* ── THIS COMPUTER'S OWN NETWORK, FOR THE OWNER'S JOE ──
+     * The owner, 2026-11-08: «scan the Wi-Fi of the office computer» could only
+     * scan the network of Joe's own computer, because no action here ran a
+     * script and brought its output back. Joe sends its network scan
+     * (network-scan.ts) as base64 of UTF-8; it runs in a fresh PowerShell
+     * runspace inside this process (no window, no new process; an «exit» in it
+     * ends the scan, not the link), and every line it writes comes back. Only
+     * the link answers it (never the local pipe host). A scan that hangs is
+     * stopped without being waited for, so the link still answers Joe. */
+    public static string Network(string scriptB64, int timeoutMs) {
+        string script = Un64(scriptB64);
+        System.Management.Automation.PowerShell ps = System.Management.Automation.PowerShell.Create();
+        ps.AddScript(script);
+        IAsyncResult ar = ps.BeginInvoke();
+        if (!ar.AsyncWaitHandle.WaitOne(timeoutMs)) {
+            try { ps.BeginStop(null, null); } catch { }
+            throw new Exception("the network scan took longer than " + (timeoutMs / 1000) + " s and was stopped");
+        }
+        try {
+            StringBuilder o = new StringBuilder();
+            foreach (System.Management.Automation.PSObject r in ps.EndInvoke(ar)) if (r != null) o.Append(r.ToString()).Append('\n');
+            if (o.Length == 0 && ps.Streams.Error.Count > 0) throw new Exception("the network scan failed: " + ps.Streams.Error[0].ToString());
+            return o.ToString();
+        } finally { ps.Dispose(); }
+    }
+
     static void LinkSend(System.Net.WebSockets.ClientWebSocket ws, string text) {
         byte[] b = Encoding.UTF8.GetBytes(text);
         ws.SendAsync(new ArraySegment<byte>(b), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
     }
 
-    static string LinkReceive(System.Net.WebSockets.ClientWebSocket ws) {
+    static string LinkReceive(System.Net.WebSockets.ClientWebSocket ws, out int closeCode) {
+        closeCode = 0;
         byte[] buf = new byte[65536];
         using (System.IO.MemoryStream ms = new System.IO.MemoryStream()) {
             while (true) {
                 System.Net.WebSockets.WebSocketReceiveResult r = ws.ReceiveAsync(new ArraySegment<byte>(buf), System.Threading.CancellationToken.None).Result;
-                if (r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) return null;
+                if (r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) {
+                    closeCode = r.CloseStatus.HasValue ? (int)r.CloseStatus.Value : 0;
+                    return null;
+                }
                 ms.Write(buf, 0, r.Count);
                 if (r.EndOfMessage) return Encoding.UTF8.GetString(ms.ToArray());
             }
@@ -439,8 +469,15 @@ public static class JoeDesktop {
             Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  connected");
             while (ws.State == System.Net.WebSockets.WebSocketState.Open) {
                 string msg;
-                try { msg = LinkReceive(ws); } catch (Exception) { return "the connection to Joe was lost"; }
-                if (msg == null) return "Joe closed the link";
+                int closeCode;
+                try { msg = LinkReceive(ws, out closeCode); } catch (Exception) { return "the connection to Joe was lost"; }
+                if (msg == null) {
+                    /* Joe closed with 4404 = this computer was forgotten. An old helper could not read the
+                       «forget» word and saw only a close; the close code says it plainly, so the agent
+                       still removes itself (the owner's case, 2026-11-08). */
+                    if (closeCode == 4404) return "FORGOTTEN";
+                    return "Joe closed the link";
+                }
                 int tab = msg.IndexOf('\t');
                 if (tab <= 0) continue;
                 string id = msg.Substring(0, tab), line = msg.Substring(tab + 1);
@@ -448,7 +485,7 @@ public static class JoeDesktop {
                 /* Unlinked for good: a word in no language, so the agent reads it on any Windows (a refusal is told in the system's own language). */
                 if (line == "forget") return "FORGOTTEN";
                 string res;
-                try { res = "OK\t" + B64(Dispatch(line)); } catch (Exception e) { res = "ERR\t" + B64(e.Message); }
+                try { res = "OK\t" + B64(line.StartsWith("network\t") ? Network(line.Substring(8), 75000) : Dispatch(line)); } catch (Exception e) { res = "ERR\t" + B64(e.Message); }
                 Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  " + line.Split('\t')[0] + (res.StartsWith("OK") ? "" : "  (refused or failed)"));
                 try { LinkSend(ws, id + "\t" + res); } catch (Exception) { return "the connection to Joe was lost"; }
             }

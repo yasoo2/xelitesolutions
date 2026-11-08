@@ -83,6 +83,328 @@ function authenticatedHeaders(json = false): Record<string, string> {
   };
 }
 
+/*
+ * THE MICROPHONE HEARS THE LANGUAGE HE SPEAKS, NOT THE LANGUAGE OF THE MENUS.
+ *
+ * The owner, 2026-11-08: the interface opens in English by his own decision
+ * (i18n.ts), and dictation followed the interface — so his Arabic was heard
+ * as en-US and the box filled with English guesses. Dictation now keeps its
+ * own choice (localStorage 'joe-dictation-lang', set by the switch under the
+ * microphone). Until he makes one it follows the interface only when he
+ * chose that language himself (localStorage 'lang'), then the browser's own
+ * language, then Arabic. The interface's default English never decides,
+ * because nobody chose it.
+ */
+const DICTATION_LANGS = [
+  { code: 'ar', tag: 'ar-SA', label: 'العربية' },
+  { code: 'en', tag: 'en-US', label: 'English' },
+  { code: 'fr', tag: 'fr-FR', label: 'Français' },
+  { code: 'de', tag: 'de-DE', label: 'Deutsch' },
+  { code: 'ru', tag: 'ru-RU', label: 'Русский' },
+  { code: 'es', tag: 'es-ES', label: 'Español' },
+];
+const DICTATION_STORAGE_KEY = 'joe-dictation-lang';
+
+/** The offered language a saved value or a browser locale names ('ar-EG' is Arabic), if any. */
+function dictationLangOf(lang: string | null | undefined) {
+  const s = String(lang || '').trim().toLowerCase();
+  if (!s) return undefined;
+  return DICTATION_LANGS.find(l => l.tag.toLowerCase() === s)
+    || DICTATION_LANGS.find(l => l.code === s.split(/[-_]/)[0]);
+}
+
+/** The recognition language: his saved choice, the interface he chose, the browser, Arabic. */
+function pickDictationLang(saved: string | null | undefined, uiSaved: string | null | undefined, browserLang: string | null | undefined): string {
+  return (dictationLangOf(saved) || dictationLangOf(uiSaved) || dictationLangOf(browserLang) || DICTATION_LANGS[0]).tag;
+}
+
+/** The switch offers Arabic and English, the interface's language, and whatever is in use now. */
+function dictationChoices(current: string, uiLang: string) {
+  const wanted = ['ar', 'en', dictationLangOf(uiLang)?.code, dictationLangOf(current)?.code];
+  return DICTATION_LANGS.filter(l => wanted.includes(l.code));
+}
+
+/** One event's identity, the same way the auto-scroll names it: its id, else its type, time and place. */
+function eventSpeechKey(e: any, index: number): string {
+  if (!e) return '';
+  const id = typeof e.id === 'string' ? e.id : '';
+  const ts = typeof e.ts === 'number' ? String(e.ts) : '';
+  return id || `${String(e.type || '')}:${ts}:${index + 1}`;
+}
+
+/** The newest reply in the list (a run_finished after it does not hide it), with its identity. */
+function newestText(events: any[]): { key: string; text: string } | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e?.type !== 'text') continue;
+    const text = typeof e.data?.text === 'string' ? e.data.text.trim() : '';
+    return { key: eventSpeechKey(e, i), text };
+  }
+  return null;
+}
+
+/*
+ * JOE READS ALOUD ONLY WHAT ARRIVES AFTER VOICE MODE WAS TURNED ON.
+ *
+ * The owner, 2026-11-08: pressing voice mode opened the microphone while the
+ * last reply already on the screen was read aloud, so the microphone wrote
+ * down Joe's own voice. The identity of the newest reply is remembered when
+ * voice mode turns on (lastSpokenKeyRef); a reply is spoken only when its
+ * identity differs — once, however many times the list re-renders.
+ */
+function replyToSpeak(events: any[], lastKey: string): { key: string; text: string } | null {
+  const next = newestText(events);
+  return next && next.key && next.key !== lastKey && next.text ? next : null;
+}
+
+/** Where a start stands before the browser listens: none, starting, or the browser's «Allow?» is open. */
+type DictationPending = '' | 'starting' | 'asking';
+
+/** The dictation as the composer drives it; see createDictation. */
+interface Dictation {
+  supported: boolean;
+  /** True from the press until the browser ends or refuses: a start may still be waiting on him. */
+  wanted(): boolean;
+  /** A start that does not listen yet ('starting', or 'asking' while «Allow?» is open); '' otherwise. */
+  pending(): DictationPending;
+  start(): Promise<void>;
+  /** He finished talking: keep what was heard. */
+  stop(): void;
+  /** Close the microphone now, even while the browser's question is still open. */
+  abort(): void;
+  /** The recognizer is replaced or the composer leaves: no handler may fire after this. */
+  dispose(): void;
+}
+
+interface DictationDeps {
+  Recognition: any;
+  lang: string;
+  isSecure: () => boolean;
+  permission: () => Promise<string | undefined>;
+  t: (key: string) => string;
+  onListening: (on: boolean) => void;
+  /** The pending start's phase, for the button. Optional: a caller that shows none leaves it out. */
+  onPending?: (phase: DictationPending) => void;
+  onProblem: (text: string) => void;
+  onTranscript: (said: string) => void;
+}
+
+/*
+ * THE MICROPHONE STOPS WHEN HE SAYS STOP, EVEN WHILE THE BROWSER IS STILL ASKING.
+ *
+ * The owner, 2026-11-08: turning voice mode off while the browser's «Allow
+ * the microphone?» question was open did not stop anything — the off branch
+ * stopped only a microphone that was already listening, so his «Allow» then
+ * opened a microphone nobody wanted. `want` is set BEFORE the wait on the
+ * browser, read again right before start(), read once more when the browser
+ * says it started, and cleared on end, on error and by abort(), which always
+ * aborts. On an http address that is not this computer the browser refuses
+ * the microphone outright and its permission answer says «denied», so the
+ * secure-page check comes first: the fix is an https address, not the lock
+ * icon.
+ *
+ * EVERY PRESS IS ITS OWN START, AND A LATE END TOUCHES ONLY ITS OWN.
+ *
+ * Independent review of 2026-11-08: one shared yes/no «want» served every
+ * start. When Joe's speech closed the microphone and the speech ended fast,
+ * the closed session's late onend cleared the wish of the NEW start, and the
+ * microphone never reopened. Now each start takes its own number (`want`),
+ * the session the browser runs keeps its number (`running`), and onstart,
+ * onend and onerror act only on the start they belong to. An older session's
+ * end that arrives after a newer press only lets that newer start begin: the
+ * browser refuses a second start() until the first has ended, so the newer
+ * one is held (`waiting`) until then instead of being lost.
+ *
+ * The phase of a start that does not listen yet (`phase`, told through
+ * onPending) is what the button shows, so a press that seems to do nothing is
+ * seen to be working (the composer's toggleListening).
+ */
+function createDictation(deps: DictationDeps): Dictation {
+  const { Recognition, t } = deps;
+  const rec = Recognition ? new Recognition() : null;
+  let seq = 0;      // the number the next press takes
+  let want = 0;     // the start he wants now; 0: none
+  let running = 0;  // the start whose session the browser runs (start() accepted, no onend yet); 0: none
+  let waiting = 0;  // a start held until the browser's older session has ended
+  let phase: DictationPending = '';
+  let disposed = false;
+  /*
+   * A BROWSER THAT NEVER SAYS «START» OR «END» DOES NOT FREEZE THE BUTTON.
+   *
+   * Review of 2026-11-08: a pending start can no longer be cancelled by a
+   * press, and only onend ends a session; a browser that accepted start() or
+   * abort() and never fired 'start' or 'end' left the button «Connecting…» for
+   * good, ignoring every press. A start that has not begun listening in 10 s
+   * (2 minutes while the «Allow?» question waits for him) is given up and
+   * said; a newer start held for an older session's end stops waiting after 3 s.
+   */
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+  const clearWatch = () => { if (watchdog) { clearTimeout(watchdog); watchdog = null; } };
+  const watch = (ms: number, fire: () => void) => {
+    clearWatch();
+    if (typeof setTimeout !== 'function') return; // a page always has one; a bare sandbox may not
+    watchdog = setTimeout(() => { watchdog = null; if (!disposed) fire(); }, ms);
+  };
+  const setPhase = (next: DictationPending) => {
+    if (next === phase) return;
+    phase = next;
+    if (!disposed) deps.onPending?.(next);
+  };
+  /** Nothing is wanted any more: no start, none held, nothing pending. */
+  const drop = () => { want = 0; waiting = 0; clearWatch(); setPhase(''); };
+  /** Ask the browser to listen for start n; none of our sessions is open. */
+  const launch = (n: number) => {
+    const asking = phase === 'asking';
+    try {
+      rec.start();
+      running = n;
+    } catch {
+      // Refused although none of our sessions is open: say so, rather than
+      // leave a button that waits for ever and ignores his presses.
+      drop();
+      deps.onProblem(t('cc_micFailed'));
+      return;
+    }
+    watch(asking ? 120_000 : 10_000, () => {
+      if (want !== n || running !== n) return;
+      running = 0;
+      drop();
+      try { rec.abort(); } catch { /* never began */ }
+      deps.onListening(false);
+      deps.onProblem(t('cc_micFailed'));
+    });
+  };
+  if (rec) {
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = deps.lang;
+    rec.onstart = () => {
+      // Listening began for a start nobody wants any more (stopped, aborted,
+      // or followed by a newer press): close it.
+      if (disposed || !want || want !== running) { try { rec.abort(); } catch { /* already closed */ } return; }
+      clearWatch();
+      setPhase('');
+      deps.onListening(true);
+      deps.onProblem('');
+    };
+    rec.onaudiostart = () => deps.onProblem('');
+    rec.onend = () => {
+      const ended = running;
+      running = 0;
+      deps.onListening(false);
+      // An older session ended after a newer press: that press goes on, and
+      // begins now if it was held for this very end.
+      if (want && want !== ended) {
+        if (waiting === want) { waiting = 0; launch(want); }
+        return;
+      }
+      drop();
+    };
+    rec.onresult = (event: any) => {
+      const said = event?.results?.[0]?.[0]?.transcript;
+      if (typeof said === 'string' && said.trim()) deps.onTranscript(said);
+    };
+    rec.onerror = (event: any) => {
+      deps.onListening(false);
+      // An older session's error after a newer press (most often the
+      // «aborted» of a microphone closed for Joe's speech) is not the newer
+      // start's: it neither cancels it nor speaks for it.
+      if (want && want !== running) return;
+      drop();
+      const code = String(event?.error || '');
+      deps.onProblem(code === 'not-allowed' || code === 'service-not-allowed'
+        ? (deps.isSecure() ? t('cc_micDenied') : t('cc_micInsecure'))
+        : code === 'audio-capture' ? t('cc_micNone')
+        : code === 'network' ? t('cc_micNetwork')
+        : code === 'no-speech' ? t('cc_micNoSpeech')
+        : code === 'aborted' ? '' : t('cc_micFailed'));
+    };
+  }
+  return {
+    supported: !!rec,
+    wanted: () => want !== 0,
+    pending: () => phase,
+    async start() {
+      if (!rec || disposed || want) return;
+      const n = ++seq;
+      want = n;
+      setPhase('starting');
+      deps.onProblem('');
+      if (!deps.isSecure()) { drop(); deps.onProblem(t('cc_micInsecure')); return; }
+      /*
+       * Said BEFORE the browser asks (the owner: «it said it wants access from
+       * the browser… do it yourself»). Only he can press «Allow»: the page says
+       * where it will appear, and when he refused before, how to undo it.
+       */
+      try {
+        const state = await deps.permission();
+        // Stopped, aborted or replaced while the browser answered: this start is over.
+        if (want !== n || disposed) return;
+        if (state === 'denied') { drop(); deps.onProblem(t('cc_micBlockedHowTo')); return; }
+        if (state === 'prompt') { setPhase('asking'); deps.onProblem(t('cc_micAskAllow')); }
+      } catch { /* this browser does not say: the listening itself will */ }
+      if (want !== n || disposed) return;
+      // The browser is still closing an older session (one closed for Joe's
+      // speech): its onend begins this start — or, if that end never comes, 3 s.
+      if (running) {
+        waiting = n;
+        watch(3_000, () => { if (waiting === n && want === n) { waiting = 0; running = 0; launch(n); } });
+        return;
+      }
+      launch(n);
+    },
+    stop() {
+      drop();
+      try { rec?.stop(); } catch { /* not listening */ }
+    },
+    abort() {
+      drop();
+      try { rec?.abort(); } catch { /* not listening */ }
+    },
+    dispose() {
+      disposed = true;
+      drop();
+      clearWatch();
+      running = 0;
+      if (!rec) return;
+      rec.onstart = rec.onaudiostart = rec.onend = rec.onresult = rec.onerror = null;
+      try { rec.abort(); } catch { /* not listening */ }
+    },
+  };
+}
+
+/** Joe is about to speak: close a listening (or starting) microphone, and remember to reopen it. */
+function micPauseForSpeech(mic: Dictation | null, resume: { current: boolean }) {
+  if (!mic?.wanted()) return;
+  resume.current = true;
+  mic.abort();
+}
+
+/** Joe's speech has ended: reopen the microphone only if speaking closed it and voice mode is still on. */
+function micAfterSpeech(resume: { current: boolean }, voiceOn: boolean, listen: () => void) {
+  const again = resume.current && voiceOn;
+  resume.current = false;
+  if (again) listen();
+}
+
+/*
+ * The browser's answer about the microphone, or nothing when it does not say.
+ * A press during a pending start now waits instead of cancelling it
+ * (toggleListening, 2026-11-08), so a permission question that never answers
+ * must not hold the start for ever: after `ms` the listening itself goes
+ * ahead and the browser asks or refuses through it.
+ */
+function micPermissionState(permissions: any, ms: number): Promise<string | undefined> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    const done = (state?: string) => { clearTimeout(timer); resolve(state); };
+    try {
+      Promise.resolve(permissions?.query({ name: 'microphone' }))
+        .then((s: any) => done(typeof s?.state === 'string' ? s.state : undefined), () => done(undefined));
+    } catch { done(undefined); }
+  });
+}
+
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
   return (
     <motion.div
@@ -1061,7 +1383,16 @@ export default function CommandComposer({
   );
   const isQuietMode = SocketService.isQuietMode(sessionId);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<Dictation | null>(null);
+  // Voice-mode bookkeeping read by callbacks that outlive their render
+  // (speech end handlers, the recognizer's events): see speak() and the
+  // voice-mode button.
+  const isVoiceModeRef = useRef(false);
+  const lastSpokenKeyRef = useRef('');
+  const speechHeadRef = useRef('');
+  const resumeListenRef = useRef(false);
+  const restartListenRef = useRef(false);
+  const speechIdRef = useRef(0);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
   const endRef = useRef<HTMLDivElement>(null);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
@@ -1611,19 +1942,39 @@ export default function CommandComposer({
     }
     if (onStepsUpdate) onStepsUpdate(derived.steps);
     if (onMessagesUpdate) onMessagesUpdate(events, sessionId);
+  }, [events, derived.steps, onMessagesUpdate, onStepsUpdate, isThinking]);
 
-    // Auto-speak new assistant messages if voice mode is on
-    if (isVoiceMode && events.length > 0) {
-      const last = events[events.length - 1];
-      if (last.type === 'text' && last.data.text) {
-        speak(last.data.text);
-      }
-    }
-  }, [events, derived.steps, isVoiceMode, onMessagesUpdate, onStepsUpdate, isThinking]);
+  // Auto-speak a reply that ARRIVES while voice mode is on (replyToSpeak).
+  // A list that was replaced rather than grown (another session opened, a
+  // history restored) is what was already on the screen: its newest reply
+  // is recorded as said, not read aloud.
+  useEffect(() => {
+    const head = eventSpeechKey(events[0], 0);
+    const replaced = head !== speechHeadRef.current;
+    speechHeadRef.current = head;
+    if (!isVoiceMode) return;
+    const next = replyToSpeak(events, lastSpokenKeyRef.current);
+    if (!next) return;
+    lastSpokenKeyRef.current = next.key;
+    if (!replaced) void speak(next.text);
+  }, [events, isVoiceMode]);
 
   const speak = async (text: string) => {
-    if (!isVoiceMode) return;
-    stopSpeaking();
+    if (!isVoiceModeRef.current) return;
+    /*
+     * JOE'S VOICE DOES NOT GO INTO HIS OWN MICROPHONE.
+     *
+     * The owner, 2026-11-08: the microphone was open while Joe read a reply
+     * aloud, and the box filled with Joe's own words. The microphone closes
+     * before Joe makes a sound and opens again only from speechEnded(), when
+     * the speech has really ended, never while it plays.
+     */
+    micPauseForSpeech(recognitionRef.current, resumeListenRef);
+    cancelSpeech();
+    const id = ++speechIdRef.current;
+    // Only THIS speech may end itself: a cancelled one fires its end handler
+    // late (speechSynthesis.cancel() calls onend/onerror afterwards).
+    const finish = () => { if (id === speechIdRef.current) speechEnded(); };
 
     setIsSpeaking(true);
 
@@ -1639,10 +1990,12 @@ export default function CommandComposer({
           },
           body: JSON.stringify({ text, voice: 'onyx' })
         });
+        // A newer reply, his stop, or voice mode off came while the server answered.
+        if (id !== speechIdRef.current) return;
 
         if (res.status === 401) {
           handleUnauthorized();
-          setIsSpeaking(false);
+          finish();
           return;
         }
         // 503 = this machine has no speech engine configured. That will not
@@ -1650,18 +2003,22 @@ export default function CommandComposer({
         if (res.status === 503) serverTtsOff.current = true;
         if (res.ok) {
           const blob = await res.blob();
+          if (id !== speechIdRef.current) return;
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
-          audio.onended = () => setIsSpeaking(false);
-          audio.onerror = () => setIsSpeaking(false);
-          audio.play();
+          const done = () => { URL.revokeObjectURL(url); finish(); };
+          audio.onended = done;
+          audio.onerror = done;
           (window as any).currentAudio = audio; // Keep ref to stop it
+          // A refused autoplay never fires onended: the microphone must still come back.
+          audio.play().catch(done);
           return;
         }
       }
     } catch (e) {
       console.warn('Backend TTS failed, falling back to browser', e);
     }
+    if (id !== speechIdRef.current) return;
 
     // 2. Fallback to Browser Speech
     const utterance = new SpeechSynthesisUtterance(text);
@@ -1672,13 +2029,15 @@ export default function CommandComposer({
       const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
       if (arVoice) utterance.voice = arVoice;
     }
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onstart = () => { if (id === speechIdRef.current) setIsSpeaking(true); };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
   };
 
-  const stopSpeaking = () => {
+  /** Silence Joe without counting it as an end: speak() replacing a speech, voice mode off, leaving. */
+  const cancelSpeech = () => {
+    speechIdRef.current++;
     window.speechSynthesis.cancel();
     if ((window as any).currentAudio) {
       (window as any).currentAudio.pause();
@@ -1687,13 +2046,26 @@ export default function CommandComposer({
     setIsSpeaking(false);
   };
 
+  /** The speech has ended: the microphone that speaking closed listens again. */
+  const speechEnded = () => {
+    setIsSpeaking(false);
+    micAfterSpeech(resumeListenRef, isVoiceModeRef.current, () => { void startListening(); });
+  };
+
+  /** His stop-speaking button: the speech ends now, so the microphone may come back. */
+  const stopSpeaking = () => {
+    cancelSpeech();
+    speechEnded();
+  };
+
   useEffect(() => {
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => {
       window.speechSynthesis.getVoices();
     };
     return () => {
-      stopSpeaking();
+      resumeListenRef.current = false;
+      cancelSpeech();
     };
   }, []);
 
@@ -1703,62 +2075,134 @@ export default function CommandComposer({
    * The owner, 2026-11-08: «I pressed Joe's microphone and it did not work» —
    * the browser had refused the microphone and Joe said nothing at all (no
    * onerror), and the first press only opened the voice panel. Now one press
-   * listens, the language is the interface's, and every refusal is said in
-   * his language with what to do: allow the microphone, use a page served
-   * over https (or from this computer), check that a microphone exists, or
-   * connect to the internet the browser's speech service needs.
+   * listens, in the language he speaks (pickDictationLang), and every refusal
+   * is said in his language with what to do: allow the microphone, use a page
+   * served over https (or from this computer), check that a microphone
+   * exists, or connect to the internet the browser's speech service needs.
+   * The listening itself is createDictation's.
    */
   const [micProblem, setMicProblem] = useState('');
-  useEffect(() => {
-    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (Recognition) {
-      const recognition = new Recognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      const ui = String(i18n.language || 'ar').split('-')[0];
-      recognition.lang = ({ ar: 'ar-SA', en: 'en-US', fr: 'fr-FR', de: 'de-DE', ru: 'ru-RU', es: 'es-ES' } as Record<string, string>)[ui] || 'ar-SA';
-      recognition.onstart = () => { setIsListening(true); setMicProblem(''); };
-      recognition.onaudiostart = () => setMicProblem('');
-      recognition.onend = () => setIsListening(false);
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setText(prev => prev + (prev ? ' ' : '') + transcript);
-      };
-      recognition.onerror = (event: any) => {
-        setIsListening(false);
-        const code = String(event?.error || '');
-        setMicProblem(code === 'not-allowed' || code === 'service-not-allowed'
-          ? (window.isSecureContext ? t('cc_micDenied') : t('cc_micInsecure'))
-          : code === 'audio-capture' ? t('cc_micNone')
-          : code === 'network' ? t('cc_micNetwork')
-          : code === 'no-speech' ? t('cc_micNoSpeech')
-          : code === 'aborted' ? '' : t('cc_micFailed'));
-      };
-      recognitionRef.current = recognition;
-    }
-  }, [i18n.language]);
+  // A start that does not listen yet: the button shows it (createDictation's phase).
+  const [micPending, setMicPending] = useState<DictationPending>('');
+  /*
+   * Independent review of 2026-11-08: the recognizer's effect depended on t,
+   * which changes with the interface language, so switching the menus'
+   * language while he spoke (or while «Allow?» was open) closed the
+   * microphone without a word. The recognizer reads the current t here and
+   * is rebuilt only for another dictation language.
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
+  const [dictationPick, setDictationPick] = useState<string | null>(() => {
+    try { return localStorage.getItem(DICTATION_STORAGE_KEY); } catch { return null; }
+  });
+  const dictationLang = useMemo(() => {
+    let uiSaved: string | null = null;
+    try { uiSaved = localStorage.getItem('lang'); } catch { /* storage blocked: nothing was chosen */ }
+    return pickDictationLang(dictationPick, uiSaved, typeof navigator !== 'undefined' ? navigator.language : '');
+  }, [dictationPick, i18n.language]);
+  const dictation = dictationLangOf(dictationLang) || DICTATION_LANGS[0];
+  const dictationOptions = dictationChoices(dictationLang, i18n.language);
+  // What the big microphone is doing, said on it and under it.
+  //  While the browser's «Allow?» is open the button says so, not «Connecting…» (review, 2026-11-08).
+  const micStatus = isListening ? t('cc_listening') : micPending === 'asking' ? t('cc_micAskAllow') : micPending ? t('connecting') : t('cc_tapToSpeak');
 
-  const toggleListening = async () => {
-    if (!recognitionRef.current) {
+  useEffect(() => {
+    const mic = createDictation({
+      Recognition: (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition,
+      lang: dictationLang,
+      isSecure: () => window.isSecureContext !== false,
+      permission: () => micPermissionState((navigator as any).permissions, 3000),
+      t: (key) => tRef.current(key),
+      onListening: setIsListening,
+      onPending: setMicPending,
+      onProblem: setMicProblem,
+      onTranscript: (said) => setText(prev => prev + (prev ? ' ' : '') + said),
+    });
+    recognitionRef.current = mic.supported ? mic : null;
+    // The language changed while he wanted to listen: listening goes on in the new one.
+    if (mic.supported && restartListenRef.current) {
+      restartListenRef.current = false;
+      void mic.start();
+    }
+    // A replaced recognizer (another language) or a composer that leaves must
+    // not keep the microphone open or fire into a stale render.
+    return () => {
+      // A start he still wants — listening, or still waiting on «Allow» — goes
+      // on in the next recognizer, whether the switch under the microphone or
+      // an interface language he chose changed the dictation language.
+      if (mic.wanted()) restartListenRef.current = true;
+      mic.dispose();
+      if (recognitionRef.current === mic) recognitionRef.current = null;
+      setIsListening(false);
+      setMicPending('');
+    };
+  }, [dictationLang]);
+
+  const chooseDictationLang = (tag: string) => {
+    if (tag === dictationLang) return;
+    setDictationPick(tag);
+    try { localStorage.setItem(DICTATION_STORAGE_KEY, tag); } catch { /* remembered for this page only */ }
+  };
+
+  const startListening = async () => {
+    const mic = recognitionRef.current;
+    if (!mic) {
       setMicProblem(t('speechUnsupported'));
       return;
     }
-    if (isListening) {
-      recognitionRef.current.stop();
+    await mic.start();
+  };
+
+  /*
+   * THE BIG MICROPHONE: A PRESS STARTS, A PRESS WHILE LISTENING FINISHES, AND
+   * A PRESS WHILE THE BROWSER IS STILL STARTING WAITS FOR IT.
+   *
+   * Independent review of 2026-11-08: while the permission question ran or
+   * the browser's «Allow?» was open the button looked untouched («Tap to
+   * speak», not pressed), so a second press — the natural one when nothing
+   * seems to happen — cancelled the start: after «Allow» the session closed at
+   * once, nothing was heard and nothing said why. The pending start now shows
+   * on the button (micPending: busy, pulsing, «Connecting…», the «Allow»
+   * sentence) and a press during it only repeats that sentence. Voice mode
+   * off still cancels it.
+   */
+  const toggleListening = () => {
+    const mic = recognitionRef.current;
+    if (mic?.pending()) {
+      //  Said again, so the alert is read again: the same text set twice is not announced.
+      if (mic.pending() === 'asking') {
+        setMicProblem('');
+        setTimeout(() => setMicProblem(t('cc_micAskAllow')), 30);
+      }
       return;
     }
-    setMicProblem('');
-    /*
-     * Said BEFORE the browser asks (the owner: «it said it wants access from
-     * the browser… do it yourself»). Only he can press «Allow»: the page says
-     * where it will appear, and when he refused before, how to undo it.
-     */
-    try {
-      const state = (await (navigator as any).permissions?.query({ name: 'microphone' }))?.state;
-      if (state === 'denied') { setMicProblem(t('cc_micBlockedHowTo')); return; }
-      if (state === 'prompt') setMicProblem(t('cc_micAskAllow'));
-    } catch { /* this browser does not say: the listening itself will */ }
-    try { recognitionRef.current.start(); } catch { /* already listening: the next onend frees it */ }
+    resumeListenRef.current = false;
+    if (mic?.wanted()) {
+      mic.stop();
+      return;
+    }
+    // He wants to talk: Joe stops talking first, or the microphone hears Joe.
+    if (isSpeaking) cancelSpeech();
+    void startListening();
+  };
+
+  /** The voice-mode button. Off always aborts: a start still waiting on «Allow» is stopped too. */
+  const toggleVoiceMode = () => {
+    const on = !isVoiceMode;
+    isVoiceModeRef.current = on;
+    if (on) {
+      // What is already on the screen was read; only a reply that arrives from now on is spoken.
+      lastSpokenKeyRef.current = newestText(events)?.key || '';
+      setIsVoiceMode(true);
+      // One press listens (the owner pressed once and nothing happened).
+      void startListening();
+      return;
+    }
+    setIsVoiceMode(false);
+    resumeListenRef.current = false;
+    recognitionRef.current?.abort();
+    cancelSpeech();
   };
 
   const clearToolTimers = () => {
@@ -5100,8 +5544,7 @@ export default function CommandComposer({
 
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
-                  //  One press listens (the owner pressed once and nothing happened).
-                  onClick={() => { const on = !isVoiceMode; setIsVoiceMode(on); if (on && !isListening) toggleListening(); if (!on && isListening) recognitionRef.current?.stop(); }}
+                  onClick={toggleVoiceMode}
                   title={t('cc_voiceMode')}
                   aria-pressed={isVoiceMode}
                 >
@@ -5158,17 +5601,38 @@ export default function CommandComposer({
 
           {isVoiceMode && (
             <div className="voice-controls">
+              {/* Three states, not two (review of 2026-11-08): a start still
+                  waiting on the browser is pressed, busy and pulsing, so he
+                  sees it working instead of pressing again (toggleListening). */}
               <button
-                className={`voice-record-btn ${isListening ? 'listening' : ''}`}
+                className={`voice-record-btn${isListening ? ' listening' : micPending ? ' starting' : ''}`}
                 onClick={toggleListening}
+                aria-label={micStatus}
+                aria-pressed={isListening || !!micPending}
+                aria-busy={!!micPending}
               >
                 {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
               </button>
               <div className="voice-info">
-                <span className="voice-status">{isListening ? t('cc_listening') : t('cc_tapToSpeak')}</span>
+                <span className="voice-status">{micStatus}</span>
+                {/* The language the browser really listens in, not a fixed list of two. */}
                 {micProblem
                   ? <span className="voice-problem" role="alert" dir="auto">{micProblem}</span>
-                  : <span className="voice-lang">{t('cc_voiceLangs')}</span>}
+                  : <span className="voice-lang" dir="auto">{t('cc_dictationLang', { lang: dictation.label, tag: dictation.tag })}</span>}
+              </div>
+              <div className="voice-lang-switch" role="group" aria-label={t('cc_dictationSwitch')}>
+                {dictationOptions.map(l => (
+                  <button
+                    key={l.tag}
+                    type="button"
+                    lang={l.code}
+                    className={`voice-lang-btn${l.tag === dictationLang ? ' active' : ''}`}
+                    aria-pressed={l.tag === dictationLang}
+                    onClick={() => chooseDictationLang(l.tag)}
+                  >
+                    {l.label}
+                  </button>
+                ))}
               </div>
 
               <button className="action-btn" title={t('cc_stopSpeaking')} onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>

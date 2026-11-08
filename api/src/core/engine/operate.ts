@@ -18,7 +18,10 @@ import { languageName } from './prompt';
 import type { CheckResult, EngineResult, EngineTool, ToolContext, ToolOutcome, VerificationReport } from './types';
 import type { FinishArgs, Verifier } from './finish';
 import { deviceRecordFor } from './tools/devices';
+import { isMailWatchRequest } from './tools/mail';
+import { activeWatches } from '../devices/mail-watch';
 import { clearWorking, getWorking, setWorking } from './device-work';
+import { IS_NEW_BUILD } from './select';
 
 /* ───────────────────────── which requests are operate ───────────────────────── */
 
@@ -39,6 +42,48 @@ const DESKTOP_APP = /(?:افتح|شغّ?ل|استخدم|اكتب\s+في|ادخل
 const BUILD_VERB = /\b(?:build|create|make|develop|write|code|implement)\s+(?:a|an|me\s+a|the)?\s*(?:app|application|website|site|program|tool|script|api|game|system|page)\b|ابن[يِ]?\s|ابني|أنشئ|انشئ|اكتب\s+(?:برنامج|كود|سكربت|أداة)|طوّ?ر\s|صمّ?م\s/iu;
 
 /**
+ * A REQUEST ABOUT SOFTWARE IS NEVER WORK ON THE DEVICES.
+ *
+ * Found by the verifiers on 2026-11-08: «أضف صفحة تعرض الأجهزة المتصلة
+ * بالشبكة», «اصلح الصفحة التي تعرض الأجهزة على الشبكة» and «رتب الأجهزة على
+ * الشبكة في جدول» name the devices and the network, so the devices reader
+ * (DEVICES_PLURAL with REACH) sent them to device_computers: a change to the
+ * chat's project became a list of the owner's computers. A request that
+ * builds, that is about a site, a page, the code or the project, or that
+ * leads with an edit (أضف، اصلح، عدّل، رتّب…, "add", "fix"…) is software: it
+ * goes to the project, never to the devices. The edit is read where it leads
+ * the message, after the words people put before it («طيب»، «لو سمحت»، "ok").
+ */
+const SOFT_FILLER = '(?:(?:و?(?:ثم|بعدين|كمان|الآن|الان|هلق|هلا|طيب|تمام|ماشي|رجاء|يلا)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو|and|also|now|then|ok|okay|sure|please|pls|can\\s+you|could\\s+you|would\\s+you)[\\s،,]+)*';
+//  «حسن» alone is «good» or a name, and «حول» is «around»: only the edit verbs that mean nothing else.
+const EDIT_STEM = '(?:أضف|اضف|إضف|ضيف|ضف|زيد|زد|أصلح|اصلح|إصلح|صلح|صلّح|عدّل|عدل|رتّب|رتب|غيّر|غير|حسّن|استبدل|انقل|ترجم|نسّق|نسق|صمّم|صمم)';
+//  The present tense is a request only after the words that ask: «ممكن تضيف صفحة…», «بدي ترتب…».
+const EDIT_PRESENT = '(?:ممكن|تقدر|بتقدر|بدي|بدّي|اريد|أريد|ابغى|أبغى|ابي|أبي)\\s+(?:[أا]ن(?:ك)?\\s+)?ت(?:ضيف|زيد|صلح|صلّح|عدّل|عدل|رتّب|رتب|غيّر|غير|حسّن|ستبدل|نقل|ترجم|نسّق|نسق|صمّم|صمم)';
+const EDIT_TAIL = '[\\u0621-\\u064A\\u064B-\\u0652]*';
+const EDIT_LEAD = new RegExp(
+    `^\\s*${SOFT_FILLER}[وف]?(?:${EDIT_STEM}(?:ها|هم|ه|لي|لنا|و|وا|ي)?(?=[\\s،,.؟?!:]|$)|${EDIT_PRESENT}${EDIT_TAIL}(?=[\\s،,.؟?!:]|$)`
+    + '|(?:add|fix|change|edit|update|rename|refactor|redesign|restyle|rewrite|improve|arrange|sort|style)\\b)', 'iu');
+//  «اجعل», «خلي», "make" lead a change only when what they change is software: «اجعل الموقع يظهر جيداً على هاتفي».
+const MAKE_LEAD = new RegExp(`^\\s*${SOFT_FILLER}[وف]?(?:اجعل|إجعل|خلي|خلّي|make)(?=\\s)`, 'iu');
+//  The code, the project, «the table» of an app: what a project has («في جدول», a table to answer in, is not one).
+const SOFTWARE_THING = /(?:الجدول|بالجدول|للجدول|الكود\s+البرمجي|كود\s+(?:البرنامج|التطبيق|الموقع)|الشيفرة|المشروع|مشروع(?:ي|نا)?(?=[\s،,.؟?!]|$)|الداشبورد|لوحة\s+(?:البيانات|المعلومات))|\b(?:the\s+table|source\s+code|codebase|the\s+code|project|repo(?:sitory)?|component|dashboard|html|frontend|backend|endpoint)\b/iu;
+
+function aboutSoftwareThing(t: string): boolean {
+    return ABOUT_A_SITE.test(t) || SOFTWARE_THING.test(t);
+}
+
+/** Software, not the devices: a build, a site, a page, the code or the project, or a request that leads with an edit. */
+export function isAboutSoftware(text: string): boolean {
+    const t = String(text || '');
+    return BUILD_VERB.test(t) || IS_NEW_BUILD.test(t) || EDIT_LEAD.test(t) || aboutSoftwareThing(t);
+}
+
+/** An edit of software, wherever it is meant to show: «اجعل الموقع يظهر جيداً على هاتفي» changes a site, it does not work the phone. */
+function editsSoftware(t: string): boolean {
+    return (EDIT_LEAD.test(t) || MAKE_LEAD.test(t)) && aboutSoftwareThing(t);
+}
+
+/**
  * THE DEVICES THEMSELVES, ASKED FOR IN THE CHAT.
  *
  * The owner, 2026-11-07: «I give the orders from the command box… I tell it
@@ -57,20 +102,96 @@ const TASK_VERB = /(?:افتح|اكتب|اضغط|احفظ|انسخ|احذف|أر
 
 /**
  * The devices on his Wi-Fi or network (network_devices): «هل توجد أجهزة على نفس
- * الواي فاي؟», «افحص كم جهاز على شبكة الواي فاي», "what is on my wifi".
+ * الواي فاي؟», «افحص كم جهاز على شبكة الواي فاي», "what devices are on my wifi".
+ *
+ * A QUESTION ABOUT THE DEVICES, NOT A MESSAGE THAT NAMES THE NETWORK.
+ *
+ * Found on 2026-11-08: «جهاز» matched inside «جهازي» and «لجهاز», and
+ * "things" and "connected" counted as devices, so «اطفي الواي فاي في جهازي»,
+ * "turn on wifi on my device", «أضف صفحة تعرض الأجهزة المتصلة بالشبكة» and
+ * advice about the router went to a Wi-Fi scan, and the scan's checks passed
+ * them. Now it takes three things together: the network, a device word
+ * standing alone, and a cue that asks to count, name, list or scan them,
+ * close to that word («كم جهاز», «شو الأجهزة», «هل توجد أجهزة», "how many
+ * devices", "scan my wifi for devices"). Turning the Wi-Fi on or off, a build,
+ * a fix or an addition to a project, a site, and advice are not this question.
  */
 const NETWORK = /(?:واي\s*فاي|الوايفاي|وايفاي|wi-?fi|الشبكة|شبكة\s+(?:البيت|المنزل|الواي|الانترنت|الإنترنت)|الراوتر|راوتر)|\b(?:network|router|lan)\b/iu;
-const ANY_DEVICE = /(?:أجهزة|اجهزة|الأجهزة|الاجهزة|جهاز|اجهزه|أجهزه)|\b(?:devices?|things|connected)\b/iu;
+//  JavaScript's \b knows no Arabic letter: an Arabic word starts after a space or a mark and ends before one.
+const NET_START = '(?:^|[\\s،,.؟?!:;(«"\'])';
+const NET_TAIL = '[\\u0621-\\u064A\\u064B-\\u0652]*';
+const NET_END = '(?=[\\s،,.؟?!:;)»"\']|$)';
+//  «جهاز», «جهازاً», «أجهزة», «الأجهزة», «والأجهزة» — never «جهازي» (my device) or «لجهاز».
+const DEVICE_WORD = `(?:(?:و?(?:ال)?(?:أجهزة|اجهزة|اجهزه|أجهزه)|جهاز(?:اً|ًا|ا)?)${NET_END}|devices?\\b)`;
+const COUNT_CUE = '(?:و?(?:كم|شو|ايش|إيش|مين)|أي|أيّ|اي|ما\\s+(?:هي|هو)|ماهي|which|how\\s+many|what)';
+const THERE_CUE = '(?:و?هل(?:\\s+\\S+)?\\s+(?:توجد|يوجد|في|فيه|هناك)|are\\s+there|is\\s+there)';
+/*
+ * …and to look for them: «ابحث عن الأجهزة المتصلة بالواي فاي», «دور على الاجهزة
+ * اللي على الواي فاي», "search for devices on my network", "find all devices
+ * connected to my wifi", "check my wifi for devices" (2026-11-08: they went to
+ * device_computers, the owner's linked computers, or to no device at all).
+ * «بحث» alone is a research paper and «دور» alone a role or a turn: the verb
+ * only — «ابحث», «دوّر», «دور على».
+ */
+const LIST_CUE = `(?:[اإ]?فحص${NET_TAIL}|اعرض${NET_TAIL}|[اإ]بحث${NET_TAIL}|دوّر${NET_TAIL}|دور(?:لي|ي|وا)?\\s+(?:على|عن|لي)|فتّ?ش${NET_TAIL}|شوف${NET_TAIL}|قائمة|list|scan|show|check|find|search|look)`;
+const NETWORK_QUESTION = new RegExp(
+    `${NET_START}(?:${COUNT_CUE}|${THERE_CUE})(?:\\s+\\S+){0,2}?\\s+${DEVICE_WORD}`
+    + `|${NET_START}ما\\s+${DEVICE_WORD}`
+    //  Asked as a bare noun, the device word first: «الأجهزة المتصلة بالواي فاي؟», "devices on my wifi?".
+    + `|^\\s*${DEVICE_WORD}`
+    + `|${NET_START}${LIST_CUE}(?:\\s+\\S+){0,4}?\\s+${DEVICE_WORD}`
+    //  …and who or what is on it, asked of the network itself: "what's on my wifi", «مين متصل على الواي فاي».
+    + '|\\bwhat(?:\'s|\\s+is)\\s+(?:on|connected\\s+to)\\s+(?:my|our|the)\\s+(?:home\\s+)?(?:wi-?fi|network|router|lan)\\b'
+    + '|\\bwho(?:\'s|\\s+is)\\s+(?:on|connected\\s+to|using)\\s+(?:my|our|the)\\s+(?:home\\s+)?(?:wi-?fi|network|router)\\b'
+    + `|${NET_START}(?:شو|ايش|إيش|مين)\\s+(?:(?:في|فيه|موجود|متصل|المتصل|بيستخدم|يستخدم)\\s+)?(?:على|ب|في)\\s*(?:ال)?(?:واي\\s*فاي|وايفاي|شبكة|راوتر)`, 'iu');
+//  On or off is an action on the Wi-Fi, never a list of what is on it: «اطفي الواي فاي في جهازي», "turn on wifi on my device".
+//  «فعلاً» (really) is not «فعّل».
+const NET_TOGGLE = new RegExp(`${NET_START}[وف]?(?:[اأ]?شغّ?ل|[اأإ]?طف[يئءّ]|سكّ?ر|فعّ?ل(?!ا)|عطّ?ل|[اأإ]?فصل|وقّ?ف)${NET_TAIL}${NET_END}|\\b(?:turn|switch|enable|disable|toggle)\\b`, 'iu');
+/*
+ * Advice about the network is answered, not scanned: «كم جهاز يتحمل الراوتر؟»,
+ * "the best router for many devices". THE ADVICE IS THE QUESTION ITSELF: found
+ * on 2026-11-08, «كم جهاز على الواي فاي؟ افضل لو تعطيني اسماءها» («better if
+ * you give me their names») was no scan any more, because «افضل» anywhere was
+ * advice. It is read in the sentence that asks about the devices, and «أفضل
+ * لو/أن/إذا», "best if" (a polite «better if») is not advice.
+ */
+const NET_ADVICE = /(?:يتحمّ?ل|يستوعب|[أا]قصى|[أا]نصح|نصيحة|نصائح)|[أا]فضل(?![\s،,]+(?:لو|اذا|إذا|[أاإ]ن|[أا]نك|لك|لي|عندي)(?=[\s،,.؟?!]|$))|\b(?:best(?!\s+(?:if|to\s+(?:give|tell|show|list|name)))|recommend\w*|advice|maximum|max|support(?:s|ed)?|handles?)\b/iu;
+const NETWORK_QUESTIONS = new RegExp(NETWORK_QUESTION.source, 'giu');
+const SENTENCE_END = /[.؟?!\n]/u;
+
+/** The sentences of the message that ask about the devices on the network. */
+function networkQuestionSentences(t: string): string[] {
+    const out: string[] = [];
+    for (const m of t.matchAll(NETWORK_QUESTIONS)) {
+        //  The match may begin on the mark that ended the sentence before it («…؟كم»): start at its first letter.
+        const at = (m.index ?? 0) + Math.max(0, m[0].search(/[^\s،,.؟?!:;(«"']/u));
+        let start = at;
+        while (start > 0 && !SENTENCE_END.test(t[start - 1])) start--;
+        let end = at;
+        while (end < t.length && !SENTENCE_END.test(t[end])) end++;
+        out.push(t.slice(start, end));
+    }
+    return out;
+}
 
 export function isNetworkRequest(text: string): boolean {
     const t = String(text || '');
-    return NETWORK.test(t) && ANY_DEVICE.test(t) && !BUILD_VERB.test(t);
+    if (!NETWORK.test(t) || NET_TOGGLE.test(t) || isAboutSoftware(t)) return false;
+    return networkQuestionSentences(t).some(s => !NET_ADVICE.test(s));
 }
 
-/** The request asks to connect to a device, which devices Joe can reach, or what is on the network. */
+/**
+ * The request asks to connect to a device, which devices Joe can reach, or
+ * what is on the network — and is not about software (isAboutSoftware): a
+ * page that lists the devices is a change to a project. Connecting still
+ * reads a site named after it: «اشبك على كمبيوتر المكتب وافتح الموقع» works a
+ * computer; one that builds or leads with an edit does not.
+ */
 export function isDeviceRequest(text: string): boolean {
     const t = String(text || '');
-    return CONNECT.test(t) || (DEVICES_PLURAL.test(t) && REACH.test(t)) || isNetworkRequest(t);
+    return (CONNECT.test(t) && !BUILD_VERB.test(t) && !IS_NEW_BUILD.test(t) && !EDIT_LEAD.test(t))
+        || (DEVICES_PLURAL.test(t) && REACH.test(t) && !isAboutSoftware(t))
+        || isNetworkRequest(t);
 }
 
 /** …and nothing more is to be done on it: listing, linking or pairing is the whole of it. */
@@ -118,10 +239,33 @@ function phoneAction(t: string): boolean {
     return (PHONE_ACTION.test(t) && !ABOUT_A_SITE.test(t)) || (FLASH_NOUN.test(t) && ON_OFF.test(t));
 }
 
+/**
+ * THE OWNER ASKS TO BE TOLD WHEN SOMEONE WRITES: WORK ON HIS PHONE'S MAIL.
+ *
+ * Found on 2026-11-08: «انتظر حتى ترد واعلمني», «اذا رد عليك اخبرني», «خبرني
+ * لما يوصلني ايميل من احمد», «تابع ردود شروق» (tools/mail.ts isMailWatchRequest)
+ * named no device, so the chat's answerer took them and promised to watch —
+ * it cannot. They are operate work on the phone: the run has
+ * email_watch_replies and the chat's last turns, where the address is. A
+ * site or an app that sends or reads email is software, not a watch: «ابني
+ * موقع فيه نموذج يرسل ايميل».
+ */
+function isMailWatch(t: string): boolean {
+    return isMailWatchRequest(t) && !isAboutSoftware(t);
+}
+//  …and nothing to write first: «ارسل ايميل لشروق واخبرني اذا ردت» sends, then watches.
+const SENDS_MAIL = new RegExp(`(?:^|[\\s،,.؟?!])[وف]?(?:[اأإ]رسل|ابعث|ابعت|اكتب|راسل)[\\u0621-\\u064A\\u064B-\\u0652]*(?=[\\s،,.؟?!]|$)|\\b(?:send|write|compose|draft)\\b`, 'iu');
+
+/** The message asks only to watch the mail for someone's reply: the watch is the whole of it. */
+export function watchesMailOnly(text: string): boolean {
+    const t = String(text || '');
+    return isMailWatch(t) && !SENDS_MAIL.test(t);
+}
+
 export function isOperateRequest(text: string): boolean {
     const t = String(text || '');
-    if (!t.trim() || BUILD_VERB.test(t)) return false;
-    return ON_DEVICE.test(t) || ON_PHONE.test(t) || phoneAction(t) || DESKTOP_APP.test(t) || isDeviceRequest(t);
+    if (!t.trim() || BUILD_VERB.test(t) || editsSoftware(t)) return false;
+    return ON_DEVICE.test(t) || ON_PHONE.test(t) || phoneAction(t) || DESKTOP_APP.test(t) || isDeviceRequest(t) || isMailWatch(t);
 }
 
 /**
@@ -136,8 +280,9 @@ const PHONES_PLURAL = /(?:الهواتف|هواتف|الجوالات|جوالا�
 /** The request is about the owner's phone (the android_ tools), not a computer. */
 export function isPhoneRequest(text: string): boolean {
     const t = String(text || '');
-    if (BUILD_VERB.test(t)) return false;
-    return ON_PHONE.test(t) || PHONE_CONNECT.test(t) || phoneAction(t) || (PHONES_PLURAL.test(t) && REACH.test(t));
+    if (BUILD_VERB.test(t) || editsSoftware(t)) return false;
+    //  Watching his mail is the phone's: Joe reads its mail notifications (isMailWatch).
+    return ON_PHONE.test(t) || PHONE_CONNECT.test(t) || phoneAction(t) || (PHONES_PLURAL.test(t) && REACH.test(t) && !isAboutSoftware(t)) || isMailWatch(t);
 }
 
 /* ───────────── the device this chat is working on ───────────── */
@@ -185,10 +330,16 @@ export function operateFollowUp(sessionId: unknown, text: string, now = Date.now
  * and a request about the devices themselves with device_computers: pointing
  * either at device_windows sent the model through the computer's windows first.
  */
-export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' | 'network_devices' {
-    //  The Wi-Fi first: «افحص كم جهاز على شبكة الواي فاي» once counted the devices in a phone app.
-    if (isNetworkRequest(request)) return 'network_devices';
+export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' | 'network_devices' | 'email_watch_replies' {
+    //  «تابع ردود شروق», «اذا رد عليك اخبرني»: the watch is the work, and the address
+    //  is in the chat; the phone's screen has nothing to show for it (2026-11-08).
+    if (watchesMailOnly(request)) return 'email_watch_replies';
+    //  The phone first: «اطفي الواي فاي في هاتفي» and "turn on wifi on my phone" are
+    //  the phone's own Wi-Fi (2026-11-08: they were pointed at a scan). A question
+    //  about the devices on the Wi-Fi is routed to the computer (select.ts), so
+    //  «افحص كم جهاز على شبكة الواي فاي» is not counted in a phone app again.
     if (target === 'phone' || isPhoneRequest(request)) return 'android_devices';
+    if (isNetworkRequest(request)) return 'network_devices';
     if (isDeviceRequest(request)) return 'device_computers';
     return 'device_windows';
 }
@@ -231,26 +382,61 @@ export function onlyLooks(text: string): boolean {
  * request it follows; one that names its own device, network, app or
  * flashlight stands alone.
  */
+/** The message says what it is about: its own device, network, phone, app, flashlight or mail, or it is long. */
+function standsAlone(t: string): boolean {
+    return t.length > 80 || isDeviceRequest(t) || isPhoneRequest(t) || ON_DEVICE.test(t) || DESKTOP_APP.test(t) || FLASH_NOUN.test(t);
+}
+
 export function continuedRequest(request: string, previous?: string | null): string {
     const t = String(request || '').trim();
     const p = String(previous || '').trim();
     if (!t || !p || t === p) return t;
-    if (t.length > 80 || isDeviceRequest(t) || isPhoneRequest(t) || ON_DEVICE.test(t) || DESKTOP_APP.test(t) || FLASH_NOUN.test(t)) return t;
+    if (standsAlone(t)) return t;
     return `${t}\n(it continues: ${p})`;
 }
 
 /**
- * What the checks hold the run to: the devices it reaches, a look, or an
- * action. The message decides when it says so itself; a short one that
- * does not («افحص», «حاول مره اخرى») is read with the work it continues.
+ * WHAT A SHORT MESSAGE CONTINUES: THE LAST DEVICE WORK THAT STANDS ALONE.
+ *
+ * The owner's engineer, 2026-11-08: «افحص» after a failed «افحص» continued
+ * «افحص» — the chat's last device work — and lost «هل توجد أجهزة على الواي
+ * فاي؟» before it: the run looked at the owner's screen for nothing and
+ * closed with «I read the screen». A short message continues the most recent
+ * request that says what it is about. A run that continued one is recorded
+ * as «X — Y» (AgentEngineTool): Y, what X continued, is that request. A
+ * request the owner wrote with a dash in it is his own when what comes before
+ * the dash already stands alone. Null when nothing recorded stands alone.
  */
-export function requestKind(own: string, about: string = own): 'devices' | 'look' | 'act' {
+export const CONTINUED_MARK = ' — ';
+
+export function deviceWorkAnchor(recorded: string): string | null {
+    const t = String(recorded || '').trim();
+    if (!t) return null;
+    const cut = t.indexOf(CONTINUED_MARK);
+    if (cut > 0 && !standsAlone(t.slice(0, cut).trim())) {
+        for (let at = cut; at >= 0; at = t.indexOf(CONTINUED_MARK, at + CONTINUED_MARK.length)) {
+            const tail = t.slice(at + CONTINUED_MARK.length).trim();
+            if (tail && standsAlone(tail)) return tail;
+        }
+    }
+    return standsAlone(t) ? t : null;
+}
+
+/**
+ * What the checks hold the run to: the devices it reaches, a look, an action,
+ * or a watch on the mail. The message decides when it says so itself; a short
+ * one that does not («افحص», «حاول مره اخرى», an address Joe asked for) is
+ * read with the work it continues.
+ */
+export function requestKind(own: string, about: string = own): 'devices' | 'look' | 'act' | 'watch' {
+    if (watchesMailOnly(own)) return 'watch';
     if (onlyAboutDevices(own)) return 'devices';
     if (onlyLooks(own)) return 'look';
     if (ASKS_ACTION.test(own) || about === own) return 'act';
-    const rest = about.slice(own.length);
+    const rest = about.slice(own.length).replace(/^\s*\(it continues:\s*/u, '');
+    if (watchesMailOnly(rest)) return 'watch';
     if (onlyAboutDevices(rest)) return 'devices';
-    if (onlyLooks(rest.replace(/^\s*\(it continues:\s*/u, ''))) return 'look';
+    if (onlyLooks(rest)) return 'look';
     return 'act';
 }
 
@@ -302,7 +488,14 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
     ].join('\n');
 }
 
+/*
+ * `about`: his words and what they continue, never the block of a file he
+ * attached — the hints and the first tool read it (2026-11-08: a picture
+ * described as "turn off the guest network" turned «افحص» from the Wi-Fi
+ * scan to device_computers).
+ */
 export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget, history?: string, about?: string): string {
+    const read = about || request;
     return [
         'Request (verbatim):',
         '"""',
@@ -312,12 +505,14 @@ export function operatorFirstMessage(request: string, language: string, replyLan
         //  What Joe did on the owner's devices earlier in this chat: «حاول مره
         //  اخرى» means the last of these, «اطفيه» the thing turned on.
         ...(history && history.trim() ? [history.trim(), 'A short request («try again», «turn it off», «and now…») refers to these.', ''] : []),
-        ...(target === 'phone' && !isPhoneRequest(request) ? ['Joe read this message as being about the owner\'s Android phone (from the chat\'s work on it, or from what the message means): use the android_ tools.', ''] : []),
-        ...(target === 'computer' && !isOperateRequest(request) ? ['Joe read this message as being about the owner\'s computer (from the chat\'s work on it, or from what the message means): use the device_ tools.', ''] : []),
+        ...(target === 'phone' && !isPhoneRequest(read) ? ['Joe read this message as being about the owner\'s Android phone (from the chat\'s work on it, or from what the message means): use the android_ tools.', ''] : []),
+        ...(target === 'computer' && !isOperateRequest(read) ? ['Joe read this message as being about the owner\'s computer (from the chat\'s work on it, or from what the message means): use the device_ tools.', ''] : []),
+        //  «تابع ردود شروق», «اذا رد عليك اخبرني»: whom is in the chat, not in the message (2026-11-08).
+        ...(watchesMailOnly(read) ? ['The owner asks to be told when someone writes or replies: call email_watch_replies with that person\'s address and the name he used. The address is in THE CHAT SO FAR or in the device work above (the email Joe sent). When it is in neither, read it off his phone\'s mail with the android_ tools, or ask_owner. Never guess an address.', ''] : []),
         `Request language: ${languageName(language)}.`,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         '',
-        `Start by calling plan_update with your steps, then ${operatorFirstTool(about || request, target)}.`,
+        `Start by calling plan_update with your steps, then ${operatorFirstTool(read, target)}.`,
     ].join('\n');
 }
 
@@ -355,13 +550,21 @@ export const askOwnerTool: EngineTool<{ question: string }> = {
  * to look), the last action was followed by a look or a read, and no action
  * the run ended on was refused or failed without a later success.
  */
-export function operateVerifier(opts: { about?: string } = {}): Verifier {
+/*
+ * `own`: what the owner typed, without the block of a file he attached — the
+ * checks read his words, never a file's description (2026-11-08: «افحص» with a
+ * picture that said "turn off the guest network" was held to a toggle).
+ * `since`: when the run began, so a watch on the mail counts only when this
+ * run made it.
+ */
+export function operateVerifier(opts: { about?: string; own?: string; since?: number } = {}): Verifier {
     return async (ctx: ToolContext, _claim: FinishArgs): Promise<VerificationReport> => {
         const rec = deviceRecordFor(ctx.runId);
         const checks: CheckResult[] = [];
         //  «افحص» is held to what it continues (continuedRequest), not read alone.
-        const about = opts.about || ctx.request;
-        const kind = requestKind(ctx.request, about);
+        const own = opts.own || ctx.request;
+        const about = opts.about || own;
+        const kind = requestKind(own, about);
         const looking = kind === 'look';
         const done = rec.actions.filter(a => a.ok);
         const lastAction = done.length ? done[done.length - 1].at : 0;
@@ -376,11 +579,20 @@ export function operateVerifier(opts: { about?: string } = {}): Verifier {
                 ? { id: 'devices', status: 'passed', detail: linked.length ? linked.map(a => a.what).join('; ') : 'the devices Joe can reach were listed' }
                 : { id: 'devices', status: 'failed', detail: 'the request is about the devices Joe can reach, and none were listed, linked or paired: call device_computers' });
             //  …unless it also asks what the screen shows.
-            if (asksToLook(ctx.request) || (about !== ctx.request && asksToLook(about) && !onlyAboutDevices(ctx.request))) {
+            if (asksToLook(own) || (about !== own && asksToLook(about) && !onlyAboutDevices(own))) {
                 checks.push(lastLook
                     ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
                     : { id: 'looked', status: 'failed', detail: 'the request also asks what the screen shows, and the screen was not read or looked at' });
             }
+        } else if (kind === 'watch') {
+            //  «تابع ردود شروق»: a watch this run made for this chat is the whole of it. Without
+            //  it the run was held to an action on a screen it had no reason to touch.
+            const sid = String(ctx.joe?.sessionId || '');
+            const since = opts.since ?? 0;
+            const made = activeWatches().filter(w => (!sid || w.sessionId === sid) && w.sentAt >= since);
+            checks.push(made.length
+                ? { id: 'watching', status: 'passed', detail: `Joe watches the mail for ${made.map(w => w.to).join(', ')}` }
+                : { id: 'watching', status: 'failed', detail: 'the owner asked to be told when someone writes or replies, and no watch was made: call email_watch_replies with the person\'s address (from the chat or the email Joe sent; read it off his phone\'s mail, or ask_owner when it is nowhere)' });
         } else if (looking) {
             //  «افحص» after a question about the Wi-Fi or the devices: the scan or the list is the look.
             if (!lastLook && listed && isDeviceRequest(about)) {
@@ -409,11 +621,13 @@ export function operateVerifier(opts: { about?: string } = {}): Verifier {
 
 /* ───────────────────────── what the owner is told ───────────────────────── */
 
-const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
+//  `watching`: a watch on the mail touched no screen, so «I looked at the screen after it» would be untrue.
+const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: string; watching: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
     ar: {
         done: '✅ نفّذتُه على جهازك ونظرتُ إلى الشاشة بعده للتأكد.',
         devices: '✅ هذا ما أصل إليه الآن من أجهزتك.',
         looked: '✅ قرأتُ الشاشة كما هي، ولم أغيّر فيها شيئاً.',
+        watching: '✅ أراقب بريدك الآن، وسأخبرك هنا في المحادثة فور وصول الردّ.',
         notDone: why => `⚠️ لم يكتمل التنفيذ على الجهاز: ${why}`,
         took: (s, usd) => `⏱️ استغرق ${s < 60 ? `${s} ثانية` : `${Math.round(s / 60)} دقيقة`}${usd != null ? `، كلفة ${usd.toFixed(3)}$` : ''}`,
     },
@@ -421,6 +635,7 @@ const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: str
         done: '✅ Done on your computer, and the screen was checked afterwards.',
         devices: '✅ That is what I can reach of your devices now.',
         looked: '✅ I read the screen as it is and changed nothing.',
+        watching: '✅ I am watching your mail now and will tell you here the moment the reply arrives.',
         notDone: why => `⚠️ Not completed on the device: ${why}`,
         took: (s, usd) => `⏱️ Took ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`}${usd != null ? `, cost $${usd.toFixed(3)}` : ''}`,
     },
@@ -442,6 +657,7 @@ const REASONS_AR: [RegExp, string][] = [
     [/cancelled/iu, 'أُلغي التشغيل'],
     [/no device_ action succeeded|nothing was done on the device/iu, 'لم ينجح أي إجراء على الجهاز'],
     [/not followed by a device_look|look at the result/iu, 'لم يُنظر إلى الشاشة بعد آخر إجراء'],
+    [/no watch was made/iu, 'لم تبدأ مراقبة البريد: لم يُعرف عنوان من تنتظر ردّه'],
 ];
 
 /**
@@ -472,7 +688,7 @@ export function operateOutput(result: EngineResult | undefined, language: string
     const seconds = Math.round((result?.durationMs || 0) / 1000);
     const ids = new Set((result?.verification?.checks || []).map(c => c.id));
     const closing = ids.has('asked_owner') ? ASKED[language === 'ar' ? 'ar' : 'en']
-        : ids.has('acted') ? words.done : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
+        : ids.has('acted') ? words.done : ids.has('watching') ? words.watching : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
     const summary = verified
         ? [String(result!.summary || '').trim(), closing, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), ownScript(String(result?.summary || '').trim(), language)].filter(Boolean).join('\n\n');

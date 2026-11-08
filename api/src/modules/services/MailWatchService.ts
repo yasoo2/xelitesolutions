@@ -12,7 +12,8 @@
  * new mail from one of them it tells the owner:
  *   - in the chat the email was asked in: a message from Joe, kept with the
  *     chat's history, shown at once when that chat is open;
- *   - wherever he is in Joe: a «mail_reply» event the page shows as a notice;
+ *   - wherever he is in Joe: a «joe_notice» event, addressed to him alone,
+ *     that the page shows in its header (web JoeNoticeBanner);
  *   - and in that chat's device memory, so «اقرأ الرد» goes to the phone.
  * The adb call runs as the owner's own system task, the way the live phone
  * screen does (api/routes/devices.ts): a fixed read, no command from anyone.
@@ -38,16 +39,28 @@ function defaultReader(): NoticeReader {
 /** The message goes into the chat (kept, and live if open), a notice to the owner wherever he is, and the chat's device memory. */
 async function tellOwnerInJoe(reply: MailReply, text: string): Promise<void> {
     const sessionId = reply.watch.sessionId;
-    const userId = reply.watch.userId;
+    let userId = reply.watch.userId || '';
+    if (!userId && sessionId) {
+        //  A watch made before its owner was kept: the chat's own owner, from the store.
+        try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const id = await require('./session-identity').resolveAutonomousSessionIdentity(sessionId);
+            userId = String(id?.userId || '');
+        } catch { /* told in the chat; the notice needs an owner and is skipped */ }
+    }
     await executionFirewall.runAsSystem(async () => {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const ws = require('../../api/ws');
+        if (sessionId && userId) ws.registerSessionOwner(sessionId, userId);
         if (sessionId) {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const { usesLocalChatStore, persistChatStores } = require('../../api/chat-store');
+                const { usesLocalChatStore, flushChatStores } = require('../../api/chat-store');
                 if (usesLocalChatStore()) {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `mw-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: text, createdAt: new Date() });
-                    persistChatStores();
+                    //  Written before the notice: the page reads the chat again when it arrives.
+                    flushChatStores();
                 } else {
                     // eslint-disable-next-line @typescript-eslint/no-var-requires
                     const { Message } = require('../../shared/models/message');
@@ -55,14 +68,17 @@ async function tellOwnerInJoe(reply: MailReply, text: string): Promise<void> {
                 }
             } catch (e: any) { console.warn('[MailWatch] the message could not be kept in the chat:', e?.message || e); }
         }
-        // eslint-disable-next-line @typescript-eslint/no-var-requires
-        const { broadcast } = require('../../api/ws');
-        if (sessionId) broadcast({ type: 'text', sessionId, data: { text, sessionId } } as any);
-        //  No session on it: it reaches the owner in whichever chat he has open (ws.ts addresses it to him).
-        broadcast({
-            type: 'mail_reply',
-            data: { chatId: sessionId, from: reply.notice.title, subject: reply.notice.text, app: reply.notice.app, to: reply.watch.to, text },
-        } as any);
+        if (sessionId) ws.broadcast({ type: 'text', sessionId, data: { text, sessionId } } as any);
+        //  No session on it: it reaches the owner in whichever chat he has open, and him alone
+        //  (ws.ts resolves «joe_notice» to its userId; the page shows it in the header: JoeNoticeBanner).
+        if (userId) {
+            ws.broadcast({
+                type: 'joe_notice',
+                id: `mail_reply:${reply.notice.pkg}:${reply.notice.key}:${reply.notice.at}`,
+                userId,
+                data: { kind: 'mail_reply', chatId: sessionId, who: reply.notice.title, address: reply.watch.to, subject: reply.notice.text, app: reply.notice.app, at: reply.notice.at || Date.now() },
+            } as any);
+        }
         if (sessionId) {
             try {
                 // eslint-disable-next-line @typescript-eslint/no-var-requires

@@ -69,6 +69,32 @@ export const emailWatchTool: EngineTool<WatchArgs> = {
 };
 
 /**
+ * THE OWNER ASKS TO BE TOLD WHEN SOMEONE WRITES.
+ *
+ * «انتظر حتى ترد واعلمني», «اذا رد عليك اخبرني», «خبرني لما يوصلني ايميل من
+ * احمد», «تابع ردود شروق», "let me know when she replies": the work is on his
+ * phone's mail (operate, the phone), where email_watch_replies is. A word to
+ * tell or watch, with a word for a reply or an email.
+ */
+const AR_TAIL_W = '[\\u0621-\\u064A\\u064B-\\u0652]*';
+const AR_B = '(?:^|[\\s،,.؟?!])[وفل]?';
+const AR_E = '(?=[\\s،,.؟?!]|$)';
+/** To watch («تابع», «راقب», «انتظر»): enough with a reply or an email, unless he is writing one. */
+const WATCH = new RegExp(`${AR_B}(?:تابع|راقب|انتظر|استن[اى])${AR_TAIL_W}${AR_E}|\\b(?:watch\\s+for|wait\\s+for|keep\\s+an\\s+eye\\s+on|monitor)\\b`, 'iu');
+/** To be told («اخبرني», "let me know"): only with WHEN it happens («اذا», «لما», "when"). */
+const TELL = new RegExp(`${AR_B}(?:[اأ]خبرني|خبّ?رني|[اأ]علمني|علّ?مني|نبّ?هني|بلّ?غني|ذكّ?رني)${AR_TAIL_W}${AR_E}|\\b(?:let\\s+me\\s+know|tell\\s+me|notify\\s+me|alert\\s+me)\\b`, 'iu');
+const WHEN = new RegExp(`${AR_B}(?:[اإ]ذا|لو|لمّ?ا|عندما|حين|متى|حتى|[أا]ول\\s+ما|بس)${AR_E}|\\b(?:when|if|once|as\\s+soon\\s+as|whenever)\\b`, 'iu');
+const A_REPLY = new RegExp(`${AR_B}(?:ال)?(?:ردّ?|ردود|يردّ?|تردّ?|يردون|يردوا|ايميل|إيميل|ايميلات|إيميلات|بريد|رسال[هة]|مسج|يوصل|توصل|وصل|يصل|تصل|يراسل|تراسل)${AR_TAIL_W}${AR_E}`
+    + '|\\b(?:repl(?:y|ies|ied)|respond(?:s|ed)?|e-?mails?|mail|writes?\\s+(?:back|to\\s+me))\\b', 'iu');
+const COMPOSE = new RegExp(`${AR_B}(?:اكتب|كتابة|[اأإ]رسل|[اإ]رسال|ابعث|صغ|صياغة)${AR_TAIL_W}${AR_E}|\\b(?:write|compose|draft|send)\\b`, 'iu');
+
+export function isMailWatchRequest(text: string): boolean {
+    const t = String(text || '');
+    if (t.length > 300 || !A_REPLY.test(t)) return false;
+    return (WATCH.test(t) && !COMPOSE.test(t)) || (TELL.test(t) && WHEN.test(t));
+}
+
+/**
  * The same, kept even when the run forgot the tool: a run that was asked to
  * SEND an email and was done and checked leaves a watch for every address in
  * the request or the run's summary — unless one was just made for it.
@@ -82,5 +108,5 @@ export function watchAfterSentEmail(sessionId: unknown, request: string, summary
     const recent = new Set(activeWatches(now).filter(w => now - w.sentAt < 30 * 60_000).map(w => w.to));
     const to = emailAddresses(`${text} ${summary || ''}`).filter(a => !recent.has(a));
     if (!to.length) return [];
-    return watchReplies(sessionId, { to, request: text, lang, userId }, now).map(w => w.to);
+    return watchReplies(sessionId, { to, request: text, lang, userId, auto: true }, now).map(w => w.to);
 }

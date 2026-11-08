@@ -249,8 +249,22 @@ describe('the layout leaves the workspace where it was when the engine works', (
     }, MOUNT_TIMEOUT);
 });
 
-async function mountWorkspace(sessionId: string) {
+async function mountWorkspace(sessionId: string, options: { tab?: string; liveSource?: string | null } = {}) {
     const { dom, restore } = installDom();
+    /**
+     * The live view of a device (2026-11-08) is the real LiveDevicePanel, not
+     * a stand-in: the Preview shows the phone or this computer while Joe works
+     * it. Its only outside call is the screen route, answered here as «no
+     * phone plugged in», so the case also sees what it tells the owner then.
+     */
+    const screenAsks: string[] = [];
+    const screenFetch = async (url: unknown) => {
+        screenAsks.push(String(url));
+        return { ok: false, json: async () => ({ code: 'no_phone' }) };
+    };
+    const liveDevice = evaluate(web('components', 'LiveDevicePanel.tsx'), {
+        react: React, 'react-i18next': i18n, 'lucide-react': icon, '../config': { API_URL: '/api' },
+    }, { React, fetch: screenFetch, setInterval, clearInterval });
     const Workspace = evaluate(web('components', 'WorkspacePanel.tsx'), {
         react: React, 'react-i18next': i18n, 'lucide-react': icon, '../lib/plainText': plainText,
         './ErrorBoundary': { ErrorBoundary: pass },
@@ -258,19 +272,24 @@ async function mountWorkspace(sessionId: string) {
         './terminal/EnterpriseTerminalPanel': { __esModule: true, default: Null },
         './EmbeddedBrowser': { __esModule: true, default: Null },
         './PreviewPanel': { __esModule: true, default: Null },
+        './LiveDevicePanel': liveDevice,
     }).default;
-    function Host({ sid }: { sid: string }) {
-        const [tab, setTab] = React.useState('logs');
-        return React.createElement(Workspace, { sessionId: sid, activeTab: tab, onTabChange: setTab, mobileCollapsed: false });
+    function Host({ sid, liveSource }: { sid: string; liveSource: string | null }) {
+        const [tab, setTab] = React.useState(options.tab || 'logs');
+        return React.createElement(Workspace, { sessionId: sid, activeTab: tab, onTabChange: setTab, mobileCollapsed: false, liveSource, onLiveClose() { /* the page owns it */ } });
     }
     const { createRoot } = loadWeb('react-dom/client');
     const root = createRoot(dom.window.document.getElementById('root'));
     const act = React.act;
-    const render = async (sid: string) => { await act(async () => { root.render(React.createElement(Host, { sid })); await settle(); await settle(); }); };
+    const render = async (sid: string, liveSource: string | null = options.liveSource ?? null) => {
+        await act(async () => { root.render(React.createElement(Host, { sid, liveSource })); await settle(); await settle(); });
+    };
     await render(sessionId);
     const tabButton = (label: string) => dom.window.document.querySelector(`button.joe-workspace-tab[aria-label="${label}"]`);
     return {
-        tabButton, render,
+        tabButton, render, screenAsks,
+        tabLabels: () => Array.from(dom.window.document.querySelectorAll('button.joe-workspace-tab')).map((b: any) => b.getAttribute('aria-label')),
+        text: () => String(dom.window.document.body.textContent || ''),
         async click(el: Element) { await act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await settle(); }); },
         async close() {
             try { await act(async () => { root.unmount(); }); } finally { restore(); }
@@ -286,6 +305,29 @@ describe('the workspace offers no Activity tab', () => {
             expect(ws.tabButton('act_title')).toBeNull();
             //  The workspace loads no Activity panel at all (its imports are given above, and it asks for none).
             expect(read('components', 'WorkspacePanel.tsx')).not.toMatch(/import\(['"]\.\/RunActivityPanel['"]\)|from ['"]\.\/RunActivityPanel['"]/);
+        } finally { await ws.close(); }
+    }, MOUNT_TIMEOUT);
+
+    /**
+     * The owner, 2026-11-08: «on the same preview, no more menus». A device
+     * Joe works is shown live INSIDE the Preview, asked at its own route —
+     * never a tab of its own, and nothing asked once the device is let go.
+     */
+    it('a device Joe works is shown live in the Preview, at its own route, with no tab of its own', async () => {
+        const ws = await mountWorkspace('chat-1', { tab: 'preview', liveSource: 'phone' });
+        try {
+            expect(ws.tabLabels()).toEqual(['panelBrowser', 'panelTerminal', 'panelPreview', 'wsp_tabLogs']);
+            expect(ws.screenAsks[0]).toBe('/api/devices/phone/screen');
+            expect(ws.text()).toContain('dev_noPhone');              // said plainly: no phone is plugged in
+            await ws.render('chat-1', 'computer');
+            expect(ws.screenAsks[ws.screenAsks.length - 1]).toBe('/api/devices/computer/screen');
+            expect(ws.screenAsks.every(u => u === '/api/devices/phone/screen' || u === '/api/devices/computer/screen')).toBe(true);
+            expect(ws.tabLabels()).toEqual(['panelBrowser', 'panelTerminal', 'panelPreview', 'wsp_tabLogs']);
+            await ws.render('chat-1', null);
+            const asked = ws.screenAsks.length;
+            await new Promise(resolve => setTimeout(resolve, 80));
+            expect(ws.screenAsks.length).toBe(asked);
+            expect(ws.text()).not.toContain('dev_noPhone');
         } finally { await ws.close(); }
     }, MOUNT_TIMEOUT);
 });
@@ -320,6 +362,13 @@ describe('every word of the panel is in every language', () => {
         for (const v of ['created', 'modified', 'deleted', 'written']) keys.add(`act_change_${v}`);
         for (const v of ['delivered', 'failed', 'cancelled']) keys.add(`act_status_${v}`);
         for (const v of ['passed', 'failed', 'skipped']) keys.add(`act_check_${v}`);
+        //  A check's name is built from the engine's own id (t(`act_inst_${c.id}`)): every
+        //  instrument English names, every language names. They reached en and ar only,
+        //  so a French owner read «live» and «acceptance» in his verdict (2026-11-08).
+        const english = blocks.find(b => b.l === 'en')!.text;
+        const instruments = [...english.matchAll(/\n\s+(act_inst_[a-z]+): ['"]/g)].map(m => m[1]);
+        expect(instruments.length).toBeGreaterThanOrEqual(12);
+        for (const key of instruments) keys.add(key);
         expect(keys.size).toBeGreaterThan(40);
         const missing: string[] = [];
         for (const key of keys) {

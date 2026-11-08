@@ -57,12 +57,15 @@ describe('the audit waits for the eye it promised', () => {
         expect(src).toMatch(/no Browser panel attached — visual QA is blocked/);
     });
 
-    it('reveals the Browser tab when the server explicitly focuses visible QA', () => {
+    it('reveals the browser when the server explicitly focuses visible QA — in the Preview', () => {
         const src = JOE_UI();
         const focus = src.indexOf("msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa'");
         expect(focus).toBeGreaterThan(0);
         const block = src.slice(focus, focus + 700);
-        expect(block).toMatch(/setWorkspaceTab\('browser'\)/);
+        //  The owner, 2026-11-08: «the preview shows everything Joe does», his browser included:
+        //  the browser is revealed in the Preview (showBrowser), no longer in a Browser tab of its own.
+        expect(block).toMatch(/showBrowser\(\)/);
+        expect(src).toContain("const showBrowser = () => { setLiveSource('browser'); setWorkspaceTab('preview'); };");
         expect(block).toMatch(/triggerUncollapse\(\)/);
     });
 

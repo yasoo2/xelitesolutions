@@ -43,7 +43,10 @@ export function deviceIntentPrompt(message: string, recent?: RecentDeviceWork | 
         //  The chat's own words: «افحص» after a question about the Wi-Fi is a scan (2026-11-08).
         ...(chat ? [chat] : []),
         'Asking which devices are on his Wi-Fi or network, or to check or scan it, IS device work: answer "computer" (Joe scans from the computer).',
-        'Questions about how something works, requests to build or change software or a website, and conversation are "none".',
+        //  2026-11-08: a watch on his mail named no device, and the chat's answerer promised one it cannot keep.
+        'Asking Joe to watch his email and tell him when someone writes or replies IS device work: answer "phone" (Joe reads the phone\'s mail).',
+        //  2026-11-08: «أضف صفحة تعرض الأجهزة المتصلة بالشبكة» was sent to the devices.
+        'Questions about how something works, requests to build or change software or a website (even a page or a table that shows the devices), and conversation are "none".',
         'Answer with JSON only, one of: {"device":"phone"} {"device":"computer"} {"device":"none"}',
         '',
         'Message:',

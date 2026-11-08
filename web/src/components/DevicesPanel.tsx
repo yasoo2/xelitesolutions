@@ -71,7 +71,13 @@ const DevicesPanel: React.FC<{ t: (k: string, f: string) => string }> = ({ t }) 
     const unlink = async (d: Linked) => {
         if (d.kept && !window.confirm(t('devicesForgetConfirm', 'Unlink this computer from Joe for good? To link it again, the line must be run on it once more.'))) return;
         setBusy(true);
-        try { await fetch(`${API_URL}/devices/${encodeURIComponent(d.id)}/${d.kept ? 'forget' : 'disconnect'}`, { method: 'POST', headers: auth() }); } catch { /* the list says what is true */ }
+        //  Each verb spelled out as its own route (POST /devices/:id/forget, /devices/:id/disconnect):
+        //  a verb chosen inside the URL's template is a path no reader of the source can match to
+        //  its route, and the HTTP contract check (api/src/tests/routeMap.ts) reported this button
+        //  as calling «/api/devices/x/${d.kept» — a path nothing serves (2026-11-08).
+        const id = encodeURIComponent(d.id);
+        const url = d.kept ? `${API_URL}/devices/${id}/forget` : `${API_URL}/devices/${id}/disconnect`;
+        try { await fetch(url, { method: 'POST', headers: auth() }); } catch { /* the list says what is true */ }
         setBusy(false); void load();
     };
 

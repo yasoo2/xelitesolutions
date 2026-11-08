@@ -34,44 +34,121 @@ export function engineFor(context?: { engine?: unknown } | null, env: NodeJS.Pro
  * The readers are Joe's own: the build reader and the edit reader the first
  * engine uses.
  */
-export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate'; target?: 'phone' | 'computer' };
+//  `answers`: the route read this message as the answer to Joe's waiting question
+//  (device-work.ts pendingQuestion); only such a run is given the question.
+export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate'; target?: 'phone' | 'computer'; answers?: boolean };
 
 /** A message that plainly starts something new is not an answer to Joe's waiting question. */
-const IS_NEW_BUILD = /^\s*(?:ابن[يِ]?|ابني|أنشئ|انشئ|اعمل\s+(?:لي\s+)?(?:موقع|تطبيق|صفحة|برنامج)|صمّ?م|build|create|make\s+(?:me\s+)?an?\s+(?:app|site|website|page))(?=[\s،,.!?؟]|$)/iu;
+export const IS_NEW_BUILD = /^\s*(?:ابن[يِ]?|ابني|أنشئ|انشئ|اعمل\s+(?:لي\s+)?(?:موقع|تطبيق|صفحة|برنامج)|صمّ?م|build|create|make\s+(?:me\s+)?an?\s+(?:app|site|website|page))(?=[\s،,.!?؟]|$)/iu;
+
+/**
+ * DOES THIS MESSAGE ANSWER JOE'S WAITING QUESTION?
+ *
+ * Found on 2026-11-08: while a question waited, almost any next message was
+ * taken as its answer — a new build, a change to the chat's project, a
+ * question about something else, «شكرا» — for half an hour. A message
+ * answers it when it reads as an answer: it opens with yes or no («اجل»,
+ * «نعم», «لا», "yes"), it gives what was asked (an address, a number, a
+ * code), or it is short («ارسلها», «افحص», «هذا shoroq…»). A build, small
+ * talk, a change or an undo of the chat's project, and a question about
+ * something else («ما هي عاصمة فرنسا؟») are not answers.
+ *
+ * ONLY YES OR NO LEADS AN ANSWER, AND THE PROJECT IS READ FIRST. Found by the
+ * verifiers on 2026-11-08: the lead counted the words people put before
+ * anything («طيب», «تمام», «ماشي», "ok", "sure") as a yes, and was read before
+ * the chat's project, so «طيب غير لون الزر للأحمر», «تمام، الآن أضف زر تسجيل
+ * الدخول» and "ok add a login button" went to the email Joe had asked about;
+ * and «اي» (yes, but also «which») made «اي الأجهزة متصلة بالواي فاي؟» the
+ * answer to that email. A lead is a real yes or no word; «اي» only alone or
+ * before a comma («اي، ارسلها»), never before a noun. A change of the chat's
+ * project is read before it: in a chat that has one, «نعم، وأضف في النص…» is
+ * a change of the project, as the change readers read it. A short reply
+ * («تمام», "ok, go ahead") still answers, by being short.
+ */
+const ANSWER_LEAD = /^\s*(?:(?:نعم|اجل|أجل|ايوه|أيوه|ايوة|أيوة|ايوا|أيوا|لا|لأ|كلا|yes|yeah|yep|no|nope)(?=[\s،,.!?؟]|$)|(?:اي|إي)\s*(?:[،,]|[.!؟?]*\s*$))/iu;
+const ANSWER_DATA = /[^\s@]+@[^\s@]+\.[^\s@]+|\d{3,}/u;
+const OTHER_QUESTION = /^\s*(?:ما\s+(?:هي|هو|معنى)|ماهي|ماهو|من\s+(?:هو|هي)|متى|أين|اين|وين|لماذا|كيف|what\s+(?:is|are|was|were|does)|who\s+(?:is|was|are)|when|where|why|how\s+(?:do|does|can|to|is|are|much))(?=[\s،,.!?؟]|$)/iu;
+const SHORT_ANSWER_WORDS = 8;
+
+export function answersWaitingQuestion(own: string, text: string, sessionId: unknown, project: string | null): boolean {
+    const t = String(own || '').trim();
+    //  A resumed run carries the earlier goal, not what he typed: the resume decided what it continues.
+    if (!t || t.length > 400 || !String(text || '').startsWith(t)) return false;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { isBuildRequest } = require('../intelligence/intent-classifier');
+    if (IS_NEW_BUILD.test(t) || startsAfresh(t) || isBuildRequest(t)?.isBuild) return false;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { IntentParser } = require('../intelligence/IntentParser');
+    if (IntentParser.pureConversationKind(t)) return false;
+    //  The chat's project first, then yes or no (2026-11-08: «طيب غير لون الزر للأحمر»).
+    if (project) {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { isActionableEditRequest } = require('../../modules/tools/definitions/ProjectEditTool');
+        if (isUndoRequest(t) || isActionableEditRequest(t) || isFollowUpChange(t)) return false;
+        if (chatProjectOrigin(sessionId) === 'imported' && isRepositoryWork(t)) return false;
+    }
+    if (ANSWER_LEAD.test(t)) return true;
+    if (ANSWER_DATA.test(t)) return true;
+    const words = t.split(/\s+/u).filter(Boolean).length;
+    if (words >= 3 && OTHER_QUESTION.test(t)) return false;
+    return words <= SHORT_ANSWER_WORDS;
+}
 
 export async function agentEngineRoute(
     goal: string,
-    context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal } | null,
+    context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal; ownerText?: unknown } | null,
     env: NodeJS.ProcessEnv = process.env,
     deps: { ask?: (prompt: string) => Promise<string> } = {},
 ): Promise<AgentRoute | null> {
     if (engineFor(context, env) !== 'agent') return null;
     const text = String(goal || '').trim();
     if (!text) return null;
+    //  What the owner typed, without the file block a message with a file carries (chat-history.ts ownerWords).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { chatTurnsText, ownerWords, recentChatTurns, requestWords } = require('./chat-history');
+    const own: string = ownerWords(text, context?.ownerText);
+    //  The device readers read his words, never the block of a file he attached (2026-11-08:
+    //  a picture's description, "turn off the guest network", was read as his command).
+    const words: string = requestWords(text, context?.ownerText);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const work = require('./device-work');
+    //  Joe asked the owner on a device and waits for his answer (device-work.ts pendingQuestion).
+    const waiting = work.pendingQuestion(context?.sessionId);
     //  Something to DO on the owner's computer or phone: the engine operates it (operate.ts).
+    //  «تابع ردود شروق», «اذا رد عليك اخبرني» are among them, on the phone, before the
+    //  chat's answerer can promise a watch it cannot keep (operate.ts isMailWatch).
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const operate = require('./operate');
-    if (operate.isOperateRequest(text)) {
-        const target = operate.isPhoneRequest(text) ? 'phone' : 'computer';
-        operate.noteOperate(context?.sessionId, text, target);
+    if (operate.isOperateRequest(words)) {
+        const target = operate.isPhoneRequest(words) ? 'phone' : 'computer';
+        operate.noteOperate(context?.sessionId, words, target);
+        //  A new command on a device is not the answer, unless it opens with yes or no: «اجل، ارسلها من هاتفي».
+        if (waiting && ANSWER_LEAD.test(own) && text.startsWith(own)) {
+            work.takeQuestion(context?.sessionId, context?.runId);
+            return { kind: 'operate', target, answers: true };
+        }
+        if (waiting) work.answeredQuestion(context?.sessionId);
         return { kind: 'operate', target };
-    }
-    //  Joe asked the owner on a device and waits: this message answers him (device-work.ts
-    //  pendingQuestion). «اجل», «ارسلها», «هذا shoroq…» go back to that work (2026-11-08).
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const waiting = require('./device-work').pendingQuestion(context?.sessionId);
-    if (waiting && text.length <= 400 && !IS_NEW_BUILD.test(text)) {
-        const target = waiting.target || 'phone';
-        operate.noteOperate(context?.sessionId, waiting.request, target);
-        return { kind: 'operate', target };
-    }
-    //  A short command that follows work on a device in this chat goes on that device.
-    const following = operate.operateFollowUp(context?.sessionId, text);
-    if (following) {
-        operate.noteOperate(context?.sessionId, text, following);
-        return { kind: 'operate', target: following };
     }
     const project = await chatProjectFolder(context?.sessionId);
+    //  This message answers him: «اجل», «ارسلها», «هذا shoroq…» go back to that work, on that
+    //  device (2026-11-08). The run the route gives it to is the one that reads the question.
+    if (waiting) {
+        if (answersWaitingQuestion(own, text, context?.sessionId, project)) {
+            const target = waiting.target || 'phone';
+            operate.noteOperate(context?.sessionId, waiting.request, target);
+            work.takeQuestion(context?.sessionId, context?.runId);
+            return { kind: 'operate', target, answers: true };
+        }
+        //  …and a message that went elsewhere leaves it answered: it does not take the next one.
+        work.answeredQuestion(context?.sessionId);
+    }
+    //  A short command that follows work on a device in this chat goes on that device.
+    const following = operate.operateFollowUp(context?.sessionId, words);
+    if (following) {
+        operate.noteOperate(context?.sessionId, words, following);
+        return { kind: 'operate', target: following };
+    }
     // The planner's undo (project_undo) puts back the copy the change kept.
     if (project && isUndoRequest(text)) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -92,12 +169,12 @@ export async function agentEngineRoute(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { deviceIntentByModel } = require('./understand');
     //  The chat's last turns go with it: «افحص» after a question about the Wi-Fi is a scan.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { chatTurnsText, recentChatTurns } = require('./chat-history');
-    const chat = chatTurnsText(await recentChatTurns(context?.sessionId, 6), text, 300);
+    //  His own words are left out of them, with or without a file (2026-11-08: shown twice).
+    const chat = chatTurnsText(await recentChatTurns(context?.sessionId, 6), own, 300);
+    //  The model is given the file's description too: «نفّذ ما في الصورة» needs it.
     const target = await deviceIntentByModel(text, context || {}, operate.recentOperate(context?.sessionId), deps.ask, env, chat);
     if (target) {
-        operate.noteOperate(context?.sessionId, text, target);
+        operate.noteOperate(context?.sessionId, words, target);
         return { kind: 'operate', target };
     }
     return null;
@@ -113,8 +190,9 @@ export async function agentEngineRoute(
  * before it («وكمان», «لو سمحت», "now", "please") — is a change of it, unless
  * it says it starts afresh.
  */
-const LEAD_AR = '^(?:(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|ممكن|رجاء)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو)[\\s،,]+)*و?';
-const LEAD_EN = '^(?:(?:and|also|now|then|ok|okay|please|pls|could\\s+you|can\\s+you|would\\s+you)[\\s,]+)*';
+//  «تمام» and «ماشي» go before a change too: «تمام، الآن أضف زر تسجيل الدخول» (2026-11-08).
+const LEAD_AR = '^(?:(?:و?(?:ثم|بعدين|كمان|الآن|هلق|هلا|طيب|تمام|ماشي|ممكن|رجاء)|لو\\s+سمحت|من\\s+فضلك|يا\\s+جو)[\\s،,]+)*و?';
+const LEAD_EN = '^(?:(?:and|also|now|then|ok|okay|sure|please|pls|could\\s+you|can\\s+you|would\\s+you)[\\s,]+)*';
 const CHANGE_LEAD_AR = new FoldedRegExp(
     LEAD_AR
     + '(?:أضف|أضيف|ضيف|ضيفي|زيد|زد|غير|عدل|احذف|شيل|امسح|اجعل|خلي|حسن|كبر|صغر|بدل|استبدل|أصلح|صلح|انقل|رتب|ترجم|حول|لون|أخف|أظهر|وسط'
