@@ -2246,9 +2246,22 @@ export function requestedDeliveryRoles(request: string): { service: boolean; int
     if (artifact.kind === 'api') return { service, interface: artifact.interfaceNamed, program: false };
     // «a web tool» is for people: a bare «web»/«browser» is a web word too.
     const webWord = artifact.interfaceNamed || /\b(?:web|browser)\b|(?:ويب|المتصفح|متصفح)/iu.test(text.replace(new RegExp(NEGATED_INTERFACE.source, 'giu'), ' '));
+    //  A FUNCTION IS CODE, NOT A PAGE. The ladder, 2026-11-08: «Write a JavaScript
+    //  function that formats a price … with three tests» (L031, L032) was read as
+    //  nothing in particular, so as an interface: the live check wanted a page, the
+    //  model built a server and a page nobody asked for, and the run failed when that
+    //  server answered on no port. A function, a class, a module, a library or an
+    //  algorithm asked for alone, with no page, site, app or server beside it, is a
+    //  program its own tests prove.
+    if (!artifact.kind && !service && !webWord && CODE_UNIT.test(text) && !PRODUCT_WORD.test(text)) {
+        return { service: false, interface: false, program: true };
+    }
     const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
     return { service, interface: !(negatedInterface && !webWord), program: false };
 }
+
+const CODE_UNIT = /\b(?:functions?|class(?:es)?|modules?|librar(?:y|ies)|helpers?|utilit(?:y|ies)|algorithms?|regex(?:es)?|regular\s+expressions?|snippets?|methods?|packages?)\b|(?:^|[\s،,])(?:دالة|دالّة|دوال|دالتين|كلاس|صنف|مكتبة|خوارزمية|تعبير\s+نمطي|وحدة\s+برمجية|حزمة)(?=[\s،,.؟?!]|$)/iu;
+const PRODUCT_WORD = /\b(?:pages?|site|website|app|application|dashboard|screen|form|ui|interface|server|endpoint|game|extension)\b|(?:صفحة|موقع|تطبيق|لوحة|شاشة|نموذج|واجهة|خادم|سيرفر|لعبة|إضافة)/iu;
 
 /**
  * Does the confirmed live address serve a page at «/»? A server-rendered or
