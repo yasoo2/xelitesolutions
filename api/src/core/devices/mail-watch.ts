@@ -256,8 +256,28 @@ interface Store {
     ownApp?: Record<string, string>;
     /** The chat messages already read for a watch (backfillWatchesFromChats): read once, never again. */
     read: Record<string, number>;
+    /**
+     * When the owner was told the watch cannot see his phone, until it is seen
+     * again: kept across restarts, so a Joe restarted while the phone is away
+     * does not say it again (2026-11-08: four restarts, four times the same
+     * «I cannot see your phone» in his chat).
+     */
+    phoneLostToldAt?: number;
 }
 let store: Store | null = null;
+
+/** Whether the owner was already told the phone is out of sight (and it has not been seen since). */
+export function phoneLostTold(): boolean {
+    return typeof load().phoneLostToldAt === 'number';
+}
+
+/** The owner was told the phone is lost (at), or it is seen again (null). */
+export function notePhoneLost(at: number | null, now = Date.now()): void {
+    const s = load();
+    if (at === null) { if (s.phoneLostToldAt === undefined) return; delete s.phoneLostToldAt; }
+    else s.phoneLostToldAt = at;
+    save(now);
+}
 
 function storeFile(): string | null {
     if (process.env.JOE_MAIL_WATCH_FILE) return process.env.JOE_MAIL_WATCH_FILE;
@@ -278,6 +298,7 @@ function load(): Store {
                 own: Array.isArray(j?.own) ? j.own.filter((a: unknown) => typeof a === 'string').slice(0, 20) : [],
                 ...(j && typeof j.ownApp === 'object' && j.ownApp ? { ownApp: j.ownApp } : {}),
                 read: j && typeof j.read === 'object' && j.read ? j.read : {},
+                ...(typeof j?.phoneLostToldAt === 'number' ? { phoneLostToldAt: j.phoneLostToldAt } : {}),
             };
         } catch { /* no file yet, or unreadable: start empty */ }
     }

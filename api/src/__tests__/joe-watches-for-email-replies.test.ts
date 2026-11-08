@@ -391,4 +391,30 @@ describe('a watch that cannot see the phone says so', () => {
         await svc.tick(T0 + 121_000);
         expect(said).toEqual(['lost:chat-1', 'back:chat-1']);
     });
+
+    test('a Joe restarted while the phone is still away does not say it again; it says when it is back', async () => {
+        //  2026-11-08: four restarts of Joe put the same «I cannot see your phone» four times in his chat.
+        mw.watchReplies('chat-1', { to: ['shoroq.suwan@gmail.com'], userId: 'owner-1' }, T0);
+        let connected = false;
+        const said: string[] = [];
+        const service = () => new (require('../modules/services/MailWatchService').MailWatchService)(
+            async () => (connected ? { ok: true, dumps: [{ serial: 'TECNO', text: dump([]) }] } : { ok: false, code: 'no_phone', error: 'No phone' }),
+            async () => { /* no reply */ },
+            async (state: string) => { said.push(state); },
+        );
+        const first = service();
+        await first.tick(T0 + 1000);
+        await first.tick(T0 + 31_000);
+        expect(said).toEqual(['lost']);
+        // The restart: new modules, the watch's store read again from its file.
+        jest.resetModules();
+        const second = service();
+        await second.tick(T0 + 61_000);
+        await second.tick(T0 + 91_000);
+        await second.tick(T0 + 121_000);
+        expect(said).toEqual(['lost']);
+        connected = true;
+        await second.tick(T0 + 151_000);
+        expect(said).toEqual(['lost', 'back']);
+    });
 });
