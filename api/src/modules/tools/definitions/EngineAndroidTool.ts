@@ -300,12 +300,12 @@ export class EngineAndroidTool implements ToolDefinition {
             for (const p of wifi) {
                 lines.push(p.kind === 'pair'
                     ? `- ${p.name} on Wi-Fi at ${p.address}: showing its pairing code now. Ask the owner for the six digits on the phone's screen, then android_pair {"address": "${p.address}", "code": …}`
-                    : `- ${p.name} on Wi-Fi at ${p.address}: ready to connect (android_connect {"address": "${p.address}"}); if it was never paired, the owner opens Wireless debugging › «Pair device with pairing code» on the phone`);
+                    : `- ${p.name} on Wi-Fi at ${p.address}: ready to connect (android_connect {"address": "${p.address}"}); if it was never paired, the owner opens Wireless debugging › «Pair device with pairing code» on the phone («تصحيح الأخطاء اللاسلكي» › «إقران الجهاز باستخدام رمز الإقران» on an Arabic phone)`);
             }
             //  A phone on the cable that adb does not list: Windows says why (core/devices/phone-usb.ts, 2026-11-08).
             const usb = listed.some(d => d.state === 'device') ? '' : await unreachableUsbPhones();
             const viaApp = apps.length ? describeAppPhones(apps) : '';
-            if (!lines.length && !viaApp) return ok(usb || 'No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
+            if (!lines.length && !viaApp) return ok(usb || 'No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options; on an Arabic phone «الإعدادات» › «خيارات المطور» › «تصحيح الأخطاء اللاسلكي») on the same Wi-Fi and open «Pair device with pairing code» («إقران الجهاز باستخدام رمز الإقران»), then tell Joe only the six digits it shows: Joe finds the phone on the Wi-Fi himself.');
             return ok([lines.join('\n'), viaApp, usb].filter(Boolean).join('\n\n'));
         }
         const ready = listed.filter(d => d.state === 'device');

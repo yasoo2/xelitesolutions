@@ -387,6 +387,11 @@ function standsAlone(t: string): boolean {
     return t.length > 80 || isDeviceRequest(t) || isPhoneRequest(t) || ON_DEVICE.test(t) || DESKTOP_APP.test(t) || FLASH_NOUN.test(t);
 }
 
+/** Whether a message says by itself what it is about («شغل الكشاف»), or only continues («تحقق مرة اخرى», «افحص»). */
+export function standsAloneRequest(t: string): boolean {
+    return standsAlone(String(t || '').trim());
+}
+
 export function continuedRequest(request: string, previous?: string | null): string {
     const t = String(request || '').trim();
     const p = String(previous || '').trim();
@@ -467,6 +472,9 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '- When he asks what is on his Wi-Fi or home network (how many devices, which, to check or scan it): call network_devices and tell him, in his language, how many and what each most likely is. Never send him to type a command himself: you can look.',
         '- A phone or tablet linked through the Joe app shows in android_devices as app:<id>: every android_ tool works on it from anywhere. When he asks to link his phone through the app, or a phone on the cable cannot be reached (a missing driver), offer android_link_app: a six-digit code and the steps, for any Android of any maker.',
         '- When he asks to install or put the Joe app on his phone, or to link his phone wirelessly (by Wi-Fi) or for good, and the phone is connected by adb (the cable, or paired and connected by Wireless debugging): call android_link_app yourself — Joe installs the app on it, opens a private tunnel and opens the app with the code filled in. Then tell him the little that is left on the phone: tap «اربط» and allow the two permissions the app lists. A phone that is not connected yet: pair it first (android_devices, ask him for the six digits, android_pair, android_connect), then android_link_app.',
+        //  2026-11-08: Joe asked the owner for «IP:port» and named «Pair device with pairing code» and «Driver» in English to an Arabic reader.
+        '- Pairing by Wi-Fi: ask him ONLY for the six digits. Joe finds the phone\'s pairing address himself (android_devices shows it while the pairing window is open on the phone). Ask for the address (numbers like 192.168.1.5:37123, shown in the same window) only when android_devices still does not show the phone after he says the window is open.',
+        '- His phone shows its settings in its own language: when you tell him where to tap, use the names his phone shows in his language, never the English ones. On an Arabic phone: «الإعدادات» › «خيارات المطور» › «تصحيح الأخطاء اللاسلكي» › «إقران الجهاز باستخدام رمز الإقران»; USB debugging is «تصحيح أخطاء USB»; hidden Developer options: «حول الهاتف» › «معلومات البرنامج» › tap «رقم الإصدار» seven times; Allow is «سماح». A driver is «تعريف»; Wi-Fi is «الواي فاي»; a phone\'s model name may stay as the phone writes it.',
         '- To write an email on his phone, call android_email with the recipients, the subject and the text, in gmail or outlook (the app it is sent from): it opens a new email already filled. Then android_read, check To, Subject and the text, tap Send, and check the Sent folder. Never tap and type into an email\'s To field by hand. His own accounts are in the facts («my Outlook», «my Gmail»): never ask him for them. A field that holds the wrong text: tap it, android_clear, then type again. A web page, a call, an SMS, a map place or a WhatsApp chat opens with android_link.',
         '- After an email you sent is checked in its Sent folder, call email_watch_replies once with every recipient address, the name the owner used for the person and the subject: Joe then watches his phone\'s mail, in the background, for their replies and tells him in this chat the moment one arrives. Call it too when he asks to be told when someone writes or replies. Say so in your summary in one short sentence.',
         '- When the owner asks what you can reach, or to connect to a computer or a phone: call device_computers and tell him, by name, what you can reach, and which are on or off. His computers are known by the names he gave them («كمبيوتر المكتب»): «اشبك على كمبيوتر المكتب» is device_use with that name, from anywhere. A computer linked for good that is off cannot be reached until it is on: say so plainly. A computer that is not linked yet: device_link_new WITH the name he calls it (a permanent link: he runs one line on it once, and it calls Joe by itself at every start), then device_wait_link, then device_use it and go on with what he asked. «افصل … نهائياً» is device_forget. A phone on Wi-Fi showing its pairing code: ask him for the six digits (say it in task_finish), then android_pair and android_connect when he gives them. Never ask him to go to the settings for any of this: the chat is where he works.',
@@ -606,6 +614,12 @@ export function operateVerifier(opts: { about?: string; own?: string; since?: nu
                     ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
                     : { id: 'looked', status: 'failed', detail: 'the request asks what is on the screen, and no device_look or device_read was made' });
             }
+            /*
+             * A look that also changed something says so. The owner, 2026-11-08: «تحقق الان
+             * مرة اخرى» — the run found his phone, turned the flashlight on (what the chat had
+             * asked before), said so, and closed with «I read the screen and changed nothing».
+             */
+            if (done.length) checks.push({ id: 'acted_too', status: 'passed', detail: `besides looking, ${done.length} action(s) were done on the device: ${done.slice(-5).map(a => a.what).join('; ')}` });
         } else {
             checks.push(done.length
                 ? { id: 'acted', status: 'passed', detail: `${done.length} action(s) done on the device: ${done.slice(-5).map(a => a.what).join('; ')}` }
@@ -626,11 +640,12 @@ export function operateVerifier(opts: { about?: string; own?: string; since?: nu
 /* ───────────────────────── what the owner is told ───────────────────────── */
 
 //  `watching`: a watch on the mail touched no screen, so «I looked at the screen after it» would be untrue.
-const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: string; watching: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
+const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: string; lookedActed: string; watching: string; notDone: (why: string) => string; took: (s: number, usd?: number) => string }> = {
     ar: {
         done: '✅ نفّذتُه على جهازك ونظرتُ إلى الشاشة بعده للتأكد.',
         devices: '✅ هذا ما أصل إليه الآن من أجهزتك.',
         looked: '✅ قرأتُ الشاشة كما هي، ولم أغيّر فيها شيئاً.',
+        lookedActed: '✅ قرأتُ الشاشة، ونفّذتُ على جهازك ما ذكرتُه أعلاه.',
         watching: '✅ أراقب بريدك الآن، وسأخبرك هنا في المحادثة فور وصول الردّ.',
         notDone: why => `⚠️ لم يكتمل التنفيذ على الجهاز: ${why}`,
         took: (s, usd) => `⏱️ استغرق ${s < 60 ? `${s} ثانية` : `${Math.round(s / 60)} دقيقة`}${usd != null ? `، كلفة ${usd.toFixed(3)}$` : ''}`,
@@ -639,6 +654,7 @@ const OPERATE_WORDS: Record<string, { done: string; devices: string; looked: str
         done: '✅ Done on your computer, and the screen was checked afterwards.',
         devices: '✅ That is what I can reach of your devices now.',
         looked: '✅ I read the screen as it is and changed nothing.',
+        lookedActed: '✅ I read the screen, and did on your device what is said above.',
         watching: '✅ I am watching your mail now and will tell you here the moment the reply arrives.',
         notDone: why => `⚠️ Not completed on the device: ${why}`,
         took: (s, usd) => `⏱️ Took ${s < 60 ? `${s} s` : `${Math.round(s / 60)} min`}${usd != null ? `, cost $${usd.toFixed(3)}` : ''}`,
@@ -692,7 +708,8 @@ export function operateOutput(result: EngineResult | undefined, language: string
     const seconds = Math.round((result?.durationMs || 0) / 1000);
     const ids = new Set((result?.verification?.checks || []).map(c => c.id));
     const closing = ids.has('asked_owner') ? ASKED[language === 'ar' ? 'ar' : 'en']
-        : ids.has('acted') ? words.done : ids.has('watching') ? words.watching : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
+        : ids.has('acted') ? words.done : ids.has('watching') ? words.watching : ids.has('acted_too') ? words.lookedActed
+        : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
     const summary = verified
         ? [String(result!.summary || '').trim(), closing, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
         : [words.notDone(why), ownScript(String(result?.summary || '').trim(), language)].filter(Boolean).join('\n\n');

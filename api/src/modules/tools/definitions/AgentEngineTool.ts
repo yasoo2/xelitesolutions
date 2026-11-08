@@ -147,7 +147,9 @@ async function runOperate(o: {
         const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
         noteOperateResult(o.context.sessionId, {
             target: o.target || (isPhoneRequest(about) ? 'phone' : 'computer'),
-            request: pending ? pending.request : recordedOperateRequest(words, about, previous),
+            //  His answer is kept with what it answered («الاقتران اللاسلكي — حاول مره اخرى»), so the
+            //  next short message continues the work it chose, not only the question's start.
+            request: pending && words !== pending.request ? `${words}${CONTINUED_MARK}${pending.request}` : recordedOperateRequest(words, about, previous),
             summary: `${asked ? 'Joe asked the owner and waits for his answer: ' : ''}${String(result?.summary || out.output?.summary || '')}`, ok: out.ok && !asked,
             //  Joe's question waits for the owner's answer (pendingQuestion).
             ...(asked ? { question: String(result?.summary || '') } : {}),
