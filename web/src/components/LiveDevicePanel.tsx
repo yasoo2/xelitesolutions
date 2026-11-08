@@ -37,12 +37,12 @@ const SCREEN_URL: Record<DeviceSource, string> = {
     computer: `${API_URL}/devices/computer/screen`,
 };
 
-/** Joe's browser shown in the Preview: a small floating chip says so, and leads back to the page. */
+/** Joe's browser shown in the Preview: a small chip in the browser's toolbar says so, and leads back to the page. */
 export function LiveBrowserChip({ onClose }: { onClose?: () => void }) {
     const { t } = useTranslation();
     return (
-        <div className="joe-live-chip" dir="auto">
-            <span className="joe-live-badge"><span className="joe-live-dot" /> {t('dev_browserLive')}</span>
+        <div className="joe-live-chip" title={t('dev_browserLive')}>
+            <span className="joe-live-badge"><span className="joe-live-dot" /> <span className="joe-live-label">{t('dev_browserLive')}</span></span>
             {onClose && (
                 <button type="button" className="joe-live-close" onClick={onClose} title={t('dev_backToPreview')} aria-label={t('dev_backToPreview')}>
                     <X size={14} />

@@ -764,13 +764,14 @@ export default function WorkspacePanel({
                     is visible. Browser QA borrows this exact surface; unmounting
                     it for Terminal used to make a real audit invisible just
                     before the first frame arrived. */}
-                {browserInPreview && <LiveBrowserChip onClose={onLiveClose} />}
                 <div style={{ display: activeTab === 'browser' || browserInPreview ? 'contents' : 'none', width: '100%', height: '100%' }}>
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EmbeddedBrowser
                                 key={browserSessionId || (sessionId ? `browser:${sessionId}` : 'browser:no-session')}
                                 sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')}
+                                //  In the toolbar's row, never over its buttons (EmbeddedBrowser badge).
+                                badge={browserInPreview ? <LiveBrowserChip onClose={onLiveClose} /> : undefined}
                             />
                         </Suspense>
                     </ErrorBoundary>
