@@ -662,10 +662,33 @@ export const CAPABILITIES: Capability[] = [
     },
 ];
 
+/*
+ * A FORM IS NOT AN ACCOUNT SYSTEM, AND A DISCOUNT FIELD IS NOT A COUPON SYSTEM.
+ *
+ * The ladder, 2026-11-08: «Build a registration form … with name, email,
+ * phone, a date of birth and a password with strength meter; show clear inline
+ * errors» was refused four times for «missing: user accounts» (L072–L080, every
+ * English one; the Arabic twins passed), and «a price calculator: quantity,
+ * unit price, discount percent and tax» for «missing: coupons and discounts»
+ * (L061–L069). He asked for a page with a form, and for a field in a
+ * calculator; Joe held its own good work to systems nobody asked for. A
+ * registration, sign-up or login FORM asks for accounts only when the request
+ * also asks for the system behind it (accounts, authentication, a server or
+ * database that keeps the users, users who log in); a discount as a field, a
+ * percent or a rate asks for coupons only beside coupons, promo or discount
+ * codes, or discounts the store manages.
+ */
+const FORM_ONLY = /\b(?:registration|sign[- ]?up|signup|register|login|log[- ]?in|sign[- ]?in)\s+(?:form|page|screen)\b/iu;
+const ACCOUNT_SYSTEM = /\b(?:user\s+accounts?|accounts?\s+(?:for|system|management|page|area)|my\s+account|authentication|authorization|auth\s+(?:system|flow|api)|backend|back[- ]end|server|database|api|store(?:s|d)?\s+(?:the\s+)?(?:users?|accounts?|registrations?)|users?\s+(?:can\s+)?(?:log|sign)\s*(?:in|up)|jwt|sessions?|roles?|admin(?:istrator)?s?\s+(?:can\s+)?(?:log|sign)\s*in)\b/iu;
+const DISCOUNT_FIELD = /\bdiscounts?\s*(?:percent(?:age)?|rate|%|field|amount|value|input)\b|\b(?:percent(?:age)?|rate)\s+(?:of\s+)?discount\b/iu;
+const COUPON_SYSTEM = /\bcoupons?\b|\bpromo(?:tion(?:al)?)?\s*codes?\b|\bpromo\b|\bdiscount\s+codes?\b|\bmanage(?:s|d)?\s+discounts?\b|\bdiscounts?\s+(?:management|campaigns?|rules?)\b/iu;
+
 function capabilityIsRequested(capability: Capability, text: string): boolean {
     //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
     if (!asksAsWords(capability.ask, text)) return false;
+    if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
     if (capability.id !== 'accounts') return true;
+    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
     return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
 }
 
