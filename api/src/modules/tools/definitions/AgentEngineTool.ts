@@ -38,7 +38,7 @@ import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
-import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
+import { deviceRecordFor, deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
 import { androidTools, controlsOf, forgetAndroid } from '../../../core/engine/tools/android';
 import { askOwnerTool, CONTINUED_MARK, continuedRequest, deviceWorkAnchor, isPhoneRequest, operateOutput, operateVerifier, requestKind, standsAloneRequest } from '../../../core/engine/operate';
 import { experienceFacts, learnFromRun, noteReplay, recordingTools, replayFor, replayNote, replaySteps, replaySummary, type Trail } from '../../../core/engine/experience';
@@ -159,9 +159,12 @@ async function runOperate(o: {
             ...(recipe ? {
                 before: async (ctx: any, tools: Map<string, any>) => {
                     replayRan = true;
-                    const r = await replaySteps(recipe, ctx, tools, controlsOf);
+                    //  A switch already as asked is not pressed, and counts as done (experience.ts replaySteps).
+                    const r = await replaySteps(recipe, ctx, tools, controlsOf, undefined, (c, tool, what) => {
+                        deviceRecordFor(c.runId).actions.push({ tool, ok: true, at: Date.now(), what });
+                    });
                     return r.done
-                        ? { finish: replaySummary(recipe, o.replyLanguage || o.language), refused: (failed: string) => replayNote(recipe, r, failed) }
+                        ? { finish: replaySummary(recipe, o.replyLanguage || o.language, r.already), refused: (failed: string) => replayNote(recipe, r, failed) }
                         : { note: replayNote(recipe, r) };
                 },
             } : {}),

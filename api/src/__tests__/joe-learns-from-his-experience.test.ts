@@ -211,6 +211,42 @@ describe('the steps are recorded by name and found again where they now are', ()
     });
 });
 
+describe('a switch already as asked is not pressed', () => {
+    //  The flashlight tile toggles: «اطفي الكشاف» learned as a tap while it was ON must not
+    //  turn it ON when done again while it is already OFF.
+    test('learned with the switch on; done again with it already off: no tap, and he is told', async () => {
+        const { recordingTools, replaySteps, replaySummary } = ex();
+        const on = { index: 7, text: 'الكشاف', description: '', id: 'qs:tile', kind: 'Switch', checked: true };
+        const trail = { steps: [] as any[], tried: [] as string[] };
+        const learnLog: string[] = [];
+        const lf = fakeTools([[on], [on]], learnLog);
+        const [, , read, tap] = recordingTools(lf.tools as any, trail, lf.controlsOf as any);
+        await read.run({}, { runId: 'l1' } as any);
+        await tap.run({ control: 7 }, { runId: 'l1' } as any);
+        expect(trail.steps[1].target).toMatchObject({ text: 'الكشاف', checked: true });
+
+        const recipe = learn({ request: 'اطفي الكشاف', steps: [{ tool: 'android_panel', args: { panel: 'quick_settings' } }, { tool: 'android_read', args: {} }, trail.steps[1], { tool: 'android_read', args: {} }] });
+        const off = { ...on, index: 9, checked: false };
+        const log: string[] = [];
+        const noted: string[] = [];
+        const f = fakeTools([[], [off], [off]], log);
+        const r = await replaySteps(recipe, { runId: 'r9', signal: new AbortController().signal, emit: () => undefined } as any,
+            new Map(f.tools.map(t => [t.name, t] as const)) as any, f.controlsOf as any, async () => undefined, (_c: any, _t: string, what: string) => noted.push(what));
+        expect(r).toMatchObject({ done: true, ran: 4, already: ['الكشاف'] });
+        expect(log.some(l => l.startsWith('android_tap'))).toBe(false);
+        expect(noted[0]).toMatch(/already off, as asked: not pressed/u);
+        expect(replaySummary(recipe, 'ar', r.already)).toContain('على الحالة المطلوبة أصلًا، فلم أضغطه');
+
+        // Still on: the tap is made, as learned.
+        const log2: string[] = [];
+        const f2 = fakeTools([[], [on], [on]], log2);
+        const r2 = await replaySteps(recipe, { runId: 'r10', signal: new AbortController().signal, emit: () => undefined } as any,
+            new Map(f2.tools.map(t => [t.name, t] as const)) as any, f2.controlsOf as any, async () => undefined);
+        expect(r2.already).toBeUndefined();
+        expect(log2).toContain('android_tap {"control":7}');
+    });
+});
+
 describe('in the engine', () => {
     function deps(model: any, tools: any[], before?: any) {
         return {
