@@ -682,11 +682,21 @@ const FORM_ONLY = /\b(?:registration|sign[- ]?up|signup|register|login|log[- ]?i
 const ACCOUNT_SYSTEM = /\b(?:user\s+accounts?|accounts?\s+(?:for|system|management|page|area)|my\s+account|authentication|authorization|auth\s+(?:system|flow|api)|backend|back[- ]end|server|database|api|store(?:s|d)?\s+(?:the\s+)?(?:users?|accounts?|registrations?)|users?\s+(?:can\s+)?(?:log|sign)\s*(?:in|up)|jwt|sessions?|roles?|admin(?:istrator)?s?\s+(?:can\s+)?(?:log|sign)\s*in)\b/iu;
 const DISCOUNT_FIELD = /\bdiscounts?\s*(?:percent(?:age)?|rate|%|field|amount|value|input)\b|\b(?:percent(?:age)?|rate)\s+(?:of\s+)?discount\b/iu;
 const COUPON_SYSTEM = /\bcoupons?\b|\bpromo(?:tion(?:al)?)?\s*codes?\b|\bpromo\b|\bdiscount\s+codes?\b|\bmanage(?:s|d)?\s+discounts?\b|\bdiscounts?\s+(?:management|campaigns?|rules?)\b/iu;
+/*
+ * Deliveries as a report's DATA are no shipping system. L128, 2026-11-08: «a
+ * report page for a flower shop with sample data about its deliveries and
+ * three charts» was refused for «missing: shipping» — every exam check passed.
+ * A report, a dashboard or charts ask for shipping only beside what a
+ * shipping system does: options, addresses, fees, zones, tracking, statuses.
+ */
+const REPORT_ONLY = /\b(?:reports?|dashboards?|charts?|graphs?|analytics|statistics|stats|kpis?)\b|تقرير|تقارير|لوحة\s+(?:معلومات|تحكم|إحصا|مؤشرات)|رسوم?\s*بيانية|رسوم|مخططات?|إحصائيات|إحصاءات/iu;
+const SHIPPING_SYSTEM = /\bshipping\s+(?:options?|address(?:es)?|service|management|rates?|costs?|fees?|zones?|methods?)\b|\bdelivery\s+(?:tracking|status(?:es)?|options?|address(?:es)?|service|management|zones?|fees?|slots?)\b|\btrack(?:s|ing)?\s+(?:the\s+)?(?:shipments?|deliver(?:y|ies)|orders?|packages?)\b|(?:خيارات|عناوين|عنوان|رسوم|تكلفة|مناطق|إدارة|نظام|طرق)\s+(?:الشحن|التوصيل)|تتبع\s+(?:الشحنات?|التوصيلات?|الطلبات?|الطرود)|حالة\s+(?:الشحنة|الشحنات|الطلب|الطلبات|التوصيل)/iu;
 
 function capabilityIsRequested(capability: Capability, text: string): boolean {
     //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
     if (!asksAsWords(capability.ask, text)) return false;
     if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
+    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text));
     if (capability.id !== 'accounts') return true;
     if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
     return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
