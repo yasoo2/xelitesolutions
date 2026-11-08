@@ -21,4 +21,8 @@
     <string name="service_title">جو متصل</string>
     <string name="service_text">جو الخاص بك يستطيع الوصول إلى هذا الهاتف حين تطلب منه.</string>
     <string name="bad_code">يجب كتابة العنوان والرمز المكوّن من ستة أرقام.</string>
+    <string name="open_chat">افتح جو</string>
+    <string name="strip_accessibility">جو لا يستطيع التحكم بهذا الهاتف بعد: اضغط هنا واسمح له (إمكانية الوصول).</string>
+    <string name="strip_notifications">جو لا يسمع الردود بعد: اضغط هنا واسمح له بالوصول إلى الإشعارات.</string>
+    <string name="strip_offline">اتصال جو بهذا الهاتف يعود الآن…</string>
 </resources>

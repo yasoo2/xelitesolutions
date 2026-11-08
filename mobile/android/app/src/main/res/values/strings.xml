@@ -21,4 +21,8 @@
     <string name="service_title">Joe is connected</string>
     <string name="service_text">Your Joe can reach this phone when you ask it to.</string>
     <string name="bad_code">The address and a six-digit code are both needed.</string>
+    <string name="open_chat">Open Joe</string>
+    <string name="strip_accessibility">Joe cannot act on this phone yet: tap to allow it (accessibility).</string>
+    <string name="strip_notifications">Joe cannot hear your replies yet: tap to allow notification access.</string>
+    <string name="strip_offline">Joe\'s link to this phone is reconnecting…</string>
 </resources>

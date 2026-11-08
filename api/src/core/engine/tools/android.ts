@@ -343,23 +343,86 @@ export const androidLinkTool: EngineTool<{ uri: string; package?: string; serial
  * or tablet once, with a six-digit code, and calls Joe over the internet by
  * itself; every android_ tool then works on it as «app:<id>».
  */
-export const androidLinkAppTool: EngineTool<{ name?: string }> = {
+/*
+ * 2026-11-08, later: a phone Joe already reaches by adb (the cable, or paired
+ * by Wireless debugging) gets the app from Joe himself — installed, joined to
+ * Joe by a private tunnel, and opened with the code filled in — so the owner
+ * only taps «Link» and allows the two permissions.
+ */
+export const androidLinkAppTool: EngineTool<{ name?: string; serial?: string }> = {
     name: 'android_link_app',
-    description: 'Link a phone or tablet (any Android, any maker) to Joe for good through the Joe app, so Joe reaches it from anywhere with no cable and no driver: gives a six-digit code and the steps to tell the owner (download the app from Joe, type the code, allow two permissions). Use it when he asks to link or connect his phone through the app, or when a phone on the cable cannot be reached.',
-    parameters: { type: 'object', properties: { name: { type: 'string', description: 'The name the owner calls the phone («جوالي», «تابلت البيت»), if he named it.' } } },
+    description: 'Put the Joe app on a phone or tablet (any Android, any maker) and link it to Joe for good, so Joe reaches it with no cable and no driver. When the phone is connected by adb (the cable, or paired by Wireless debugging), Joe installs the app on it HIMSELF, opens a private tunnel to it and opens the app with the code filled in: the owner only taps «Link» and allows two permissions. Otherwise it gives a six-digit code and the steps (download the app from Joe, type the code, allow two permissions). Use it when he asks to install or put the Joe app on his phone, to link his phone through the app or for good, and right after a phone is paired by Wi-Fi to be linked.',
+    parameters: {
+        type: 'object',
+        properties: {
+            name: { type: 'string', description: 'The name the owner calls the phone («جوالي», «تابلت البيت»), if he named it.' },
+            serial: { type: 'string', description: 'The phone, as android_devices lists it, when more than one is connected.' },
+        },
+    },
     parse: raw => {
         const a = obj(raw);
-        return { ok: true, value: typeof a.name === 'string' && a.name.trim() ? { name: a.name.trim().slice(0, 60) } : {} };
+        const name = typeof a.name === 'string' && a.name.trim() ? a.name.trim().slice(0, 60) : '';
+        const serial = typeof a.serial === 'string' && a.serial.trim() ? a.serial.trim().slice(0, 120) : '';
+        return { ok: true, value: { ...(name ? { name } : {}), ...(serial ? { serial } : {}) } };
     },
     async run(a, ctx): Promise<ToolOutcome> {
-        const r = await phone(ctx, { op: 'app_link', ...(a.name ? { name: a.name } : {}) });
-        did(ctx, 'android_link_app', r.ok, `phone app link code${a.name ? ` for «${a.name}»` : ''}`);
+        const r = await phone(ctx, { op: 'app_link', ...(a.name ? { name: a.name } : {}), ...(a.serial ? { serial: a.serial } : {}) });
+        did(ctx, 'android_link_app', r.ok, `phone app link${a.name ? ` for «${a.name}»` : ''}${a.serial ? ` on ${a.serial}` : ''}`);
         return { ok: r.ok, output: r.ok ? r.text.split('\n').slice(1).join('\n') : `android_link_app failed: ${r.text}` };
+    },
+};
+
+/*
+ * «يا جو شغل الكشاف» (the owner, 2026-11-08): on a phone with the Joe app the
+ * flashlight is turned on and off directly, with no tile looked for; on a
+ * phone reached by adb alone the tool says to use the quick settings tile.
+ */
+export const androidTorchTool: EngineTool<{ on?: boolean; serial?: string }> = {
+    name: 'android_torch',
+    description: 'Turn the phone\'s flashlight (torch, «الكشاف») on or off directly. "on": true to turn it on, false to turn it off; leave it out to switch it the other way. Works on a phone with the Joe app; on a phone reached only by adb it says so, and the flashlight tile in android_panel "quick_settings" does it.',
+    parameters: { type: 'object', properties: { on: { type: 'boolean' }, serial: SERIAL } },
+    parse: raw => {
+        const a = obj(raw);
+        const on = typeof a.on === 'boolean' ? a.on : a.on === 'true' ? true : a.on === 'false' ? false : undefined;
+        return { ok: true, value: { ...(on === undefined ? {} : { on }), ...withSerial(a) } };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'torch', ...a });
+        did(ctx, 'android_torch', r.ok, `flashlight ${a.on === undefined ? 'switched' : a.on ? 'on' : 'off'}`);
+        return { ok: r.ok, output: r.ok ? r.text : `android_torch failed: ${r.text}` };
+    },
+};
+
+export const androidVolumeTool: EngineTool<{ stream?: string; level?: number; change?: string; serial?: string }> = {
+    name: 'android_volume',
+    description: 'The phone\'s sound: set a stream\'s level (0–100) or change it (up, down, mute), and say the level now. "stream": media (music, videos — the default), ring, notification, alarm or call. With neither level nor change it only says the level.',
+    parameters: {
+        type: 'object',
+        properties: {
+            stream: { type: 'string', enum: ['media', 'ring', 'notification', 'alarm', 'call'] },
+            level: { type: 'number', description: '0 to 100 (percent).' },
+            change: { type: 'string', enum: ['up', 'down', 'mute'] },
+            serial: SERIAL,
+        },
+    },
+    parse: raw => {
+        const a = obj(raw);
+        const stream = typeof a.stream === 'string' && ['media', 'ring', 'notification', 'alarm', 'call'].includes(a.stream.toLowerCase()) ? a.stream.toLowerCase() : 'media';
+        const level = a.level === undefined || a.level === null || a.level === '' ? undefined : Number(a.level);
+        if (level !== undefined && (!Number.isFinite(level) || level < 0 || level > 100)) return { ok: false, error: '"level" is a number from 0 to 100.' };
+        const change = typeof a.change === 'string' ? a.change.toLowerCase() : '';
+        if (change && !['up', 'down', 'mute'].includes(change)) return { ok: false, error: '"change" is up, down or mute.' };
+        return { ok: true, value: { stream, ...(level === undefined ? {} : { level: Math.round(level) }), ...(change ? { change } : {}), ...withSerial(a) } };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'volume', ...a });
+        did(ctx, 'android_volume', r.ok, `${a.stream} volume${a.level !== undefined ? ` ${a.level}%` : a.change ? ` ${a.change}` : ''}`);
+        return { ok: r.ok, output: r.ok ? r.text : `android_volume failed: ${r.text}` };
     },
 };
 
 export const androidTools: EngineTool[] = [
     androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
     androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool, androidEmailTool, androidClearTool, androidLinkTool,
-    androidLinkAppTool,
+    androidLinkAppTool, androidTorchTool, androidVolumeTool,
 ];

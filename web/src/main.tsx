@@ -1,3 +1,6 @@
+// First of all: inside the Joe app for Android, the phone's microphone and voice
+// become the page's speech objects before any module reads them (lib/joe-app-bridge.ts).
+import './lib/joe-app-bridge';
 import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';

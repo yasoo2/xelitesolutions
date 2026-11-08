@@ -166,6 +166,13 @@ async function main() {
       require('../modules/services/MailWatchService').mailWatchService.start();
     } catch (e: any) { logger.warn(`[MailWatch] not started: ${e?.message || e}`); }
 
+    // The private tunnel (adb reverse) to each phone Joe put his app on comes back when the phone
+    // reconnects (modules/services/PhoneTunnelService.ts). JOE_PHONE_TUNNEL=off stops it.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('../modules/services/PhoneTunnelService').phoneTunnelService.start(Number(config.port || 5000));
+    } catch (e: any) { logger.warn(`[PhoneTunnel] not started: ${e?.message || e}`); }
+
     // Optional Startup Indexing
     if (process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true') {
       setTimeout(() => {
