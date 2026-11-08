@@ -390,6 +390,12 @@ function sameText(a?: string, b?: string): boolean {
 
 /** The control a recorded tap pressed, on the screen as it is now: by id and name, then by name. */
 export function findControl<C extends { index: number; text: string; description: string; id: string; kind: string }>(controls: C[], t: StepTarget): C | null {
+    //  A switch with no name of its own, only its id: found by the id when exactly one control has it
+    //  (the quick settings' tiles often share one id: a guess there could press the wrong tile).
+    if (!t.text && !t.description) {
+        const same = t.id ? controls.filter(c => c.id === t.id && (!t.kind || c.kind === t.kind)) : [];
+        return same.length === 1 ? same[0] : null;
+    }
     const named = (c: C) => (t.text ? sameText(c.text, t.text) : false) || (t.description ? sameText(c.description, t.description) : false);
     return controls.find(c => !!t.id && c.id === t.id && named(c))
         || controls.find(c => named(c) && (!t.kind || c.kind === t.kind))
