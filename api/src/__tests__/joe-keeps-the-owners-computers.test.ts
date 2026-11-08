@@ -55,6 +55,82 @@ describe('the store keeps a computer under the owner\'s name, and never its key'
         kept.forgetComputer('owner-1', a.id);
         kept.forgetComputer('owner-2', c.id);
     });
+
+    //  Defect 1: an id merely NOT FOUND must keep its link; only an id the owner FORGOT is told to
+    //  remove itself. forgetComputer records the forgotten id; a read failure keeps the last store.
+    test('isForgotten is true only for an id that was forgotten, and false for one never kept', () => {
+        kept.reloadKeptComputers();
+        const a = kept.keepComputer('owner-f', 'كمبيوتر المكتب');
+        expect(kept.isForgotten(a.id)).toBe(false);          // linked, not forgotten
+        expect(kept.isForgotten('deadbeefdeadbeef')).toBe(false); // never linked at all
+        expect(kept.isForgotten('')).toBe(false);
+        kept.forgetComputer('owner-f', a.id);
+        expect(kept.isForgotten(a.id)).toBe(true);           // now forgotten for good
+        //  Survives a restart: the forgotten list is on disk.
+        kept.reloadKeptComputers();
+        expect(kept.isForgotten(a.id)).toBe(true);
+        expect(kept.verifyComputerId(a.id)).toBe(false);
+    });
+
+    test('load keeps the last good store when the file cannot be read, instead of treating it as empty', () => {
+        kept.reloadKeptComputers();
+        const a = kept.keepComputer('owner-read', 'كمبيوتر المكتب');
+        expect(kept.verifyComputerId(a.id)).toBe(true);
+        //  The store is there but a read of it fails this moment (its bytes are unreadable): the
+        //  kept computer must NOT vanish, or the socket would forget a still-linked computer.
+        kept.reloadKeptComputers();
+        const bad = fs.readFileSync.bind(fs);
+        const spy = jest.spyOn(fs, 'readFileSync').mockImplementation(((p: any, enc: any) => {
+            if (String(p) === STORE) throw new Error('EIO: transient read failure');
+            return bad(p, enc);
+        }) as any);
+        try {
+            expect(kept.verifyComputerId(a.id)).toBe(false);   // not found right now…
+            expect(kept.isForgotten(a.id)).toBe(false);        // …but NOT treated as forgotten
+        } finally { spy.mockRestore(); }
+        //  Once the read works again, the computer is back (the failure cached no false «empty»).
+        expect(kept.verifyComputerId(a.id)).toBe(true);
+        kept.forgetComputer('owner-read', a.id);
+    });
+});
+
+describe('forget resolves the target once, over online AND kept, and refuses an ambiguous name', () => {
+    //  Defect 3: forget used to search the online computers first and the kept ones separately, each
+    //  by a loose substring — so a loose name could DISCONNECT one computer while FORGETTING another.
+    const fakeSocket = () => {
+        const s: any = { sent: [] as string[], closed: false };
+        s.send = (d: string) => s.sent.push(d);
+        s.close = () => { s.closed = true; };
+        s.on = () => s;
+        return s;
+    };
+
+    test('an exact kept name forgets only that computer; a superset computer online now is left alone', () => {
+        kept.reloadKeptComputers();
+        const links = new DeviceLinks();
+        const kp = links.claimForKeeping(links.newPairingCode('owner-r3', Date.now(), 'laptop').code); // kept «laptop», off
+        const sock = fakeSocket();
+        links.attach(sock, 'owner-r3', { name: 'laptop-2', os: 'Windows' });   // a different computer online now
+        const gone = links.forget('owner-r3', 'laptop');                       // the EXACT kept name
+        expect(gone?.name).toBe('laptop');
+        expect(sock.closed).toBe(false);                                       // «laptop-2» was NOT disconnected
+        expect(kept.isForgotten(kp.id)).toBe(true);
+        kept.reloadKeptComputers();
+    });
+
+    test('an ambiguous name forgets nothing and names the matches so the owner can choose', () => {
+        kept.reloadKeptComputers();
+        const links = new DeviceLinks();
+        links.claimForKeeping(links.newPairingCode('owner-r3b', Date.now(), 'كمبيوتر المكتب').code);
+        links.claimForKeeping(links.newPairingCode('owner-r3b', Date.now(), 'كمبيوتر البيت').code);
+        expect(links.forget('owner-r3b', 'كمبيوتر')).toBeNull();              // ambiguous → nothing forgotten
+        expect(kept.keptComputers('owner-r3b')).toHaveLength(2);             // both still kept
+        expect((links.forgetMatches('owner-r3b', 'كمبيوتر').ambiguous || []).slice().sort())
+            .toEqual(['كمبيوتر البيت', 'كمبيوتر المكتب'].slice().sort());
+        //  A unique fuzzy still resolves: «المكتب» points at one computer.
+        expect(links.forgetMatches('owner-r3b', 'المكتب').one?.name).toBe('كمبيوتر المكتب');
+        kept.reloadKeptComputers();
+    });
 });
 
 describe('a permanent-link code installs, once; a session code never does', () => {
@@ -106,6 +182,31 @@ describe('the installer and the agent', () => {
         expect(agent).toContain("Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink'");
         expect(agent).toContain('فصل هذا الكمبيوتر عن جو نهائياً');
         expect(agent).toContain('إيقاف الربط حتى إعادة التشغيل');
+    });
+
+    test('a new build recompiles the helper, the installer stops the old agent, and forget removes only this link', () => {
+        const agent: string = keptAgentScript();
+        const install: string = keepInstallScript('ws://joe.example:5000/ws/device-link', 'abc123', 'k'.repeat(64), 'كمبيوتر المكتب');
+        //  Defect 4a: the compiled helper is named by the hash of helper.cs, so a changed helper is
+        //  recompiled instead of loading the old DLL a still-running agent holds locked.
+        expect(agent).toContain('$hash = [BitConverter]::ToString($h.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($src)))');
+        expect(agent).toContain("$dll = Join-Path $dir ('JoeDesktop-' + $hash + '.dll')");
+        expect(agent).not.toContain("Join-Path $dir 'JoeDesktop.dll'");
+        //  Defect 4b: the installer stops any agent running from THIS folder before replacing files.
+        expect(install).toContain("Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\"");
+        expect(install).toContain('Stop-Process -Id $_.ProcessId -Force');
+        expect(install).toContain("Remove-Item (Join-Path $dir 'JoeDesktop*.dll')");
+        //  Defect 4c: the helper reads close code 4404 as «forgotten», even with no «forget» word.
+        const { helperSource } = require('../core/devices/windows-desktop');
+        expect(helperSource()).toContain('if (closeCode == 4404) return "FORGOTTEN";');
+        //  Defect 5: Remove-JoeLink deletes only while link.json still names THIS link's id, and
+        //  removes the Run value only while it points at THIS agent — never a newer link's files.
+        expect(agent).toContain('if ($cur.id -and $cur.id -ne $cfg.id) { $mine = $false }');
+        expect(agent).toContain('if (-not $mine) { [Environment]::Exit(0) }');
+        expect(agent).toContain("$run.ToLower().Contains((Join-Path $dir 'agent.ps1').ToLower())");
+        //  Defect 6: an apostrophe in the profile path (e.g. «O'Brien») is doubled so the single-
+        //  quoted cleanup path survives it.
+        expect(agent).toContain("-replace \"['‘’‚‛]\", \"''\"");
     });
 });
 
@@ -182,6 +283,31 @@ describe('a kept computer calls in over the real socket, by its id and key', () 
         expect(await after.closed).toBe(4404);
         expect(after.heard).toEqual(['0\tforget']);
         expect(deviceLinks.list(owner)).toEqual([]);
+    });
+
+    test('an id that is neither kept nor forgotten is closed 4403 with no «forget», so it keeps calling', async () => {
+        //  Defect 1 (socket side): an id merely not found — never linked, or the store unreadable this
+        //  moment — must NOT be told to forget itself, or a transient failure erases a good link.
+        const unknown = await agent('a'.repeat(16), 'x'.repeat(64));
+        expect(await unknown.closed).toBe(4403);
+        expect(unknown.heard).toEqual([]);     // never told «forget»
+    });
+
+    test('a frame larger than the tiny reply cap does not crash Joe', async () => {
+        //  Defect 2: the reply path once upgraded with a 64 MB cap and no 'error' listener, so one
+        //  oversized/malformed frame crashed Joe. Now it caps at 1 KB and terminates on error.
+        const owner = 'owner-badframe';
+        const g = deviceLinks.claimForKeeping(deviceLinks.newPairingCode(owner, Date.now(), 'جهاز').code);
+        deviceLinks.forget(owner, g.id);       // g.id is forgotten → the reply path
+        const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/device-link?device=${g.id}`);
+        const closed = new Promise<number>(r => ws.on('close', c => r(c)));
+        ws.on('error', () => { /* the client may see the socket dropped; that is fine */ });
+        await new Promise<void>(r => ws.on('open', () => r()));
+        try { ws.send(Buffer.alloc(4096, 0x41)); } catch { /* the line may already be closing */ }
+        await closed;
+        //  The server is still up: a fresh id is still answered (a crash would hang this).
+        const again = await agent('c'.repeat(16), 'x'.repeat(64));
+        expect(await again.closed).toBe(4403);
     });
 });
 

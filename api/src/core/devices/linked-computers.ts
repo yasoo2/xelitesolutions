@@ -34,7 +34,11 @@ export interface KeptComputer {
     user?: string;
 }
 
+/** An id the owner forgot for good, with the day it happened: only these ids are told «forget». */
+interface ForgottenLink { id: string; at: number; }
+
 let cache: KeptComputer[] | null = null;
+let forgottenCache: ForgottenLink[] | null = null;
 
 function storeFile(): string | null {
     if (process.env.JOE_LINKED_COMPUTERS_FILE) return process.env.JOE_LINKED_COMPUTERS_FILE;
@@ -44,15 +48,34 @@ function storeFile(): string | null {
 
 function load(): KeptComputer[] {
     if (cache) return cache;
-    cache = [];
     const f = storeFile();
-    if (f) {
-        try {
-            const j = JSON.parse(fs.readFileSync(f, 'utf8'));
-            if (Array.isArray(j?.computers)) cache = j.computers.filter((c: any) => c && typeof c.id === 'string' && typeof c.keyHash === 'string');
-        } catch { /* none yet */ }
+    if (!f) { forgottenCache = forgottenCache || []; return (cache = []); }
+    let present = false;
+    try { present = fs.existsSync(f); } catch { present = false; }
+    if (!present) { forgottenCache = []; return (cache = []); }   // genuinely no store yet
+    try {
+        const j = JSON.parse(fs.readFileSync(f, 'utf8'));
+        forgottenCache = Array.isArray(j?.forgotten)
+            ? j.forgotten.filter((x: any) => x && typeof x.id === 'string').map((x: any) => ({ id: String(x.id), at: Number(x.at) || 0 }))
+            : [];
+        return (cache = Array.isArray(j?.computers)
+            ? j.computers.filter((c: any) => c && typeof c.id === 'string' && typeof c.keyHash === 'string')
+            : []);
+    } catch {
+        //  The store IS on disk but could not be read or parsed this moment — a transient read
+        //  error, a half-written file caught mid-rename, a just-restored backup. Treating it as
+        //  empty would make every kept id look unknown and could forget a still-linked computer
+        //  (the owner's case, 2026-11-08). Do NOT cache «empty»: leave the cache unset so the next
+        //  call retries, and report nothing kept for now rather than a false «empty».
+        return [];
     }
-    return cache!;
+}
+
+/** The ids the owner forgot for good; loaded from the same store, safe on a transient read failure. */
+function forgottenList(): ForgottenLink[] {
+    if (forgottenCache) return forgottenCache;
+    load();   // populates forgottenCache alongside cache (and leaves it unset on a read failure)
+    return forgottenCache || [];
 }
 
 function save(): void {
@@ -61,7 +84,7 @@ function save(): void {
     try {
         fs.mkdirSync(path.dirname(f), { recursive: true });
         const tmp = `${f}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, JSON.stringify({ computers: cache }, null, 1));
+        fs.writeFileSync(tmp, JSON.stringify({ computers: cache, forgotten: forgottenCache || [] }, null, 1));
         fs.renameSync(tmp, f);
     } catch { /* the link still works this session; the record waits for the next write */ }
 }
@@ -70,7 +93,7 @@ const hash = (key: string) => crypto.createHash('sha256').update(String(key)).di
 const clean = (s: unknown, max: number) => String(s ?? '').replace(/[\u0000-\u001f]/gu, ' ').replace(/\s+/gu, ' ').trim().slice(0, max);
 
 /** Re-reads the file on the next call (a test, or after a restart in place). */
-export function reloadKeptComputers(): void { cache = null; }
+export function reloadKeptComputers(): void { cache = null; forgottenCache = null; }
 
 /**
  * A new kept computer for this owner under the name he chose (made unique
@@ -132,6 +155,18 @@ export function forgetComputer(ownerId: string, nameOrId: string): KeptComputer 
     const c = findKeptComputer(ownerId, nameOrId);
     if (!c) return null;
     cache = load().filter(x => x.id !== c.id);
+    //  Remember THIS id as forgotten, with the day. Only ids on this list are ever told to
+    //  «forget» themselves; an id that is merely not found (a transient read failure, the store
+    //  moved by process.cwd(), a restored backup) must keep its link (the owner's case,
+    //  2026-11-08). The list is small — the owner's own computers — so it is kept whole.
+    const fc = forgottenCache || (forgottenCache = []);
+    if (!fc.some(x => x.id === c.id)) fc.push({ id: c.id, at: Date.now() });
     save();
     return c;
+}
+
+/** True when this id was forgotten for good: the socket may tell it, and only it, to remove itself. */
+export function isForgotten(id: string): boolean {
+    const key = String(id || '');
+    return !!key && forgottenList().some(x => x.id === key);
 }

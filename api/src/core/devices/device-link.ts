@@ -186,10 +186,21 @@ export class DeviceLinks {
     /**
      * Forgets a computer for good: a kept one's key opens nothing any more (its
      * agent removes itself on that refusal), and a connected line is ended.
+     *
+     * The target is resolved ONCE over the owner's computers — online AND kept,
+     * as one pool — by exact id, then exact name, then a fuzzy match only when
+     * it points at a single computer. forget used to search the online ones
+     * first and the kept ones separately, so a loose name could disconnect one
+     * computer while forgetting another (the owner's case, 2026-11-08).
+     * Forgetting the WRONG computer is worse than refusing, so an ambiguous or
+     * fuzzy-to-many name forgets NOTHING; forgetMatches() names the matches so
+     * the chat can ask the owner which one he means.
      */
     forget(ownerId: string, nameOrId: string): LinkedDevice | null {
-        const live = this.find(ownerId, nameOrId);
-        const kept = forgetComputer(ownerId, live ? live.id : nameOrId);
+        const hit = this.resolveTarget(ownerId, nameOrId);
+        if (!hit || 'ambiguous' in hit) return null;
+        const kept = forgetComputer(ownerId, hit.id);
+        const live = this.liveFor(ownerId, hit.id);
         if (live) {
             try { live.socket.send('0\tforget'); } catch { /* gone */ }
             try { live.socket.close(1000, 'forgotten by the owner'); } catch { /* gone */ }
@@ -197,6 +208,46 @@ export class DeviceLinks {
         }
         if (!live && !kept) return null;
         return live ? { ...this.view(live), online: false } : { id: kept!.id, name: kept!.name, os: kept!.os || '', user: kept!.user || '', screen: '', connectedAt: 0, lastSeen: kept!.lastSeen, kept: true, online: false };
+    }
+
+    /**
+     * What a forget by this text would hit: the one computer (online or kept), or
+     * the names that make it ambiguous — so the chat can ask the owner which one
+     * he means instead of forgetting the wrong computer.
+     */
+    forgetMatches(ownerId: string, nameOrId: string): { one?: { id: string; name: string }; ambiguous?: string[] } {
+        const hit = this.resolveTarget(ownerId, nameOrId);
+        if (!hit) return {};
+        return 'ambiguous' in hit ? { ambiguous: hit.names } : { one: { id: hit.id, name: hit.name } };
+    }
+
+    /** The owner's target, resolved once over online AND kept computers; ambiguous when a fuzzy name hits many. */
+    private resolveTarget(ownerId: string, nameOrId: string): { id: string; name: string } | { ambiguous: true; names: string[] } | null {
+        const key = String(nameOrId || '').trim().toLowerCase();
+        if (!key) return null;
+        //  One pool: the owner's computers online now AND the ones kept but off, deduped by id.
+        const pool = new Map<string, { id: string; name: string }>();
+        for (const d of this.live.values()) if (d.ownerId === ownerId) pool.set(d.id, { id: d.id, name: d.name });
+        for (const k of keptComputers(ownerId)) if (!pool.has(k.id)) pool.set(k.id, { id: k.id, name: k.name });
+        const all = [...pool.values()];
+        //  1. an exact id.
+        const byId = all.find(c => c.id.toLowerCase() === key);
+        if (byId) return byId;
+        //  2. an exact name (names are unique per owner).
+        const byName = all.filter(c => c.name.toLowerCase() === key);
+        if (byName.length === 1) return byName[0];
+        if (byName.length > 1) return { ambiguous: true, names: byName.map(c => c.name) };
+        //  3. a fuzzy match (one name contains the other), only when it points at ONE computer.
+        const fuzzy = all.filter(c => c.name.toLowerCase().includes(key) || key.includes(c.name.toLowerCase()));
+        const ids = new Set(fuzzy.map(c => c.id));
+        if (ids.size === 1) return fuzzy[0];
+        if (ids.size > 1) return { ambiguous: true, names: [...new Set(fuzzy.map(c => c.name))] };
+        return null;
+    }
+
+    private liveFor(ownerId: string, id: string): Live | null {
+        const d = this.live.get(id);
+        return d && d.ownerId === ownerId ? d : null;
     }
 
     private find(ownerId: string, nameOrId: string): Live | null {
@@ -308,8 +359,13 @@ export function keptAgentScript(): string {
         "$mutex = New-Object System.Threading.Mutex($false, ('Local\\JoeLink-' + $cfg.id))",
         'if (-not $mutex.WaitOne(0)) { exit }',
         'Add-Type -AssemblyName System.Windows.Forms, System.Drawing',
-        "$dll = Join-Path $dir 'JoeDesktop.dll'",
-        "if (-not (Test-Path $dll)) { Add-Type -TypeDefinition (Get-Content (Join-Path $dir 'helper.cs') -Raw -Encoding UTF8) -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility, System.Core -OutputAssembly $dll -OutputType Library }",
+        //  Name the compiled helper after the HASH of helper.cs, so a new build compiles a new DLL
+        //  instead of loading the old one a running agent still holds locked (the owner's case,
+        //  2026-11-08). The old fixed name «JoeDesktop.dll» kept the previous helper after a re-link.
+        "$src = Get-Content (Join-Path $dir 'helper.cs') -Raw -Encoding UTF8",
+        "$h = [System.Security.Cryptography.SHA256]::Create(); $hash = [BitConverter]::ToString($h.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($src))).Replace('-', '').Substring(0, 12).ToLower()",
+        "$dll = Join-Path $dir ('JoeDesktop-' + $hash + '.dll')",
+        "if (-not (Test-Path $dll)) { Add-Type -TypeDefinition $src -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility, System.Core -OutputAssembly $dll -OutputType Library }",
         "$state = [hashtable]::Synchronized(@{ stop = $false; gone = $false; status = 'connecting' })",
         '$rs = [runspacefactory]::CreateRunspace(); $rs.Open()',
         "$rs.SessionStateProxy.SetVariable('state', $state); $rs.SessionStateProxy.SetVariable('cfg', $cfg); $rs.SessionStateProxy.SetVariable('dll', $dll); $rs.SessionStateProxy.SetVariable('dir', $dir)",
@@ -339,11 +395,20 @@ export function keptAgentScript(): string {
         //  ended and let go of its helper (a real run left the helper and the
         //  settings behind when the folder went while the agent still held them).
         'function Remove-JoeLink {',
-        "  try { Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue } catch {}",
-        "  try { Remove-Item -LiteralPath (Join-Path $dir 'link.json') -Force -ErrorAction SilentlyContinue } catch {}",
         '  $icon.Visible = $false',
+        //  Remove only what THIS link owns. Re-linking the same computer (a new id and key) rewrites
+        //  link.json, the Run value and shares this one folder; forgetting the OLD link must not delete
+        //  the newer link's files out from under it (the owner's case, 2026-11-08).
+        '  $mine = $true',
+        "  try { $cur = Get-Content (Join-Path $dir 'link.json') -Raw -Encoding UTF8 | ConvertFrom-Json; if ($cur.id -and $cur.id -ne $cfg.id) { $mine = $false } } catch {}",
+        '  if (-not $mine) { [Environment]::Exit(0) }',
+        //  The sign-in entry: drop it only while it still points at THIS agent's folder.
+        "  try { $run = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue).JoeLink; if ($run -and $run.ToLower().Contains((Join-Path $dir 'agent.ps1').ToLower())) { Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue } } catch {}",
+        "  try { Remove-Item -LiteralPath (Join-Path $dir 'link.json') -Force -ErrorAction SilentlyContinue } catch {}",
         '  $me = $PID',
-        "  $clean = \"Wait-Process -Id $me -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -LiteralPath '\" + $dir + \"' -Recurse -Force -ErrorAction SilentlyContinue\"",
+        //  Escape any apostrophe in the profile path (a user like «O'Brien») by doubling it, or the
+        //  single-quoted path below breaks the cleanup and the folder is never removed (2026-11-08).
+        "  $clean = \"Wait-Process -Id $me -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -LiteralPath '\" + ($dir -replace \"['‘’‚‛]\", \"''\") + \"' -Recurse -Force -ErrorAction SilentlyContinue\"",
         "  Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', $clean)",
         '  [Environment]::Exit(0)',
         '}',
@@ -384,13 +449,21 @@ export function keepInstallScript(wsUrl: string, id: string, key: string, name: 
         'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}',
         "$dir = Join-Path $env:LOCALAPPDATA 'Joe\\link'",
         'New-Item -ItemType Directory -Force -Path $dir | Out-Null',
+        //  Stop any Joe link agent already running from THIS folder before replacing its files: a
+        //  running agent holds its helper DLL locked, and re-linking while it ran left the previous
+        //  helper in place (the owner's case, 2026-11-08). Matched by the agent.ps1 path in its
+        //  command line, so the installer's own process (a different command line) is left alone.
+        "$agent = Join-Path $dir 'agent.ps1'",
+        "try { Get-CimInstance Win32_Process -Filter \"Name = 'powershell.exe'\" -ErrorAction SilentlyContinue | Where-Object { $_.CommandLine -and $_.CommandLine.ToLower().Contains($agent.ToLower()) } | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {} } } catch {}",
+        'Start-Sleep -Milliseconds 300',
         '$bom = New-Object System.Text.UTF8Encoding $true',
         `function Put($file, $b64) { [IO.File]::WriteAllText((Join-Path $dir $file), [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64)), $bom) }`,
         `Put 'helper.cs' '${b64(helperSource())}'`,
         `Put 'agent.ps1' '${b64(keptAgentScript())}'`,
         `Put 'link.json' '${b64(settings)}'`,
-        //  A helper compiled for an older link is compiled again from this source.
-        "Remove-Item (Join-Path $dir 'JoeDesktop.dll') -Force -ErrorAction SilentlyContinue",
+        //  Clear stale compiled helpers (now named by the hash of helper.cs): the new agent compiles
+        //  the current source on its first run. The old agent was stopped just above, so none is locked.
+        "Remove-Item (Join-Path $dir 'JoeDesktop*.dll') -Force -ErrorAction SilentlyContinue",
         "$run = 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + (Join-Path $dir 'agent.ps1') + '\"'",
         "New-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -Value $run -PropertyType String -Force | Out-Null",
         "Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $dir 'agent.ps1'))",

@@ -417,12 +417,16 @@ public static class JoeDesktop {
         ws.SendAsync(new ArraySegment<byte>(b), System.Net.WebSockets.WebSocketMessageType.Text, true, System.Threading.CancellationToken.None).Wait();
     }
 
-    static string LinkReceive(System.Net.WebSockets.ClientWebSocket ws) {
+    static string LinkReceive(System.Net.WebSockets.ClientWebSocket ws, out int closeCode) {
+        closeCode = 0;
         byte[] buf = new byte[65536];
         using (System.IO.MemoryStream ms = new System.IO.MemoryStream()) {
             while (true) {
                 System.Net.WebSockets.WebSocketReceiveResult r = ws.ReceiveAsync(new ArraySegment<byte>(buf), System.Threading.CancellationToken.None).Result;
-                if (r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) return null;
+                if (r.MessageType == System.Net.WebSockets.WebSocketMessageType.Close) {
+                    closeCode = r.CloseStatus.HasValue ? (int)r.CloseStatus.Value : 0;
+                    return null;
+                }
                 ms.Write(buf, 0, r.Count);
                 if (r.EndOfMessage) return Encoding.UTF8.GetString(ms.ToArray());
             }
@@ -439,8 +443,15 @@ public static class JoeDesktop {
             Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  connected");
             while (ws.State == System.Net.WebSockets.WebSocketState.Open) {
                 string msg;
-                try { msg = LinkReceive(ws); } catch (Exception) { return "the connection to Joe was lost"; }
-                if (msg == null) return "Joe closed the link";
+                int closeCode;
+                try { msg = LinkReceive(ws, out closeCode); } catch (Exception) { return "the connection to Joe was lost"; }
+                if (msg == null) {
+                    /* Joe closed with 4404 = this computer was forgotten. An old helper could not read the
+                       «forget» word and saw only a close; the close code says it plainly, so the agent
+                       still removes itself (the owner's case, 2026-11-08). */
+                    if (closeCode == 4404) return "FORGOTTEN";
+                    return "Joe closed the link";
+                }
                 int tab = msg.IndexOf('\t');
                 if (tab <= 0) continue;
                 string id = msg.Substring(0, tab), line = msg.Substring(tab + 1);
