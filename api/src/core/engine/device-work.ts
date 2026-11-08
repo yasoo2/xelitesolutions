@@ -96,6 +96,13 @@ export function pendingQuestion(sessionId: unknown, now = Date.now()): { target?
     return { target: last.target, request: last.request, question: last.question };
 }
 
+/** The chat's last device work within 30 minutes: what a short message («افحص») continues. */
+export function lastDeviceWork(sessionId: unknown, now = Date.now()): { target?: DeviceKind; request: string; ok: boolean } | null {
+    const list = load().done[String(sessionId || '')] || [];
+    const last = list[list.length - 1];
+    return last && now - last.at <= ANSWER_MS ? { target: last.target, request: last.request, ok: last.ok } : null;
+}
+
 /** The question was answered (a new run took it up): it no longer waits. */
 export function answeredQuestion(sessionId: unknown): void {
     const list = load().done[String(sessionId || '')] || [];
