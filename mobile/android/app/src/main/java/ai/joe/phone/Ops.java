@@ -6,8 +6,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
+import android.hardware.camera2.CameraCharacteristics;
+import android.hardware.camera2.CameraManager;
+import android.media.AudioManager;
 import android.net.Uri;
 import android.os.Build;
+import android.os.Handler;
+import android.os.Looper;
 import android.os.PowerManager;
 
 import org.json.JSONArray;
@@ -75,6 +80,8 @@ final class Ops {
             }
             case "email": out = text(email(c, a)); break;
             case "apps": out = new JSONObject().put("apps", apps(c)); break;
+            case "torch": out = text(torch(c, a)); break;
+            case "volume": out = text(volume(c, a)); break;
             default: throw new Exception("unknown action «" + op + "»");
         }
         if (woke) out.put("woke", true);
@@ -157,6 +164,58 @@ final class Ops {
         if (v instanceof JSONArray) { JSONArray a = (JSONArray) v; for (int i = 0; i < a.length(); i++) out.add(a.optString(i)); }
         else if (v instanceof String) for (String s : ((String) v).split("[,;\\s]+")) if (!s.isEmpty()) out.add(s);
         return out;
+    }
+
+    /*
+     * «يا جو شغل الكشاف» (the owner, 2026-11-08): the flashlight itself, through
+     * Android's camera service (no camera permission, no picture), not a tile
+     * looked for on the screen. on: true / false; absent: the other way round.
+     */
+    private static volatile Boolean torchOn = null;
+    private static boolean torchWatched = false;
+
+    private static String torch(Context c, JSONObject a) throws Exception {
+        CameraManager cm = (CameraManager) c.getSystemService(Context.CAMERA_SERVICE);
+        String id = null;
+        for (String cam : cm.getCameraIdList()) {
+            Boolean flash = cm.getCameraCharacteristics(cam).get(CameraCharacteristics.FLASH_INFO_AVAILABLE);
+            if (Boolean.TRUE.equals(flash)) { id = cam; break; }
+        }
+        if (id == null) throw new Exception("this phone has no flashlight");
+        if (!torchWatched) {
+            torchWatched = true;
+            cm.registerTorchCallback(new CameraManager.TorchCallback() {
+                @Override public void onTorchModeChanged(String cam, boolean enabled) { torchOn = enabled; }
+            }, new Handler(Looper.getMainLooper()));
+            try { Thread.sleep(150); } catch (InterruptedException ignored) { }
+        }
+        boolean on = a.has("on") ? a.optBoolean("on") : !Boolean.TRUE.equals(torchOn);
+        cm.setTorchMode(id, on);
+        return on ? "The flashlight is on." : "The flashlight is off.";
+    }
+
+    /** A sound's level: stream media | ring | alarm | notification | call; level 0–100, or change up | down | mute | unmute. */
+    private static String volume(Context c, JSONObject a) throws Exception {
+        AudioManager am = (AudioManager) c.getSystemService(Context.AUDIO_SERVICE);
+        String name = a.optString("stream", "media").toLowerCase(Locale.ROOT);
+        int stream = "ring".equals(name) ? AudioManager.STREAM_RING : "alarm".equals(name) ? AudioManager.STREAM_ALARM
+                : "notification".equals(name) ? AudioManager.STREAM_NOTIFICATION : "call".equals(name) ? AudioManager.STREAM_VOICE_CALL : AudioManager.STREAM_MUSIC;
+        int max = am.getStreamMaxVolume(stream);
+        String change = a.optString("change").toLowerCase(Locale.ROOT);
+        try {
+            if (a.has("level")) {
+                int pct = Math.max(0, Math.min(100, a.getInt("level")));
+                am.setStreamVolume(stream, Math.round(pct / 100f * max), AudioManager.FLAG_SHOW_UI);
+            } else if (change.equals("up") || change.equals("down")) {
+                am.adjustStreamVolume(stream, change.equals("up") ? AudioManager.ADJUST_RAISE : AudioManager.ADJUST_LOWER, AudioManager.FLAG_SHOW_UI);
+            } else if (change.equals("mute") || change.equals("unmute")) {
+                am.adjustStreamVolume(stream, change.equals("mute") ? AudioManager.ADJUST_MUTE : AudioManager.ADJUST_UNMUTE, AudioManager.FLAG_SHOW_UI);
+            } else if (!change.isEmpty()) throw new Exception("change is up, down, mute or unmute");
+        } catch (SecurityException e) {
+            throw new Exception("Android allows that only with «Do not disturb» access for Joe (the ring turned fully off): " + e.getMessage());
+        }
+        int now = am.getStreamVolume(stream);
+        return "The " + name + " volume is " + Math.round(now * 100f / Math.max(1, max)) + "% (" + now + " of " + max + ").";
     }
 
     /** The apps the owner can open: «package — label». */

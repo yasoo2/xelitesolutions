@@ -26,13 +26,16 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 
 /**
- * One screen: Joe's address and the six-digit code (filled from a joe://link
- * address when Joe shows one), then the three things only the owner can allow,
- * each with its state: act on the screen, hear notifications, stay connected.
+ * The setup screen: Joe's address and the six-digit code (filled from a
+ * joe://link address when Joe opens the app with one), then the three things
+ * only the owner can allow, each with its state: act on the screen, hear
+ * notifications, stay connected. Once linked, «Open Joe» goes to the chat
+ * (MainActivity), which is what the app opens on from then on.
  */
-public class MainActivity extends Activity {
+public class SetupActivity extends Activity {
     private EditText server, code;
     private TextView status, accState, notifState, battState;
+    private Button openChat;
     private final Handler main = new Handler(Looper.getMainLooper());
     private final Runnable refresh = new Runnable() { @Override public void run() { show(); main.postDelayed(this, 2000); } };
 
@@ -59,6 +62,10 @@ public class MainActivity extends Activity {
         Button link = button(getString(R.string.link), true);
         link.setOnClickListener(v -> link());
         col.addView(link);
+        openChat = button(getString(R.string.open_chat), true);
+        openChat.setOnClickListener(v -> { startActivity(new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)); finish(); });
+        openChat.setVisibility(View.GONE);
+        col.addView(openChat);
 
         col.addView(space(24));
         accState = step(col, getString(R.string.step_accessibility), () -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
@@ -114,15 +121,16 @@ public class MainActivity extends Activity {
                 : getString(R.string.not_linked);
         if (!LinkService.online && !TextUtils.isEmpty(LinkService.lastError) && !p.pendingCode().isEmpty()) s += "\n" + LinkService.lastError;
         status.setText(s);
+        openChat.setVisibility(p.linked() ? View.VISIBLE : View.GONE);
         accState.setText(JoeAccessibilityService.instance != null ? getString(R.string.done) : "");
-        notifState.setText(listenerOn() ? getString(R.string.done) : "");
+        notifState.setText(listenerOn(this) ? getString(R.string.done) : "");
         PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
         battState.setText(pm.isIgnoringBatteryOptimizations(getPackageName()) ? getString(R.string.done) : "");
     }
 
-    private boolean listenerOn() {
-        String on = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        return on != null && on.contains(new ComponentName(this, JoeNotificationListener.class).flattenToString());
+    static boolean listenerOn(android.content.Context c) {
+        String on = Settings.Secure.getString(c.getContentResolver(), "enabled_notification_listeners");
+        return on != null && on.contains(new ComponentName(c, JoeNotificationListener.class).flattenToString());
     }
 
     private void askBattery() {
