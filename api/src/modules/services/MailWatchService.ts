@@ -7,7 +7,7 @@
  *
  * Started with Joe (api/index.ts). While someone is watched (core/devices/
  * mail-watch.ts: every person Joe emailed, for 14 days), it reads the phone's
- * notifications once a minute (EngineAndroidTool.phoneNotificationsNow:
+ * notifications every 30 seconds (EngineAndroidTool.phoneNotificationsNow:
  * reads only, nothing on the screen moves, no model is paid), and for every
  * new mail from one of them it tells the owner:
  *   - in the chat the email was asked in: a message from Joe, kept with the
@@ -52,9 +52,17 @@ async function chatLinesOfTwoWeeks(now = Date.now()): Promise<ChatLine[]> {
     return rows.map(r => line(r, owners));
 }
 
+/*
+ * EVERY 30 SECONDS. Outlook takes a mail's notification off the phone as soon
+ * as he reads it anywhere — on his computer too — and Android here keeps no
+ * archive of removed notifications (2026-11-08: Shurouq's reply, read before
+ * the watch on her began, left nothing to find). A look is one short adb read
+ * and runs only while someone is watched; looking twice as often halves the
+ * time a read mail can slip by.
+ */
 const everyMs = (): number => {
     const n = Number(process.env.JOE_MAIL_WATCH_EVERY_MS);
-    return Number.isFinite(n) && n >= 5_000 ? n : 60_000;
+    return Number.isFinite(n) && n >= 5_000 ? n : 30_000;
 };
 
 export type NoticeReader = () => Promise<{ ok: true; dumps: Array<{ serial: string; text: string }> } | { ok: false; code: string; error: string }>;
