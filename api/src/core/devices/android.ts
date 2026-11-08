@@ -239,7 +239,9 @@ export class AndroidPhone {
         //  Its own file on the phone, like look(): two readers at once never share one.
         const remote = `/sdcard/joe-ui-${Date.now().toString(36)}${crypto.randomBytes(3).toString('hex')}.xml`;
         const dump = await this.run(['shell', 'uiautomator', 'dump', remote], { timeoutMs: 30_000 });
-        if (dump.code !== 0) return { ok: false, error: (dump.stderr || dump.stdout || 'uiautomator dump failed').trim() };
+        //  «UI hierchary dumped to: …» is a success even when the exit code is not 0: the owner's
+        //  Gmail run (2026-11-08) was refused a read that had worked, and tapped by guess after it.
+        if (dump.code !== 0 && !/dumped to/iu.test(`${dump.stdout}${dump.stderr}`)) return { ok: false, error: (dump.stderr || dump.stdout || 'uiautomator dump failed').trim() };
         const cat = await this.run(['exec-out', 'cat', remote], { timeoutMs: 20_000 });
         await this.run(['shell', 'rm', '-f', remote], { timeoutMs: 10_000 }).catch(() => null);
         if (cat.code !== 0 || !/<hierarchy/u.test(cat.stdout)) return { ok: false, error: (cat.stderr || 'the screen could not be read').trim() };
