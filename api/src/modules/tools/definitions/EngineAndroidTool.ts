@@ -41,6 +41,19 @@ const gatewayAdb = (adb: string): AdbRunner => async (args, opts) => {
     };
 };
 
+/** What Windows sees on USB of phones adb cannot reach, and what to do; '' elsewhere or when none. */
+export async function unreachableUsbPhones(): Promise<string> {
+    if (process.platform !== 'win32') return '';
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { gatewayPowerShell } = require('./EngineDeviceTools');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const usb = require('../../../core/devices/phone-usb');
+        const r = await gatewayPowerShell(usb.usbDevicesScript(), 20_000);
+        return usb.describeUnreachablePhones(usb.parseUsbPhones(String(r?.stdout || '')));
+    } catch { return ''; }
+}
+
 const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel', 'clear', 'email', 'uri']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
@@ -91,8 +104,10 @@ export class EngineAndroidTool implements ToolDefinition {
                     ? `- ${p.name} on Wi-Fi at ${p.address}: showing its pairing code now. Ask the owner for the six digits on the phone's screen, then android_pair {"address": "${p.address}", "code": …}`
                     : `- ${p.name} on Wi-Fi at ${p.address}: ready to connect (android_connect {"address": "${p.address}"}); if it was never paired, the owner opens Wireless debugging › «Pair device with pairing code» on the phone`);
             }
-            if (!lines.length) return ok('No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
-            return ok(lines.join('\n'));
+            //  A phone on the cable that adb does not list: Windows says why (core/devices/phone-usb.ts, 2026-11-08).
+            const usb = listed.some(d => d.state === 'device') ? '' : await unreachableUsbPhones();
+            if (!lines.length) return ok(usb || 'No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
+            return ok([lines.join('\n'), usb].filter(Boolean).join('\n\n'));
         }
         const ready = listed.filter(d => d.state === 'device');
         const serial = String(input?.serial || '').trim() || (ready.length === 1 ? ready[0].serial : '');
