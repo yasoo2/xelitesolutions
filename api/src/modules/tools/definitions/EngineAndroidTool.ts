@@ -41,7 +41,7 @@ const gatewayAdb = (adb: string): AdbRunner => async (args, opts) => {
     };
 };
 
-const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel']);
+const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel', 'clear', 'email', 'uri']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
 const fail = (text: string) => ({ ok: false, error: text, output: { text } }) as any;
@@ -54,7 +54,7 @@ export class EngineAndroidTool implements ToolDefinition {
     readonly inputSchema = {
         type: 'object',
         properties: {
-            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps | panel' },
+            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps | panel | clear | email | uri' },
             serial: { type: 'string', description: 'The phone, as devices lists it; absent when only one is connected.' },
         },
         required: ['op'],
@@ -110,7 +110,7 @@ export class EngineAndroidTool implements ToolDefinition {
          * and the answer says so.
          */
         let woke = '';
-        if (['tap', 'swipe', 'type', 'panel', 'open'].includes(op)) {
+        if (['tap', 'swipe', 'type', 'panel', 'open', 'clear', 'email', 'uri'].includes(op)) {
             if (await phone.awake().catch(() => null) === false) {
                 const w = await phone.key('wakeup');
                 if (w.ok) { woke = 'The screen was asleep: Joe woke it first. '; await new Promise(r => setTimeout(r, 400)); }
@@ -164,6 +164,19 @@ export class EngineAndroidTool implements ToolDefinition {
             case 'open': {
                 const r = await phone.open(String(input?.package || ''));
                 return r.ok ? done() : fail(r.error || 'the app did not open');
+            }
+            case 'clear': {
+                const r = await phone.clearField();
+                return r.ok ? done() : fail(r.error || 'the field could not be emptied');
+            }
+            case 'email': {
+                const list = (v: unknown) => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;\s]+/u) : []).map(String).filter(Boolean);
+                const r = await phone.composeEmail({ to: list(input?.to), cc: list(input?.cc), subject: String(input?.subject || ''), body: String(input?.body || ''), app: String(input?.app || '') });
+                return r.ok ? done() : fail(r.error || 'no mail app opened');
+            }
+            case 'uri': {
+                const r = await phone.openUri(String(input?.uri || ''), String(input?.package || '') || undefined);
+                return r.ok ? done() : fail(r.error || 'nothing opened it');
             }
             case 'apps': return ok((await phone.apps()).join('\n') || 'No app the owner installed was listed.');
         }

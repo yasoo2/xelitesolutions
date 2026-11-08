@@ -252,6 +252,8 @@ interface Store {
     watches: MailWatch[];
     seen: Record<string, number>;
     own: string[];
+    /** The app each of his accounts receives mail in («Outlook», «Gmail»), read off the same notices. */
+    ownApp?: Record<string, string>;
     /** The chat messages already read for a watch (backfillWatchesFromChats): read once, never again. */
     read: Record<string, number>;
 }
@@ -274,6 +276,7 @@ function load(): Store {
                 watches: Array.isArray(j?.watches) ? j.watches.filter((w: MailWatch) => w && typeof w.to === 'string') : [],
                 seen: j && typeof j.seen === 'object' && j.seen ? j.seen : {},
                 own: Array.isArray(j?.own) ? j.own.filter((a: unknown) => typeof a === 'string').slice(0, 20) : [],
+                ...(j && typeof j.ownApp === 'object' && j.ownApp ? { ownApp: j.ownApp } : {}),
                 read: j && typeof j.read === 'object' && j.read ? j.read : {},
             };
         } catch { /* no file yet, or unreadable: start empty */ }
@@ -380,9 +383,18 @@ export function newReplies(notices: MailNotice[], now = Date.now()): MailReply[]
     const s = load();
     // The accounts the mail comes TO are the owner's own: never a person to watch.
     const before = s.own.length;
-    for (const n of notices) for (const a of emailAddresses(n.subText)) if (!s.own.includes(a)) s.own = [...s.own, a].slice(-20);
+    let appsChanged = false;
+    for (const n of notices) {
+        for (const a of emailAddresses(n.subText)) {
+            if (!s.own.includes(a)) s.own = [...s.own, a].slice(-20);
+            //  Which app his account is in: «send it from Gmail to Outlook» needs no question (2026-11-08).
+            const apps = (s.ownApp ||= {});
+            if (n.app && apps[a] !== n.app) { apps[a] = n.app; appsChanged = true; }
+        }
+    }
     const own = new Set(s.own);
-    if (s.own.length !== before) { s.watches = s.watches.filter(w => !(w.auto && own.has(w.to))); save(now); }
+    if (s.own.length !== before) s.watches = s.watches.filter(w => !(w.auto && own.has(w.to)));
+    if (s.own.length !== before || appsChanged) save(now);
     const watches = activeWatches(now);
     if (!watches.length) return [];
     const out: MailReply[] = [];
@@ -440,10 +452,25 @@ export function replyMessage(r: MailReply): string {
 /** For the chat's answerer and the operate run: whom Joe is watching. */
 export function mailWatchFacts(now = Date.now()): string {
     const list = activeWatches(now);
-    if (!list.length) return '';
     const lines = list.slice(-10).map(w => {
         const days = Math.max(0, Math.round((w.until - now) / (24 * 60 * 60_000)));
         return `- ${w.to}${w.name ? ` (${w.name})` : ''}${w.subject ? `, about «${w.subject}»` : ''}: watching for ${days} more day(s)`;
     });
-    return `\n\nJOE IS WATCHING THE OWNER'S PHONE MAIL, IN THE BACKGROUND, FOR REPLIES FROM (facts; he is told in the chat the moment one arrives):\n${lines.join('\n')}`;
+    const watching = lines.length ? `\n\nJOE IS WATCHING THE OWNER'S PHONE MAIL, IN THE BACKGROUND, FOR REPLIES FROM (facts; he is told in the chat the moment one arrives):\n${lines.join('\n')}` : '';
+    return `${watching}${ownMailFacts()}`;
+}
+
+/*
+ * HIS OWN ADDRESSES ARE KNOWN.
+ *
+ * The owner, 2026-11-08: «send an email from Gmail to Outlook, saying hello»,
+ * and Joe asked him for his Outlook address — an address his phone shows on
+ * every Outlook notification. The accounts his mail arrives in are kept from
+ * those notices, with their app, and given to every device run.
+ */
+export function ownMailFacts(): string {
+    const s = load();
+    if (!s.own.length) return '';
+    const lines = s.own.map(a => `- ${a}${s.ownApp?.[a] ? ` (${s.ownApp[a]} on his phone)` : ''}`);
+    return `\n\nTHE OWNER'S OWN MAIL ACCOUNTS (facts, read off his phone's mail notifications; «my Outlook», «my email» mean these — never ask him for them):\n${lines.join('\n')}`;
 }

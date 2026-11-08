@@ -254,7 +254,88 @@ export const androidConnectTool: EngineTool<{ address: string }> = {
     },
 };
 
+/*
+ * WRITING AN EMAIL WITHOUT TYPING INTO ITS FIELDS.
+ *
+ * The owner, 2026-11-08: «send an email from Gmail to Outlook». Joe tapped
+ * Gmail's «To» field and typed; the address and the subject ended in the same
+ * field, deleting did not empty it, and after three minutes Joe asked him what
+ * to do. android_email opens the mail app's new message already filled (To,
+ * Cc, Subject, text) from one mailto: address; the run reads it, checks every
+ * field, and taps Send. android_clear empties the field the cursor is in.
+ */
+const MAIL_APP: Record<string, string> = { gmail: 'com.google.android.gm', outlook: 'com.microsoft.office.outlook' };
+const emails = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;\s]+/u) : [])
+    .map(x => String(x).trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(x));
+
+export const androidEmailTool: EngineTool<{ to: string[]; cc?: string[]; subject?: string; body?: string; app?: string; serial?: string }> = {
+    name: 'android_email',
+    description: 'Open a NEW email on the owner\'s phone with every field already filled: To, Cc, Subject and the text (any language), in Gmail or Outlook. Use it instead of tapping and typing into an email\'s fields. Then android_read: check the recipient, the subject and the text, tap Send by its number, and check the Sent folder. It sends nothing by itself.',
+    parameters: {
+        type: 'object',
+        properties: {
+            to: { type: 'array', items: { type: 'string' }, description: 'Recipient addresses (name@example.com).' },
+            cc: { type: 'array', items: { type: 'string' } },
+            subject: { type: 'string' },
+            body: { type: 'string', description: 'The text of the email.' },
+            app: { type: 'string', enum: ['gmail', 'outlook'], description: 'The app to write it in (the account it is sent from): gmail or outlook.' },
+            serial: SERIAL,
+        },
+        required: ['to'],
+    },
+    parse: raw => {
+        const a = obj(raw);
+        const to = emails(a.to);
+        if (!to.length) return { ok: false, error: '"to" holds the recipient addresses (name@example.com). The owner\'s own accounts are in the facts above; ask him only for an address nobody named.' };
+        const app = String(a.app || '').trim().toLowerCase();
+        return {
+            ok: true,
+            value: {
+                to,
+                ...(emails(a.cc).length ? { cc: emails(a.cc) } : {}),
+                ...(typeof a.subject === 'string' && a.subject.trim() ? { subject: a.subject.trim().slice(0, 300) } : {}),
+                ...(typeof a.body === 'string' && a.body.trim() ? { body: a.body.slice(0, 5000) } : {}),
+                ...(MAIL_APP[app] ? { app } : {}),
+                ...withSerial(a),
+            },
+        };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'email', to: a.to, cc: a.cc || [], subject: a.subject || '', body: a.body || '', app: a.app ? MAIL_APP[a.app] : '', ...withSerial(a as any) });
+        did(ctx, 'android_email', r.ok, `new email to ${a.to.join(', ')}${a.subject ? ` «${a.subject.slice(0, 60)}»` : ''}`);
+        return { ok: r.ok, output: r.ok ? `A new email to ${a.to.join(', ')} is open and filled${a.app ? ` in ${a.app}` : ''}. Read the screen now: check To, Subject and the text, then tap Send by its number. Nothing is sent yet.` : `android_email failed: ${r.text}` };
+    },
+};
+
+export const androidClearTool: EngineTool<{ serial?: string }> = {
+    name: 'android_clear',
+    description: 'Empty the text field the phone\'s cursor is in (tap the field first): all its text, and the recipient chips of an email field. Use it to fix a field that holds the wrong text, instead of deleting character by character.',
+    parameters: { type: 'object', properties: { serial: SERIAL } },
+    parse: raw => ({ ok: true, value: withSerial(obj(raw)) }),
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'clear', ...a });
+        did(ctx, 'android_clear', r.ok, 'empty the field');
+        return { ok: r.ok, output: r.ok ? 'The field is empty. Read the screen to check, then type what belongs there.' : `android_clear failed: ${r.text}` };
+    },
+};
+
+export const androidLinkTool: EngineTool<{ uri: string; package?: string; serial?: string }> = {
+    name: 'android_link',
+    description: 'Open an address on the phone in the app that handles it: a web page (https://…), a phone number to call (tel:+…), an SMS (sms:+…?body=…), a place on the map (geo:lat,lng?q=…), a WhatsApp chat (https://wa.me/<number>?text=…). Encode spaces and Arabic (%20…). It opens; it sends or calls nothing until a button is tapped.',
+    parameters: { type: 'object', properties: { uri: { type: 'string' }, package: { type: 'string', description: 'Optional: the app to open it in.' }, serial: SERIAL }, required: ['uri'] },
+    parse: raw => {
+        const a = obj(raw);
+        const uri = String(a.uri || '').trim();
+        return uri ? { ok: true, value: { uri, ...(typeof a.package === 'string' && a.package.trim() ? { package: a.package.trim() } : {}), ...withSerial(a) } } : { ok: false, error: '"uri" is the address to open.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'uri', ...a });
+        did(ctx, 'android_link', r.ok, `open ${a.uri.slice(0, 80)}`);
+        return { ok: r.ok, output: r.ok ? `Opened ${a.uri.slice(0, 80)}. Read the screen to see it.` : `android_link failed: ${r.text}` };
+    },
+};
+
 export const androidTools: EngineTool[] = [
     androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
-    androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool,
+    androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool, androidEmailTool, androidClearTool, androidLinkTool,
 ];
