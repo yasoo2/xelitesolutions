@@ -634,6 +634,26 @@ export default function Joe() {
         return () => window.removeEventListener('joe:workspace-tab-switch', handler);
     }, []);
 
+    // A REPLY TO JOE'S EMAIL ARRIVED (MailWatchService, 2026-11-08). Joe kept
+    // his message in the chat the email came from: when that chat is open it is
+    // read again at once (its live frame is dropped by the finished run's gate),
+    // and «open the chat» in the header's notice (JoeNoticeBanner) goes there.
+    useEffect(() => SocketService.subscribeNotices(n => {
+        if (n?.chatId && n.chatId === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+    }), []);
+    useEffect(() => {
+        const open = (e: Event) => {
+            const id = String((e as CustomEvent)?.detail?.id || '').trim();
+            if (!id) return;
+            if (agentSessions.some(s => s.id === id)) { setAgentSelected(id); setSelected(null); }
+            else { setSelected(id); setAgentSelected(null); }
+            try { localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id); } catch { /* storage unavailable */ }
+            if (id === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+        };
+        window.addEventListener('joe:open-session', open);
+        return () => window.removeEventListener('joe:open-session', open);
+    }, [agentSessions, setAgentSelected, setSelected]);
+
     // Load messages when the session changes. CRITICAL: clear the previous
     // session's messages immediately so a NEW/empty session never shows the old
     // conversation. A cancel flag prevents a late-resolving load from a previous

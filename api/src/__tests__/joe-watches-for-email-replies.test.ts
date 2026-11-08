@@ -251,3 +251,12 @@ describe('the run tells Joe whom it emailed', () => {
         expect(watchAfterSentEmail('chat-8', 'ارسل ايميل الى shoroq.suwan@gmail.com', '', 'ar', 'owner-8', T0 + 60_000)).toEqual([]);
     });
 });
+
+describe('the notice reaches the owner in any chat, and only him', () => {
+    test('«joe_notice» names no session, so no subscription holds it back; it is not a run event', () => {
+        const ws = require('../api/ws');
+        expect(ws.eventRequiresSession({ type: 'joe_notice' })).toBe(false);
+        expect(ws.canDeliverLiveEventToSession({ type: 'joe_notice', userId: 'owner-1', data: { chatId: 'chat-1' } }, ['another-chat'])).toBe(true);
+        expect(ws.liveEventSessionId({ type: 'joe_notice', data: { chatId: 'chat-1' } })).toBe('');
+    });
+});

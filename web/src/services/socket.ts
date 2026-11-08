@@ -190,6 +190,18 @@ const taskTrackerListeners: Set<SessionListener<(tasks: any[], sessionId?: strin
 /** Fires when a run ends and its trace has been written to the session's history. */
 const traceSealedListeners: Set<SessionListener<(trace: NeuralTrace) => void>> = new Set();
 
+/** What Joe tells the owner on his own, from any chat (api/src/modules/services/MailWatchService.ts). */
+export interface JoeNotice {
+  kind?: string;
+  chatId?: string;
+  who?: string;
+  address?: string;
+  subject?: string;
+  app?: string;
+  at?: number;
+}
+const noticeListeners: Set<(notice: JoeNotice) => void> = new Set();
+
 function forSession<T>(listeners: Set<SessionListener<T>>, sessionId: string, invoke: (cb: T) => void) {
   const sid = normalizeSessionId(sessionId);
   listeners.forEach(listener => {
@@ -465,6 +477,17 @@ async function connect() {
             seenMessageIds.delete(res.value);
           }
         }
+      }
+
+      // JOE TELLS THE OWNER SOMETHING NOBODY ASKED FOR THIS MINUTE: a reply to
+      // the email he sent arrived (2026-11-08). It belongs to the account, not
+      // to a run, and must pass before the run gates below: they drop every
+      // event of a chat whose run has finished — the very chat the email was
+      // sent from.
+      if (data?.type === 'joe_notice') {
+        const notice = data?.data && typeof data.data === 'object' ? data.data : {};
+        noticeListeners.forEach(cb => { try { cb(notice); } catch { /* one listener never breaks another */ } });
+        return;
       }
 
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
@@ -944,6 +967,12 @@ export const SocketService = {
   injectLocal(event: any) {
     const sid = String(event?.sessionId || event?.data?.sessionId || '');
     forSession(listeners, sid, (cb: any) => cb(event));
+  },
+  /** Joe's own notices to the owner (a reply to his email arrived), whatever chat is open. */
+  subscribeNotices(cb: (notice: JoeNotice) => void) {
+    noticeListeners.add(cb);
+    if (!socket && !isConnecting) connect();
+    return () => { noticeListeners.delete(cb); };
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
