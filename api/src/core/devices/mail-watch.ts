@@ -248,7 +248,13 @@ export function matchReply(notice: MailNotice, watches: MailWatch[], now = Date.
  * account the mail came to). A run's summary may name his own address
  * («sent from younis@…»); watching it would match every mail he gets.
  */
-interface Store { watches: MailWatch[]; seen: Record<string, number>; own: string[] }
+interface Store {
+    watches: MailWatch[];
+    seen: Record<string, number>;
+    own: string[];
+    /** The chat messages already read for a watch (backfillWatchesFromChats): read once, never again. */
+    read: Record<string, number>;
+}
 let store: Store | null = null;
 
 function storeFile(): string | null {
@@ -259,7 +265,7 @@ function storeFile(): string | null {
 
 function load(): Store {
     if (store) return store;
-    store = { watches: [], seen: {}, own: [] };
+    store = { watches: [], seen: {}, own: [], read: {} };
     const f = storeFile();
     if (f) {
         try {
@@ -268,6 +274,7 @@ function load(): Store {
                 watches: Array.isArray(j?.watches) ? j.watches.filter((w: MailWatch) => w && typeof w.to === 'string') : [],
                 seen: j && typeof j.seen === 'object' && j.seen ? j.seen : {},
                 own: Array.isArray(j?.own) ? j.own.filter((a: unknown) => typeof a === 'string').slice(0, 20) : [],
+                read: j && typeof j.read === 'object' && j.read ? j.read : {},
             };
         } catch { /* no file yet, or unreadable: start empty */ }
     }
@@ -278,6 +285,7 @@ function save(now = Date.now()): void {
     const s = load();
     s.watches = s.watches.filter(w => now <= w.until);
     for (const [k, at] of Object.entries(s.seen)) if (now - at > SEEN_MS) delete s.seen[k];
+    for (const [k, at] of Object.entries(s.read)) if (now - at > SEEN_MS) delete s.read[k];
     const f = storeFile();
     if (!f) return;
     try {
@@ -308,6 +316,10 @@ export function watchReplies(sessionId: unknown, w: { to: string[]; name?: strin
         //  one he names himself («tell me when mail from my Gmail arrives») is watched as he asked.
         if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(to) || (w.auto && own.has(to))) continue;
         const old = s.watches.find(x => x.to === to);
+        //  A watch read later from an older chat (backfillWatchesFromChats) never shortens a newer one,
+        //  and a renewed watch keeps watching since the first email: the earliest start, the latest end.
+        const sentAt = old ? Math.min(old.sentAt, now) : now;
+        const until = Math.max(old?.until || 0, now + WATCH_DAYS() * 24 * 60 * 60_000);
         const next: MailWatch = {
             id: old?.id || `${now.toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
             sessionId: id || old?.sessionId || '',
@@ -318,8 +330,8 @@ export function watchReplies(sessionId: unknown, w: { to: string[]; name?: strin
             name: (w.name || old?.name || '').slice(0, 80) || undefined,
             subject: (w.subject || old?.subject || '').slice(0, 200) || undefined,
             lang,
-            sentAt: now,
-            until: now + WATCH_DAYS() * 24 * 60 * 60_000,
+            sentAt,
+            until,
         };
         s.watches = s.watches.filter(x => x.to !== to).concat(next);
         added.push(next);
@@ -341,6 +353,20 @@ export function stopWatching(sessionId: unknown, to: string[] = [], now = Date.n
 
 export function activeWatches(now = Date.now()): MailWatch[] {
     return load().watches.filter(w => now <= w.until);
+}
+
+/** Of these chat message ids, the ones never read for a watch yet. */
+export function unreadChatMessages(ids: string[]): string[] {
+    const read = load().read;
+    return ids.filter(id => id && !read[id]);
+}
+
+/** These chat messages were read for a watch: never read again (a watch he stopped stays stopped). */
+export function markChatMessagesRead(ids: string[], now = Date.now()): void {
+    const s = load();
+    let changed = false;
+    for (const id of ids) if (id && !s.read[id]) { s.read[id] = now; changed = true; }
+    if (changed) save(Date.now());
 }
 
 const noticeId = (n: MailNotice): string => `${n.pkg}|${n.key}|${normalizeForMatch(n.title)}|${normalizeForMatch(n.text).slice(0, 120)}`;
@@ -382,10 +408,19 @@ const clip = (s: string, n: number): string => {
 export function replyMessage(r: MailReply): string {
     const { watch: w, notice: n } = r;
     const who = clip(n.title, 80) || w.name || w.to;
-    const subject = clip(n.text || n.lines[0] || '', 160);
-    const firstLine = (n.bigText.split('\n')[0] || '').trim();
-    let preview = n.bigText ? n.bigText.slice(n.bigText.startsWith(firstLine) && firstLine === n.text.trim() ? firstLine.length : 0) : '';
-    preview = clip(preview, 400);
+    //  Outlook joins the subject and the first words with « • » in its short line, and its long
+    //  text starts with the subject again (Shurouq's reply, 2026-11-08): the subject is said once,
+    //  the beginning is the body after it.
+    const rawSubject = String(n.text || n.lines[0] || '').split(/\s+[•·]\s+/u)[0].trim();
+    const subject = clip(rawSubject, 160);
+    const lines = String(n.bigText || '').split('\n');
+    const same = (a: string, b: string) => normalizeForMatch(a) === normalizeForMatch(b);
+    const body = lines.length && rawSubject && same(lines[0].trim(), rawSubject) ? lines.slice(1).join('\n') : lines.join('\n');
+    let preview = clip(body, 400);
+    if (!preview) {
+        const rest = String(n.text || '').split(/\s+[•·]\s+/u).slice(1).join(' • ');
+        preview = clip(rest, 400);
+    }
     if (w.lang === 'ar') {
         return [
             `📩 وصل إيميل من **${who}**${w.name && !normalizeForMatch(who).includes(normalizeForMatch(w.name)) ? ` (${w.name})` : ''} — ممن راسلتهم${w.subject ? ` عن «${clip(w.subject, 120)}»` : ''}.`,

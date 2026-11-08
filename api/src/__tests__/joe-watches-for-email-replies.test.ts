@@ -300,3 +300,72 @@ describe('the owner asks Joe to tell him when someone writes', () => {
         expect(isMailWatchRequest(t)).toBe(false);
     });
 });
+
+describe('what he asked before Joe could watch is not forgotten', () => {
+    //  The owner's chat of 2026-11-07/08, as it was (times in ms from T0).
+    const H = 60 * 60_000;
+    const chat = (extra: any[] = []) => [
+        { id: 'm1', sessionId: 'chat-s', role: 'user', content: 'ارسل ايميل لشروق', at: T0, userId: 'owner-1' },
+        { id: 'm2', sessionId: 'chat-s', role: 'assistant', content: 'وجدت عنوان بريد شروق في جهات الاتصال على هاتفك: shurouk.suwan@inovar.sa (Shurouk Suwan).', at: T0 + 60_000, userId: 'owner-1' },
+        { id: 'm3', sessionId: 'chat-s', role: 'assistant', content: 'فتحت تطبيق Gmail على هاتفك (الحساب younes.sowady2011@gmail.com) وبحثت عن رسائلك المرسلة إلى شروق.', at: T0 + 2 * 60_000, userId: 'owner-1' },
+        { id: 'm4', sessionId: 'chat-s', role: 'user', content: 'هذا shoroq.suwan@gmail.com', at: T0 + 3 * 60_000, userId: 'owner-1' },
+        { id: 'm5', sessionId: 'chat-s', role: 'user', content: 'اذا وصل اي ايميل من شروق اعلمني بذلك مباشره', at: T0 + 80 * 60_000, userId: 'owner-1' },
+        { id: 'm6', sessionId: 'chat-s', role: 'assistant', content: 'لا أستطيع مراقبة صندوق بريدك بشكل مستمر.', at: T0 + 81 * 60_000, userId: 'owner-1' },
+        ...extra,
+    ];
+    const shurouq = record({
+        pkg: 'com.microsoft.office.outlook',
+        created: T0 + 10 * H,
+        extras: [
+            'android.title=String (Shurouq Suwan)',
+            'android.text=String (Re: توسيع صلاحيات مدير النظام • Dear all, CR 314 is approved)',
+            'android.bigText=String (Re: توسيع صلاحيات مدير النظام',
+            '|Dear all, CR 314 is approved from the QA side.)',
+            'android.subText=String (Younis.Soudi@inovar.com)',
+        ],
+    });
+
+    test('the chat becomes watches from the moment he asked, on both of her addresses, never on the account it was sent from', () => {
+        const { backfillWatchesFromChats } = require('../core/engine/tools/mail');
+        const made = backfillWatchesFromChats(chat(), T0 + 11 * H);
+        expect(made.length).toBeGreaterThan(0);
+        const watched = mw.activeWatches(T0 + 11 * H);
+        expect(watched.map(w => w.to).sort()).toEqual(['shoroq.suwan@gmail.com', 'shurouk.suwan@inovar.sa']);
+        expect(watched.every(w => w.sentAt === T0 && w.sessionId === 'chat-s' && w.userId === 'owner-1' && w.name === 'شروق')).toBe(true);
+    });
+
+    test('her reply in the morning is told, once, with the subject said once and the body after it', () => {
+        const { backfillWatchesFromChats } = require('../core/engine/tools/mail');
+        backfillWatchesFromChats(chat(), T0 + 11 * H);
+        const [r, ...more] = mw.newReplies(mw.parseMailNotices(dump([shurouq])), T0 + 11 * H);
+        expect(more).toHaveLength(0);
+        expect(r.why).toBe('sender');
+        const text = mw.replyMessage(r);
+        expect(text).toContain('وصل إيميل من **Shurouq Suwan** (شروق)');
+        expect(text).toContain('العنوان: Re: توسيع صلاحيات مدير النظام\n');
+        expect(text).toContain('بدايته: Dear all, CR 314 is approved from the QA side.');
+        expect(mw.newReplies(mw.parseMailNotices(dump([shurouq])), T0 + 12 * H)).toHaveLength(0);
+    });
+
+    test('each message is read once: a watch he stopped stays stopped; an older chat never shortens a newer watch', () => {
+        const { backfillWatchesFromChats } = require('../core/engine/tools/mail');
+        backfillWatchesFromChats(chat(), T0 + 11 * H);
+        expect(mw.stopWatching('chat-s', [], T0 + 11 * H)).toBe(2);
+        expect(backfillWatchesFromChats(chat(), T0 + 12 * H)).toEqual([]);
+        expect(mw.activeWatches(T0 + 12 * H)).toHaveLength(0);
+
+        mw.watchReplies('chat-new', { to: ['ahmad@x.com'] }, T0 + 5 * 24 * H);
+        const older = [{ id: 'o1', sessionId: 'chat-old', role: 'user', content: 'ارسل ايميل الى ahmad@x.com', at: T0 + 24 * H }];
+        backfillWatchesFromChats(older, T0 + 5 * 24 * H);
+        const [a] = mw.activeWatches(T0 + 5 * 24 * H);
+        expect(a.sentAt).toBe(T0 + 24 * H);
+        expect(a.until).toBe(T0 + 5 * 24 * H + 14 * 24 * H);
+    });
+
+    test('chats older than 14 days, and chats that asked nothing about mail, make no watch', () => {
+        const { backfillWatchesFromChats } = require('../core/engine/tools/mail');
+        const now = T0 + 20 * 24 * H;
+        expect(backfillWatchesFromChats(chat(), now)).toEqual([]);
+        expect(backfillWatchesFromChats([{ id: 'x1', sessionId: 's', role: 'user', content: 'ابني موقع لمطعم بريده info@rest.com', at: now - H }], now)).toEqual([]);
+    });
+});
