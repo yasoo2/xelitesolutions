@@ -320,17 +320,21 @@ export const deviceComputersTool: EngineTool<Record<string, never>> = {
  * Every device on the owner's Wi-Fi, from this computer (core/devices/
  * network-scan.ts). The owner, 2026-11-08: «are there devices on the same
  * Wi-Fi?» got instructions to type `arp -a` himself.
+ *
+ * Through device(), like every other device_ tool, so the computer chosen
+ * with device_use travels with it: the scan called the gateway directly and
+ * answered with Joe's own network as if it were the chosen computer's
+ * (2026-11-08). engine_device says whose network it saw.
  */
 export const networkDevicesTool: EngineTool<Record<string, never>> = {
     name: 'network_devices',
-    description: 'List every device on the owner\'s Wi-Fi / home network now, seen from this computer: each address with its maker and what it most likely is (router, phone, TV, printer, smart device, computer), and which of them Joe can control. Use it when he asks what is on his Wi-Fi or network, how many devices, or to check or scan it. Takes about fifteen seconds.',
+    description: 'List every device on the owner\'s Wi-Fi / home network now, seen from Joe\'s own computer: each address with its maker and what it most likely is (router, phone, TV, printer, smart device, computer), and which of them Joe can control. Use it when he asks what is on his Wi-Fi or network, how many devices, or to check or scan it. After device_use of another computer it still scans from Joe\'s computer, and its answer says so. Takes about ten seconds.',
     parameters: { type: 'object', properties: {} },
     parse: () => ({ ok: true, value: {} }),
     async run(_a, ctx): Promise<ToolOutcome> {
-        const r = await gateway()('engine_device', { op: 'network' }, toolContextFor(ctx));
-        const text = String(r?.output?.text || r?.error || 'the network could not be read');
-        if (r?.ok === true) seen(ctx, 'devices');
-        return { ok: r?.ok === true, output: text };
+        const r = await device(ctx, { op: 'network' });
+        if (r.ok) seen(ctx, 'devices');
+        return { ok: r.ok, output: r.ok ? r.text : (r.text && r.text !== 'no answer' ? r.text : 'the network could not be read') };
     },
 };
 

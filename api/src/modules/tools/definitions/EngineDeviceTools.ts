@@ -140,12 +140,31 @@ export class EngineDeviceTool implements ToolDefinition {
             return { ok: true, output: { text: JSON.stringify(deviceLinks.list(owner).map(d => ({ name: d.name, os: d.os, connectedAt: d.connectedAt, online: d.online !== false, kept: !!d.kept }))) } } as any;
         }
         //  The devices on the owner's Wi-Fi, seen from this computer (core/devices/network-scan.ts).
+        //  With a linked computer chosen (device_use), the scan still runs HERE: that computer's
+        //  agent answers only its helper's desktop actions (windows-desktop.ts Dispatch: look,
+        //  click, type, open…), none of which runs a script and sends its output back. So the
+        //  answer names both computers and never passes Joe's network off as the other's
+        //  (2026-11-08: the scan ignored device_use and answered as if it were that computer's).
         if (String(input?.op || '') === 'network') {
-            if (!WINDOWS) return { ok: false, error: 'the network scan is Windows-only in this version', output: { text: `This computer runs ${process.platform}; Joe's network scan works on Windows in this version. Say so to the owner.` } } as any;
+            const insteadOf = String(input?.computer || '').trim();
+            if (!WINDOWS) {
+                const text = insteadOf
+                    ? `Joe cannot scan the network of «${insteadOf}» in this version, and Joe's own computer runs ${process.platform}, where the network scan does not work yet. Say so to the owner.`
+                    : `This computer runs ${process.platform}; Joe's network scan works on Windows in this version. Say so to the owner.`;
+                return { ok: false, error: 'the network scan is Windows-only in this version', output: { text } } as any;
+            }
             const r = await gatewayPowerShell(networkScanScript(), 60_000);
             const scan = parseNetworkScan(r.stdout);
-            if (!scan.ok) return { ok: false, error: scan.error, output: { text: scan.error } } as any;
-            return { ok: true, output: { text: describeNetwork(scan), devices: scan.devices, ip: scan.ip, gateway: scan.gateway, network: scan.network } } as any;
+            if (!scan.ok) return { ok: false, error: scan.error, output: { text: insteadOf ? `${scan.error} (This scan is from Joe's computer «${os.hostname()}», not from «${insteadOf}».)` : scan.error } } as any;
+            const from = os.hostname();
+            return {
+                ok: true,
+                output: {
+                    text: describeNetwork(scan, { from, ...(insteadOf ? { insteadOf } : {}) }),
+                    devices: scan.devices, ip: scan.ip, gateway: scan.gateway, network: scan.network, prefix: scan.prefix, swept: scan.swept,
+                    scannedFrom: from, ...(insteadOf ? { notFrom: insteadOf } : {}),
+                },
+            } as any;
         }
         if (String(input?.op || '') === 'forget') {
             const gone = deviceLinks.forget(owner, String(input?.computer || input?.name || ''));
