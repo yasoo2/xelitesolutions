@@ -212,3 +212,33 @@ export async function phoneScreenNow(serial?: string): Promise<LiveFrame> {
     })().finally(() => { capturing = null; });
     return capturing;
 }
+
+/*
+ * THE PHONE'S NOTIFICATIONS NOW, FOR JOE'S WATCH ON EMAIL REPLIES.
+ *
+ * modules/services/MailWatchService.ts asks every minute while Joe watches
+ * for a reply (core/devices/mail-watch.ts). «dumpsys notification» only
+ * reads: no app opens, nothing on the screen moves. The phone's own sed
+ * keeps the list of notifications (about 30 KB instead of 650 KB of
+ * channel settings); a phone without sed gives the whole dump.
+ */
+export type PhoneNotices =
+    | { ok: true; dumps: Array<{ serial: string; model: string; text: string }> }
+    | { ok: false; code: 'no_adb' | 'no_phone' | 'failed'; error: string };
+
+export async function phoneNotificationsNow(): Promise<PhoneNotices> {
+    const adb = findAdb();
+    if (!adb) return { ok: false, code: 'no_adb', error: NO_ADB };
+    const run = gatewayAdb(adb);
+    const ready = parseDevices((await run(['devices', '-l'], { timeoutMs: 15_000 })).stdout).filter(d => d.state === 'device');
+    if (!ready.length) return { ok: false, code: 'no_phone', error: 'No phone is connected and allowed.' };
+    const dumps: Array<{ serial: string; model: string; text: string }> = [];
+    for (const d of ready) {
+        let r = await run(['-s', d.serial, 'shell', "dumpsys notification --noredact | sed -n '/Notification List:/,/mArchive=/p'"], { timeoutMs: 25_000 });
+        if (r.code !== 0 || !/NotificationRecord\(|Notification List:/u.test(r.stdout)) {
+            r = await run(['-s', d.serial, 'shell', 'dumpsys', 'notification', '--noredact'], { timeoutMs: 25_000 });
+        }
+        if (r.code === 0 && r.stdout) dumps.push({ serial: d.serial, model: d.model || d.product || '', text: r.stdout });
+    }
+    return dumps.length ? { ok: true, dumps } : { ok: false, code: 'failed', error: 'the phone did not give its notifications' };
+}
