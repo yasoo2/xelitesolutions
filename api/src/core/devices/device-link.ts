@@ -312,7 +312,7 @@ export function keptAgentScript(): string {
         "if (-not (Test-Path $dll)) { Add-Type -TypeDefinition (Get-Content (Join-Path $dir 'helper.cs') -Raw -Encoding UTF8) -ReferencedAssemblies System.Windows.Forms, System.Drawing, Accessibility, System.Core -OutputAssembly $dll -OutputType Library }",
         "$state = [hashtable]::Synchronized(@{ stop = $false; gone = $false; status = 'connecting' })",
         '$rs = [runspacefactory]::CreateRunspace(); $rs.Open()',
-        "$rs.SessionStateProxy.SetVariable('state', $state); $rs.SessionStateProxy.SetVariable('cfg', $cfg); $rs.SessionStateProxy.SetVariable('dll', $dll)",
+        "$rs.SessionStateProxy.SetVariable('state', $state); $rs.SessionStateProxy.SetVariable('cfg', $cfg); $rs.SessionStateProxy.SetVariable('dll', $dll); $rs.SessionStateProxy.SetVariable('dir', $dir)",
         '$ps = [powershell]::Create(); $ps.Runspace = $rs',
         '[void]$ps.AddScript({',
         '  Add-Type -AssemblyName System.Windows.Forms, System.Drawing',
@@ -325,17 +325,26 @@ export function keptAgentScript(): string {
         "    $state.status = 'connecting'",
         "    $why = [JoeDesktop]::Link(($cfg.url + '?device=' + $cfg.id), $hello)",
         '    $state.last = $why',
-        //  Joe refuses this computer's id: the owner unlinked it for good.
-        "    if ($why -match '401|Unauthorized') { $state.gone = $true; break }",
+        //  Why each line ended, for whoever asks why this computer is off (kept small).
+        "    try { $log = Join-Path $dir 'agent.log'; if ((Test-Path $log) -and (Get-Item $log).Length -gt 102400) { Remove-Item $log -Force }; Add-Content -LiteralPath $log -Value ((Get-Date -Format s) + '  ' + $why) -Encoding UTF8 } catch {}",
+        //  Joe says «forget»: the owner unlinked it for good. (A refused connection is told in
+        //  Windows' own language — «تعذر الاتصال بالملقم البعيد» — so no number can be read from it.)
+        "    if ($why -eq 'FORGOTTEN') { $state.gone = $true; break }",
         "    $state.status = 'waiting'",
         '    Start-Sleep -Seconds 15',
         '  }',
         '})',
         '$null = $ps.BeginInvoke()',
+        //  Unlinked: the key goes first, then the folder — after this process has
+        //  ended and let go of its helper (a real run left the helper and the
+        //  settings behind when the folder went while the agent still held them).
         'function Remove-JoeLink {',
         "  try { Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue } catch {}",
+        "  try { Remove-Item -LiteralPath (Join-Path $dir 'link.json') -Force -ErrorAction SilentlyContinue } catch {}",
         '  $icon.Visible = $false',
-        "  Start-Process -WindowStyle Hidden -FilePath 'cmd.exe' -ArgumentList ('/c timeout /t 3 >nul & rmdir /s /q \"' + $dir + '\"')",
+        '  $me = $PID',
+        "  $clean = \"Wait-Process -Id $me -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -LiteralPath '\" + $dir + \"' -Recurse -Force -ErrorAction SilentlyContinue\"",
+        "  Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', $clean)",
         '  [Environment]::Exit(0)',
         '}',
         '$icon = New-Object System.Windows.Forms.NotifyIcon',
