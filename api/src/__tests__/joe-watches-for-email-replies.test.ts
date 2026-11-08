@@ -218,11 +218,22 @@ describe('Joe watches by himself, in the background', () => {
         expect(mw.activeWatches(T0 + 1000)).toHaveLength(1);
     });
 
-    test('the owner\'s own account (the mail\'s «to») is never a person to watch', () => {
-        mw.watchReplies('chat-1', { to: ['younis.soudi@inovar.com', 'shoroq.suwan@gmail.com'] }, T0);
+    test('the owner\'s own account (the mail\'s «to»), read off a run\'s summary, is never a person to watch', () => {
+        mw.watchReplies('chat-1', { to: ['younis.soudi@inovar.com', 'shoroq.suwan@gmail.com'], auto: true }, T0);
         mw.newReplies(mw.parseMailNotices(dump([outlookReply])), T0 + 6 * 60_000);
         expect(mw.activeWatches(T0 + 7 * 60_000).map(w => w.to)).toEqual(['shoroq.suwan@gmail.com']);
-        expect(mw.watchReplies('chat-1', { to: ['Younis.Soudi@inovar.com'] }, T0 + 8 * 60_000)).toEqual([]);
+        expect(mw.watchReplies('chat-1', { to: ['Younis.Soudi@inovar.com'], auto: true }, T0 + 8 * 60_000)).toEqual([]);
+    });
+
+    test('his own account named by HIM is watched as he asked; mail from it is known by its sender, not by the account in a grouped notice', () => {
+        const [w] = mw.watchReplies('chat-me', { to: ['younes.sowady2011@gmail.com'], userId: 'owner-1' }, T0);
+        expect(w.auto).toBeUndefined();
+        //  The grouped Gmail notice names his account in its text: that is not mail from him.
+        expect(mw.newReplies(mw.parseMailNotices(dump([gmailGroup])), T0 + 8 * 60_000)).toHaveLength(0);
+        expect(mw.activeWatches(T0 + 9 * 60_000).map(x => x.to)).toEqual(['younes.sowady2011@gmail.com']);
+        const fromHim = record({ pkg: 'com.microsoft.office.outlook', created: T0 + 10 * 60_000, extras: ['android.title=String (Younes Sowady)', 'android.text=String (test from my Gmail)', 'android.subText=String (Younis.Soudi@inovar.com)'] });
+        const r = mw.newReplies(mw.parseMailNotices(dump([fromHim])), T0 + 11 * 60_000);
+        expect(r.map(x => x.why)).toEqual(['sender']);
     });
 });
 

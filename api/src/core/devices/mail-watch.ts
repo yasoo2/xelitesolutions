@@ -45,6 +45,8 @@ export interface MailWatch {
     sessionId: string;
     /** The owner of that chat: Joe tells him, and only him. */
     userId?: string;
+    /** Read off a run's request or summary, not named by the owner: never one of his own accounts. */
+    auto?: boolean;
     to: string;
     name?: string;
     subject?: string;
@@ -208,7 +210,7 @@ const REPLY_PREFIX = /^\s*((re|aw|sv|rv|antw|r|ref|رد|ر)\s*[:：]\s*)+/iu;
 const bareSubject = (s: string): string => normalizeForMatch(s).replace(REPLY_PREFIX, '').trim();
 
 /** The best watch this notice answers, or null. */
-export function matchReply(notice: MailNotice, watches: MailWatch[], now = Date.now()): MailReply | null {
+export function matchReply(notice: MailNotice, watches: MailWatch[], now = Date.now(), own: Set<string> = new Set()): MailReply | null {
     const sender = normalizeForMatch(notice.title);
     const lines = notice.lines.map(normalizeForMatch);
     const body = normalizeForMatch([notice.title, notice.text, notice.bigText, ...notice.lines].join(' \n '));
@@ -221,7 +223,9 @@ export function matchReply(notice: MailNotice, watches: MailWatch[], now = Date.
         if (notice.at && notice.at < w.sentAt - 60_000) continue;
         let why: MailReply['why'] | null = null;
         const address = w.to.toLowerCase();
-        if (address && body.includes(address)) why = 'address';
+        //  His own account is in every grouped Gmail notice («2 new messages — you@gmail.com»):
+        //  mail FROM it is known by its sender, never by the address in the text.
+        if (address && !own.has(address) && body.includes(address)) why = 'address';
         else {
             const parts = addressParts(address);
             const inSender = (t: string) => hasWord(sender, t) || lines.some(l => hasWord(l, t));
@@ -292,7 +296,7 @@ export const emailAddresses = (text: string): string[] => [...new Set((String(te
 const ARABIC = /[؀-ۿ]/u;
 
 /** Joe emailed these people from this chat: watch for their replies (a new email to the same person renews it). */
-export function watchReplies(sessionId: unknown, w: { to: string[]; name?: string; subject?: string; request?: string; lang?: 'ar' | 'en'; userId?: string }, now = Date.now()): MailWatch[] {
+export function watchReplies(sessionId: unknown, w: { to: string[]; name?: string; subject?: string; request?: string; lang?: 'ar' | 'en'; userId?: string; auto?: boolean }, now = Date.now()): MailWatch[] {
     const id = String(sessionId || '');
     const s = load();
     const lang: 'ar' | 'en' = w.lang || (ARABIC.test(`${w.request || ''} ${w.name || ''}`) ? 'ar' : 'en');
@@ -300,12 +304,16 @@ export function watchReplies(sessionId: unknown, w: { to: string[]; name?: strin
     const added: MailWatch[] = [];
     for (const raw of w.to) {
         const to = String(raw || '').trim().toLowerCase();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(to) || own.has(to)) continue;
+        //  His own account read off a summary («sent from younis@…») is not a person he wrote to;
+        //  one he names himself («tell me when mail from my Gmail arrives») is watched as he asked.
+        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(to) || (w.auto && own.has(to))) continue;
         const old = s.watches.find(x => x.to === to);
         const next: MailWatch = {
             id: old?.id || `${now.toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
             sessionId: id || old?.sessionId || '',
             ...((w.userId || old?.userId) ? { userId: String(w.userId || old?.userId) } : {}),
+            //  Named by the owner once, it stays his choice when a run renews it.
+            ...(w.auto && (!old || old.auto) ? { auto: true } : {}),
             to,
             name: (w.name || old?.name || '').slice(0, 80) || undefined,
             subject: (w.subject || old?.subject || '').slice(0, 200) || undefined,
@@ -348,14 +356,14 @@ export function newReplies(notices: MailNotice[], now = Date.now()): MailReply[]
     const before = s.own.length;
     for (const n of notices) for (const a of emailAddresses(n.subText)) if (!s.own.includes(a)) s.own = [...s.own, a].slice(-20);
     const own = new Set(s.own);
-    if (s.own.length !== before) { s.watches = s.watches.filter(w => !own.has(w.to)); save(now); }
+    if (s.own.length !== before) { s.watches = s.watches.filter(w => !(w.auto && own.has(w.to))); save(now); }
     const watches = activeWatches(now);
     if (!watches.length) return [];
     const out: MailReply[] = [];
     for (const n of notices) {
         const id = noticeId(n);
         if (s.seen[id]) continue;
-        const r = matchReply(n, watches, now);
+        const r = matchReply(n, watches, now, own);
         if (!r) continue;
         s.seen[id] = now;
         out.push(r);

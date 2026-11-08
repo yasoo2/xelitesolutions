@@ -108,5 +108,5 @@ export function watchAfterSentEmail(sessionId: unknown, request: string, summary
     const recent = new Set(activeWatches(now).filter(w => now - w.sentAt < 30 * 60_000).map(w => w.to));
     const to = emailAddresses(`${text} ${summary || ''}`).filter(a => !recent.has(a));
     if (!to.length) return [];
-    return watchReplies(sessionId, { to, request: text, lang, userId }, now).map(w => w.to);
+    return watchReplies(sessionId, { to, request: text, lang, userId, auto: true }, now).map(w => w.to);
 }
