@@ -574,7 +574,8 @@ export async function replaySteps(
         let out: ToolOutcome;
         try { out = await tool.run(parsed.value, ctx); } catch (e: any) { out = { ok: false, output: String(e?.message || e) }; }
         ctx.emit({ type: 'tool_result', id, name: step.tool, ok: out.ok, output: String(out.output || '').slice(0, 2000), durationMs: Date.now() - started, facts: out.facts } as any);
-        if (!out.ok) return { done: false, ran, why: String(out.output || 'it failed').split('\n')[0].slice(0, 300), at: stepLine(step) };
+        //  A picture refused (a locked phone takes none) only fails to look: the reads beside it look.
+        if (!out.ok && step.tool !== 'android_look') return { done: false, ran, why: String(out.output || 'it failed').split('\n')[0].slice(0, 300), at: stepLine(step) };
         ran++;
         const wait = SETTLE_MS[step.tool];
         if (wait) await pause(wait);

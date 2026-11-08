@@ -334,6 +334,17 @@ describe('a switch not on the screen is looked for once in the quick settings', 
         expect(log).toContain('android_panel {"panel":"quick_settings","serial":"T"}');
     });
 
+    test('a picture the locked phone refuses does not stop the replay: the reads look', async () => {
+        const { replaySteps } = ex();
+        const recipe = learn({ request: 'شغل الكشاف', steps: [{ tool: 'android_torch', args: { on: true } }, { tool: 'android_look', args: {} }, { tool: 'android_read', args: {} }] });
+        const log: string[] = [];
+        const f = fakeTools([[]], log);
+        const look = { name: 'android_look', description: '', parameters: {}, parse: (a: any) => ({ ok: true, value: a || {} }), async run() { log.push('android_look'); return { ok: false, output: 'android_look failed: no picture: the phone took no picture' }; } };
+        const tools = new Map([...f.tools, look].map((t: any) => [t.name, t] as const));
+        const r = await replaySteps(recipe, { runId: 'lk', signal: new AbortController().signal, emit: () => undefined } as any, tools as any, f.controlsOf as any, async () => undefined);
+        expect(r).toEqual({ done: true, ran: 3 });
+    });
+
     test('a control that is no switch is not looked for there: the run goes to the model', async () => {
         const { replaySteps } = ex();
         const recipe = learn({ request: 'افتح البحث', steps: [{ tool: 'android_read', args: {} }, { tool: 'android_tap', args: {}, target: { text: 'Search' } }] });
