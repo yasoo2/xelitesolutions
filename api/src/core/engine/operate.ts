@@ -193,11 +193,65 @@ export function operatorFirstTool(request: string, target?: OperateTarget): 'and
     return 'device_windows';
 }
 
-/** A request only to look (what is on my screen?) needs no action, only a look. */
-const ONLY_LOOK = /^(?:\s*(?:ما|ماذا|شو|ايش|إيش)\s+(?:الذي\s+)?(?:على|في|يظهر)|\s*(?:what(?:'s| is)|which)\b|\s*(?:اقرأ|صف|describe|read|tell\s+me))/iu;
+/**
+ * A request only to look (what is on my screen?) needs no action, only a look.
+ * «افحص», «تحقق», «تأكد», «كم…», «هل…» and "check", "scan", "how many" are
+ * looks too (2026-11-08: «افحص» was held to an action, and failed).
+ */
+const LOOK_AR = `(?:[اإ]?فحص|تفحّ?ص|تحقّ?ق|تأكّ?د|شيّ?ك)${AR_TAIL}`;
+const ONLY_LOOK = new RegExp(
+    '^(?:\\s*(?:ما|ماذا|شو|ايش|إيش)\\s+(?:الذي\\s+)?(?:على|في|يظهر)|\\s*(?:what(?:\'s| is)|which)\\b|\\s*(?:اقرأ|صف|describe|read|tell\\s+me)'
+    + `|\\s*و?(?:${LOOK_AR}|كم|هل)(?=[\\s،,.؟?!]|$)`
+    + '|\\s*(?:check|scan|inspect|verify|look|see|list|show|how\\s+many|is|are|does)\\b)', 'iu');
+
+/**
+ * A request that asks for something to be DONE: a command verb (whatever its
+ * ending) or its noun («هل يمكنك تشغيل الكشاف؟» asks for an action).
+ */
+const ACTION_STEM = '(?:[اأ]?شغّ?ل|[اأإ]?طف[يئءّ]|سكّ?ر|[أا]غلق|اضغط|صوّ?ر|ارفع|خفّ?ض|وطّ?ي|فعّ?ل|عطّ?ل|اتّ?صل|ابعث|[أا]رسل|اكتب|ادخل|روح|ارجع|حمّ?ل|نزّ?ل|ولّ?ع|شيل|امسح|احذف|احفظ|افتح|وقّ?ف|افصل|غيّ?ر|ثبّ?ت)';
+const ACTION_NOUN = '(?:تشغيل|إطفاء|اطفاء|إغلاق|اغلاق|فتح|إرسال|ارسال|كتابة|حذف|مسح|تغيير|تثبيت|إيقاف|ايقاف|تفعيل|تعطيل|حفظ)';
+//  …and its present tense, asked as a question: «هل تقدر ترسل الايميل؟», «بتشغل الكشاف؟».
+const ACTION_PRESENT = '(?:ت|ي|ن|بت|بي|بن|رح\\s*ت)(?:رسل|شغّ?ل|طف[يئ]|فتح|سكّ?ر|غلق|كتب|حذف|مسح|بعث|ضغط|صوّ?ر|غيّ?ر|ثبّ?ت|وقّ?ف|فصل|حفظ)';
+const ASKS_ACTION = new RegExp(
+    `${AR_START}(?:${ACTION_STEM}${AR_TAIL}|${ACTION_NOUN}|${ACTION_PRESENT}${AR_TAIL})${AR_END}`
+    + '|\\b(?:turn|switch|open|close|call|text|send|take|play|start|launch|press|tap|click|type|save|enable|disable|toggle|delete|install|reply|write|set|stop)\\b', 'iu');
 
 export function onlyLooks(text: string): boolean {
-    return ONLY_LOOK.test(String(text || '')) && !/(?:افتح|اكتب|اضغط|احفظ|أغلق|اغلق|open|type|click|press|save|close)/iu.test(String(text || ''));
+    return ONLY_LOOK.test(String(text || '')) && !ASKS_ACTION.test(String(text || ''));
+}
+
+/**
+ * «افحص» ALONE CONTINUES THE CHAT'S LAST DEVICE WORK.
+ *
+ * The owner, 2026-11-08: «هل توجد أجهزة على الواي فاي؟» was answered (the
+ * scan, 15 s), then «افحص»: the run scanned the Wi-Fi again, and Joe's checks
+ * refused it four times — they read «افحص» alone, found no action on a
+ * screen, and the model went reading the owner's windows until the run
+ * failed. A message too short to say what it is about is read with the
+ * request it follows; one that names its own device, network, app or
+ * flashlight stands alone.
+ */
+export function continuedRequest(request: string, previous?: string | null): string {
+    const t = String(request || '').trim();
+    const p = String(previous || '').trim();
+    if (!t || !p || t === p) return t;
+    if (t.length > 80 || isDeviceRequest(t) || isPhoneRequest(t) || ON_DEVICE.test(t) || DESKTOP_APP.test(t) || FLASH_NOUN.test(t)) return t;
+    return `${t}\n(it continues: ${p})`;
+}
+
+/**
+ * What the checks hold the run to: the devices it reaches, a look, or an
+ * action. The message decides when it says so itself; a short one that
+ * does not («افحص», «حاول مره اخرى») is read with the work it continues.
+ */
+export function requestKind(own: string, about: string = own): 'devices' | 'look' | 'act' {
+    if (onlyAboutDevices(own)) return 'devices';
+    if (onlyLooks(own)) return 'look';
+    if (ASKS_ACTION.test(own) || about === own) return 'act';
+    const rest = about.slice(own.length);
+    if (onlyAboutDevices(rest)) return 'devices';
+    if (onlyLooks(rest.replace(/^\s*\(it continues:\s*/u, ''))) return 'look';
+    return 'act';
 }
 
 /**
@@ -224,6 +278,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '- android_read and android_look say first when the phone\'s screen is OFF or the phone is LOCKED. A screen that is off: android_key "wakeup", then read again. A phone locked with a PIN: the quick settings and the notifications still work; for anything else tell the owner to unlock it, and never type a PIN, pattern or password.',
         '- Some things have no app on a phone: the flashlight is a tile in the quick settings (android_panel "quick_settings", android_read, tap the tile whose name is the flashlight in the phone\'s language: «الكشاف», «Flashlight», «Torch», «Lampe de poche»…, then read again: an «on» or checked tile, or a changed description, shows it worked).',
         '- When he asks what is on his Wi-Fi or home network (how many devices, which, to check or scan it): call network_devices and tell him, in his language, how many and what each most likely is. Never send him to type a command himself: you can look.',
+        '- After an email you sent is checked in its Sent folder, call email_watch_replies once with every recipient address, the name the owner used for the person and the subject: Joe then watches his phone\'s mail, in the background, for their replies and tells him in this chat the moment one arrives. Call it too when he asks to be told when someone writes or replies. Say so in your summary in one short sentence.',
         '- When the owner asks what you can reach, or to connect to a computer or a phone: call device_computers and tell him, by name, what you can reach, and which are on or off. His computers are known by the names he gave them («كمبيوتر المكتب»): «اشبك على كمبيوتر المكتب» is device_use with that name, from anywhere. A computer linked for good that is off cannot be reached until it is on: say so plainly. A computer that is not linked yet: device_link_new WITH the name he calls it (a permanent link: he runs one line on it once, and it calls Joe by itself at every start), then device_wait_link, then device_use it and go on with what he asked. «افصل … نهائياً» is device_forget. A phone on Wi-Fi showing its pairing code: ask him for the six digits (say it in task_finish), then android_pair and android_connect when he gives them. Never ask him to go to the settings for any of this: the chat is where he works.',
         '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',
@@ -247,7 +302,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
     ].join('\n');
 }
 
-export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget, history?: string): string {
+export function operatorFirstMessage(request: string, language: string, replyLanguage?: string, target?: OperateTarget, history?: string, about?: string): string {
     return [
         'Request (verbatim):',
         '"""',
@@ -262,7 +317,7 @@ export function operatorFirstMessage(request: string, language: string, replyLan
         `Request language: ${languageName(language)}.`,
         `Write your notes between tool calls and your task_finish summary in ${languageName(replyLanguage || language)}: that is the language the user set Joe to.`,
         '',
-        `Start by calling plan_update with your steps, then ${operatorFirstTool(request, target)}.`,
+        `Start by calling plan_update with your steps, then ${operatorFirstTool(about || request, target)}.`,
     ].join('\n');
 }
 
@@ -300,33 +355,41 @@ export const askOwnerTool: EngineTool<{ question: string }> = {
  * to look), the last action was followed by a look or a read, and no action
  * the run ended on was refused or failed without a later success.
  */
-export function operateVerifier(): Verifier {
+export function operateVerifier(opts: { about?: string } = {}): Verifier {
     return async (ctx: ToolContext, _claim: FinishArgs): Promise<VerificationReport> => {
         const rec = deviceRecordFor(ctx.runId);
         const checks: CheckResult[] = [];
-        const looking = onlyLooks(ctx.request);
+        //  «افحص» is held to what it continues (continuedRequest), not read alone.
+        const about = opts.about || ctx.request;
+        const kind = requestKind(ctx.request, about);
+        const looking = kind === 'look';
         const done = rec.actions.filter(a => a.ok);
         const lastAction = done.length ? done[done.length - 1].at : 0;
         //  A list of the devices is not a look at a screen.
         const screenLooks = rec.looks.filter(l => l.kind !== 'devices');
         const lastLook = screenLooks.length ? screenLooks[screenLooks.length - 1].at : 0;
-        if (onlyAboutDevices(ctx.request)) {
+        const listed = rec.looks.some(l => l.kind === 'devices');
+        if (kind === 'devices') {
             //  Listing what Joe can reach, linking a computer or pairing a phone is the whole of it…
             const linked = done.filter(a => /^(?:device_link_new|device_wait_link|device_forget|android_pair|android_connect)$/u.test(a.tool));
-            const listed = rec.looks.some(l => l.kind === 'devices');
             checks.push(linked.length || listed
                 ? { id: 'devices', status: 'passed', detail: linked.length ? linked.map(a => a.what).join('; ') : 'the devices Joe can reach were listed' }
                 : { id: 'devices', status: 'failed', detail: 'the request is about the devices Joe can reach, and none were listed, linked or paired: call device_computers' });
             //  …unless it also asks what the screen shows.
-            if (asksToLook(ctx.request)) {
+            if (asksToLook(ctx.request) || (about !== ctx.request && asksToLook(about) && !onlyAboutDevices(ctx.request))) {
                 checks.push(lastLook
                     ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
                     : { id: 'looked', status: 'failed', detail: 'the request also asks what the screen shows, and the screen was not read or looked at' });
             }
         } else if (looking) {
-            checks.push(lastLook
-                ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
-                : { id: 'looked', status: 'failed', detail: 'the request asks what is on the screen, and no device_look or device_read was made' });
+            //  «افحص» after a question about the Wi-Fi or the devices: the scan or the list is the look.
+            if (!lastLook && listed && isDeviceRequest(about)) {
+                checks.push({ id: 'devices', status: 'passed', detail: 'the devices (or the network) were listed again, as the chat\'s question asked' });
+            } else {
+                checks.push(lastLook
+                    ? { id: 'looked', status: 'passed', detail: `the screen was looked at (${screenLooks.length} look(s))` }
+                    : { id: 'looked', status: 'failed', detail: 'the request asks what is on the screen, and no device_look or device_read was made' });
+            }
         } else {
             checks.push(done.length
                 ? { id: 'acted', status: 'passed', detail: `${done.length} action(s) done on the device: ${done.slice(-5).map(a => a.what).join('; ')}` }
@@ -381,6 +444,19 @@ const REASONS_AR: [RegExp, string][] = [
     [/not followed by a device_look|look at the result/iu, 'لم يُنظر إلى الشاشة بعد آخر إجراء'],
 ];
 
+/**
+ * A run that failed ends with the engine's own account, in English: the owner
+ * read «Joe's checks refused the same thing 4 times in a row: acted: …» under
+ * the Arabic reason (2026-11-08). For an Arabic reader the English lines go;
+ * the Arabic reason above them already says it.
+ */
+export function ownScript(text: string, language: string): string {
+    if (language !== 'ar') return text;
+    return String(text || '').split('\n')
+        .filter(l => !l.trim() || /[؀-ۿ]/u.test(l) || !/[A-Za-z]{3,}\s+[A-Za-z]{2,}/u.test(l))
+        .join('\n').replace(/\n{3,}/gu, '\n\n').trim();
+}
+
 function reasonFor(why: string, language: string): string {
     if (language !== 'ar' || /[؀-ۿ]/u.test(why)) return why;
     return REASONS_AR.find(([re]) => re.test(why))?.[1] || 'لم يكتمل العمل على الجهاز';
@@ -399,7 +475,7 @@ export function operateOutput(result: EngineResult | undefined, language: string
         : ids.has('acted') ? words.done : ids.has('looked') ? words.looked : ids.has('devices') ? words.devices : words.done;
     const summary = verified
         ? [String(result!.summary || '').trim(), closing, words.took(seconds, result!.costUsd)].filter(Boolean).join('\n\n')
-        : [words.notDone(why), String(result?.summary || '').trim()].filter(Boolean).join('\n\n');
+        : [words.notDone(why), ownScript(String(result?.summary || '').trim(), language)].filter(Boolean).join('\n\n');
     return {
         ok: verified,
         ...(verified ? {} : { error: why }),

@@ -40,8 +40,10 @@ import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
 import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
-import { askOwnerTool, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
-import { answeredQuestion, deviceWorkFacts, noteOperateResult, pendingQuestion } from '../../../core/engine/device-work';
+import { askOwnerTool, continuedRequest, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
+import { answeredQuestion, deviceWorkFacts, lastDeviceWork, noteOperateResult, pendingQuestion } from '../../../core/engine/device-work';
+import { emailWatchTool, watchAfterSentEmail } from '../../../core/engine/tools/mail';
+import { mailWatchFacts } from '../../../core/devices/mail-watch';
 import { chatTurnsText, recentChatTurns } from '../../../core/engine/chat-history';
 import fs from 'fs';
 
@@ -71,18 +73,22 @@ async function runOperate(o: {
         const history = [
             chatTurnsText(await recentChatTurns(o.context.sessionId, 12), o.request),
             deviceWorkFacts(o.context.sessionId).trim(),
+            mailWatchFacts().trim(),
             pending ? `JOE'S LAST QUESTION, which the owner's message above answers: «${pending.question}» (it was about: «${pending.request}»). Go on with that work as he answered.` : '',
         ].filter(Boolean).join('\n\n');
         if (pending) answeredQuestion(o.context.sessionId);
+        //  «افحص» alone continues the chat's last device work: the first tool and the checks read it so (2026-11-08).
+        const previous = pending ? pending.request : lastDeviceWork(o.context.sessionId)?.request;
+        const about = continuedRequest(o.request, previous);
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
             replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
-            operateHistory: history,
+            operateHistory: history, ...(about !== o.request ? { operateAbout: about } : {}),
             signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
             model: o.brain.model,
-            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, askOwnerTool, finishTool(operateVerifier())],
+            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, emailWatchTool, askOwnerTool, finishTool(operateVerifier({ about }))],
             processes: createProcessRegistry(toolContext),
             browser: () => createBrowserSession(toolContext),
             machine: await machineFacts(),
@@ -91,11 +97,19 @@ async function runOperate(o: {
         //  The chat's answerer reads what was done here (operate.ts deviceWorkFacts).
         const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
         noteOperateResult(o.context.sessionId, {
-            target: o.target || (isPhoneRequest(o.request) ? 'phone' : 'computer'), request: pending ? pending.request : o.request,
+            target: o.target || (isPhoneRequest(about) ? 'phone' : 'computer'),
+            request: pending ? pending.request : about !== o.request ? `${o.request} — ${previous}` : o.request,
             summary: `${asked ? 'Joe asked the owner and waits for his answer: ' : ''}${String(result?.summary || out.output?.summary || '')}`, ok: out.ok && !asked,
             //  Joe's question waits for the owner's answer (pendingQuestion).
             ...(asked ? { question: String(result?.summary || '') } : {}),
         });
+        //  An email sent and checked: Joe watches for its replies, even when the run forgot to say so (tools/mail.ts).
+        if (out.ok && !asked) {
+            try {
+                watchAfterSentEmail(o.context.sessionId, pending ? pending.request : o.request, String(result?.summary || ''),
+                    String(o.replyLanguage || o.language).toLowerCase().startsWith('ar') ? 'ar' : 'en', o.context.userId ? String(o.context.userId) : undefined);
+            } catch { /* the watch helps; it never fails the run */ }
+        }
         return {
             ok: out.ok,
             ...(out.ok ? {} : { error: out.error }),

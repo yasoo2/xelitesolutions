@@ -170,7 +170,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
     conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
     conv.push({ role: 'user', content: req.operate
-        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory)
+        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
         : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
     req.emit({ type: 'plan', plan: state.plan });
 

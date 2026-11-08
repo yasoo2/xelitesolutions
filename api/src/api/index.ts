@@ -159,6 +159,13 @@ async function main() {
       .then((summary) => logger.info(`🧠 ${summary}`))
       .catch(() => { /* non-fatal */ });
 
+    // Joe watches, on his own, for the replies to the emails he sent and tells
+    // the owner in the chat (modules/services/MailWatchService.ts). JOE_MAIL_WATCH=off stops it.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('../modules/services/MailWatchService').mailWatchService.start();
+    } catch (e: any) { logger.warn(`[MailWatch] not started: ${e?.message || e}`); }
+
     // Optional Startup Indexing
     if (process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true') {
       setTimeout(() => {

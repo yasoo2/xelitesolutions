@@ -82,7 +82,9 @@ export function languageName(code: string | undefined): string {
  */
 export function languageSection(code: string | undefined): string {
     const name = languageName(code);
-    return `\n\n# Language\nThe owner reads ${name}. Every note you write between tool calls, the titles of your plan's steps and requirements, every question to him and your task_finish summary are in ${name} only, even when the tools, the code and the pages answer in English. Names, code, paths, addresses and commands stay as they are.`;
+    //  «بجوي» (2026-11-08): your own name in Arabic is «جو», with its prepositions «بجو», «لجو».
+    const own = String(code || '').toLowerCase().startsWith('ar') ? ' Your own name in Arabic is «جو» («بجو», «لجو», «مع جو»), never «جوي».' : '';
+    return `\n\n# Language\nThe owner reads ${name}. Every note you write between tool calls, the titles of your plan's steps and requirements, every question to him and your task_finish summary are in ${name} only, even when the tools, the code and the pages answer in English. Names, code, paths, addresses and commands stay as they are.${own}`;
 }
 
 /** Scripts a reply language is written in; Latin-script languages cannot be told apart this way. */

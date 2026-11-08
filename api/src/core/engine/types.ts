@@ -328,6 +328,8 @@ export interface EngineRequest {
     operateTarget?: 'phone' | 'computer';
     /** Operate: what Joe did on the owner's devices earlier in this chat (device-work.ts), so «try again» knows what. */
     operateHistory?: string;
+    /** Operate: the request a short message continues («افحص» after the Wi-Fi question), for the first tool (continuedRequest). */
+    operateAbout?: string;
 }
 
 /** One earlier run of a project: what was asked, and what came of it. */
