@@ -338,6 +338,77 @@ export class AndroidPhone {
         return r.code === 0 && /result=0|Broadcast completed/u.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'typing failed').trim() };
     }
 
+    /*
+     * EMPTY THE FIELD THE CURSOR IS IN.
+     *
+     * The owner, 2026-11-08: Joe typed «تجربة جو» into Gmail's «To» field with
+     * the address, then could not take it out — deleting characters and a long
+     * press changed nothing — and spent three minutes before asking him. The
+     * ADB Keyboard empties the focused field in one go (ADB_CLEAR_TEXT); then,
+     * for a field it cannot reach (a recipient's chips), the cursor goes to the
+     * end and the text is deleted backwards, chips included.
+     */
+    async clearField(): Promise<{ ok: boolean; error?: string }> {
+        const viaKeyboard = await this.withAdbKeyboard(() => this.run(['shell', 'am', 'broadcast', '-a', 'ADB_CLEAR_TEXT']));
+        const end = 123; // KEYCODE_MOVE_END
+        const del = 67;  // KEYCODE_DEL
+        const r = await this.run(['shell', 'input', 'keyevent', String(end), ...Array.from({ length: 80 }, () => String(del))]);
+        if (r.code === 0 || viaKeyboard.ok) return { ok: true };
+        return { ok: false, error: (r.stderr || viaKeyboard.error || 'the field could not be emptied').trim() };
+    }
+
+    /** Runs fn with the ADB Keyboard as the phone's keyboard, and gives the owner's own back after. */
+    private async withAdbKeyboard(fn: () => Promise<{ code: number | null; stdout: string; stderr: string }>): Promise<{ ok: boolean; error?: string }> {
+        const ime = await this.run(['shell', 'ime', 'list', '-a', '-s']);
+        if (!ime.stdout.includes(ADB_KEYBOARD)) return { ok: false, error: 'the ADB Keyboard is not installed' };
+        const enabled = await this.run(['shell', 'ime', 'list', '-s']);
+        if (!enabled.stdout.includes(ADB_KEYBOARD)) await this.run(['shell', 'ime', 'enable', ADB_KEYBOARD]);
+        let current = (await this.run(['shell', 'settings', 'get', 'secure', 'default_input_method'])).stdout.trim();
+        if (current === ADB_KEYBOARD) {
+            const list = (await this.run(['shell', 'ime', 'list', '-s'])).stdout.split(/\r?\n/u).map(l => l.trim()).filter(Boolean);
+            current = list.find(k => k !== ADB_KEYBOARD && !/voice|tts|autofill/iu.test(k)) || '';
+        }
+        if (current !== ADB_KEYBOARD) { await this.run(['shell', 'ime', 'set', ADB_KEYBOARD]); await this.pause(500); }
+        const r = await fn();
+        if (current && current !== ADB_KEYBOARD) { await this.pause(300); await this.run(['shell', 'ime', 'set', current]); }
+        return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || r.stdout).trim() };
+    }
+
+    /*
+     * A NEW EMAIL, ALREADY FILLED: TO, SUBJECT AND TEXT IN ONE STEP.
+     *
+     * The same day: writing an email by tapping and typing went wrong in the
+     * recipient field. Android opens a mail app's new message with every field
+     * filled from one «mailto:» address (the way a link on a page does): Joe
+     * then only reads it, checks it and presses Send. Every part is
+     * percent-encoded, so Arabic, spaces and «&» arrive as written, and the
+     * whole address is one quoted word for the phone's shell.
+     */
+    async composeEmail(m: { to: string[]; cc?: string[]; subject?: string; body?: string; app?: string }): Promise<{ ok: boolean; error?: string }> {
+        const enc = (s: string) => encodeURIComponent(s).replace(/'/gu, '%27');
+        const to = m.to.map(a => a.trim()).filter(a => /^[^@\s'"]+@[^@\s'"]+\.[^@\s'"]+$/u.test(a));
+        if (!to.length) return { ok: false, error: 'no valid recipient address' };
+        const query = [
+            ...(m.cc && m.cc.length ? [`cc=${enc(m.cc.join(','))}`] : []),
+            ...(m.subject ? [`subject=${enc(m.subject)}`] : []),
+            ...(m.body ? [`body=${enc(m.body)}`] : []),
+        ].join('&');
+        const uri = `mailto:${to.map(enc).join(',')}${query ? `?${query}` : ''}`;
+        const pkg = m.app && /^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$/u.test(m.app) ? m.app : '';
+        const start = async (withPkg: boolean) => this.run(['shell', 'am', 'start', '-W', '-a', 'android.intent.action.SENDTO', '-d', `'${uri}'`, ...(withPkg && pkg ? ['-p', pkg] : [])]);
+        let r = await start(true);
+        if (pkg && (r.code !== 0 || /Error|unable to resolve|No Activity/iu.test(r.stdout + r.stderr))) r = await start(false);
+        return r.code === 0 && !/Error|unable to resolve|No Activity/iu.test(r.stdout + r.stderr) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'no mail app opened').trim() };
+    }
+
+    /** Opens an address in the app that handles it: https://…, tel:, geo:, https://wa.me/… */
+    async openUri(uri: string, pkg?: string): Promise<{ ok: boolean; error?: string }> {
+        const u = String(uri || '').trim();
+        if (!/^(?:https?:\/\/|tel:|sms:|smsto:|geo:|mailto:|whatsapp:|market:)/iu.test(u) || /['"\s]/u.test(u)) return { ok: false, error: 'not an address Joe opens (https://, tel:, sms:, geo:, mailto:, whatsapp:, market:), or it has quotes or spaces (encode them)' };
+        const r = await this.run(['shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${u}'`, ...(pkg && /^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$/u.test(pkg) ? ['-p', pkg] : [])]);
+        return r.code === 0 && !/Error|unable to resolve/iu.test(r.stdout + r.stderr) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'nothing opened it').trim() };
+    }
+
     /** Opens an app by its package name (com.whatsapp, com.android.chrome…). */
     async open(pkg: string): Promise<{ ok: boolean; error?: string }> {
         if (!/^[A-Za-z][\w]*(\.[A-Za-z_][\w]*)+$/u.test(pkg)) return { ok: false, error: `«${pkg}» is not an Android package name (like com.android.chrome): android_apps lists them.` };
