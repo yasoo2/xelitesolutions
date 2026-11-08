@@ -96,11 +96,27 @@ export function pendingQuestion(sessionId: unknown, now = Date.now()): { target?
     return { target: last.target, request: last.request, question: last.question };
 }
 
-/** The chat's last device work within 30 minutes: what a short message («افحص») continues. */
-export function lastDeviceWork(sessionId: unknown, now = Date.now()): { target?: DeviceKind; request: string; ok: boolean } | null {
-    const list = load().done[String(sessionId || '')] || [];
-    const last = list[list.length - 1];
-    return last && now - last.at <= ANSWER_MS ? { target: last.target, request: last.request, ok: last.ok } : null;
+/**
+ * The chat's last device work within 30 minutes: what a short message («افحص») continues.
+ *
+ * With `anchor` (operate.ts deviceWorkAnchor), the most recent one that STANDS
+ * ALONE, walked back through the chat's work, as the anchor reads it (its own
+ * words, or what a recorded «X — Y» continued). The owner's engineer,
+ * 2026-11-08: «افحص» after a failed «افحص» continued «افحص» and lost the Wi-Fi
+ * question before it. The reader is passed in: this file must not load
+ * operate.ts (the answerer loads it on every question).
+ */
+export function lastDeviceWork(sessionId: unknown, now = Date.now(), anchor?: (request: string) => string | null): { target?: DeviceKind; request: string; ok: boolean } | null {
+    const list = (load().done[String(sessionId || '')] || []).filter(e => now - e.at <= ANSWER_MS);
+    if (!anchor) {
+        const last = list[list.length - 1];
+        return last ? { target: last.target, request: last.request, ok: last.ok } : null;
+    }
+    for (let i = list.length - 1; i >= 0; i--) {
+        const request = anchor(list[i].request);
+        if (request) return { target: list[i].target, request, ok: list[i].ok };
+    }
+    return null;
 }
 
 /**

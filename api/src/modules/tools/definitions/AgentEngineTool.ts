@@ -40,11 +40,11 @@ import { bindRunCancellation } from '../../../core/session/attended-run';
 import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
 import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
-import { askOwnerTool, continuedRequest, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
+import { askOwnerTool, CONTINUED_MARK, continuedRequest, deviceWorkAnchor, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
 import { answeredQuestion, deviceWorkFacts, lastDeviceWork, noteOperateResult, pendingQuestion, questionTakenBy } from '../../../core/engine/device-work';
 import { emailWatchTool, watchAfterSentEmail } from '../../../core/engine/tools/mail';
 import { mailWatchFacts } from '../../../core/devices/mail-watch';
-import { chatTurnsText, ownerWords, recentChatTurns } from '../../../core/engine/chat-history';
+import { chatTurnsText, ownerWords, recentChatTurns, requestWords } from '../../../core/engine/chat-history';
 import fs from 'fs';
 
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
@@ -52,16 +52,23 @@ const DEADLINE_MARGIN_MS = 2 * 60_000;
 
 /**
  * What an operate run is about: the owner's own words read with the work they
- * continue («افحص» after the Wi-Fi question), told against the whole request.
- * «Short» is measured on his words, not on his words with a file's block
- * (2026-11-08: «افحص» with a picture was 2 000 characters, never short); the
- * checks read the continuation after the whole request (operateVerifier,
- * requestKind), so it is put after the request as the run has it.
+ * continue («افحص» after the Wi-Fi question), and never the block of a file he
+ * attached. «Short» is measured on his words (2026-11-08: «افحص» with a picture
+ * was 2 000 characters, never short), and so is everything read from them —
+ * the first tool, the device, the checks. Found on 2026-11-08: the
+ * continuation was put after the whole request, file block and all, and a
+ * picture described as "turn off the guest network" turned «افحص» from the
+ * Wi-Fi scan to device_computers. `words` is what the readers classify
+ * (chat-history.ts requestWords); `previous` is the last device work that
+ * stands alone (device-work.ts lastDeviceWork with deviceWorkAnchor).
  */
-export function operateAboutFor(request: string, own: string, previous?: string | null): string {
-    const aboutOwn = continuedRequest(own, previous);
-    if (aboutOwn === own) return request;
-    return aboutOwn.startsWith(own) ? `${request}${aboutOwn.slice(own.length)}` : aboutOwn;
+export function operateAboutFor(words: string, previous?: string | null): string {
+    return continuedRequest(words, previous);
+}
+
+/** What the chat's device work records of this run: his words, and «— what they continued» when they did. */
+export function recordedOperateRequest(words: string, about: string, previous?: string | null): string {
+    return about !== words && previous ? `${words}${CONTINUED_MARK}${previous}` : words;
 }
 
 /**
@@ -86,6 +93,8 @@ async function runOperate(o: {
         //  chat shows, and what «short» is measured on (2026-11-08: a message with a file
         //  was shown twice in THE CHAT SO FAR, and never read as a continuation).
         const own = ownerWords(o.request, o.context.ownerText);
+        //  What the readers classify: his words, or a resumed run's goal; never a file's block.
+        const words = requestWords(o.request, o.context.ownerText);
         //  What the chat said and what Joe did on the devices in it, and the question
         //  this message may answer: «افحص», «اجل», «ارسلها» are read in their chat (2026-11-08).
         //  The question only when the route read this message as its answer (select.ts
@@ -98,9 +107,14 @@ async function runOperate(o: {
             pending ? `JOE'S LAST QUESTION, which the owner's message above was read as answering: «${pending.question}» (it was about: «${pending.request}»). Go on with that work as he answered. If his message asks for something else instead, do that, and do not do what the question was about.` : '',
         ].filter(Boolean).join('\n\n');
         if (pending) answeredQuestion(o.context.sessionId);
-        //  «افحص» alone continues the chat's last device work: the first tool and the checks read it so (2026-11-08).
-        const previous = pending ? pending.request : lastDeviceWork(o.context.sessionId)?.request;
-        const about = operateAboutFor(o.request, own, previous);
+        //  «افحص» alone continues the chat's last device work that stands alone: the first tool
+        //  and the checks read it so (2026-11-08), never «افحص» continued by «افحص».
+        const previous = pending
+            ? deviceWorkAnchor(pending.request) || pending.request
+            : lastDeviceWork(o.context.sessionId, Date.now(), deviceWorkAnchor)?.request;
+        const about = operateAboutFor(words, previous);
+        //  A watch on the mail counts for this run only when it was made after this moment.
+        const since = Date.now();
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
             replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
@@ -109,7 +123,7 @@ async function runOperate(o: {
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
             model: o.brain.model,
-            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, emailWatchTool, askOwnerTool, finishTool(operateVerifier({ about }))],
+            tools: [planUpdateTool, ...deviceTools, ...androidTools, ...webTools, emailWatchTool, askOwnerTool, finishTool(operateVerifier({ about, own: words, since }))],
             processes: createProcessRegistry(toolContext),
             browser: () => createBrowserSession(toolContext),
             machine: await machineFacts(),
@@ -119,7 +133,7 @@ async function runOperate(o: {
         const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
         noteOperateResult(o.context.sessionId, {
             target: o.target || (isPhoneRequest(about) ? 'phone' : 'computer'),
-            request: pending ? pending.request : about !== o.request ? `${own} — ${previous}` : own,
+            request: pending ? pending.request : recordedOperateRequest(words, about, previous),
             summary: `${asked ? 'Joe asked the owner and waits for his answer: ' : ''}${String(result?.summary || out.output?.summary || '')}`, ok: out.ok && !asked,
             //  Joe's question waits for the owner's answer (pendingQuestion).
             ...(asked ? { question: String(result?.summary || '') } : {}),
@@ -127,7 +141,7 @@ async function runOperate(o: {
         //  An email sent and checked: Joe watches for its replies, even when the run forgot to say so (tools/mail.ts).
         if (out.ok && !asked) {
             try {
-                watchAfterSentEmail(o.context.sessionId, pending ? pending.request : own, String(result?.summary || ''),
+                watchAfterSentEmail(o.context.sessionId, pending ? pending.request : words, String(result?.summary || ''),
                     String(o.replyLanguage || o.language).toLowerCase().startsWith('ar') ? 'ar' : 'en', o.context.userId ? String(o.context.userId) : undefined);
             } catch { /* the watch helps; it never fails the run */ }
         }

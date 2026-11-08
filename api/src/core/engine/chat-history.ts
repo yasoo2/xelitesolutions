@@ -98,6 +98,22 @@ export function ownerWords(request: string, ownerText?: unknown): string {
 }
 
 /**
+ * THE WORDS JOE'S READERS CLASSIFY: HIS, NEVER A FILE'S.
+ *
+ * Found on 2026-11-08: «افحص» with a picture whose description said "turn off
+ * the guest network" was read with that description — the Wi-Fi scan became
+ * a toggle and the run started on device_computers. The device readers read
+ * what the owner typed (ownerWords) when the request begins with it; a
+ * resumed run («كمل») carries the earlier goal, not his «كمل», so it is read
+ * on that goal, still without a file's block.
+ */
+export function requestWords(request: string, ownerText?: unknown): string {
+    const r = String(request || '').trim();
+    const own = ownerWords(r, ownerText);
+    return own && r.startsWith(own) ? own : ownerWords(r);
+}
+
+/**
  * The turns as the run reads them, newest last, each cut short. The message
  * being answered now (the last owner turn, when it is the request) is left
  * out: the request equal to it, or the request that starts with it and goes
