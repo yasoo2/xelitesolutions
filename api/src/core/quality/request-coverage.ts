@@ -119,7 +119,11 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * a verb — neither asks for automated tests.
  */
 const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
-const AR_TESTS = /اختبار(?:ات)?\s+(?:ال)?(?:آلي|آلية|آليه|الي|الية|اليه|تلقائي|تلقائية|وحدة|الوحدة|وحدات|تكامل|التكامل|شاملة|شامله|لكل)|(?:مع|اكتب|أضف|اضف|بإضافة|باضافة)\s+(?:ال)?اختبارات|اختبارات\s+(?:ل|لـ)?كل\s/u;
+//  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
+//  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
+//  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
+//  on the source — «not provable» four times — instead of on Joe's own run of them).
+const AR_TESTS = /اختبار(?:ات)?\s+(?:ال)?(?:آلي|آلية|آليه|الي|الية|اليه|تلقائي|تلقائية|وحدة|الوحدة|وحدات|تكامل|التكامل|شاملة|شامله|لكل)|(?:مع|اكتب|أضف|اضف|بإضافة|باضافة)\s+(?:ال)?اختبارات|اختبارات\s+(?:ل|لـ)?كل\s|مجموع(?:ة|ه)\s+(?:ال)?اختبارات|(?:ال)?اختبارات\s+(?:في|داخل)\s+(?:ال)?مجلد|(?:ال)?اختبارات\s+(?:كلها\s+|جميعها\s+)?(?:تفشل|فاشلة|فاشله|حمراء|لا\s+تنجح|لا\s+تمر)|(?:اجعل|خل[يّ]|خلّي)\s+(?:كل\s+|جميع\s+)?(?:ال)?(?:اختبارات|مجموعة|مجموعه|فحوص)[^.؟!\n]{0,30}(?:تنجح|تمر|تعبر|خضراء)|فحوص\s+(?:ال)?تكامل\s+(?:ال)?(?:مستمر|حمراء|تفشل)?/u;
 
 /** The clause that asks for tests as a deliverable, or null. */
 export function testsRequestedIn(request: string): string | null {
@@ -1267,7 +1271,10 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
         if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project, so the requested tests cannot run' };
         const command = pythonTestCommand(folders, false, pythonExecutable());
         try {
-            const run = await runTool('shell_execute', { command, cwd: dir });
+            //  A test run gets the time a test run takes: the shell's 30-second default for a
+            //  «short» command cut the owner's laptop's pytest under load (the Codex exam in
+            //  Arabic, C04, 2026-11-08: right code, «Execution timed out», refused four times).
+            const run = await runTool('shell_execute', { command, cwd: dir, timeout: 5 * 60_000 });
             const printed = `${String(run?.output?.stdout ?? '')}\n${String(run?.output?.stderr ?? '')}`;
             const judged = judgeTestRun(run?.ok === true, printed);
             // The runner fails an empty run itself (exit 1): its summary still says why.

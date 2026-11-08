@@ -84,5 +84,49 @@ async function keepWhole(projectRoot: unknown, url: string, text: string): Promi
     }
 }
 
+/**
+ * engine_web_search: THE AGENT ENGINE SEARCHES THE WEB (core/engine/web-search.ts),
+ * through the gateway like web_read: the firewall, the owner, the rate limit, Stop.
+ */
+export class EngineWebSearchTool implements ToolDefinition {
+    readonly name = 'engine_web_search';
+    readonly description = 'Agent engine only: search the web for a query and return the best results (title, address, a line of what each says).';
+    readonly version = '1.0.0';
+    readonly tags = ['engine', 'web'];
+    readonly inputSchema = {
+        type: 'object',
+        properties: {
+            query: { type: 'string', description: 'What to search for, in the words a person would type.' },
+            count: { type: 'number', description: 'How many results, 1 to 10; default 6.' },
+        },
+        required: ['query'],
+    };
+    readonly outputSchema = { type: 'object', properties: { text: { type: 'string' } } };
+    permissions: ToolPermission[] = ['read'];
+    sideEffects: ToolPermission[] = [];
+    rateLimitPerMinute = 20;
+    auditFields = ['query'];
+    mockSupported = false;
+
+    async execute(input: any, context?: any): Promise<ToolExecutionResult> {
+        const query = String(input?.query || '').trim();
+        if (!query) return { ok: false, error: 'engine_web_search needs the query', output: { text: 'web_search needs {"query": "…"}.' } } as any;
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { searchWeb } = require('../../../core/engine/web-search');
+        const r = await searchWeb(query, { count: Number(input?.count) || undefined, signal: context?.signal });
+        if (!r.hits.length) {
+            const why = `no results for «${query}»${r.note ? ` (${r.note})` : ''}: try other words, fewer of them, or the other language`;
+            return { ok: false, error: why, output: { text: why }, logs: [`web_search «${query}» nothing`] } as any;
+        }
+        const text = [
+            `Results for «${query}» (${r.provider === 'wikipedia' ? 'Wikipedia' : 'the web'}):`,
+            UNTRUSTED_NOTE,
+            ...r.hits.map((h: { title: string; url: string; snippet: string }, i: number) => `${i + 1}. ${h.title}\n   ${h.url}${h.snippet ? `\n   ${h.snippet}` : ''}`),
+            'Read the best two to four with web_read before you rely on them, and name the addresses you used.',
+        ].join('\n');
+        return { ok: true, output: { text, hits: r.hits }, logs: [`web_search «${query}» ${r.provider} ${r.hits.length}`] } as any;
+    }
+}
+
 /** The definitions registry.ts registers in its engine: web block. */
-export const ENGINE_WEB_TOOLS: ToolDefinition[] = [new EngineWebReadTool()];
+export const ENGINE_WEB_TOOLS: ToolDefinition[] = [new EngineWebReadTool(), new EngineWebSearchTool()];

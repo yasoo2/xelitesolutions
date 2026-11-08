@@ -245,6 +245,44 @@ const TOOL_LABELS: Record<string, Record<Lang, string>> = {
     //  The engine's web_read had no name for people; the checks' own runs
     //  (quality_run, project_run, project_stop) arrive as steps too.
     web_read: { ar: 'قراءة صفحة من الإنترنت', en: 'Read a web page', fr: 'Lire une page web', de: 'Webseite lesen', ru: 'Чтение веб-страницы', es: 'Leer una página web' },
+    web_search: { ar: 'البحث في الإنترنت', en: 'Search the web', fr: 'Rechercher sur le web', de: 'Im Web suchen', ru: 'Поиск в интернете', es: 'Buscar en la web' },
+    //  The devices (2026-11-08): his phone and computers had no names here, so the
+    //  strip showed «android_read» to an Arabic reader.
+    android_devices: { ar: 'فحص الهواتف المتصلة', en: 'Check the connected phones', fr: 'Vérifier les téléphones connectés', de: 'Verbundene Telefone prüfen', ru: 'Проверка подключённых телефонов', es: 'Comprobar los teléfonos conectados' },
+    android_pair: { ar: 'إقران الهاتف', en: 'Pair the phone', fr: 'Associer le téléphone', de: 'Telefon koppeln', ru: 'Сопряжение телефона', es: 'Emparejar el teléfono' },
+    android_connect: { ar: 'الاتصال بالهاتف لاسلكيًا', en: 'Connect to the phone over Wi-Fi', fr: 'Se connecter au téléphone en Wi-Fi', de: 'Telefon per WLAN verbinden', ru: 'Подключение к телефону по Wi-Fi', es: 'Conectar con el teléfono por Wi-Fi' },
+    android_link_app: { ar: 'ربط الهاتف بتطبيق جو', en: 'Link the phone with the Joe app', fr: 'Relier le téléphone à l\'app Joe', de: 'Telefon mit der Joe-App verbinden', ru: 'Привязка телефона к приложению Джо', es: 'Vincular el teléfono con la app de Joe' },
+    android_read: { ar: 'قراءة شاشة الهاتف', en: 'Read the phone\'s screen', fr: 'Lire l\'écran du téléphone', de: 'Telefonbildschirm lesen', ru: 'Чтение экрана телефона', es: 'Leer la pantalla del teléfono' },
+    android_look: { ar: 'تصوير شاشة الهاتف', en: 'Look at the phone\'s screen', fr: 'Regarder l\'écran du téléphone', de: 'Telefonbildschirm ansehen', ru: 'Снимок экрана телефона', es: 'Mirar la pantalla del teléfono' },
+    android_tap: { ar: 'لمس شاشة الهاتف', en: 'Tap on the phone', fr: 'Toucher l\'écran du téléphone', de: 'Auf dem Telefon tippen', ru: 'Касание экрана телефона', es: 'Tocar en el teléfono' },
+    android_type: { ar: 'الكتابة في الهاتف', en: 'Type on the phone', fr: 'Écrire sur le téléphone', de: 'Auf dem Telefon tippen (Text)', ru: 'Ввод текста на телефоне', es: 'Escribir en el teléfono' },
+    android_clear: { ar: 'مسح حقل في الهاتف', en: 'Clear a field on the phone', fr: 'Vider un champ du téléphone', de: 'Feld auf dem Telefon leeren', ru: 'Очистка поля на телефоне', es: 'Vaciar un campo del teléfono' },
+    android_key: { ar: 'ضغط زر في الهاتف', en: 'Press a phone key', fr: 'Appuyer sur une touche du téléphone', de: 'Telefontaste drücken', ru: 'Нажатие кнопки телефона', es: 'Pulsar una tecla del teléfono' },
+    android_panel: { ar: 'فتح لوحة الهاتف', en: 'Open a phone panel', fr: 'Ouvrir un panneau du téléphone', de: 'Telefonleiste öffnen', ru: 'Открытие панели телефона', es: 'Abrir un panel del teléfono' },
+    android_scroll: { ar: 'تمرير شاشة الهاتف', en: 'Scroll the phone\'s screen', fr: 'Faire défiler l\'écran du téléphone', de: 'Telefonbildschirm scrollen', ru: 'Прокрутка экрана телефона', es: 'Desplazar la pantalla del teléfono' },
+    android_open: { ar: 'فتح تطبيق في الهاتف', en: 'Open an app on the phone', fr: 'Ouvrir une app sur le téléphone', de: 'App auf dem Telefon öffnen', ru: 'Открытие приложения на телефоне', es: 'Abrir una app en el teléfono' },
+    android_apps: { ar: 'قائمة تطبيقات الهاتف', en: 'List the phone\'s apps', fr: 'Lister les apps du téléphone', de: 'Apps des Telefons auflisten', ru: 'Список приложений телефона', es: 'Listar las apps del teléfono' },
+    android_link: { ar: 'فتح رابط في الهاتف', en: 'Open a link on the phone', fr: 'Ouvrir un lien sur le téléphone', de: 'Link auf dem Telefon öffnen', ru: 'Открытие ссылки на телефоне', es: 'Abrir un enlace en el teléfono' },
+    android_email: { ar: 'كتابة بريد في الهاتف', en: 'Write an email on the phone', fr: 'Écrire un e-mail sur le téléphone', de: 'E-Mail auf dem Telefon schreiben', ru: 'Письмо на телефоне', es: 'Escribir un correo en el teléfono' },
+    android_torch: { ar: 'الكشاف', en: 'Flashlight', fr: 'Lampe torche', de: 'Taschenlampe', ru: 'Фонарик', es: 'Linterna' },
+    android_volume: { ar: 'صوت الهاتف', en: 'Phone volume', fr: 'Volume du téléphone', de: 'Telefonlautstärke', ru: 'Громкость телефона', es: 'Volumen del teléfono' },
+    device_computers: { ar: 'الأجهزة المتاحة', en: 'Reachable devices', fr: 'Appareils joignables', de: 'Erreichbare Geräte', ru: 'Доступные устройства', es: 'Dispositivos accesibles' },
+    device_use: { ar: 'العمل على حاسوب مربوط', en: 'Work on a linked computer', fr: 'Travailler sur un ordinateur relié', de: 'Auf verbundenem Computer arbeiten', ru: 'Работа на подключённом компьютере', es: 'Trabajar en un ordenador vinculado' },
+    device_link_new: { ar: 'ربط حاسوب جديد', en: 'Link a new computer', fr: 'Relier un nouvel ordinateur', de: 'Neuen Computer verbinden', ru: 'Подключение нового компьютера', es: 'Vincular un ordenador nuevo' },
+    device_wait_link: { ar: 'انتظار ربط الحاسوب', en: 'Wait for the computer to link', fr: 'Attendre la liaison de l\'ordinateur', de: 'Auf die Verbindung warten', ru: 'Ожидание подключения компьютера', es: 'Esperar la vinculación del ordenador' },
+    device_forget: { ar: 'فصل حاسوب نهائيًا', en: 'Unlink a computer', fr: 'Délier un ordinateur', de: 'Computer trennen', ru: 'Отключение компьютера', es: 'Desvincular un ordenador' },
+    device_windows: { ar: 'النوافذ المفتوحة', en: 'List the open windows', fr: 'Lister les fenêtres ouvertes', de: 'Offene Fenster auflisten', ru: 'Список открытых окон', es: 'Listar las ventanas abiertas' },
+    device_open: { ar: 'فتح برنامج', en: 'Open a program', fr: 'Ouvrir un programme', de: 'Programm öffnen', ru: 'Открытие программы', es: 'Abrir un programa' },
+    device_focus: { ar: 'إظهار نافذة', en: 'Bring a window forward', fr: 'Mettre une fenêtre au premier plan', de: 'Fenster nach vorn holen', ru: 'Переключение на окно', es: 'Traer una ventana al frente' },
+    device_read: { ar: 'قراءة نافذة', en: 'Read a window', fr: 'Lire une fenêtre', de: 'Fenster lesen', ru: 'Чтение окна', es: 'Leer una ventana' },
+    device_look: { ar: 'تصوير شاشة الحاسوب', en: 'Look at the computer\'s screen', fr: 'Regarder l\'écran de l\'ordinateur', de: 'Bildschirm ansehen', ru: 'Снимок экрана компьютера', es: 'Mirar la pantalla del ordenador' },
+    device_press: { ar: 'ضغط زر في نافذة', en: 'Press a control', fr: 'Appuyer sur un contrôle', de: 'Steuerelement betätigen', ru: 'Нажатие элемента окна', es: 'Pulsar un control' },
+    device_click: { ar: 'نقرة في الحاسوب', en: 'Click on the computer', fr: 'Cliquer sur l\'ordinateur', de: 'Auf dem Computer klicken', ru: 'Щелчок на компьютере', es: 'Hacer clic en el ordenador' },
+    device_type: { ar: 'الكتابة في الحاسوب', en: 'Type on the computer', fr: 'Écrire sur l\'ordinateur', de: 'Auf dem Computer schreiben', ru: 'Ввод текста на компьютере', es: 'Escribir en el ordenador' },
+    device_keys: { ar: 'ضغط مفاتيح', en: 'Press keys', fr: 'Appuyer sur des touches', de: 'Tasten drücken', ru: 'Нажатие клавиш', es: 'Pulsar teclas' },
+    device_scroll: { ar: 'تمرير في نافذة', en: 'Scroll a window', fr: 'Faire défiler une fenêtre', de: 'Fenster scrollen', ru: 'Прокрутка окна', es: 'Desplazar una ventana' },
+    network_devices: { ar: 'فحص أجهزة الشبكة', en: 'Scan the network', fr: 'Analyser le réseau', de: 'Netzwerk durchsuchen', ru: 'Сканирование сети', es: 'Explorar la red' },
+    email_watch_replies: { ar: 'مراقبة الردود على البريد', en: 'Watch for email replies', fr: 'Surveiller les réponses aux e-mails', de: 'Auf E-Mail-Antworten achten', ru: 'Ожидание ответов на письма', es: 'Vigilar las respuestas al correo' },
     project_run: { ar: 'تشغيل المشروع', en: 'Run the project', fr: 'Lancer le projet', de: 'Projekt starten', ru: 'Запуск проекта', es: 'Arrancar el proyecto' },
     project_stop: { ar: 'إيقاف المشروع', en: 'Stop the project', fr: 'Arrêter le projet', de: 'Projekt stoppen', ru: 'Остановка проекта', es: 'Detener el proyecto' },
     quality_run: { ar: 'تشغيل الاختبارات والبناء', en: 'Run the tests and the build', fr: 'Lancer les tests et le build', de: 'Tests und Build ausführen', ru: 'Запуск тестов и сборки', es: 'Ejecutar las pruebas y el build' },
@@ -262,14 +300,23 @@ export type ToolKind =
     | 'read' | 'list' | 'search' | 'write' | 'edit'
     | 'command' | 'server' | 'log' | 'stop'
     | 'web' | 'page' | 'click' | 'shot'
+    | 'phone' | 'computer' | 'mail' | 'network'
     | 'plan' | 'finish' | 'run' | 'test' | 'other';
 
 const TOOL_KINDS: Record<string, ToolKind> = {
     file_read: 'read', file_list: 'list', file_search: 'search', file_write: 'write', file_edit: 'edit',
     shell_run: 'command', shell_start: 'server', shell_logs: 'log', shell_stop: 'stop',
-    web_read: 'web', browser_open: 'page', browser_act: 'click', browser_screenshot: 'shot',
+    web_read: 'web', web_search: 'search', browser_open: 'page', browser_act: 'click', browser_screenshot: 'shot',
     plan_update: 'plan', task_finish: 'finish',
     project_run: 'run', project_stop: 'stop', quality_run: 'test',
+    android_devices: 'phone', android_pair: 'phone', android_connect: 'phone', android_link_app: 'phone', android_read: 'phone',
+    android_look: 'shot', android_tap: 'click', android_type: 'phone', android_clear: 'phone', android_key: 'phone',
+    android_panel: 'phone', android_scroll: 'phone', android_open: 'phone', android_apps: 'phone', android_link: 'phone',
+    android_email: 'mail', android_torch: 'phone', android_volume: 'phone',
+    device_computers: 'computer', device_use: 'computer', device_link_new: 'computer', device_wait_link: 'computer', device_forget: 'computer',
+    device_windows: 'computer', device_open: 'computer', device_focus: 'computer', device_read: 'computer', device_look: 'shot',
+    device_press: 'click', device_click: 'click', device_type: 'computer', device_keys: 'computer', device_scroll: 'computer',
+    network_devices: 'network', email_watch_replies: 'mail',
 };
 
 /** The tool's kind, whether it is named by the model (`shell_run`) or by its gateway (`engine_shell_run`). */
@@ -316,6 +363,7 @@ const SUMMARY_KEYS_BY_TOOL: Record<string, string[]> = {
     file_search: ['pattern', 'query', 'text'],
     browser_open: ['url'],
     web_read: ['url'],
+    web_search: ['query'],
     task_finish: ['summary'],
 };
 const SUMMARY_KEYS = ['command', 'path', 'url', 'pattern', 'query', 'name', 'dir', 'key', 'text', 'summary', 'title', 'note'];

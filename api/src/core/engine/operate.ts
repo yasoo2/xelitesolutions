@@ -464,6 +464,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '',
         '# Environment',
         `- This computer runs ${machine.platform === 'win32' ? 'Windows' : machine.platform}. You act on it only through the device_ tools.`,
+        '- A fact from the world the work needs (a price, an address, news, how something is done): web_search and web_read find it without touching his screen; open it on his device only when he asks to see it there.',
         '- device_windows lists the open windows by handle number; every other device_ tool names its window by that number.',
         '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home, wakeup…), android_scroll, android_open by package name, android_panel for the quick settings (flashlight/torch, Wi-Fi, Bluetooth, airplane mode, mobile data, rotation, do not disturb) and the notifications. When the request is about his phone, use these, not the device_ tools.',
         '- android_read and android_look say first when the phone\'s screen is OFF or the phone is LOCKED. A screen that is off: android_key "wakeup", then read again. A phone locked with a PIN: the quick settings and the notifications still work; for anything else tell the owner to unlock it, and never type a PIN, pattern or password.',
