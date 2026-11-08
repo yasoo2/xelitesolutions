@@ -22,7 +22,7 @@ import path from 'path';
 
 export type DeviceKind = 'phone' | 'computer';
 
-interface Done { at: number; target?: DeviceKind; request: string; summary: string; ok: boolean }
+interface Done { at: number; target?: DeviceKind; request: string; summary: string; ok: boolean; question?: string }
 interface Working { target: DeviceKind; at: number; request: string }
 interface Store { done: Record<string, Done[]>; working: Record<string, Working> }
 
@@ -69,14 +69,38 @@ function save(now = Date.now()): void {
 /** Forgets what was read, so the next call reads the file again (a test, or a restart in place). */
 export function reloadDeviceWork(): void { store = null; }
 
-export function noteOperateResult(sessionId: unknown, r: { target?: DeviceKind; request: string; summary: string; ok: boolean }, now = Date.now()): void {
+export function noteOperateResult(sessionId: unknown, r: { target?: DeviceKind; request: string; summary: string; ok: boolean; question?: string }, now = Date.now()): void {
     const id = String(sessionId || '');
     if (!id) return;
     const s = load();
     const list = (s.done[id] || []).filter(e => now - e.at <= DONE_MS);
-    list.push({ at: now, target: r.target, request: String(r.request || '').slice(0, 200), summary: String(r.summary || '').slice(0, 500), ok: r.ok });
+    list.push({ at: now, target: r.target, request: String(r.request || '').slice(0, 200), summary: String(r.summary || '').slice(0, 500), ok: r.ok, ...(r.question ? { question: String(r.question).slice(0, 800) } : {}) });
     s.done[id] = list.slice(-5);
     save(now);
+}
+
+/**
+ * JOE ASKED, AND WAITS: the owner's next message is the answer.
+ *
+ * The owner, 2026-11-08: Joe asked «shall I send it to shoroq…?», the owner
+ * wrote «اجل», and the chat's answerer replied «OK, I will send it» — and
+ * nothing was sent, because «اجل» alone went to the answerer. While the chat's
+ * last device run ended on a question (ask_owner) less than 30 minutes ago,
+ * the next message goes back to that work, with the question beside it.
+ */
+const ANSWER_MS = 30 * 60_000;
+export function pendingQuestion(sessionId: unknown, now = Date.now()): { target?: DeviceKind; request: string; question: string } | null {
+    const list = load().done[String(sessionId || '')] || [];
+    const last = list[list.length - 1];
+    if (!last || !last.question || now - last.at > ANSWER_MS) return null;
+    return { target: last.target, request: last.request, question: last.question };
+}
+
+/** The question was answered (a new run took it up): it no longer waits. */
+export function answeredQuestion(sessionId: unknown): void {
+    const list = load().done[String(sessionId || '')] || [];
+    const last = list[list.length - 1];
+    if (last && last.question) { delete last.question; save(); }
 }
 
 /** The facts block: empty when this chat worked no device. */
@@ -88,6 +112,17 @@ export function deviceWorkFacts(sessionId: unknown, now = Date.now()): string {
         return `- ${minutes} min ago, on the owner's ${e.target || 'device'}: «${e.request}» → ${e.ok ? 'done and checked' : 'not completed'}: ${e.summary.replace(/\s+/gu, ' ')}`;
     });
     return `\n\nWHAT JOE DID ON THE OWNER'S DEVICES IN THIS CHAT (facts; never say Joe did nothing there):\n${lines.join('\n')}`;
+}
+
+/**
+ * The same facts for the chat's ANSWERER, with the rule it broke: it cannot
+ * act, so it must never promise to (2026-11-08: «OK, I will send it», and
+ * nothing was sent).
+ */
+export function answererDeviceFacts(sessionId: unknown, now = Date.now()): string {
+    const facts = deviceWorkFacts(sessionId, now);
+    if (!facts) return '';
+    return `${facts}\nYou, answering here, cannot act on his devices: never say you will send, open or do something on them. If he asks for an action, tell him plainly to say it as a command (for example «أرسلها», «افتحه») and Joe will do it.`;
 }
 
 /** The device this chat is working, as operate.ts notes it. */

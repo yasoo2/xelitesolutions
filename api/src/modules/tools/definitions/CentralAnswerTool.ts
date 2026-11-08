@@ -250,7 +250,7 @@ ${languageDirective(lang)}`;
             //  What Joe did on the owner's phone or computer in this chat: the
             //  answerer said «I did nothing on the phone» right after the
             //  flashlight was turned on (2026-11-07).
-            + (() => { try { return require('../../../core/engine/device-work').deviceWorkFacts(context?.sessionId); } catch { return ''; } })();
+            + (() => { try { return require('../../../core/engine/device-work').answererDeviceFacts(context?.sessionId); } catch { return ''; } })();
 
         // Short standalone facts must not inherit a previous unverified answer.
         const systemPrompt = (isAr && !conciseRequested
