@@ -64,11 +64,23 @@ export const MODEL_FAILURE_LIMIT = 3;
  */
 export const REFUSAL_LIMIT = 4;
 
-/** What a refusal refused, with its counts folded, so «8 tap targets» and «12 tap targets» read alike. */
+/**
+ * What a refusal refused, with its counts folded, so «8 tap targets» and «12 tap targets» read alike.
+ *
+ * A check that names the requirements it refused (R2, R7) is that check on those
+ * requirements, whatever its words: the acceptance judge is a model and words the
+ * same refusal anew each time. The ladder's L150, 2026-11-08: «R2 نقل الأقسام بين
+ * الأعمدة» was refused for two hours and 88 steps, never twice in the same words,
+ * so the run never stopped on it.
+ */
 export function refusalSignature(report: { checks?: { id: string; status: string; detail?: string }[] } | undefined): string {
     return (report?.checks || [])
         .filter(c => c.status === 'failed')
-        .map(c => `${c.id}:${String(c.detail || '').replace(/\d+/g, '#').slice(0, 200)}`)
+        .map(c => {
+            const detail = String(c.detail || '');
+            const requirements = [...new Set(detail.match(/\bR\d{1,3}\b/gu) || [])].sort();
+            return requirements.length ? `${c.id}:${requirements.join(',')}` : `${c.id}:${detail.replace(/\d+/g, '#').slice(0, 200)}`;
+        })
         .sort()
         .join('|');
 }

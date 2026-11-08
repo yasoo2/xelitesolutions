@@ -178,6 +178,28 @@ describe('the run stops when the checks keep refusing the same thing', () => {
         expect(r2.reason || '').not.toMatch(/refused the same thing/);
         expect(moving.turnsTaken()).toBeGreaterThan(REFUSAL_LIMIT);
     });
+
+    it('the judge refusing the same requirement in new words each time is the same refusal', async () => {
+        //  The ladder's L150, 2026-11-08: «R2» refused for two hours and 88 steps, never twice alike.
+        const dir = projectDir();
+        const { model, turnsTaken } = scriptedModel(finishes(10));
+        const words = [
+            'R2 نقل الأقسام بين الأعمدة: القسم خاصية في البطاقة، والأعمدة حالات',
+            'R2 not proven: the columns hold statuses, the departments are a field',
+            'R2: moving departments between the columns is not shown on the board',
+            'R2 لم يثبت: السحب ينقل البطاقة لا القسم',
+            'R2 still unproven',
+        ];
+        const { d } = deps(model, [writeTool], refusing(n => words[(n - 1) % words.length]));
+        const result = await runEngine(request(dir, []), d);
+        expect(result.status).toBe('failed');
+        expect(result.reason).toMatch(/refused the same thing 4 times in a row/);
+        expect(turnsTaken()).toBe(REFUSAL_LIMIT);
+        //  Another requirement refused is another refusal.
+        const { refusalSignature } = require('../core/engine/loop');
+        expect(refusalSignature({ checks: [{ id: 'acceptance', status: 'failed', detail: 'R2 x' }] }))
+            .not.toBe(refusalSignature({ checks: [{ id: 'acceptance', status: 'failed', detail: 'R3 x' }] }));
+    });
 });
 
 describe('the receipt says what the run did to each file', () => {
