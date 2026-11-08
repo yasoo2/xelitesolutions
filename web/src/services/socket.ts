@@ -627,14 +627,19 @@ async function connect() {
         // which is only set by `user_input` / `step_started`; a run driven purely
         // by `thinking_phase` events therefore never came back, and the card sat
         // on screen saying «جو ينفّذ» after the answer had already arrived.
-        runtime.quietMode = false;
-        runtime.thinkingStatus = '';
-        runtime.closedAt = Date.now();
-        runtime.pendingFinalRunId = !runtime.presentationSuppressed && isRunTerminal && msgType !== 'run_finished' ? evRunId : '';
+        //
+        // What only run_finished settles is written BEFORE the reset, so the
+        // reset itself stays one unconditional block that always ends in idle
+        // (neural-trace.test.ts reads it as such: the `if` that used to sit in
+        // the middle of it only set two fields, but it read as a guard on idle).
         if (msgType === 'run_finished') {
           runtime.presentedRunId = '';
           runtime.lastFinalizedRunId = evRunId;
         }
+        runtime.quietMode = false;
+        runtime.thinkingStatus = '';
+        runtime.closedAt = Date.now();
+        runtime.pendingFinalRunId = !runtime.presentationSuppressed && isRunTerminal && msgType !== 'run_finished' ? evRunId : '';
         runtime.activeRunId = '';
         emitPhase('idle');
         forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));

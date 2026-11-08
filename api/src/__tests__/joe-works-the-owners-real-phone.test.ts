@@ -627,7 +627,10 @@ describe('the preview shows the phone or the computer live while Joe works it', 
         expect(page).toMatch(/android_\(\?!devices\|pair\|connect\|apps\)/u);
         expect(page).toMatch(/setLiveSource\(null\);\s+setWorkspaceTab\('preview'\);/u);
         const live = web('components', 'LiveDevicePanel.tsx');
-        expect(live).toContain('`${API_URL}/devices/${source}/screen`');
+        //  Each source's own route, written out whole, so the HTTP contract check can match it (2026-11-08).
+        expect(live).toContain('phone: `${API_URL}/devices/phone/screen`,');
+        expect(live).toContain('computer: `${API_URL}/devices/computer/screen`,');
+        expect(live).toContain('fetch(SCREEN_URL[source],');
         expect(live).toContain("if (!visible) return;");
     });
 });

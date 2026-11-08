@@ -26,6 +26,16 @@ type Status = 'connecting' | 'live' | 'no_phone' | 'no_adb' | 'not_windows' | 'f
 const NEXT_FRAME_MS = 300;
 /** After a failure, ask again more slowly. */
 const RETRY_MS = 4000;
+/**
+ * Each source's own route (api/routes/devices.ts: GET /phone/screen, GET /computer/screen),
+ * written out whole. `/devices/${source}/screen` read, to the HTTP contract check
+ * (api/src/tests/routeMap.ts), as /devices/x/screen — a route nothing serves — and it would
+ * have built a path for any value `source` ever carried (2026-11-08).
+ */
+const SCREEN_URL: Record<DeviceSource, string> = {
+    phone: `${API_URL}/devices/phone/screen`,
+    computer: `${API_URL}/devices/computer/screen`,
+};
 
 /** Joe's browser shown in the Preview: a small floating chip says so, and leads back to the page. */
 export function LiveBrowserChip({ onClose }: { onClose?: () => void }) {
@@ -61,7 +71,7 @@ export default function LiveDevicePanel({ source, visible, onClose }: { source: 
         const next = (ms: number) => { if (!stopped) timer = setTimeout(ask, ms); };
         async function ask() {
             try {
-                const res = await fetch(`${API_URL}/devices/${source}/screen`, { headers: auth(), cache: 'no-store', signal: controller.signal });
+                const res = await fetch(SCREEN_URL[source], { headers: auth(), cache: 'no-store', signal: controller.signal });
                 if (stopped) return;
                 if (!res.ok) {
                     const body = await res.json().catch(() => ({}));
