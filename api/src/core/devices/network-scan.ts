@@ -15,10 +15,11 @@
  * private address); the name and the maker together guess what it is.
  * Nothing is sent to any device beyond a ping.
  *
- * The scan runs on Joe's own computer. A computer the owner linked answers
- * only the desktop actions of its helper (windows-desktop.ts Dispatch), none
- * of which runs a script and brings its output back, so a scan asked for
- * another computer says plainly whose network it saw (describeNetwork).
+ * The scan runs on the computer it is asked about: Joe's own, or a computer
+ * the owner linked, whose agent runs this same script there (the link's
+ * «network» action, EngineDeviceTools). An agent linked before it knew that
+ * action is told to be relinked once; another computer's network is never
+ * passed off as its own (describeNetwork «insteadOf»).
  */
 
 export interface NetDevice {
@@ -40,14 +41,17 @@ export interface NetDevice {
  */
 export const SWEEP_CAP = 512;
 
-/** The PowerShell that looks: one line per device, tab-separated. */
-export function networkScanScript(): string {
+/**
+ * The scan's address arithmetic, as PowerShell functions that read nothing and
+ * change nothing: an address as a whole number and back, the prefix of an
+ * address, the network around it, the mask filter, and what is pinged. The
+ * scan script is built on these very lines, and the test runs them for real in
+ * PowerShell (joe-scans-the-right-network.test.ts): reviewers found on
+ * 2026-11-08 that this arithmetic was checked only by reading the script's
+ * text, so a wrong sign or a wrong bound would have passed every test.
+ */
+export function sweepMathScript(): string {
     return [
-        //  Arabic network names (an SSID like «بيت العائلة») came back as «????»: Windows
-        //  PowerShell writes to a pipe in the console's old code page unless told UTF-8,
-        //  as windows-desktop.ts and device-link.ts already tell it (2026-11-08).
-        'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}',
-        "$ErrorActionPreference = 'SilentlyContinue'",
         //  Addresses as whole numbers, so a network of any size is a range: the scan assumed a
         //  /24 (the first three numbers of the address), which on a /22 or /16 office network
         //  swept the wrong block and dropped every neighbour outside it (2026-11-08). Plain
@@ -56,6 +60,46 @@ export function networkScanScript(): string {
         "function IpText([int64]$n) { '' + (($n -shr 24) -band 255) + '.' + (($n -shr 16) -band 255) + '.' + (($n -shr 8) -band 255) + '.' + ($n -band 255) }",
         //  The prefix length as Windows gives it; from the mask when it does not; a /24 only as the last guess.
         'function PrefixOf($u) { $p = 0; try { $p = [int]$u.PrefixLength } catch {}; if ($p -lt 1 -or $p -gt 32) { $p = 0; try { foreach ($b in $u.IPv4Mask.GetAddressBytes()) { for ($x = [int]$b; $x -gt 0; $x = $x -shr 1) { $p += $x -band 1 } } } catch {} }; if ($p -lt 1 -or $p -gt 32) { $p = 24 }; $p }',
+        //  The network of an address: its network and broadcast address, then the first and last
+        //  address a device can have there. Those are all but the two ends, except on a /31 (both
+        //  ends are the two devices of a point-to-point link) and a /32 (the one address), the
+        //  same count networkSize gives.
+        'function NetOf([int64]$n, [int]$p) { $size = [int64][math]::Pow(2, 32 - $p); $net = $n - ($n % $size); $bc = $net + $size - 1; if ($size -le 2) { @($net, $bc, $net, $bc) } else { @($net, $bc, ($net + 1), ($bc - 1)) } }',
+        //  Whether two addresses are on one network of this prefix (an adapter's address and the router).
+        'function SameNet([int64]$a, [int64]$b, [int]$p) { (NetOf $a $p)[0] -eq (NetOf $b $p)[0] }',
+        //  The mask filter: a neighbour is on this network when it lies between its first and last device address.
+        'function InNet([int64]$n, [int64]$first, [int64]$last) { ($n -ge $first) -and ($n -le $last) }',
+        //  What is pinged: the block of 256 around this computer, and the router's block when it
+        //  is another one, each kept inside the network (a /26 is pinged as the /26 it is), at
+        //  most $cap addresses. Each range is recorded as far as the loop really went, after it:
+        //  it was recorded before the loop, so a cap that stopped a block in the middle would
+        //  have had the NET line claim the whole block (reviewers, 2026-11-08). A block the cap
+        //  left untouched, or one outside the network, is not recorded at all. The router is
+        //  pinged in every case, even past the cap or outside the network.
+        'function SweepPlan([string]$ip, [int]$prefix, [string]$gw, [int]$cap) {',
+        '  $ipn = IpNum $ip; $gn = IpNum $gw; $net, $bc, $first, $last = NetOf $ipn $prefix',
+        '  $blocks = @($ipn - ($ipn % 256)); $g24 = $gn - ($gn % 256); if ($blocks -notcontains $g24) { $blocks += $g24 }',
+        '  $targets = New-Object System.Collections.Generic.List[string]; $swept = @()',
+        '  foreach ($s in $blocks) {',
+        '    $lo = [math]::Max([int64]$s, [int64]$first); $hi = [math]::Min([int64]$s + 255, [int64]$last); $end = $null',
+        '    for ($k = [int64]$lo; $k -le $hi -and $targets.Count -lt $cap; $k++) { $end = $k; if ($k -ne $ipn) { $targets.Add((IpText $k)) } }',
+        "    if ($null -ne $end) { $swept += (IpText $lo) + '-' + (IpText $end) }",
+        '  }',
+        '  if (-not $targets.Contains($gw)) { $targets.Add($gw) }',
+        '  @{ Net = $net; Bc = $bc; First = $first; Last = $last; Targets = $targets; Swept = $swept }',
+        '}',
+    ].join('\r\n');
+}
+
+/** The PowerShell that looks: one line per device, tab-separated. */
+export function networkScanScript(): string {
+    return [
+        //  Arabic network names (an SSID like «بيت العائلة») came back as «????»: Windows
+        //  PowerShell writes to a pipe in the console's old code page unless told UTF-8,
+        //  as windows-desktop.ts and device-link.ts already tell it (2026-11-08).
+        'try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}',
+        "$ErrorActionPreference = 'SilentlyContinue'",
+        sweepMathScript(),
         //  The interfaces that can carry the owner's Wi-Fi or cable: a VPN tunnel, a dial-up
         //  link or the loopback is never the home network, even when it has a gateway.
         '$up = New-Object System.Collections.Generic.List[object]; $byIndex = @{}',
@@ -78,20 +122,15 @@ export function networkScanScript(): string {
         '$ip = $null; $prefix = 24',
         "$addrs = @($nic.GetIPProperties().UnicastAddresses | Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' })",
         'foreach ($u in $addrs) {',
-        '  $p = PrefixOf $u; $size = [int64][math]::Pow(2, 32 - $p); $a = $u.Address.ToString(); $an = IpNum $a',
-        '  if (($an - ($an % $size)) -eq ($gn - ($gn % $size))) { $ip = $a; $prefix = $p; break }',
+        '  $p = PrefixOf $u; $a = $u.Address.ToString(); $an = IpNum $a',
+        '  if (SameNet $an $gn $p) { $ip = $a; $prefix = $p; break }',
         "  if (-not $ip -and -not $a.StartsWith('169.254.')) { $ip = $a; $prefix = $p }",
         '}',
         'if (-not $ip -and $addrs.Count) { $ip = $addrs[0].Address.ToString(); $prefix = PrefixOf $addrs[0] }',
         "if (-not $ip) { 'NONET'; exit }",
-        '$ipn = IpNum $ip; $size = [int64][math]::Pow(2, 32 - $prefix); $net = $ipn - ($ipn % $size); $bc = $net + $size - 1',
-        //  What is pinged: the block of 256 around this computer, and the router's block when it
-        //  is another one, each kept inside the network (a /26 is pinged as the /26 it is). A
-        //  larger network is swept only in part, and the NET line says which part.
-        '$blocks = @($ipn - ($ipn % 256)); $g24 = $gn - ($gn % 256); if ($blocks -notcontains $g24) { $blocks += $g24 }',
-        '$targets = New-Object System.Collections.Generic.List[string]; $swept = @()',
-        `foreach ($s in $blocks) { $lo = [math]::Max([int64]$s, $net + 1); $hi = [math]::Min([int64]$s + 255, $bc - 1); if ($lo -gt $hi) { continue }; $swept += (IpText $lo) + '-' + (IpText $hi); for ($k = [int64]$lo; $k -le $hi -and $targets.Count -lt ${SWEEP_CAP}; $k++) { if ($k -ne $ipn) { $targets.Add((IpText $k)) } } }`,
-        'if (-not $targets.Contains($gw)) { $targets.Add($gw) }',
+        //  A network larger than the two blocks is swept only in part, and the NET line says which
+        //  part: describeNetwork compares it with the network's size.
+        `$plan = SweepPlan $ip $prefix $gw ${SWEEP_CAP}; $first = $plan.First; $last = $plan.Last; $targets = $plan.Targets; $swept = @($plan.Swept)`,
         "'NET' + [char]9 + $ip + [char]9 + $gw + [char]9 + $nic.Name + [char]9 + $(try { (Get-NetConnectionProfile -InterfaceIndex $idx).Name } catch { '' }) + [char]9 + $prefix + [char]9 + ($swept -join ',')",
         '$tasks = New-Object System.Collections.Generic.List[object]',
         'foreach ($a in $targets) { $t = $null; try { $t = (New-Object System.Net.NetworkInformation.Ping).SendPingAsync($a, 500) } catch {}; $tasks.Add($t) }',
@@ -108,7 +147,7 @@ export function networkScanScript(): string {
         "  if (-not $mac -or $mac -match '^(00-00-00-00-00-00|FF-FF-FF-FF-FF-FF|01-00-5E)') { continue }",
         '  if ($a -eq $gw) { $seen[$a] = $mac; continue }',
         "  if ([string]$e.State -eq 'Unreachable') { continue }",
-        '  $n = IpNum $a; if ($n -gt $net -and $n -lt $bc) { $seen[$a] = $mac }',
+        '  if (InNet (IpNum $a) $first $last) { $seen[$a] = $mac }',
         '}',
         "$seen[$ip] = (($nic.GetPhysicalAddress().ToString() -split '(..)' | Where-Object { $_ }) -join '-')",
         "if (-not $seen.ContainsKey($gw)) { $seen[$gw] = '' }",
@@ -219,6 +258,42 @@ export function networkSize(prefix: number): number {
     return prefix >= 31 ? 2 ** (32 - prefix) : 2 ** (32 - prefix) - 2;
 }
 
+/** An IPv4 address as a whole number, as the script's IpNum gives it; NaN when it is not one. */
+export function ipNumber(address: string): number {
+    const m = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/u.exec(String(address || '').trim());
+    if (!m) return NaN;
+    const b = m.slice(1).map(Number);
+    return b.some(x => x > 255) ? NaN : ((b[0] * 256 + b[1]) * 256 + b[2]) * 256 + b[3];
+}
+
+/**
+ * How many of the network's device addresses the swept ranges cover, each
+ * counted once: a range is cut to the network around «ip» (the same first and
+ * last device address as the script's NetOf) and overlaps count once. Plain
+ * arithmetic, no bit operators: JavaScript's are signed 32-bit.
+ */
+export function sweptCount(ip: string, prefix: number, swept: string[]): number {
+    const n = ipNumber(ip);
+    if (!Number.isFinite(n) || !Number.isInteger(prefix) || prefix < 1 || prefix > 32) return 0;
+    const size = 2 ** (32 - prefix);
+    const net = n - (n % size);
+    const first = size <= 2 ? net : net + 1;
+    const last = size <= 2 ? net + size - 1 : net + size - 2;
+    const ranges = (swept || [])
+        .map(r => String(r).split('-').map(ipNumber))
+        .filter(r => r.length === 2 && Number.isFinite(r[0]) && Number.isFinite(r[1]))
+        .map(([lo, hi]) => [Math.max(lo, first), Math.min(hi, last)])
+        .filter(([lo, hi]) => lo <= hi)
+        .sort((a, b) => a[0] - b[0]);
+    let count = 0;
+    let upTo = -1;
+    for (const [lo, hi] of ranges) {
+        const from = Math.max(lo, upTo + 1);
+        if (hi >= from) { count += hi - from + 1; upTo = hi; }
+    }
+    return count;
+}
+
 /**
  * Whose scan it is. «from»: the computer the scan ran on (Joe's own). «insteadOf»:
  * the linked computer the run had chosen with device_use, when it had one.
@@ -237,13 +312,22 @@ export function describeNetwork(scan: { ip: string; gateway: string; network: st
     //  The owner chose another computer and asked for its Wi-Fi (2026-11-08): the scan ran on
     //  Joe's computer, so the answer says whose network it is, never passes it off as the other's.
     const whose = insteadOf
-        ? `This scan is from Joe's computer${from ? ` «${from}»` : ''}, not from «${insteadOf}»: Joe cannot scan the network of a linked computer in this version. If «${insteadOf}» is on the same Wi-Fi, these are its neighbours too; if it is somewhere else, its network is not seen here. Say so to the owner.`
+        ? `This scan is from Joe's computer${from ? ` «${from}»` : ''}, not from «${insteadOf}»: «${insteadOf}» did not scan its own network (its link may be too old: relink it once). If «${insteadOf}» is on the same Wi-Fi, these are its neighbours too; if it is somewhere else, its network is not seen here. Say so to the owner.`
         : from ? `Scanned from «${from}», Joe's own computer.` : '';
-    //  A network larger than a /24 (an office /22, a /16) is swept only around this computer and
-    //  the router: a device elsewhere on it shows only when it talked to this computer recently.
+    //  A network larger than the two blocks swept (an office /22, a /16) is swept only around this
+    //  computer and the router: a device elsewhere on it shows only when it talked to this computer
+    //  recently. The note is written only when the ranges swept are really fewer addresses than the
+    //  network: it was written for every prefix under 24, so a /23 whose computer and router sit in
+    //  different halves, swept whole, was still told «there may be more» (reviewers, 2026-11-08).
+    //  A scan that did not say what it swept (an older script, which swept one /24) keeps the old rule.
     const prefix = Number(scan.prefix) || 24;
-    const part = prefix < 24
-        ? `This network is a /${prefix} (${networkSize(prefix).toLocaleString('en-US')} addresses); Joe pinged only ${scan.swept && scan.swept.length ? scan.swept.join(' and ') : 'the addresses around this computer and the router'}, so a device elsewhere on it is listed only if it talked to this computer recently: there may be more.`
+    const swept = (scan.swept || []).filter(Boolean);
+    const known = swept.length > 0 && Number.isFinite(ipNumber(scan.ip));
+    const size = networkSize(prefix);
+    const covered = known ? sweptCount(scan.ip, prefix, swept) : 0;
+    const inPart = known ? covered < size : prefix < 24;
+    const part = inPart
+        ? `This network is a /${prefix} (${size.toLocaleString('en-US')} addresses); Joe swept only ${known ? `the ${covered.toLocaleString('en-US')} around this computer and the router (${swept.join(' and ')})` : 'the addresses around this computer and the router'}, so a device elsewhere on it is listed only if it talked to this computer recently: there may be more.`
         : '';
     return [
         ...(whose ? [whose] : []),
