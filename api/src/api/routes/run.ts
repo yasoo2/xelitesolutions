@@ -392,6 +392,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), engine: runEngineOf(provider || 'auto', model), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
+    //  Written from the Joe app on one of his phones: «this phone» is that one (linked-phones.ts phoneWrittenFrom).
+    let fromPhone: { id: string; name: string } | undefined;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const p = require('../../core/devices/linked-phones').phoneWrittenFrom(String(userId || ''), req.headers['user-agent']);
+        if (p) fromPhone = { id: String(p.id), name: String(p.name || p.model || '') };
+    } catch { /* no linked phones here */ }
+
     try {
         const traceId = traceManager.startTrace(runSessionId, executionText);
         
@@ -410,6 +418,7 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             //  What he typed, apart from the goal the run carries (a resumed goal, a file's
             //  block): an answer to Joe's question is read on his words (select.ts, 2026-11-08).
             ownerText: submittedText,
+            ...(fromPhone ? { fromPhone } : {}),
             userId,
             userName,
             systemInstructions,

@@ -14,7 +14,7 @@ import os from 'os';
 import path from 'path';
 import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
-import { AndroidPhone, connectPhone, describeAndroid, describeScreen, pairPhone, parseDevices, parseMdns, type AdbRunner } from '../../../core/devices/android';
+import { AndroidPhone, connectPhone, describeAndroid, describeScreen, JOE_APP_PACKAGE, pairPhone, parseDevices, parseMdns, type AdbRunner } from '../../../core/devices/android';
 
 const EXE = process.platform === 'win32' ? 'adb.exe' : 'adb';
 
@@ -143,7 +143,96 @@ function linkPhoneApp(name: string, baseIn?: unknown): ToolExecutionResult {
     }
 }
 
-const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel', 'clear', 'email', 'uri']);
+/*
+ * THE JOE APP OVER THE LINE JOE ALREADY HAS.
+ *
+ * The owner, 2026-11-08: Joe on his laptop listens on this computer alone,
+ * so no phone reaches it over the Wi-Fi — and he chose, for now, the private
+ * way: the phone paired once by Wireless debugging (or on the cable). Joe
+ * then does it all himself: installs the app (adb install: no «unknown
+ * sources», no «restricted settings»), opens a tunnel only this phone uses
+ * (adb reverse: the phone's own 127.0.0.1:<port> is this Joe; nothing opens
+ * on the network), and opens the app with Joe's address and a fresh code
+ * filled in. Tapping «Link» and allowing the two permissions stay the
+ * owner's. The tunnel comes back by itself whenever the phone reconnects
+ * (keepJoeAppTunnels, modules/services/PhoneTunnelService.ts).
+ */
+export async function installJoeAppOverAdb(run: AdbRunner, serial: string, name: string, model: string): Promise<ToolExecutionResult> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { phoneApkFile } = require('../../../api/routes/phones');
+    const apk = phoneApkFile();
+    if (!fs.existsSync(apk)) return fail('The Joe app is not built on this Joe yet (mobile/android/build-joe-phone.ps1 builds it), so there is nothing to install.');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const owner = String(require('../../../orchestration/AgentExecutionFirewall').executionFirewall.currentOwner?.()?.userId || '');
+    if (!owner) return fail('Joe does not know whose phone this is: link it from the owner\'s own chat');
+    const phone = new AndroidPhone(run, serial);
+    const label = model || serial;
+    const had = await phone.hasPackage(JOE_APP_PACKAGE);
+    const inst = await phone.installApk(apk);
+    if (!inst.ok) {
+        return fail(`The Joe app did not install on «${label}»: ${inst.error}. If the phone asked something on its screen (Samsung's «Auto Blocker», «Install via USB» or a Play Protect question), the owner answers it there, then ask again.`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { config } = require('../../../shared/config');
+    const port = Number(config.port || 5000);
+    const t = await phone.tunnel(port);
+    if (!t.ok) return fail(`The Joe app is on «${label}», but the private tunnel to Joe did not open: ${t.error}`);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const tunnels = require('../../../core/devices/phone-tunnels');
+    tunnels.keepTunnelFor(await phone.hardwareSerial() || serial, label);
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { newPhonePairing } = require('../../../core/devices/linked-phones');
+    const p = newPhonePairing(owner, name || model);
+    const server = `http://127.0.0.1:${port}`;
+    if (await phone.awake().catch(() => null) === false) {
+        await phone.key('wakeup');
+        await new Promise(r => setTimeout(r, 400));
+    }
+    const opened = await phone.openJoeLink(server, p.code);
+    return ok([
+        `APP_LINK\t${p.code}\t${p.until}\t${server}`,
+        `The Joe app is ${had ? 'updated' : 'installed'} on «${label}», and a private tunnel joins it to this Joe (the phone's own ${server}; nothing opens on the network). ${opened.ok
+            ? 'It is open on the phone\'s screen with Joe\'s address and the code filled in.'
+            : `It did not open by itself (${opened.error}): the owner opens «جو» from his apps and types the address ${server} and the code ${p.code}.`}`,
+        `Tell the owner, in his language, what is left for him on the phone: tap «Link» («اربط») in the Joe app, then turn on the two permissions it lists: accessibility (Joe reads and taps the screen) and notification access (Joe hears replies). The code works once, for ten minutes.`,
+        'Then android_devices lists the phone as app:<id>, and every android_ tool works on it through the app.',
+    ].join('\n'), { code: p.code, until: p.until, base: server, installed: true });
+}
+
+/**
+ * The tunnel of every phone Joe put his app on comes back when the phone
+ * does: adb's line to a phone on Wireless debugging drops with the Wi-Fi or
+ * a restart, and the tunnel with it. A phone is looked at when it appears,
+ * then every five minutes; only the phones in core/devices/phone-tunnels.ts.
+ * Returns the serials a tunnel was opened for.
+ */
+export async function keepJoeAppTunnels(seen: Map<string, { at: number; phone: string }>, port: number, now = Date.now(), runIn?: AdbRunner): Promise<string[]> {
+    const adb = runIn ? 'given' : findAdb();
+    if (!adb) { seen.clear(); return []; }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const tunnels = require('../../../core/devices/phone-tunnels');
+    if (!tunnels.tunnelPhones().length) return [];
+    const run = runIn || gatewayAdb(adb);
+    const ready = parseDevices((await run(['devices', '-l'], { timeoutMs: 15_000 })).stdout).filter(d => d.state === 'device');
+    for (const s of [...seen.keys()]) if (!ready.some(d => d.serial === s)) seen.delete(s);
+    const opened: string[] = [];
+    for (const d of ready) {
+        const last = seen.get(d.serial);
+        if (last && now - last.at < 5 * 60_000) continue;
+        const phone = new AndroidPhone(run, d.serial);
+        const hw = last?.phone || await phone.hardwareSerial() || d.serial;
+        seen.set(d.serial, { at: now, phone: hw });
+        if (!tunnels.isTunnelPhone(hw) && !tunnels.isTunnelPhone(d.serial)) continue;
+        if (await phone.hasTunnel(port)) continue;
+        if (!(await phone.hasPackage(JOE_APP_PACKAGE))) continue;
+        if ((await phone.tunnel(port)).ok) opened.push(d.serial);
+    }
+    return opened;
+}
+
+const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel', 'clear', 'email', 'uri', 'torch', 'volume']);
+/** What only the Joe app does directly: with a phone online through it, it goes there even when adb also reaches one. */
+const APP_FIRST = new Set(['torch']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
 const fail = (text: string) => ({ ok: false, error: text, output: { text } }) as any;
@@ -156,7 +245,7 @@ export class EngineAndroidTool implements ToolDefinition {
     readonly inputSchema = {
         type: 'object',
         properties: {
-            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps | panel | clear | email | uri' },
+            op: { type: 'string', description: 'devices | read | look | tap | swipe | key | type | open | apps | panel | clear | email | uri | torch | volume | app_link' },
             serial: { type: 'string', description: 'The phone, as devices lists it; absent when only one is connected.' },
         },
         required: ['op'],
@@ -175,9 +264,23 @@ export class EngineAndroidTool implements ToolDefinition {
         //  cable phone is there: the same operation goes to the app, from anywhere (phone-link.ts).
         const apps = appPhonesOnline();
         const wantsApp = String(input?.serial || '').trim().startsWith('app:');
-        if (op === 'app_link') return linkPhoneApp(String(input?.name || ''), input?.base);
+        if (op === 'app_link') {
+            //  A phone Joe already reaches by adb (the cable, or Wireless debugging): Joe puts the app on it himself.
+            const adbHere = wantsApp ? null : findAdb();
+            if (adbHere) {
+                const run = gatewayAdb(adbHere);
+                const ready = parseDevices((await run(['devices', '-l'], { timeoutMs: 20_000 })).stdout).filter(d => d.state === 'device');
+                const asked = String(input?.serial || '').trim();
+                const pick = asked ? ready.find(d => d.serial === asked) : ready.length === 1 ? ready[0] : undefined;
+                if (pick) return installJoeAppOverAdb(run, pick.serial, String(input?.name || ''), pick.model || pick.product || '');
+                if (asked) return fail(`The phone «${asked}» is not connected and allowed: call android_devices.`);
+                if (ready.length > 1) return fail(`More than one phone is connected (${ready.map(d => `${d.serial} ${d.model || ''}`.trim()).join(', ')}): name the one to put the Joe app on with "serial".`);
+            }
+            return linkPhoneApp(String(input?.name || ''), input?.base);
+        }
         const adb = findAdb();
         if (wantsApp || (!adb && op !== 'devices' && apps.length)) return runOnApp(op, input, apps);
+        if (APP_FIRST.has(op) && apps.length && !String(input?.serial || '').trim()) return runOnApp(op, input, apps);
         if (!adb) return apps.length ? ok(describeAppPhones(apps)) : fail(NO_ADB);
         const run = gatewayAdb(adb);
         if (op === 'pair') {
@@ -292,6 +395,14 @@ export class EngineAndroidTool implements ToolDefinition {
                 return r.ok ? done() : fail(r.error || 'nothing opened it');
             }
             case 'apps': return ok((await phone.apps()).join('\n') || 'No app the owner installed was listed.');
+            case 'torch':
+                //  adb has no flashlight command every phone answers: the quick settings tile does it.
+                return fail(`«${serial}» is reached by adb, which has no flashlight command: open the quick settings (android_panel "quick_settings"), android_read, and tap the flashlight tile. With the Joe app on the phone (android_link_app), android_torch turns it on directly.`);
+            case 'volume': {
+                const level = input?.level === undefined || input?.level === null || input?.level === '' ? undefined : Number(input.level);
+                const r = await phone.volume(String(input?.stream || 'media'), { level, change: String(input?.change || '') });
+                return r.ok ? ok(r.text || 'OK') : fail(r.error || 'the volume did not change');
+            }
         }
         return fail('engine_android: unreachable');
     }

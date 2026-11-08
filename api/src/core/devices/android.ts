@@ -421,4 +421,88 @@ export class AndroidPhone {
         const r = await this.run(['shell', 'pm', 'list', 'packages', '-3']);
         return r.stdout.split(/\r?\n/u).map(l => l.replace(/^package:/u, '').trim()).filter(Boolean).sort();
     }
+
+    /**
+     * A sound's level through Android's own volume command (cmd media_session
+     * volume, «media volume» on older phones): stream media | ring | alarm |
+     * notification | call; level 0–100, or change up | down | mute.
+     */
+    async volume(stream: string, want: { level?: number; change?: string }): Promise<{ ok: boolean; text?: string; error?: string }> {
+        const n = VOLUME_STREAMS[String(stream || 'media').toLowerCase()] ?? 3;
+        const vol = async (args: string[]) => {
+            let r = await this.run(['shell', 'cmd', 'media_session', 'volume', '--stream', String(n), ...args], { timeoutMs: 15_000 });
+            if (/Unknown command|Can't find service|not found/iu.test(r.stdout + r.stderr)) r = await this.run(['shell', 'media', 'volume', '--stream', String(n), ...args], { timeoutMs: 15_000 });
+            return r;
+        };
+        const read = async () => {
+            const m = /volume is (\d+) in range \[(\d+)\.\.(\d+)\]/u.exec((await vol(['--get'])).stdout);
+            return m ? { now: Number(m[1]), min: Number(m[2]), max: Number(m[3]) } : null;
+        };
+        const change = String(want.change || '').toLowerCase();
+        if (typeof want.level === 'number' && Number.isFinite(want.level)) {
+            const r0 = await read();
+            if (!r0) return { ok: false, error: 'this phone did not say its volume range' };
+            const pct = Math.max(0, Math.min(100, want.level));
+            await vol(['--show', '--set', String(Math.round(r0.min + (r0.max - r0.min) * pct / 100))]);
+        } else if (change === 'up' || change === 'down') {
+            await vol(['--show', '--adj', change === 'up' ? 'raise' : 'lower']);
+        } else if (change === 'mute') {
+            const r0 = await read();
+            await vol(['--show', '--set', String(r0?.min ?? 0)]);
+        } else if (change) return { ok: false, error: 'change is up, down or mute' };
+        const r1 = await read();
+        if (!r1) return { ok: false, error: 'this phone did not say its volume' };
+        const name = Object.keys(VOLUME_STREAMS).find(k => VOLUME_STREAMS[k] === n) || 'media';
+        return { ok: true, text: `The ${name} volume is ${Math.round((r1.now - r1.min) * 100 / Math.max(1, r1.max - r1.min))}% (${r1.now} of ${r1.max}).` };
+    }
+
+    /* ───────────── the Joe app, put on a phone Joe already reaches (EngineAndroidTool installJoeAppOverAdb) ───────────── */
+
+    /** Whether an app is on the phone. */
+    async hasPackage(pkg: string): Promise<boolean> {
+        const r = await this.run(['shell', 'pm', 'path', pkg], { timeoutMs: 15_000 });
+        return r.code === 0 && /^package:/mu.test(r.stdout);
+    }
+
+    /** The phone's own serial number: the same on the cable and on Wi-Fi, whatever address adb gives it. */
+    async hardwareSerial(): Promise<string> {
+        for (const prop of ['ro.serialno', 'ro.boot.serialno']) {
+            const r = await this.run(['shell', 'getprop', prop], { timeoutMs: 15_000 });
+            const s = r.code === 0 ? r.stdout.trim() : '';
+            if (/^[\w.-]{4,64}$/u.test(s) && !/^unknown$/iu.test(s)) return s;
+        }
+        return '';
+    }
+
+    /** Installs (or updates) an app from a file on this computer; its runtime permissions granted (-g). */
+    async installApk(file: string): Promise<{ ok: boolean; error?: string }> {
+        const r = await this.run(['install', '-r', '-g', file], { timeoutMs: 240_000 });
+        return /\bSuccess\b/u.test(r.stdout) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'the install did not finish').trim().slice(-400) };
+    }
+
+    /** The phone's own 127.0.0.1:port reaches this computer's port, through adb alone: nothing opens on the network. */
+    async tunnel(port: number): Promise<{ ok: boolean; error?: string }> {
+        if (!Number.isInteger(port) || port < 1 || port > 65535) return { ok: false, error: `no port ${port}` };
+        const r = await this.run(['reverse', `tcp:${port}`, `tcp:${port}`], { timeoutMs: 15_000 });
+        return r.code === 0 ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'no tunnel').trim() };
+    }
+
+    async hasTunnel(port: number): Promise<boolean> {
+        const r = await this.run(['reverse', '--list'], { timeoutMs: 15_000 });
+        return r.code === 0 && r.stdout.includes(`tcp:${port} tcp:${port}`);
+    }
+
+    /** Opens the Joe app with Joe's address and a link code filled in (joe://link); the owner taps «Link» himself. */
+    async openJoeLink(server: string, code: string): Promise<{ ok: boolean; error?: string }> {
+        if (!/^https?:\/\/[\w.:[\]-]+$/u.test(server) || !/^\d{6}$/u.test(code)) return { ok: false, error: 'not an address and code the Joe app takes' };
+        const uri = `joe://link?server=${encodeURIComponent(server)}&code=${code}`;
+        const r = await this.run(['shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `'${uri}'`, '-p', JOE_APP_PACKAGE]);
+        return r.code === 0 && !/Error|unable to resolve/iu.test(r.stdout + r.stderr) ? { ok: true } : { ok: false, error: (r.stderr || r.stdout || 'the Joe app did not open').trim() };
+    }
 }
+
+/** The Joe app's package (mobile/android). */
+export const JOE_APP_PACKAGE = 'ai.joe.phone';
+
+/** Android's audio streams by the names Joe uses. */
+export const VOLUME_STREAMS: Record<string, number> = { call: 0, ring: 2, media: 3, alarm: 4, notification: 5 };

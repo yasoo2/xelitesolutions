@@ -167,6 +167,22 @@ export function keptPhones(ownerId: string): KeptPhone[] {
     return (load()?.phones || []).filter(p => p.ownerId === ownerId).map(p => ({ ...p }));
 }
 
+/**
+ * THE PHONE THE OWNER IS WRITING FROM.
+ *
+ * The owner, 2026-11-08: «users open Joe on their phones and tell it: Joe,
+ * turn on the flashlight» — the phone they hold. The Joe app opens Joe's chat
+ * in a page whose user agent ends with «JoePhone/<id>» (mobile/android
+ * MainActivity). Only one of this owner's own linked phones counts: anything
+ * else in a user agent is nobody's phone.
+ */
+export function phoneWrittenFrom(ownerId: string, userAgent: unknown): KeptPhone | null {
+    const m = /\bJoePhone\/([A-Za-z0-9_-]{4,80})/u.exec(String(userAgent || ''));
+    if (!m || !ownerId) return null;
+    const p = (load()?.phones || []).find(x => x.ownerId === ownerId && x.id === m[1].toLowerCase());
+    return p ? { ...p } : null;
+}
+
 /** The owner's phone by its exact id or exact name (nameKey); nothing looser — this is what forgetting goes by. */
 export function exactKeptPhone(ownerId: string, idOrName: string): KeptPhone | null {
     const raw = String(idOrName ?? '').trim().toLowerCase().replace(/^app:/u, '');

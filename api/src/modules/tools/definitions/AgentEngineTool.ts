@@ -47,6 +47,19 @@ import { mailWatchFacts } from '../../../core/devices/mail-watch';
 import { chatTurnsText, ownerWords, recentChatTurns, requestWords } from '../../../core/engine/chat-history';
 import fs from 'fs';
 
+/**
+ * Written from the Joe app on one of his phones (api/routes/run.ts): the run
+ * is told which, so «this phone», «my phone» and «the flashlight» mean the
+ * phone in his hand, not another one Joe reaches.
+ */
+export function phoneWrittenFromFact(from: unknown): string {
+    const p = from && typeof from === 'object' ? from as { id?: unknown; name?: unknown } : null;
+    const id = p && typeof p.id === 'string' && /^[A-Za-z0-9_-]{4,80}$/u.test(p.id) ? p.id : '';
+    if (!id) return '';
+    const name = typeof p!.name === 'string' && p!.name.trim() ? `«${p!.name.trim().slice(0, 60)}» ` : '';
+    return `THE OWNER IS WRITING FROM HIS PHONE ${name}(app:${id}), in the Joe app on it. «This phone», «my phone», «here», and anything he asks to do on a phone (the flashlight, the volume, an app, his emails…) mean this one: pass "serial": "app:${id}" to the android_ tools.`;
+}
+
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
 const DEADLINE_MARGIN_MS = 2 * 60_000;
 
@@ -104,6 +117,7 @@ async function runOperate(o: {
             chatTurnsText(await recentChatTurns(o.context.sessionId, 12), own),
             deviceWorkFacts(o.context.sessionId).trim(),
             mailWatchFacts().trim(),
+            phoneWrittenFromFact(o.context.fromPhone),
             pending ? `JOE'S LAST QUESTION, which the owner's message above was read as answering: «${pending.question}» (it was about: «${pending.request}»). Go on with that work as he answered. If his message asks for something else instead, do that, and do not do what the question was about.` : '',
         ].filter(Boolean).join('\n\n');
         if (pending) answeredQuestion(o.context.sessionId);

@@ -457,7 +457,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; ownerText?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
+    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; ownerText?: string; fromPhone?: { id: string; name: string }; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -762,6 +762,8 @@ export class AgentLoopService {
                     //  his files' block. An answer to Joe's waiting question is read on these
                     //  words, and the chat so far leaves them out once (select.ts, 2026-11-08).
                     ownerText: String(options.ownerText ?? goal).trim() || undefined,
+                    //  Written from the Joe app on one of his phones (api/routes/run.ts): «this phone» is it.
+                    ...(options.fromPhone ? { fromPhone: options.fromPhone } : {}),
                     modelConfig,
                     memoryContext,
                     language,
