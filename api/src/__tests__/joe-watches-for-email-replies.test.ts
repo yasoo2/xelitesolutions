@@ -260,3 +260,32 @@ describe('the notice reaches the owner in any chat, and only him', () => {
         expect(ws.liveEventSessionId({ type: 'joe_notice', data: { chatId: 'chat-1' } })).toBe('');
     });
 });
+
+describe('the owner asks Joe to tell him when someone writes', () => {
+    test.each([
+        'انتظر حتى ترد واعلمني',
+        'اذا رد عليك اخبرني',
+        'خبرني لما يوصلني ايميل من احمد',
+        'تابع ردود شروق',
+        'راقب بريدي واذا وصل شي من المدير نبهني',
+        'ارسل ايميل لشروق واخبرني اذا ردت',
+        'let me know when she replies',
+        'watch for an email from Ahmad',
+    ])('«%s» is a watch on the mail', t => {
+        const { isMailWatchRequest } = require('../core/engine/tools/mail');
+        expect(isMailWatchRequest(t)).toBe(true);
+    });
+
+    test.each([
+        'تابع',
+        'تابع كتابة الإيميل',
+        'اخبرني ما الرد المناسب على رسالتها',
+        'اكتب لي ايميل لشروق',
+        'tell me the answer',
+        'write an email to Ahmad',
+        'ابني موقع فيه نموذج يرسل ايميل',
+    ])('«%s» is not', t => {
+        const { isMailWatchRequest } = require('../core/engine/tools/mail');
+        expect(isMailWatchRequest(t)).toBe(false);
+    });
+});
