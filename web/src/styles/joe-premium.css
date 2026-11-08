@@ -394,6 +394,11 @@ html[data-theme="light"] .joe-notice-icon { color: #047857; }
 html[data-theme="light"] .joe-notice-open { background: #047857; color: #ffffff; }
 html[data-theme="light"] .joe-notice-open:hover { background: #065f46; }
 @media (max-width: 720px) { .joe-notice-subject { display: none; } }
+/* The phone the watch reads from is lost: amber, not green. */
+.joe-notice-banner.is-warning { border-color: rgba(245, 158, 11, 0.5); background: rgba(245, 158, 11, 0.12); }
+.joe-notice-banner.is-warning .joe-notice-icon { color: #f59e0b; }
+html[data-theme="light"] .joe-notice-banner.is-warning { color: #78350f; background: rgba(245, 158, 11, 0.12); border-color: rgba(180, 83, 9, 0.45); }
+html[data-theme="light"] .joe-notice-banner.is-warning .joe-notice-icon { color: #b45309; }
 @keyframes joe-notice-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
 @media (prefers-reduced-motion: reduce) { .joe-notice-banner { animation: none; } }
 

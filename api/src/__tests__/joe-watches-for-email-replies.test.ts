@@ -369,3 +369,26 @@ describe('what he asked before Joe could watch is not forgotten', () => {
         expect(backfillWatchesFromChats([{ id: 'x1', sessionId: 's', role: 'user', content: 'ابني موقع لمطعم بريده info@rest.com', at: now - H }], now)).toEqual([]);
     });
 });
+
+describe('a watch that cannot see the phone says so', () => {
+    test('after two looks without the phone the owner is told once; when it is back, he is told again', async () => {
+        const { MailWatchService } = require('../modules/services/MailWatchService');
+        mw.watchReplies('chat-1', { to: ['shoroq.suwan@gmail.com'], userId: 'owner-1' }, T0);
+        let connected = false;
+        const said: string[] = [];
+        const svc = new MailWatchService(
+            async () => (connected ? { ok: true, dumps: [{ serial: 'TECNO', text: dump([]) }] } : { ok: false, code: 'no_phone', error: 'No phone' }),
+            async () => { /* no reply */ },
+            async (state: string, watches: any[]) => { said.push(`${state}:${watches.map(w => w.sessionId).join(',')}`); },
+        );
+        await svc.tick(T0 + 1000);
+        expect(said).toEqual([]);
+        await svc.tick(T0 + 31_000);
+        await svc.tick(T0 + 61_000);
+        expect(said).toEqual(['lost:chat-1']);
+        connected = true;
+        await svc.tick(T0 + 91_000);
+        await svc.tick(T0 + 121_000);
+        expect(said).toEqual(['lost:chat-1', 'back:chat-1']);
+    });
+});
