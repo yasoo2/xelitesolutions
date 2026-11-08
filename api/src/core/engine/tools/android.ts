@@ -335,7 +335,31 @@ export const androidLinkTool: EngineTool<{ uri: string; package?: string; serial
     },
 };
 
+/*
+ * ANY ANDROID, FROM ANYWHERE: THE JOE APP.
+ *
+ * The owner, 2026-11-08: «why doesn't Joe work with every phone?» — his
+ * Samsung needed a driver on the cable. The Joe app links any Android phone
+ * or tablet once, with a six-digit code, and calls Joe over the internet by
+ * itself; every android_ tool then works on it as «app:<id>».
+ */
+export const androidLinkAppTool: EngineTool<{ name?: string }> = {
+    name: 'android_link_app',
+    description: 'Link a phone or tablet (any Android, any maker) to Joe for good through the Joe app, so Joe reaches it from anywhere with no cable and no driver: gives a six-digit code and the steps to tell the owner (download the app from Joe, type the code, allow two permissions). Use it when he asks to link or connect his phone through the app, or when a phone on the cable cannot be reached.',
+    parameters: { type: 'object', properties: { name: { type: 'string', description: 'The name the owner calls the phone («جوالي», «تابلت البيت»), if he named it.' } } },
+    parse: raw => {
+        const a = obj(raw);
+        return { ok: true, value: typeof a.name === 'string' && a.name.trim() ? { name: a.name.trim().slice(0, 60) } : {} };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'app_link', ...(a.name ? { name: a.name } : {}) });
+        did(ctx, 'android_link_app', r.ok, `phone app link code${a.name ? ` for «${a.name}»` : ''}`);
+        return { ok: r.ok, output: r.ok ? r.text.split('\n').slice(1).join('\n') : `android_link_app failed: ${r.text}` };
+    },
+};
+
 export const androidTools: EngineTool[] = [
     androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
     androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool, androidEmailTool, androidClearTool, androidLinkTool,
+    androidLinkAppTool,
 ];

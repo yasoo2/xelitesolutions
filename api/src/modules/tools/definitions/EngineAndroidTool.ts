@@ -54,6 +54,95 @@ export async function unreachableUsbPhones(): Promise<string> {
     } catch { return ''; }
 }
 
+/* ───────────── phones linked through the Joe app (core/devices/phone-link.ts) ───────────── */
+
+type AppPhone = { id: string; name: string; model: string; android: string; since: number; ownerId: string };
+
+/** The owner's phones online through the Joe app (every owner's when no run names one). */
+function appPhonesOnline(): AppPhone[] {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { phoneLinks } = require('../../../core/devices/phone-link');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const owner = String(require('../../../orchestration/AgentExecutionFirewall').executionFirewall.currentOwner?.()?.userId || '');
+        return phoneLinks.list(owner || undefined);
+    } catch { return []; }
+}
+
+function describeAppPhones(apps: AppPhone[]): string {
+    return apps.map(a => `- app:${a.id} «${a.name}» (${[a.model, a.android ? `Android ${a.android}` : ''].filter(Boolean).join(', ') || 'Android'}): online through the Joe app — every android_ tool works on it, from anywhere, with "serial": "app:${a.id}" (or with no serial when it is the only phone).`).join('\n');
+}
+
+/**
+ * One operation on a phone through its Joe app: the same answers as a phone
+ * on the cable, so every android_ tool reads them the same way.
+ */
+async function runOnApp(op: string, input: any, apps: AppPhone[]): Promise<ToolExecutionResult> {
+    if (op === 'devices') return ok(describeAppPhones(apps));
+    if (op === 'pair' || op === 'connect') return fail('pairing by code is for Wireless debugging; a phone with the Joe app is linked already');
+    const serial = String(input?.serial || '').trim();
+    const want = serial.startsWith('app:') ? serial.slice(4) : '';
+    const target = want ? apps.find(a => a.id === want || a.name === want) : apps.length === 1 ? apps[0] : null;
+    if (!target) {
+        return fail(want ? `The phone «${want}» is not online through the Joe app now: its app is closed, or it has no internet.`
+            : `More than one phone is online through the Joe app (${apps.map(a => `app:${a.id} «${a.name}»`).join(', ')}): name one with "serial".`);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { phoneLinks } = require('../../../core/devices/phone-link');
+    const { op: _op, serial: _serial, file: _file, ...args } = input || {};
+    const r = await phoneLinks.ask(target.id, op, args, op === 'look' ? 30_000 : 20_000);
+    if (!r.ok) return fail(`«${target.name}»: ${r.error || 'the phone refused'}`);
+    const d = r.data || {};
+    const state = d.screen ? describeScreen(d.screen) : '';
+    switch (op) {
+        case 'read': {
+            const controls = Array.isArray(d.controls) ? d.controls : [];
+            return ok([state, describeAndroid(controls)].filter(Boolean).join('\n\n'), { controls });
+        }
+        case 'look': {
+            const file = String(input?.file || '');
+            if (!file) return fail('engine_android look needs a file to keep the picture in');
+            const png = Buffer.from(String(d.png || ''), 'base64');
+            if (png.length < 24 || png.readUInt32BE(0) !== 0x89504e47) return fail(`«${target.name}» sent no picture${d.error ? `: ${d.error}` : ''}`);
+            fs.mkdirSync(path.dirname(file), { recursive: true });
+            fs.writeFileSync(file, png);
+            return ok(`PICTURE\t${png.readUInt32BE(16)}\t${png.readUInt32BE(20)}${state ? `\n${state}` : ''}`);
+        }
+        case 'apps': return ok(Array.isArray(d.apps) ? d.apps.join('\n') : String(d.text || ''));
+        default: return ok(`${d.woke ? 'The screen was asleep: Joe woke it first. ' : ''}${String(d.text || 'OK')}`);
+    }
+}
+
+/**
+ * A code for the Joe app on a phone: six digits, ten minutes, once. The app
+ * is downloaded from this Joe (/api/phones/app.apk) and links with the code.
+ */
+function linkPhoneApp(name: string, baseIn?: unknown): ToolExecutionResult {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { newPhonePairing } = require('../../../core/devices/linked-phones');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const owner = String(require('../../../orchestration/AgentExecutionFirewall').executionFirewall.currentOwner?.()?.userId || '');
+        if (!owner) return fail('Joe does not know whose phone this is: link it from the owner\'s own chat');
+        const p = newPhonePairing(owner, name);
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { reachableBase } = require('../../../core/devices/device-link');
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { config } = require('../../../shared/config');
+        const base = typeof baseIn === 'string' && /^https?:\/\//u.test(baseIn) ? baseIn.replace(/\/+$/u, '') : reachableBase('http', `127.0.0.1:${config.port || 5000}`).http;
+        return ok([
+            `APP_LINK\t${p.code}\t${p.until}\t${base}`,
+            `Tell the owner, in his language, these steps for the phone or tablet (any Android, any maker):`,
+            `1. On the phone, open ${base}/api/phones/app.apk in its browser, download the Joe app and install it (Android asks to allow installing from the browser once).`,
+            `2. Open the Joe app; type Joe's address ${base} and the code ${p.code} (it works once, for ten minutes).`,
+            `3. In the app, turn on the two permissions it asks for: accessibility (so Joe can read and tap the screen) and notification access (so Joe hears replies). If Android says a setting is «restricted»: App info › ⋮ › «Allow restricted settings», then try again.`,
+            `Then android_devices lists the phone as app:<id>, online from anywhere.`,
+        ].join('\n'), { code: p.code, until: p.until, base });
+    } catch (e: any) {
+        return fail(`no code could be made: ${e?.message || e}`);
+    }
+}
+
 const OPS = new Set(['devices', 'read', 'look', 'tap', 'swipe', 'key', 'type', 'open', 'apps', 'pair', 'connect', 'panel', 'clear', 'email', 'uri']);
 const n = (v: unknown) => (Number.isFinite(Number(v)) ? Math.round(Number(v)) : NaN);
 const ok = (text: string, extra: Record<string, unknown> = {}) => ({ ok: true, output: { text, ...extra } }) as any;
@@ -81,9 +170,15 @@ export class EngineAndroidTool implements ToolDefinition {
 
     async execute(input: any): Promise<ToolExecutionResult> {
         const op = String(input?.op || '');
-        if (!OPS.has(op)) return fail(`engine_android: unknown action «${op}»`);
+        if (!OPS.has(op) && op !== 'app_link') return fail(`engine_android: unknown action «${op}»`);
+        //  A phone linked through the Joe app («app:<id>»), or the only phone the owner has when no
+        //  cable phone is there: the same operation goes to the app, from anywhere (phone-link.ts).
+        const apps = appPhonesOnline();
+        const wantsApp = String(input?.serial || '').trim().startsWith('app:');
+        if (op === 'app_link') return linkPhoneApp(String(input?.name || ''), input?.base);
         const adb = findAdb();
-        if (!adb) return fail(NO_ADB);
+        if (wantsApp || (!adb && op !== 'devices' && apps.length)) return runOnApp(op, input, apps);
+        if (!adb) return apps.length ? ok(describeAppPhones(apps)) : fail(NO_ADB);
         const run = gatewayAdb(adb);
         if (op === 'pair') {
             const r = await pairPhone(run, String(input?.address || '').trim(), String(input?.code || '').trim());
@@ -106,10 +201,13 @@ export class EngineAndroidTool implements ToolDefinition {
             }
             //  A phone on the cable that adb does not list: Windows says why (core/devices/phone-usb.ts, 2026-11-08).
             const usb = listed.some(d => d.state === 'device') ? '' : await unreachableUsbPhones();
-            if (!lines.length) return ok(usb || 'No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
-            return ok([lines.join('\n'), usb].filter(Boolean).join('\n\n'));
+            const viaApp = apps.length ? describeAppPhones(apps) : '';
+            if (!lines.length && !viaApp) return ok(usb || 'No phone is connected or visible on this network. Tell the owner: plug the phone in by cable with USB debugging on, or turn on Wireless debugging (Settings › Developer options) on the same Wi-Fi and open «Pair device with pairing code»; then ask Joe again.');
+            return ok([lines.join('\n'), viaApp, usb].filter(Boolean).join('\n\n'));
         }
         const ready = listed.filter(d => d.state === 'device');
+        //  No phone on the cable, and the owner's phone is online through the Joe app: the app does it.
+        if (!String(input?.serial || '').trim() && !ready.length && apps.length) return runOnApp(op, input, apps);
         const serial = String(input?.serial || '').trim() || (ready.length === 1 ? ready[0].serial : '');
         if (!serial) return fail(ready.length ? `More than one phone is connected (${ready.map(d => d.serial).join(', ')}): name one with "serial".` : 'No phone is connected and allowed: call devices to see why.');
         if (!ready.some(d => d.serial === serial)) return fail(`The phone «${serial}» is not connected and allowed.`);
