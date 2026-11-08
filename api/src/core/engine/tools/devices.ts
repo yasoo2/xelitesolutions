@@ -317,18 +317,20 @@ export const deviceComputersTool: EngineTool<Record<string, never>> = {
 };
 
 /**
- * Every device on the owner's Wi-Fi, from this computer (core/devices/
- * network-scan.ts). The owner, 2026-11-08: «are there devices on the same
- * Wi-Fi?» got instructions to type `arp -a` himself.
+ * Every device on the owner's Wi-Fi (core/devices/network-scan.ts). The
+ * owner, 2026-11-08: «are there devices on the same Wi-Fi?» got instructions
+ * to type `arp -a` himself.
  *
  * Through device(), like every other device_ tool, so the computer chosen
  * with device_use travels with it: the scan called the gateway directly and
  * answered with Joe's own network as if it were the chosen computer's
- * (2026-11-08). engine_device says whose network it saw.
+ * (2026-11-08). With a linked computer chosen, engine_device runs the scan ON
+ * that computer (device-link.ts scanNetwork); one linked before that change
+ * must be relinked once, and nothing else is scanned in its place.
  */
 export const networkDevicesTool: EngineTool<Record<string, never>> = {
     name: 'network_devices',
-    description: 'List every device on the owner\'s Wi-Fi / home network now, seen from Joe\'s own computer: each address with its maker and what it most likely is (router, phone, TV, printer, smart device, computer), and which of them Joe can control. Use it when he asks what is on his Wi-Fi or network, how many devices, or to check or scan it. After device_use of another computer it still scans from Joe\'s computer, and its answer says so. Takes about ten seconds.',
+    description: 'List every device on the owner\'s Wi-Fi / home network now: each address with its maker and what it most likely is (router, phone, TV, printer, smart device, computer), and which of them Joe can control. Use it when he asks what is on his Wi-Fi or network, how many devices, or to check or scan it. It scans the network of the computer device_use chose: Joe\'s own computer, or a linked computer (then the scan runs ON that computer and lists ITS network; a computer linked before this could must be relinked once, and the answer says so). Takes about ten seconds.',
     parameters: { type: 'object', properties: {} },
     parse: () => ({ ok: true, value: {} }),
     async run(_a, ctx): Promise<ToolOutcome> {
@@ -464,7 +466,7 @@ export const deviceUseTool: EngineTool<{ computer: string }> = {
  */
 export const deviceForgetTool: EngineTool<{ computer: string }> = {
     name: 'device_forget',
-    description: 'Unlink one of the owner\'s computers FOR GOOD, only when he asks for exactly that («افصل … نهائياً», "unlink … for good"): Joe forgets it, and its agent removes itself from that computer. Name it as device_computers lists it.',
+    description: 'Unlink one of the owner\'s computers FOR GOOD, only when he asks for exactly that («افصل … نهائياً», "unlink … for good"): Joe forgets it, and its agent removes itself from that computer. Give its EXACT name as device_computers lists it: any other name unlinks nothing and comes back with the names that come close — then ask the owner which one he means, never pick one for him.',
     parameters: { type: 'object', properties: { computer: { type: 'string' } }, required: ['computer'] },
     parse: raw => need<{ computer: string }>(raw, 'device_forget', a => {
         const computer = String(a.computer || '').trim();
@@ -473,7 +475,8 @@ export const deviceForgetTool: EngineTool<{ computer: string }> = {
     async run(a, ctx): Promise<ToolOutcome> {
         const r = await gateway()('engine_device', { op: 'forget', computer: a.computer }, toolContextFor(ctx));
         const text = String(r?.output?.text || r?.error || '');
-        act(ctx, 'device_forget', r?.ok === true, `unlinked «${a.computer}» for good`);
+        //  A refusal is recorded as one: «unlinked» was written even when nothing was forgotten.
+        act(ctx, 'device_forget', r?.ok === true, r?.ok === true ? `unlinked «${a.computer}» for good` : `did not unlink «${a.computer}»: nothing was forgotten`);
         if (r?.ok === true) seen(ctx, 'devices');
         return { ok: r?.ok === true, output: text };
     },

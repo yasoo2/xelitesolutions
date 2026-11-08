@@ -12,8 +12,9 @@
  *             calling — and its KEY rides in the first message (never in the
  *             address, so no log keeps it).
  * The first message must be the computer's HELLO within twenty seconds. An
- * address that keeps presenting codes, ids or keys that open nothing is turned
- * away for ten minutes.
+ * address that keeps presenting codes, malformed ids or keys that open nothing
+ * is turned away for ten minutes. A well-formed id that is merely not kept is
+ * NOT counted against its address (see isWellFormedId).
  */
 import { WebSocketServer } from 'ws';
 import { deviceLinks, type LinkSocket } from '../core/devices/device-link';
@@ -53,10 +54,31 @@ function replyAndClose(req: any, socket: any, head: any, forget: boolean): void 
 }
 
 function miss(ip: string, now: number): void {
+    //  Kept small: addresses whose window is over are dropped once the table grows.
+    if (misses.size > 5000) for (const [k, v] of misses) if (now - v.since >= MISS_WINDOW_MS) misses.delete(k);
     const m = misses.get(ip);
     const fresh = !m || now - m.since >= MISS_WINDOW_MS;
     misses.set(ip, { n: fresh ? 1 : m!.n + 1, since: fresh ? now : m!.since });
 }
+
+/**
+ * The shape of a kept computer's id (linked-computers.ts: 8 random bytes in hex).
+ *
+ * Such an id that is not kept (an orphan agent whose computer was never saved,
+ * or the record unreadable this moment) is answered 4403 and NOT counted as a
+ * miss: an orphan agent calls every 15 s, reached the limit in about five
+ * minutes, and then every computer behind the same router — or every one
+ * behind a reverse proxy, all one address here — got 429 on every call
+ * (2026-11-08). Counting it buys nothing either: an id opens nothing without
+ * its 256-bit key, and a wrong key IS counted (4401). Only a malformed id, an
+ * unknown pairing code or a wrong key count.
+ */
+function isWellFormedId(id: string): boolean {
+    return /^[0-9a-f]{16}$/u.test(id);
+}
+
+/** For a test: forget every address's misses. */
+export function _forgetMisses(): void { misses.clear(); }
 
 /** A kept computer's id that is still kept (by any owner): only those are let in to say their key. */
 function isKeptId(id: string): boolean {
@@ -78,7 +100,7 @@ export function acceptDeviceLink(req: any, socket: any, head: any, reject: (stat
     let owner: string | null = null;
     if (device) {
         if (!isKeptId(device)) {
-            miss(ip, now);
+            if (!isWellFormedId(device)) miss(ip, now);
             //  Only an id the owner FORGOT for good is told «forget». An id that is merely not
             //  found right now — never linked, OR the kept store could not be read this moment
             //  (its path follows process.cwd(), a transient read failure, a restored backup) —

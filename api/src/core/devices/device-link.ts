@@ -20,14 +20,25 @@
  * (desktop-host.ts hostLine), prefixed by a request number, and comes back as
  * the same answer. So the window guard, the calibration and the Arabic typing
  * are the remote computer's own, exactly as here. A picture of the remote
- * screen comes back inline (`lookdata`), since Joe cannot read a file there.
+ * screen comes back inline (`lookdata`), since Joe cannot read a file there,
+ * and a scan of ITS network (`network`, scanNetwork) is run there and read here.
  */
 import crypto from 'crypto';
 import os from 'os';
 import path from 'path';
 import { hostLine, readHostAnswer } from './desktop-host';
-import { forgetComputer, keepComputer, keptComputers, sawComputer } from './linked-computers';
+import { forgetComputerById, keepComputer, KeptStoreError, keptComputers, keptStoreProblem, nameKey, sawComputer } from './linked-computers';
 import { helperDllPath, helperSource, psQuote, type DesktopAction } from './windows-desktop';
+
+/**
+ * What forgetting by the owner's words did: the one computer forgotten, or why
+ * nothing was — no computer has exactly that id or name (`close` names the
+ * ones that come near, for the chat to ask him which), two share it, or the
+ * record cannot be read or saved.
+ */
+export type ForgetResult =
+    | { ok: true; device: LinkedDevice }
+    | { ok: false; reason: 'none' | 'ambiguous' | 'store'; asked: string; close: string[]; all: string[]; error: string };
 
 export interface LinkSocket {
     send(data: string): void;
@@ -73,6 +84,13 @@ export class DeviceLinks {
      * installs a PERMANENT link under that name (linked-computers.ts).
      */
     newPairingCode(ownerId: string, now = Date.now(), keepAs?: string): { code: string; expiresAt: number } {
+        //  A permanent link is only as good as its saved record: while the record cannot be read,
+        //  no line is given at all (the route and the chat say why), instead of an installer whose
+        //  key no restart remembers (2026-11-08).
+        if (keepAs !== undefined) {
+            const problem = keptStoreProblem();
+            if (problem) throw new KeptStoreError(`Joe cannot link a computer for good right now: the record of linked computers ${problem}. Nothing was paired; fix or move that file, then ask again.`);
+        }
         for (const [c, v] of this.codes) if (v.expiresAt <= now) this.codes.delete(c);
         let code = '';
         do { code = crypto.randomBytes(12).toString('hex'); } while (this.codes.has(code));
@@ -84,14 +102,17 @@ export class DeviceLinks {
     /**
      * A permanent-link code, claimed once by the installer it fetches: the
      * computer is kept under the name the owner chose, and its key is made.
+     * When the record cannot be read or saved, keepComputer throws a
+     * KeptStoreError and the code is NOT used up: the same line works again
+     * once the record is fixed, within its ten minutes.
      */
     claimForKeeping(code: string, now = Date.now()): { ownerId: string; id: string; name: string; key: string } | null {
         const c = String(code || '').trim();
         const v = this.codes.get(c);
         if (!v || v.keepAs === undefined) return null;
-        this.codes.delete(c);
-        if (v.expiresAt <= now) return null;
+        if (v.expiresAt <= now) { this.codes.delete(c); return null; }
         const kept = keepComputer(v.ownerId, v.keepAs, now);
+        this.codes.delete(c);
         return { ownerId: v.ownerId, ...kept };
     }
 
@@ -186,63 +207,96 @@ export class DeviceLinks {
     /**
      * Forgets a computer for good: a kept one's key opens nothing any more (its
      * agent removes itself on that refusal), and a connected line is ended.
-     *
-     * The target is resolved ONCE over the owner's computers — online AND kept,
-     * as one pool — by exact id, then exact name, then a fuzzy match only when
-     * it points at a single computer. forget used to search the online ones
-     * first and the kept ones separately, so a loose name could disconnect one
-     * computer while forgetting another (the owner's case, 2026-11-08).
-     * Forgetting the WRONG computer is worse than refusing, so an ambiguous or
-     * fuzzy-to-many name forgets NOTHING; forgetMatches() names the matches so
-     * the chat can ask the owner which one he means.
+     * The device forgotten, or null when nothing was (forgetExactly says why).
      */
     forget(ownerId: string, nameOrId: string): LinkedDevice | null {
-        const hit = this.resolveTarget(ownerId, nameOrId);
-        if (!hit || 'ambiguous' in hit) return null;
-        const kept = forgetComputer(ownerId, hit.id);
+        const r = this.forgetExactly(ownerId, nameOrId);
+        return r.ok ? r.device : null;
+    }
+
+    /**
+     * Forgetting is destructive and cannot be undone from here (the agent
+     * deletes itself on that computer), so it goes by the owner's EXACT words
+     * only: a computer's exact id, or its exact name (nameKey: case, spaces and
+     * the Arabic letter forms aside). A fuzzy match that pointed at ONE computer
+     * still forgot it — «the office laptop» forgot «laptop» (2026-11-08) — so
+     * anything else forgets NOTHING and names the computers that come close,
+     * for the chat to ask him which one he means.
+     *
+     * The target is resolved ONCE over the owner's computers — online AND kept,
+     * as one pool — and that one id is what the record forgets
+     * (forgetComputerById) and what the live line closes: forget used to match
+     * the online ones and the kept ones separately, each by a loose name, so one
+     * computer could be disconnected while another was forgotten.
+     */
+    forgetExactly(ownerId: string, nameOrId: string): ForgetResult {
+        const asked = String(nameOrId ?? '').trim();
+        const pool = this.pool(ownerId);
+        const all = pool.map(c => c.name);
+        const refuse = (reason: 'none' | 'ambiguous' | 'store', close: string[], error: string): ForgetResult => ({ ok: false, reason, asked, close, all, error });
+        //  While the record cannot be read, a kept computer that is off is not even in the pool:
+        //  «no such computer» would be untrue, so say the real reason and forget nothing.
+        const problem = keptStoreProblem();
+        if (problem) return refuse('store', [], `The record of the owner's linked computers ${problem}: nothing was forgotten.`);
+        const hit = this.resolveExact(pool, asked);
+        if ('refused' in hit) {
+            return hit.refused === 'ambiguous'
+                ? refuse('ambiguous', hit.names, `«${asked}» is the name of more than one computer: nothing was forgotten`)
+                : refuse('none', hit.names, `no computer is named exactly «${asked}»: nothing was forgotten`);
+        }
+        let kept: ReturnType<typeof forgetComputerById> = null;
+        try { kept = forgetComputerById(ownerId, hit.id); }
+        catch (e: any) { return refuse('store', [], String(e?.message || e)); }
+        //  The live line is told only once the record has really forgotten it: its agent deletes itself.
         const live = this.liveFor(ownerId, hit.id);
         if (live) {
             try { live.socket.send('0\tforget'); } catch { /* gone */ }
             try { live.socket.close(1000, 'forgotten by the owner'); } catch { /* gone */ }
             this.detach(live.id);
         }
-        if (!live && !kept) return null;
-        return live ? { ...this.view(live), online: false } : { id: kept!.id, name: kept!.name, os: kept!.os || '', user: kept!.user || '', screen: '', connectedAt: 0, lastSeen: kept!.lastSeen, kept: true, online: false };
+        if (!live && !kept) return refuse('none', [], `«${hit.name}» is not linked any more: nothing was forgotten`);
+        return {
+            ok: true,
+            device: live ? { ...this.view(live), online: false } : { id: kept!.id, name: kept!.name, os: kept!.os || '', user: kept!.user || '', screen: '', connectedAt: 0, lastSeen: kept!.lastSeen, kept: true, online: false },
+        };
     }
 
     /**
-     * What a forget by this text would hit: the one computer (online or kept), or
-     * the names that make it ambiguous — so the chat can ask the owner which one
-     * he means instead of forgetting the wrong computer.
+     * What a forget by these words would hit: the one computer, or the names
+     * that share them (ambiguous), or the names that come close (no exact hit).
      */
-    forgetMatches(ownerId: string, nameOrId: string): { one?: { id: string; name: string }; ambiguous?: string[] } {
-        const hit = this.resolveTarget(ownerId, nameOrId);
-        if (!hit) return {};
-        return 'ambiguous' in hit ? { ambiguous: hit.names } : { one: { id: hit.id, name: hit.name } };
+    forgetMatches(ownerId: string, nameOrId: string): { one?: { id: string; name: string }; ambiguous?: string[]; close?: string[] } {
+        const hit = this.resolveExact(this.pool(ownerId), String(nameOrId ?? ''));
+        if (!('refused' in hit)) return { one: hit };
+        return hit.refused === 'ambiguous' ? { ambiguous: hit.names } : { close: hit.names };
     }
 
-    /** The owner's target, resolved once over online AND kept computers; ambiguous when a fuzzy name hits many. */
-    private resolveTarget(ownerId: string, nameOrId: string): { id: string; name: string } | { ambiguous: true; names: string[] } | null {
-        const key = String(nameOrId || '').trim().toLowerCase();
-        if (!key) return null;
-        //  One pool: the owner's computers online now AND the ones kept but off, deduped by id.
+    /** The owner's computers online now AND the ones kept but off, as one pool, by id. */
+    private pool(ownerId: string): Array<{ id: string; name: string }> {
         const pool = new Map<string, { id: string; name: string }>();
         for (const d of this.live.values()) if (d.ownerId === ownerId) pool.set(d.id, { id: d.id, name: d.name });
         for (const k of keptComputers(ownerId)) if (!pool.has(k.id)) pool.set(k.id, { id: k.id, name: k.name });
-        const all = [...pool.values()];
-        //  1. an exact id.
-        const byId = all.find(c => c.id.toLowerCase() === key);
-        if (byId) return byId;
-        //  2. an exact name (names are unique per owner).
-        const byName = all.filter(c => c.name.toLowerCase() === key);
-        if (byName.length === 1) return byName[0];
-        if (byName.length > 1) return { ambiguous: true, names: byName.map(c => c.name) };
-        //  3. a fuzzy match (one name contains the other), only when it points at ONE computer.
-        const fuzzy = all.filter(c => c.name.toLowerCase().includes(key) || key.includes(c.name.toLowerCase()));
-        const ids = new Set(fuzzy.map(c => c.id));
-        if (ids.size === 1) return fuzzy[0];
-        if (ids.size > 1) return { ambiguous: true, names: [...new Set(fuzzy.map(c => c.name))] };
-        return null;
+        return [...pool.values()];
+    }
+
+    /** One computer by exact id or exact name (nameKey); else the names that share it or come close. */
+    private resolveExact(all: Array<{ id: string; name: string }>, nameOrId: string): { id: string; name: string } | { refused: 'none' | 'ambiguous'; names: string[] } {
+        const raw = String(nameOrId ?? '').trim().toLowerCase();
+        const key = nameKey(nameOrId);
+        if (!raw || !key) return { refused: 'none', names: [] };
+        const byId = all.find(c => c.id.toLowerCase() === raw);
+        if (byId) return { id: byId.id, name: byId.name };
+        const byName = all.filter(c => nameKey(c.name) === key);
+        if (byName.length === 1) return { id: byName[0].id, name: byName[0].name };
+        if (byName.length > 1) return { refused: 'ambiguous', names: byName.map(c => c.name) };
+        //  Close, only to ask him: one name inside the other, or a word of two letters or more in common.
+        const words = (s: string) => new Set(s.split(' ').filter(w => w.length >= 2));
+        const mine = words(key);
+        const close = all.filter(c => {
+            const k = nameKey(c.name);
+            return k.includes(key) || key.includes(k) || [...words(k)].some(w => mine.has(w));
+        });
+        return { refused: 'none', names: [...new Set(close.map(c => c.name))] };
     }
 
     private liveFor(ownerId: string, id: string): Live | null {
@@ -297,6 +351,35 @@ export class DeviceLinks {
         const [tag, frame, data] = answer.out.split('\t');
         if (tag !== 'LOOKDATA' || !frame || !data) return { ok: false, error: 'the remote computer sent no picture' };
         return { ok: true, look: { frame: `LOOK\t${frame}`, png: Buffer.from(data, 'base64') } };
+    }
+
+    /**
+     * Runs Joe's network scan (network-scan.ts) ON the owner's linked computer
+     * and brings back what it printed: that computer's own Wi-Fi, not Joe's.
+     * The owner, 2026-11-08: the office PC's network was asked for, and only
+     * Joe's own could be scanned. The agent runs the script in a PowerShell
+     * runspace of its own process (windows-desktop.ts JoeDesktop.Network).
+     *
+     * `oldAgent`: the computer was linked before its helper knew this action and
+     * answered «unknown action network». It must be relinked once; nothing else
+     * is scanned in its place.
+     */
+    async scanNetwork(ownerId: string, nameOrId: string, script: string, timeoutMs = 90_000): Promise<{ ok: true; name: string; out: string } | { ok: false; name: string; error: string; oldAgent?: boolean; offline?: boolean }> {
+        const d = this.find(ownerId, nameOrId);
+        if (!d) {
+            const off = keptComputers(ownerId).find(k => nameKey(k.name) === nameKey(nameOrId) || k.id === String(nameOrId || '').trim());
+            return off
+                ? { ok: false, name: off.name, offline: true, error: `«${off.name}» is linked for good but is OFF or without internet now: its network can be scanned only while it is on` }
+                : { ok: false, name: String(nameOrId || ''), error: `no linked computer named «${nameOrId}» is connected: ${this.list(ownerId).map(x => x.name).join(', ') || 'none is'}` };
+        }
+        const line = await this.request(d, `network\t${Buffer.from(String(script), 'utf8').toString('base64')}`, timeoutMs);
+        if (line === null) return { ok: false, name: d.name, error: `«${d.name}» did not answer the network scan` };
+        const answer = readHostAnswer(line);
+        if (!answer.ok) {
+            const error = answer.error || 'the network scan failed there';
+            return { ok: false, name: d.name, error, ...(/unknown action\s+network/iu.test(error) ? { oldAgent: true } : {}) };
+        }
+        return { ok: true, name: d.name, out: answer.out };
     }
 }
 
@@ -406,10 +489,16 @@ export function keptAgentScript(): string {
         "  try { $run = (Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue).JoeLink; if ($run -and $run.ToLower().Contains((Join-Path $dir 'agent.ps1').ToLower())) { Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -ErrorAction SilentlyContinue } } catch {}",
         "  try { Remove-Item -LiteralPath (Join-Path $dir 'link.json') -Force -ErrorAction SilentlyContinue } catch {}",
         '  $me = $PID',
-        //  Escape any apostrophe in the profile path (a user like «O'Brien») by doubling it, or the
-        //  single-quoted path below breaks the cleanup and the folder is never removed (2026-11-08).
-        "  $clean = \"Wait-Process -Id $me -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -LiteralPath '\" + ($dir -replace \"['‘’‚‛]\", \"''\") + \"' -Recurse -Force -ErrorAction SilentlyContinue\"",
-        "  Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-Command', $clean)",
+        //  The folder's path goes inside a single-quoted string, so every quote character in it is
+        //  doubled — and PowerShell takes ‘ ’ ‚ ‛ for quotes too. Doubling them as two ASCII
+        //  apostrophes changed the path («O’Brien» became «O'Brien») and Remove-Item missed the
+        //  folder (2026-11-08); PowerShell's own escaper doubles each one as itself. The command
+        //  then travels as -EncodedCommand: Start-Process joins an argument array with bare spaces
+        //  and powershell.exe re-joins -Command's words with one space, which altered a path with
+        //  two spaces in a row.
+        "  $clean = 'Wait-Process -Id ' + $me + ' -Timeout 30 -ErrorAction SilentlyContinue; Start-Sleep -Seconds 1; Remove-Item -LiteralPath ''' + [System.Management.Automation.Language.CodeGeneration]::EscapeSingleQuotedStringContent($dir) + ''' -Recurse -Force -ErrorAction SilentlyContinue'",
+        '  $cleanEncoded = [Convert]::ToBase64String([System.Text.Encoding]::Unicode.GetBytes($clean))',
+        "  Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList ('-NoProfile -NonInteractive -WindowStyle Hidden -EncodedCommand ' + $cleanEncoded)",
         '  [Environment]::Exit(0)',
         '}',
         '$icon = New-Object System.Windows.Forms.NotifyIcon',
@@ -464,9 +553,15 @@ export function keepInstallScript(wsUrl: string, id: string, key: string, name: 
         //  Clear stale compiled helpers (now named by the hash of helper.cs): the new agent compiles
         //  the current source on its first run. The old agent was stopped just above, so none is locked.
         "Remove-Item (Join-Path $dir 'JoeDesktop*.dll') -Force -ErrorAction SilentlyContinue",
-        "$run = 'powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + (Join-Path $dir 'agent.ps1') + '\"'",
+        //  ONE argument string, the agent's path in double quotes (a Windows path never holds one).
+        //  Windows PowerShell 5.1's Start-Process joins an -ArgumentList array with spaces and quotes
+        //  nothing, so a profile path with a space («C:\Users\First Last») split into two arguments
+        //  and the agent did not start until the next sign-in (2026-11-08). The sign-in entry is
+        //  the same line, so both start the agent the same way.
+        "$agentArgs = '-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File \"' + $agent + '\"'",
+        "$run = 'powershell.exe ' + $agentArgs",
         "New-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink' -Value $run -PropertyType String -Force | Out-Null",
-        "Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-WindowStyle', 'Hidden', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $dir 'agent.ps1'))",
+        "Start-Process -WindowStyle Hidden -FilePath 'powershell.exe' -ArgumentList $agentArgs",
         "Write-Host ''",
         `Write-Host ${psQuote(`  تم. هذا الكمبيوتر مربوط بجو دائماً باسم «${name}».`)} -ForegroundColor Green`,
         `Write-Host ${psQuote('  يتصل بجو وحده كلما شُغّل ويندوز. أيقونة جو قرب الساعة: منها توقفه أو تفصله نهائياً.')} -ForegroundColor Green`,
