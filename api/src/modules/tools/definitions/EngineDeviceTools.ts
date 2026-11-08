@@ -15,6 +15,7 @@ import type { ToolDefinition, ToolExecutionResult, ToolPermission } from '../typ
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import { encodedCommand, runDesktop, type DesktopAction, type PowerShellRunner } from '../../../core/devices/windows-desktop';
 import { DesktopHost } from '../../../core/devices/desktop-host';
+import { describeNetwork, networkScanScript, parseNetworkScan } from '../../../core/devices/network-scan';
 import { deviceLinks, linkCommand, reachableBase } from '../../../core/devices/device-link';
 import { config } from '../../../shared/config';
 import fs from 'fs';
@@ -137,6 +138,14 @@ export class EngineDeviceTool implements ToolDefinition {
         }
         if (String(input?.op || '') === 'linked') {
             return { ok: true, output: { text: JSON.stringify(deviceLinks.list(owner).map(d => ({ name: d.name, os: d.os, connectedAt: d.connectedAt, online: d.online !== false, kept: !!d.kept }))) } } as any;
+        }
+        //  The devices on the owner's Wi-Fi, seen from this computer (core/devices/network-scan.ts).
+        if (String(input?.op || '') === 'network') {
+            if (!WINDOWS) return { ok: false, error: 'the network scan is Windows-only in this version', output: { text: `This computer runs ${process.platform}; Joe's network scan works on Windows in this version. Say so to the owner.` } } as any;
+            const r = await gatewayPowerShell(networkScanScript(), 60_000);
+            const scan = parseNetworkScan(r.stdout);
+            if (!scan.ok) return { ok: false, error: scan.error, output: { text: scan.error } } as any;
+            return { ok: true, output: { text: describeNetwork(scan), devices: scan.devices, ip: scan.ip, gateway: scan.gateway, network: scan.network } } as any;
         }
         if (String(input?.op || '') === 'forget') {
             const gone = deviceLinks.forget(owner, String(input?.computer || input?.name || ''));

@@ -445,6 +445,8 @@ public static class JoeDesktop {
                 if (tab <= 0) continue;
                 string id = msg.Substring(0, tab), line = msg.Substring(tab + 1);
                 if (line == "bye") return "the owner disconnected this computer";
+                /* Unlinked for good: a word in no language, so the agent reads it on any Windows (a refusal is told in the system's own language). */
+                if (line == "forget") return "FORGOTTEN";
                 string res;
                 try { res = "OK\t" + B64(Dispatch(line)); } catch (Exception e) { res = "ERR\t" + B64(e.Message); }
                 Console.WriteLine(DateTime.Now.ToString("HH:mm:ss") + "  " + line.Split('\t')[0] + (res.StartsWith("OK") ? "" : "  (refused or failed)"));

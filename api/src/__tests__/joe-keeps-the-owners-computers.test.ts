@@ -95,7 +95,13 @@ describe('the installer and the agent', () => {
         expect(agent).toContain("$hello = @{ key = $cfg.key;");
         expect(agent).toContain("[JoeDesktop]::Link(($cfg.url + '?device=' + $cfg.id), $hello)");
         expect(agent).toContain('Start-Sleep -Seconds 15');
-        expect(agent).toContain("if ($why -match '401|Unauthorized') { $state.gone = $true; break }");
+        //  A word in no language: a refusal reached the agent as «تعذر الاتصال بالملقم البعيد» on an Arabic Windows (2026-11-08).
+        expect(agent).toContain("if ($why -eq 'FORGOTTEN') { $state.gone = $true; break }");
+        const { helperSource } = require('../core/devices/windows-desktop');
+        expect(helperSource()).toContain('if (line == "forget") return "FORGOTTEN";');
+        //  The key goes first, then the folder after the agent has let go of its helper.
+        expect(agent).toContain("Remove-Item -LiteralPath (Join-Path $dir 'link.json') -Force");
+        expect(agent).toContain('Wait-Process -Id $me -Timeout 30');
         expect(agent).toContain('function Remove-JoeLink');
         expect(agent).toContain("Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'JoeLink'");
         expect(agent).toContain('فصل هذا الكمبيوتر عن جو نهائياً');
@@ -117,23 +123,25 @@ describe('a kept computer calls in over the real socket, by its id and key', () 
     afterAll(() => new Promise<void>(r => server.close(() => r())));
 
     /** Plays the remote agent: connects with ?device=, says HELLO with its key, answers each line with OK. */
-    const agent = (id: string, key: string) => new Promise<{ ws?: WebSocket; status: number | 'open'; closed: Promise<number> }>(resolve => {
+    const agent = (id: string, key: string) => new Promise<{ ws?: WebSocket; status: number | 'open'; closed: Promise<number>; heard: string[] }>(resolve => {
         const ws = new WebSocket(`ws://127.0.0.1:${port}/ws/device-link?device=${id}`);
         let closedResolve: (n: number) => void = () => { };
         const closed = new Promise<number>(r => { closedResolve = r; });
+        const heard: string[] = [];
         ws.on('close', code => closedResolve(code));
+        ws.on('message', data => {
+            const text = String(data);
+            heard.push(text);
+            const tab = text.indexOf('\t');
+            if (tab > 0 && text.slice(0, tab) !== '0') ws.send(`${text.slice(0, tab)}\tOK\t${Buffer.from('fine').toString('base64')}`);
+        });
         ws.on('open', () => {
             const hello = Buffer.from(JSON.stringify({ key, os: 'Windows 11 Pro', user: 'younes', screen: '1920x1080' }), 'utf8').toString('base64');
             ws.send(`HELLO\t${hello}`);
-            ws.on('message', data => {
-                const text = String(data);
-                const tab = text.indexOf('\t');
-                if (tab > 0 && text.slice(0, tab) !== '0') ws.send(`${text.slice(0, tab)}\tOK\t${Buffer.from('fine').toString('base64')}`);
-            });
-            resolve({ ws, status: 'open', closed });
+            resolve({ ws, status: 'open', closed, heard });
         });
-        ws.on('unexpected-response', (_req, res) => resolve({ status: res.statusCode || 0, closed }));
-        ws.on('error', () => resolve({ status: 0, closed }));
+        ws.on('unexpected-response', (_req, res) => resolve({ status: res.statusCode || 0, closed, heard }));
+        ws.on('error', () => resolve({ status: 0, closed, heard }));
     });
     const settle = () => new Promise(r => setTimeout(r, 150));
 
@@ -163,12 +171,17 @@ describe('a kept computer calls in over the real socket, by its id and key', () 
         expect(await thief.closed).toBe(4401);
         expect(deviceLinks.list(owner).filter((d: any) => d.online)).toHaveLength(1);
 
-        //  Forgotten for good: the line ends, and the next call is refused with 401.
+        //  Forgotten for good: the live line is told «forget» and ends; the next call is told
+        //  «forget» too, in words any Windows reads, and closed (4404).
         const gone = deviceLinks.forget(owner, 'كمبيوتر المكتب');
         expect(gone?.name).toBe('كمبيوتر المكتب');
         await second.closed;
+        expect(second.heard).toContain('0\tforget');
         expect(deviceLinks.list(owner)).toEqual([]);
-        expect((await agent(k.id, k.key)).status).toBe(401);
+        const after = await agent(k.id, k.key);
+        expect(await after.closed).toBe(4404);
+        expect(after.heard).toEqual(['0\tforget']);
+        expect(deviceLinks.list(owner)).toEqual([]);
     });
 });
 

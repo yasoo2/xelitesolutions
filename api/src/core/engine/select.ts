@@ -36,6 +36,9 @@ export function engineFor(context?: { engine?: unknown } | null, env: NodeJS.Pro
  */
 export type AgentRoute = { kind: 'build' } | { kind: 'change'; path: string } | { kind: 'operate'; target?: 'phone' | 'computer' };
 
+/** A message that plainly starts something new is not an answer to Joe's waiting question. */
+const IS_NEW_BUILD = /^\s*(?:ابن[يِ]?|ابني|أنشئ|انشئ|اعمل\s+(?:لي\s+)?(?:موقع|تطبيق|صفحة|برنامج)|صمّ?م|build|create|make\s+(?:me\s+)?an?\s+(?:app|site|website|page))(?=[\s،,.!?؟]|$)/iu;
+
 export async function agentEngineRoute(
     goal: string,
     context?: { engine?: unknown; sessionId?: unknown; modelConfig?: unknown; runId?: unknown; signal?: AbortSignal } | null,
@@ -51,6 +54,15 @@ export async function agentEngineRoute(
     if (operate.isOperateRequest(text)) {
         const target = operate.isPhoneRequest(text) ? 'phone' : 'computer';
         operate.noteOperate(context?.sessionId, text, target);
+        return { kind: 'operate', target };
+    }
+    //  Joe asked the owner on a device and waits: this message answers him (device-work.ts
+    //  pendingQuestion). «اجل», «ارسلها», «هذا shoroq…» go back to that work (2026-11-08).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const waiting = require('./device-work').pendingQuestion(context?.sessionId);
+    if (waiting && text.length <= 400 && !IS_NEW_BUILD.test(text)) {
+        const target = waiting.target || 'phone';
+        operate.noteOperate(context?.sessionId, waiting.request, target);
         return { kind: 'operate', target };
     }
     //  A short command that follows work on a device in this chat goes on that device.
@@ -79,7 +91,11 @@ export async function agentEngineRoute(
     if (IntentParser.pureConversationKind(text)) return null;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { deviceIntentByModel } = require('./understand');
-    const target = await deviceIntentByModel(text, context || {}, operate.recentOperate(context?.sessionId), deps.ask, env);
+    //  The chat's last turns go with it: «افحص» after a question about the Wi-Fi is a scan.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { chatTurnsText, recentChatTurns } = require('./chat-history');
+    const chat = chatTurnsText(await recentChatTurns(context?.sessionId, 6), text, 300);
+    const target = await deviceIntentByModel(text, context || {}, operate.recentOperate(context?.sessionId), deps.ask, env, chat);
     if (target) {
         operate.noteOperate(context?.sessionId, text, target);
         return { kind: 'operate', target };

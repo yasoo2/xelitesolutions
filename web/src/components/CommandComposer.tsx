@@ -918,7 +918,7 @@ export default function CommandComposer({
   onGithubAuthRequired?: (details: { reason?: string; needsRepo?: boolean; repoName?: string }) => void;
 
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const uiDir = useUiDir();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
@@ -1697,34 +1697,68 @@ export default function CommandComposer({
     };
   }, []);
 
-  // Voice Recognition Init
+  /*
+   * THE MICROPHONE SAYS WHY IT DOES NOT LISTEN.
+   *
+   * The owner, 2026-11-08: «I pressed Joe's microphone and it did not work» —
+   * the browser had refused the microphone and Joe said nothing at all (no
+   * onerror), and the first press only opened the voice panel. Now one press
+   * listens, the language is the interface's, and every refusal is said in
+   * his language with what to do: allow the microphone, use a page served
+   * over https (or from this computer), check that a microphone exists, or
+   * connect to the internet the browser's speech service needs.
+   */
+  const [micProblem, setMicProblem] = useState('');
   useEffect(() => {
     const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
     if (Recognition) {
       const recognition = new Recognition();
       recognition.continuous = false;
       recognition.interimResults = false;
-      recognition.lang = 'ar-SA';
-      recognition.onstart = () => setIsListening(true);
+      const ui = String(i18n.language || 'ar').split('-')[0];
+      recognition.lang = ({ ar: 'ar-SA', en: 'en-US', fr: 'fr-FR', de: 'de-DE', ru: 'ru-RU', es: 'es-ES' } as Record<string, string>)[ui] || 'ar-SA';
+      recognition.onstart = () => { setIsListening(true); setMicProblem(''); };
+      recognition.onaudiostart = () => setMicProblem('');
       recognition.onend = () => setIsListening(false);
       recognition.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
         setText(prev => prev + (prev ? ' ' : '') + transcript);
       };
+      recognition.onerror = (event: any) => {
+        setIsListening(false);
+        const code = String(event?.error || '');
+        setMicProblem(code === 'not-allowed' || code === 'service-not-allowed'
+          ? (window.isSecureContext ? t('cc_micDenied') : t('cc_micInsecure'))
+          : code === 'audio-capture' ? t('cc_micNone')
+          : code === 'network' ? t('cc_micNetwork')
+          : code === 'no-speech' ? t('cc_micNoSpeech')
+          : code === 'aborted' ? '' : t('cc_micFailed'));
+      };
       recognitionRef.current = recognition;
     }
-  }, []);
+  }, [i18n.language]);
 
-  const toggleListening = () => {
+  const toggleListening = async () => {
     if (!recognitionRef.current) {
-      alert(t('speechUnsupported'));
+      setMicProblem(t('speechUnsupported'));
       return;
     }
     if (isListening) {
       recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
+      return;
     }
+    setMicProblem('');
+    /*
+     * Said BEFORE the browser asks (the owner: «it said it wants access from
+     * the browser… do it yourself»). Only he can press «Allow»: the page says
+     * where it will appear, and when he refused before, how to undo it.
+     */
+    try {
+      const state = (await (navigator as any).permissions?.query({ name: 'microphone' }))?.state;
+      if (state === 'denied') { setMicProblem(t('cc_micBlockedHowTo')); return; }
+      if (state === 'prompt') setMicProblem(t('cc_micAskAllow'));
+    } catch { /* this browser does not say: the listening itself will */ }
+    try { recognitionRef.current.start(); } catch { /* already listening: the next onend frees it */ }
   };
 
   const clearToolTimers = () => {
@@ -5066,8 +5100,10 @@ export default function CommandComposer({
 
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
-                  onClick={() => setIsVoiceMode(!isVoiceMode)}
+                  //  One press listens (the owner pressed once and nothing happened).
+                  onClick={() => { const on = !isVoiceMode; setIsVoiceMode(on); if (on && !isListening) toggleListening(); if (!on && isListening) recognitionRef.current?.stop(); }}
                   title={t('cc_voiceMode')}
+                  aria-pressed={isVoiceMode}
                 >
                   {isVoiceMode ? <Mic size={14} /> : <MicOff size={14} />}
                 </button>
@@ -5130,7 +5166,9 @@ export default function CommandComposer({
               </button>
               <div className="voice-info">
                 <span className="voice-status">{isListening ? t('cc_listening') : t('cc_tapToSpeak')}</span>
-                <span className="voice-lang">{t('cc_voiceLangs')}</span>
+                {micProblem
+                  ? <span className="voice-problem" role="alert" dir="auto">{micProblem}</span>
+                  : <span className="voice-lang">{t('cc_voiceLangs')}</span>}
               </div>
 
               <button className="action-btn" title={t('cc_stopSpeaking')} onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>

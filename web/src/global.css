@@ -4244,6 +4244,13 @@ html[data-theme="light"] .input-actions {
   color: var(--text-muted);
 }
 
+/* Why the microphone does not listen, said plainly (CommandComposer micProblem). */
+.voice-problem {
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: #f59e0b;
+}
+
 @keyframes sessionMenuPop {
   from {
     opacity: 0;

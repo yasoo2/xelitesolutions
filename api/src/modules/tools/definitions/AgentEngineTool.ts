@@ -41,7 +41,8 @@ import { workspaceService } from '../../services/WorkspaceService';
 import { deviceTools, forgetDeviceRecord } from '../../../core/engine/tools/devices';
 import { androidTools, forgetAndroid } from '../../../core/engine/tools/android';
 import { askOwnerTool, isPhoneRequest, operateOutput, operateVerifier } from '../../../core/engine/operate';
-import { deviceWorkFacts, noteOperateResult } from '../../../core/engine/device-work';
+import { answeredQuestion, deviceWorkFacts, noteOperateResult, pendingQuestion } from '../../../core/engine/device-work';
+import { chatTurnsText, recentChatTurns } from '../../../core/engine/chat-history';
 import fs from 'fs';
 
 /** The engine stops this long before the run's own deadline, so it can end honestly and say why. */
@@ -64,11 +65,19 @@ async function runOperate(o: {
         isCancelled: () => o.signal.aborted || (typeof o.context.isCancelled === 'function' && o.context.isCancelled() === true),
     };
     try {
+        //  What the chat said and what Joe did on the devices in it, and the question
+        //  this message may answer: «افحص», «اجل», «ارسلها» are read in their chat (2026-11-08).
+        const pending = pendingQuestion(o.context.sessionId);
+        const history = [
+            chatTurnsText(await recentChatTurns(o.context.sessionId, 12), o.request),
+            deviceWorkFacts(o.context.sessionId).trim(),
+            pending ? `JOE'S LAST QUESTION, which the owner's message above answers: «${pending.question}» (it was about: «${pending.request}»). Go on with that work as he answered.` : '',
+        ].filter(Boolean).join('\n\n');
+        if (pending) answeredQuestion(o.context.sessionId);
         const result = await runEngine({
             runId: o.runId, request: o.request, language: o.language, projectDir: dir, deadlineAt: o.deadlineAt,
             replyLanguage: o.replyLanguage, operate: true, ...(o.target ? { operateTarget: o.target } : {}),
-            //  What was done on the devices earlier in this chat: «حاول مره اخرى» knows what.
-            operateHistory: deviceWorkFacts(o.context.sessionId),
+            operateHistory: history,
             signal: o.signal, emit: uiEmitter(o.context.sessionId, o.runId, o.replyLanguage, path.basename(dir)),
             joe: { toolContext, runId: o.runId, sessionId: o.context.sessionId, userId: o.context.userId, workspaceId: o.context.workspaceId },
         }, {
@@ -82,8 +91,10 @@ async function runOperate(o: {
         //  The chat's answerer reads what was done here (operate.ts deviceWorkFacts).
         const asked = (result?.verification?.checks || []).some(c => c.id === 'asked_owner');
         noteOperateResult(o.context.sessionId, {
-            target: o.target || (isPhoneRequest(o.request) ? 'phone' : 'computer'), request: o.request,
+            target: o.target || (isPhoneRequest(o.request) ? 'phone' : 'computer'), request: pending ? pending.request : o.request,
             summary: `${asked ? 'Joe asked the owner and waits for his answer: ' : ''}${String(result?.summary || out.output?.summary || '')}`, ok: out.ok && !asked,
+            //  Joe's question waits for the owner's answer (pendingQuestion).
+            ...(asked ? { question: String(result?.summary || '') } : {}),
         });
         return {
             ok: out.ok,

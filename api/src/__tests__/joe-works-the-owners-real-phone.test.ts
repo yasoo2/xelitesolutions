@@ -393,7 +393,8 @@ describe('the chat\'s answerer knows what Joe did on the devices', () => {
         const fs = require('fs');
         const path = require('path');
         const answer = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'CentralAnswerTool.ts'), 'utf8');
-        expect(answer).toMatch(/deviceWorkFacts\(context\?\.sessionId\)/u);
+        // The answerer gets the facts plus the line that it cannot act on the devices itself.
+        expect(answer).toMatch(/answererDeviceFacts\(context\?\.sessionId\)/u);
         const engine = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'AgentEngineTool.ts'), 'utf8');
         expect(engine).toMatch(/noteOperateResult\(o\.context\.sessionId/u);
     });

@@ -311,8 +311,26 @@ export const deviceComputersTool: EngineTool<Record<string, never>> = {
             phones = text ? `Phones:\n${text}` : '';
         } catch { /* the computers are still listed */ }
         seen(ctx, 'devices');
-        const add = 'To add a computer, device_link_new gives the owner one line to run on it; to add a phone, see the Phones lines.';
+        const add = 'To add a computer for good, device_link_new with the name the owner gives it («كمبيوتر المكتب»): he runs one line on it ONCE, and from then on it calls Joe by itself at every start. To add a phone, see the Phones lines. Every device on his Wi-Fi (printers, TVs, phones, smart devices): network_devices.';
         return { ok: r.ok, output: [r.text, phones, add].filter(Boolean).join('\n\n') };
+    },
+};
+
+/**
+ * Every device on the owner's Wi-Fi, from this computer (core/devices/
+ * network-scan.ts). The owner, 2026-11-08: «are there devices on the same
+ * Wi-Fi?» got instructions to type `arp -a` himself.
+ */
+export const networkDevicesTool: EngineTool<Record<string, never>> = {
+    name: 'network_devices',
+    description: 'List every device on the owner\'s Wi-Fi / home network now, seen from this computer: each address with its maker and what it most likely is (router, phone, TV, printer, smart device, computer), and which of them Joe can control. Use it when he asks what is on his Wi-Fi or network, how many devices, or to check or scan it. Takes about fifteen seconds.',
+    parameters: { type: 'object', properties: {} },
+    parse: () => ({ ok: true, value: {} }),
+    async run(_a, ctx): Promise<ToolOutcome> {
+        const r = await gateway()('engine_device', { op: 'network' }, toolContextFor(ctx));
+        const text = String(r?.output?.text || r?.error || 'the network could not be read');
+        if (r?.ok === true) seen(ctx, 'devices');
+        return { ok: r?.ok === true, output: text };
     },
 };
 
@@ -458,6 +476,6 @@ export const deviceForgetTool: EngineTool<{ computer: string }> = {
 };
 
 export const deviceTools: EngineTool[] = [
-    deviceComputersTool, deviceLinkNewTool, deviceWaitLinkTool, deviceUseTool, deviceForgetTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
+    deviceComputersTool, networkDevicesTool, deviceLinkNewTool, deviceWaitLinkTool, deviceUseTool, deviceForgetTool, deviceWindowsTool, deviceLookTool, deviceReadTool, devicePressTool, deviceClickTool,
     deviceTypeTool, deviceKeysTool, deviceScrollTool, deviceOpenTool, deviceFocusTool,
 ];

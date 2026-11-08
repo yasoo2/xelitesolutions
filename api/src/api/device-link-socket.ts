@@ -5,8 +5,8 @@
  *   - ?code=  a one-time pairing code, claimed here, once, naming the owner
  *             the computer joins for this session;
  *   - ?device= a computer linked for good (linked-computers.ts). Its id opens
- *             the door — an id the owner forgot is refused with 401, which
- *             tells its agent to remove itself — and its KEY rides in the
+ *             the door — an id the owner forgot is told «forget» and closed
+ *             (4404), and its agent removes itself — and its KEY rides in the
  *             first message (never in the address, so no log keeps it).
  * The first message must be the computer's HELLO within twenty seconds. An
  * address that keeps presenting codes, ids or keys that open nothing is turned
@@ -46,7 +46,18 @@ export function acceptDeviceLink(req: any, socket: any, head: any, reject: (stat
     } catch { /* neither */ }
     let owner: string | null = null;
     if (device) {
-        if (!isKeptId(device)) { miss(ip, now); return reject(401, 'Unauthorized: this computer is not linked to Joe any more'); }
+        if (!isKeptId(device)) {
+            //  Unlinked (or never linked): the agent is told «forget» in words it reads on any
+            //  Windows, and removes itself. A refused upgrade reached it only as a message in
+            //  the system's own language («تعذر الاتصال بالملقم البعيد»), and it kept calling.
+            miss(ip, now);
+            if (!wss) wss = new WebSocketServer({ noServer: true, maxPayload: 64 * 1024 * 1024 });
+            wss.handleUpgrade(req, socket, head, ws => {
+                try { ws.send('0\tforget'); } catch { /* gone */ }
+                setTimeout(() => { try { ws.close(4404, 'not linked to Joe any more'); } catch { /* gone */ } }, 200);
+            });
+            return;
+        }
     } else {
         owner = deviceLinks.claim(code, now);
         if (!owner) { miss(ip, now); return reject(401, 'Unauthorized: this pairing code is not waiting'); }

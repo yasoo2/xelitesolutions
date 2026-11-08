@@ -55,10 +55,22 @@ const DEVICES_PLURAL = /(?:الأجهزة|الاجهزة|اجهزة|أجهزة|�
 const REACH = /(?:تقدر|بتقدر|يمكنك|تستطيع|بتوصل|توصل|متصل|المتصل|مربوط|المربوط|موصول|الموصول|حولي|بالشبكة|على\s+الشبكة|في\s+الشبكة)|\b(?:can\s+you\s+(?:reach|see|control|access)|connected|linked|reachable|on\s+my\s+(?:network|wi-?fi)|nearby)\b/iu;
 const TASK_VERB = /(?:افتح|اكتب|اضغط|احفظ|انسخ|احذف|أرسل|ارسل|شغّ?ل\s)|\b(?:open|type|click|press|save|write|run|send|copy|delete)\b/iu;
 
-/** The request asks to connect to a device, or which devices Joe can reach. */
+/**
+ * The devices on his Wi-Fi or network (network_devices): «هل توجد أجهزة على نفس
+ * الواي فاي؟», «افحص كم جهاز على شبكة الواي فاي», "what is on my wifi".
+ */
+const NETWORK = /(?:واي\s*فاي|الوايفاي|وايفاي|wi-?fi|الشبكة|شبكة\s+(?:البيت|المنزل|الواي|الانترنت|الإنترنت)|الراوتر|راوتر)|\b(?:network|router|lan)\b/iu;
+const ANY_DEVICE = /(?:أجهزة|اجهزة|الأجهزة|الاجهزة|جهاز|اجهزه|أجهزه)|\b(?:devices?|things|connected)\b/iu;
+
+export function isNetworkRequest(text: string): boolean {
+    const t = String(text || '');
+    return NETWORK.test(t) && ANY_DEVICE.test(t) && !BUILD_VERB.test(t);
+}
+
+/** The request asks to connect to a device, which devices Joe can reach, or what is on the network. */
 export function isDeviceRequest(text: string): boolean {
     const t = String(text || '');
-    return CONNECT.test(t) || (DEVICES_PLURAL.test(t) && REACH.test(t));
+    return CONNECT.test(t) || (DEVICES_PLURAL.test(t) && REACH.test(t)) || isNetworkRequest(t);
 }
 
 /** …and nothing more is to be done on it: listing, linking or pairing is the whole of it. */
@@ -173,7 +185,9 @@ export function operateFollowUp(sessionId: unknown, text: string, now = Date.now
  * and a request about the devices themselves with device_computers: pointing
  * either at device_windows sent the model through the computer's windows first.
  */
-export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' {
+export function operatorFirstTool(request: string, target?: OperateTarget): 'android_devices' | 'device_computers' | 'device_windows' | 'network_devices' {
+    //  The Wi-Fi first: «افحص كم جهاز على شبكة الواي فاي» once counted the devices in a phone app.
+    if (isNetworkRequest(request)) return 'network_devices';
     if (target === 'phone' || isPhoneRequest(request)) return 'android_devices';
     if (isDeviceRequest(request)) return 'device_computers';
     return 'device_windows';
@@ -209,6 +223,7 @@ export function operatorSystemPrompt(machine: MachineFacts): string {
         '- The owner\'s Android phone is worked with the android_ tools (through adb): android_devices first, then android_read (numbered controls) or android_look, android_tap by number, android_type, android_key (back, home, wakeup…), android_scroll, android_open by package name, android_panel for the quick settings (flashlight/torch, Wi-Fi, Bluetooth, airplane mode, mobile data, rotation, do not disturb) and the notifications. When the request is about his phone, use these, not the device_ tools.',
         '- android_read and android_look say first when the phone\'s screen is OFF or the phone is LOCKED. A screen that is off: android_key "wakeup", then read again. A phone locked with a PIN: the quick settings and the notifications still work; for anything else tell the owner to unlock it, and never type a PIN, pattern or password.',
         '- Some things have no app on a phone: the flashlight is a tile in the quick settings (android_panel "quick_settings", android_read, tap the tile whose name is the flashlight in the phone\'s language: «الكشاف», «Flashlight», «Torch», «Lampe de poche»…, then read again: an «on» or checked tile, or a changed description, shows it worked).',
+        '- When he asks what is on his Wi-Fi or home network (how many devices, which, to check or scan it): call network_devices and tell him, in his language, how many and what each most likely is. Never send him to type a command himself: you can look.',
         '- When the owner asks what you can reach, or to connect to a computer or a phone: call device_computers and tell him, by name, what you can reach, and which are on or off. His computers are known by the names he gave them («كمبيوتر المكتب»): «اشبك على كمبيوتر المكتب» is device_use with that name, from anywhere. A computer linked for good that is off cannot be reached until it is on: say so plainly. A computer that is not linked yet: device_link_new WITH the name he calls it (a permanent link: he runs one line on it once, and it calls Joe by itself at every start), then device_wait_link, then device_use it and go on with what he asked. «افصل … نهائياً» is device_forget. A phone on Wi-Fi showing its pairing code: ask him for the six digits (say it in task_finish), then android_pair and android_connect when he gives them. Never ask him to go to the settings for any of this: the chat is where he works.',
         '- The owner may have linked other computers to Joe. When the request names another computer (the office PC, the laptop, «حاسوب المكتب»…), call device_computers, then device_use with its name; every device_ tool then works there until device_use "this".',
         '',

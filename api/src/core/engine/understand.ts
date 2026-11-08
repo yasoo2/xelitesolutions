@@ -35,11 +35,14 @@ export type Ask = (prompt: string) => Promise<string>;
 const TIMEOUT_MS = 20_000;
 
 /** The prompt: the message verbatim, what the chat was doing, and the one answer wanted. */
-export function deviceIntentPrompt(message: string, recent?: RecentDeviceWork | null): string {
+export function deviceIntentPrompt(message: string, recent?: RecentDeviceWork | null, chat = ''): string {
     return [
-        'You read ONE message a user typed to Joe. Joe is an agent that can act on the user\'s own Android phone (tap, open apps, the flashlight, Wi-Fi, Bluetooth, volume, calls, messages, reading the screen…) and on his computer (open programs, click, type, read the screen…). Joe can also build software or answer questions.',
+        'You read ONE message a user typed to Joe. Joe is an agent that can act on the user\'s own Android phone (tap, open apps, the flashlight, Wi-Fi, Bluetooth, volume, calls, messages, email, reading the screen…) and on his computer (open programs, click, type, read the screen, scan his home network…). Joe can also build software or answer questions.',
         'Decide whether the message asks Joe to DO something on the user\'s phone or computer now. The message may be in any language or dialect, misspelled, very short, or written without the device\'s name.',
         ...(recent ? [`In this chat Joe has just been working on the user's ${recent.target.toUpperCase()}; the last request was: «${recent.request.slice(0, 200)}». A short command now («turn it off», «open it», «اطفيه», «سكّره»…) most likely means the ${recent.target}.`] : []),
+        //  The chat's own words: «افحص» after a question about the Wi-Fi is a scan (2026-11-08).
+        ...(chat ? [chat] : []),
+        'Asking which devices are on his Wi-Fi or network, or to check or scan it, IS device work: answer "computer" (Joe scans from the computer).',
         'Questions about how something works, requests to build or change software or a website, and conversation are "none".',
         'Answer with JSON only, one of: {"device":"phone"} {"device":"computer"} {"device":"none"}',
         '',
@@ -78,6 +81,7 @@ export async function deviceIntentByModel(
     recent?: RecentDeviceWork | null,
     ask?: Ask,
     env: NodeJS.ProcessEnv = process.env,
+    chat = '',
 ): Promise<DeviceTarget | null> {
     const text = String(message || '').trim();
     if (!text || text.length > 800) return null;
@@ -90,7 +94,7 @@ export async function deviceIntentByModel(
         const asker = ask || await chosenModelAsk(ctx, signal);
         if (!asker) return null;
         const answer = await Promise.race([
-            asker(deviceIntentPrompt(text, recent)),
+            asker(deviceIntentPrompt(text, recent, chat)),
             new Promise<string>((_, reject) => signal.addEventListener('abort', () => reject(new Error('slow')), { once: true })),
         ]);
         return readDeviceIntent(answer);
