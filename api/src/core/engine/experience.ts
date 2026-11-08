@@ -36,8 +36,8 @@ import fs from 'fs';
 import path from 'path';
 import type { EngineTool, ToolContext, ToolOutcome } from './types';
 
-/** The control a tap pressed: its name, and for a switch its state before the tap. */
-export interface StepTarget { text?: string; description?: string; id?: string; kind?: string; checked?: boolean }
+/** The control a tap pressed: its name (or, with none, the word beside it), and for a switch its state before the tap. */
+export interface StepTarget { text?: string; description?: string; id?: string; kind?: string; near?: string; checked?: boolean }
 export interface ExperienceStep { tool: string; args: Record<string, unknown>; target?: StepTarget }
 
 export interface Recipe {
@@ -152,7 +152,7 @@ const SENSITIVE = /\b(?:send|delete|remove|erase|pay|buy|purchase|order|checkout
 const SETTLE_MS: Record<string, number> = { android_panel: 900, android_open: 1500, android_link: 1500, android_tap: 800, android_key: 600, android_scroll: 600, android_type: 400, android_clear: 300 };
 
 function label(t?: StepTarget): string {
-    return String(t?.text || t?.description || t?.id || '').trim();
+    return String(t?.text || t?.description || t?.near || t?.id || '').trim();
 }
 
 /** Whether the steps may be done again with no model; if not, why (in English, for the book). */
@@ -348,15 +348,15 @@ export interface Trail { steps: ExperienceStep[]; tried: string[] }
  * call becomes a step (a tap with the name of the control it pressed, read off
  * the last android_read), every call a line of what was tried.
  */
-export function recordingTools(tools: EngineTool[], trail: Trail, controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string; checked?: boolean | null }>): EngineTool[] {
+export function recordingTools(tools: EngineTool[], trail: Trail, controlsOf: (runId: string) => Control[]): EngineTool[] {
     return tools.map(t => ({
         ...t,
         async run(args: any, ctx: ToolContext): Promise<ToolOutcome> {
             let target: StepTarget | undefined;
             if (t.name === 'android_tap' && args && Number.isInteger(args.control)) {
-                const c = (controlsOf(ctx.runId) || []).find(k => k.index === args.control);
-                //  A switch's state before the tap: done again, a switch already the other way is not pressed.
-                if (c) target = { text: c.text || undefined, description: c.description || undefined, id: c.id || undefined, kind: c.kind || undefined, ...(typeof c.checked === 'boolean' ? { checked: c.checked } : {}) };
+                const all = controlsOf(ctx.runId) || [];
+                const c = all.find(k => k.index === args.control);
+                if (c) target = targetOf(all, c);
             }
             const outcome = await t.run(args, ctx);
             const step: ExperienceStep = { tool: t.name, args: cleanArgs(t.name, args), ...(target ? { target } : {}) };
@@ -388,11 +388,86 @@ function sameText(a?: string, b?: string): boolean {
     return !!n(a) && n(a) === n(b);
 }
 
-/** The control a recorded tap pressed, on the screen as it is now: by id and name, then by name. */
-export function findControl<C extends { index: number; text: string; description: string; id: string; kind: string }>(controls: C[], t: StepTarget): C | null {
-    //  A switch with no name of its own, only its id: found by the id when exactly one control has it
-    //  (the quick settings' tiles often share one id: a guess there could press the wrong tile).
+/*
+ * A CONTROL WITH NO NAME OF ITS OWN IS KNOWN BY THE WORD BESIDE IT.
+ *
+ * The owner's TECNO, 2026-11-08: the flashlight tile is three controls in one
+ * column — a nameless FrameLayout (what is tapped), a Switch whose text is only
+ * its state («إيقاف» / «تشغيل»), and the TextView «الكشاف» under them. The
+ * tap is kept with the nearest real word in its column («near»), never with a
+ * state word, and with the state of the nearest switch in that column
+ * («checked»): done again, the tile is found by that word, and a tile already
+ * the other way is not pressed.
+ */
+export type Control = { index: number; text: string; description: string; id: string; kind: string; checked?: boolean | null; x?: number; y?: number; width?: number; height?: number };
+
+const STATE_WORD = /^(?:تشغيل|إيقاف|ايقاف|مفعل|مفعّل|غير مفعل|غير مفعّل|متوقف|مشغل|مشغّل|مطفأ|مطفا|on|off|enabled|disabled|checked|unchecked)$/iu;
+
+/** A control's own name, unless it is only a state («تشغيل», «off»). */
+function ownName(c: Control): string {
+    const n = String(c.text || c.description || '').trim();
+    return n && !STATE_WORD.test(normalizeWords(n).join(' ')) && !STATE_WORD.test(n) ? n : '';
+}
+
+function centre(c: Control): { x: number; y: number } {
+    return { x: (c.x || 0) + (c.width || 0) / 2, y: (c.y || 0) + (c.height || 0) / 2 };
+}
+
+/** The controls in the same column as c, near it: nearest first. */
+function column(controls: Control[], c: Control): Control[] {
+    const o = centre(c);
+    //  Close to it: within about one and a half of its own heights (a tile's label sits just under it).
+    const reachX = Math.max((c.width || 0) / 2, 40), reach = Math.max(1.6 * (c.height || 0), 160);
+    return controls
+        .filter(d => d !== c && d.index !== c.index)
+        .map(d => ({ d, p: centre(d) }))
+        .filter(v => Math.abs(v.p.x - o.x) <= reachX && Math.hypot(v.p.x - o.x, v.p.y - o.y) <= reach)
+        .sort((a, b) => Math.hypot(a.p.x - o.x, a.p.y - o.y) - Math.hypot(b.p.x - o.x, b.p.y - o.y))
+        .map(v => v.d);
+}
+
+function nearWord(controls: Control[], c: Control): string {
+    for (const d of column(controls, c)) { const n = ownName(d); if (n) return n; }
+    return '';
+}
+
+/** The on/off state of the control, or of the nearest switch in its column. */
+function stateOf(controls: Control[], c: Control): boolean | undefined {
+    if (typeof c.checked === 'boolean') return c.checked;
+    const s = column(controls, c).find(d => typeof d.checked === 'boolean');
+    return s && typeof s.checked === 'boolean' ? s.checked : undefined;
+}
+
+/** What a tap is kept as: the control's own name, or the word beside it; its state when it has one. */
+export function targetOf(controls: Control[], c: Control): StepTarget {
+    const text = c.text && ownName({ ...c, description: '' }) ? c.text : '';
+    const description = !text && c.description && ownName({ ...c, text: '' }) ? c.description : '';
+    const near = text || description ? '' : nearWord(controls, c);
+    const checked = stateOf(controls, c);
+    return {
+        ...(text ? { text } : {}),
+        ...(description ? { description } : {}),
+        ...(c.id ? { id: c.id } : {}),
+        ...(c.kind ? { kind: c.kind } : {}),
+        ...(near ? { near } : {}),
+        ...(typeof checked === 'boolean' ? { checked } : {}),
+    };
+}
+
+/** The current on/off state of a control found again (itself, or the switch in its column). */
+export function currentState(controls: Control[], c: Control): boolean | undefined {
+    return stateOf(controls, c);
+}
+
+/** The control a recorded tap pressed, on the screen as it is now: by id and name, then by name, then by the word beside it. */
+export function findControl<C extends Control>(controls: C[], t: StepTarget): C | null {
     if (!t.text && !t.description) {
+        //  Known by the word beside it: the one nameless control of that kind whose column holds that word.
+        if (t.near) {
+            const by = controls.filter(c => !ownName(c) && (!t.kind || c.kind === t.kind) && sameText(nearWord(controls, c), t.near));
+            return by.length === 1 ? by[0] : null;
+        }
+        //  Known only by its id: found when exactly one control has it (tiles often share one id).
         const same = t.id ? controls.filter(c => c.id === t.id && (!t.kind || c.kind === t.kind)) : [];
         return same.length === 1 ? same[0] : null;
     }
@@ -419,7 +494,7 @@ export interface ReplayOutcome { done: boolean; ran: number; why?: string; at?: 
  */
 export async function replaySteps(
     recipe: Recipe, ctx: ToolContext, tools: Map<string, EngineTool>,
-    controlsOf: (runId: string) => Array<{ index: number; text: string; description: string; id: string; kind: string; checked?: boolean | null }>,
+    controlsOf: (runId: string) => Control[],
     pause: (ms: number) => Promise<void> = ms => new Promise(r => setTimeout(r, ms)),
     noteDone?: (ctx: ToolContext, tool: string, what: string) => void,
 ): Promise<ReplayOutcome> {
@@ -431,11 +506,13 @@ export async function replaySteps(
         if (!tool) return { done: false, ran, why: `${step.tool} is not among this run's tools`, at: stepLine(step) };
         let args: Record<string, unknown> = { ...step.args };
         if (step.tool === 'android_tap' && step.target) {
-            const c = findControl(controlsOf(ctx.runId) || [], step.target);
+            const screen = controlsOf(ctx.runId) || [];
+            const c = findControl(screen, step.target);
             if (!c) return { done: false, ran, why: `the control «${label(step.target)}» is not on the screen now`, at: stepLine(step) };
-            if (typeof step.target.checked === 'boolean' && typeof c.checked === 'boolean' && c.checked !== step.target.checked) {
+            const now = currentState(screen, c);
+            if (typeof step.target.checked === 'boolean' && typeof now === 'boolean' && now !== step.target.checked) {
                 already.push(label(step.target));
-                noteDone?.(ctx, 'android_tap', `«${label(step.target)}» was already ${c.checked ? 'on' : 'off'}, as asked: not pressed`);
+                noteDone?.(ctx, 'android_tap', `«${label(step.target)}» was already ${now ? 'on' : 'off'}, as asked: not pressed`);
                 ran++;
                 continue;
             }

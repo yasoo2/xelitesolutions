@@ -247,6 +247,70 @@ describe('a switch already as asked is not pressed', () => {
     });
 });
 
+describe('a control with no name of its own is known by the word beside it (the owner\'s TECNO)', () => {
+    //  The quick settings as android_read gave them on 2026-11-08: the flashlight tile is a nameless
+    //  FrameLayout, a Switch whose text is only its state, and «الكشاف» under them; the next tile alike.
+    const box = (index: number, kind: string, text: string, cx: number, cy: number, w: number, h: number, extra: Record<string, unknown> = {}) =>
+        ({ index, kind, text, description: '', id: '', x: cx - w / 2, y: cy - h / 2, width: w, height: h, checked: null, ...extra });
+    const screen = (torchOn: boolean, shift = 0) => [
+        box(13 + shift, 'FrameLayout', '', 540, 548, 1000, 300),
+        box(33 + shift, 'Switch', torchOn ? 'تشغيل' : 'إيقاف', 882, 1385, 180, 40, { checked: torchOn }),
+        box(34 + shift, 'FrameLayout', '', 882, 1322, 140, 140),
+        box(36 + shift, 'TextView', 'الكشاف', 882, 1433, 180, 40, { id: 'tile_label' }),
+        box(39 + shift, 'Switch', 'إيقاف', 654, 1385, 180, 40, { checked: false }),
+        box(40 + shift, 'FrameLayout', '', 654, 1322, 140, 140),
+        box(42 + shift, 'TextView', 'وضع الطائرة', 654, 1433, 180, 40, { id: 'tile_label' }),
+    ];
+
+    test('the tile is kept by «الكشاف» and its state, never by «إيقاف»', () => {
+        const { targetOf } = ex();
+        const s = screen(false);
+        expect(targetOf(s, s[2])).toEqual({ kind: 'FrameLayout', near: 'الكشاف', checked: false });
+        //  Its switch tapped instead: «إيقاف» is a state, not a name.
+        expect(targetOf(s, s[1])).toMatchObject({ kind: 'Switch', near: 'الكشاف', checked: false });
+        expect(targetOf(s, s[1]).text).toBeUndefined();
+    });
+
+    test('found again by that word at its new number; the other tile is never taken for it', () => {
+        const { findControl, currentState } = ex();
+        const later = screen(true, 5);
+        const c = findControl(later, { kind: 'FrameLayout', near: 'الكشاف', checked: false });
+        expect(c?.index).toBe(39);
+        expect(currentState(later, c)).toBe(true);
+        expect(findControl(later, { kind: 'FrameLayout', near: 'وضع الطائرة' })?.index).toBe(45);
+        expect(findControl(later, { kind: 'FrameLayout', near: 'البلوتوث' })).toBeNull();
+    });
+
+    test('«شغل الكشاف» learned on this screen, done again: pressed when off, not pressed when already on', async () => {
+        const { recordingTools, replaySteps, replayability } = ex();
+        const trail = { steps: [] as any[], tried: [] as string[] };
+        const before = screen(false);
+        const lf = fakeTools([before, before], []);
+        const [, , read, tap] = recordingTools(lf.tools as any, trail, lf.controlsOf as any);
+        await read.run({}, { runId: 'tecno' } as any);
+        await tap.run({ control: 34 }, { runId: 'tecno' } as any);
+        expect(trail.steps[1].target).toEqual({ kind: 'FrameLayout', near: 'الكشاف', checked: false });
+        const steps = [{ tool: 'android_panel', args: { panel: 'quick_settings' } }, { tool: 'android_read', args: {} }, trail.steps[1], { tool: 'android_read', args: {} }];
+        expect(replayability(steps, 'act').ok).toBe(true);
+        const recipe = learn({ steps });
+        expect(recipe.replayable).toBe(true);
+
+        const run = async (torchOn: boolean) => {
+            const log: string[] = [];
+            const f = fakeTools([[], screen(torchOn, 2), screen(true, 2)], log);
+            const r = await replaySteps(recipe, { runId: `t${torchOn}`, signal: new AbortController().signal, emit: () => undefined } as any,
+                new Map(f.tools.map(t => [t.name, t] as const)) as any, f.controlsOf as any, async () => undefined);
+            return { r, log };
+        };
+        const off = await run(false);
+        expect(off.r).toEqual({ done: true, ran: 4 });
+        expect(off.log).toContain('android_tap {"control":36}');
+        const on = await run(true);
+        expect(on.r).toMatchObject({ done: true, already: ['الكشاف'] });
+        expect(on.log.some(l => l.startsWith('android_tap'))).toBe(false);
+    });
+});
+
 describe('in the engine', () => {
     function deps(model: any, tools: any[], before?: any) {
         return {
