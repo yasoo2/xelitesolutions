@@ -311,6 +311,32 @@ describe('a control with no name of its own is known by the word beside it (the 
     });
 });
 
+describe('a detour is not part of the way', () => {
+    test('a tap undone by «back» is taken out with the looks between; repeated looks are kept once', () => {
+        //  «اطفي الكشاف» as learned live on the TECNO, 2026-11-08.
+        const learned = [
+            { tool: 'android_devices', args: {} },
+            { tool: 'android_read', args: { serial: 'T' } },
+            { tool: 'android_tap', args: {}, target: { kind: 'Button', near: 'الكشاف', checked: true } },
+            { tool: 'android_read', args: { serial: 'T' } },
+            { tool: 'android_look', args: { serial: 'T' } },
+            { tool: 'android_key', args: { key: 'back', serial: 'T' } },
+            { tool: 'android_read', args: { serial: 'T' } },
+            { tool: 'android_tap', args: { serial: 'T' }, target: { description: 'الكشاف', kind: 'Switch', checked: true } },
+            { tool: 'android_read', args: { serial: 'T' } },
+        ];
+        const { pruneDetours } = ex();
+        expect(pruneDetours(learned).map((s: any) => `${s.tool}${s.target ? ` ${s.target.description || s.target.near}` : ''}`)).toEqual([
+            'android_devices', 'android_read', 'android_tap الكشاف', 'android_read',
+        ]);
+        //  A tap with real work after it (typing) is no detour, even when «back» follows.
+        const typed = [{ tool: 'android_tap', args: {}, target: { text: 'Search' } }, { tool: 'android_type', args: { text: 'x' } }, { tool: 'android_key', args: { key: 'back' } }];
+        expect(pruneDetours(typed)).toHaveLength(3);
+        //  The book learns without the detour.
+        expect(learn({ request: 'اطفي الكشاف', steps: learned }).steps).toHaveLength(4);
+    });
+});
+
 describe('in the engine', () => {
     function deps(model: any, tools: any[], before?: any) {
         return {

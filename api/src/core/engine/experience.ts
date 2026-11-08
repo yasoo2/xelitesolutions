@@ -175,6 +175,30 @@ export function replayability(steps: ExperienceStep[], kind: string): { ok: bool
     return { ok: true };
 }
 
+/*
+ * A DETOUR IS NOT PART OF THE WAY.
+ *
+ * Live on the owner's TECNO, 2026-11-08: «اطفي الكشاف» was learned as: tap the
+ * tile → its detail panel opened → look → «back» → tap the tile's switch. Done
+ * again, the first tap and the «back» are a detour at best, and at worst close
+ * the panel the next step needs. A tap followed only by looks and then «back»
+ * is taken out with them; looks repeated one after another are kept once.
+ */
+const LOOK_STEPS = new Set(['android_read', 'android_look', 'android_devices']);
+export function pruneDetours(steps: ExperienceStep[]): ExperienceStep[] {
+    const out = [...steps];
+    for (let i = 0; i < out.length; i++) {
+        if (out[i].tool !== 'android_tap') continue;
+        let j = i + 1;
+        while (j < out.length && LOOK_STEPS.has(out[j].tool)) j++;
+        if (j < out.length && out[j].tool === 'android_key' && String(out[j].args.key || '').toLowerCase() === 'back') {
+            out.splice(i, j - i + 1);
+            i = Math.max(-1, i - 2);
+        }
+    }
+    return out.filter((s, k) => !(k > 0 && LOOK_STEPS.has(s.tool) && s.tool === out[k - 1].tool && JSON.stringify(s.args) === JSON.stringify(out[k - 1].args)));
+}
+
 /* ───────────────────────── the book on disk ───────────────────────── */
 
 let book: Book | null = null;
@@ -193,7 +217,8 @@ function load(): Book {
         try {
             const j = JSON.parse(fs.readFileSync(f, 'utf8'));
             book = {
-                recipes: Array.isArray(j?.recipes) ? j.recipes.filter((r: Recipe) => r && r.id && r.ownerId && Array.isArray(r.steps)) : [],
+                //  A recipe kept before detours were taken out is read without them.
+                recipes: Array.isArray(j?.recipes) ? j.recipes.filter((r: Recipe) => r && r.id && r.ownerId && Array.isArray(r.steps)).map((r: Recipe) => ({ ...r, steps: pruneDetours(r.steps) })) : [],
                 lessons: Array.isArray(j?.lessons) ? j.lessons.filter((l: Lesson) => l && l.id && l.ownerId) : [],
             };
         } catch { /* no book yet, or unreadable: start empty */ }
@@ -257,7 +282,7 @@ export function learnFromRun(r: RunLesson, now = Date.now()): Recipe | Lesson | 
         save();
         return lesson;
     }
-    const steps = r.steps.filter(s => !META.has(s.tool));
+    const steps = pruneDetours(r.steps.filter(s => !META.has(s.tool)));
     const can = replayability(steps, r.kind);
     const old = b.recipes.find(x => x.ownerId === r.ownerId && x.key === key && x.target === r.target);
     const fresh: Recipe = {
