@@ -8,7 +8,7 @@
  * reply arrives from the people he emailed, and tell me — Joe himself».
  */
 import type { EngineTool, ToolContext, ToolOutcome } from '../types';
-import { activeWatches, emailAddresses, stopWatching, watchReplies } from '../../devices/mail-watch';
+import { activeWatches, emailAddresses, markChatMessagesRead, stopWatching, unreadChatMessages, watchReplies } from '../../devices/mail-watch';
 
 interface WatchArgs { to: string[]; name?: string; subject?: string; stop?: boolean }
 
@@ -109,4 +109,71 @@ export function watchAfterSentEmail(sessionId: unknown, request: string, summary
     const to = emailAddresses(`${text} ${summary || ''}`).filter(a => !recent.has(a));
     if (!to.length) return [];
     return watchReplies(sessionId, { to, request: text, lang, userId, auto: true }, now).map(w => w.to);
+}
+
+/*
+ * WHAT HE ASKED BEFORE JOE COULD WATCH IS NOT FORGOTTEN.
+ *
+ * The owner, 2026-11-08: «Shoroq's email arrived and Joe did not tell me,
+ * though I told him last night: send the email and watch whether Shoroq
+ * replies». At 00:33 Joe sent it to shoroq.suwan@gmail.com; at 00:36 he wrote
+ * «اذا وصل اي ايميل من شروق اعلمني بذلك مباشره», and was told Joe cannot work
+ * in the background — true that night. The watch was built that morning, and
+ * nothing went back to what he had asked: her reply came at 10:38 and Joe was
+ * silent.
+ *
+ * Each time the watch starts, Joe reads the chats of the last 14 days. A
+ * message of his that asked to be told when someone writes, or to send an
+ * email, becomes a watch from THAT moment, on the addresses the chat around
+ * it names (the hour before and the two after: the address Joe found or he
+ * gave, the one Joe wrote to). An address named as the account mail was sent
+ * FROM («the account younes@…») is his own, not a person. Each message is read
+ * once, so a watch he stopped stays stopped.
+ */
+export interface ChatLine { id: string; sessionId: string; role: string; content: string; at: number; userId?: string }
+
+const BACKFILL_MS = 14 * 24 * 60 * 60_000;
+const BEFORE_MS = 60 * 60_000;
+const AFTER_MS = 2 * 60 * 60_000;
+/** «الحساب younes@…», "account younes@…", "from younes@…": the account it was sent from, his own. */
+const ACCOUNT_BEFORE = /(?:الحساب|حسابك|حسابه|حساب|account|from|signed\s+in\s+as|sender)\s*[:(«"'‏‎]*\s*$/iu;
+const AR_WORD_STOP = new Set(['ايميل', 'إيميل', 'بريد', 'البريد', 'رسالة', 'رساله', 'هاتفي', 'الهاتف', 'جوالي', 'حسابي', 'اي', 'أي', 'التي', 'الذي', 'قبل', 'بعد', 'هذا', 'هذه']);
+
+/** The person he named («من شروق», «لشروق», «الى احمد»), when one is named in Arabic. */
+function nameIn(text: string): string | undefined {
+    for (const m of String(text || '').matchAll(/(?:^|\s)(?:من|إلى|الى|لـ?)\s*([ء-ي]{3,14})/gu)) {
+        const w = m[1];
+        if (!AR_WORD_STOP.has(w)) return w;
+    }
+    return undefined;
+}
+
+/** The addresses a chat text names as people, not as the account mail went out from. */
+function peopleAddresses(text: string): string[] {
+    const out: string[] = [];
+    for (const m of String(text || '').matchAll(/[A-Za-z0-9._%+'-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/gu)) {
+        if (ACCOUNT_BEFORE.test(String(text).slice(Math.max(0, (m.index || 0) - 30), m.index))) continue;
+        out.push(m[0].replace(/[.'-]+$/u, '').toLowerCase());
+    }
+    return [...new Set(out)];
+}
+
+/** Turns what he asked in the last 14 days into watches; returns what it added. */
+export function backfillWatchesFromChats(lines: ChatLine[], now = Date.now()): Array<{ sessionId: string; to: string[]; at: number }> {
+    const recent = lines.filter(l => l && l.id && l.sessionId && Number.isFinite(l.at) && now - l.at <= BACKFILL_MS);
+    const asks = recent.filter(l => l.role === 'user' && (isMailWatchRequest(l.content) || (SEND_EMAIL.test(l.content) && EMAIL_WORD.test(l.content))));
+    const fresh = new Set(unreadChatMessages(asks.map(l => l.id)));
+    const added: Array<{ sessionId: string; to: string[]; at: number }> = [];
+    for (const ask of asks.filter(l => fresh.has(l.id)).sort((a, b) => a.at - b.at)) {
+        const around = recent.filter(l => l.sessionId === ask.sessionId && l.at >= ask.at - BEFORE_MS && l.at <= ask.at + AFTER_MS);
+        const to = [...new Set(around.flatMap(l => peopleAddresses(l.content)))];
+        if (!to.length) continue;
+        const made = watchReplies(ask.sessionId, {
+            to, name: nameIn(ask.content), request: ask.content, auto: true,
+            ...(ask.userId ? { userId: ask.userId } : {}),
+        }, ask.at);
+        if (made.length) added.push({ sessionId: ask.sessionId, to: made.map(w => w.to), at: ask.at });
+    }
+    markChatMessagesRead([...fresh], now);
+    return added;
 }

@@ -22,6 +22,35 @@
  */
 import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 import { activeWatches, newReplies, parseMailNotices, replyMessage, type MailReply } from '../../core/devices/mail-watch';
+import { backfillWatchesFromChats, type ChatLine } from '../../core/engine/tools/mail';
+
+/** The chats' messages of the last 14 days, from the store this Joe keeps them in, with each chat's owner. */
+async function chatLinesOfTwoWeeks(now = Date.now()): Promise<ChatLine[]> {
+    const since = now - 14 * 24 * 60 * 60_000;
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const chat = require('../../api/chat-store');
+    const line = (m: any, owners: Map<string, string>): ChatLine => ({
+        id: String(m?._id || ''), sessionId: String(m?.sessionId || ''), role: String(m?.role || ''),
+        content: String(m?.content || ''), at: new Date(m?.createdAt || 0).getTime(),
+        ...(owners.get(String(m?.sessionId || '')) ? { userId: owners.get(String(m?.sessionId || '')) } : {}),
+    });
+    if (chat.usesLocalChatStore()) {
+        try { chat.loadChatStores?.(); } catch { /* already in memory */ }
+        const owners = new Map<string, string>(((global as any).mockSessions || []).map((s: any) => [String(s?._id || s?.id || ''), String(s?.userId || '')]));
+        return ((global as any).mockMessages || []).map((m: any) => line(m, owners)).filter((l: ChatLine) => l.at >= since);
+    }
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { Message } = require('../../shared/models/message');
+    const rows: any[] = await Message.find({ createdAt: { $gte: new Date(since) } }).sort({ createdAt: 1 }).limit(20000).lean();
+    const owners = new Map<string, string>();
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { Session } = require('../../shared/models/session');
+        const ids = [...new Set(rows.map(r => String(r.sessionId || '')))].filter(Boolean);
+        for (const s of await Session.find({ _id: { $in: ids } }).select({ userId: 1 }).lean()) owners.set(String(s._id), String(s.userId || ''));
+    } catch { /* the owner is found when Joe tells him (session-identity) */ }
+    return rows.map(r => line(r, owners));
+}
 
 const everyMs = (): number => {
     const n = Number(process.env.JOE_MAIL_WATCH_EVERY_MS);
@@ -101,9 +130,23 @@ export class MailWatchService {
         if (this.timer || process.env.JOE_MAIL_WATCH === 'off') return;
         this.timer = setInterval(() => { void this.tick(); }, everyMs());
         this.timer.unref?.();
-        //  A reply that came while Joe was off is still in the phone's list: look soon after the start.
-        setTimeout(() => { void this.tick(); }, 20_000).unref?.();
+        //  What he asked in the chats of the last 14 days — before Joe could watch, or in a run that
+        //  forgot the tool — becomes a watch first (tools/mail.ts backfillWatchesFromChats); then a
+        //  reply that came while Joe was off, still in the phone's list, is looked for soon after.
+        setTimeout(() => { void this.backfill().then(() => this.tick()); }, 20_000).unref?.();
         console.log(`[MailWatch] started: ${activeWatches().length} person(s) watched, every ${Math.round(everyMs() / 1000)} s`);
+    }
+
+    /** Reads the chats once for watches he asked for and Joe does not hold yet. */
+    async backfill(lines?: ChatLine[], now = Date.now()): Promise<number> {
+        try {
+            const made = backfillWatchesFromChats(lines || await chatLinesOfTwoWeeks(now), now);
+            for (const m of made) console.log(`[MailWatch] from the chat ${m.sessionId} (${new Date(m.at).toISOString()}): watching ${m.to.join(', ')}`);
+            return made.length;
+        } catch (e: any) {
+            console.warn('[MailWatch] the chats could not be read for watches:', e?.message || e);
+            return 0;
+        }
     }
 
     stop(): void {
