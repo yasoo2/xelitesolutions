@@ -12,6 +12,7 @@ import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
 import { setRunBusy } from '../lib/run-activity';
+import { isNetworkFailure } from '../lib/network-error';
 import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -4023,7 +4024,9 @@ export default function CommandComposer({
       if (!currentVerification()) return false;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || t('cc_connectionFailed')) },
+        //  The browser's own words for «Joe did not answer» («Failed to fetch») are English and
+        //  say nothing: the owner read them while Joe was restarting (2026-11-09). Said in his language.
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (isNetworkFailure(err) ? t('cc_joeUnreachable') : (err.message || t('cc_connectionFailed'))) },
       }));
       return false;
     }

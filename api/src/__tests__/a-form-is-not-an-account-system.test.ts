@@ -70,3 +70,24 @@ describe('deliveries as a report\'s data ask for the report, not for a shipping 
         expect(ids(request)).toContain('shipping');
     });
 });
+
+describe('a phone FIELD asks for no responsive interface; the page on a phone does', () => {
+    //  The ladder, 2026-11-09: five Arabic forms (L071–L079) refused «missing: responsive interface»
+    //  for «الاسم والبريد والهاتف»; their English twins were not.
+    test.each([
+        'ابني نموذج تسجيل لـعيادة بيطرية فيه الاسم والبريد والهاتف وتاريخ الميلاد وكلمة مرور مع مؤشر قوتها، ورسائل خطأ واضحة.',
+        'نموذج طلب فيه رقم الجوال إلزامي',
+    ])('«%s» does not ask for a responsive interface', request => {
+        expect(ids(request)).not.toContain('responsive');
+    });
+
+    test.each([
+        'ابني صفحة هبوط متجاوبة لمطعم',
+        'صفحة تعمل على الهاتف والحاسوب',
+        'لوحة تناسب شاشات الجوال',
+        'موقع مناسب للهاتف',
+        'A responsive landing page',
+    ])('«%s» asks for a responsive interface', request => {
+        expect(ids(request)).toContain('responsive');
+    });
+});

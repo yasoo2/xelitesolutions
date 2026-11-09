@@ -622,7 +622,10 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'responsive', ar: 'واجهة متجاوبة', en: 'responsive interface',
-        ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|الجوال|الهاتف/i,
+        //  The page on a phone, never a phone FIELD: «الاسم والبريد والهاتف» and «رقم الجوال»
+        //  ask for no responsive interface; five Arabic forms of the ladder exam were refused
+        //  «missing: responsive interface» for them (2026-11-09).
+        ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|للموبايل|(?:على|في)\s+(?:ال)?(?:هاتف|جوال|موبايل|هواتف|أجهزة\s+(?:ال)?(?:هاتف|جوال|محمولة))|(?:ال)?شاشات?\s+(?:ال)?(?:هاتف|جوال|موبايل|صغير(?:ة|ه)?)|(?:ال)?هواتف\s+(?:ال)?ذكي(?:ة|ه)/iu,
         evidence: RESPONSIVE_LAYOUT,
     },
     {
@@ -692,11 +695,15 @@ const COUPON_SYSTEM = /\bcoupons?\b|\bpromo(?:tion(?:al)?)?\s*codes?\b|\bpromo\b
 const REPORT_ONLY = /\b(?:reports?|dashboards?|charts?|graphs?|analytics|statistics|stats|kpis?)\b|تقرير|تقارير|لوحة\s+(?:معلومات|تحكم|إحصا|مؤشرات)|رسوم?\s*بيانية|رسوم|مخططات?|إحصائيات|إحصاءات/iu;
 const SHIPPING_SYSTEM = /\bshipping\s+(?:options?|address(?:es)?|service|management|rates?|costs?|fees?|zones?|methods?)\b|\bdelivery\s+(?:tracking|status(?:es)?|options?|address(?:es)?|service|management|zones?|fees?|slots?)\b|\btrack(?:s|ing)?\s+(?:the\s+)?(?:shipments?|deliver(?:y|ies)|orders?|packages?)\b|(?:خيارات|عناوين|عنوان|رسوم|تكلفة|مناطق|إدارة|نظام|طرق)\s+(?:الشحن|التوصيل)|تتبع\s+(?:الشحنات?|التوصيلات?|الطلبات?|الطرود)|حالة\s+(?:الشحنة|الشحنات|الطلب|الطلبات|التوصيل)/iu;
 
+/** The shipping system named by its own name («Shipping», «الشحن»), not deliveries or shipments as records. */
+const SHIPPING_NAMED = /\bshipping\b|(?<!\p{L})(?:ال)?شحن(?!\p{L})/iu;
+
 function capabilityIsRequested(capability: Capability, text: string): boolean {
     //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
     if (!asksAsWords(capability.ask, text)) return false;
     if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
-    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text));
+    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
+    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text));
     if (capability.id !== 'accounts') return true;
     if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
     return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);

@@ -255,7 +255,13 @@ export function isFollowUpChange(text: string): boolean {
  * work on that repository. A question about something else is not.
  */
 const REPO_WORK_EN = /\b(?:bugs?|fix(?:es|ed)?|broken|errors?|exceptions?|crash(?:es|ed)?|fail(?:s|ed|ing|ure)?|wrong|incorrect|regression|issue|ci\b|tests?|pass(?:es|ing)?|feature|implement|add|support|refactor|clean\s*up|optimi[sz]e|performance|slow|hangs?|faster|speed|security|vulnerab\w*|exploit|leak\w*|injection|travers\w*|should|must|expected|instead\s+of|complain\w*|stop(?:s|ped)?\s+working|doesn'?t\s+work|does\s+not\s+work)\b/iu;
-const REPO_WORK_AR = new FoldedRegExp('(?:خطأ|اخطاء|أخطاء|خلل|مشكلة|مشكله|عطل|يفشل|تفشل|فشل|لا\\s+يعمل|لا\\s+تعمل|معطل|بطيء|بطء|يتعطل|ثغرة|ثغره|أمان|امان|تسريب|أصلح|اصلح|صلح|أضف|اضف|ضيف|ميزة|ميزه|اختبار|اختبارات|يجب|ينبغي|بدلا|بدلاً|نفذ|طبق|حسن|سرع|عدل|أعد\\s+كتابة)', 'u');
+//  The Codex exam in Arabic, 2026-11-09: «أداء: استيراد ملف عملاء … يتجمّد لدقائق في الدالة
+//  findDuplicates … اجعل findDuplicates وuniqueRows سريعتين» named no word here, went to the old
+//  planner's file writer, which asked «حدّد هدف ai_write_file» and ended «done» with no change.
+//  The English list's performance, speed, «make» and «complain» words are here in Arabic too.
+const REPO_WORK_AR = new FoldedRegExp('(?:خطأ|اخطاء|أخطاء|خلل|مشكلة|مشكله|عطل|يفشل|تفشل|فشل|لا\\s+يعمل|لا\\s+تعمل|معطل|بطيء|بطء|يتعطل|ثغرة|ثغره|أمان|امان|تسريب|أصلح|اصلح|صلح|أضف|اضف|ضيف|ميزة|ميزه|اختبار|اختبارات|يجب|ينبغي|بدلا|بدلاً|نفذ|طبق|حسن|سرع|عدل|أعد\\s+كتابة'
+    //  Never a piece of other words: «خلي» is in «داخلي», «تعلق» in «متعلق».
+    + '|أداء|اداء|يتجمد|تتجمد|يعلق|يهنق|بطيئ|أسرع|اسرع|سريع|سرعة|تسريع|تحسين|يتوقف|تتوقف|يشتكي|يشتكون|شكوى|شكاوى|اجعل|حمراء)', 'u');
 
 export function isRepositoryWork(text: string): boolean {
     const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');

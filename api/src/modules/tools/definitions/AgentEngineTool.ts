@@ -176,7 +176,7 @@ async function runOperate(o: {
         //  any other run is a recipe when proven done, a lesson when it failed.
         try {
             const replayWon = !!recipe && replayRan && out.ok && result.status === 'delivered' && result.steps === 0;
-            if (recipe && replayRan) noteReplay(recipe.id, replayWon);
+            if (recipe && replayRan) noteReplay(recipe, replayWon);
             if (!replayWon && learnedAs && !asked && result.status !== 'cancelled') {
                 learnFromRun({
                     ownerId: owner, request: learnedAs, target: targetKind, kind, ok: out.ok, steps: trail.steps, tried: trail.tried,

@@ -69,7 +69,20 @@ export interface Recipe {
     /** Given to a run as an example. */
     shown: number;
     savedUsd: number;
+    /** The request's shape with its blanks («#n1 اضبط صوت»), when the steps carry what his words said there. */
+    shape?: string;
+    blanks?: Blanks;
+    /** On a recipe filled for a new request (never kept): the request it was learned from. */
+    from?: string;
+    /**
+     * Filled replays that failed in a row: counted apart, so that «شغل يوتيوب» filled from
+     * «شغل الكشاف» and failing never stops the flashlight's own replay.
+     */
+    shapeFails?: number;
 }
+
+/** What his words said in a recipe's blanks when it was learned: a text, and numbers in order. */
+export interface Blanks { text?: string; numbers: string[] }
 
 export interface Lesson {
     id: string;
@@ -106,9 +119,16 @@ const FILLERS = new Set([
     'please', 'joe', 'now', 'hey', 'my', 'on', 'the', 'a', 'an', 'phone', 'for', 'me', 'pls', 'plz',
 ]);
 
-/** Arabic written alike: no marks, one alef, ى → ي, ة → ه; Latin lower case; punctuation out. */
+/** Arabic-Indic and Persian digits written as 0–9 («٥٠» → «50»). */
+export function latinDigits(text: string): string {
+    return String(text || '')
+        .replace(/[٠-٩]/gu, d => String(d.charCodeAt(0) - 0x660))
+        .replace(/[۰-۹]/gu, d => String(d.charCodeAt(0) - 0x6f0));
+}
+
+/** Arabic written alike: digits as 0–9 («٥٠» = «50»), no marks, one alef, ى → ي, ة → ه; Latin lower case; punctuation out. */
 export function normalizeWords(text: string): string[] {
-    const t = String(text || '')
+    const t = latinDigits(String(text || ''))
         .replace(/[ً-ٰٟـ]/gu, '')
         .replace(/[آأإٱ]/gu, 'ا')
         .replace(/ى/gu, 'ي')
@@ -199,6 +219,159 @@ export function pruneDetours(steps: ExperienceStep[]): ExperienceStep[] {
     return out.filter((s, k) => !(k > 0 && LOOK_STEPS.has(s.tool) && s.tool === out[k - 1].tool && JSON.stringify(s.args) === JSON.stringify(out[k - 1].args)));
 }
 
+/*
+ * ───────────────────────── a way with blanks ─────────────────────────
+ *
+ * Stage two of the book (the owner, 2026-11-08: «he uses the AI only for what he
+ * does not know»). «اضبط الصوت على 50» learned once is the way for «اضبط الصوت
+ * على 80» too; «اكتب مرحبا» for «اكتب كيف حالك»; «افتح محادثة أمي» for «افتح
+ * محادثة سارة». What his words said that the steps carry — a number given to a
+ * tool, a text typed, a control pressed by that name, a text in an address — is
+ * a BLANK; a new request of the same shape fills it with its own words, with no
+ * model: the words outside the blank must be the same (read alike), every number
+ * in it must be one the steps carry, the filled steps must still be safe
+ * (replayability), and the run's own checks judge the result as for any replay.
+ */
+
+interface Tok { orig: string; norm: string; num?: string }
+const NUMBER = /^[0-9]+$/u;
+const MAX_TOKENS = 40;
+
+/** His words one by one: as written, read alike, and a number as 0–9. */
+export function requestTokens(text: string): Tok[] {
+    return String(text || '')
+        .replace(/[^\p{L}\p{N}\p{M}\s]+/gu, ' ')
+        .split(/\s+/u)
+        .filter(Boolean)
+        .map(orig => ({ orig, norm: normalizeWords(orig).join('') }))
+        .filter(t => t.norm)
+        .map(t => (NUMBER.test(t.norm) ? { ...t, num: String(Number(t.norm)) } : t));
+}
+
+/** The request's shape: its words read alike outside the text blank, «#t» for it, «#n1…» for its numbers. */
+function shapeOf(toks: Tok[], run?: [number, number]): { shape: string; fixed: number } {
+    const out: string[] = [];
+    let k = 0, fixed = 0;
+    toks.forEach((t, i) => {
+        if (run && i >= run[0] && i <= run[1]) return;
+        if (t.num) { out.push(`#n${++k}`); return; }
+        if (FILLERS.has(t.norm)) return;
+        fixed++;
+        out.push(t.norm.length >= 5 && t.norm.startsWith('ال') ? t.norm.slice(2) : t.norm);
+    });
+    if (run) out.push('#t');
+    return { shape: [...new Set(out)].sort().join(' '), fixed };
+}
+
+const said = (s: unknown) => normalizeWords(String(s ?? '')).join(' ');
+/** The forms a text takes inside an address. */
+const addressForms = (s: string) => [...new Set([encodeURIComponent(s), encodeURIComponent(s).replace(/%20/gu, '+'), s])];
+/** A tool's own number: never which phone, which control, or where. */
+const OWN_NUMBER = (k: string) => !['serial', 'control', 'x', 'y'].includes(k);
+
+function textIn(steps: ExperienceStep[], raw: string): boolean {
+    const n = said(raw);
+    return steps.some(s => (s.tool === 'android_type' && said(s.args.text) === n)
+        || (s.tool === 'android_tap' && !!s.target && [s.target.text, s.target.description, s.target.near].some(x => !!x && said(x) === n))
+        || (s.tool === 'android_link' && addressForms(raw).some(f => String(s.args.uri || '').includes(f))));
+}
+
+const digitsIn = (s: unknown, v: string) => new RegExp(`(?<![0-9])${v}(?![0-9])`, 'u').test(latinDigits(String(s ?? '')));
+function numberIn(steps: ExperienceStep[], v: string): boolean {
+    return steps.some(s => Object.entries(s.args).some(([k, a]) => (typeof a === 'number' && OWN_NUMBER(k) && a === Number(v))
+        || ((s.tool === 'android_type' && k === 'text') || (s.tool === 'android_link' && k === 'uri')) && digitsIn(a, v)));
+}
+
+/**
+ * The blanks of a way just learned, and the request's shape with them; null when
+ * nothing his words said is carried by the steps (the way is done again only for
+ * the same words), or when a number he said is not (it meant something the
+ * steps do not show, so a new number could not be put anywhere).
+ */
+export function findBlanks(request: string, steps: ExperienceStep[]): { shape: string; blanks: Blanks } | null {
+    const toks = requestTokens(request);
+    if (!toks.length || toks.length > MAX_TOKENS) return null;
+    let run: [number, number] | undefined;
+    find: for (let len = toks.length - 1; len >= 1; len--) {
+        for (let i = 0; i + len <= toks.length; i++) {
+            const part = toks.slice(i, i + len);
+            if (part.every(t => FILLERS.has(t.norm) || t.num)) continue;
+            if (textIn(steps, part.map(t => t.orig).join(' ')) && shapeOf(toks, [i, i + len - 1]).fixed > 0) { run = [i, i + len - 1]; break find; }
+        }
+    }
+    const numbers = toks.filter((t, i) => t.num && !(run && i >= run[0] && i <= run[1])).map(t => t.num!);
+    if (new Set(numbers).size !== numbers.length || numbers.some(v => !numberIn(steps, v))) return null;
+    if (!run && !numbers.length) return null;
+    const { shape, fixed } = shapeOf(toks, run);
+    if (!fixed) return null;
+    return { shape, blanks: { ...(run ? { text: toks.slice(run[0], run[1] + 1).map(t => t.orig).join(' ') } : {}), numbers } };
+}
+
+/** The steps with the blanks filled by the new request's words. */
+export function fillSteps(steps: ExperienceStep[], blanks: Blanks, values: Blanks): ExperienceStep[] {
+    const swap = new Map(blanks.numbers.map((v, i) => [v, values.numbers[i]] as const));
+    const swapDigits = (s: string) => (swap.size ? latinDigits(s).replace(new RegExp(`(?<![0-9])(?:${[...swap.keys()].join('|')})(?![0-9])`, 'gu'), m => swap.get(m) ?? m) : s);
+    const was = blanks.text ? said(blanks.text) : '';
+    return steps.map(s => {
+        const args: Record<string, unknown> = { ...s.args };
+        let target = s.target ? { ...s.target } : undefined;
+        for (const [k, a] of Object.entries(args)) {
+            if (typeof a === 'number' && OWN_NUMBER(k) && swap.has(String(a))) args[k] = Number(swap.get(String(a)));
+        }
+        if (s.tool === 'android_type' && typeof args.text === 'string') {
+            args.text = was && values.text && said(args.text) === was ? values.text : swapDigits(args.text);
+        }
+        if (s.tool === 'android_link' && typeof args.uri === 'string') {
+            let uri = args.uri;
+            if (blanks.text && values.text) {
+                const from = addressForms(blanks.text), to = addressForms(values.text);
+                const f = from.findIndex(x => uri.includes(x));
+                if (f >= 0) uri = uri.split(from[f]).join(to[f]);
+            }
+            args.uri = swapDigits(uri);
+        }
+        if (s.tool === 'android_tap' && target && was && values.text) {
+            if (target.text && said(target.text) === was) target = { ...target, text: values.text };
+            else if (target.description && said(target.description) === was) target = { ...target, description: values.text };
+            else if (target.near && said(target.near) === was) target = { ...target, near: values.text };
+        }
+        return { ...s, args, ...(target ? { target } : {}) };
+    });
+}
+
+/** A way learned for another request of the same shape, its blanks filled with this request's words; null when none fits. */
+function filledFor(recipes: Recipe[], request: string): Recipe | null {
+    const byShape = new Map<string, Recipe>();
+    //  A shape whose filled replays failed twice in a row is not filled again until a run teaches it again.
+    for (const r of [...recipes].sort((p, q) => q.lastAt - p.lastAt)) {
+        if (r.shape && r.blanks && (r.shapeFails || 0) < REPLAY_FAILS_TO_RETIRE && !byShape.has(r.shape)) byShape.set(r.shape, r);
+    }
+    if (!byShape.size) return null;
+    const toks = requestTokens(request);
+    if (!toks.length || toks.length > MAX_TOKENS) return null;
+    const attempt = (run?: [number, number]): Recipe | null => {
+        const r = byShape.get(shapeOf(toks, run).shape);
+        if (!r || !r.blanks || !!run !== !!r.blanks.text) return null;
+        const part = run ? toks.slice(run[0], run[1] + 1) : [];
+        if (run && part.every(t => FILLERS.has(t.norm) || t.num)) return null;
+        const numbers = toks.filter((t, i) => t.num && !(run && i >= run[0] && i <= run[1])).map(t => t.num!);
+        if (numbers.length !== r.blanks.numbers.length) return null;
+        const values: Blanks = { ...(run ? { text: part.map(t => t.orig).join(' ') } : {}), numbers };
+        const steps = fillSteps(r.steps, r.blanks, values);
+        if (!replayability(steps, r.kind).ok) return null;
+        return { ...r, request: String(request).slice(0, 300), steps, from: r.request };
+    };
+    const plain = attempt();
+    if (plain) return plain;
+    for (let len = toks.length - 1; len >= 1; len--) {
+        for (let i = 0; i + len <= toks.length; i++) {
+            const f = attempt([i, i + len - 1]);
+            if (f) return f;
+        }
+    }
+    return null;
+}
+
 /* ───────────────────────── the book on disk ───────────────────────── */
 
 let book: Book | null = null;
@@ -284,10 +457,12 @@ export function learnFromRun(r: RunLesson, now = Date.now()): Recipe | Lesson | 
     }
     const steps = pruneDetours(r.steps.filter(s => !META.has(s.tool)));
     const can = replayability(steps, r.kind);
+    const shaped = can.ok ? findBlanks(r.request, steps) : null;
     const old = b.recipes.find(x => x.ownerId === r.ownerId && x.key === key && x.target === r.target);
     const fresh: Recipe = {
         id: old?.id || newId(), ownerId: r.ownerId, key, request: r.request.slice(0, 300), target: r.target, kind: r.kind,
         steps, summary: String(r.summary || '').slice(0, 600), replayable: can.ok, ...(can.ok ? {} : { whyNot: can.why }),
+        ...(shaped ? { shape: shaped.shape, blanks: shaped.blanks } : {}),
         language: r.language, model: r.model, createdAt: old?.createdAt || now, lastAt: now,
         learnedCostUsd: Math.max(0, Number(r.costUsd) || 0) || old?.learnedCostUsd || 0, learnedMs: Math.max(0, Number(r.durationMs) || 0),
         replays: old?.replays || 0, replayWins: old?.replayWins || 0, failsInARow: 0, shown: old?.shown || 0, savedUsd: old?.savedUsd || 0,
@@ -307,16 +482,27 @@ export function replayFor(ownerId: string, request: string, target: 'phone' | 'c
     if (!replayOn() || !ownerId) return null;
     const key = requestKey(request);
     if (!key) return null;
-    const r = load().recipes.find(x => x.ownerId === ownerId && x.key === key && x.target === target);
-    return r && r.replayable && r.failsInARow < REPLAY_FAILS_TO_RETIRE ? r : null;
+    const trusted = (x: Recipe) => x.ownerId === ownerId && x.target === target && x.replayable && x.failsInARow < REPLAY_FAILS_TO_RETIRE;
+    const mine = load().recipes;
+    const same = mine.find(x => x.key === key && x.ownerId === ownerId && x.target === target);
+    if (same) return trusted(same) ? same : null;
+    //  No way for these very words: one learned for a request of the same shape, its blanks filled.
+    return filledFor(mine.filter(trusted), request);
 }
 
-/** A replay ended: worked (with what learning it had cost, now saved) or not. */
-export function noteReplay(id: string, worked: boolean, now = Date.now()): void {
-    const r = load().recipes.find(x => x.id === id);
+/**
+ * A replay ended: worked (with what learning it had cost, now saved) or not. Given
+ * the recipe that ran, a filled one's failure counts against its shape only.
+ */
+export function noteReplay(ran: string | Recipe, worked: boolean, now = Date.now()): void {
+    const filled = typeof ran !== 'string' && !!ran.from;
+    const r = load().recipes.find(x => x.id === (typeof ran === 'string' ? ran : ran.id));
     if (!r) return;
     r.replays++;
-    if (worked) { r.replayWins++; r.failsInARow = 0; r.savedUsd += r.learnedCostUsd; r.lastAt = now; }
+    if (worked) {
+        r.replayWins++; r.savedUsd += r.learnedCostUsd; r.lastAt = now;
+        if (filled) r.shapeFails = 0; else r.failsInARow = 0;
+    } else if (filled) r.shapeFails = (r.shapeFails || 0) + 1;
     else r.failsInARow++;
     save();
 }
@@ -590,16 +776,22 @@ export function replaySummary(recipe: Recipe, language: string, already: string[
     const was = already.length
         ? (ar ? ` وكان ${already.map(a => `«${a}»`).join(' و')} على الحالة المطلوبة أصلًا، فلم أضغطه.` : ` ${already.map(a => `«${a}»`).join(', ')} was already as asked, so I did not press it.`)
         : '';
+    const steps = ar ? `${n} ${n === 1 ? 'خطوة' : n === 2 ? 'خطوتان' : n <= 10 ? 'خطوات' : 'خطوة'}` : `${n} step(s)`;
+    if (recipe.from) {
+        return ar
+            ? `نفّذتُ «${recipe.request}» من خبرتي: بالطريقة التي نجحت من قبل في «${recipe.from}» (${steps}) وبكلماتك الجديدة، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.${was}`
+            : `I did «${recipe.request}» from my experience: the way that worked for «${recipe.from}» (${steps}) with your new words, no AI call, then checked the result with my own checks.${was}`;
+    }
     return ar
-        ? `نفّذتُ «${recipe.request}» من خبرتي: أعدتُ الخطوات التي نجحت من قبل (${n} ${n === 1 ? 'خطوة' : n === 2 ? 'خطوتان' : n <= 10 ? 'خطوات' : 'خطوة'})، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.${was}`
-        : `I did «${recipe.request}» from my experience: the ${n} step(s) that worked before, with no AI call, then checked the result with my own checks.${was}`;
+        ? `نفّذتُ «${recipe.request}» من خبرتي: أعدتُ الخطوات التي نجحت من قبل (${steps})، دون استدعاء الذكاء الاصطناعي، ثم تأكدتُ من النتيجة بفحوصي.${was}`
+        : `I did «${recipe.request}» from my experience: the ${steps} that worked before, with no AI call, then checked the result with my own checks.${was}`;
 }
 
 /** What the model is told when the book could not finish: where Joe stopped, so it goes on from there. */
 export function replayNote(recipe: Recipe, r: ReplayOutcome, checksFailed?: string): string {
     const done = recipe.steps.slice(0, r.ran).map(stepLine).join(' → ');
     return [
-        `JOE FIRST REPEATED THE WAY THAT WORKED BEFORE for this same request (his experience): ${done ? `these steps were done: ${done}` : 'no step could be done'}.`,
+        `JOE FIRST REPEATED THE WAY THAT WORKED BEFORE ${recipe.from ? `for a request of the same shape («${recipe.from}»), with this request's words in its blanks` : 'for this same request'} (his experience): ${done ? `these steps were done: ${done}` : 'no step could be done'}.`,
         checksFailed ? `Every step ran, but Joe's checks did not pass: ${checksFailed}` : `Then ${r.at ? `«${r.at}»` : 'the next step'} could not be done: ${r.why || 'it failed'}.`,
         'The device may have changed since. Go on from its state now: read the screen first, and do not repeat a step that is already done.',
     ].join('\n');
