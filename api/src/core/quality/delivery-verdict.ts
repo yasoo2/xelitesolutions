@@ -87,10 +87,44 @@ function asWords(text: string): string {
  */
 export function readAsRequirements(unread: string[], met: string[]): string[] {
     const held = (met || []).map(asWords);
+    const heldWords = (met || []).map(contentWords).map(words => new Set(words));
     return (unread || []).filter(item => {
         const words = asWords(item);
-        return words.trim().length > 0 && held.some(quote => quote.includes(words));
+        if (!words.trim().length) return false;
+        if (held.some(quote => quote.includes(words))) return true;
+        //  …or every word of it that names something, in any order, by ONE requirement.
+        const own = contentWords(item);
+        return own.length > 0 && heldWords.some(set => own.every(word => set.has(word)));
     });
+}
+
+/**
+ * ⛔ HIS WORDS, IN THE ORDER THE READER OF HIS REQUEST PUT THEM.
+ *
+ * The hard sample, 2026-11-09 (L451, «a project management suite: … issues
+ * with custom fields and workflows, a wiki with rich text …»): the request
+ * reader split his list into «Custom fields on issues» and «Rich text in the
+ * wiki», the judge found both met on the source, and the records reader's
+ * items «issues with custom fields» and «wiki with rich text» were still «could
+ * not be read» — the same words in another order. The delivery was refused ten
+ * times in 35 minutes; the builder renamed tests and added requirements of its
+ * own, none of which an item is read by. An item is held by one requirement
+ * found met that holds every word of it that names something: the joining
+ * words aside (with, of, on, في, مع, من …), the article «ال» aside, a plural
+ * «s» aside. A negation is a word that names something («بلا تعارض», «without
+ * conflicts»): it is never set aside.
+ */
+const JOINING_WORDS: ReadonlySet<string> = new Set([
+    'with', 'and', 'of', 'in', 'on', 'for', 'the', 'a', 'an', 'per', 'by', 'to', 'its', 'their', 'from', 'at', 'into', 'each', 'every', 'or',
+    'مع', 'في', 'من', 'علي', 'الي', 'عن', 'لكل', 'كل', 'ذات', 'او',
+]);
+
+function contentWords(text: string): string[] {
+    return asWords(text).trim().split(' ').filter(Boolean)
+        .map(word => /^(?:بال|وال|فال|كال|لل|ال)[؀-ۿ]{3,}$/u.test(word) ? word.replace(/^(?:بال|وال|فال|كال|لل|ال)/u, '') : word)
+        .filter(word => !JOINING_WORDS.has(word))
+        .map(word => /^[a-z]{3,}ies$/u.test(word) ? `${word.slice(0, -3)}y`
+            : /^[a-z]{3,}[^s]s$/u.test(word) ? word.slice(0, -1) : word);
 }
 
 /** The coverage items that could not be read and no requirement judged met holds. */

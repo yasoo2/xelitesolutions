@@ -1141,7 +1141,8 @@ function reportChecks(
                 const read = readAsRequirements(asked, all.flatMap(m => m.instrument === 'acceptance' ? (m.met || []) : []));
                 if (read.length) detail += ` | read as requirements the judge found met: ${read.join(', ')}`;
             }
-            if (unread.length) detail += ` | requested items that could not be read: ${unread.join(', ')}`;
+            //  What reads an item, told once (L451, 2026-11-09: ten refusals spent on test names and plan entries, which read nothing).
+            if (unread.length) detail += ` | requested items that could not be read: ${unread.join(', ')} — an item is read when the server serves a route named for it, or when a requirement read from his request that holds every word of it is judged met on the source; a requirement added with plan_update, a test named after it, or an evidence line does not read it`;
             if (unverified.length) detail += ` | not measured, so not verified: ${unverified.join('; ')}`;
             if (instrument === 'acceptance' && requirements.length) {
                 const open = requirements.filter(r => r.verdict !== 'met');

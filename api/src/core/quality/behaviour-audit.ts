@@ -958,6 +958,44 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // unreached.  Return to the exact route we started this probe on.
         const probeStartUrl = page.url();
         /**
+         * ⛔ A CONTROL THE WALK'S OWN PRESSES TOOK AWAY IS NOT ONE IT COULD NOT REACH.
+         *
+         * The hard sample, 2026-11-09 (L451, a project tracker's board): each
+         * card offers «→ In Progress», «→ Review», «→ Done» for the moves its
+         * workflow allows. The walk pressed one, the server kept the move, and
+         * the baseline the walk restored was another board: the card's other
+         * moves were gone — or, once the builder drew every move on every card,
+         * disabled — and «2 of 58 controls were gone before I could press them»
+         * refused a working board six times in 35 minutes. A control missing from
+         * the restored baseline is told apart: the product still shows it and
+         * declines it in this state («declined», as a control disabled from the
+         * start is never pressed), or the walk's own presses wrote to the product
+         * and the page it was found on no longer exists («consumed»). Neither is
+         * pressed, neither is judged dead, neither is «gone before I could press».
+         */
+        let wroteToProduct = false;
+        const probeOrigin = (() => { try { return new URL(probeStartUrl).origin; } catch { return ''; } })();
+        const onWrite = (response: any) => {
+            try {
+                const method = String(response?.request?.()?.method?.() || '').toUpperCase();
+                if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || Number(response.status()) >= 400) return;
+                if (probeOrigin && new URL(String(response.url())).origin !== probeOrigin) return;
+                wroteToProduct = true;
+            } catch { /* a response that cannot be read wrote nothing we know of */ }
+        };
+        try { page.on('response', onWrite); } catch { /* a page without events */ }
+        const goneByTheWalk = async (c: { label: string }): Promise<'' | 'declined' | 'consumed'> => {
+            const declined = await page.evaluate((want: string) => Array.from(document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], a'))
+                .some((node: any) => {
+                    if (!(node.disabled === true || node.getAttribute('aria-disabled') === 'true')) return false;
+                    const text = String(node.innerText || node.value || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+                    const name = node.getAttribute('aria-label') || node.getAttribute('title') || '';
+                    return text === want || name === want;
+                }), c.label).catch(() => false);
+            if (declined) return 'declined';
+            return wroteToProduct ? 'consumed' : '';
+        };
+        /**
          * ⛔ THE BASELINE INCLUDES WHERE THE PAGE WAS SCROLLED.
          *
          * A reload keeps the scroll position the last press left, not the one
@@ -1181,7 +1219,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         el = await page.$(current.sel);
                     }
                 }
-                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href }); continue; }
+                if (!el) {
+                    //  Gone from the restored baseline: declined by the product, or consumed by the walk (above).
+                    const gone = await goneByTheWalk(c);
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: gone || 'not found', instance: c.ordinal, href: c.href });
+                    continue;
+                }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
                 // button dead. Refusing to submit an empty form is the behaviour
@@ -1352,6 +1395,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal, href: c.href });
         }
         metrics.budgetExhausted = budgetHit;
+        try { page.off('response', onWrite); } catch { /* the page may be gone */ }
 
         /**
          * EXPLORE THE STATES THAT THE FIRST CATALOGUE COULD NOT SEE.
@@ -2217,6 +2261,9 @@ export async function probeForms(
 
 /* ---- judgement, on what actually happened ------------------------------ */
 
+/** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed']);
+
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
     controls: ControlResult[],
@@ -2264,11 +2311,14 @@ export function judgeBehaviour(
         const key = `${control.context || ''}|${control.kind}|${control.bare || control.label}|${occurrence}`;
         const previous = evidence.get(key);
         if (!previous || (!previous.worked && control.worked)
-            || (previous.effect === 'not found' && control.effect !== 'not found')) evidence.set(key, control);
+            || (previous.effect === 'not found' && control.effect !== 'not found')
+            || (NOT_PRESSED.has(String(previous.effect || '')) && !NOT_PRESSED.has(String(control.effect || '')))) evidence.set(key, control);
     });
     const judgedControls = [...evidence.values()];
-    const pressable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
+    const pressable = judgedControls.filter(c => c.kind !== 'anchor' && !NOT_PRESSED.has(String(c.effect || '')));
     const unreachable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
+    //  Declined by the product, or consumed by the walk's own writes (probeControls): told in the metrics, never judged.
+    metrics.goneByTheWalk = judgedControls.filter(c => c.kind !== 'anchor' && (c.effect === 'declined' || c.effect === 'consumed')).length;
     const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused').map(form => `${form.scope || ''}|${form.label}`));
     const dead = pressable.filter(c => !c.worked && !(c.kind === 'submit' && measuredFormSubmits.has(`${c.context || ''}|${c.bare || c.label}`)));
     metrics.pressed = pressable.length;
