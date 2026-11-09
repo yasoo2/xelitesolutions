@@ -37,3 +37,20 @@ test('the judge is told how today\'s figures are met when the newest published i
     const p = verificationPrompt([{ id: 'R5', text: "today's gold price in Jordan", quote: 'سعر اليوم' }], judgeSourceOf([{ path: 'report.md', text: 'x' }]), true);
     expect(p).toMatch(/Current facts \(today's price, the latest news, this week's figures\) are\s+met by the most recent value/);
 });
+
+test('a document asked for is the product, even beside code the model added: its lines are not «only documentation»', async () => {
+    //  M07, 2026-11-09: a recommendation in recommendation.md beside 15 files of code, refused four times.
+    const { verifyNamed } = require('../core/quality/named-requirements');
+    const line = '1. Acer Aspire 5 (2026) — 649 دولاراً، معالج Core i5 وذاكرة 16GB (المصدر: https://example.com/acer)';
+    const src = judgeSourceOf([
+        { path: 'recommendation.md', text: `# أفضل ثلاثة حواسيب للطلاب\n${line}\n` },
+        { path: 'src/build.js', text: 'console.log("render the table")' },
+    ]);
+    const R = [{ id: 'R8', text: 'تحديد أفضل ثلاثة حواسيب محمولة للطلاب لعام 2026', quote: 'أفضل ثلاثة حواسيب' }];
+    const judge = async () => JSON.stringify({ verdicts: [{ id: 'R8', verdict: 'met', evidence: line, why: 'التوصية في الملف' }] });
+    const asDocument = await verifyNamed(R, src, true, judge, undefined, undefined, { documentsAreTheProduct: true });
+    expect(asDocument[0].verdict).toBe('met');
+    //  A build that was asked for is still proven by its code, not by a .md claim.
+    const asBuild = await verifyNamed(R, src, true, judge);
+    expect(asBuild[0].verdict).toBe('unprovable');
+});

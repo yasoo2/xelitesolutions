@@ -491,11 +491,14 @@ const ASKS_ABOUT_DOCS = /\breadme\b|\bdoc(?:s|uments?|umentation)?\b|\bchangelog
 const CODE_FILE = /\.(?:jsx?|tsx?|mjs|cjs|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|html?|css)$/iu;
 const ALWAYS_DOCS = /(?:^|\/)(?:readme|changelog|contributing|joe-delivery)(?:\.[a-z]+)?$/iu;
 
-export function evidenceOnlyInDocs(evidence: string, source: string): boolean {
+export function evidenceOnlyInDocs(evidence: string, source: string, documentsAreTheProduct = false): boolean {
     const e = bare(evidence);
     if (!e) return false;
     const files = filesOf(source);
-    const codeDelivered = files.some(f => CODE_FILE.test(f.path) && !f.path.startsWith('(before this change)'));
+    //  M07 (2026-11-09): a recommendation asked «in a file» was written as .md beside 15 files of
+    //  code the model added anyway, and refused as «only documentation». When the request asks
+    //  for a document, its documents are the product whatever else the project holds.
+    const codeDelivered = !documentsAreTheProduct && files.some(f => CODE_FILE.test(f.path) && !f.path.startsWith('(before this change)'));
     const holders = files.filter(f => flat(f.block).includes(e));
     return holders.length > 0 && holders.every(f => (codeDelivered ? DOC_FILE : ALWAYS_DOCS).test(f.path));
 }
@@ -1791,6 +1794,8 @@ export async function verifyNamed(
     call: (prompt: string) => Promise<string>,
     externalApiEvidence?: ExternalApiAcceptanceEvidence | null,
     localBackend?: LocalBackendAcceptance | null,
+    /** The request asks for a document: its .md/.txt files are the product, not documentation. */
+    options: { documentsAreTheProduct?: boolean } = {},
 ): Promise<JudgedNamed[]> {
     const src = String(source || '');
     const blank = (why: string): JudgedNamed[] =>
@@ -2081,7 +2086,7 @@ export async function verifyNamed(
                         : 'it was reported present and its evidence is not in the source — so I did not count it',
                 };
             }
-            if (evidenceOnlyInDocs(v.evidence, src) && !asksAboutDocumentation(r)) {
+            if (evidenceOnlyInDocs(v.evidence, src, options.documentsAreTheProduct === true) && !asksAboutDocumentation(r)) {
                 return {
                     ...r,
                     verdict: 'unprovable' as NamedVerdict,

@@ -340,7 +340,9 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     const repository = ctx.change?.repository;
     //  A document asked for (a report, a plan, a sheet, slides) is the file, judged on what it says (select.ts asksForDocument).
     // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const documentOnly = !repository && !programServesAPage && (require('./select') as typeof import('./select')).asksForDocument(request);
+    const documentAsked = !repository && (require('./select') as typeof import('./select')).asksForDocument(request);
+    //  …judged as a document unless a page was built around it (then the page is proven too).
+    const documentOnly = documentAsked && !programServesAPage;
     const programOnly = !!repository || documentOnly || (roles.program && !roles.interface && !roles.service && !programServesAPage);
     const primary: 'live' | 'program' = programOnly ? 'program' : 'live';
     const required = new Set<DeliveryInstrument>(programOnly && !repository && !documentOnly ? ['quality'] : []);
@@ -549,7 +551,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     await stage(['acceptance'], async () => {
         const judged = await judgeRequirements(ctx, request, isAr, root, deps.ask, note, {
             built: buildsPassed, liveUrl, tests: delivery.state.requestCoverage,
-        }, interfaceDelivered);
+        }, interfaceDelivered, documentAsked);
         Object.assign(acceptance, judged.summary);
         bySight = judged.bySight;
         ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined, met: judged.met });
@@ -1009,6 +1011,7 @@ export async function judgeRequirements(
     note: (line: string) => void,
     evidence: { built: boolean; liveUrl: string; tests?: Pick<NonNullable<DeliveryRunState['requestCoverage']>, 'records' | 'testsRun'> },
     pageDelivered = false,
+    documentsAreTheProduct = false,
 ): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; met: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
     //  same reader seeded them), or — when the seeding read nothing — a
@@ -1047,7 +1050,7 @@ export async function judgeRequirements(
         const before = await beforeThisChange(root, ctx.change.snapshot);
         if (before) source.text = `${source.text}\n${before}`;
     }
-    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask) : [];
+    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask, undefined, undefined, { documentsAreTheProduct }) : [];
     //  4. The verdicts themselves are the criteria — always, even from a blind
     //  judge, so that criteria > 0 and a judge that could rule on nothing
     //  blocks. No catalogue or structural criterion is added.
