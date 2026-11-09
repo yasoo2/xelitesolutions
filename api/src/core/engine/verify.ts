@@ -159,6 +159,8 @@ function panelSessionOf(ctx: ToolContext): string {
 /** What the builder can do about a finding, when the finding itself does not say. */
 const FINDING_HINT: Record<string, string> = {
     authenticated_coverage_missing: 'give task_finish "sign_in": {"username": …, "password": …} — an account the project seeds — and Joe signs in through the product\'s own form and tests the screens behind it',
+    //  The walk's own clock (app-audit.ts keptWalks): what it finished is kept for the next walk over the same code.
+    qa_budget_exhausted: 'this is the walk\'s clock, not a defect found in the product. Every page the walk finished is kept: call task_finish again WITHOUT changing any file and the walk goes on from where it stopped. A change to any file of the project starts the walk again from the first page, so change a file only for a real defect',
 };
 
 export function browserFindingLine(f: { id?: unknown; detailEn?: unknown; detail?: unknown; evidence?: unknown }): string {
@@ -648,7 +650,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             //  A minor finding of taste is told with the delivery, never a refusal on its own (browser-mend.ts).
             const blocking = audit.skipped ? [] : audit.findings.filter(refuses);
             const told = audit.skipped ? [] : audit.findings.filter(f => !refuses(f));
-            const mendedLine = mended.length ? `; Joe repaired it himself before this measurement: ${mended.join('; ')}` : '';
+            const mendedLine = `${audit.carried ? `; ${audit.carried} part(s) of this walk were finished by the walk before it, on the same unchanged code` : ''}${mended.length ? `; Joe repaired it himself before this measurement: ${mended.join('; ')}` : ''}`;
             if (audit.skipped) {
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${audit.skipped}` });
             } else if (blocking.length) {

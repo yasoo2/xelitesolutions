@@ -102,6 +102,28 @@ describe('the page the browser opened is mended where it lives', () => {
         } finally { fs.rmSync(root, { recursive: true, force: true }); }
     });
 
+    test('a file put back is the same file to the browser walk\'s own record: its time is put back too', async () => {
+        //  app-audit.ts codeFingerprint: a walk that ran out of time is carried
+        //  only over the same code, and Joe's own repair must not make the code
+        //  he put back look new.
+        const { codeFingerprint } = require('../core/quality/app-audit');
+        const root = tmp();
+        try {
+            fs.mkdirSync(path.join(root, 'public'));
+            fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer().listen(3000);\n');
+            fs.writeFileSync(path.join(root, 'public', 'index.html'), '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>t</title><link rel="stylesheet" href="style.css"></head><body><h1>ع</h1><button class="small">تعديل</button></body></html>');
+            fs.writeFileSync(path.join(root, 'public', 'style.css'), 'button.small { padding: 4px 10px; font-size: 13px; }\n');
+            const old = new Date(Date.now() - 3_600_000);
+            fs.utimesSync(path.join(root, 'public', 'style.css'), old, old);
+            const code = codeFingerprint(root);
+            const m = await mendPage(root, finding, true, () => undefined, path.join(root, 'public'));
+            expect(m?.changed).toContain('public/style.css');
+            expect(codeFingerprint(root)).not.toBe(code);
+            await m!.undo();
+            expect(codeFingerprint(root)).toBe(code);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+
     test('a build\'s output and node_modules are never mended: the sources are', () => {
         const { mendSources } = require('../core/engine/browser-mend');
         const root = tmp();
