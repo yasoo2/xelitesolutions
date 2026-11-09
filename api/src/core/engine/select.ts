@@ -168,6 +168,8 @@ export async function agentEngineRoute(
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { isBuildRequest } = require('../intelligence/intent-classifier');
     if (isBuildRequest(text)?.isBuild) return { kind: 'build' };
+    //  Work whose result is a FILE — a report, a sheet, a deck, a page — is built (asksForDeliverable).
+    if (asksForDeliverable(words)) return { kind: 'build' };
     //  What the lists did not decide, the model the owner chose reads, in any
     //  language and spelling (understand.ts). Small talk needs no reading.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
@@ -185,6 +187,30 @@ export async function agentEngineRoute(
         return { kind: 'operate', target };
     }
     return null;
+}
+
+/**
+ * WORK WHOSE RESULT IS A FILE IS BUILT.
+ *
+ * The Manus-style exam, 2026-11-09: «قارن بين أفضل ثلاثة هواتف … وضع المقارنة في
+ * ملف جدول بيانات (Excel أو CSV)» was answered in the chat with no file; «خطط لي
+ * رحلة … اجعلها في ملف واحد مرتب» reached the old planner, which asked the
+ * owner «حدّد هدف project_planner قبل التنفيذ: projectDescription»; a deck of
+ * five slides and «اعمل صفحة ويب جميلة» were not read as work at all. A request
+ * that asks for something done AND names a file, a sheet, a deck, a report or a
+ * page as its result is built by the engine, which searches, writes the file
+ * and proves it. A question about files («ما هو ملف CSV؟») is not.
+ */
+const DO_IT_AR = /(?:^|[\s،,.:؛])و?(?:اعمل|اعملي|اصنع|سوي|سو|ابن|ابني|أنشئ|انشئ|صمم|اكتب|اكتبي|ضع|ضعها|حط|اجعل|اجعلها|احفظ|قارن|خطط|اجمع|ابحث|لخص|حضر|جهز|حول|ترجم)(?=[\s،,.:؛]|$)/u;
+const FILE_RESULT_AR = /(?:في|ب|على\s+شكل|ك)\s*ملف|ملف(?:ا|ًا)?\s+(?:واحد|جدول|إكسل|اكسل|excel|csv|pdf|وورد|word|نصي|مرتب)|جدول\s+بيانات|إكسل|اكسل|\bexcel\b|\bcsv\b|\bpdf\b|\bpptx?\b|\bdocx?\b|عرض(?:ا|ًا)?\s+تقديمي|عرض\s+شرائح|(?:\d+|خمس|ثلاث|أربع|اربع|ست|سبع|ثماني|عشر)\s+شرائح|شرائح\s+(?:عن|حول)|باوربوينت|بوربوينت|تقرير(?:ا|ًا)?|صفحة\s+ويب|صفحة\s+(?:جميلة|تعرض)/iu;
+const DO_IT_EN = /\b(?:make|write|create|build|put|save|compare|plan|collect|gather|research|find|prepare|compile|summari[sz]e|turn)\b/iu;
+const FILE_RESULT_EN = /\b(?:in(?:to)?\s+(?:a|one|an|the)\s+(?:\w+\s+){0,2}file|as\s+a\s+(?:\w+\s+)?file|spreadsheet|excel|csv|slide\s*deck|slides|presentation|powerpoint|pptx|docx|pdf|word\s+document|(?:a|an)\s+(?:short\s+|brief\s+|full\s+)?report|web\s*page)\b/iu;
+const QUESTION_ONLY = /^\s*(?:ما\s+(?:هو|هي|معنى|الفرق)|ماذا\s+يعني|شو\s+(?:هو|يعني)|what\s+(?:is|are|does)|how\s+do\s+(?:i|you)\s+open|explain)\b/iu;
+
+export function asksForDeliverable(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    if (t.split(/\s+/).length < 4 || QUESTION_ONLY.test(t)) return false;
+    return (DO_IT_AR.test(t) && FILE_RESULT_AR.test(t)) || (DO_IT_EN.test(t) && FILE_RESULT_EN.test(t));
 }
 
 /**
