@@ -837,6 +837,22 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
                 const under = text.slice(Math.max(0, open - 80), open).match(/(?:^|[\s,{(\[])(?:(["'])([A-Za-z][\w-]{1,40})\1|([A-Za-z_$][\w$]{1,40}))\s*:\s*$/u);
                 if (under) bind(record.key, under[2] || under[3]);
             }
+            /*
+             * A PAIR NAMES IT TOO: «['templates', 'قوالب البريد']».
+             *
+             * The hard sample, 2026-11-09 (L382, a municipal office's CRM): the
+             * menu was a list of pairs — ['contacts', 'جهات الاتصال'],
+             * ['templates', 'قوالب البريد'] — and served /api/contacts and
+             * /api/templates. His words had no dictionary English, the pairs
+             * were not read, and the CRM was refused seven times, 155 minutes,
+             * «جهات الاتصال (serving not measured)». A two-item pair of a name
+             * and his word, in either order, binds the name to his record.
+             */
+            const lab = escapeRe(label);
+            const pairAfter = new RegExp(`\\[\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*,\\s*["'\`]${lab}["'\`]\\s*[\\],]`, 'gu');
+            for (const m of text.matchAll(pairAfter)) bind(record.key, m[2]);
+            const pairBefore = new RegExp(`\\[\\s*["'\`]${lab}["'\`]\\s*,\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*[\\],]`, 'gu');
+            for (const m of text.matchAll(pairBefore)) bind(record.key, m[2]);
         }
     }
     if (text.includes('<')) harvestMarkupLabelKeys(text, records, bind);
@@ -845,7 +861,8 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
 /** An element with its attributes and its own short text (no child elements). */
 const MARKUP_ELEMENT = /<([a-zA-Z][\w-]*)(\s[^<>]*)?>([^<>]{1,60})<\/\1\s*>/gu;
 /** The attributes that give a section or a resource its name in markup. */
-const MARKUP_NAME_ATTR = /\s(?:data-[\w-]+|id|aria-controls|href)\s*=\s*(["'])#?([A-Za-z][\w-]{1,40})\1/gu;
+//  «#/contacts», a hash router's address, names the resource as «#contacts» does.
+const MARKUP_NAME_ATTR = /\s(?:data-[\w-]+|id|aria-controls|href)\s*=\s*(["'])#?\/?([A-Za-z][\w-]{1,40})\1/gu;
 /** The interface's own words around a name: «tab-pickups», «pickups-section» are pickups. */
 const UI_WORD = /^(?:tabs?|sections?|sec|panels?|panes?|page|view|btn|button|link|nav|list|body|form|table|container|wrap(?:per)?|card|content|title|heading|header|menu|screen|area|box|block)$/iu;
 
