@@ -43,3 +43,19 @@ test('the Preview tab asks Joe, and the route needs the owner of the conversatio
     const controller = fs.readFileSync(path.resolve(__dirname, '../api/controllers/sessionController.ts'), 'utf8');
     expect(controller).toMatch(/sessionPreviewAlive[\s\S]{0,400}requireOwnedSession/);
 });
+
+test('the frame opens a restored address only once Joe says it answers', () => {
+    //  The hard sample, 2026-11-09 (L422): the page reopened after the run, the
+    //  Preview tab restored a project server task_finish had stopped, and the
+    //  frame loaded it before the first answer — a refused load in Joe's console.
+    const panel = fs.readFileSync(path.resolve(__dirname, '../../../web/src/components/PreviewPanel.tsx'), 'utf8');
+    //  The frame is drawn only for an address known to answer (or Joe's own origin)…
+    const frameAt = panel.indexOf('<iframe');
+    const gate = panel.lastIndexOf('answersAt !== previewUrl && !sameOrigin(previewUrl)', frameAt);
+    expect(gate).toBeGreaterThan(0);
+    expect(panel.slice(gate, frameAt)).not.toMatch(/<iframe/);
+    //  …known from Joe's answer, from the build announcing it, or from his own typing.
+    expect(panel).toMatch(/const answer = \(alive: boolean\) => \{ setStopped\(!alive\); setAnswersAt\(alive \? previewUrl : ''\); \}/);
+    expect(panel).toMatch(/onTheHostHeIsAlreadyUsing\(detail\.url\);[\s\S]{0,200}setAnswersAt\(reachable\)/);
+    expect(panel).toMatch(/setPreviewUrl\(targetUrl\);[\s\S]{0,200}setAnswersAt\(targetUrl\)/);
+});

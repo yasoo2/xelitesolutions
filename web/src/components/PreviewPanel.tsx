@@ -112,23 +112,39 @@ export default function PreviewPanel({
      * to try again.
      */
     const [stopped, setStopped] = useState(false);
+    /**
+     * ⛔ AND THE FRAME OPENS AN ADDRESS ONLY ONCE IT IS KNOWN TO ANSWER.
+     *
+     * The hard sample's UI/UX check of Joe's own page, 2026-11-09 (L422): the
+     * page was opened after the run, the Preview tab restored the run's last
+     * address — a project server task_finish had already stopped — and the
+     * frame loaded it before the first question was answered: «ERR_CONNECTION_
+     * REFUSED @ 127.0.0.1:4300» in Joe's console. An address the build just
+     * announced, or one he typed, is opened at once; one restored from before
+     * waits for Joe's answer.
+     */
+    const [answersAt, setAnswersAt] = useState('');
+    const sameOrigin = (raw: string) => {
+        try { return new URL(raw, window.location.origin).origin === window.location.origin; } catch { return false; }
+    };
     const checkAlive = useCallback(async () => {
         if (!previewUrl || mode !== 'web') { setStopped(false); return; }
         let u: URL;
         try { u = new URL(previewUrl, window.location.origin); } catch { return; }
+        const answer = (alive: boolean) => { setStopped(!alive); setAnswersAt(alive ? previewUrl : ''); };
         //  A page Joe serves itself is alive while this page is.
-        if (u.origin === window.location.origin) { setStopped(false); return; }
+        if (u.origin === window.location.origin) { answer(true); return; }
         //  Joe is asked, not the port: a refused knock from this page is an error
         //  in its console every 15 s (the ladder's UI/UX check, 2026-11-09), and
         //  on Joe's server the browser cannot reach that machine's loopback at all.
         if (sessionId) {
             try {
                 const r: any = await api.get(`/sessions/${encodeURIComponent(sessionId)}/preview-alive`, { url: u.toString() });
-                if (r && typeof r.alive === 'boolean') { setStopped(!r.alive); return; }
+                if (r && typeof r.alive === 'boolean') { answer(r.alive); return; }
             } catch { /* an older Joe without the question: ask the address as before */ }
         }
-        try { await fetch(u.toString(), { mode: 'no-cors', cache: 'no-store' }); setStopped(false); }
-        catch { setStopped(true); }
+        try { await fetch(u.toString(), { mode: 'no-cors', cache: 'no-store' }); answer(true); }
+        catch { answer(false); }
     }, [previewUrl, mode, sessionId]);
     useEffect(() => {
         void checkAlive();
@@ -145,6 +161,9 @@ export default function PreviewPanel({
                 const reachable = onTheHostHeIsAlreadyUsing(detail.url);
                 setPreviewUrl(reachable);
                 setInputUrl(reachable);
+                //  The build just said it answers: opened at once.
+                setAnswersAt(reachable);
+                setStopped(false);
                 setError(null);
                 setBuildProgress(null); // Clear build progress when ready
                 // Force a HARD iframe reload so edits (e.g. "add a button") always
@@ -236,6 +255,9 @@ export default function PreviewPanel({
 
         setPreviewUrl(targetUrl);
         setInputUrl(targetUrl);
+        //  He typed it: opened at once, as he asked.
+        setAnswersAt(targetUrl);
+        setStopped(false);
         setError(null);
         setKey(k => k + 1);
     }, []);
@@ -525,6 +547,11 @@ export default function PreviewPanel({
                                 <RefreshCw size={14} />
                                 <span>{t('previewRetry')}</span>
                             </button>
+                        </div>
+                    ) : previewUrl && answersAt !== previewUrl && !sameOrigin(previewUrl) ? (
+                        //  Asking Joe whether the address answers: a moment, with nothing loaded yet.
+                        <div role="status" aria-busy="true" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', color: 'var(--text-muted)' }}>
+                            <RefreshCw size={20} style={{ opacity: 0.35 }} />
                         </div>
                     ) : previewUrl ? (
                         <div style={{
