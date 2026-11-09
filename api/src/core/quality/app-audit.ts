@@ -23,7 +23,7 @@ import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
 import { HANDOFF_SCHEME } from './behaviour-audit';
-import { AuditEyes } from './audit-eyes';
+import { AuditEyes, evalInPage } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
@@ -394,6 +394,43 @@ export function routeUrl(base: string, route: string): string {
     } catch {
         return base;
     }
+}
+
+/**
+ * A PAGE THAT SHOWS WHAT ANOTHER ALREADY SHOWED IS NOT WALKED TWICE.
+ *
+ * The ladder, 2026-11-09 (L155, a photo studio's admin): «/» rendered the
+ * summary, and «/summary» was walked again in full — every control pressed,
+ * every tab explored, at desktop, tablet and phone width. The verification
+ * took seven minutes, twice. A view is known by what a person works with on
+ * it: its headings, its fields, its table columns and its buttons (rows of
+ * data aside). A page with no heading is not known by its look and is always
+ * walked; one that matches the home page or a page already walked is opened,
+ * its status and heading checked, and not pressed again.
+ */
+export interface ViewParts { headings?: string[]; fields?: string[]; columns?: string[]; actions?: string[] }
+export function viewKey(v: ViewParts | null | undefined): string {
+    if (!v) return '';
+    const norm = (xs?: string[]) => [...new Set((xs || []).map(x => String(x ?? '').replace(/\s+/g, ' ').trim().toLowerCase()).filter(Boolean))].sort();
+    const headings = norm(v.headings);
+    if (!headings.length) return '';
+    return JSON.stringify([headings, norm(v.fields), norm(v.columns), norm(v.actions)]);
+}
+/** Read in the page: what is visible to work with, never the data rows. */
+export function readViewParts(): ViewParts {
+    const seen = (el: Element) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        const st = getComputedStyle(el as HTMLElement);
+        return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+    };
+    const text = (el: Element) => String((el as HTMLElement).innerText || el.textContent || '').trim().slice(0, 80);
+    const all = (sel: string) => Array.from(document.querySelectorAll(sel)).filter(seen);
+    return {
+        headings: all('h1,h2,h3').map(text),
+        fields: all('input,select,textarea').map(e => e.getAttribute('name') || e.id || e.getAttribute('placeholder') || e.getAttribute('aria-label') || (e as HTMLInputElement).type || ''),
+        columns: all('th').map(text),
+        actions: all('button,[role="button"]').filter(b => !b.closest('tbody,li')).map(text),
+    };
 }
 
 export async function auditBuiltApp(
@@ -1296,6 +1333,9 @@ export async function auditBuiltApp(
             //  A walk thrown back to the sign-in form signs in again (sign-in.ts).
             ...(signInAccount ? { signIn: signInAccount } : {}),
         });
+        /** The views already walked, and each page that only showed one of them again (viewKey). */
+        const seenViews = new Map<string, string>();
+        const sameViewAs = new Map<string, string>();
         /** After a fresh load of a page, a product that lost its session is signed in to again. */
         const reenter = async () => {
             if (!signInAccount) return;
@@ -1309,6 +1349,8 @@ export async function auditBuiltApp(
         });
         try {
             if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
+            const homeView = viewKey(await evalInPage(page, readViewParts).catch(() => null));
+            if (homeView) seenViews.set(homeView, '/');
             const homeProbe = await probeControls(page, probeOpts('desktop:/', '/'));
             mergeProbe(homeProbe, '/');
             if (opts?.externalApi) {
@@ -1499,6 +1541,14 @@ export async function auditBuiltApp(
                     dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
                 }
                 if (d2.h1s !== 1) (pageAddress ? headingRoutes : brokenRoutes).push(`${r} (h1=${d2.h1s})`);
+                const view = viewKey(await evalInPage(page, readViewParts).catch(() => null));
+                const shownBefore = view ? seenViews.get(view) : undefined;
+                if (shownBefore !== undefined) {
+                    sameViewAs.set(r, shownBefore);
+                    opts?.onProgress?.(`same view as ${shownBefore}: ${r}`);
+                    continue;
+                }
+                if (view) seenViews.set(view, r);
                 const routeProbe = await probeControls(page, probeOpts(`desktop:${r}`, r));
                 mergeProbe(routeProbe, r);
                 if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
@@ -1601,7 +1651,8 @@ export async function auditBuiltApp(
         // A single-page app still needs desktop, tablet, and phone evidence.
         // Without this fallback, route-less generated tools never ran the
         // responsive control pass beyond their initial desktop page.
-        const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
+        //  A page that showed another's view again is measured as that view, once (viewKey).
+        const responsiveRoutes = [...new Set((routes.length ? routes : ['/']).map(r => sameViewAs.get(r) ?? r))].slice(0, 20);
         const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
         /**

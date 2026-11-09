@@ -831,7 +831,7 @@ export default function WorkspacePanel({
                                   *  with nothing inherited — which is the only way
                                   *  «this session built nothing» can be shown at all.
                                   */}
-                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} />
+                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} sessionId={sessionId || undefined} />
                             </Suspense>
                         </ErrorBoundary>
                         </div>

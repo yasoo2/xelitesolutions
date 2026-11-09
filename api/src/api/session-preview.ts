@@ -65,3 +65,29 @@ export async function previewForSession(sessionId: string, project: Record<strin
     }
     return null;
 }
+
+/**
+ * WHETHER A PREVIEW ADDRESS STILL ANSWERS, ASKED OF JOE — NOT OF THE PORT.
+ *
+ * The ladder's UI/UX check of Joe's own page, 2026-11-09 (L151–L160): half the
+ * prompts ended with «console_errors — ERR_CONNECTION_REFUSED @ 127.0.0.1:4300».
+ * The Preview tab asked the stopped project server itself, from the browser,
+ * every 15 s, and every refused knock is an error in the page's console. On the
+ * server Joe runs for many users, the browser cannot reach the machine's
+ * loopback at all. Joe's own server asks its own loopback: true or false for an
+ * address on this machine, null for any other (not Joe's to probe).
+ */
+export async function previewAddressAnswers(raw: unknown, sameHost = '', portOpen: (port: number) => Promise<boolean> = defaultDeps.portOpen): Promise<boolean | null> {
+    let u: URL;
+    try { u = new URL(String(raw || '')); } catch { return null; }
+    if (!/^https?:$/.test(u.protocol) || u.username || u.password) return null;
+    //  This machine: its loopback, or the host he reached Joe at (the Preview
+    //  tab rewrites 127.0.0.1 to it, so a phone on the same network can open it).
+    const host = u.hostname.replace(/^\[|\]$/g, '').toLowerCase();
+    const here = /^(127\.0\.0\.1|localhost|::1)$/.test(host) || (!!sameHost && host === String(sameHost).toLowerCase());
+    if (!here) return null;
+    const port = Number(u.port || (u.protocol === 'https:' ? 443 : 80));
+    //  A project's own server, never the machine's system services.
+    if (!Number.isInteger(port) || port < 1024 || port > 65535) return null;
+    return portOpen(port).catch(() => false);
+}

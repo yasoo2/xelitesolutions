@@ -33,6 +33,7 @@ router.put('/:id/queue', authenticate as any, SessionController.replaceSessionQu
 //  session showed an empty Preview and an empty Logs panel.
 router.get('/:id/workspace', authenticate as any, SessionController.sessionWorkspace);
 router.get('/:id/engine', authenticate as any, SessionController.sessionEngine);
+router.get('/:id/preview-alive', authenticate as any, SessionController.sessionPreviewAlive);
 router.get('/:id/screenshots', authenticate as any, SessionController.sessionScreenshots);
 router.get('/:id/screenshots/:captureId', authenticate as any, SessionController.sessionScreenshot);
 

@@ -76,3 +76,44 @@ describe('a real repair, and its undo', () => {
         expect(await mendPage(dir, [{ id: 'dead_controls', severity: 'high' }], false, () => undefined)).toBeNull();
     });
 });
+
+describe('the page the browser opened is mended where it lives', () => {
+    //  The ladder, 2026-11-09 (L155): a Node server's page in public/ — the source
+    //  walk leaves public/ out, so «buttons under 40px» was never repaired by Joe.
+    const tmp = () => fs.mkdtempSync(path.join(process.env.JOE_TEST_TMP_ROOT || os.tmpdir(), 'joe-mend-public-'));
+    const finding = [{ id: 'small_targets', severity: 'medium', evidence: [{ sel: 'button.small', label: 'تعديل', w: 51, h: 25 }] }];
+
+    test('a Node server\'s public/ page is repaired, and undo puts it back', async () => {
+        const root = tmp();
+        try {
+            fs.mkdirSync(path.join(root, 'public'));
+            fs.writeFileSync(path.join(root, 'server.js'), 'require("http").createServer().listen(3000);\n');
+            fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { start: 'node server.js' } }));
+            fs.writeFileSync(path.join(root, 'public', 'index.html'), '<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>t</title><link rel="stylesheet" href="style.css"></head><body><h1>ع</h1><button class="small">تعديل</button></body></html>');
+            const css = 'button.small { padding: 4px 10px; font-size: 13px; }\n';
+            fs.writeFileSync(path.join(root, 'public', 'style.css'), css);
+            const said: string[] = [];
+            expect(await mendPage(root, finding, true, l => said.push(l))).toBeNull();          // without the page's folder: nothing it sees
+            const m = await mendPage(root, finding, true, l => said.push(l), path.join(root, 'public'));
+            expect(m?.changed).toContain('public/style.css');
+            expect(fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8')).toMatch(/min-height:\s*4\dpx/);
+            await m!.undo();
+            expect(fs.readFileSync(path.join(root, 'public', 'style.css'), 'utf8')).toBe(css);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+
+    test('a build\'s output and node_modules are never mended: the sources are', () => {
+        const { mendSources } = require('../core/engine/browser-mend');
+        const root = tmp();
+        try {
+            fs.mkdirSync(path.join(root, 'src'));
+            fs.mkdirSync(path.join(root, 'dist'));
+            fs.writeFileSync(path.join(root, 'package.json'), JSON.stringify({ scripts: { build: 'vite build' } }));
+            fs.writeFileSync(path.join(root, 'src', 'app.css'), 'button{}');
+            fs.writeFileSync(path.join(root, 'dist', 'index.html'), '<html></html>');
+            expect(Object.keys(mendSources(root, path.join(root, 'dist')))).toEqual(['src/app.css']);
+            expect(Object.keys(mendSources(root, path.join(root, 'node_modules', 'x')))).toEqual(['src/app.css']);
+            expect(Object.keys(mendSources(root, path.join(os.tmpdir(), 'elsewhere')))).toEqual(['src/app.css']);
+        } finally { fs.rmSync(root, { recursive: true, force: true }); }
+    });
+});

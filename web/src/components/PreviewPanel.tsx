@@ -17,6 +17,7 @@ import {
     Code
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
+import { api } from '../services/apiClient';
 import { useMonacoReady } from '../monaco-setup';
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
@@ -39,6 +40,8 @@ const DEVICES: DeviceConfig[] = [
 interface PreviewPanelProps {
     url?: string;
     onReady?: () => void;
+    /** The conversation whose preview this is: Joe is asked whether its address answers. */
+    sessionId?: string;
 }
 
 /**
@@ -74,7 +77,8 @@ function onTheHostHeIsAlreadyUsing(url: string): string {
 
 export default function PreviewPanel({
     url: initialUrl,
-    onReady
+    onReady,
+    sessionId
 }: PreviewPanelProps) {
     const { t } = useTranslation();
     const [mode, setMode] = useState<PreviewMode>('web');
@@ -114,9 +118,18 @@ export default function PreviewPanel({
         try { u = new URL(previewUrl, window.location.origin); } catch { return; }
         //  A page Joe serves itself is alive while this page is.
         if (u.origin === window.location.origin) { setStopped(false); return; }
+        //  Joe is asked, not the port: a refused knock from this page is an error
+        //  in its console every 15 s (the ladder's UI/UX check, 2026-11-09), and
+        //  on Joe's server the browser cannot reach that machine's loopback at all.
+        if (sessionId) {
+            try {
+                const r: any = await api.get(`/sessions/${encodeURIComponent(sessionId)}/preview-alive`, { url: u.toString() });
+                if (r && typeof r.alive === 'boolean') { setStopped(!r.alive); return; }
+            } catch { /* an older Joe without the question: ask the address as before */ }
+        }
         try { await fetch(u.toString(), { mode: 'no-cors', cache: 'no-store' }); setStopped(false); }
         catch { setStopped(true); }
-    }, [previewUrl, mode]);
+    }, [previewUrl, mode, sessionId]);
     useEffect(() => {
         void checkAlive();
         const every = window.setInterval(() => { void checkAlive(); }, 15000);
