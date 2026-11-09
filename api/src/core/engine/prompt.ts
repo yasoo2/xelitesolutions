@@ -153,6 +153,9 @@ function repositoryBrief(change: ChangeContext): string[] {
         '- Reproduce the issue: a failing test or a command that shows it. Then fix the cause, not the symptom, with the smallest change that does it. Keep its style, names, structure and dependencies; add no dependency unless the issue needs one.',
         '- Never weaken, delete or skip an existing test to make the suite pass. If the issue says the tests describe the intended behaviour, change the code, not the tests.',
         '- Add a test for what the issue asks (a regression test for a bug, tests for a feature), in the repository\'s own test style and folder.',
+        //  The Codex exam in Arabic, 2026-11-09 (C05): asked «well under 2 seconds», the model's own speed
+        //  test asserted under 1 s; it passed on a quiet machine and failed on a busy one.
+        '- A test of speed asserts the bound the issue names (under 2 seconds is `< 2000` ms), never a tighter one of your own: a test that passes only on a quiet machine is a flaky test.',
         '- Run the whole test suite again at the end: every test must pass. Problems the repository already had before you started are not yours to fix unless the issue asks; do not make them worse.',
         '- In task_finish, say what the cause was, what you changed (files), and what the tests showed.',
         `- The repository as it was before this change is kept${change.snapshot ? ` (version ${change.snapshot})` : ''}: the user can say «تراجع» to put it back.`,

@@ -69,6 +69,14 @@ describe('an issue in a chat whose project is his repository changes that reposi
         for (const issue of [...extra, ...arabic]) expect([issue, isRepositoryWork(issue)]).toEqual([issue, true]);
     });
 
+    it('is told to test speed by the bound the issue names, never a tighter one of its own', () => {
+        //  2026-11-09, C05: «well under 2 seconds» became the model's own `< 1000` ms, which failed on a busy machine.
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { firstMessage } = require('../core/engine/prompt');
+        const text = firstMessage('Performance: findDuplicates hangs; make it well under 2 seconds.', 'en', newPlan([]), root, 'en', { history: [], repository: { baselineSourceProblems: [] } });
+        expect(text).toMatch(/A test of speed asserts the bound the issue names/);
+    });
+
     it('a question, a greeting, or a new project is not', () => {
         for (const text of ['ما الفرق بين localStorage و sessionStorage؟', 'hello there Joe', 'build me a new booking app for a salon']) {
             expect([text, isRepositoryWork(text)]).toEqual([text, false]);
