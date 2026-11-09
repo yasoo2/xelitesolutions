@@ -2253,7 +2253,12 @@ export function requestedDeliveryRoles(request: string): { service: boolean; int
     //  server answered on no port. A function, a class, a module, a library or an
     //  algorithm asked for alone, with no page, site, app or server beside it, is a
     //  program its own tests prove.
-    if (!artifact.kind && !service && !webWord && CODE_UNIT.test(text) && !PRODUCT_WORD.test(text)) {
+    //  The product a FUNCTION is for is where it will live, not what is asked: «a function
+    //  that formats a price for a food delivery app» (L034), «دالة … لـموقع أخبار» (L033)
+    //  are code (the ladder, 2026-11-09). Only for a function-sized unit: «a payments
+    //  module for a food delivery app» (L343) still names a product.
+    const productText = FUNCTION_UNIT.test(text) ? text.replace(new RegExp(PRODUCT_IT_IS_FOR.source, 'giu'), ' ') : text;
+    if (!artifact.kind && !service && !webWord && CODE_UNIT.test(text) && !PRODUCT_WORD.test(productText)) {
         return { service: false, interface: false, program: true };
     }
     const negatedInterface = new RegExp(NEGATED_INTERFACE.source, 'iu').test(text);
@@ -2261,7 +2266,10 @@ export function requestedDeliveryRoles(request: string): { service: boolean; int
 }
 
 const CODE_UNIT = /\b(?:functions?|class(?:es)?|modules?|librar(?:y|ies)|helpers?|utilit(?:y|ies)|algorithms?|regex(?:es)?|regular\s+expressions?|snippets?|methods?|packages?)\b|(?:^|[\s،,])(?:دالة|دالّة|دوال|دالتين|كلاس|صنف|مكتبة|خوارزمية|تعبير\s+نمطي|وحدة\s+برمجية|حزمة)(?=[\s،,.؟?!]|$)/iu;
+const FUNCTION_UNIT = /\b(?:functions?|helpers?|algorithms?|regex(?:es)?|regular\s+expressions?|snippets?|methods?)\b|(?:^|[\s،,])(?:دالة|دالّة|دوال|دالتين|خوارزمية|تعبير\s+نمطي)(?=[\s،,.؟?!]|$)/iu;
 const PRODUCT_WORD = /\b(?:pages?|site|website|app|application|dashboard|screen|form|ui|interface|server|endpoint|game|extension)\b|(?:صفحة|موقع|تطبيق|لوحة|شاشة|نموذج|واجهة|خادم|سيرفر|لعبة|إضافة)/iu;
+/** «for a food delivery app», «in my game», «لـموقع أخبار», «في التطبيق»: the product a function is for. */
+const PRODUCT_IT_IS_FOR = /\b(?:for|in|inside|within|used\s+(?:by|in))\s+(?:(?:an?|the|my|our|your|this)\s+)?(?:[\w-]+\s+){0,3}?(?:pages?|site|website|app|application|dashboard|screen|game|extension)\b|(?:(?<=^|[\s،,])لـ\s*|(?<=^|[\s،,])ل(?=(?:ال)?(?:موقع|تطبيق|لعبة|لوحة|صفحة))|(?<=^|[\s،,])(?:في|داخل|ضمن)\s+)(?:ال)?(?:صفحة|موقع|تطبيق|لوحة|شاشة|لعبة)/iu;
 
 /**
  * Does the confirmed live address serve a page at «/»? A server-rendered or

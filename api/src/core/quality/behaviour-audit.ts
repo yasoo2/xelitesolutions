@@ -330,6 +330,18 @@ function findControls(limit: number) {
          * controls: "All"» on a filter that works perfectly.
          */
         if (el.getAttribute('aria-pressed') === 'true') return;
+        /**
+         * …AND THE SAME SAID BY A CLASS, AMONG ITS SIBLINGS.
+         *
+         * The ladder, 2026-11-09 (L150, a kanban board): «الكل», the All filter,
+         * carried class="active" and no aria-pressed; pressing it changed
+         * nothing — correctly — and the board was refused for «Unresponsive
+         * controls: "الكل"». A control whose class marks it the current choice
+         * (active, selected, current), with siblings of its own kind beside it
+         * (a filter, tab or segment group), is the one already on.
+         */
+        if (/(?:^|\s)(?:active|is-active|selected|is-selected|current|is-current)(?:\s|$)/u.test(String(el.getAttribute('class') || ''))
+            && !!el.parentElement && Array.from(el.parentElement.children).some(s => s !== el && s.tagName === el.tagName)) return;
         if (isLanguageSwitch(el, controlLabel) && languageIsCurrent(el, controlLabel)) return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
@@ -1682,7 +1694,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * emptied. A control wired to nothing still changes nothing.
          */
         const SEARCH_LABEL = /^(?:search|find|go|apply|filter|بحث|ابحث|تصفية|تطبيق)$/iu;
-        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|show all|مسح|إعادة تعيين|اعادة تعيين|إلغاء البحث|عرض الكل)$/iu;
+        //  The ladder, 2026-11-09: «مسح الحقول», «إعادة الضبط», «Reset filters» on a page as it
+        //  loads clear nothing, correctly, and were reported as unresponsive.
+        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|clear all|clear form|reset (?:filters?|form|all|search)|show all|مسح|مسح الكل|مسح الحقول|مسح البحث|مسح الفلاتر|إعادة تعيين|اعادة تعيين|إعادة الضبط|اعادة الضبط|إعادة ضبط|اعادة ضبط|إلغاء البحث|إلغاء الفلترة|عرض الكل|إظهار الكل|اظهار الكل)$/iu;
         const QUERY = 'zzqxjv';
         const queryLookUntil = Date.now() + 10_000;
         const asked = pressedQuiet.filter(q => SEARCH_LABEL.test(q.label.trim()) || CLEAR_LABEL.test(q.label.trim()));
