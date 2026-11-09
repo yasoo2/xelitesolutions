@@ -594,10 +594,24 @@ const WINDOW_JOIN = '\n\n… …\n\n';
 
 /** The content words of a requirement — what to look for in the source. */
 function requirementWords(r: NamedRequirement): string[] {
-    return (String(r.text || '') + ' ' + String(r.quote || ''))
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter(w => w.length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    /*
+     * ⛔ HIS MARKS ARE PART OF HIS WORD, AND HIS ACRONYM IS HIS MOST EXACT ONE.
+     *
+     * The hard sample, 2026-11-09 (L452, «شهادات PDF موقّعة»): the shadda split
+     * «موقّعة» into «موق» and «عة», «PDF» was three letters, and both were
+     * dropped as too short — the only word left was «شهادات», which an English
+     * codebase writes nowhere but in its Arabic labels. The judge was shown the
+     * page's strings and not src/pdf.js, and said so three times: «توليد ملف PDF
+     * نفسه غير ظاهر في الجزء المعروض». Marks are taken off before the words are
+     * cut, and a word he wrote in capitals (PDF, CSV, API, SMS, RTL) is kept.
+     */
+    //  Both spellings of a marked word: the source may write «موقّعة» as he did, or «موقعة».
+    const said = String(r.text || '') + ' ' + String(r.quote || '');
+    const acronyms = (said.match(/\b[A-Z][A-Z0-9]{2,5}\b/g) || []).map(w => w.toLowerCase());
+    const marked = said.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+    const words = [...marked, ...marked.map(w => w.replace(/\p{M}/gu, ''))]
+        .filter(w => w.replace(/\p{M}/gu, '').length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    return Array.from(new Set([...words, ...acronyms]));
 }
 
 /**
@@ -735,6 +749,56 @@ export function filesNamedIn(text: string, source: string): string[] {
         if (/\.[a-z0-9]{1,5}$/i.test(name) && (byName.get(name) || []).length === 1 && mentions(name)) out.add(p);
     }
     return [...out];
+}
+
+/** Words a judge writes about any source: never what it was looking for. */
+const JUDGE_PLAIN_WORDS: ReadonlySet<string> = new Set([
+    'about', 'above', 'after', 'again', 'below', 'being', 'cannot', 'called', 'calls', 'could', 'defined', 'defines',
+    'excerpt', 'exists', 'files', 'function', 'functions', 'handler', 'implementation', 'implemented', 'implements',
+    'itself', 'logic', 'missing', 'other', 'otherwise', 'partial', 'present', 'proves', 'route', 'routes', 'server',
+    'shown', 'shows', 'snippet', 'source', 'there', 'these', 'those', 'their', 'truncated', 'visible', 'where', 'which',
+    'while', 'would', 'should', 'without', 'within', 'section', 'sections', 'requirement', 'request', 'requests',
+    'response', 'client', 'frontend', 'backend', 'unprovable', 'confirm', 'verify', 'whether', 'because', 'since',
+]);
+
+/**
+ * The code words of a judge's answer: an identifier (signDigest, cert_code), a
+ * word it wrote in capitals (PDF, JSX), or a longer word that is not one every
+ * answer uses. Arabic prose around them is not a word the code writes.
+ */
+export function codeWordsOf(said: string): string[] {
+    const tokens = String(said || '').match(/[A-Za-z_$][A-Za-z0-9_$]{2,}/g) || [];
+    return Array.from(new Set(tokens
+        .filter(w => /^[A-Z][A-Z0-9]{2,5}$/.test(w) || /[a-z][A-Z]|_/.test(w) || (w.length >= 5 && !JUDGE_PLAIN_WORDS.has(w.toLowerCase())))
+        .map(w => w.toLowerCase())));
+}
+
+/**
+ *  ⛔ WHAT THE JUDGE SAYS IT WAS NOT SHOWN, IT IS SHOWN — BY ITS OWN WORDS.
+ *
+ *  The hard sample, 2026-11-09 (L452, an e-learning platform): «شهادات PDF
+ *  موقّعة» was «unprovable» three times — «the code signs the certificate
+ *  (signDigest), but generating the PDF file itself is not in the part of the
+ *  source shown». It named no file, so the re-ask by file name never ran, and
+ *  src/pdf.js (3 KB, buildPdf / certificatePdf) was never put in front of it.
+ *  When the answer names no file, the files it was not shown that hold the code
+ *  words of its answer are, most words first: the judge says what it looks for.
+ */
+export function filesHoldingWordsOf(said: string, source: string, shown: string, max = 2): string[] {
+    const words = codeWordsOf(said);
+    if (!words.length) return [];
+    const seen = String(shown || '');
+    return filesOf(String(source || ''))
+        .filter(f => !seen.includes(f.block))
+        .map(f => {
+            const low = f.block.toLowerCase();
+            //  A file it was shown none of comes before one it was shown blocks of.
+            return { path: f.path, hits: words.filter(w => low.includes(w)).length, absent: !seen.includes(`${JUDGE_FILE_MARK}${f.path} ====`) };
+        })
+        .filter(f => f.hits > 0)
+        .sort((a, b) => Number(b.absent) - Number(a.absent) || b.hits - a.hits || a.path.localeCompare(b.path))
+        .slice(0, max)
+        .map(f => f.path);
 }
 
 /** The largest block a file is cut into when it cannot be shown whole. */
@@ -2116,17 +2180,21 @@ export async function verifyNamed(
         const shown = shownFor.get(r.id) || full;
         if (shown.length >= full.length) return null;
         const blocks = filesOf(full);
-        const wanted = filesNamedIn(`${v.why} ${v.evidence}`, full)
+        const said = `${v.why} ${v.evidence}`;
+        const named = filesNamedIn(said, full);
+        //  No file by name: the files that hold the code words of its own answer (filesHoldingWordsOf).
+        const wanted = (named.length ? named : filesHoldingWordsOf(said, full, shown))
             .map(p => blocks.find(b => b.path === p))
             .filter((b): b is { path: string; block: string } => !!b && !shown.includes(b.block))
             .slice(0, 3);
-        return wanted.length ? { r, shown, wanted } : null;
-    }).filter((x): x is { r: NamedRequirement; shown: string; wanted: Array<{ path: string; block: string }> } => !!x);
+        return wanted.length ? { r, shown, wanted, said } : null;
+    }).filter((x): x is { r: NamedRequirement; shown: string; wanted: Array<{ path: string; block: string }>; said: string } => !!x);
     if (askedForFiles.length) {
-        await Promise.all(askedForFiles.map(async ({ r, shown, wanted }) => {
+        await Promise.all(askedForFiles.map(async ({ r, shown, wanted, said }) => {
+            const looked = Array.from(new Set([...requirementWords(r), ...codeWordsOf(said)]));
             const added = wanted.map(b => b.block.length <= ENCLOSING_BLOCK_MAX * 2
                 ? b.block
-                : `${JUDGE_FILE_MARK}${b.path} ====\n${enclosingBlocksFor(requirementWords(r), b.block, ENCLOSING_BLOCK_MAX * 2) || b.block.slice(0, ENCLOSING_BLOCK_MAX * 2)}`);
+                : `${JUDGE_FILE_MARK}${b.path} ====\n${enclosingBlocksFor(looked, b.block, ENCLOSING_BLOCK_MAX * 2) || b.block.slice(0, ENCLOSING_BLOCK_MAX * 2)}`);
             const more = `${shown}${WINDOW_JOIN}${added.join('\n')}`;
             let raw = '';
             try { raw = await call(verificationPrompt([r], more, isArabic)); } catch { return; }
