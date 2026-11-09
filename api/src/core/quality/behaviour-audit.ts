@@ -994,41 +994,87 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * hidden one was «a section that is missing or not visible», the delivery
          * was refused, and the model rebuilt its navigation as pages. A link whose
          * section IS in the page but hidden is pressed once, and the section is
-         * read again; one with no section at all is still dead. The page is put
+         * read again (a link with no section at all: below). The page is put
          * back where the probe started before anything else is pressed.
          */
-        const hiddenTargets = anchorTargets.map((a, i) => ({ a, i })).filter(x => !x.a.exists && x.a.present).slice(0, 12);
-        if (hiddenTargets.length) {
-            for (const { a, i } of hiddenTargets) {
+        /*
+         * ⛔ AND A HASH THAT A ROUTER ANSWERS IS A PAGE, NOT A MISSING SECTION.
+         *
+         * The hard sample, 2026-11-09 (L352, a coffee shop's ERP): «#inventory»,
+         * «#sales», «#invoices» — eleven links of a router that renders each page
+         * into one #view on hashchange; no element is called «inventory», and at
+         * three widths the walk counted «33 navigation link(s) point at a section
+         * that is missing». A link with no section is pressed too, and compared
+         * with what an address the app does not know shows from the same place:
+         * it works when its press changed the page AND the page is not what an
+         * unknown address leaves (a router that ignores it changes nothing; a
+         * page that hides every section on an unknown hash goes blank). The link
+         * to the page already open changes nothing the first time, so a link that
+         * changed nothing is tried once more after the others have moved the page.
+         */
+        const pressLink = (h: string) => evalInPage(page, function (target: string) {
+            var links = Array.prototype.slice.call(document.querySelectorAll('a[href="#' + target + '"]'));
+            for (var k = 0; k < links.length; k++) {
+                var r = links[k].getBoundingClientRect();
+                if (r.width > 2 && r.height > 2) { links[k].click(); return true; }
+            }
+            return false;
+        }, h).catch(() => false);
+        const sectionShown = (h: string) => evalInPage(page, function (target: string) {
+            var el = document.getElementById(target);
+            if (!el) return false;
+            var rect = el.getBoundingClientRect();
+            var visible = rect.width > 2 && rect.height > 2;
+            var node: Element | null = el;
+            while (visible && node) {
+                var style = getComputedStyle(node);
+                visible = style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
+                node = node.parentElement;
+            }
+            return visible;
+        }, h).catch(() => false);
+        const pageNow = () => page.evaluate(snapshot).catch(() => null);
+        const samePage = (x: any, y: any) => !!x && !!y && !changed({ ...x, url: '', scroll: 0 }, { ...y, url: '', scroll: 0 });
+        const setHash = (h: string) => evalInPage(page, function (v: string) { location.hash = v; return true; }, h).catch(() => false);
+        const settle = () => page.waitForTimeout(350).catch(() => { });
+        /** 'worked' | 'still' (changed nothing from here) | 'dead' */
+        const routes = async (h: string): Promise<'worked' | 'still' | 'dead'> => {
+            const here = String(await page.evaluate(() => location.hash).catch(() => ''));
+            const before = await pageNow();
+            await setHash('joe-no-such-page'); await settle();
+            const unknown = await pageNow();
+            await setHash(here.replace(/^#/, '')); await settle();
+            const back = await pageNow();
+            if (!await pressLink(h)) return 'dead';
+            await settle();
+            const after = await pageNow();
+            if (samePage(after, back || before)) return 'still';
+            return samePage(after, unknown) ? 'dead' : 'worked';
+        };
+        const toRecheck = anchorTargets.map((a, i) => ({ a, i })).filter(x => !x.a.exists).slice(0, 16);
+        if (toRecheck.length) {
+            const credit = (i: number, effect: string) => {
+                anchorTargets[i].exists = true;
+                anchorControls[i].worked = true;
+                anchorControls[i].effect = effect;
+            };
+            const still: Array<{ a: typeof anchorTargets[number]; i: number }> = [];
+            for (const { a, i } of toRecheck) {
                 if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
-                const pressed = await evalInPage(page, function (h: string) {
-                    var links = Array.prototype.slice.call(document.querySelectorAll('a[href="#' + h + '"]'));
-                    for (var k = 0; k < links.length; k++) {
-                        var r = links[k].getBoundingClientRect();
-                        if (r.width > 2 && r.height > 2) { links[k].click(); return true; }
-                    }
-                    return false;
-                }, a.target).catch(() => false);
-                if (!pressed) continue;
-                await page.waitForTimeout(350).catch(() => { });
-                const shown = await evalInPage(page, function (h: string) {
-                    var target = document.getElementById(h);
-                    if (!target) return false;
-                    var rect = target.getBoundingClientRect();
-                    var visible = rect.width > 2 && rect.height > 2;
-                    var node: Element | null = target;
-                    while (visible && node) {
-                        var style = getComputedStyle(node);
-                        visible = style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
-                        node = node.parentElement;
-                    }
-                    return visible;
-                }, a.target).catch(() => false);
-                if (shown) {
-                    a.exists = true;
-                    anchorControls[i].worked = true;
-                    anchorControls[i].effect = 'target';
+                if (a.present) {
+                    //  A section in the page, hidden until its tab is pressed.
+                    if (!await pressLink(a.target)) continue;
+                    await settle();
+                    if (await sectionShown(a.target)) credit(i, 'target');
+                    continue;
                 }
+                const r = await routes(a.target);
+                if (r === 'worked') credit(i, 'navigation');
+                else if (r === 'still') still.push({ a, i });
+            }
+            for (const { a, i } of still) {
+                if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
+                if (await routes(a.target) === 'worked') credit(i, 'navigation');
             }
             await restoreProbeStart();
             metrics.deadAnchors = anchorTargets.filter(a => !a.exists).length;
