@@ -213,6 +213,23 @@ export function asksForDeliverable(text: string): boolean {
     return (DO_IT_AR.test(t) && FILE_RESULT_AR.test(t)) || (DO_IT_EN.test(t) && FILE_RESULT_EN.test(t));
 }
 
+/*
+ * …AND WHEN THAT RESULT IS A DOCUMENT, IT IS JUDGED AS ONE.
+ *
+ * M03 of the same exam: the trip plan was written to one Markdown file, as asked,
+ * and refused «no runnable project» — the delivery checks wanted a live page. M01
+ * and M02 passed only because the model built a server and tests around a report
+ * and a CSV. A request whose result is a document (a report, a plan, a sheet,
+ * slides) and that names no page, site, app, server or game is delivered as the
+ * file and judged on what it says.
+ */
+const PAGE_OR_APP = /صفحة\s+ويب|صفحة\s+(?:جميلة|تعرض|هبوط)|(?:^|[\s،,])(?:ال)?(?:موقع|تطبيق|لعبة|خادم|سيرفر|واجهة|منصة|متجر)(?=[\s،,.]|$)|لوحة\s+(?:تحكم|معلومات|بيانات)|\b(?:web\s*page|landing\s+page|website|site|app|application|dashboard|game|server|api|interface|ui|store|platform)\b/iu;
+
+export function asksForDocument(text: string): boolean {
+    const t = String(text || '').trim().replace(/[ً-ٰٟـ]/gu, '');
+    return asksForDeliverable(t) && !PAGE_OR_APP.test(t);
+}
+
 /**
  * A FOLLOW-UP THAT LEADS WITH A CHANGE CHANGES THE CHAT'S PROJECT.
  *

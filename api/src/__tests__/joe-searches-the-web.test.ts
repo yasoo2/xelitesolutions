@@ -14,9 +14,34 @@
  *   - the engine has web_search beside web_read, named in six languages.
  */
 import {
-    parseBraveApi, parseBraveResults, parseInstantAnswer, parseNewsRss, parseWikipedia,
+    parseBraveApi, parseBraveResults, parseDuckHtml, parseInstantAnswer, parseNewsRss, parseWikipedia, parseYahoo,
 } from '../core/engine/web-search';
 import { needsWebFacts, relevantExcerpt } from '../core/engine/web-grounding';
+
+//  The Manus-style exam, 2026-11-09 (M05): with Brave resting, these two found the shawarma lists the feeds could not.
+describe('the result pages asked when Brave rests', () => {
+    test('DuckDuckGo\'s HTML results: the page\'s own address out of uddg=, its title and line; its own and ad links left out', () => {
+        const html = [
+            '<div class="result results_links"><h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.timeoutamman.com%2Fshawarma%2F&amp;rut=ab">أفضل 17 مطاعم شاورما في عمان - تايم آوت</a></h2>',
+            '<a class="result__snippet" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwww.timeoutamman.com%2Fshawarma%2F">يقدم مطعم <b>صاج</b> ووك أنواع الشاورما</a></div>',
+            '<div class="result result--ad"><a class="result__a" href="https://duckduckgo.com/y.js?ad_domain=x">Ad</a></div>',
+            '<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Far.tripadvisor.com%2FRestaurants-g293986.html">أفضل شاورما في عمان - Tripadvisor</a><a class="result__snippet" href="#">2,709 تعليقات</a></div>',
+        ].join('');
+        expect(parseDuckHtml(html)).toEqual([
+            { title: 'أفضل 17 مطاعم شاورما في عمان - تايم آوت', url: 'https://www.timeoutamman.com/shawarma/', snippet: 'يقدم مطعم صاج ووك أنواع الشاورما' },
+            { title: 'أفضل شاورما في عمان - Tripadvisor', url: 'https://ar.tripadvisor.com/Restaurants-g293986.html', snippet: '2,709 تعليقات' },
+        ]);
+    });
+
+    test('Yahoo\'s results page: the page out of /RU=…/, the title in its <h3>, not the site\'s breadcrumb; Yahoo\'s own links left out', () => {
+        const block = (ru: string, crumb: string, title: string, text: string) => `<div class="compTitle options-toggle"><a class="d-ib" href="https://r.search.yahoo.com/_ylt=A/RV=2/RE=1/RO=10/RU=${ru}/RK=2/RS=x-"><div class="d-ib"><span class="d-ib va-mid"><span class="fc-141414 d-b">site</span>${crumb}</span></div><h3 class="title"><span class="d-b">${title}</span></h3></a></div><div class="compText aAbs"><p class="fc-dustygray">${text}</p></div>`;
+        const html = block('https%3a%2f%2fwww.jabalamman.net%2fbest-shawarma-amman%2f', 'https://www.jabalamman.net › food', 'Best Shawarma in Amman: 5 Spots, Prices &amp; Reviews', 'Find <b>shawarma</b> in Amman with prices')
+            + block('https%3a%2f%2fwww.yahoo.com%2f', 'yahoo', 'Yahoo', 'home');
+        expect(parseYahoo(html)).toEqual([
+            { title: 'Best Shawarma in Amman: 5 Spots, Prices & Reviews', url: 'https://www.jabalamman.net/best-shawarma-amman/', snippet: 'Find shawarma in Amman with prices' },
+        ]);
+    });
+});
 
 describe('each source is read right', () => {
     test('Brave\'s results page: title, address, the line under it; its own addresses left out', () => {

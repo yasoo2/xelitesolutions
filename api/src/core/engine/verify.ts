@@ -338,15 +338,22 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
      *  and what the repository already was is not this change's to answer for.
      */
     const repository = ctx.change?.repository;
-    const programOnly = !!repository || (roles.program && !roles.interface && !roles.service && !programServesAPage);
+    //  A document asked for (a report, a plan, a sheet, slides) is the file, judged on what it says (select.ts asksForDocument).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const documentAsked = !repository && (require('./select') as typeof import('./select')).asksForDocument(request);
+    //  …judged as a document unless a page was built around it (then the page is proven too).
+    const documentOnly = documentAsked && !programServesAPage;
+    const programOnly = !!repository || documentOnly || (roles.program && !roles.interface && !roles.service && !programServesAPage);
     const primary: 'live' | 'program' = programOnly ? 'program' : 'live';
-    const required = new Set<DeliveryInstrument>(programOnly && !repository ? ['quality'] : []);
-    if (repository) required.add('program');
+    const required = new Set<DeliveryInstrument>(programOnly && !repository && !documentOnly ? ['quality'] : []);
+    if (repository || documentOnly) required.add('program');
     //  The acceptance judge always rules; an unmeasured acceptance is never a pass.
     required.add('acceptance');
     note(repository
         ? 'repository: the user\'s own repository — judged by its own test suite, the acceptance judge, and no new source problem'
-        : `roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
+        : documentOnly
+            ? 'document: the request asks for a document — the file is the delivery, judged on what it says; no page, server or tests are owed'
+            : `roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
 
     const delivery = deliveryRun({
         productRequest: request,
@@ -410,7 +417,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     try { manifest = manifestText === null ? null : JSON.parse(manifestText); } catch { manifest = null; }
     const contract = inspectProjectQualityContract(root, request);
     const contractError = contract.ok ? undefined : `project quality contract failed — ${contract.failures.slice(0, 4).join('; ')}`;
-    if (programOnly && !repository) {
+    if (programOnly && !repository && !documentOnly) {
         ledger.record({ instrument: 'quality', ok: contract.ok, error: contractError });
     } else if (repository && !contract.ok) {
         remark('quality', `the repository's own manifest is not held to Joe's build contract (${contractError})`);
@@ -455,8 +462,21 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     if (programOnly) {
         skipped.set('live', repository
             ? 'the user\'s own repository is proven by its own test suite, not by a page Joe opens'
-            : 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
+            : documentOnly
+                ? 'the request asks for a document: the file is the delivery, not a page Joe opens'
+                : 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
         await stage(['program'], async () => {
+            if (documentOnly) {
+                const docs = await deliveredDocuments(root);
+                ledger.record({
+                    instrument: 'program',
+                    target: root,
+                    ok: docs.length > 0,
+                    error: docs.length ? undefined : 'the request asks for a document, and the project holds none: write it as a file (a report or plan as .md, a sheet as .csv, slides as .html or .md) in the project folder',
+                });
+                passed.set('program', `the document(s) asked for are delivered: ${docs.map(d => `${d.path} (${d.words} words)`).join(', ')}`);
+                return;
+            }
             const run = await runRequestedTests(root, runTool);
             if (run.noRunner) {
                 skipped.set('program', `not measured, and the delivery needs it: ${run.error || 'no test runner Joe knows for this project'}`);
@@ -531,7 +551,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     await stage(['acceptance'], async () => {
         const judged = await judgeRequirements(ctx, request, isAr, root, deps.ask, note, {
             built: buildsPassed, liveUrl, tests: delivery.state.requestCoverage,
-        }, interfaceDelivered);
+        }, interfaceDelivered, documentAsked);
         Object.assign(acceptance, judged.summary);
         bySight = judged.bySight;
         ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined, met: judged.met });
@@ -847,6 +867,32 @@ export async function measureProjectSource(root: string, deadlineAt: number, can
  */
 /** Source code, in every language a project may be written in. */
 const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu;
+
+/** A document a request can ask for, readable as text (a sheet as CSV, slides as HTML or Markdown). */
+const DOCUMENT_FILE = /\.(?:md|markdown|txt|csv|tsv|html?)$/iu;
+/** Binary documents: delivered, but read by no judge (named so the model knows to give a readable copy). */
+const BINARY_DOCUMENT_FILE = /\.(?:xlsx|docx|pptx|pdf)$/iu;
+const NOT_A_DELIVERED_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-delivery)(?:\.[a-z]+)?$/iu;
+
+/** The documents the project delivers, with their words, largest first (machine folders and Joe's own files aside). */
+export async function deliveredDocuments(root: string): Promise<Array<{ path: string; words: number }>> {
+    const files = await listProjectFiles(root, {
+        skipDirectory: name => name === 'node_modules' || name === 'dist' || name.startsWith('.'),
+        keepFile: (_relative, name) => (DOCUMENT_FILE.test(name) || BINARY_DOCUMENT_FILE.test(name)) && !NOT_A_DELIVERED_DOCUMENT.test(name),
+    });
+    const out: Array<{ path: string; words: number }> = [];
+    for (const rel of files) {
+        try {
+            const abs = path.join(root, rel);
+            const stat = await fs.promises.stat(abs);
+            if (!stat.size) continue;
+            const words = BINARY_DOCUMENT_FILE.test(rel) || stat.size > 2_000_000 ? 0
+                : (String(await fs.promises.readFile(abs, 'utf8')).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/giu, ' ').match(/[\p{L}\p{N}]+/gu) || []).length;
+            out.push({ path: rel.split(path.sep).join('/'), words });
+        } catch { /* unreadable is not delivered */ }
+    }
+    return out.sort((a, b) => b.words - a.words);
+}
 /**
  * The project's own documentation and configuration. C12 of the Codex exam
  * (2026-11-06): «rename timeout to timeout_seconds in the code, the tests
@@ -856,7 +902,8 @@ const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|
  * config file, a version in package.json are requirements too. Small files
  * only (a big JSON is data, not configuration), and never a lockfile.
  */
-const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|json|ya?ml|toml|ini|cfg)$/iu;
+//  A sheet delivered as CSV is read too (the Manus-style exam, 2026-11-09: a comparison in a CSV).
+const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|csv|tsv|json|ya?ml|toml|ini|cfg)$/iu;
 const LOCKFILE = /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|pipfile\.lock|composer\.lock|cargo\.lock)$/iu;
 const JUDGE_DOC_BYTES = 64 * 1024;
 
@@ -964,6 +1011,7 @@ export async function judgeRequirements(
     note: (line: string) => void,
     evidence: { built: boolean; liveUrl: string; tests?: Pick<NonNullable<DeliveryRunState['requestCoverage']>, 'records' | 'testsRun'> },
     pageDelivered = false,
+    documentsAreTheProduct = false,
 ): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; met: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
     //  same reader seeded them), or — when the seeding read nothing — a
@@ -1002,7 +1050,7 @@ export async function judgeRequirements(
         const before = await beforeThisChange(root, ctx.change.snapshot);
         if (before) source.text = `${source.text}\n${before}`;
     }
-    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask) : [];
+    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask, undefined, undefined, { documentsAreTheProduct }) : [];
     //  4. The verdicts themselves are the criteria — always, even from a blind
     //  judge, so that criteria > 0 and a judge that could rule on nothing
     //  blocks. No catalogue or structural criterion is added.
