@@ -36,6 +36,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { readModelJson } from '../../shared/utils/json';
 import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion, splitListItems, stripLeadingConjunction } from '../design/request-lists';
@@ -925,6 +926,11 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         `  · A word about how the page LOOKS (elegant, beautiful, modern, calm`,
         `    colours) is judged on a screenshot of the page, not here: judge the`,
         `    rest of the line, and never call a line "unprovable" for its look alone.`,
+        `  · Current facts (today's price, the latest news, this week's figures) are`,
+        `    met by the most recent value the cited sources publish, written with its`,
+        `    date and its source — even when that date is yesterday because nothing`,
+        `    newer is published yet, if the document says so plainly. They are unmet`,
+        `    when the value has no date or no source, or is plainly old (weeks or more).`,
         `  · Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
@@ -1275,6 +1281,18 @@ function residue(text: string, ...patterns: RegExp[]): string {
     return rest.replace(CONNECTOR, ' ').replace(/[«»"“”'،,.:;؛()]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
+const FORM_CLAUSE = /^(?:(?:ال)?نموذج|(?:ال)?استمارة|(?:an?\s+)?(?:contact\s+|booking\s+|enquiry\s+|inquiry\s+)?form)\s*(?:(?:ال)?(?:تواصل|اتصال|حجز|استفسار))?\s*(?:with|containing|for|including|ب)?\s*(.*)$/iu;
+
+/** A form clause whose named fields are fields Joe knows, and at least one has no input that proves it. */
+function formNamesFieldsNotFound(r: NamedRequirement, source: string): boolean {
+    const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
+    const form = text.match(FORM_CLAUSE);
+    if (!form) return false;
+    const said = splitListItems(form[1] || '');
+    const fields = said.map(field => FORM_FIELDS.find(f => f.says.test(field)));
+    return fields.some(Boolean) && fields.some(f => f && !f.proof.test(String(source || '')));
+}
+
 function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
     const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
     const src = String(source || '');
@@ -1334,6 +1352,43 @@ function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | n
         return { ...r, verdict: 'met', why: `the generated hero renders${wantsImage ? ' its image' : ''}${quoted.length ? ` and ${quoted.map(v => `«${v}»`).join(' · ')}` : ''}` };
     }
     return null;
+}
+
+/*
+ * HOW LONG A DOCUMENT IS, MEASURED, NOT ARGUED.
+ *
+ * The Manus-style exam, 2026-11-09 (M01): «اكتب لي تقريرًا قصيرًا…» — the judge
+ * ruled «أن يكون التقرير قصيرًا» unprovable («short is relative, nothing in the
+ * lines shown sets the length»), four times, and a correct report was refused.
+ * A requirement that a document be short, brief or concise is judged on the
+ * words of the documents delivered (Joe's own certificate and the project's
+ * README aside): at most SHORT_DOCUMENT_WORDS is short.
+ */
+const SHORT_WORD = /(?:^|[\s«"(])(?:قصير|قصيرا|قصيره|قصيرة|مختصر|مختصرا|مختصره|مختصرة|موجز|موجزا|موجزه|موجزة)(?=$|[\s،,.»")])|\b(?:short|brief|concise)\b/iu;
+const DOCUMENT_FILE = /\.(?:md|markdown|txt|html?|csv)$/iu;
+const NOT_THE_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-delivery)(?:\.[a-z]+)?$|^\(before this change\)/iu;
+export const SHORT_DOCUMENT_WORDS = 1500;
+
+export function documentLengthVerdict(r: NamedRequirement, source: string, isArabic: boolean): JudgedNamed | null {
+    const said = `${r.text || ''} ${r.quote || ''}`.replace(/[ً-ٰٟـ]/gu, '');
+    if (!SHORT_WORD.test(said)) return null;
+    const docs = filesOf(String(source || ''))
+        .filter(f => DOCUMENT_FILE.test(f.path) && !NOT_THE_DOCUMENT.test(path.basename(f.path)) && !NOT_THE_DOCUMENT.test(f.path))
+        .map(f => {
+            const body = f.block.split('\n').slice(1).join('\n').replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/giu, ' ').replace(/<[^>]+>/gu, ' ');
+            return { path: f.path, words: (body.match(/[\p{L}\p{N}]+/gu) || []).length };
+        })
+        .filter(d => d.words > 0);
+    if (!docs.length) return null;
+    const longest = docs.reduce((a, b) => (b.words > a.words ? b : a));
+    const short = longest.words <= SHORT_DOCUMENT_WORDS;
+    return {
+        ...r,
+        verdict: short ? 'met' : 'unmet',
+        why: isArabic
+            ? `قِيس طول المستند: ${longest.path} فيه ${longest.words} كلمة (القصير حتى ${SHORT_DOCUMENT_WORDS} كلمة)`
+            : `measured: ${longest.path} has ${longest.words} words (short is at most ${SHORT_DOCUMENT_WORDS})`,
+    };
 }
 
 /**
@@ -1707,6 +1762,9 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     }
     const pageClause = pageClauseVerdict(r, src);
     if (pageClause) return pageClause;
+    //  A form that names its fields is met by those fields, never by «a contact form exists»:
+    //  «نموذج تواصل بالاسم والهاتف» on a form with no phone input is for a judge (2026-11-09).
+    if (formNamesFieldsNotFound(r, src)) return null;
     const knownCapabilities = requestedCapabilities(text);
     if (knownCapabilities.length && knownCapabilities.every(capability => capabilityEvidence(capability, src))) {
         return { ...r, verdict: 'met', why: `the generated source proves: ${knownCapabilities.map(item => item.en).join(', ')}` };
@@ -1769,7 +1827,7 @@ export async function verifyNamed(
                     reasonCode: !grounded ? 'ungrounded_criterion' : proven ? 'verified' : compound ? 'compound_not_fully_proven' : 'backend_evidence_rejected' } });
             continue;
         }
-        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || deterministicSourceVerdict(r, src);
+        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || documentLengthVerdict(r, src, isArabic) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);
