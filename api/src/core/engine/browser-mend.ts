@@ -79,6 +79,33 @@ export function mendSources(root: string, pageDir?: string): Record<string, stri
     return out;
 }
 
+/** How many instances a finding names: «21 tap target(s)…» is 21, else its evidence, else one. */
+export function findingWeight(f: MendFinding & { detail?: string; detailEn?: string }): number {
+    const n = Number((/^(\d+)\s/.exec(String(f.detailEn || f.detail || '')) || [])[1]);
+    if (Number.isFinite(n) && n > 0) return n;
+    return Array.isArray(f.evidence) && f.evidence.length ? f.evidence.length : 1;
+}
+
+/**
+ * WHETHER JOE'S OWN REPAIR LEFT THE PAGE BETTER.
+ *
+ * The hard sample, 2026-11-09 (L272, an events company's three-role system):
+ * «21 tap targets under 40px» and «unresponsive controls» — the repair could
+ * answer the first, and every file was put back: two kinds of finding before,
+ * two after, and the old rule counted kinds only. A repair that leaves fewer
+ * instances of the same kinds, and adds no kind of its own, made the page
+ * better and is kept; one that adds a kind is put back, whatever it fixed.
+ */
+export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boolean {
+    const was = before.filter(refuses), now = after.filter(refuses);
+    const wasIds = new Set(was.map(f => String(f.id || '')));
+    if (now.some(f => !wasIds.has(String(f.id || '')))) return false;
+    if (now.length < was.length) return true;
+    const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
+    if (now.length === was.length && weight(now) < weight(was)) return true;
+    return now.length === was.length && after.length < before.length;
+}
+
 /** Whether Joe's repairer answers any of these findings. */
 export function mendable(findings: MendFinding[]): boolean {
     let can: ReadonlySet<string> = new Set();

@@ -117,3 +117,28 @@ describe('the page the browser opened is mended where it lives', () => {
         } finally { fs.rmSync(root, { recursive: true, force: true }); }
     });
 });
+
+describe('a repair that leaves fewer of the same is kept', () => {
+    //  The hard sample, 2026-11-09 (L272): «21 tap targets» and «unresponsive controls»;
+    //  the repair answered the first, and was put back because two kinds stayed two.
+    const { mendIsBetter, findingWeight } = require('../core/engine/browser-mend');
+    const small = (n: number) => ({ id: 'small_targets', severity: 'medium', detailEn: `${n} tap target(s) under 40px: Sign out` });
+    const dead = { id: 'some_dead_controls', severity: 'major', detailEn: 'Unresponsive controls: "Save"', evidence: [{ label: 'Save' }, { label: 'Apply' }] };
+
+    test('instances are read from the finding: its count, else its evidence, else one', () => {
+        expect(findingWeight(small(21))).toBe(21);
+        expect(findingWeight(dead)).toBe(2);
+        expect(findingWeight({ id: 'x' })).toBe(1);
+    });
+
+    test.each([
+        ['fewer kinds', [small(21), dead], [dead], true],
+        ['the same kinds, fewer instances', [small(21), dead], [small(3), dead], true],
+        ['the same kinds, as many', [small(21), dead], [small(21), dead], false],
+        ['a kind the repair brought', [small(21), dead], [{ id: 'mobile_overflow', severity: 'high', detailEn: '2 element(s) spill' }], false],
+        ['more instances', [small(3)], [small(9)], false],
+        ['only a minor note gone', [small(3), { id: 'flat_hierarchy', severity: 'low' }], [small(3)], true],
+    ])('%s: kept %s', (_name, before, after, kept) => {
+        expect(mendIsBetter(before, after)).toBe(kept);
+    });
+});

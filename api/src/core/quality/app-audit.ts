@@ -1959,7 +1959,21 @@ export async function auditBuiltApp(
          */
         //  Links to the app's own pages are links (inAppRoutes): a page of them
         //  is a way in, judged by the pages it opens, not an empty page.
-        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks && !dom.fields) {
+        /*
+         * ⛔ A DOOR WALKED THROUGH IS AN INTERFACE.
+         *
+         * The hard sample, 2026-11-09 (L282, «a secure sign-in system for a
+         * cinema's staff»: hashed passwords, attempt limits, a reset by mail):
+         * the audit signed in through the product's own form with the builder's
+         * account and landed on the staff page, whose one control is «sign
+         * out», never pressed (it would end the walk's session). «Not one
+         * button, link or form» — four refusals of a correct product whose
+         * product IS the door. A walk that signed in through the page's form
+         * used a form of the product; what the signed-in page must offer is
+         * the judge's to measure against the request, not «an empty page».
+         */
+        const walkedThroughTheDoor = authenticated && !!signInAccount;
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks && !dom.fields && !walkedThroughTheDoor) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
