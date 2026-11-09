@@ -23,6 +23,7 @@ import http from 'http';
 import os from 'os';
 import path from 'path';
 import { createVerifier, deliveryOutput, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
+import type { Mender } from '../core/engine/browser-mend';
 import { seedRequirementsFromRequest } from '../core/engine/seed';
 import { newPlan, seededRequirements } from '../core/engine/plan';
 import type { EngineResult, ProcessInfo, ProcessRegistry, RunState, ToolContext } from '../core/engine/types';
@@ -139,17 +140,22 @@ function model(wanted: Wanted[]) {
 }
 
 /** The Browser panel the visible QA runs in: watched, and its audit's result given. */
-function panel(opts: { watching: boolean; findings?: any[] }): BrowserQa & { audits: Array<{ dir: string; opts: any }> } {
+function panel(opts: { watching: boolean; findings?: any[]; then?: any[] }): BrowserQa & { audits: Array<{ dir: string; opts: any }> } {
     const audits: Array<{ dir: string; opts: any }> = [];
     return {
         audits,
         async watcher() { return { sessionId: 'joe-eng-verify-panel', watching: opts.watching }; },
         async audit(dir, auditOpts) {
             audits.push({ dir, opts: auditOpts });
-            return { score: opts.findings?.length ? 72 : 100, findings: opts.findings || [] };
+            //  `then`: what the page shows from the second measurement on (after Joe's own repair).
+            const findings = (audits.length > 1 && opts.then) || opts.findings || [];
+            return { score: findings.length ? 72 : 100, findings };
         },
     };
 }
+
+/** Joe's own repair as a test gives it (browser-mend.ts); none unless a test sets one. */
+let mendForTest: Mender | null = null;
 
 /** The run's process registry, holding what the test says the run started; stop() is recorded. */
 function registry(running: ProcessInfo[] = []): ProcessRegistry & { stopped: string[] } {
@@ -191,7 +197,7 @@ async function verify(dir: string, request: string, wanted: Wanted[], qa: Browse
     const { ask } = model(wanted);
     const ctx = await runContext(dir, request, ask, processes);
     //  task_finish as the engine runs it: inside the orchestrator's execution context, like every tool of the run.
-    const report = await executionFirewall.runInContext('joe-eng-verify-finish', () => createVerifier({ ask, runTool, browserQa: qa })(ctx, claim)) as DeliveryVerification;
+    const report = await executionFirewall.runInContext('joe-eng-verify-finish', () => createVerifier({ ask, runTool, browserQa: qa, mend: mendForTest })(ctx, claim)) as DeliveryVerification;
     return { report, ctx };
 }
 
@@ -372,11 +378,55 @@ describe('a static site', () => {
     });
 
     it('is refused on browser when the visible audit finds something, and the finding reaches the model', async () => {
-        const qa = panel({ watching: true, findings: [{ id: 'h1_count', severity: 'low', detail: 'عنوانان رئيسيان', detailEn: 'the page has two h1 headings', evidence: ['h1'] }] });
+        const qa = panel({ watching: true, findings: [
+            { id: 'dead_links', severity: 'medium', detail: 'رابطان ميتان', detailEn: '2 dead link(s) (empty href or #)', evidence: ['a.more'] },
+            { id: 'h1_count', severity: 'low', detail: 'عنوانان رئيسيان', detailEn: 'the page has two h1 headings', evidence: ['h1'] },
+        ] });
         const { report } = await verify(site(), SITE_REQUEST, SITE_WANTED, qa);
         expect(report.passed).toBe(false);
         expect(failedChecks(report)).toEqual(['browser']);
-        expect(check(report, 'browser')?.detail).toMatch(/browser QA found 1 blocking finding\(s\): h1_count — the page has two h1 headings/);
+        expect(check(report, 'browser')?.detail).toMatch(/browser QA found 1 blocking finding\(s\): dead_links — 2 dead link\(s\)/);
+        expect(check(report, 'browser')?.detail).toMatch(/minor, not blocking: h1_count/);
+    });
+
+    /*
+     * The ladder exam, 2026-11-09: 69 of 150 prompts refused by the browser check,
+     * mostly for what Joe's own repairer answers (buttons under 40 px) or what the
+     * auditors call minor taste (a flat heading scale). Each refusal cost a model
+     * round and every check again.
+     */
+    it('a minor finding of taste is told with the delivery, never a refusal on its own', async () => {
+        const qa = panel({ watching: true, findings: [{ id: 'flat_hierarchy', severity: 'low', detail: 'لا تسلسل', detailEn: 'Largest heading 18px against 16px body (ratio 1.13) — no visual hierarchy' }] });
+        const { report } = await verify(site(), SITE_REQUEST, SITE_WANTED, qa);
+        expect(failedChecks(report)).toEqual([]);
+        expect(report.passed).toBe(true);
+        expect(check(report, 'browser')?.detail).toMatch(/found nothing that blocks .*minor notes, told and not refused: flat_hierarchy — Largest heading 18px/);
+    });
+
+    it('what Joe\'s repairer answers, Joe repairs and measures once more; a repair that does not help is put back', async () => {
+        const small = [{ id: 'small_targets', severity: 'medium', detail: 'هدف صغير', detailEn: '1 tap target(s) under 40px: Go', evidence: [{ sel: 'button.go', label: 'Go', w: 30, h: 30 }] }];
+        const undone: string[] = [];
+        mendForTest = async (root, findings) => ({
+            repairs: [`Widened the ${findings[0].id === 'small_targets' ? 1 : 0} target(s) the browser actually measured to 44px`],
+            changed: ['styles.css'],
+            undo: async () => { undone.push(root); },
+        });
+        try {
+            const helped = panel({ watching: true, findings: small, then: [] });
+            const { report } = await verify(site(), SITE_REQUEST, SITE_WANTED, helped);
+            expect(report.passed).toBe(true);
+            expect(helped.audits).toHaveLength(2);
+            expect(check(report, 'browser')?.detail).toMatch(/Joe repaired it himself before this measurement: Widened the 1 target\(s\)/);
+            expect(undone).toEqual([]);
+
+            const useless = panel({ watching: true, findings: small, then: small });
+            const second = await verify(site(), SITE_REQUEST, SITE_WANTED, useless);
+            expect(second.report.passed).toBe(false);
+            expect(failedChecks(second.report)).toEqual(['browser']);
+            expect(undone).toEqual([second.report.delivery.projectRoot]);
+        } finally {
+            mendForTest = null;
+        }
     });
 
     it('a site whose own start script dies is still served, by project_run\'s static server, and the check says which served it', async () => {
