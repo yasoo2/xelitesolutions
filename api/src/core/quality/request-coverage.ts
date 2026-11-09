@@ -1336,7 +1336,7 @@ async function runRequestedTestsNow(root: string, runTool: (tool: string, input:
         // The runner as a delivered script would run it; the interpreter is
         // the name this machine — the one running the check — ships.
         const runner = 'python tests (pytest where installed, else the standard-library runner)';
-        if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project, so the requested tests cannot run' };
+        if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project: its own tests are what proves it, so write them beside it (tests/test_<name>.py, the standard library unittest is enough) and run them' };
         const command = pythonTestCommand(folders, false, pythonExecutable());
         try {
             //  A test run gets the time a test run takes: the shell's 30-second default for a
@@ -1358,7 +1358,7 @@ async function runRequestedTestsNow(root: string, runTool: (tool: string, input:
             return { root: dir, ran: false, passed: false, runner, error: String(error?.message || error).slice(0, 300) };
         }
     }
-    if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script, so the requested tests cannot run' };
+    if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script: its own tests are what proves it, so add a "test" script that runs them (node --test needs nothing installed)' };
     return { root: dir, ran: false, passed: false, noRunner: true, error: 'no test runner Joe knows for this project' };
 }
 
