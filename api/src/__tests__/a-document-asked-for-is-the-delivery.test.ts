@@ -53,3 +53,8 @@ test('the documents delivered are found with their words; README, the certificat
 test('the engine is told a document needs no server, package.json or tests', () => {
     expect(systemPrompt({ platform: 'win32', shell: 'powershell' })).toMatch(/A document needs no server, no package\.json and no tests/);
 });
+
+test('research is checked against a second, independent site, and several items cite three sites when the web has them', () => {
+    //  M05, 2026-11-09: five restaurants, all from one article — right, but resting on one page.
+    expect(systemPrompt({ platform: 'win32', shell: 'powershell' })).toMatch(/check the main facts against a second, independent source .* at least three different sites for research of several items/);
+});
