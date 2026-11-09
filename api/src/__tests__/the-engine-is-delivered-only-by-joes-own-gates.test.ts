@@ -389,6 +389,20 @@ describe('a static site', () => {
         expect(check(report, 'browser')?.detail).toMatch(/minor, not blocking: h1_count/);
     });
 
+    //  The Manus-style exam, 2026-11-09 (M03): a plan written to one Markdown file was refused «no runnable project».
+    it('a document asked for is delivered as the file: no live run, no Browser QA, judged on what it says', async () => {
+        const qa = panel({ watching: true });
+        const dir = project({ 'gold-report.md': '# Gold prices\n\n| Country | Price | Date | Source |\n|---|---|---|---|\n| Jordan | 61.20 JOD | 2026-11-08 | https://example.com/jo |\n' });
+        const request = 'Research the gold price today and write a short report with a table of prices, each with its date and source.';
+        const { report } = await verify(dir, request, [{ text: 'a table of prices with dates and sources', quote: 'a table of prices', line: '| Jordan | 61.20 JOD | 2026-11-08 | https://example.com/jo |' }], qa);
+        expect(failedChecks(report)).toEqual([]);
+        expect(report.passed).toBe(true);
+        expect(check(report, 'live')?.detail).toMatch(/asks for a document: the file is the delivery/);
+        expect(check(report, 'program')?.detail).toMatch(/gold-report\.md \(\d+ words\)/);
+        expect(qa.audits).toHaveLength(0);
+        expect(calls.some(c => c.tool === 'project_run')).toBe(false);
+    });
+
     /*
      * The ladder exam, 2026-11-09: 69 of 150 prompts refused by the browser check,
      * mostly for what Joe's own repairer answers (buttons under 40 px) or what the

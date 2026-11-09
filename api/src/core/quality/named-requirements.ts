@@ -481,11 +481,23 @@ export function foundInSource(evidence: string, source: string): boolean {
 const DOC_FILE = /(?:^|\/)(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt)$/iu;
 const ASKS_ABOUT_DOCS = /\breadme\b|\bdoc(?:s|uments?|umentation)?\b|\bchangelog\b|توثيق|وثائق|دليل\s+(?:الاستخدام|المستخدم)|اقرأني/iu;
 
+/*
+ * …BUT A REPORT ASKED FOR IS THE PRODUCT, NOT ITS DOCUMENTATION. The Manus-style
+ * exam, 2026-11-09: a gold report delivered as report.md had every line of it
+ * refused as «only documentation». In a delivery with no code at all, a .md or
+ * .txt file is what was asked for; only a README, a changelog or Joe's own
+ * certificate still documents rather than delivers.
+ */
+const CODE_FILE = /\.(?:jsx?|tsx?|mjs|cjs|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|html?|css)$/iu;
+const ALWAYS_DOCS = /(?:^|\/)(?:readme|changelog|contributing|joe-delivery)(?:\.[a-z]+)?$/iu;
+
 export function evidenceOnlyInDocs(evidence: string, source: string): boolean {
     const e = bare(evidence);
     if (!e) return false;
-    const holders = filesOf(source).filter(f => flat(f.block).includes(e));
-    return holders.length > 0 && holders.every(f => DOC_FILE.test(f.path));
+    const files = filesOf(source);
+    const codeDelivered = files.some(f => CODE_FILE.test(f.path) && !f.path.startsWith('(before this change)'));
+    const holders = files.filter(f => flat(f.block).includes(e));
+    return holders.length > 0 && holders.every(f => (codeDelivered ? DOC_FILE : ALWAYS_DOCS).test(f.path));
 }
 
 export function asksAboutDocumentation(r: Pick<NamedRequirement, 'text' | 'quote'>): boolean {
