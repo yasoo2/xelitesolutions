@@ -708,6 +708,35 @@ function filesOf(src: string): Array<{ path: string; block: string }> {
     }));
 }
 
+/**
+ *  The project's files a judge's words name: by their path, or by their file
+ *  name when only one file has it. «app/files.py is not in the source shown»
+ *  names app/files.py; «the files module» names nothing.
+ */
+export function filesNamedIn(text: string, source: string): string[] {
+    const said = String(text || '');
+    const paths = filesOf(String(source || '')).map(f => f.path);
+    const base = (p: string) => p.split('/').pop() || p;
+    const byName = new Map<string, string[]>();
+    for (const p of paths) byName.set(base(p), [...(byName.get(base(p)) || []), p]);
+    //  Said as a word of its own: not the tail of a longer path or name.
+    const mentions = (needle: string): boolean => {
+        for (let i = said.indexOf(needle); i >= 0; i = said.indexOf(needle, i + 1)) {
+            const before = i > 0 ? said[i - 1] : ' ';
+            const after = said[i + needle.length] || ' ';
+            if (!/[\w./-]/.test(before) && !/[\w/-]/.test(after)) return true;
+        }
+        return false;
+    };
+    const out = new Set<string>();
+    for (const p of paths) {
+        if (mentions(p)) { out.add(p); continue; }
+        const name = base(p);
+        if (/\.[a-z0-9]{1,5}$/i.test(name) && (byName.get(name) || []).length === 1 && mentions(name)) out.add(p);
+    }
+    return [...out];
+}
+
 /** The largest block a file is cut into when it cannot be shown whole. */
 const ENCLOSING_BLOCK_MAX = 7_000;
 
@@ -2065,6 +2094,47 @@ export async function verifyNamed(
                     byId.set(r.id, { id: r.id, verdict: 'met', evidence: v.evidence, why: v.why || byId.get(r.id)!.why });
                 }
             }
+        }));
+    }
+    /**
+     *  ⛔ A FILE THE JUDGE SAYS IT WAS NOT SHOWN IS SHOWN TO IT — ONCE.
+     *
+     *  The hard sample, 2026-11-09 (L332, a bookstore's documents, «thumbnails
+     *  for every upload»): the slice for the requirement was filled by a 22 KB
+     *  main.py and the tests, and three times the judge said what was missing,
+     *  by name: «app/files.py is not in the source shown, so the code that
+     *  generates the thumbnail is missing». The file was 3 KB and in the
+     *  project; the delivery was refused three times, until the model shrank it.
+     *  An answer other than «met» that names a project file the judge was not
+     *  shown is asked again, once, with that file added (whole, or its blocks
+     *  when it is large); the new answer is judged like any other.
+     */
+    const askedForFiles = reqs.map(r => {
+        if (deterministic.has(r.id)) return null;
+        const v = byId.get(r.id);
+        if (!v || v.verdict === 'met') return null;
+        const shown = shownFor.get(r.id) || full;
+        if (shown.length >= full.length) return null;
+        const blocks = filesOf(full);
+        const wanted = filesNamedIn(`${v.why} ${v.evidence}`, full)
+            .map(p => blocks.find(b => b.path === p))
+            .filter((b): b is { path: string; block: string } => !!b && !shown.includes(b.block))
+            .slice(0, 3);
+        return wanted.length ? { r, shown, wanted } : null;
+    }).filter((x): x is { r: NamedRequirement; shown: string; wanted: Array<{ path: string; block: string }> } => !!x);
+    if (askedForFiles.length) {
+        await Promise.all(askedForFiles.map(async ({ r, shown, wanted }) => {
+            const added = wanted.map(b => b.block.length <= ENCLOSING_BLOCK_MAX * 2
+                ? b.block
+                : `${JUDGE_FILE_MARK}${b.path} ====\n${enclosingBlocksFor(requirementWords(r), b.block, ENCLOSING_BLOCK_MAX * 2) || b.block.slice(0, ENCLOSING_BLOCK_MAX * 2)}`);
+            const more = `${shown}${WINDOW_JOIN}${added.join('\n')}`;
+            let raw = '';
+            try { raw = await call(verificationPrompt([r], more, isArabic)); } catch { return; }
+            const parsed = parseVerdicts(raw);
+            const v = parsed.find(p => p.id === r.id) || (parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined);
+            if (!v) return;
+            byId.set(r.id, { id: r.id, verdict: v.verdict, evidence: v.evidence, why: v.why });
+            shownFor.set(r.id, more);
         }));
     }
     return reqs.map(r => {
