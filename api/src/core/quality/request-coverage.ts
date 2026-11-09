@@ -1133,6 +1133,8 @@ export interface RequestedTestsRun {
     noRunner?: boolean;
     runner?: string;
     error?: string;
+    /** The project's files are byte for byte those of its last passing run: that pass, not run again. */
+    sameFilesAsLastPass?: boolean;
 }
 
 /** A test script that does work — the one placeholder reader decides (placeholder-script, Q9). */
@@ -1236,8 +1238,74 @@ export async function hasOwnTests(root: string): Promise<boolean> {
  * no __init__.py beside it, so working tests ran as «Ran 0 tests», exit 5 —
  * and a pytest-style file never ran at all unless the project declared pytest.
  * The test files are now found here, and the runner is given their folders.
+ *
+ * THE SAME FILES THAT PASSED ARE NOT RUN AGAIN. The Codex exam in Arabic,
+ * 2026-11-08: C03's second task_finish ran the whole suite again (63 s on the
+ * laptop) on a tree byte for byte the one that had just passed; the ladder's
+ * L150 ran `npm test` at 97–183 s on each of nine task_finish calls. A pass is
+ * kept with a fingerprint of every file of the project (its content, not its
+ * dates; the machine's own folders aside), and the same fingerprint again is
+ * that pass. Any edit is a new fingerprint and a new run; a failure is never
+ * kept (a flaky suite gets its run again). JOE_TEST_RUN_CACHE=off runs every time.
  */
 export async function runRequestedTests(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
+    const dir = String(root || '').trim();
+    if (!testRunCacheOn() || !dir) return runRequestedTestsNow(root, runTool);
+    const key = path.resolve(dir);
+    const fp = await treeFingerprint(key);
+    const kept = fp ? PASSED_RUNS.get(key) : undefined;
+    if (kept && kept.fp === fp && Date.now() - kept.at < PASSED_RUN_KEPT_MS) return { ...kept.run, sameFilesAsLastPass: true };
+    const run = await runRequestedTestsNow(root, runTool);
+    if (fp && run.passed) PASSED_RUNS.set(key, { fp, run, at: Date.now() });
+    else PASSED_RUNS.delete(key);
+    return run;
+}
+
+const PASSED_RUNS = new Map<string, { fp: string; run: RequestedTestsRun; at: number }>();
+const PASSED_RUN_KEPT_MS = 30 * 60_000;
+/** Folders a test run or the machine writes, which say nothing of the code tested. */
+const NOT_THE_CODE = new Set(['node_modules', '.git', '.joe', '.joe-versions', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', 'coverage', '.nyc_output', 'test-results', '.venv', 'venv', '.tox']);
+const MAX_FINGERPRINT_FILES = 4000;
+const MAX_FINGERPRINT_BYTES = 40 * 1024 * 1024;
+
+function testRunCacheOn(env: NodeJS.ProcessEnv = process.env): boolean {
+    const v = String(env.JOE_TEST_RUN_CACHE || '').toLowerCase();
+    if (v === 'off') return false;
+    //  Tests of the checks run the same fixture folder again on purpose; one test turns it on.
+    return v === 'on' || !env.JEST_WORKER_ID;
+}
+
+/** Every file of the project, by its path and content, in one hash; null when the tree is too large to read. */
+export async function treeFingerprint(dir: string): Promise<string | null> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const crypto = require('crypto') as typeof import('crypto');
+    const hash = crypto.createHash('sha256');
+    let files = 0, bytes = 0;
+    const walk = async (abs: string, rel: string): Promise<boolean> => {
+        let entries: fs.Dirent[];
+        try { entries = await fs.promises.readdir(abs, { withFileTypes: true }); } catch { return true; }
+        entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        for (const e of entries) {
+            const childRel = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) {
+                if (NOT_THE_CODE.has(e.name)) continue;
+                if (!await walk(path.join(abs, e.name), childRel)) return false;
+                continue;
+            }
+            if (!e.isFile() || /\.log$/iu.test(e.name)) continue;
+            if (++files > MAX_FINGERPRINT_FILES) return false;
+            let buf: Buffer;
+            try { buf = await fs.promises.readFile(path.join(abs, e.name)); } catch { continue; }
+            bytes += buf.length;
+            if (bytes > MAX_FINGERPRINT_BYTES) return false;
+            hash.update(childRel); hash.update('\0'); hash.update(buf); hash.update('\0');
+        }
+        return true;
+    };
+    return await walk(dir, '') ? hash.digest('hex') : null;
+}
+
+async function runRequestedTestsNow(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
     const dir = String(root || '').trim();
     if (!dir || !(await exists(dir))) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
     let scripts: Record<string, string> = {};

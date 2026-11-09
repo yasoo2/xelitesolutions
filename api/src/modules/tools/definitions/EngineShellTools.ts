@@ -377,6 +377,10 @@ const CHILD_SETTINGS: Readonly<Record<string, string>> = Object.freeze({
     npm_config_fund: 'false',
     npm_config_audit: 'false',
     npm_config_update_notifier: 'false',
+    //  A package already in npm's cache is used without asking the registry again; one that is
+    //  missing is still fetched. The ladder, 2026-11-09: `npm install` took 4–8 minutes in
+    //  L143, L147 and L149 for packages installed many times before.
+    npm_config_prefer_offline: 'true',
     PYTHONUTF8: '1',
     PYTHONIOENCODING: 'utf-8',
     PIP_DISABLE_PIP_VERSION_CHECK: '1',
