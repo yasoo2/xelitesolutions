@@ -47,7 +47,37 @@ export interface Mend {
     undo(): Promise<void>;
 }
 
-export type Mender = (root: string, findings: MendFinding[], isAr: boolean, say: (line: string) => void) => Promise<Mend | null>;
+export type Mender = (root: string, findings: MendFinding[], isAr: boolean, say: (line: string) => void, pageDir?: string) => Promise<Mend | null>;
+
+function hasBuildScript(root: string): boolean {
+    try { return !!JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))?.scripts?.build; } catch { return false; }
+}
+
+/**
+ * THE FILES JOE'S REPAIRER MAY TOUCH: THE SOURCES, AND THE PAGE THE BROWSER OPENED.
+ *
+ * The ladder, 2026-11-09 (L155): «25 tap targets under 40px» — an answer the
+ * repairer has — and nothing was repaired: the source walk leaves every folder
+ * named public out (a bundler's static assets), and a Node server's page lives
+ * exactly there, public/index.html and public/style.css. The model fixed it by
+ * hand and the delivery was measured a third time, seven more minutes. The page
+ * the browser opened is collected too, under its own folder; never a build's
+ * output (dist, build, out) when the project builds it, never node_modules.
+ */
+export function mendSources(root: string, pageDir?: string): Record<string, string> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { collectSources } = require('../quality/self-repair');
+    const out: Record<string, string> = { ...collectSources(root) };
+    if (!pageDir) return out;
+    const rel = path.relative(path.resolve(root), path.resolve(pageDir));
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) return out;
+    const relPosix = rel.split(path.sep).join('/');
+    if (Object.keys(out).some(k => k.startsWith(`${relPosix}/`))) return out;
+    if (/(^|\/)node_modules(\/|$)/i.test(relPosix)) return out;
+    if (/(^|\/)(dist|build|out|\.next)(\/|$)/i.test(relPosix) && hasBuildScript(root)) return out;
+    for (const [k, v] of Object.entries(collectSources(pageDir) as Record<string, string>)) out[`${relPosix}/${k}`] = v;
+    return out;
+}
 
 /** Whether Joe's repairer answers any of these findings. */
 export function mendable(findings: MendFinding[]): boolean {
@@ -58,9 +88,7 @@ export function mendable(findings: MendFinding[]): boolean {
 }
 
 async function rebuild(root: string, say: (line: string) => void): Promise<boolean> {
-    let hasBuild = false;
-    try { hasBuild = !!JSON.parse(fs.readFileSync(path.join(root, 'package.json'), 'utf8'))?.scripts?.build; } catch { /* no manifest */ }
-    if (!hasBuild) return true;
+    if (!hasBuildScript(root)) return true;
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { runDoctored } = require('../quality/log-doctor');
     const r = await runDoctored('npm', ['run', 'build'], { cwd: root, timeoutMs: 240_000, onNote: say });
@@ -72,15 +100,13 @@ async function rebuild(root: string, say: (line: string) => void): Promise<boole
  * the finding carries them. Null when there is nothing it answers, nothing it
  * changed, or the rebuild failed (then every file is already back).
  */
-export const mendPage: Mender = async (root, findings, isAr, say) => {
+export const mendPage: Mender = async (root, findings, isAr, say, pageDir) => {
     if (!mendable(findings)) return null;
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const { collectSources } = require('../quality/self-repair');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { repairProjectFiles, repairText } = require('../quality/ui-repair');
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { syntaxOk } = require('../../modules/tools/definitions/ProjectEditTool');
-    const before: Record<string, string> = collectSources(root);
+    const before: Record<string, string> = mendSources(root, pageDir);
     if (!Object.keys(before).length) return null;
     const plan = repairProjectFiles(before, {
         isArabic: isAr,

@@ -902,8 +902,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         // Anchors are checked without clicking: the question is whether the
         // destination exists, and a page that scrolls is not proof that it does.
-        const anchorTargets: Array<{ label: string; target: string; exists: boolean }> = await page.evaluate(() => {
-            const out: Array<{ label: string; target: string; exists: boolean }> = [];
+        const anchorTargets: Array<{ label: string; target: string; exists: boolean; present?: boolean }> = await page.evaluate(() => {
+            const out: Array<{ label: string; target: string; exists: boolean; present?: boolean }> = [];
             document.querySelectorAll('a[href^="#"]').forEach(a => {
                 const h = (a.getAttribute('href') || '').slice(1);
                 // Hash-router paths such as #product/classic-edition are app
@@ -911,8 +911,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // targets (for example #contact) strict and measurable.
                 if (!h || h === 'top' || h.includes('/')) return;
                 let exists = false;
+                let present = false;
                 try {
                     const target = document.getElementById(h) || document.querySelector(`[name="${CSS.escape(h)}"]`);
+                    present = !!target;
                     if (target) {
                         const rect = target.getBoundingClientRect();
                         let visible = rect.width > 2 && rect.height > 2;
@@ -925,7 +927,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         exists = visible;
                     }
                 } catch { exists = false; }
-                out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists });
+                out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists, present });
             });
             return out.slice(0, 30);
         });
@@ -936,14 +938,15 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // by clicking and disturbing the rest of the control walk. Preserve
         // that real measurement in the same evidence stream as pressed controls
         // so acceptance gates can prove a specifically requested CTA.
-        controls.push(...anchorTargets.map((anchor, instance) => ({
+        const anchorControls = anchorTargets.map((anchor, instance) => ({
             label: anchor.label,
             kind: 'anchor' as const,
             worked: anchor.exists,
             effect: anchor.exists ? 'target' : '',
             instance,
             href: `#${anchor.target}`,
-        })));
+        }));
+        controls.push(...anchorControls);
 
         let budgetHit = false;
         let attemptedControls = 0;
@@ -982,6 +985,54 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
         };
+        /**
+         * ⛔ A TAB'S SECTION IS HIDDEN UNTIL ITS TAB IS PRESSED.
+         *
+         * The ladder, 2026-11-09 (L155, a photo studio's admin): «#sessions»,
+         * «#clients», «#albums» each showed its own section and hid the others,
+         * the commonest single-page layout there is. Read without a press, every
+         * hidden one was «a section that is missing or not visible», the delivery
+         * was refused, and the model rebuilt its navigation as pages. A link whose
+         * section IS in the page but hidden is pressed once, and the section is
+         * read again; one with no section at all is still dead. The page is put
+         * back where the probe started before anything else is pressed.
+         */
+        const hiddenTargets = anchorTargets.map((a, i) => ({ a, i })).filter(x => !x.a.exists && x.a.present).slice(0, 12);
+        if (hiddenTargets.length) {
+            for (const { a, i } of hiddenTargets) {
+                if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
+                const pressed = await evalInPage(page, function (h: string) {
+                    var links = Array.prototype.slice.call(document.querySelectorAll('a[href="#' + h + '"]'));
+                    for (var k = 0; k < links.length; k++) {
+                        var r = links[k].getBoundingClientRect();
+                        if (r.width > 2 && r.height > 2) { links[k].click(); return true; }
+                    }
+                    return false;
+                }, a.target).catch(() => false);
+                if (!pressed) continue;
+                await page.waitForTimeout(350).catch(() => { });
+                const shown = await evalInPage(page, function (h: string) {
+                    var target = document.getElementById(h);
+                    if (!target) return false;
+                    var rect = target.getBoundingClientRect();
+                    var visible = rect.width > 2 && rect.height > 2;
+                    var node: Element | null = target;
+                    while (visible && node) {
+                        var style = getComputedStyle(node);
+                        visible = style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
+                        node = node.parentElement;
+                    }
+                    return visible;
+                }, a.target).catch(() => false);
+                if (shown) {
+                    a.exists = true;
+                    anchorControls[i].worked = true;
+                    anchorControls[i].effect = 'target';
+                }
+            }
+            await restoreProbeStart();
+            metrics.deadAnchors = anchorTargets.filter(a => !a.exists).length;
+        }
         /**
          * Can a person press it here: in view, and the topmost thing at its
          * centre? A sticky header or a fixed bar covers a control the page has

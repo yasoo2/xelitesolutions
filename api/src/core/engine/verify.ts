@@ -614,7 +614,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 const mendRoot = [...auditRoots].sort((a, b) => b.length - a.length)
                     .find(r => path.resolve(auditDir) === path.resolve(r) || isWithinRoot(path.resolve(auditDir), path.resolve(r))) || root;
                 try {
-                    const m = await mender(mendRoot, audit.findings, isAr, note);
+                    const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
                     if (m) {
                         const again = await browserQa.audit(auditDir, options(45_000));
                         const was = audit.findings.filter(refuses).length, now = again.findings.filter(refuses).length;

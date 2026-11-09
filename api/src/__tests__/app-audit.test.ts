@@ -121,7 +121,7 @@ describe('the wiring — every green build gets measured', () => {
         expect(audit).toContain('CONTROL_PASS_BUDGET_MS = 45_000');
         //  The cap grows with a retry's larger walk (walkScale is 1 for an ordinary walk: P053).
         expect(audit).toContain('budgetMs: Math.min(CONTROL_PASS_BUDGET_MS * scale, remainingWalkMs())');
-        expect(audit).toContain("const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);");
+        expect(audit).toContain("const responsiveRoutes = [...new Set((routes.length ? routes : ['/']).map(r => sameViewAs.get(r) ?? r))].slice(0, 20);");
         expect(audit).toContain('&& !remainingWalkMs()) behaviourMetrics.budgetExhausted = true');
     });
 
