@@ -59,3 +59,51 @@ describe('a single page whose tabs show their own sections', () => {
         }
     });
 });
+
+/*
+ * And a router that renders each page into one view on hashchange (the hard
+ * sample, L352, a coffee shop's ERP: «#inventory», «#sales» … and no element of
+ * that name): its links are pages, not missing sections. A link the router does
+ * not answer changes nothing, and is still dead.
+ */
+const ROUTER = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Coffee ERP</title>
+<style>body{font-family:sans-serif;margin:16px} nav a{display:inline-block;min-height:44px;min-width:96px;padding:10px}</style></head><body>
+<h1>Coffee ERP</h1>
+<nav><a href="#dashboard">Dashboard</a><a href="#inventory">Inventory</a><a href="#sales">Sales</a><a href="#archive">Archive</a></nav>
+<main id="view"></main>
+<script>
+  var PAGES = { dashboard: '<h2>Dashboard</h2><p>Today: 42 orders</p>', inventory: '<h2>Inventory</h2><table><tr><th>Item</th></tr><tr><td>Beans</td></tr></table>', sales: '<h2>Sales</h2><p>No sales yet</p>' };
+  function render() {
+    var page = (location.hash || '#dashboard').slice(1);
+    if (PAGES[page]) document.getElementById('view').innerHTML = PAGES[page];
+  }
+  window.addEventListener('hashchange', render);
+  render();
+</script></body></html>`;
+
+describe('a hash router whose pages render into one view', () => {
+    let server: http.Server;
+    let url = '';
+    beforeAll(async () => {
+        server = http.createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(ROUTER); });
+        await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+        url = `http://127.0.0.1:${(server.address() as any).port}/`;
+    });
+    afterAll(async () => { await new Promise<void>(r => server.close(() => r())); });
+
+    it('credits the links the router answers, and still reports the one it ignores', async () => {
+        const browser = await chromium.launch(getChromiumLaunchOptions());
+        try {
+            const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+            await page.goto(url, { waitUntil: 'load' });
+            const probe = await probeControls(page, { fillForms: false, budgetMs: 30_000 });
+            const anchors = probe.controls.filter(c => c.kind === 'anchor');
+            expect(anchors.find(c => c.label === 'Inventory')?.worked).toBe(true);
+            expect(anchors.find(c => c.label === 'Sales')?.worked).toBe(true);
+            expect(anchors.find(c => c.label === 'Archive')?.worked).toBe(false);
+            expect(probe.metrics.deadAnchors).toBe(1);
+        } finally {
+            await browser.close();
+        }
+    });
+});

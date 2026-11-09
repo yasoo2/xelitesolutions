@@ -507,8 +507,11 @@ export const CAPABILITIES: Capability[] = [
         ask: /multi[- ]?vendor|marketplace|multi[- ]?seller|متعدد(ة)? البائعين|سوق إلكتروني|تجّار/i,
         // A generated data model declares its tables — «{"key":"vendors"…}» in
         // entities.js is a real table with real CRUD, not a mention of a word.
-        evidence: /vendor_?id|seller_?id|\/api\/vendors|"key":"vendors"|\bvendors\s*\(|VendorDashboard|merchant_?id/i,
-        records: ['vendors', 'vendor', 'sellers', 'seller', 'merchants'],
+        //  A services marketplace calls its sellers providers, hosts or suppliers
+        //  (the hard sample, 2026-11-09, L372: «providers create listings», keyed
+        //  `providerId` — refused five times as «missing: multi-vendor marketplace»).
+        evidence: /vendor_?id|seller_?id|merchant_?id|provider_?id|supplier_?id|host_?id|freelancer_?id|\/api\/(?:[\w-]+\/)?(?:vendors|sellers|merchants|providers|suppliers|hosts|freelancers)\b|"key":"(?:vendors|providers|suppliers|hosts)"|\bvendors\s*\(|VendorDashboard/i,
+        records: ['vendors', 'vendor', 'sellers', 'seller', 'merchants', 'providers', 'suppliers', 'hosts'],
     },
     {
         id: 'ai_generation', ar: 'توليد المنتجات بالذكاء الاصطناعي', en: 'AI product generation',
@@ -524,7 +527,9 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'payments', ar: 'المدفوعات', en: 'payments',
         ask: PAYMENT_REQUEST,
-        evidence: /stripe|paypal|payment_?intent|\/api\/payments?|checkout_?session/i,
+        //  A payment held until the work is done (an escrow) is a payment flow:
+        //  L372 kept `paymentStatus` held → released, at /api/admin/payments.
+        evidence: /stripe|paypal|payment_?intent|checkout_?session|\/api\/(?:[\w:-]+\/)*payments?\b|payment_?status|escrow/i,
         // «spots, entries, payments» of a parking garage (P088, P138, P188): a record he manages.
         records: ['payments', 'payment'],
     },
