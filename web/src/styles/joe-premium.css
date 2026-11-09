@@ -364,6 +364,27 @@
     font-weight: 600;
 }
 .joe-notice-subject { font-weight: 400; opacity: 0.85; }
+/* Two notices in the header at once (the phone lost, and an update waiting)
+   each got half the width, and both were cut with «…»: the UI/UX check of
+   Joe's own page, 2026-11-09 (L312), 15 times in one run. Their words take a
+   second line before they are cut; the header has the height for two. Below
+   900px the update keeps only its action (theme.css), as before. */
+@media (min-width: 901px) {
+    .joe-notice-text,
+    .joe-autoupdate-banner.is-inline .joe-autoupdate-text {
+        display: -webkit-box;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+        line-clamp: 2;
+        white-space: normal;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        font-size: 12px;
+        line-height: 1.25;
+    }
+    .joe-notice-banner,
+    .joe-autoupdate-banner.is-inline { border-radius: 16px; }
+}
 .joe-notice-open {
     flex: 0 0 auto;
     border: 0;

@@ -48,7 +48,7 @@ import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../qual
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
-import { mendable, mendPage, refuses, type Mender } from './browser-mend';
+import { mendable, mendIsBetter, mendPage, refuses, type Mender } from './browser-mend';
 import { detectStart } from '../../modules/tools/definitions/ProjectRunTool';
 import {
     BUILD_COMMAND_NAMED, buildPipelineDecisionEvidence, deliveredPageDirectory, hasOnlyBrowserQaInfrastructureFindings,
@@ -617,8 +617,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                     const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
                     if (m) {
                         const again = await browserQa.audit(auditDir, options(45_000));
-                        const was = audit.findings.filter(refuses).length, now = again.findings.filter(refuses).length;
-                        if (!again.skipped && (now < was || (now === was && again.findings.length < audit.findings.length))) {
+                        if (!again.skipped && mendIsBetter(audit.findings, again.findings)) {
                             audit = again;
                             mended = m.repairs;
                             note(`browser QA: Joe repaired it himself (${m.changed.join(', ')}): ${m.repairs.join('; ')}`);
