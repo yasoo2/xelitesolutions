@@ -773,6 +773,18 @@ Rules:
                     : [];
                 const fields = [...new Set([...requiredAny, ...required])];
                 if (!fields.length) return null;
+                /*
+                 * A TOOL'S OWN FIELD NAMES ARE NEVER HIS QUESTION. The exams, 2026-11-09:
+                 * \u00AB\u062D\u062F\u0651\u062F \u0647\u062F\u0641 ai_write_file \u0642\u0628\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630: path \u0623\u0648 description\u00BB and \u00AB\u062D\u062F\u0651\u062F \u0647\u062F\u0641
+                 * project_planner \u0642\u0628\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630: projectDescription\u00BB were asked of the owner,
+                 * who wrote a speed fix and a trip plan, and the runs ended \u00ABdone\u00BB with
+                 * nothing done. The matcher has no plan here: the request goes on to the
+                 * planners after it, which read it whole.
+                 */
+                if (process.env.JOE_ASK_TOOL_FIELDS !== 'on') {
+                    console.log(`[PlanningEngine] capability ${selected[0].name} needs ${fields.join('/')} it cannot derive: no plan from the matcher`);
+                    return null;
+                }
                 const arabic = /[\u0600-\u06FF]/.test(goal);
                 const question = arabic
                     ? `حدّد هدف ${selected[0].name} قبل التنفيذ: ${fields.join(' أو ')}.`

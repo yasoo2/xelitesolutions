@@ -284,8 +284,10 @@ function isLinkLocal(hostname: string): boolean {
     return /^169\.254\.\d{1,3}\.\d{1,3}$/.test(h) || /^fe[89ab][0-9a-f]:/.test(h);
 }
 
-function refusal(u: URL, running: ProcessInfo[]): string {
-    const parts = [`Not opened: ${u.href} is not an address this run is serving, and the request does not give it. Start the server with shell_start and open the address it returned.`];
+function refusal(u: URL, running: ProcessInfo[], stopped?: ProcessInfo): string {
+    const parts = [stopped
+        ? `Not opened: nothing serves ${u.href} now. This run's server «${stopped.name}» served it and is stopped (Joe's delivery check stops a run's servers before it measures, as one started before the last edit may run old code). Start it again with shell_start (name «${stopped.name}», command «${clip(stopped.command, 160)}», cwd «${stopped.cwd || '.'}»), then open the address it returns.`
+        : `Not opened: ${u.href} is not an address this run is serving, and the request does not give it. Start the server with shell_start and open the address it returned.`];
     if (u.hostname === '0.0.0.0' || u.hostname === '[::]') {
         parts.push(`(0.0.0.0 is where a server listens, not an address to open: use http://127.0.0.1:${effectivePort(u)}/ once this run serves that port.)`);
     }
@@ -365,7 +367,22 @@ export function openPolicy(raw: string, ctx: Pick<ToolContext, 'processes' | 're
         if (running.some(p => portOf(p) === port)) return { ok: true, url: u.href };
     }
     if (addressesInRequest(ctx.request).includes(u.href)) return { ok: true, url: u.href };
-    return { ok: false, reason: refusal(u, running) };
+    return { ok: false, reason: refusal(u, running, stoppedAt(ctx, u)) };
+}
+
+/**
+ * The run's own server that served this address and is stopped now: Joe's delivery
+ * check stops a run's servers before it measures (one started before the last edit may
+ * run old code). The ladder, 2026-11-09 (L128): after a refusal the model opened
+ * http://127.0.0.1:8080/ four times, «Not opened» each time, and the run ended on the
+ * same failing call — never told that its server had been stopped, or how to start it.
+ */
+function stoppedAt(ctx: Pick<ToolContext, 'processes'>, u: URL): ProcessInfo | undefined {
+    if (!isLoopbackHost(u.hostname)) return undefined;
+    const port = effectivePort(u);
+    let all: ProcessInfo[] = [];
+    try { all = ctx.processes.list(); } catch { return undefined; }
+    return [...all].reverse().find(p => !p.running && portOf(p) === port);
 }
 
 /* ───────────────────────── what the model reads ───────────────────────── */

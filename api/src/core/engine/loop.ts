@@ -75,14 +75,23 @@ export const REFUSAL_LIMIT = 4;
  */
 export function refusalSignature(report: { checks?: { id: string; status: string; detail?: string }[] } | undefined): string {
     return (report?.checks || [])
-        .filter(c => c.status === 'failed')
+        .filter(c => c.status === 'failed' || unmeasured(c))
         .map(c => {
+            //  A check the delivery needs and that could not be measured (2026-11-09: the Browser QA
+            //  with no one watching Joe's page) is the same refusal each time: it counts toward the
+            //  limit, so the run ends honestly instead of calling task_finish again until its deadline.
+            if (c.status !== 'failed') return `${c.id}:unmeasured`;
             const detail = String(c.detail || '');
             const requirements = [...new Set(detail.match(/\bR\d{1,3}\b/gu) || [])].sort();
             return requirements.length ? `${c.id}:${requirements.join(',')}` : `${c.id}:${detail.replace(/\d+/g, '#').slice(0, 200)}`;
         })
         .sort()
         .join('|');
+}
+
+/** A check the delivery needs that was not measured (verify.ts: «not measured, and the delivery needs it»). */
+function unmeasured(c: { status: string; detail?: string }): boolean {
+    return c.status === 'skipped' && /^not measured, and the delivery needs it/u.test(String(c.detail || ''));
 }
 /** Recite the plan at least this often, even when it did not change. */
 export const RECITE_EVERY = 5;
@@ -369,7 +378,7 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     sameRefusals = signature && signature === lastRefusal ? sameRefusals + 1 : 1;
                     lastRefusal = signature;
                     if (sameRefusals >= REFUSAL_LIMIT) {
-                        const failed = outcome.facts.verification.checks.filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                        const failed = outcome.facts.verification.checks.filter(c => c.status === 'failed' || unmeasured(c)).map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
                         ending = { status: 'failed', reason: `Joe's checks refused the same thing ${sameRefusals} times in a row: ${failed}` };
                     }
                 }

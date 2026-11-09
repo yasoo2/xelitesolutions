@@ -199,6 +199,11 @@ describe('the run stops when the checks keep refusing the same thing', () => {
         const { refusalSignature } = require('../core/engine/loop');
         expect(refusalSignature({ checks: [{ id: 'acceptance', status: 'failed', detail: 'R2 x' }] }))
             .not.toBe(refusalSignature({ checks: [{ id: 'acceptance', status: 'failed', detail: 'R3 x' }] }));
+        //  A check the delivery needs that could not be measured is a refusal too (2026-11-09:
+        //  seven task_finish calls with no one watching Joe's page, each «not measured»).
+        const notWatched = { checks: [{ id: 'browser', status: 'skipped', detail: 'not measured, and the delivery needs it: visible Browser QA runs only in the Browser panel, and no one is watching it (panel session browser:a)' }] };
+        expect(refusalSignature(notWatched)).toBe('browser:unmeasured');
+        expect(refusalSignature({ checks: [{ id: 'browser', status: 'skipped', detail: 'no interface is delivered, so there is no page to open' }] })).toBe('');
     });
 });
 
