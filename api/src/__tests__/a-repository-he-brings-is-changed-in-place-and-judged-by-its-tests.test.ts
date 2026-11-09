@@ -60,6 +60,15 @@ describe('an issue in a chat whose project is his repository changes that reposi
         for (const issue of ISSUES) expect([issue, isRepositoryWork(issue)]).toEqual([issue, true]);
     });
 
+    it('every issue of the exam IN ARABIC is work on the repository too', () => {
+        //  2026-11-09: C05 in Arabic named no word the list knew, and went to the old planner.
+        const file = path.resolve(__dirname, '..', '..', '..', '..', '..', 'eval', 'codex-exam', 'tasks-ar.json');
+        const extra = ['أداء: استيراد ملف عملاء فيه 200,000 عميل يتجمّد لدقائق في الدالة findDuplicates (src/dedupe.js). اجعل findDuplicates وuniqueRows سريعتين.'];
+        let arabic: string[] = [];
+        try { const j = JSON.parse(fs.readFileSync(file, 'utf8')); arabic = (j.tasks || j).map((t: any) => String(t.issue)); } catch { /* the exam lives beside the repository on the owner's machine only */ }
+        for (const issue of [...extra, ...arabic]) expect([issue, isRepositoryWork(issue)]).toEqual([issue, true]);
+    });
+
     it('a question, a greeting, or a new project is not', () => {
         for (const text of ['ما الفرق بين localStorage و sessionStorage؟', 'hello there Joe', 'build me a new booking app for a salon']) {
             expect([text, isRepositoryWork(text)]).toEqual([text, false]);
