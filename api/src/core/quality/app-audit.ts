@@ -387,6 +387,37 @@ const KEPT_WALK_FRESH_MS = 2 * 60 * 60_000;
 export function forgetKeptWalks(): void { keptWalks.clear(); }
 
 /**
+ * The audited origin as a first visitor meets it: its cookies, local and
+ * session storage, IndexedDB, caches and service workers cleared (Chromium's
+ * own per-origin clear), or — on a browser without it — its storage cleared
+ * in the page and the host's cookies dropped. Only that origin: the rest of
+ * the browser is not the product's. See auditBuiltApp («every walk meets the
+ * product as a first visitor does»).
+ */
+export async function meetAsFirstVisitor(page: any, url: string, land: () => Promise<unknown>): Promise<'origin' | 'page' | 'none'> {
+    let origin = '';
+    try { origin = new URL(url).origin; } catch { return 'none'; }
+    try {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'cookies,local_storage,session_storage,indexeddb,cache_storage,service_workers' });
+        //  A tab's own session storage is not in that clear (measured): cleared by name.
+        await cdp.send('DOMStorage.enable').catch(() => { });
+        await cdp.send('DOMStorage.clear', { storageId: { securityOrigin: origin, isLocalStorage: false } }).catch(() => { });
+        await cdp.detach().catch(() => { });
+        if (await page.evaluate(() => location.origin).catch(() => '') === origin) {
+            await page.evaluate(() => { try { sessionStorage.clear(); } catch { /* blocked */ } }).catch(() => { });
+        }
+        return 'origin';
+    } catch { /* not Chromium: cleared in the page */ }
+    try {
+        await land().catch(() => null);
+        await page.evaluate(() => { try { localStorage.clear(); } catch { /* blocked */ } try { sessionStorage.clear(); } catch { /* blocked */ } });
+        try { await page.context().clearCookies({ domain: new URL(url).hostname }); } catch { /* an adapter without cookies */ }
+        return 'page';
+    } catch { return 'none'; }
+}
+
+/**
  * How much larger this walk is than an ordinary first walk over the same
  * routes. The walk's inner passes (one page's controls, the tablet and phone
  * pass) had fixed budgets of their own, so a retry with six minutes still gave
@@ -1009,6 +1040,24 @@ export async function auditBuiltApp(
         if (initialWeatherScenario) {
             await page.route(WEATHER_API_ROUTE_PATTERN, initialWeatherFixture);
             initialWeatherFixtureForCleanup = initialWeatherFixture;
+        }
+        /**
+         * ⛔ EVERY WALK MEETS THE PRODUCT AS A FIRST VISITOR DOES.
+         *
+         * The hard sample, 2026-11-10 (L452, an e-learning platform «بواجهة
+         * عربية وإنجليزية»): the first walk pressed «English», the product kept
+         * the choice in its storage, and the borrowed panel page — alive for the
+         * whole conversation — kept that storage too. Every walk after it landed
+         * on the English interface still signed in: «7 of 7 Arabic text blocks
+         * are ltr» (course names and the «العربية» switch, inside an English
+         * page), «the page shows no sign-in form», controls renamed under the
+         * catalogue. Four refusals in a row, the run stopped. A private browser
+         * is born empty; a borrowed one has the audited origin's cookies and
+         * storage cleared before the walk lands, so both measure the same thing.
+         */
+        if (borrowed) {
+            await meetAsFirstVisitor(page, url, () => openAuditTarget(url));
+            opts?.onProgress?.('fresh visitor: the product\'s cookies and storage in the panel were cleared before the walk');
         }
         const landing = await openAuditTarget(url);
         const doorStatus = Number(landing?.status?.() || 0);
