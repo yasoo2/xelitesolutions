@@ -140,14 +140,25 @@ export const mendPage: Mender = async (root, findings, isAr, say, pageDir) => {
         findings: findings.map(f => ({ id: f.id, ...(Array.isArray(f.evidence) ? { evidence: f.evidence } : {}) })),
     });
     const changed: string[] = [];
+    /** Each file's times before the repair: a file put back is the same file, to the walk's own record too (app-audit.ts codeFingerprint). */
+    const times: Record<string, { atime: Date; mtime: Date }> = {};
     for (const [rel, text] of Object.entries(plan.files as Record<string, string>)) {
         if (text === before[rel]) continue;
         const gate = syntaxOk(rel, text);
         if (!gate.ok) { say(`mend: ${rel} not written: ${gate.error}`); continue; }
+        try {
+            const s = fs.statSync(path.join(root, rel));
+            times[rel] = { atime: s.atime, mtime: s.mtime };
+        } catch { /* a new file has no times to keep */ }
         try { fs.writeFileSync(path.join(root, rel), text, 'utf8'); changed.push(rel); } catch (e: any) { say(`mend: ${rel} not written: ${e?.message || e}`); }
     }
     const putBack = async () => {
-        for (const rel of changed) { try { fs.writeFileSync(path.join(root, rel), before[rel], 'utf8'); } catch { /* best effort */ } }
+        for (const rel of changed) {
+            try {
+                fs.writeFileSync(path.join(root, rel), before[rel], 'utf8');
+                if (times[rel]) fs.utimesSync(path.join(root, rel), times[rel].atime, times[rel].mtime);
+            } catch { /* best effort */ }
+        }
     };
     if (!changed.length) return null;
     if (!await rebuild(root, say)) {
