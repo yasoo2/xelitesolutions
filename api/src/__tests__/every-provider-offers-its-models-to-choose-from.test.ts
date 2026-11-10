@@ -26,7 +26,7 @@ function fakeFetch(routes: Record<string, { status?: number; body?: any; throws?
 describe('the models each provider offers', () => {
     it('Claude without a key offers the models Joe runs, and says the account\'s list needs the key', async () => {
         expect(await providerModels({ provider: 'anthropic' }, { env: {} })).toMatchObject({
-            models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'], source: 'catalog', reason: { code: 'needs_key' },
+            models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1'], source: 'catalog', reason: { code: 'needs_key' },
         });
     });
 

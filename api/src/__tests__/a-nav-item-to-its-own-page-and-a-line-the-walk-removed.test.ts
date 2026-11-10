@@ -73,9 +73,87 @@ async function walk(html: string) {
 }
 
 test('«المتجر» on the shop is pressed again after «السلة» moved the view, and works', async () => {
-    const { verdict } = await walk(store(true));
+    const { probe, verdict } = await walk(store(true));
+    //  It worked — pressed from the cart it drew the shop — not merely excused because its words are in the title.
+    expect(probe.controls.some((c: any) => c.label === 'المتجر' && c.worked === true)).toBe(true);
     const dead = verdict.findings.filter(f => f.code === 'some_dead_controls' || f.code === 'dead_controls');
     expect(dead.map(f => f.en).join(' ')).not.toMatch(/المتجر/);
+});
+
+/*
+ * The review of 2026-11-10: the excuse was too wide. A nav item that stays quiet on a view
+ * another item moved to is dead whatever its words; a heading the visitor cannot see names
+ * nothing; a menu toggle is never «the page's own link».
+ */
+test('a nav item still quiet on the view another item moved to is dead, though its words are in the title', async () => {
+    const broken = store(true).replace("document.getElementById('shop').onclick = function () { view = 'shop'; draw(); };", "document.getElementById('shop').onclick = function () { };");
+    const { probe, verdict } = await walk(broken);
+    expect(probe.controls.some((c: any) => c.label === 'المتجر' && c.effect === 'current')).toBe(false);
+    expect(verdict.findings.filter(f => /dead_controls/.test(f.code)).map(f => f.en).join(' ')).toMatch(/المتجر/);
+});
+
+function page(title: string, header: string, main: string, script = ''): string {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>${title}</title>
+<style>body{font-family:sans-serif;margin:16px} button,a{display:inline-block;min-height:44px;min-width:90px;margin:4px}</style></head><body>
+<header>${header}</header><main>${main}</main><script>${script}</script></body></html>`;
+}
+
+test('a heading the visitor cannot see names nothing: a quiet «Orders» beside «Home» is dead', async () => {
+    const html = page('Dispatch', '<nav><button id="home">Home</button><button id="orders">Orders</button></nav>',
+        '<h1 style="display:none">Orders</h1><h2>Today</h2><p>3 drivers out.</p>',
+        "document.getElementById('home').onclick = function () {}; document.getElementById('orders').onclick = function () {};");
+    const { probe, verdict } = await walk(html);
+    const dead = verdict.findings.filter(f => /dead_controls/.test(f.code)).map(f => f.en).join(' ');
+    expect(dead).toMatch(/Orders/);
+    //  «Home», first of its nav on the start page, with no other view to reach: the open view's own link.
+    expect(probe.controls.some((c: any) => c.label === 'Home' && c.effect === 'current')).toBe(true);
+    expect(dead).not.toMatch(/Home/);
+});
+
+test('a menu toggle is never the page\'s own link: a dead «القائمة» on «قائمة الطعام» is dead', async () => {
+    const html = page('مطعم الريف — قائمة الطعام', '<button class="menu-toggle" aria-expanded="false" id="m">القائمة</button>',
+        '<h1>قائمة الطعام</h1><ul><li>منسف</li><li>مقلوبة</li></ul>');
+    const { probe, verdict } = await walk(html.replace('lang="en"', 'lang="ar" dir="rtl"'));
+    expect(probe.controls.some((c: any) => c.label === 'القائمة' && c.effect === 'current')).toBe(false);
+    expect(verdict.findings.filter(f => /dead_controls/.test(f.code)).map(f => f.en).join(' ')).toMatch(/القائمة/);
+});
+
+/*
+ * The sixth live check, 2026-11-10 (L161, a water store): «Shop» (setView('shop')) and the
+ * «AquaFlow» name in the header, on the shop, beside a cart button disabled while the cart is
+ * empty — «Unresponsive controls: "Shop", "AquaFlow"» twice, and the store rebuilt as a hash
+ * router to quiet them. The first item of its nav, and the site's own name in its header.
+ */
+test('the store\'s name in its header and the first item of its nav, on the view they open, are not dead', async () => {
+    const html = page('AquaFlow Water Delivery',
+        '<div class="brand" role="button" tabindex="0" id="brand">AquaFlow</div><nav><button id="shop">Shop</button><button id="cart" disabled>Cart (0)</button></nav>',
+        '<div id="view"></div><aside><h1>Your cart</h1><p id="lines">Empty</p></aside>',
+        `var view = 'shop', n = 0;
+         function draw() {
+           var v = document.getElementById('view');
+           v.innerHTML = view === 'shop' ? '<h2>Water</h2><div>Spring water 5L <button id="add">Add to cart</button></div>' : '<h2>Checkout</h2><p>Deliver to:</p>';
+           var add = document.getElementById('add'); if (add) add.onclick = function () { n++; document.getElementById('cart').disabled = false; document.getElementById('cart').textContent = 'Cart (' + n + ')'; document.getElementById('lines').textContent = n + ' item(s)'; };
+         }
+         document.getElementById('brand').onclick = function () { view = 'shop'; draw(); };
+         document.getElementById('shop').onclick = function () { view = 'shop'; draw(); };
+         document.getElementById('cart').onclick = function () { view = 'checkout'; draw(); };
+         draw();`);
+    const { verdict } = await walk(html);
+    const dead = verdict.findings.filter(f => /dead_controls/.test(f.code)).map(f => f.en).join(' ');
+    expect(dead).not.toMatch(/Shop|AquaFlow/);
+});
+
+test('a screen that lost half its buttons is not diluted by the screens that kept theirs', () => {
+    const kept = Array.from({ length: 60 }, (_, i) => ({ label: `k${i}`, kind: 'button', worked: true, effect: 'dom', context: '/' }));
+    const lostScreen = [
+        ...Array.from({ length: 5 }, (_, i) => ({ label: `/orders gone${i}`, kind: 'button', worked: false, effect: 'not found', context: '/orders' })),
+        ...Array.from({ length: 3 }, (_, i) => ({ label: `/orders ok${i}`, kind: 'button', worked: true, effect: 'dom', context: '/orders' })),
+    ];
+    //  Links are not pressed, so they are not part of the share either.
+    const links = Array.from({ length: 40 }, (_, i) => ({ label: `a${i}`, kind: 'anchor', worked: true, effect: 'navigation', context: '/' }));
+    const f = judgeBehaviour([...kept, ...lostScreen, ...links] as any, {}).findings.find(x => x.code === 'controls_not_reached')!;
+    expect(f.severity).toBe('major');
+    expect(f.en).toMatch(/^5 of 68 controls/);
 });
 
 test('…and with no other view to leave to, the nav item naming the page is the page\'s own link', async () => {

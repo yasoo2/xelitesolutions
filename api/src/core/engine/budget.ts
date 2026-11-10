@@ -48,6 +48,8 @@ const PRICES: PriceRule[] = [
     },
     { pattern: /^claude-sonnet-5-5(?:$|[-@])/, base: { input: 2, output: 10, cacheWrite5m: 2.50, cacheWrite1h: 4, cacheRead: 0.10 } },
     { pattern: /^claude-opus-5-5(?:$|[-@])/, base: { input: 4, output: 20, cacheWrite5m: 5, cacheWrite1h: 8, cacheRead: 0.20 } },
+    //  Fable 5.2 (published 2026-11-09): stronger than 5.1 and cheaper; the whole 1M window at one rate.
+    { pattern: /^claude-fable-5-2(?:$|[-@])/, base: { input: 8, output: 40, cacheWrite5m: 10, cacheWrite1h: 16, cacheRead: 0.20 } },
     { pattern: /^claude-fable-5-1(?:$|[-@])/, base: { input: 10, output: 50, cacheWrite5m: 12.50, cacheWrite1h: 20, cacheRead: 0.25 } },
 ];
 

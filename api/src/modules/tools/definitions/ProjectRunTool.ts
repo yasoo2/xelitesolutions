@@ -1958,16 +1958,33 @@ export class ProjectRunTool implements ToolDefinition {
          * project is running».
          */
         const foreignPorts = new Set<number>();
-        const deadline = Date.now() + 45000; // weak machines + npm cold start
+        /*
+         * Asking whose a port is takes its time on a loaded machine (the port table ~10 s, the
+         * process chain more): that time is the search's, not the server's, so it is added to the
+         * wait (at most a minute more), and after each such question the port this launch chose is
+         * heard first — a server that came up meanwhile is never lost to a pass spent on others
+         * (the review of 2026-11-10).
+         */
+        let deadline = Date.now() + 45000; // weak machines + npm cold start
+        let askedForMs = 0;
+        const ownPortAnswers = async (): Promise<string> => port > 0 && await isLoopbackPortOpen(port, 750) ? answeringLoopbackUrl(port, 1500) : '';
         while (Date.now() < deadline && !livePort) {
             await new Promise(r => setTimeout(r, 700));
             for (const p of probeList) {
                 if (foreignPorts.has(p)) continue;
                 if (!await isLoopbackPortOpen(p, 750)) continue;
-                if (p !== port && (await heldByLaunched(p, Number(pid))) === false) {
-                    foreignPorts.add(p);
-                    logs.push(`project_run: port ${p} answers, but not from the process this launch started — somebody else's server, ignored`);
-                    continue;
+                if (p !== port) {
+                    const askedAt = Date.now();
+                    const held = await heldByLaunched(p, Number(pid));
+                    const grace = Math.min(Date.now() - askedAt, 60000 - askedForMs);
+                    if (grace > 0) { deadline += grace; askedForMs += grace; }
+                    if (held === false) {
+                        foreignPorts.add(p);
+                        logs.push(`project_run: port ${p} answers, but not from the process this launch started — somebody else's server, ignored`);
+                        const own = await ownPortAnswers();
+                        if (own) { livePort = port; confirmedLiveUrl = own; break; }
+                        continue;
+                    }
                 }
                 const answeringUrl = await answeringLoopbackUrl(p, 1500);
                 if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }
@@ -2337,6 +2354,11 @@ export const portListener = {
 /**
  * A process and the processes it descends from, nearest first (at most twelve):
  * whether a port's listener is the server this launch started, or another's.
+ *
+ * A parent that started after its child is not its parent: the real one died and
+ * the system gave its number to a newer process — perhaps the very launch being
+ * asked about, which would make somebody else's long-running server look like
+ * this project's (the review of 2026-11-10). The chain stops there.
  */
 export const processAncestry = {
     async read(pid: number): Promise<number[]> {
@@ -2344,15 +2366,22 @@ export const processAncestry = {
         try {
             if (process.platform === 'linux') {
                 const chain: number[] = [];
+                let childStarted = Infinity;
                 for (let p = pid, i = 0; p > 1 && i < 12; i++) {
+                    let stat = '';
+                    try { stat = fs.readFileSync(`/proc/${p}/stat`, 'utf8'); } catch { break; }
+                    //  After «(name) »: state, ppid, … field 22 (starttime, in clock ticks since boot) is index 19.
+                    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                    const started = Number(fields[19]);
+                    if (Number.isFinite(started) && started > childStarted) break;
                     chain.push(p);
-                    const stat = fs.readFileSync(`/proc/${p}/stat`, 'utf8');
-                    p = Number(stat.slice(stat.lastIndexOf(')') + 2).split(' ')[1]) || 0;
+                    if (Number.isFinite(started)) childStarted = started;
+                    p = Number(fields[1]) || 0;
                 }
                 return chain;
             }
             const probe = process.platform === 'win32'
-                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `$p=${pid}; $c=@(); for($i=0; $i -lt 12 -and $p -gt 0; $i++){ $c+=$p; $x=Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; if(-not $x){break}; $p=[int]$x.ParentProcessId }; $c -join ','`] }
+                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `$p=${pid}; $c=@(); $t=$null; for($i=0; $i -lt 12 -and $p -gt 0; $i++){ $x=Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; if(-not $x){break}; if($t -and $x.CreationDate -and $x.CreationDate -gt $t){break}; $c+=$p; $t=$x.CreationDate; $p=[int]$x.ParentProcessId }; $c -join ','`] }
                 : { command: 'ps', args: ['-A', '-o', 'pid=,ppid='] };
             const result: any = await ExecutionGateway.execute({
                 id: `project-run-ancestry-${pid}-${Date.now()}`,

@@ -84,6 +84,7 @@ describe('the models the account offers, asked of Anthropic', () => {
         { id: 'claude-opus-5-5', display_name: 'Claude Opus 5.5', lifecycle: 'active', created_at: '2026-10-01T00:00:00Z' },
         { id: 'claude-haiku-5-5', display_name: 'Claude Haiku 5.5', lifecycle: 'active', created_at: '2026-09-01T00:00:00Z' },
         { id: 'claude-fable-5-1', display_name: 'Claude Fable 5.1', lifecycle: 'active', created_at: '2026-10-15T00:00:00Z' },
+        { id: 'claude-fable-5-2', display_name: 'Claude Fable 5.2', lifecycle: 'active', created_at: '2026-11-09T00:00:00Z' },
         { id: 'claude-sonnet-5-5', display_name: 'Claude Sonnet 5.5', lifecycle: 'active', created_at: '2026-10-01T00:00:00Z' },
         { id: 'claude-sonnet-4-5', display_name: 'Claude Sonnet 4.5', lifecycle: 'deprecated', created_at: '2025-09-29T00:00:00Z' },
     ];
@@ -91,7 +92,7 @@ describe('the models the account offers, asked of Anthropic', () => {
     it('the models Joe runs come first, cheapest first; the others follow, marked; retired ones are left out', async () => {
         const list = await listClaudeModels('sk-ant-x', modelsClient(ROWS));
         expect(list.map(m => [m.id, m.runs])).toEqual([
-            ['claude-haiku-5-5', true], ['claude-sonnet-5-5', true], ['claude-opus-5-5', true], ['claude-fable-5-1', true],
+            ['claude-haiku-5-5', true], ['claude-sonnet-5-5', true], ['claude-opus-5-5', true], ['claude-fable-5-2', true], ['claude-fable-5-1', true],
             ['claude-sonnet-4-6', false], ['claude-sonnet-4-5', false],
         ]);
         expect(list[0].name).toBe('Claude Haiku 5.5');
@@ -112,7 +113,7 @@ describe('the models the account offers, asked of Anthropic', () => {
         expect(seen).toEqual(['sk-ant-users-own']);
         expect(out).toMatchObject({
             source: 'live',
-            models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'],
+            models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1'],
             unsupported: ['claude-sonnet-4-6', 'claude-sonnet-4-5'],
             deprecated: ['claude-sonnet-4-5'],
             names: { 'claude-opus-5-5': 'Claude Opus 5.5' },

@@ -48,7 +48,8 @@ import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../qual
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
-import { mendable, mendIsBetter, mendPage, refuses, type Mender } from './browser-mend';
+import { mendable, mendIsBetter, mendPage, refuses, whyMendNotBetter, type Mender } from './browser-mend';
+import { resolveInProject } from './workspace';
 import { detectStart } from '../../modules/tools/definitions/ProjectRunTool';
 import {
     BUILD_COMMAND_NAMED, buildPipelineDecisionEvidence, deliveredPageDirectory, hasOnlyBrowserQaInfrastructureFindings,
@@ -217,6 +218,8 @@ export interface VerifierDeps {
 const REPORT_ORDER: DeliveryInstrument[] = ['source', 'quality', 'build', 'live', 'program', 'scope', 'coverage', 'tests', 'service', 'acceptance', 'browser', 'roles'];
 
 const LOG_LINES = 120;
+/** The whole log of one verification, kept in the run's own folder: the report keeps only its first LOG_LINES. */
+const FILE_LOG_LINES = 4000;
 /** A source file larger than this is not handed to the judge; the acceptance check names each one left out. */
 const JUDGE_FILE_BYTES = 1_000_000;
 
@@ -289,6 +292,36 @@ async function liveRunInput(ctx: ToolContext, root: string): Promise<{ input: Re
     return { input, stopped };
 }
 
+/** How many verification logs a project keeps: the newest, the rest are let go. */
+const KEPT_VERIFICATION_LOGS = 12;
+
+/**
+ * Every line one verification printed, in the project's own .joe/logs (never walked as code).
+ * Every step of the way is checked by resolveInProject — no link anywhere, so a «.joe» link in
+ * an imported repository cannot carry the log out of the project — and only the newest
+ * KEPT_VERIFICATION_LOGS are kept (the review of 2026-11-10).
+ */
+export async function keepVerificationLog(projectDir: string, lines: string[]): Promise<string> {
+    if (!lines.length) return '';
+    try {
+        let dir = await resolveInProject(projectDir, '.joe/logs', 'list');
+        if (dir.ok && !dir.exists) {
+            await fs.promises.mkdir(dir.abs, { recursive: true });
+            dir = await resolveInProject(projectDir, '.joe/logs', 'list');
+        }
+        if (!dir.ok || !dir.exists || !dir.isDir) return '';
+        const name = `verification-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
+        const file = await resolveInProject(projectDir, `.joe/logs/${name}`, 'list');
+        if (!file.ok || file.exists) return '';
+        await fs.promises.writeFile(file.abs, lines.join('\n') + '\n', { encoding: 'utf8', flag: 'wx' });
+        const old = (await fs.promises.readdir(dir.abs)).filter(n => /^verification-.*\.log$/.test(n)).sort().slice(0, -KEPT_VERIFICATION_LOGS);
+        for (const n of old) await fs.promises.unlink(path.join(dir.abs, n)).catch(() => { /* already gone */ });
+        return file.abs;
+    } catch {
+        return '';
+    }
+}
+
 async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount, accounts?: RoleAccount[]): Promise<DeliveryVerification> {
     const root = path.resolve(ctx.projectDir);
     //  Joe's own repair of what the browser found (browser-mend.ts): the real one unless a test gives its own, or none.
@@ -307,7 +340,15 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     const remark = (instrument: DeliveryInstrument, text: string) => remarks.set(instrument, [...(remarks.get(instrument) || []), text]);
     const log: string[] = [];
     let logDropped = 0;
+    /*
+     * The ladder's live check, 2026-11-10 (L160): a refusal for buttons under 40 px that
+     * Joe's own repairer answers, and no line anywhere said whether the repair ran — the
+     * report keeps 120 lines, the walk's progress filled them, and only the last
+     * verification's report was kept at all. Every line is also kept in a file.
+     */
+    const fileLog: string[] = [];
     const note = (line: string) => {
+        if (fileLog.length < FILE_LOG_LINES) fileLog.push(`${new Date().toISOString().slice(11, 19)} ${String(line).slice(0, 2000)}`);
         if (log.length < LOG_LINES) log.push(String(line).slice(0, 600));
         else logDropped++;
     };
@@ -594,23 +635,38 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 ...(signIn ? { credentials: { identity: signIn.identity, password: signIn.password } } : {}),
                 requireAuthenticatedCoverage: true,
             });
-            let audit = await browserQa.audit(auditDir, options(45_000));
-            //  A coverage timeout is the walker's budget, not the app: once more, larger.
-            if (!audit.skipped && audit.findings.some(f => f.id === 'qa_budget_exhausted')) {
-                const retry = await browserQa.audit(auditDir, options(COVERAGE_RETRY_TIMEOUT_MS));
-                if (!retry.skipped) audit = retry;
-            }
-            //  A browser-rig failure says nothing about the app: measured once more.
-            if (!audit.skipped && hasOnlyBrowserQaInfrastructureFindings(audit.findings)) {
-                const retry = await browserQa.audit(auditDir, options(45_000));
-                if (!retry.skipped) audit = retry;
-            }
+            /*
+             * One measurement of the page, the same every time it is taken: the
+             * page after Joe's own repair is measured as the page before it was.
+             * The ladder's live check, 2026-11-10 (L160, five screens): the walk
+             * needed its larger budget, the repair's code was new to the walk
+             * (nothing carried), and a 45-second look at it ran out of time —
+             * «qa_budget_exhausted», a kind the first measurement did not have,
+             * so every repair on a product of that size was put back.
+             */
+            const measure = async (): Promise<AppAudit> => {
+                let a = await browserQa.audit(auditDir, options(45_000));
+                //  A coverage timeout is the walker's budget, not the app: once more, larger.
+                if (!a.skipped && a.findings.some(f => f.id === 'qa_budget_exhausted')) {
+                    const retry = await browserQa.audit(auditDir, options(COVERAGE_RETRY_TIMEOUT_MS));
+                    if (!retry.skipped) a = retry;
+                }
+                //  A browser-rig failure says nothing about the app: measured once more.
+                if (!a.skipped && hasOnlyBrowserQaInfrastructureFindings(a.findings)) {
+                    const retry = await browserQa.audit(auditDir, options(45_000));
+                    if (!retry.skipped) a = retry;
+                }
+                return a;
+            };
+            let audit = await measure();
             /*
              * What Joe's repairer answers, Joe repairs, and measures once more
              * (browser-mend.ts): kept only when the page is better, put back
              * otherwise. Never in the user's own repository.
              */
             let mended: string[] = [];
+            /** A repair measured and put back, and why: told with the refusal, so the builder does not repeat it blind. */
+            let mendPutBack = '';
             //  Only for what would refuse: a rebuild and a second measurement are not spent on taste alone.
             if (mender && !repository && !audit.skipped && mendable(audit.findings.filter(refuses))) {
                 const mendRoot = [...auditRoots].sort((a, b) => b.length - a.length)
@@ -618,17 +674,23 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 try {
                     const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
                     if (m) {
-                        const again = await browserQa.audit(auditDir, options(45_000));
+                        const again = await measure();
                         if (!again.skipped && mendIsBetter(audit.findings, again.findings)) {
                             audit = again;
                             mended = m.repairs;
                             note(`browser QA: Joe repaired it himself (${m.changed.join(', ')}): ${m.repairs.join('; ')}`);
                         } else {
-                            await m.undo();
-                            note('browser QA: Joe\'s own repair did not make the page better, so every file was put back');
+                            const why = again.skipped ? `the page could not be measured after it (${again.skipped})` : whyMendNotBetter(audit.findings, again.findings);
+                            //  Putting it back can fail too: then the builder is told the files may still be changed, never «it could not run».
+                            const undone = await m.undo().then(() => '', (e: unknown) => message(e));
+                            mendPutBack = undone
+                                ? `${m.repairs.join('; ')} — ${why}; putting it back failed (${undone}), so ${m.changed.join(', ')} may still hold the repair`
+                                : `${m.repairs.join('; ')} — ${why}`;
+                            note(`browser QA: Joe's own repair did not make the page better (${why}), ${undone ? `and putting it back failed: ${undone}` : 'so every file was put back'}`);
                         }
                     }
                 } catch (e) {
+                    mendPutBack = `it could not run: ${message(e)}`;
                     note(`browser QA: Joe's own repair could not run: ${message(e)}`);
                 }
             }
@@ -650,7 +712,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             //  A minor finding of taste is told with the delivery, never a refusal on its own (browser-mend.ts).
             const blocking = audit.skipped ? [] : audit.findings.filter(refuses);
             const told = audit.skipped ? [] : audit.findings.filter(f => !refuses(f));
-            const mendedLine = `${audit.carried ? `; ${audit.carried} part(s) of this walk were finished by the walk before it, on the same unchanged code` : ''}${mended.length ? `; Joe repaired it himself before this measurement: ${mended.join('; ')}` : ''}`;
+            const mendedLine = `${audit.carried ? `; ${audit.carried} part(s) of this walk were finished by the walk before it, on the same unchanged code` : ''}${mended.length ? `; Joe repaired it himself before this measurement: ${mended.join('; ')}` : ''}${mendPutBack ? `; Joe's own repair was measured and put back: ${mendPutBack}` : ''}`;
             if (audit.skipped) {
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${audit.skipped}` });
             } else if (blocking.length) {
@@ -734,6 +796,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     const statuses = deliveryStatuses(verdict, ledger.all());
     const unproven = unprovenRequirements(ctx, acceptance.requirements, ledger, reasons);
     if (logDropped) log.push(`… ${logDropped} more line(s) were left out of this log`);
+    const fileLogPath = await keepVerificationLog(root, fileLog);
+    if (fileLogPath && logDropped) log.push(`the whole log: ${fileLogPath}`);
 
     const record: DeliveryRecord = {
         projectRoot: root,

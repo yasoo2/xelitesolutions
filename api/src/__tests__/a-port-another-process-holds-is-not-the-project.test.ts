@@ -74,7 +74,35 @@ test('a server this launch started holds its port; somebody else\'s does not', a
 test('project_run accepts a port it did not choose only from its own process, and gives the table the time it needs', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf8');
     //  Rejected only when the machine says another process holds it; an unreadable table rejects nothing.
-    expect(source).toMatch(/if \(p !== port && \(await heldByLaunched\(p, Number\(pid\)\)\) === false\) \{\s*foreignPorts\.add\(p\);/);
+    expect(source).toMatch(/if \(p !== port\) \{[\s\S]{0,200}const held = await heldByLaunched\(p, Number\(pid\)\);[\s\S]{0,200}if \(held === false\) \{\s*foreignPorts\.add\(p\);/);
     //  10.4 s measured for the table on his laptop: 10 s timed out three attempts in a row.
     expect(source).toMatch(/id: `project-run-port-listener-[\s\S]{0,400}timeout: 25000/);
+});
+
+/*
+ * The review of 2026-11-10: on a loaded machine each «whose is this port?» costs ~10 s and
+ * more; a pass spent on three foreign ports ran past the 45 s wait, and the store that had
+ * bound its own port meanwhile was reported «answered on no port» and stopped.
+ */
+test('the time spent asking whose a port is, is added to the wait, and the launch\'s own port is heard after each answer', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf8');
+    expect(source).toMatch(/const grace = Math\.min\(Date\.now\(\) - askedAt, 60000 - askedForMs\);\s*if \(grace > 0\) \{ deadline \+= grace; askedForMs \+= grace; \}/);
+    expect(source).toMatch(/foreignPorts\.add\(p\);[\s\S]{0,250}const own = await ownPortAnswers\(\);\s*if \(own\) \{ livePort = port; confirmedLiveUrl = own; break; \}/);
+});
+
+/*
+ * The review of 2026-11-10: a long-running foreign server whose parent died points at a number
+ * the system may have given since to the very launch being asked about. A parent that started
+ * after its child is not its parent: the chain stops there, on Windows and on Linux.
+ */
+test('a parent that started after its child is not its parent: the chain stops there', async () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ProjectRunTool.ts'), 'utf8');
+    expect(source).toMatch(/if\(\$t -and \$x\.CreationDate -and \$x\.CreationDate -gt \$t\)\{break\}; \$c\+=\$p; \$t=\$x\.CreationDate;/);
+    expect(source).toMatch(/if \(Number\.isFinite\(started\) && started > childStarted\) break;/);
+    //  …and the real chain is still read whole: a child, then this process that started it.
+    const child = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 60000)'], { stdio: 'ignore', windowsHide: true });
+    try {
+        const chain = await inContext(() => processAncestry.read(Number(child.pid)));
+        expect(chain.slice(0, 2)).toEqual([child.pid, process.pid]);
+    } finally { child.kill(); }
 });

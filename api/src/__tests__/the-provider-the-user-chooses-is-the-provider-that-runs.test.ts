@@ -153,7 +153,7 @@ describe('the interface reads what really runs, and can verify Claude on the ser
     it('GET /engine says Auto is the free local model, that the server key works, and never shows the key', async () => {
         const res = response();
         await handler('/engine', 'get')({ auth: { sub: 'u1' } }, res);
-        expect(res.body).toMatchObject({ engine: 'agent', auto: { provider: 'local', model: 'qwen3.5:9b' }, claude: { serverKey: true, models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] }, budget: { totalUsd: 10 } });
+        expect(res.body).toMatchObject({ engine: 'agent', auto: { provider: 'local', model: 'qwen3.5:9b' }, claude: { serverKey: true, models: ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1'] }, budget: { totalUsd: 10 } });
         expect(JSON.stringify(res.body)).not.toMatch(/sk-test-not-real/);
     });
 

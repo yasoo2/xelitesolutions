@@ -48,7 +48,7 @@ export interface AnthropicClientLike {
  * thinking, no forced tool choice, no prefill, no sampling parameters. A
  * model the account offers outside this list is shown but not run.
  */
-export const CLAUDE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-1'] as const;
+export const CLAUDE_MODELS = ['claude-haiku-5-5', 'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-fable-5-2', 'claude-fable-5-1'] as const;
 
 /** The model id, or its dated form, is one this connector runs. */
 export function claudeModelRuns(id: string): boolean {
