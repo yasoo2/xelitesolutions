@@ -27,7 +27,7 @@ import os from 'os';
 import path from 'path';
 import type { CheckResult, EngineResult, ProcessInfo, Requirement, ToolContext, VerificationReport } from './types';
 import { reportText, type FinishArgs, type Verifier } from './finish';
-import { deliveryFooter, deliveryProofPaths, instrumentName } from './certificate';
+import { deliveryFooter, deliveryProofPaths, instrumentName, qaCoverageLine, qaCoverageOf } from './certificate';
 import {
     DeliveryLedger, DELIVERY_PRIORITY, browserQaTargetUrl, deliveryVerdict, mayRunBrowserQa, readAsRequirements, stillUnread, verifiedLiveUrl,
     type DeliveryInstrument, type DeliveryMeasurement, type DeliveryVerdict,
@@ -1338,6 +1338,8 @@ export function deliveryOutput(input: DeliveryOutputInput): { ok: boolean; error
         ? [
             String(result!.summary || '').trim(),
             words.verified(taskReceipts.map(r => instrumentName(r.tool.replace(/^delivery:/u, ''), lang)), record.liveUrl || ''),
+            //  What the browser check tried, in numbers (certificate.ts qaCoverageLine).
+            taskReceipts.some(r => r.tool.replace(/^delivery:/u, '') === 'browser') ? qaCoverageLine(qaCoverageOf(record.browserQa), lang) : '',
             ...deliveryFooter({ howToRun: result!.howToRun, durationMs: result!.durationMs, costUsd: result!.costUsd, language: lang }),
         ].filter(Boolean).join('\n\n')
         : [
