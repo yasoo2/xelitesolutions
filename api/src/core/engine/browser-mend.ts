@@ -106,6 +106,16 @@ export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boole
     return now.length === was.length && after.length < before.length;
 }
 
+/** Why a repair was put back, in words the builder can act on (mendIsBetter's reasons). */
+export function whyMendNotBetter(before: MendFinding[], after: MendFinding[]): string {
+    const was = before.filter(refuses), now = after.filter(refuses);
+    const wasIds = new Set(was.map(f => String(f.id || '')));
+    const brought = [...new Set(now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)))];
+    if (brought.length) return `the page measured after it showed what it did not before: ${brought.join(', ')}`;
+    const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
+    return `the same ${now.length} blocking finding(s) stayed, ${weight(now)} instance(s) against ${weight(was)} before`;
+}
+
 /** Whether Joe's repairer answers any of these findings. */
 export function mendable(findings: MendFinding[]): boolean {
     let can: ReadonlySet<string> = new Set();

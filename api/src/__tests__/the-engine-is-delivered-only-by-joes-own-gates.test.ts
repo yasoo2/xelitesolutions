@@ -24,6 +24,7 @@ import os from 'os';
 import path from 'path';
 import { createVerifier, deliveryOutput, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
 import type { Mender } from '../core/engine/browser-mend';
+import { COVERAGE_RETRY_TIMEOUT_MS } from '../core/quality/app-audit';
 import { seedRequirementsFromRequest } from '../core/engine/seed';
 import { newPlan, seededRequirements } from '../core/engine/plan';
 import type { EngineResult, ProcessInfo, ProcessRegistry, RunState, ToolContext } from '../core/engine/types';
@@ -438,6 +439,61 @@ describe('a static site', () => {
             expect(second.report.passed).toBe(false);
             expect(failedChecks(second.report)).toEqual(['browser']);
             expect(undone).toEqual([second.report.delivery.projectRoot]);
+            //  …and the refusal says the repair was tried, and why it was put back.
+            expect(check(second.report, 'browser')?.detail).toMatch(/Joe's own repair was measured and put back: Widened the 1 target\(s\).* — the same 1 blocking finding\(s\) stayed, 1 instance\(s\) against 1 before/);
+        } finally {
+            mendForTest = null;
+        }
+    });
+
+    /*
+     * The ladder's live check, 2026-11-10 (L160, a five-screen rental dashboard): the
+     * walk needed its larger budget; the repair's code was new to it, so a 45-second
+     * look ran out of time, «qa_budget_exhausted» counted as a kind the repair
+     * brought, and the repair was put back without a word — 14.5 minutes, a refusal,
+     * and the builder widened the same buttons by hand.
+     */
+    it('the page after Joe\'s own repair is measured as the page before it was: the same budgets, and its log is kept', async () => {
+        const exhausted = { id: 'qa_budget_exhausted', severity: 'medium', detail: 'نفد الوقت', detailEn: 'The walk ran out of time after 3 of 5 screens' };
+        const semantic = { id: 'semantic_input_validation', severity: 'high', detail: 'هاتف', detailEn: '1 semantic field(s) accept an invalid value: "phone" should be tel' };
+        const small = (n: number) => ({ id: 'small_targets', severity: 'medium', detail: 'أهداف صغيرة', detailEn: `${n} tap target(s) under 40px: Add car`, evidence: [{ sel: '#add-btn', label: 'Add car', w: 81, h: 35 }] });
+        const undone: string[] = [];
+        mendForTest = async (root) => ({
+            repairs: ['Widened the 3 target(s) the browser actually measured to 44px'],
+            changed: ['public/styles.css'],
+            undo: async () => { undone.push(root); },
+        });
+        //  Each first look runs out of time; the larger one finishes. After the repair: fewer small targets.
+        const bigPage = (after: any[]): BrowserQa & { timeouts: number[] } => {
+            const timeouts: number[] = [];
+            return {
+                timeouts,
+                async watcher() { return { sessionId: 'joe-eng-verify-panel', watching: true }; },
+                async audit(_dir, auditOpts: any) {
+                    timeouts.push(auditOpts.timeoutMs);
+                    if (auditOpts.timeoutMs < COVERAGE_RETRY_TIMEOUT_MS) return { score: 49, findings: [exhausted] };
+                    return { score: 60, findings: timeouts.length > 2 ? after : [small(30), semantic] };
+                },
+            };
+        };
+        try {
+            const kept = bigPage([small(12), semantic]);
+            const { report, ctx } = await verify(site(), SITE_REQUEST, SITE_WANTED, kept);
+            expect(kept.timeouts).toEqual([45_000, COVERAGE_RETRY_TIMEOUT_MS, 45_000, COVERAGE_RETRY_TIMEOUT_MS]);
+            expect(undone).toEqual([]);
+            const detail = String(check(report, 'browser')?.detail);
+            expect(detail).toMatch(/small_targets — 12 tap target/);
+            expect(detail).toMatch(/Joe repaired it himself before this measurement: Widened the 3 target\(s\)/);
+            expect(detail).not.toMatch(/qa_budget_exhausted/);
+            //  Every line the verification printed is kept in the run's own folder.
+            const logs = fs.readdirSync(path.join(ctx.stateDir!, 'logs')).filter(f => /^verification-.*\.log$/.test(f));
+            expect(logs.length).toBe(1);
+            expect(fs.readFileSync(path.join(ctx.stateDir!, 'logs', logs[0]), 'utf8')).toMatch(/Joe repaired it himself \(public\/styles\.css\)/);
+
+            const worse = bigPage([small(12), semantic, { id: 'mobile_overflow', severity: 'high', detail: 'فيض', detailEn: '2 element(s) spill past the phone width' }]);
+            const second = await verify(site(), SITE_REQUEST, SITE_WANTED, worse);
+            expect(undone).toEqual([second.report.delivery.projectRoot]);
+            expect(check(second.report, 'browser')?.detail).toMatch(/Joe's own repair was measured and put back: Widened the 3 target\(s\).* — the page measured after it showed what it did not before: mobile_overflow/);
         } finally {
             mendForTest = null;
         }
