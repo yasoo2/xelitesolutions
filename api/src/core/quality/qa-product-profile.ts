@@ -61,7 +61,7 @@ function formJourney(id: Journey['id'], ar: string, en: string, label: RegExp, n
     };
 }
 
-const JOURNEYS: Array<{ asked: RegExp; journey: Journey }> = [
+const JOURNEYS: Array<{ asked: RegExp | ((request: string) => boolean); journey: Journey }> = [
     {
         //  An Arabic word is bounded by Arabic letters, never by \b (which knows only Latin): «سلة» in «مع سلة», never in «سلسلة».
         asked: /\bcart\b|\bbasket\b|add to cart|(?<![؀-ۿ])(?:ال|و|بال|لل|وال)?سل[ةه](?![؀-ۿ])|عرب[ةه] التسوق/iu,
@@ -86,7 +86,14 @@ const JOURNEYS: Array<{ asked: RegExp; journey: Journey }> = [
     },
     { asked: /\bchat\b|\bmessag|محادث|دردش|رسائل|رسالة/iu, journey: formJourney('message', 'إرسال رسالة', 'sending a message', /send|message|reply|إرسال|ارسل|أرسل|رد/iu, true) },
     {
-        asked: /(?:add|create|إضافة|اضافة)[\s\S]{0,40}(?:delete|remove|حذف)|(?:manage|إدارة|ادارة)/iu,
+        /*
+         * Records a visitor adds and removes — never a cart's items. L161 (2026-11-10):
+         * «a cart that adds and removes items» asked a water store to «add a record and
+         * remove it», told with the delivery as a journey it had not proven.
+         */
+        asked: (request: string) => /manage|إدارة|ادارة/iu.test(request)
+            || Array.from(request.matchAll(/(?:add|create|إضافة|اضافة)[\s\S]{0,40}(?:delete|remove|حذف)/giu))
+                .some(m => !/\bcart\b|\bbasket\b|(?<![\u0600-\u06FF])(?:ال|و|بال|لل|وال)?سل[ةه](?![\u0600-\u06FF])/iu.test(request.slice(Math.max(0, (m.index || 0) - 40), (m.index || 0) + m[0].length))),
         journey: {
             id: 'manage', ar: 'إضافة سجل وحذفه', en: 'adding a record and removing it',
             prove: (audit: any) => {
@@ -117,7 +124,8 @@ function kindOf(request: string): ProductKind {
 /** What was built, and the journeys its request promised. */
 export function productProfile(request: string): ProductProfile {
     const kind = kindOf(request);
-    const journeys = JOURNEYS.filter(j => j.asked.test(String(request || ''))).map(j => j.journey);
+    const r = String(request || '');
+    const journeys = JOURNEYS.filter(j => typeof j.asked === 'function' ? j.asked(r) : j.asked.test(r)).map(j => j.journey);
     return { kind, ...KIND_WORDS[kind], journeys };
 }
 

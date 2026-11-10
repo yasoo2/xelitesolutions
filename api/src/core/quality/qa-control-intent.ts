@@ -38,6 +38,8 @@ export interface PageFacts {
     dialogs: number;
     /** The numbers shown on cart-like badges and counters. */
     carts: number[];
+    /** Of those, the badges themselves: one number in a short text that says «cart» or is named for it («Cart (2)», «🛒 3»). */
+    cartBadges?: number[];
     /** The rows, items and cards of the largest list on the page. */
     listSize: number;
     /** The first items of that list, in order: a sort is seen here. */
@@ -94,8 +96,19 @@ export function judgeIntent(read: IntentRead, before: PageFacts | null, after: P
     const sameList = before.listHead.join('\u0001') === after.listHead.join('\u0001');
     switch (read.intent) {
         case 'add_to_cart': {
-            if (!before.carts.length && !after.carts.length) return null;
             const total = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+            /*
+             * The badge first. L161, the live check of 2026-11-10: the badge went 0 → 1, and
+             * a new cart line pushed ten other short numbers (prices, quantities, «6» of
+             * «6-Pack») about — their sum fell from 60 to 45, and a working «Add to cart»
+             * was refused. A badge that rose is the job done, whatever the rest moved.
+             */
+            const was = before.cartBadges || [], now = after.cartBadges || [];
+            if (was.length || now.length) {
+                if (now.length > was.length || now.some((v, i) => i < was.length && v > was[i]) || total(now) > total(was)) return true;
+                if (was.length === now.length) return false;
+            }
+            if (!before.carts.length && !after.carts.length) return null;
             return total(after.carts) > total(before.carts) || after.carts.length > before.carts.length;
         }
         case 'close':
@@ -139,10 +152,47 @@ export function readFacts(): PageFacts {
     const dialogs = Array.from(document.querySelectorAll('dialog[open],[role="dialog"],[role="alertdialog"],[aria-modal="true"],.modal,.drawer,.overlay'))
         .filter(shown).length;
     const num = (t: string) => { const m = String(t || '').replace(/[٠-٩]/g, d => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d))).match(/-?\d+/); return m ? Number(m[0]) : NaN; };
-    const carts = Array.from(document.querySelectorAll('[class*="cart" i],[id*="cart" i],[aria-label*="cart" i],[class*="basket" i],[class*="badge" i],[aria-label*="سلة"],[data-cart-count],[data-count]'))
-        .filter(shown)
-        .map(el => num((el as HTMLElement).innerText || el.getAttribute('data-count') || el.getAttribute('data-cart-count') || ''))
+    /*
+     * ⛔ A CART'S COUNT IS READ WHERE A SHOPPER READS IT: A SHORT BADGE, NOT A WHOLE SECTION.
+     *
+     * L161 (2026-11-10, a water store): the count was «Cart (<span>1</span>)» in a
+     * link to #cart, named only by data-testid — no class, id or label said
+     * «cart», so the badge was never read. What was read instead was every
+     * element with «cart» in its class: the whole cart section, its list, each
+     * line, whose first number was the «6» of «Spring Water 6-Pack». Adding a
+     * product already in the cart moved none of those, and four working «Add to
+     * cart» were refused three times; Joe could not see why, and could not fix
+     * what was not broken.
+     *
+     * A count is a short text (≤ 40 characters): a badge, a «Cart (2)», an
+     * «السلة: 3». It is found by its name (class, id, label, title, test id),
+     * by its address (a link to the cart), or by its own words (cart, basket,
+     * bag, سلة, عربة, with a number) — never a passing toast or status line,
+     * which says «Added to cart» whether or not anything was counted.
+     */
+    const cartWords = /cart|basket|\bbag\b|سل[ةه]|عرب[ةه]/i;
+    const passing = '[role="status"],[role="alert"],.toast,.notice,.snackbar,.flash';
+    const named = '[class*="cart" i],[id*="cart" i],[aria-label*="cart" i],[title*="cart" i],[data-testid*="cart" i],[class*="basket" i],[aria-label*="basket" i],[class*="badge" i],[aria-label*="سلة"],[title*="سلة"],a[href*="cart" i],a[href*="basket" i],[data-cart-count],[data-count]';
+    const said = Array.from(document.querySelectorAll('a,button,span,small,strong,b,sup,sub,output,label,p,h1,h2,h3,h4,li,div')).slice(0, 4000)
+        .filter(el => { const t = String((el as HTMLElement).innerText || ''); return t.length <= 40 && /[0-9٠-٩]/.test(t) && cartWords.test(t); });
+    const cartEls = Array.from(new Set([...Array.from(document.querySelectorAll(named)), ...said]))
+        .filter(el => !el.closest(passing) && shown(el))
+        .filter(el => el.hasAttribute('data-count') || el.hasAttribute('data-cart-count') || String((el as HTMLElement).innerText || '').trim().length <= 40);
+    const carts = cartEls
+        .map(el => num(el.getAttribute('data-count') || el.getAttribute('data-cart-count') || (el as HTMLElement).innerText || ''))
         .filter(n => Number.isFinite(n) && Math.abs(n) < 100000);
+    //  The badges: one number and nothing more in a short text — never a price («$4.99» holds two) or a line.
+    const oneNumber = /^[^0-9٠-٩]{0,24}[0-9٠-٩]+[^0-9٠-٩]{0,14}$/;
+    const namedForCart = (el: Element) => /cart|basket|badge|سل[ةه]/i.test([el.id, String((el as HTMLElement).className || ''), el.getAttribute('aria-label'), el.getAttribute('data-testid'), el.getAttribute('href'), el.getAttribute('title')].filter(Boolean).join(' '));
+    const cartBadges = cartEls
+        .filter(el => {
+            if (el.hasAttribute('data-count') || el.hasAttribute('data-cart-count')) return true;
+            const t = String((el as HTMLElement).innerText || '').trim();
+            return t.length <= 32 && oneNumber.test(t) && (cartWords.test(t) || namedForCart(el));
+        })
+        .map(el => num(el.getAttribute('data-count') || el.getAttribute('data-cart-count') || (el as HTMLElement).innerText || ''))
+        .filter(n => Number.isFinite(n) && n >= 0 && n < 100000)
+        .slice(0, 6);
     //  The largest list: the parent with the most children alike (rows, cards, items), navigation aside.
     let best: Element[] = [];
     for (const parent of Array.from(document.querySelectorAll('tbody,ul,ol,[role="list"],[role="grid"],main,section,div'))) {
@@ -162,6 +212,7 @@ export function readFacts(): PageFacts {
         url: location.href,
         dialogs,
         carts: carts.slice(0, 10),
+        cartBadges,
         listSize: best.length,
         listHead: best.slice(0, 6).map(el => (el as HTMLElement).innerText.trim().replace(/\s+/g, ' ').slice(0, 60)),
         steppers,

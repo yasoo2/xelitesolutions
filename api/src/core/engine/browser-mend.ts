@@ -31,7 +31,7 @@ export interface MendFinding { id: string; severity?: string; evidence?: unknown
 /** The minor findings of taste: told with the delivery, never a refusal on their own. */
 export const TOLD_NOT_REFUSED: ReadonlySet<string> = new Set([
     'flat_hierarchy', 'type_scale_drift', 'spacing_drift', 'colour_drift', 'line_too_long',
-    'h1_count', 'heavy_images', 'form_no_validation', 'field_case_minor', 'route_headings', 'control_job_unseen', 'journey_not_proven',
+    'h1_count', 'heavy_images', 'form_no_validation', 'field_case_minor', 'route_headings', 'control_job_unseen', 'journey_not_proven', 'order_not_kept',
 ]);
 
 /** Whether a finding refuses the delivery: everything except a minor finding of taste. */

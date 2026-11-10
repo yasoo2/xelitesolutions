@@ -19,7 +19,7 @@
 import { AuditEyes, boxOf, evalInPage } from './audit-eyes';
 import { applyViewportSize } from './ui-inspection';
 import { showsSignInForm, signInThroughPage, type SignInAccount } from './sign-in';
-import { casesFor, markupFieldOf, meaningOf, type FieldCase, type QaField } from './qa-field-cases';
+import { casesFor, fillValueFor, markupFieldOf, meaningOf, type FieldCase, type QaField } from './qa-field-cases';
 import { intentOf, judgeIntent, readControlState, readFacts, type ControlState, type IntentRead, type PageFacts } from './qa-control-intent';
 
 /** What the strip over the outlined element calls it, in his language. */
@@ -52,7 +52,7 @@ export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'controls_not_reached', 'forms_not_reached', 'dead_anchors', 'dead_controls', 'form_dead_submit',
     'form_no_validation', 'form_reloads', 'js_errors', 'keyboard_unreachable',
     'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
-    'qa_created_record_not_deletable',
+    'qa_created_record_not_deletable', 'order_not_kept',
     'markup_executes', 'markup_drawn', 'field_accepts_invalid', 'field_rejects_valid', 'field_case_minor',
     'control_missed_its_job', 'control_job_unseen',
 ]);
@@ -483,7 +483,7 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     const forms: Array<{
         sel: string; label: string;
         fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string }>;
-        hasSubmit: boolean; submitSel: string; expectsPersistence: boolean; noValidate: boolean;
+        hasSubmit: boolean; submitSel: string; expectsPersistence: boolean; noValidate: boolean; placesOrder?: boolean;
     }> = [];
     const vis = (el: Element) => {
         const r = (el as HTMLElement).getBoundingClientRect();
@@ -547,9 +547,74 @@ function findForms(o: { maxForms: number; maxFields: number }) {
          */
         const signsIn = /\b(?:sign[ -]?in|log[ -]?in|login|authenticate)\b|سج[ّ]?ل\s+الدخول|تسجيل\s+الدخول|دخول\s+(?:الحساب|إلى\s+الحساب)/i.test(persistenceContext);
         const expectsPersistence = !signsIn && /\b(?:add|create|save|order|register|book|reserve|new record)\b|أضف|اضف|إنشاء|انشاء|حفظ|طلب|تسجيل|حجز|احجز/i.test(persistenceContext);
-        forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel, expectsPersistence, noValidate: f.noValidate === true });
+        /*
+         * A shop's checkout places an order: its proof is the order confirmed and the
+         * cart emptied. An order kept where the shopper can see it again (a «my
+         * orders» list) is better, and its absence is told — never refused: a store
+         * with no server has nowhere to keep it, and a real one keeps it on the
+         * server, out of the page.
+         */
+        const placesOrder = /checkout|place (?:the |your |an )?order|confirm (?:the |your )?order|complete (?:the |your )?(?:order|purchase)|pay now|\bpay\b|purchase|\bbuy\b|إتمام الطلب|اتمام الطلب|تأكيد الطلب|أكد الطلب|ادفع|الدفع|شراء|اشتر/i.test(persistenceContext);
+        forms.push({ sel: `[data-joe-form="${fid}"]`, label, fields, hasSubmit: !!submit, submitSel, expectsPersistence, noValidate: f.noValidate === true, placesOrder });
     }
     return forms;
+}
+
+/** A control that moves a visitor forward first (0), one that takes something away last (2). */
+export function forwardRank(label: string): number {
+    const s = String(label || '').trim().toLowerCase();
+    if (/checkout|proceed|continue|\bnext\b|place (?:the |your )?order|confirm|book now|reserve|\bbuy\b|إتمام|اتمام|متابعة|تابع|التالي|اطلب|تأكيد|احجز|اشتر/iu.test(s)) return 0;
+    if (/remove|delete|decrease|\bclear\b|empty|reset|log ?out|sign ?out|حذف|إزالة|ازالة|مسح|إفراغ|افراغ|إنقاص|انقاص|خروج/iu.test(s) || /^(?:-|−|–|×|✕|✖)$/u.test(s)) return 2;
+    return 1;
+}
+
+/** Whether two addresses are one document (only what follows «#» differs): a jump between them loads nothing. */
+export function sameDocumentUrl(a: string, b: string): boolean {
+    try {
+        const x = new URL(String(a || '')), y = new URL(String(b || ''));
+        return x.origin === y.origin && x.pathname === y.pathname && x.search === y.search && (!!x.hash || !!y.hash);
+    } catch { return false; }
+}
+
+/** Runs in the page: the words of the page's own text (what a submit adds is what is not among them). Self-contained. */
+export function pageTokens(): string[] {
+    const out = new Set<string>();
+    for (const t of String(document.body?.innerText || '').split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) if (t) out.add(t);
+    return Array.from(out).slice(0, 30_000);
+}
+
+/**
+ * Runs in the page: the marks of a record that was not on the page before —
+ * in a new row, item or card outside any form and any passing message: a
+ * word with a digit (an order number «MC-MHA8ZQ», «#1042», a date, a time),
+ * never a bare price, count or percentage. Letters with digits first. Self-contained.
+ */
+export function newRecordTokens(before: string[]): string[] {
+    const known = new Set(before || []);
+    const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice,form,script,style,template';
+    const out: string[] = [];
+    const rows = Array.from(document.querySelectorAll('li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]'));
+    for (const el of rows) {
+        if (el.closest(noise)) continue;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        if (r.width <= 1 || r.height <= 1) continue;
+        for (const t of String((el as HTMLElement).innerText || '').split(/[\s،؛,;:()[\]{}«»"'|—–]+/)) {
+            if (t.length < 4 || known.has(t) || out.includes(t)) continue;
+            if (!/[0-9٠-٩]/.test(t) || /^[-+]?[0-9٠-٩.,٫٬]+%?$/.test(t)) continue;
+            out.push(t);
+        }
+    }
+    const lettered = (t: string) => /[A-Za-z\u0600-\u06FF]/.test(t) ? 1 : 0;
+    return out.sort((a, b) => lettered(b) - lettered(a)).slice(0, 12);
+}
+
+/** Runs in the page: each visible form, by its fields and its button. Self-contained. */
+export function visibleFormPrints(): string[] {
+    return Array.from(document.querySelectorAll('form'))
+        .filter(f => { const r = (f as HTMLElement).getBoundingClientRect(); return r.width > 2 && r.height > 2; })
+        .map(f => Array.from((f as HTMLFormElement).elements)
+            .map(e => String((e as HTMLInputElement).name || e.id || (e as HTMLInputElement).type || e.tagName))
+            .join(',') + '|' + String(((f.querySelector('[type="submit"],button:not([type="button"])') as HTMLElement | null)?.innerText) || '').trim());
 }
 
 /** Runs in the page: a cheap fingerprint of everything a click could change. */
@@ -642,6 +707,13 @@ function changed(a: any, b: any): string {
 
 /** A visible, form-local refusal proves the submit path responded safely. */
 export function isVisibleFormRefusal(text: string): boolean {
+    const said = String(text || '');
+    /*
+     * …and a form telling its visitor what is missing or wrong refused him too. L160 (2026-11-10):
+     * «Create booking» answered «Car is required» (no car could be chosen yet), the QA read it as
+     * «submitted», looked for the booking, and refused the delivery for one never made.
+     */
+    if (/\b(?:is|are) required\b|\brequired field|\bmust (?:be|contain|have|include|match)\b|\bplease (?:enter|select|choose|fill|provide|correct|add|pick)\b|\binvalid\b|\bnot (?:a )?valid\b|\b(?:cannot|can't|can not) be (?:empty|blank|in the past|before|after)\b|\btoo (?:short|long|many|few)\b|\b(?:select|choose|pick) an? \w+ first\b|مطلوب|إلزامي|الزامي|يجب أن|يجب ان|يرجى|الرجاء|من فضلك|غير صالح|غير صحيح|لا يمكن أن يكون|قصير جد|طويل جد|اختر .{0,20}أولاً/iu.test(said)) return true;
     return /\b(?:unauthori[sz]ed|forbidden|access denied|permission denied|invalid (?:email|password|credentials)|please sign[ -]?in|sign[ -]?in (?:to continue|required)|could not save|unable to save)\b|لم\s+يُ?حفظ|سج[ّ]?ل\s+الدخول|غير\s+صحيح(?:ة)?|لا\s+تملك\s+صلاحية|تعذ[ّ]?ر|مرفوض|خطأ/i.test(String(text || ''));
 }
 
@@ -999,6 +1071,19 @@ export interface ProbeOptions {
      * within reach here, not travelled again; the walk shares the set.
      */
     pressedHrefs?: Set<string>;
+    /**
+     * ⛔ …NOR A BUTTON THAT ALREADY TOOK THE WALK TO ITS SCREEN.
+     *
+     * L160 (2026-11-10, a car rental admin): «Summary», «Cars», «Bookings»,
+     * «Customers» were buttons that set the address's #view. The walk pressed
+     * them on every screen and in every exploration turn — «Summary» nine
+     * times on one screen — and walked none of the screens they open, because
+     * only links were read as screens. A button whose press landed on another
+     * address of the product is recorded (metrics.landedOn: the walk walks that
+     * screen, app-audit learnRoutes) and, like a travelled link, is checked
+     * within reach on the other screens, not pressed again. The walk shares it.
+     */
+    travelled?: Set<string>;
     /** Reapply the borrowed-panel layout size after any isolating reload. */
     baselineViewport?: { width: number; height: number };
     /**
@@ -1159,6 +1244,21 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // to restore, leaving later controls absent and falsely reported as
         // unreached.  Return to the exact route we started this probe on.
         const probeStartUrl = page.url();
+        //  The start's text, by which a jump inside the document is known to have drawn the start again (restoreProbeStart).
+        const probeStartText = await page.evaluate(snapshot).then((s: any) => s?.text).catch(() => null);
+        //  The forms the start shows: a press that shows another is a form to fill where it appeared.
+        const initialFormPrints = new Set<string>(await evalInPage(page, visibleFormPrints).catch(() => [] as string[]));
+        const revealedPrints = new Set<string>();
+        const revealedEarly: { forms: FormResult[]; metrics: Record<string, any> } = { forms: [], metrics: {} };
+        /** A press that landed on another address of the product: that screen is walked (app-audit), and the button is not pressed again elsewhere. */
+        const noteLanding = (c: { kind: string; label: string }) => {
+            const at = String(page.url() || '');
+            if (at && at !== probeStartUrl) {
+                const landed: string[] = (metrics.landedOn = Array.isArray(metrics.landedOn) ? metrics.landedOn : []);
+                if (!landed.includes(at)) landed.push(at);
+            }
+            if (c.kind !== 'link' && c.kind !== 'anchor' && c.kind !== 'submit') opts?.travelled?.add(c.label);
+        };
         /**
          * ⛔ A CONTROL THE WALK'S OWN PRESSES TOOK AWAY IS NOT ONE IT COULD NOT REACH.
          *
@@ -1209,7 +1309,11 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 //  Counted by job too: a store's journey asks whether any «add to cart» did its job (qa-product-profile.ts).
                 metrics.intentsMetBy = { ...(metrics.intentsMetBy || {}), [job.intent]: Number(metrics.intentsMetBy?.[job.intent] || 0) + 1 };
             }
-            else (metrics.intentFailures = metrics.intentFailures || []).push({ label, intent: job.intent, ar: job.ar, en: job.en, weight: job.weight });
+            else {
+                //  What was read, so the builder sees the number that did not move (a cart's badge before and after).
+                const seen = job.intent === 'add_to_cart' ? await evalInPage(page, readFacts).then((x: PageFacts) => ({ cartsBefore: factsBefore.cartBadges?.length ? factsBefore.cartBadges : factsBefore.carts, cartsAfter: x.cartBadges?.length ? x.cartBadges : x.carts })).catch(() => ({})) : {};
+                (metrics.intentFailures = metrics.intentFailures || []).push({ label, intent: job.intent, ar: job.ar, en: job.en, weight: job.weight, ...seen });
+            }
         };
         const goneByTheWalk = async (c: { label: string }): Promise<'' | 'declined' | 'consumed'> => {
             const declined = await page.evaluate((want: string) => Array.from(document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], a'))
@@ -1236,6 +1340,21 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         const restoreProbeStart = async () => {
             if (page.url() === probeStartUrl) {
                 await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
+            } else if (sameDocumentUrl(page.url(), probeStartUrl)) {
+                /*
+                 * ⛔ AN ADDRESS THAT DIFFERS ONLY AFTER ITS «#» IS NOT A WAY BACK BY ITSELF.
+                 *
+                 * L160: going from «/#cars» to «/» (or «/#summary») is a jump inside
+                 * the same document — nothing loads, and a product that reads its
+                 * #view only when the page loads stays on Cars. Every «restore»
+                 * left the walk on the screen it had just left. A router that
+                 * answers the jump draws the start again (its text is the start's);
+                 * one that does not is loaded again.
+                 */
+                await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
+                await page.waitForTimeout(250).catch(() => { });
+                const nowText = await page.evaluate(snapshot).then((s: any) => s?.text).catch(() => null);
+                if (nowText !== probeStartText) await page.reload({ waitUntil: 'load', timeout: 5000 }).catch(() => { });
             } else {
                 await page.goto(probeStartUrl, { waitUntil: 'load', timeout: 5000 }).catch(() => { });
             }
@@ -1379,7 +1498,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          */
         phase('prep');
         const checkOnly = (c: { kind: string; label: string; href?: string }) => c.kind !== 'anchor'
-            && (!!opts?.reachOnly?.has(c.label) || (c.kind === 'link' && !!c.href && !!opts?.pressedHrefs?.has(c.href)));
+            && (!!opts?.reachOnly?.has(c.label) || (c.kind === 'link' && !!c.href && !!opts?.pressedHrefs?.has(c.href))
+                || (c.kind !== 'link' && c.kind !== 'submit' && !!opts?.travelled?.has(c.label)));
         const reachedTogether = new Set<string>();
         const together = list.filter(checkOnly);
         if (together.length) {
@@ -1567,7 +1687,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     continue;
                 }
                 //  Pressed on the desktop: reached here, on screen and uncovered — not pressed again (reachOnly).
-                if (opts?.reachOnly?.has(c.label) || (c.kind === 'link' && !!c.href && !!opts?.pressedHrefs?.has(c.href))) {
+                if (opts?.reachOnly?.has(c.label) || (c.kind === 'link' && !!c.href && !!opts?.pressedHrefs?.has(c.href))
+                    || (c.kind !== 'link' && c.kind !== 'submit' && !!opts?.travelled?.has(c.label))) {
                     controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'reached', instance: c.ordinal, href: c.href });
                     metrics.reachedOnly = Number(metrics.reachedOnly || 0) + 1;
                     continue;
@@ -1684,8 +1805,37 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (effect === 'navigation') {
                     if (c.kind === 'link' && c.href) opts?.pressedHrefs?.add(c.href);
+                    noteLanding(c);
                     await restoreProbeStart();
                     await page.waitForSelector('a[href^="#/"]', { timeout: 2500 }).catch(() => { });
+                }
+                /*
+                 * ⛔ A FORM A PRESS SHOWED IS FILLED WHERE IT APPEARED.
+                 *
+                 * L160: «Add car», «Add booking», «Add customer» each showed their
+                 * form; the forms pass ran on the page put back as it started (no
+                 * form), and exploration never pressed them again (pressed once
+                 * already). Three forms of an admin, 0 fields filled. A press that
+                 * shows a form the start did not show has that form tried there —
+                 * its cases, its valid submit, its record — and the page is put back.
+                 */
+                else if (effect && !['reload', 'download', 'handoff', 'not found'].includes(effect) && c.kind !== 'submit'
+                    && opts?.fillForms !== false && Date.now() < formsDeadline - 4000 && eyeIsOpen()) {
+                    const prints: string[] = await evalInPage(page, visibleFormPrints).catch(() => [] as string[]);
+                    const fresh = prints.filter(p => !initialFormPrints.has(p) && !revealedPrints.has(p));
+                    if (fresh.length) {
+                        fresh.forEach(p => revealedPrints.add(p));
+                        const shown = await probeForms(page, {
+                            eyes, budgetMs: Math.max(6000, Math.min(20_000, formsDeadline - Date.now())), seenForms: seenFormsHere,
+                            formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
+                        }).catch(() => null);
+                        if (shown && (shown.metrics.formsFilled || shown.metrics.fieldCasesTried)) {
+                            revealedEarly.forms.push(...shown.forms);
+                            addFormMetrics(revealedEarly.metrics, shown.metrics);
+                            opts?.onProgress?.(`revealed form filled after ${c.label}: ${shown.metrics.formsFilled ?? 0} form(s), ${shown.metrics.fieldCasesTried ?? 0} case(s)`);
+                        }
+                        await restoreProbeStart();
+                    }
                 }
             } catch { /* the control itself is what is under test */ }
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal, href: c.href });
@@ -1724,6 +1874,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 });
                 filled = r.forms;
                 Object.assign(metrics, r.metrics);
+                //  …with the forms a press showed in the controls' pass, counted once and added (revealedEarly).
+                if (revealedEarly.forms.length) {
+                    filled.push(...revealedEarly.forms);
+                    addFormMetrics(metrics, revealedEarly.metrics);
+                    metrics.formsRevealed = Number(metrics.formsRevealed || 0) + Number(revealedEarly.metrics.formsFilled || 0);
+                }
                 //  Said, never only counted: a forms phase that saw nothing, or could not look, is a fact of the walk.
                 opts?.onProgress?.(`forms seen ${r.metrics.formsSeen ?? 0}, filled ${r.metrics.formsFilled ?? 0}, cases ${r.metrics.fieldCasesTried ?? 0}${r.metrics.formsError ? `, error: ${r.metrics.formsError}` : ''}${r.metrics.formsNotReached ? `, not reached ${r.metrics.formsNotReached}` : ''}${r.metrics.formsRepeated ? `, already tried ${r.metrics.formsRepeated}` : ''}`);
                 // A custom React validation path can deliberately use
@@ -1787,9 +1943,19 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     && (c.stateful || !successfulSemanticKeys.has(`${c.kind}|${c.label}|${c.ordinal ?? 0}`))
                     && !(c.kind === 'submit' && measuredSubmits.has(c.label))
                     && !opts?.reachOnly?.has(c.label)
+                    && !(c.kind !== 'link' && opts?.travelled?.has(c.label))
                     && (!initialKeys.has(controlKey(c)) || c.stateful));
-            //  What the last press revealed (a menu's items, a dialog's buttons) before any toggle again.
-            const candidate = candidates.find(c => !initialKeys.has(controlKey(c))) || candidates[0];
+            /*
+             * What the last press revealed (a menu's items, a dialog's buttons) before any toggle again —
+             * and, of those, what goes forward before what takes away. L161 (2026-11-10, a water
+             * store): «Add to cart» revealed each line's «Decrease», «Increase», «Remove» and the
+             * cart's «Proceed to checkout»; exploration pressed them in page order, «Decrease» emptied
+             * the cart, «Proceed to checkout» was gone with it, and the checkout form — the store's
+             * journey — was never reached (qa-product-profile: «no such form was found on any screen»).
+             */
+            const ranked = (xs: typeof candidates) => xs.map((c, i) => ({ c, i, r: forwardRank(c.label) })).sort((a, b) => a.r - b.r || a.i - b.i).map(x => x.c);
+            const revealedNow = candidates.filter(c => !initialKeys.has(controlKey(c)));
+            const candidate = ranked(revealedNow)[0] || ranked(candidates)[0];
             if (!candidate) break;
             opts?.onProgress?.(`state:${candidate.kind}:${candidate.label}`);
             // The same control can be a different test in a different visible
@@ -1842,6 +2008,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
                 await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
+                if (effect === 'navigation') noteLanding(candidate);
                 if (effect === 'navigation' || effect === 'handoff') {
                     // Hash routers and replaceState do not reliably create a
                     // history entry. Restore the exact discovery URL so the
@@ -2512,8 +2679,16 @@ export async function probeForms(
                         }, { sel: fld.sel, bad, expected });
                         semanticFieldsTested++;
                         metrics.semanticFieldsTested++;
-                        metrics.semanticValidationEvidence.push({ field: fld.name || fld.sel, expected, actual: result.type, rejected: result.rejected, pattern: result.pattern });
-                        if (!result.rejected) metrics.semanticValidationFailures++;
+                        /*
+                         * The field's own TYPE is what this measures: a phone typed as text gives no
+                         * keypad and no autofill. A «tel» the browser lets letters into is the product's
+                         * to refuse on submit, and the case matrix below sends exactly that and sees
+                         * (L161, 2026-11-10: «"phone" should be tel», of a type="tel" field whose
+                         * checkout refused letters on submit).
+                         */
+                        const wrongType = !!result.type && result.type !== expected && !(expected === 'number' && result.pattern);
+                        metrics.semanticValidationEvidence.push({ field: fld.name || fld.sel, expected, actual: result.type, rejected: result.rejected || !wrongType, pattern: result.pattern });
+                        if (!result.rejected && wrongType) metrics.semanticValidationFailures++;
                     }
                     //  Every case a careful tester tries on it, by what it means (qa-field-cases.ts).
                     const caseField: QaField = {
@@ -2548,11 +2723,8 @@ export async function probeForms(
                             }
                         }
                     }
-                    // A real fill: the page's own input/change handlers run.
-                    let value = valueFor(fld.type, fld.tag, runNonce, pageLanguage);
-                    if ((fld.type === 'text' || fld.type === 'search' || fld.tag === 'textarea') && runNonce) {
-                        value = `${value} ${runNonce}`;
-                    }
+                    // A real fill: the page's own input/change handlers run — with a value its field would take (fillValueFor).
+                    let value = fillValueFor(caseField, runNonce, pageLanguage);
                     //  The field markup is tried in: sent as text, it must come back as text.
                     if (markupSel === fld.sel) value = `${MARKUP_PROBE} ${runNonce}`;
                     //  A value never outgrows its field: the browser would cut it, and the cut anchor is never found again.
@@ -2626,6 +2798,8 @@ export async function probeForms(
         let returnAfterForm = '';
         /** What this form made was found again after a reload (a journey's proof, qa-product-profile.ts). */
         let persistedThis = false;
+        /** The page's words before the form was sent: what the submit made is what was not there (newRecordTokens). */
+        let tokensBefore: string[] = [];
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
@@ -2637,6 +2811,7 @@ export async function probeForms(
             const urlBeforeSubmit = String(page.url() || '');
             const savedBeforeSubmit = writes.saved();
             const refusedBeforeSubmit = writes.refused();
+            tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
@@ -2703,7 +2878,10 @@ export async function probeForms(
                 if (hasNewVisibleFormFeedback(feedbackBefore, feedbackAfter)) {
                     // A server may reject an unauthenticated mutation. That is a
                     // real, visible outcome, not evidence that the submit is dead.
-                    effect = isVisibleFormRefusal(feedbackAfter) ? 'refused' : 'submitted';
+                    //  What it says NOW: a hint that was there before («must be 8 characters») is not this submit's answer.
+                    const was = new Set(String(feedbackBefore || '').split('\n'));
+                    const fresh = String(feedbackAfter || '').split('\n').filter(line => !was.has(line)).join('\n');
+                    effect = isVisibleFormRefusal(fresh || feedbackAfter) ? 'refused' : 'submitted';
                 } else if (!effect && stillInvalid) {
                     // The browser refused it — which is the behaviour that was asked
                     // for, not a dead form.
@@ -2779,8 +2957,9 @@ export async function probeForms(
         // promises a saved record. First find the exact QA record, then reload
         // the real page and verify it survived. Finally test only that record's
         // delete action, keeping the test reversible and data-safe.
-        const anchor = persistenceAnchors.find(value => value.length > 4);
-        if (effect === 'submitted' && f.expectsPersistence && anchor && Date.now() < deadline && eyeIsOpen()) {
+        //  No free text to carry the run's mark (a form of codes and numbers): what it made is still looked for (newRecordTokens).
+        const anchor = persistenceAnchors.find(value => value.length > 4) || '';
+        if (effect === 'submitted' && f.expectsPersistence && (anchor || tokensBefore.length) && Date.now() < deadline && eyeIsOpen()) {
             /*
              * Where the record shows: anywhere in the page's own text (a card, a
              * board column, a heading — L451 drew its records as cards no list
@@ -2788,40 +2967,116 @@ export async function probeForms(
              * field that shows it (an edit form after a reload: its value came
              * from the server).
              */
-            const recordVisible = () => page.evaluate((needle: string) => {
+            const visibleNeedle = (needles: string[]) => page.evaluate((list: string[]) => {
                 const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice';
-                const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-                for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-                    const host = n.parentElement;
-                    if (!host || !String(n.textContent || '').includes(needle)) continue;
-                    if (host.closest(noise) || host.closest('script,style,template')) continue;
-                    const r = host.getBoundingClientRect();
-                    if (r.width > 1 && r.height > 1) return true;
+                const shows = (needle: string) => {
+                    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+                    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+                        const host = n.parentElement;
+                        if (!host || !String(n.textContent || '').includes(needle)) continue;
+                        if (host.closest(noise) || host.closest('script,style,template')) continue;
+                        const r = host.getBoundingClientRect();
+                        if (r.width > 1 && r.height > 1) return true;
+                    }
+                    return Array.from(document.querySelectorAll('input,textarea'))
+                        .some(x => String((x as HTMLInputElement).value || '').includes(needle));
+                };
+                return list.find(shows) || '';
+            }, needles).catch(() => '');
+            /*
+             * ⛔ WHAT A FORM MADE IS WHAT IT MADE — NOT ONLY WHAT WAS TYPED INTO IT.
+             *
+             * L162 (2026-11-10, an Arabic store): «تأكيد الطلب» kept each order in a
+             * «طلباتي» list — its number, its date, its total — and not the
+             * buyer's name the QA had typed. The audit looked for the name, said
+             * «appeared temporarily, not proven after a refresh» (it had never
+             * looked after one), four times; Joe saved the order three ways and
+             * the run ended undelivered after 32 minutes. What a submit made is
+             * also what appeared outside the form that was not on the page before
+             * it — a mark of its own (a number with letters, a date, a time; never
+             * a bare price or count) in a new row, item or card — and kept is
+             * found again after the reload: on the page, in the browser's own
+             * storage, or in what the server sends back.
+             */
+            let needles = anchor ? [anchor] : [];
+            let shownAs = needles.length ? await visibleNeedle(needles) : '';
+            /*
+             * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
+             * closed its form at once and drew the bookings table after its GET answered; looked
+             * for in that instant, the booking «never showed». What was made is waited for, briefly.
+             */
+            const madeUntil = Math.min(deadline, Date.now() + 2500);
+            while (!shownAs && eyeIsOpen()) {
+                if (tokensBefore.length) {
+                    const made: string[] = await evalInPage(page, newRecordTokens, tokensBefore).catch(() => [] as string[]);
+                    if (made.length) { needles = made.slice(0, 6); shownAs = made[0]; break; }
                 }
-                return Array.from(document.querySelectorAll('input,textarea'))
-                    .some(x => String((x as HTMLInputElement).value || '').includes(needle));
-            }, anchor).catch(() => false);
-            const appeared = await recordVisible();
-            if (!appeared) {
+                if (Date.now() >= madeUntil) break;
+                await page.waitForTimeout(250).catch(() => { });
+                if (anchor) shownAs = await visibleNeedle([anchor]);
+            }
+            const unproven = (where: string) => {
+                const evidence = { form: f.label, anchor, where, ...(needles[0] !== anchor ? { made: needles.slice(0, 3) } : {}) };
+                if (f.placesOrder) {
+                    metrics.ordersNotKept = Number(metrics.ordersNotKept || 0) + 1;
+                    (metrics.ordersNotKeptEvidence = metrics.ordersNotKeptEvidence || []).push(evidence);
+                    return;
+                }
                 metrics.formsPersistenceUnproven++;
-                (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push({ form: f.label, anchor, where: 'after submit' });
+                (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push(evidence);
+            };
+            if (!shownAs) {
+                unproven('after submit');
             } else {
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
+                //  What the server sends the reloaded page: a record it returns is kept, whichever view the page opens on.
+                const served: string[] = [];
+                const onServed = async (response: any) => {
+                    try {
+                        if (served.length >= 40 || String(response.request().method()).toUpperCase() !== 'GET') return;
+                        if (new URL(response.url()).origin !== new URL(page.url()).origin) return;
+                        if (!/json|text|javascript/i.test(String(response.headers()['content-type'] || ''))) return;
+                        served.push(String(await response.text()).slice(0, 400_000));
+                    } catch { /* a body that cannot be read says nothing */ }
+                };
+                try { page.on('response', onServed); } catch { /* a page without events */ }
                 const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
                     .then((response: any) => !!response && response.ok()).catch(() => false);
                 const persistenceDeadline = Math.min(deadline, Date.now() + 2500);
-                let persisted = false;
+                let found = '';
                 do {
                     if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
-                    persisted = await recordVisible();
-                    if (!persisted) await page.waitForTimeout(100);
-                } while (!persisted && Date.now() < persistenceDeadline && eyeIsOpen());
-                if (!persisted) {
-                    metrics.formsPersistenceUnproven++;
-                    (metrics.formsPersistenceEvidence = metrics.formsPersistenceEvidence || []).push({ form: f.label, anchor, where: 'after reload' });
+                    found = await visibleNeedle(needles);
+                    if (!found) await page.waitForTimeout(100);
+                } while (!found && Date.now() < persistenceDeadline && eyeIsOpen());
+                let keptBy = found ? 'page' : '';
+                if (!found && reloaded) {
+                    //  Kept by the browser: a form's own draft («draft», «autosave») is not a record.
+                    const stored = await page.evaluate((list: string[]) => {
+                        for (const store of [window.localStorage, window.sessionStorage]) {
+                            try {
+                                for (let i = 0; i < store.length; i++) {
+                                    const key = String(store.key(i) || '');
+                                    if (/draft|autosave|auto-save|unsaved|form-?state/i.test(key)) continue;
+                                    const value = String(store.getItem(key) || '');
+                                    if (list.some(n => value.includes(n))) return true;
+                                }
+                            } catch { /* a storage the page may not read */ }
+                        }
+                        return false;
+                    }, needles).catch(() => false);
+                    if (stored) keptBy = 'storage';
+                    else if (served.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                }
+                try { page.off('response', onServed); } catch { /* the page may be gone */ }
+                if (!keptBy) {
+                    unproven('after reload');
                 } else {
                     metrics.formsPersisted++;
                     persistedThis = true;
+                    if (keptBy !== 'page') metrics.formsPersistedOutOfView = Number(metrics.formsPersistedOutOfView || 0) + 1;
+                }
+                if (found) {
                     const deleteSelector = await page.evaluate((needle: string) => {
                         const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([
                             el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText,
@@ -2835,7 +3090,7 @@ export async function probeForms(
                         if (!target) return '';
                         target.setAttribute('data-joe-qa-delete-own-record', 'true');
                         return '[data-joe-qa-delete-own-record="true"]';
-                    }, anchor).catch(() => '');
+                    }, found).catch(() => '');
                     if (deleteSelector) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
@@ -2843,7 +3098,7 @@ export async function probeForms(
                         let removed = false;
                         while (!removed && Date.now() < removalDeadline) {
                             await page.waitForTimeout(150);
-                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), anchor).catch(() => false);
+                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), found).catch(() => false);
                         }
                         if (removed) metrics.qaRecordsDeleted++;
                         else metrics.qaRecordsNotDeleted++;
@@ -3122,12 +3377,41 @@ export function judgeBehaviour(
         evidence: minorCases,
     });
     if ((metrics.formsPersistenceUnproven || 0) > 0) {
+        /*
+         * Said as it was measured: a form whose work never showed is not a form
+         * whose work «appeared temporarily» (L162: Joe was told the second and
+         * the first was true, and mended what was not broken).
+         */
+        const evidence: any[] = Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : [];
+        const neverShown = evidence.filter(x => x?.where === 'after submit');
+        const gone = evidence.filter(x => x?.where !== 'after submit');
+        const parts = { ar: [] as string[], en: [] as string[] };
+        if (neverShown.length) {
+            parts.ar.push(`أُرسل ${neverShown.map(x => `«${x.form}»`).join('، ')} وقَبِله، ولم يظهر خارج النموذج ما صنعه: لا ما كتبه الفحص (${neverShown.map(x => `«${x.anchor}»`).join('، ')}) ولا سجلّ جديد`);
+            parts.en.push(`${neverShown.map(x => `"${x.form}"`).join(', ')} was sent and taken, and what it made never showed outside the form: neither what the QA typed (${neverShown.map(x => `"${x.anchor}"`).join(', ')}) nor a new record`);
+        }
+        if (gone.length) {
+            parts.ar.push(`ظهر ما صنعه ${gone.map(x => `«${x.form}»`).join('، ')}، وبعد تحديث الصفحة لم يُعثر عليه: لا في الصفحة ولا في تخزين المتصفح ولا فيما أعاده الخادم`);
+            parts.en.push(`what ${gone.map(x => `"${x.form}"`).join(', ')} made showed, and after a refresh it was found nowhere: not on the page, not in the browser's storage, not in what the server sent back`);
+        }
         findings.push({
             code: 'form_persistence_unproven', severity: 'major',
-            ar: `${metrics.formsPersistenceUnproven} نتيجة نموذج ظهرت لحظياً، لكن الفحص لم يثبت بقاءها بعد تحديث الصفحة`,
-            en: `${metrics.formsPersistenceUnproven} form result(s) appeared temporarily, but the audit could not prove they survived a page refresh`,
-            hint: 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
-            ...(Array.isArray(metrics.formsPersistenceEvidence) && metrics.formsPersistenceEvidence.length ? { evidence: metrics.formsPersistenceEvidence.slice(0, 6) } : {}),
+            ar: parts.ar.join('؛ ') || `${metrics.formsPersistenceUnproven} نتيجة نموذج لم يثبت بقاؤها بعد تحديث الصفحة`,
+            en: parts.en.join('; ') || `${metrics.formsPersistenceUnproven} form result(s) could not be proven to survive a page refresh`,
+            hint: neverShown.length && !gone.length
+                ? 'after a successful submit, show what it made outside the form — the new row, card or entry with what was entered — and keep it'
+                : 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
+            ...(evidence.length ? { evidence: evidence.slice(0, 6) } : {}),
+        });
+    }
+    if ((metrics.ordersNotKept || 0) > 0) {
+        const orders: any[] = Array.isArray(metrics.ordersNotKeptEvidence) ? metrics.ordersNotKeptEvidence : [];
+        findings.push({
+            code: 'order_not_kept', severity: 'minor',
+            ar: `أُكِّد الطلب في ${orders.map(x => `«${x.form}»`).join('، ') || 'نموذج الدفع'}، ولا أثر له بعد تحديث الصفحة: لا يستطيع المشتري أن يرى ما طلبه`,
+            en: `the order was confirmed by ${orders.map(x => `"${x.form}"`).join(', ') || 'the checkout'}, and nothing of it remains after a refresh: a shopper cannot see what he ordered`,
+            hint: 'keep each placed order (a «my orders» list, with its number and items) where the shopper can find it again',
+            ...(orders.length ? { evidence: orders.slice(0, 6) } : {}),
         });
     }
     if ((metrics.qaRecordsNotDeleted || 0) > 0) {
