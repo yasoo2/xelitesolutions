@@ -220,10 +220,11 @@ describe('every menu, every route — not fourteen buttons', () => {
 describe('the forms are filled in and sent, not counted', () => {
     const B = () => read('core', 'quality', 'behaviour-audit.ts');
 
-    it('every field is typed into by its declared type', () => {
+    it('every field is typed into by what it means — its type, its words, its bounds and its pattern', () => {
         const b = B();
         expect(b).toMatch(/export async function probeForms/);
-        expect(b).toContain('let value = valueFor(fld.type, fld.tag, runNonce, pageLanguage);');
+        //  2026-11-10: by type alone a postcode got «Joe QA <nonce>» and a year 3 (qa-field-cases.ts fillValueFor).
+        expect(b).toContain('let value = fillValueFor(caseField, runNonce, pageLanguage);');
         expect(b).toMatch(/await el\.fill\(value, \{ timeout: 2500 \}\)/);
         expect(b).toMatch(/await el\.selectOption\(fld\.options\[0\]/);
         expect(b).toMatch(/await el\.check\(\{ timeout: 2000, force: true \}\)/);

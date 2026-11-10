@@ -27,6 +27,14 @@ describe('form evidence is scoped before a submit is called dead', () => {
         expect(findings.some(f => f.code === 'some_dead_controls' || f.code === 'dead_controls')).toBe(false);
         expect(isVisibleFormRefusal('لم يُحفظ التغيير — سجّل الدخول ثم حاول مجدداً.')).toBe(true);
         expect(isVisibleFormRefusal('تم حفظ السجل بنجاح.')).toBe(false);
+        //  L160 (2026-11-10): a form that says what is missing refused the QA's submit.
+        expect(isVisibleFormRefusal('Car is required')).toBe(true);
+        expect(isVisibleFormRefusal('Please select a customer')).toBe(true);
+        expect(isVisibleFormRefusal('Delivery date cannot be in the past.')).toBe(true);
+        expect(isVisibleFormRefusal('هذا الحقل مطلوب')).toBe(true);
+        expect(isVisibleFormRefusal('يرجى إدخال رقم جوال صحيح')).toBe(true);
+        expect(isVisibleFormRefusal('Booking added')).toBe(false);
+        expect(isVisibleFormRefusal('Thank you, Jane! Your order AF-1 is confirmed.')).toBe(false);
         expect(hasNewVisibleFormFeedback('', 'هذه الشاشة للمالك وحده.')).toBe(true);
         expect(hasNewVisibleFormFeedback('هذه الشاشة للمالك وحده.', 'هذه الشاشة للمالك وحده.')).toBe(false);
     });

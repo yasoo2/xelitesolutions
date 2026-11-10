@@ -111,6 +111,86 @@ export interface CertificateInput {
     signedInAs?: string;
     /** What each role's menu offered, when the permissions were measured (role-probe.ts). */
     roles?: Array<{ role: string; screens: string[] }>;
+    /** What the browser check tried, counted (qaCoverageOf). */
+    qaCoverage?: QaCoverage;
+}
+
+/**
+ * ⛔ WHAT THE BROWSER CHECK TRIED, SAID IN NUMBERS.
+ *
+ * The owner, 2026-11-10, after watching it: «حاسس انه فحص فاشل». «فُتح المشروع في
+ * متصفح حقيقي وجُرّبت أزراره ونماذجه» says nothing a reader can weigh. The
+ * certificate now says how many screens were walked, how many controls were
+ * pressed one by one, how many forms and fields were filled and how many
+ * wrong and valid values were tried in them, and how many controls were
+ * checked within reach at the tablet and phone widths. Only measured counts;
+ * a count of zero is not said.
+ */
+export interface QaCoverage { screens: number; pressed: number; formsFilled: number; fieldsFilled: number; cases: number; casesSent: number; reached: number; jobs?: number; product?: { ar: string; en: string }; journeys?: Array<{ ar: string; en: string; proven: boolean }> }
+
+/** The counts of a browser audit (app-audit AppAudit), or nothing when it walked nothing. */
+export function qaCoverageOf(audit: any): QaCoverage | undefined {
+    if (!audit || audit.skipped) return undefined;
+    const n = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0));
+    const c: QaCoverage = {
+        screens: Array.isArray(audit.routes) ? new Set(audit.routes).size : 0,
+        pressed: n(audit.pressed), formsFilled: n(audit.formsFilled), fieldsFilled: n(audit.fieldsFilled),
+        cases: n(audit.fieldCasesTried), casesSent: n(audit.fieldCasesSubmitted), reached: n(audit.reachedAtOtherWidths),
+        ...(n(audit.intentsMet) ? { jobs: n(audit.intentsMet) } : {}),
+        ...(audit.product && audit.product.kind !== 'other' ? { product: { ar: String(audit.product.ar), en: String(audit.product.en) } } : {}),
+        ...(Array.isArray(audit.journeys) && audit.journeys.length ? { journeys: audit.journeys.map((j: any) => ({ ar: String(j.ar), en: String(j.en), proven: !!j.proven })) } : {}),
+    };
+    return c.screens || c.pressed || c.formsFilled ? c : undefined;
+}
+
+/** One sentence of what was tried, in the interface's language. */
+/**
+ * A number and what it counts, as Arabic counts them: «شاشة واحدة», «شاشتين»,
+ * «3 شاشات» (3–10 take the plural), «12 شاشة» (11–99 the singular), «100 شاشة».
+ * The live check, 2026-11-10: «مرّ على 1 شاشة، وضغط 7 زراً، وملأ 1 نموذجاً (4 حقلاً)»
+ * — the owner reads Arabic, and a sentence that counts wrongly reads as careless.
+ */
+export function arabicCount(n: number, w: { one: string; two: string; plural: string; single: string; hundred?: string }): string {
+    if (n === 1) return w.one;
+    if (n === 2) return w.two;
+    const r = n % 100;
+    if (n >= 100 && r <= 2) return `${n} ${w.hundred || w.single}`;
+    const k = n >= 100 ? r : n;
+    return k >= 3 && k <= 10 ? `${n} ${w.plural}` : `${n} ${w.single}`;
+}
+
+const AR_SCREEN = { one: 'شاشة واحدة', two: 'شاشتين', plural: 'شاشات', single: 'شاشة', hundred: 'شاشة' };
+const AR_ELEMENT = { one: 'عنصراً واحداً', two: 'عنصرين', plural: 'عناصر', single: 'عنصراً', hundred: 'عنصر' };
+const AR_FORM = { one: 'نموذجاً واحداً', two: 'نموذجين', plural: 'نماذج', single: 'نموذجاً', hundred: 'نموذج' };
+const AR_FIELD = { one: 'حقل واحد', two: 'حقلان', plural: 'حقول', single: 'حقلاً', hundred: 'حقل' };
+const AR_VALUE = { one: 'قيمة واحدة', two: 'قيمتين', plural: 'قيم', single: 'قيمة', hundred: 'قيمة' };
+const AR_BUTTON = { one: 'زراً واحداً', two: 'زرّين', plural: 'أزرار', single: 'زراً', hundred: 'زر' };
+
+export function qaCoverageLine(c: QaCoverage | undefined, language: string): string {
+    if (!c) return '';
+    const ar = wordsFor(language) === INSTRUMENTS.ar;
+    const parts: string[] = [];
+    if (ar) {
+        if (c.screens) parts.push(`مرّ على ${arabicCount(c.screens, AR_SCREEN)}`);
+        if (c.pressed) parts.push(`وضغط ${arabicCount(c.pressed, AR_ELEMENT)} واحداً تلو الآخر`);
+        if (c.formsFilled) parts.push(`وملأ ${arabicCount(c.formsFilled, AR_FORM)} (${arabicCount(c.fieldsFilled, AR_FIELD)})`);
+        const sent = c.casesSent === 1 ? 'واحدة' : c.casesSent === 2 ? 'اثنتين' : String(c.casesSent);
+        if (c.cases) parts.push(`وجرّب فيها ${arabicCount(c.cases, AR_VALUE)} بين خاطئة وصحيحة${c.casesSent ? `، وأرسل ${sent} منها مع النموذج ليرى ردّ الخادم` : ''}`);
+        if (c.reached) parts.push(`وتحقّق من أن ${arabicCount(c.reached, AR_BUTTON)} في متناول اليد على شاشتي اللوحي والجوال`);
+        if (c.jobs) parts.push(c.jobs === 1 ? 'وتأكّد أن زراً واحداً أدّى عمله بالضبط' : `وتأكّد أن كلاً من ${arabicCount(c.jobs, AR_BUTTON)} أدّى عمله بالضبط`);
+        const journeys = (c.journeys || []).map(j => `${j.proven ? '✓' : '✗'} ${j.ar}`).join('، ');
+        const tail = c.product && journeys ? ` ورحلات ${c.product.ar}: ${journeys}.` : '';
+        return parts.length ? `جرّب جو في المتصفح: ${parts.join('، ')}.${tail}` : '';
+    }
+    if (c.screens) parts.push(`walked ${c.screens} screen(s)`);
+    if (c.pressed) parts.push(`pressed ${c.pressed} control(s) one by one`);
+    if (c.formsFilled) parts.push(`filled ${c.formsFilled} form(s) (${c.fieldsFilled} field(s))`);
+    if (c.cases) parts.push(`tried ${c.cases} wrong and valid value(s) in them${c.casesSent ? `, ${c.casesSent} sent with the form to hear the server` : ''}`);
+    if (c.reached) parts.push(`checked ${c.reached} control(s) within reach at tablet and phone width`);
+    if (c.jobs) parts.push(`confirmed ${c.jobs} control(s) did exactly their job`);
+    const journeys = (c.journeys || []).map(j => `${j.proven ? '✓' : '✗'} ${j.en}`).join(', ');
+    const tail = c.product && journeys ? ` Journeys of ${c.product.en}: ${journeys}.` : '';
+    return parts.length ? `In the browser Joe ${parts.join(', ')}.${tail}` : '';
 }
 
 export const CERTIFICATE_FILE = 'JOE-DELIVERY.md';
@@ -174,6 +254,8 @@ export function deliveryCertificate(input: CertificateInput): string {
             ? `- ✅ **الدخول**: سجّل جو الدخول بحساب التجربة «${who}» من نموذج الدخول نفسه، وجرّب الشاشات التي خلفه.`
             : `- ✅ **sign-in**: Joe signed in with the demo account "${who}" through the product's own sign-in form, and tested the screens behind it.`);
     }
+    const tried = input.passed.includes('browser') ? qaCoverageLine(input.qaCoverage, input.language) : '';
+    if (tried) out.push(`- 🔎 ${tried}`);
     if (input.passed.includes('roles') && (input.roles || []).length) {
         out.push('', ar ? 'ما يراه كل دور:' : 'What each role sees:');
         for (const r of input.roles || []) out.push(`  - **${r.role}**: ${r.screens.join(ar ? '، ' : ', ') || (ar ? 'لا شاشات' : 'no screens')}`);

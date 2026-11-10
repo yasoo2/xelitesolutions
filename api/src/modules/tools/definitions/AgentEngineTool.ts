@@ -32,7 +32,7 @@ import { browserTools, createBrowserSession } from '../../../core/engine/tools/b
 import { webTools } from '../../../core/engine/tools/web';
 import { machineFacts } from './EngineShellTools';
 import { createVerifier, deliveryOutput, measureProjectSource, type DeliveryVerification } from '../../../core/engine/verify';
-import { clearDeliveryProof, deliveryProof, writeDeliveryCertificate } from '../../../core/engine/certificate';
+import { clearDeliveryProof, deliveryProof, qaCoverageOf, writeDeliveryCertificate } from '../../../core/engine/certificate';
 import { seedRequirementsFromRequest } from '../../../core/engine/seed';
 import { RUN_DEADLINE_MS } from '../../../shared/utils/deadline';
 import { replyLanguageCode } from '../../../shared/reply-language';
@@ -340,6 +340,7 @@ export const AgentEngineTool: ToolDefinition = {
                     screenshots: deliveryProof(folder.dir),
                     signedInAs: (result.verification as DeliveryVerification | undefined)?.delivery?.signedInAs,
                     roles: (result.verification as DeliveryVerification | undefined)?.delivery?.roleViews,
+                    qaCoverage: qaCoverageOf((result.verification as DeliveryVerification | undefined)?.delivery?.browserQa),
                 });
             }
             return {

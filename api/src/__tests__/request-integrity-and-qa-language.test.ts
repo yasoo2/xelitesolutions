@@ -39,6 +39,9 @@ describe('request integrity and browser QA language', () => {
     it('still recognises explicit native input semantics', () => {
         expect(semanticTypeForField('input', 'Patient age')).toBe('number');
         expect(semanticTypeForField('input', 'Mobile phone')).toBe('tel');
+        //  L160 (2026-11-10): a search box that names what it searches is not an email field.
+        expect(semanticTypeForField('input', 'search Search Customers Search name, email or phone…')).toBe('');
+        expect(semanticTypeForField('input', 'ابحث بالاسم أو البريد الإلكتروني')).toBe('');
         expect(semanticTypeForField('input', 'Email address')).toBe('email');
         expect(semanticTypeForField('input', 'Birth date')).toBe('date');
         expect(semanticTypeForField('input', 'Start time')).toBe('time');
