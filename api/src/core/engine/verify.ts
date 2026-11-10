@@ -49,6 +49,7 @@ import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { mendable, mendIsBetter, mendPage, refuses, whyMendNotBetter, type Mender } from './browser-mend';
+import { resolveInProject } from './workspace';
 import { detectStart } from '../../modules/tools/definitions/ProjectRunTool';
 import {
     BUILD_COMMAND_NAMED, buildPipelineDecisionEvidence, deliveredPageDirectory, hasOnlyBrowserQaInfrastructureFindings,
@@ -291,15 +292,31 @@ async function liveRunInput(ctx: ToolContext, root: string): Promise<{ input: Re
     return { input, stopped };
 }
 
-/** Every line one verification printed, in the run's own folder (never part of the project's code: .joe is not walked). */
-export function keepVerificationLog(stateDir: string, lines: string[]): string {
+/** How many verification logs a project keeps: the newest, the rest are let go. */
+const KEPT_VERIFICATION_LOGS = 12;
+
+/**
+ * Every line one verification printed, in the project's own .joe/logs (never walked as code).
+ * Every step of the way is checked by resolveInProject — no link anywhere, so a «.joe» link in
+ * an imported repository cannot carry the log out of the project — and only the newest
+ * KEPT_VERIFICATION_LOGS are kept (the review of 2026-11-10).
+ */
+export async function keepVerificationLog(projectDir: string, lines: string[]): Promise<string> {
     if (!lines.length) return '';
     try {
-        const dir = path.join(stateDir, 'logs');
-        fs.mkdirSync(dir, { recursive: true });
-        const file = path.join(dir, `verification-${new Date().toISOString().replace(/[:.]/g, '-')}.log`);
-        fs.writeFileSync(file, lines.join('\n') + '\n', 'utf8');
-        return file;
+        let dir = await resolveInProject(projectDir, '.joe/logs', 'list');
+        if (dir.ok && !dir.exists) {
+            await fs.promises.mkdir(dir.abs, { recursive: true });
+            dir = await resolveInProject(projectDir, '.joe/logs', 'list');
+        }
+        if (!dir.ok || !dir.exists || !dir.isDir) return '';
+        const name = `verification-${new Date().toISOString().replace(/[:.]/g, '-')}.log`;
+        const file = await resolveInProject(projectDir, `.joe/logs/${name}`, 'list');
+        if (!file.ok || file.exists) return '';
+        await fs.promises.writeFile(file.abs, lines.join('\n') + '\n', { encoding: 'utf8', flag: 'wx' });
+        const old = (await fs.promises.readdir(dir.abs)).filter(n => /^verification-.*\.log$/.test(n)).sort().slice(0, -KEPT_VERIFICATION_LOGS);
+        for (const n of old) await fs.promises.unlink(path.join(dir.abs, n)).catch(() => { /* already gone */ });
+        return file.abs;
     } catch {
         return '';
     }
@@ -663,10 +680,13 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                             mended = m.repairs;
                             note(`browser QA: Joe repaired it himself (${m.changed.join(', ')}): ${m.repairs.join('; ')}`);
                         } else {
-                            await m.undo();
                             const why = again.skipped ? `the page could not be measured after it (${again.skipped})` : whyMendNotBetter(audit.findings, again.findings);
-                            mendPutBack = `${m.repairs.join('; ')} — ${why}`;
-                            note(`browser QA: Joe's own repair did not make the page better (${why}), so every file was put back`);
+                            //  Putting it back can fail too: then the builder is told the files may still be changed, never «it could not run».
+                            const undone = await m.undo().then(() => '', (e: unknown) => message(e));
+                            mendPutBack = undone
+                                ? `${m.repairs.join('; ')} — ${why}; putting it back failed (${undone}), so ${m.changed.join(', ')} may still hold the repair`
+                                : `${m.repairs.join('; ')} — ${why}`;
+                            note(`browser QA: Joe's own repair did not make the page better (${why}), ${undone ? `and putting it back failed: ${undone}` : 'so every file was put back'}`);
                         }
                     }
                 } catch (e) {
@@ -776,7 +796,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     const statuses = deliveryStatuses(verdict, ledger.all());
     const unproven = unprovenRequirements(ctx, acceptance.requirements, ledger, reasons);
     if (logDropped) log.push(`… ${logDropped} more line(s) were left out of this log`);
-    const fileLogPath = keepVerificationLog(ctx.stateDir || path.join(root, '.joe'), fileLog);
+    const fileLogPath = await keepVerificationLog(root, fileLog);
     if (fileLogPath && logDropped) log.push(`the whole log: ${fileLogPath}`);
 
     const record: DeliveryRecord = {

@@ -494,8 +494,43 @@ describe('a static site', () => {
             const second = await verify(site(), SITE_REQUEST, SITE_WANTED, worse);
             expect(undone).toEqual([second.report.delivery.projectRoot]);
             expect(check(second.report, 'browser')?.detail).toMatch(/Joe's own repair was measured and put back: Widened the 3 target\(s\).* — the page measured after it showed what it did not before: mobile_overflow/);
+
+            //  The review of 2026-11-10: a put-back that fails is told as what it is — the files may still hold the repair.
+            mendForTest = async () => ({
+                repairs: ['Widened the 3 target(s) the browser actually measured to 44px'],
+                changed: ['public/styles.css'],
+                undo: async () => { throw new Error('EBUSY: the file is held open'); },
+            });
+            const stuck = await verify(site(), SITE_REQUEST, SITE_WANTED, bigPage([small(30), semantic]));
+            const told = String(check(stuck.report, 'browser')?.detail);
+            expect(told).toMatch(/putting it back failed \(EBUSY: the file is held open\), so public\/styles\.css may still hold the repair/);
+            expect(told).not.toMatch(/could not run/);
         } finally {
             mendForTest = null;
+        }
+    });
+
+    it('a verification log is kept in the project\'s own .joe/logs, never through a link, and only the newest are kept', async () => {
+        const { keepVerificationLog } = require('../core/engine/verify');
+        const dir = project({ 'index.html': '<!doctype html><title>t</title>' });
+        for (let i = 0; i < 14; i++) {
+            expect(await keepVerificationLog(dir, [`line ${i}`])).toMatch(/verification-.*\.log$/);
+            await new Promise(r => setTimeout(r, 5));
+        }
+        const kept = fs.readdirSync(path.join(dir, '.joe', 'logs')).filter(n => /^verification-/.test(n)).sort();
+        expect(kept).toHaveLength(12);
+        expect(fs.readFileSync(path.join(dir, '.joe', 'logs', kept[kept.length - 1]), 'utf8')).toBe('line 13\n');
+
+        //  An imported repository whose «.joe» is a link out of the project: nothing is written there.
+        const linked = project({ 'index.html': '<!doctype html><title>t</title>' });
+        const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-outside-'));
+        fs.symlinkSync(outside, path.join(linked, '.joe'), 'junction');
+        try {
+            expect(await keepVerificationLog(linked, ['secret line'])).toBe('');
+            expect(fs.readdirSync(outside)).toEqual([]);
+        } finally {
+            fs.rmdirSync(path.join(linked, '.joe'));   // the link itself, never through it
+            fs.rmSync(outside, { recursive: true, force: true });
         }
     });
 
