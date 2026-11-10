@@ -697,6 +697,19 @@ export function newRecordTokens(before: string[]): string[] {
     return out.sort((a, b) => lettered(b) - lettered(a)).slice(0, 12);
 }
 
+/** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
+export function recordRowCount(): number {
+    const ROW = 'li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]';
+    const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice,form,nav,header,footer,thead,script,style,template';
+    let n = 0;
+    document.querySelectorAll(ROW).forEach(el => {
+        if (el.closest(noise) || el.querySelector(ROW)) return;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) n++;
+    });
+    return n;
+}
+
 /** Runs in the page: each visible form, by its fields and its button. Self-contained. */
 export function visibleFormPrints(): string[] {
     return Array.from(document.querySelectorAll('form'))
@@ -3003,6 +3016,8 @@ export async function probeForms(
         let persistedThis = false;
         /** The page's words before the form was sent: what the submit made is what was not there (newRecordTokens). */
         let tokensBefore: string[] = [];
+        /** …and how many records it showed: a record with no mark of its own is the row it added (recordRowCount). */
+        let rowsBefore = -1;
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
@@ -3015,6 +3030,7 @@ export async function probeForms(
             const savedBeforeSubmit = writes.saved();
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
+            rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
@@ -3173,7 +3189,7 @@ export async function probeForms(
         // delete action, keeping the test reversible and data-safe.
         //  No free text to carry the run's mark (a form of codes and numbers): what it made is still looked for (newRecordTokens).
         const anchor = persistenceAnchors.find(value => value.length > 4) || '';
-        if (effect === 'submitted' && f.expectsPersistence && (anchor || tokensBefore.length) && Date.now() < deadline && eyeIsOpen()) {
+        if (effect === 'submitted' && f.expectsPersistence && (anchor || tokensBefore.length || rowsBefore >= 0) && Date.now() < deadline && eyeIsOpen()) {
             /*
              * Where the record shows: anywhere in the page's own text (a card, a
              * board column, a heading — L451 drew its records as cards no list
@@ -3215,6 +3231,14 @@ export async function probeForms(
             let needles = anchor ? [anchor] : [];
             let shownAs = needles.length ? await visibleNeedle(needles) : '';
             /*
+             * …or, with nothing of its own to show (a booking: a car, a customer, two dates — all already on
+             * the page), the row it added. The eighth live check, 2026-11-10 (L160): «Add booking» was taken,
+             * its row was drawn, and «never showed outside the form» refused it four times. Proven by the count
+             * of records, after the submit and again after a reload; never deleted (it carries no run mark).
+             */
+            let byRows = false;
+            const rowAdded = async () => rowsBefore >= 0 && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
+            /*
              * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
              * closed its form at once and drew the bookings table after its GET answered; looked
              * for in that instant, the booking «never showed». What was made is waited for, briefly.
@@ -3225,6 +3249,8 @@ export async function probeForms(
                     const made: string[] = await evalInPage(page, newRecordTokens, tokensBefore).catch(() => [] as string[]);
                     if (made.length) { needles = made.slice(0, 6); shownAs = made[0]; break; }
                 }
+                //  After its own marks: a mark says which record it is; a count says only that one was added.
+                if (await rowAdded()) { byRows = true; shownAs = 'a new row'; break; }
                 if (Date.now() >= madeUntil) break;
                 await page.waitForTimeout(250).catch(() => { });
                 if (anchor) shownAs = await visibleNeedle([anchor]);
@@ -3260,7 +3286,7 @@ export async function probeForms(
                 let found = '';
                 do {
                     if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
-                    found = await visibleNeedle(needles);
+                    found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
                 } while (!found && Date.now() < persistenceDeadline && eyeIsOpen());
                 let keptBy = found ? 'page' : '';
