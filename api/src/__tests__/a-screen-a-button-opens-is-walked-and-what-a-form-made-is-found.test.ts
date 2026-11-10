@@ -269,3 +269,33 @@ test('a field still marked from an earlier submit is not one that refused the va
     expect(refusedArabic).toEqual([]);
     expect(verdict.findings.map(f => f.code)).not.toContain('field_rejects_valid');
 });
+
+/*
+ * The third live check (2026-11-10, L160 again): the nav was «<a href="#cars">» links of a router
+ * answering each hash — proven pages by the anchor check, never walked: «1 screen, 0 pressed».
+ */
+test('pages a hash router answers are walked as screens, and their forms filled', async () => {
+    const page = ADMIN
+        .replace(/<button class="nav-btn" data-view="(\w+)">(\w+)<\/button>/g, '<a class="nav" href="#$1">$2</a>')
+        .replace("document.querySelectorAll('.nav-btn').forEach(function (b) { b.onclick = function () { show(b.dataset.view); }; });",
+            "window.addEventListener('hashchange', function () { show(location.hash.slice(1)); });")
+        .replace("if (location.hash !== '#' + view) history.replaceState(null, '', '#' + view);", '');
+    expect(page).toContain('href="#cars"');
+    expect(page).toContain('hashchange');
+    const rows: Record<string, any[]> = { cars: [], customers: [] };
+    const { dir, url } = await serve(page, (req, body, res) => {
+        const m = /^\/api\/(cars|customers)$/.exec(String(req.url || ''));
+        if (!m) return false;
+        if (req.method === 'POST') {
+            let row: any = {};
+            try { row = JSON.parse(body); } catch { /* refused below */ }
+            if (Object.values(row).some(v => String(v).trim() === '')) { res.writeHead(400, { 'content-type': 'application/json' }); res.end('{}'); return true; }
+            rows[m[1]].push({ id: rows[m[1]].length + 1, ...row });
+            res.writeHead(201, { 'content-type': 'application/json' }); res.end('{}'); return true;
+        }
+        res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(rows[m[1]])); return true;
+    });
+    const audit: any = await auditBuiltApp(dir, { serveUrl: url, timeoutMs: 120_000, request: 'An admin dashboard to manage cars and customers.' } as any);
+    expect(audit.routes).toEqual(expect.arrayContaining(['#cars', '#customers']));
+    expect(Number(audit.formsFilled || 0)).toBeGreaterThanOrEqual(2);
+});

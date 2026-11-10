@@ -72,7 +72,7 @@ const JOURNEYS: Array<{ asked: RegExp | ((request: string) => boolean); journey:
                 : { proven: false, why: missedBy(audit, 'add_to_cart') ? 'an «add to cart» was pressed and the cart did not count it' : 'no «add to cart» control was found on any screen' },
         },
     },
-    { asked: /checkout|\border\b|\bpay(?:ment)?\b|\bbuy\b|(?<![؀-ۿ])(?:و|ب|ال|بال|وال)?دفع(?![؀-ۿ])|ادفع|إتمام الطلب|الشراء|اطلب الآن/iu, journey: formJourney('checkout', 'إتمام الطلب والدفع', 'checking out', /checkout|order|pay|buy|purchase|place|confirm|complete|إتمام|اطلب|ادفع|دفع|شراء|تأكيد/iu, false) },
+    { asked: /checkout|\border\b|\bpay(?:ment)?\b|\bbuy\b|(?<![؀-ۿ])(?:و|ب|ال|بال|وال)?دفع(?![؀-ۿ])|ادفع|(?:إتمام|اتمام|تأكيد) (?:ال)?طلب|الشراء|اطلب الآن/iu, journey: formJourney('checkout', 'إتمام الطلب والدفع', 'checking out', /checkout|order|pay|buy|purchase|place|confirm|complete|إتمام|اطلب|ادفع|دفع|شراء|تأكيد/iu, false) },
     { asked: /\bbook(?:ing)?\b|reserv|appointment|حجز|احجز|موعد|مواعيد/iu, journey: formJourney('booking', 'الحجز', 'booking', /book|reserv|appointment|schedule|احجز|حجز|موعد/iu, true) },
     { asked: /\bposts?\b|\bfeed\b|منشور|تدوين|الخلاصة/iu, journey: formJourney('post', 'نشر منشور', 'posting', /post|publish|share|tweet|نشر|انشر|شارك/iu, true) },
     {
