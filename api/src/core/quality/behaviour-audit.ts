@@ -1451,6 +1451,22 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 anchorTargets[i].exists = true;
                 anchorControls[i].worked = true;
                 anchorControls[i].effect = effect;
+                /*
+                 * ⛔ …AND A PAGE IS A SCREEN THE WALK WALKS.
+                 *
+                 * The third live check, 2026-11-10 (L160, a car rental admin): its nav was
+                 * «#summary», «#cars», «#bookings», «#customers» — a router answering each
+                 * hash. Proven pages here, they were never walked: «1 screen, 0 pressed, 0
+                 * forms», the whole admin unseen behind its summary, and the delivery passed
+                 * on that. A hash a router answers, or a tab's section it shows, is an
+                 * address this press landed on (metrics.landedOn): app-audit walks it as a
+                 * screen, and one that opens on the same view costs a look.
+                 */
+                try {
+                    const at = new URL(`#${anchorTargets[i].target}`, probeStartUrl).href;
+                    const landed: string[] = (metrics.landedOn = Array.isArray(metrics.landedOn) ? metrics.landedOn : []);
+                    if (!landed.includes(at)) landed.push(at);
+                } catch { /* an address that cannot be read is not a screen */ }
             };
             const still: Array<{ a: typeof anchorTargets[number]; i: number }> = [];
             for (const { a, i } of toRecheck) {
