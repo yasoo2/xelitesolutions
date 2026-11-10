@@ -109,6 +109,10 @@ describe('a call is priced at the published rates', () => {
         const u = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 1_000_000, cacheWrite5mTokens: 1_000_000, cacheWrite1hTokens: 0 };
         expect(costOf('claude-sonnet-5-5', u)).toBeCloseTo(0.10 + 2.50, 10);
         expect(costOf('claude-opus-5-5', u)).toBeCloseTo(0.20 + 5, 10);
+        //  Fable 5.2 (2026-11-09): reads at 2.5% of $8, writes at $10 — below Fable 5.1's $0.25 + $12.50.
+        expect(costOf('claude-fable-5-2', u)).toBeCloseTo(0.20 + 10, 10);
+        expect(costOf('claude-fable-5-1', u)).toBeCloseTo(0.25 + 12.50, 10);
+        expect(costOf('claude-fable-5-2', { inputTokens: 1_000_000, outputTokens: 1_000_000, cacheReadTokens: 0, cacheWrite5mTokens: 0, cacheWrite1hTokens: 0 })).toBeCloseTo(8 + 40, 10);
     });
 
     it('a model with no checked price is refused, not guessed', async () => {

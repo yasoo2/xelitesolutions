@@ -1117,7 +1117,8 @@ const ANTHROPIC_MODELS: Array<{ id: string; name: string; descriptionKey: string
   { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', descriptionKey: 'modelHaikuDesc' },
   { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', descriptionKey: 'modelSonnet55Desc' },
   { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', descriptionKey: 'modelOpusDesc' },
-  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', descriptionKey: 'modelFableDesc' },
+  { id: 'claude-fable-5-2', name: 'Claude Fable 5.2', descriptionKey: 'modelFableDesc' },
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', descriptionKey: 'modelFable51Desc' },
 ];
 
 // Why a model list is only suggestions, in the user's language (provider-models.ts reason codes).
