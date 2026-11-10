@@ -58,14 +58,15 @@ export function intentOf(label: string, kind = 'button'): IntentRead {
     const s = String(label || '').trim().toLowerCase().replace(/\s+/g, ' ');
     const none: IntentRead = { intent: 'none', ar: '', en: '', weight: 'minor' };
     if (!s || kind === 'anchor') return none;
-    if (W(/add to (?:cart|basket|bag)|أضف (?:إلى|الى|لل)?\s*(?:ال)?سل[ةه]|اضف (?:إلى|الى)?\s*(?:ال)?سل[ةه]|إضافة (?:إلى|الى|لل) ?(?:ال)?سل[ةه]|أضف للسلة|add to order/u, s)) {
+    //  «Add Spring Water 6-Pack to cart», «أضف مياه معدنية إلى السلة»: the product's name between the words (L161, 2026-11-10).
+    if (W(/add to (?:cart|basket|bag)|\badd\b.{1,80}\bto (?:the |your |my )?(?:cart|basket|bag)\b|(?:أضف|اضف|إضافة|اضافة)(?:\s+\S+){0,8}\s+(?:إلى|الى|لل|ل)\s*(?:ال)?سل[ةه]|أضف للسلة|add to order/u, s)) {
         return { intent: 'add_to_cart', ar: 'يزيد عدد السلة', en: 'raises the cart\'s count', weight: 'major' };
     }
     if (W(/^(?:×|✕|✖|x|close|dismiss|cancel|إغلاق|اغلاق|أغلق|اغلق|إلغاء|الغاء)$/u, s)) {
         return { intent: 'close', ar: 'يغلق النافذة المفتوحة', en: 'closes the open dialog', weight: 'major' };
     }
-    if (W(/^(?:\+|＋|plus|increase|زيادة|زِد)$/u, s)) return { intent: 'increment', ar: 'يزيد الرقم بجانبه واحداً', en: 'raises the number beside it by one', weight: 'major' };
-    if (W(/^(?:-|−|–|minus|decrease|إنقاص|انقاص|نقص)$/u, s)) return { intent: 'decrement', ar: 'ينقص الرقم بجانبه واحداً', en: 'lowers the number beside it by one', weight: 'major' };
+    if (W(/^(?:\+|＋|plus|increase|زيادة|زِد)$|^(?:increase|زيادة|زِد) .{1,80}$/u, s)) return { intent: 'increment', ar: 'يزيد الرقم بجانبه واحداً', en: 'raises the number beside it by one', weight: 'major' };
+    if (W(/^(?:-|−|–|minus|decrease|إنقاص|انقاص|نقص)$|^(?:decrease|إنقاص|انقاص|نقص) .{1,80}$/u, s)) return { intent: 'decrement', ar: 'ينقص الرقم بجانبه واحداً', en: 'lowers the number beside it by one', weight: 'major' };
     if (W(/^(?:sort|order)\b|\bsort by\b|ترتيب|رتّب|رتب حسب|الأحدث|الأقدم|الأعلى سعر|الأقل سعر|newest|oldest|price: (?:low|high)/u, s)) {
         return { intent: 'sort', ar: 'يغيّر ترتيب القائمة', en: 'changes the list\'s order', weight: 'minor' };
     }

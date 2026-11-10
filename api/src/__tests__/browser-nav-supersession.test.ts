@@ -93,6 +93,25 @@ describe('navigation route supersession', () => {
         expect(page.goto).toHaveBeenCalledTimes(1);
     });
 
+    test('a goto another navigation aborted is superseded, and a preview that is down is unreachable — answers, not 502s', async () => {
+        const aborted = { url: () => 'http://localhost:4300/', goto: jest.fn().mockRejectedValue(new Error('page.goto: net::ERR_ABORTED at http://127.0.0.1:4300/')),
+            evaluate: jest.fn().mockResolvedValue('complete') };
+        (getBrowserSession as jest.Mock).mockResolvedValue({ page: aborted });
+        const one = response();
+        await handler(request('http://127.0.0.1:4300/'), one);
+        expect(one.statusCode).toBe(200);
+        expect(one.body.error).toBe('nav_superseded');
+
+        const down = { url: () => 'about:blank', goto: jest.fn().mockRejectedValue(new Error('page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:4300/')),
+            evaluate: jest.fn().mockResolvedValue('complete') };
+        (getBrowserSession as jest.Mock).mockResolvedValue({ page: down });
+        const two = response();
+        await handler(request('http://127.0.0.1:4300/'), two);
+        expect(two.statusCode).toBe(200);
+        expect(two.body).toMatchObject({ ok: false, unreachable: true, error: 'nav_target_unreachable' });
+        expect(down.goto).toHaveBeenCalledTimes(2);
+    });
+
     test('unauthorized and cross-user requests never claim or navigate a page', async () => {
         const missingAuth = response();
         await handler({ body: { sessionId: 'browser:test', url: 'http://localhost/' } }, missingAuth);

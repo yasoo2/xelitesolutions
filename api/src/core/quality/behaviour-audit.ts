@@ -813,6 +813,13 @@ export const MAX_SUBMITTED_CASES_PER_FORM = 3;
  * invalid; accepted when it kept it and holds it valid.
  */
 async function tryCaseAtInput(page: any, el: any, sel: string, value: string): Promise<{ rejected: boolean; accepted: boolean; unknown: boolean }> {
+    /*
+     * A field already marked invalid before this value was typed says nothing about this value.
+     * L162 (2026-11-10, the second live check): an earlier wrong case was sent, the store marked
+     * «الاسم الكامل» invalid and kept the mark until the next submit; the Arabic name typed after
+     * it was «refused» — field_rejects_valid on an Arabic store's name, a blocking refusal.
+     */
+    const wasMarked = await page.evaluate((s: string) => (document.querySelector(s) as HTMLElement | null)?.getAttribute('aria-invalid') === 'true', sel).catch(() => false);
     let typed = true;
     try { await el.fill(value, { timeout: 1500 }); } catch { typed = false; }
     await page.evaluate((s: string) => { (document.querySelector(s) as HTMLElement | null)?.blur(); }, sel).catch(() => { });
@@ -827,7 +834,10 @@ async function tryCaseAtInput(page: any, el: any, sel: string, value: string): P
     }, sel).catch(() => null);
     if (!state) return { rejected: false, accepted: false, unknown: true };
     const kept = typed && state.value === value;
-    return { rejected: !typed || !kept || !state.valid || state.marked, accepted: kept && state.valid && !state.marked, unknown: false };
+    //  The value itself refused (not typed, not kept, invalid by its own constraints) is known whatever the mark says.
+    if (!typed || !kept || !state.valid) return { rejected: true, accepted: false, unknown: false };
+    if (wasMarked && state.marked) return { rejected: false, accepted: false, unknown: true };
+    return { rejected: state.marked, accepted: !state.marked, unknown: false };
 }
 
 /** Each field back to the valid value it was given: a sent case, or a saved form, may have changed or cleared it. */
@@ -1894,7 +1904,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // A form probe owns submission in this visible state. Repeating the
         // same submit can be idempotent feedback or duplicate a real write.
         const measuredSubmits = new Set(filled
-            .filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused')
+            .filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused' || form.effect === 'searched')
             .map(form => form.label));
 
         const initialKeys = new Set(list.map(controlKey));
@@ -2474,6 +2484,12 @@ export function valueFor(type: string, tag: string, runNonce = '', language = 'e
 export function semanticTypeForField(tag: string, name: string): 'email' | 'tel' | 'date' | 'time' | 'number' | '' {
     if (String(tag).toLowerCase() !== 'input') return '';
     const label = String(name || '');
+    /*
+     * A search box searches: «Search name, email or phone…» is not an email field.
+     * L160 (2026-11-10): read as one, the delivery was refused twice and Joe changed a
+     * working search box to type="text" to quiet it.
+     */
+    if (/^\s*search\b|\bsearch\b|بحث|ابحث|فلترة|تصفية|filter/iu.test(label)) return '';
     if (/\bemail\b|e[- ]?mail|(?:البريد\s*)?(?:الإلكتروني|الالكتروني)/iu.test(label)) return 'email';
     if (/\b(?:phone|telephone|mobile|tel)\b|(?:رقم\s*)?(?:الهاتف|هاتف|الجوال|جوال|الموبايل|موبايل)/iu.test(label)) return 'tel';
     if (/\b(?:birth\s*date|date\s*of\s*birth|dob|date|expiry|expiration|deadline|due\s+date)\b|تاريخ\s*(?:الميلاد|الانتهاء|الاستحقاق)?/iu.test(label)) return 'date';
@@ -2945,6 +2961,17 @@ export async function probeForms(
             //  Not every field was filled (out of time, a field that would not take a value): sent like this, it proves nothing.
             metrics.formsUnfinished = Number(metrics.formsUnfinished || 0) + 1;
         }
+        /*
+         * A search that finds nothing to change is a search, not a dead form. L160 (2026-11-10):
+         * «Search» over an empty customers list — the QA's words matched nothing, and nothing
+         * was there to hide — was «filled in completely and submitted, and nothing happened»,
+         * a blocking refusal. What a search does is judged where it can be seen: the list, by
+         * the control's own job (qa-control-intent filter).
+         */
+        else if (f.fields.length && f.fields.every((x: any) => meaningOf({ tag: x.tag, type: x.type, name: x.name }) === 'search')) {
+            effect = 'searched';
+            metrics.searchesUnchanged = Number(metrics.searchesUnchanged || 0) + 1;
+        }
         else if (f.fields.length) {
             metrics.formsDeadSubmit++;
             metrics.formsDeadSubmitEvidence.push({
@@ -3191,7 +3218,7 @@ export function judgeBehaviour(
     //  and a form measured at one width never hides a dead submit at another (form-scope-prevents-false-dead-control).
     const hasWidth = (s: string) => /^[^:#/]+:/u.test(String(s || ''));
     const bareOf = (label: string, screen: string) => screen !== '/' && String(label).startsWith(`${screen} `) ? String(label).slice(screen.length + 1) : String(label);
-    const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused')
+    const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused' || form.effect === 'searched')
         .flatMap(form => {
             const scope = String(form.scope || '');
             if (hasWidth(scope)) return [`${scope}|${form.label}`];
