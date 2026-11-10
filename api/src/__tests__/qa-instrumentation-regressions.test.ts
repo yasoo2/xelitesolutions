@@ -56,8 +56,9 @@ describe('browser QA instrumentation regressions', () => {
     test('contact forms are not judged as persistent record editors', () => {
         const source = read('behaviour-audit.ts');
         expect(source).toContain('expectsPersistence');
-        //  A record is looked for by what was typed, or (no free text in the form) by what the submit made.
-        expect(source).toMatch(/effect === 'submitted' && f\.expectsPersistence && \(anchor \|\| tokensBefore\.length\)/);
+        //  A record is looked for by what was typed, or (no free text in the form) by what the submit made,
+        //  or (nothing of its own to show, L160 2026-11-10) by the row it added.
+        expect(source).toMatch(/effect === 'submitted' && f\.expectsPersistence && \(anchor \|\| tokensBefore\.length \|\| rowsBefore >= 0\)/);
         expect(source).toMatch(/add\|create\|save\|order\|register\|book\|reserve/);
     });
 
