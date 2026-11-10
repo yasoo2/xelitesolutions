@@ -560,6 +560,22 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     return forms;
 }
 
+/**
+ * Whether a nav item names the page it is on: its words (without «ال», «the») are in the page's
+ * title or main heading, or it is «Home» / «الرئيسية» on the start page.
+ */
+export function namesCurrentPage(label: string, pageNames: string, url = ''): boolean {
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/u)
+        .filter(Boolean).map(w => w.replace(/^(?:ال|وال|بال|لل)(?=[\u0600-\u06FF]{2,})/u, '').replace(/^the$/u, '')).filter(Boolean);
+    const words = norm(label);
+    if (!words.length || words.length > 4) return false;
+    let start = false;
+    try { const u = new URL(url); start = (u.pathname === '/' || /\/index\.html?$/i.test(u.pathname)) && (!u.hash || u.hash === '#' || u.hash === '#/'); } catch { /* no address */ }
+    if (start && /^(?:home|homepage|main|الرئيسية|الصفحة الرئيسية|رئيسية|الرئيسيه)$/iu.test(String(label).trim())) return true;
+    const page = new Set(norm(pageNames));
+    return words.every(w => page.has(w));
+}
+
 /** A control that moves a visitor forward first (0), one that takes something away last (2). */
 export function forwardRank(label: string): number {
     const s = String(label || '').trim().toLowerCase();
@@ -1248,6 +1264,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         /** Whether the last control of the walk was really pressed (an Escape after it closes what it opened). */
         let lastWasPressed = false;
         let baselineMayBeDirty = false;
+        /** Whether a press of this walk took something away (remove, decrease, clear, delete): what vanished after it is the walk's doing. */
+        let tookAway = false;
         // Each in-app navigation is a real interaction, but it must not strand
         // the remaining controls on the destination route.  Going "back" is
         // unreliable for hash routers: there may be no browser history entry
@@ -1334,7 +1352,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     return text === want || name === want;
                 }), c.label).catch(() => false);
             if (declined) return 'declined';
-            return wroteToProduct ? 'consumed' : '';
+            /*
+             * …and so is one the walk's own «remove», «decrease» or «clear» took away with
+             * its line. The fifth live check, 2026-11-10 (L162, an Arabic store, phone
+             * width): «إنقاص» emptied a cart line held in the browser, the line's «زيادة
+             * كمية» went with it, and «1 of 22 controls were gone» refused the store three
+             * times — no server write, so it was never «consumed».
+             */
+            return wroteToProduct || tookAway ? 'consumed' : '';
         };
         /**
          * ⛔ THE BASELINE INCLUDES WHERE THE PAGE WAS SCROLLED.
@@ -1813,6 +1838,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                if (effect && forwardRank(c.label) === 2) tookAway = true;
                 await judgeJob(c.label, current.sel, effect, job, factsBefore, stateBefore);
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
@@ -2033,6 +2059,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                if (effect && forwardRank(candidate.label) === 2) tookAway = true;
                 await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
                 if (effect === 'navigation') noteLanding(candidate);
                 if (effect === 'navigation' || effect === 'handoff') {
@@ -2356,6 +2383,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // still gives its quiet controls this one fair press.
         metrics.secondLook = [] as Array<{ label: string; after: string; effect: string }>;
         /**
+         * The page's own name, as a visitor reads it (its title and its main heading): a nav item that
+         * names it and changes nothing is the link to the page already open — «المتجر» on «متجر مكتب
+         * شكاوى البلدية», «Home» on the home page — not a dead control (judged after the second look).
+         */
+        const pageNames = await page.evaluate(() => [document.title, ...Array.from(document.querySelectorAll('h1')).map(h => (h as HTMLElement).innerText)].join(' ')).catch(() => '');
+        /**
          * ⛔ A SEARCH BUTTON IS PRESSED WITH WORDS IN ITS BOX, A CLEAR BUTTON
          * WITH SOMETHING TO CLEAR.
          *
@@ -2429,11 +2462,19 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             } catch { /* the control under test keeps its first verdict */ }
         }
         const answered = new Set(controls.filter(r => r.worked).map(r => `${r.kind}|${r.label}|${r.instance ?? 0}`));
-        const secondLookUntil = Date.now() + 8_000;
+        const secondLookUntil = Date.now() + 12_000;
         for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
             const quietItem = catalogued(quiet);
             if (!quietItem || !eyeIsOpen()) continue;
-            for (const mover of movers.filter(m => m.label !== quiet.label).slice(0, 2)) {
+            /*
+             * A nav item undoes another nav item: «المتجر» (setView('shop')) after «السلة», not after
+             * «أضف إلى السلة», which leaves the shop where it was (L162, the fifth live check: «Unresponsive
+             * controls: "المتجر"» three times; Joe made it focus the search box, then a link, to quiet it).
+             */
+            const nav = (k: string) => k === 'menu' || k === 'tab' || k === 'link';
+            const moverRank = (m: ControlResult) => (nav(quiet.kind) && nav(m.kind) ? 0 : 2) + (['dom', 'open', 'state'].includes(String(m.effect)) ? 0 : 1);
+            const tried = movers.filter(m => m.label !== quiet.label).map((m, i) => ({ m, i })).sort((a, b) => moverRank(a.m) - moverRank(b.m) || a.i - b.i).map(x => x.m);
+            for (const mover of tried.slice(0, 3)) {
                 if (Date.now() >= secondLookUntil || !eyeIsOpen()) break;
                 const moverItem = catalogued(mover);
                 if (!moverItem) continue;
@@ -2463,8 +2504,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
-                    break;
+                    if (effect) break;
                 } catch { /* the control under test keeps its first verdict */ }
+            }
+            //  Still quiet, in the nav, and naming the page it is on (or «Home» on the start page): the current page's link.
+            const stillQuiet = !controls.some(r => r.worked && r.kind === quiet.kind && r.label === quiet.label);
+            if (stillQuiet && nav(quiet.kind) && namesCurrentPage(quiet.label, pageNames, probeStartUrl)) {
+                controls.push({ label: quiet.label, kind: quiet.kind, worked: false, effect: 'current', instance: quiet.instance, href: quiet.href });
+                metrics.currentPageLinks = Number(metrics.currentPageLinks || 0) + 1;
             }
         }
         probeWrites.stop();
@@ -3167,7 +3214,7 @@ export async function probeForms(
 /* ---- judgement, on what actually happened ------------------------------ */
 
 /** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
-const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached']);
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current']);
 
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
@@ -3216,6 +3263,8 @@ export function judgeBehaviour(
         const key = `${control.context || ''}|${control.kind}|${control.bare || control.label}|${occurrence}`;
         const previous = evidence.get(key);
         if (!previous || (!previous.worked && control.worked)
+            //  A quiet press later known to be the link to the page already open (probeControls second look).
+            || (!previous.worked && control.effect === 'current')
             || (previous.effect === 'not found' && control.effect !== 'not found')
             || (NOT_PRESSED.has(String(previous.effect || '')) && !NOT_PRESSED.has(String(control.effect || '')))) evidence.set(key, control);
     });
@@ -3247,8 +3296,14 @@ export function judgeBehaviour(
     metrics.unreachable = unreachable.length;
 
     if (unreachable.length) {
+        /*
+         * «Not pressed, so not judged» — told, not refused, when it is a few of many: the builder cannot
+         * make the walk press what its own presses took away (L162, three refusals for 1 of 22). A walk
+         * that lost a fifth of the page or more saw a page that keeps redrawing itself: that refuses.
+         */
+        const share = judgedControls.length ? unreachable.length / judgedControls.length : 1;
         findings.push({
-            code: 'controls_not_reached', severity: 'minor',
+            code: 'controls_not_reached', severity: share >= 0.2 ? 'major' : 'minor',
             ar: `لم أصل إلى ${unreachable.length} من ${judgedControls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
             en: `${unreachable.length} of ${judgedControls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
             hint: 'the route moved while the audit was pressing; these were never tested',
