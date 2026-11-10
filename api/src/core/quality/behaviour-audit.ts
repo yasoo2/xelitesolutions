@@ -897,9 +897,11 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
  * (2xx) and those it refused (4xx). A refused write is remembered by its address
  * so its console line is known as the same refusal (isExpectedRefusal).
  */
-export function watchWrites(page: any): { saved: () => number; refused: () => number; stop: () => void } {
+export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; stop: () => void } {
     let saved = 0;
     let refused = 0;
+    /** Where the product took a write (POST, PUT, PATCH), in order: where what a form made is asked for again. */
+    const written: string[] = [];
     let origin = '';
     try { origin = new URL(String(page.url())).origin; } catch { origin = ''; }
     const on = (response: any) => {
@@ -909,7 +911,7 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             const at = String(response.url());
             if (origin && new URL(at).origin !== origin) return;
             const status = Number(response.status());
-            if (status >= 200 && status < 300) { if (method !== 'DELETE') saved++; return; }
+            if (status >= 200 && status < 300) { if (method !== 'DELETE') { saved++; written.push(at); } return; }
             if (status >= 400 && status < 500) {
                 refused++;
                 if (!page.__joeQaRefusedUrls) page.__joeQaRefusedUrls = new Set<string>();
@@ -918,7 +920,7 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
         } catch { /* a response that cannot be read wrote nothing we know of */ }
     };
     try { page.on('response', on); } catch { /* a page without events */ }
-    return { saved: () => saved, refused: () => refused, stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
+    return { saved: () => saved, refused: () => refused, written: () => written.slice(), stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
 }
 
 /** What one free-text field is sent with: it must come back as the text it was (probeForms). */
@@ -3040,6 +3042,8 @@ export async function probeForms(
         let tokensBefore: string[] = [];
         /** …and how many records it showed: a record with no mark of its own is the row it added (recordRowCount). */
         let rowsBefore = -1;
+        /** How many writes the product had taken before this form was sent: the ones after are this form's. */
+        let writtenBeforeSubmit = 0;
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
@@ -3050,6 +3054,7 @@ export async function probeForms(
             //  Marked, so a new document is told from the same one moving to another of its views (below).
             const urlBeforeSubmit = String(page.url() || '');
             const savedBeforeSubmit = writes.saved();
+            writtenBeforeSubmit = writes.written().length;
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
@@ -3329,6 +3334,37 @@ export async function probeForms(
                     }, needles).catch(() => false);
                     if (stored) keptBy = 'storage';
                     else if (served.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                    /*
+                     * …and, still not found, asked of the server where it was written. The tenth live check,
+                     * 2026-11-11 (L160, a React dashboard): a customer saved, shown, and after a reload the app
+                     * opened on its summary — the customers' tab is state, not an address — and fetched only
+                     * the totals. «Found nowhere», twice, for a record the server kept. A tester asks the
+                     * collection it was written to (POST /api/customers → GET /api/customers; PUT …/7 → …/7
+                     * and its collection), as the page itself would.
+                     */
+                    if (!keptBy && needles.length) {
+                        const asks = new Set<string>();
+                        for (const at of writes.written().slice(writtenBeforeSubmit)) {
+                            try {
+                                const u = new URL(at);
+                                u.search = ''; u.hash = '';
+                                asks.add(u.href);
+                                const parent = u.href.replace(/\/[^/]+\/?$/, '');
+                                if (parent.length > u.origin.length + 1) asks.add(parent);
+                            } catch { /* an address that cannot be read is not asked */ }
+                        }
+                        const bodies: string[] = await page.evaluate(async (list: string[]) => {
+                            const out: string[] = [];
+                            for (const at of list) {
+                                try {
+                                    const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json' } });
+                                    if (r.ok) out.push((await r.text()).slice(0, 400_000));
+                                } catch { /* not answered */ }
+                            }
+                            return out;
+                        }, [...asks].slice(0, 6)).catch(() => [] as string[]);
+                        if (bodies.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                    }
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }
                 if (!keptBy) {
