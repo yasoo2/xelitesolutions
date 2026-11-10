@@ -22,6 +22,9 @@ test('a search box with what narrows it is a search form; a form that writes is 
     expect(isSearchForm([{ tag: 'select', type: 'select-one', name: 'status' }])).toBe(false);
     expect(isSearchForm([{ tag: 'input', type: 'search', name: 'q' }, { tag: 'input', type: 'text', name: 'full name' }, { tag: 'input', type: 'email', name: 'email' }])).toBe(false);
     expect(isSearchForm([])).toBe(false);
+    //  The second review, 2026-11-11: «Add booking» with a «Search customer…» box beside its dates writes.
+    expect(isSearchForm([{ tag: 'input', type: 'search', name: 'customer Search customer' }, { tag: 'input', type: 'date', name: 'start' }, { tag: 'select', type: 'select-one', name: 'status' }], 'Add booking')).toBe(false);
+    expect(isSearchForm([{ tag: 'input', type: 'search', name: 'q' }, { tag: 'select', type: 'select-one', name: 'status' }], 'Search')).toBe(true);
 });
 
 const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Bookings</title>
