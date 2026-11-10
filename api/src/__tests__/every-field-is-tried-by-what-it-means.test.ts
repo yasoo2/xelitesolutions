@@ -7,7 +7,7 @@
  * from that meaning, with what each expects; and the valid value it is sent
  * with stays inside its own bounds.
  */
-import { casesFor, markupFieldOf, meaningOf, validValueFor, type QaField } from '../core/quality/qa-field-cases';
+import { casesFor, fillValueFor, markupFieldOf, meaningOf, validValueFor, type QaField } from '../core/quality/qa-field-cases';
 
 const f = (o: Partial<QaField>): QaField => ({ tag: 'input', type: 'text', name: '', ...o });
 const ids = (field: QaField) => casesFor(field).map(c => c.id);
@@ -98,4 +98,49 @@ test('the valid value it is sent with stays inside its own bounds', () => {
     expect(validValueFor(f({ type: 'number', name: 'price', max: '10' }))).toBe('10');
     expect(validValueFor(f({ type: 'email' }))).toBe('qa.tester@example.com');
     expect(validValueFor(f({ name: 'name', maxLength: 6 }), 'n0nce').length).toBeLessThanOrEqual(6);
+});
+
+/*
+ * The live check, 2026-11-10: L161's «Postcode» was sent «QA value MWA8…» and asked to take
+ * Arabic, and «Place order» was called dead for refusing it; L160's «Year» was sent 3, and
+ * «Create car» never made a car. A code is a short code; a year is a year.
+ */
+test('a postcode, a plate and a coupon are codes, and a year is a year', () => {
+    expect(meaningOf(f({ name: 'postcode Postcode' }))).toBe('code');
+    expect(meaningOf(f({ name: 'الرمز البريدي' }))).toBe('code');
+    expect(meaningOf(f({ name: 'plate Plate' }))).toBe('code');
+    expect(meaningOf(f({ type: 'number', name: 'year Year' }))).toBe('year');
+    expect(meaningOf(f({ type: 'number', name: 'years of experience' }))).not.toBe('year');
+    expect(validValueFor(f({ name: 'postcode Postcode' }))).toBe('12345');
+    expect(validValueFor(f({ name: 'plate Plate' }))).toBe('ABC-123');
+    expect(validValueFor(f({ name: 'coupon Promo code' }))).toBe('');
+    expect(validValueFor(f({ type: 'number', name: 'year Year' }))).toBe('2024');
+    expect(validValueFor(f({ type: 'number', name: 'year Year', min: '2025', max: '2030' }))).toBe('2025');
+    expect(validValueFor(f({ type: 'date', name: 'birth date تاريخ الميلاد' }))).toBe('1990-05-15');
+    //  A code is not asked to take Arabic, nor markup.
+    expect(ids(f({ name: 'postcode Postcode', required: true }))).not.toContain('code:arabic');
+    expect(ids(f({ name: 'postcode Postcode', required: true }))).not.toContain('code:markup');
+    expect(ids(f({ type: 'number', name: 'year Year', required: true }))).toEqual(['year:empty', 'year:letters', 'year:negative', 'year:fraction']);
+});
+
+test('the value a form is sent with is one its field would take: its meaning, its bounds, its pattern', () => {
+    expect(fillValueFor(f({ name: 'postcode Postcode' }), 'n0nce')).toBe('12345');
+    expect(fillValueFor(f({ type: 'number', name: 'year Year' }), 'n0nce')).toBe('2024');
+    expect(fillValueFor(f({ type: 'tel', name: 'phone', pattern: '05[0-9]{8}' }))).toBe('0555123456');
+    expect(fillValueFor(f({ type: 'tel', name: 'phone', pattern: '\\+962[0-9]{9}' }))).toBe('+962791234567');
+    expect(fillValueFor(f({ type: 'date', name: 'birth date' }))).toBe('1990-05-15');
+    //  A delivery or a booking: a little ahead — never in the past, never years away.
+    const ahead = fillValueFor(f({ type: 'date', name: 'Delivery date' }));
+    expect(ahead > new Date().toISOString().slice(0, 10)).toBe(true);
+    expect(ahead < new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)).toBe(true);
+    expect(fillValueFor(f({ type: 'date', name: 'Start', max: '2026-01-01' }))).toBe('2026-01-01');
+    //  Free text keeps the run's mark, in the page's language.
+    expect(fillValueFor(f({ name: 'city City' }), 'n0nce')).toBe('Joe QA n0nce');
+    expect(fillValueFor(f({ name: 'المدينة' }), 'n0nce', 'ar')).toBe('اختبار جو n0nce');
+    expect(fillValueFor(f({ tag: 'textarea', type: 'textarea', name: 'notes' }), 'n0nce')).toContain('n0nce');
+    expect(fillValueFor(f({ name: 'coupon Promo code' }))).toBe('');
+    //  A pair of dates: the end after the start (L160's «Create booking»).
+    const start = fillValueFor(f({ type: 'date', name: 'startDate Start date' }));
+    expect(fillValueFor(f({ type: 'date', name: 'endDate End date' })) > start).toBe(true);
+    expect(fillValueFor(f({ type: 'date', name: 'تاريخ المغادرة' })) > fillValueFor(f({ type: 'date', name: 'تاريخ الوصول' }))).toBe(true);
 });

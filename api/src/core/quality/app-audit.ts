@@ -23,7 +23,7 @@ import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
-import { HANDOFF_SCHEME, isExpectedRefusal } from './behaviour-audit';
+import { HANDOFF_SCHEME, isExpectedRefusal, sameDocumentUrl } from './behaviour-audit';
 import { productProfile, proveJourneys } from './qa-product-profile';
 import { AuditEyes, evalInPage } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
@@ -501,6 +501,20 @@ export function inAppRoutes(links: AppLink[], pageUrl: string): string[] {
     // test. Keep the walk bounded, but preserve every route the product
     // exposes up to the explicit browser budget.
     return [...out].slice(0, 20);
+}
+
+/**
+ * The screen a press landed on, as the walk names its screens: «#cars» for a
+ * view a button set after the «#» (with or without a slash), «/cars» for
+ * another page of the product; '' for the same screen, another site, a file.
+ */
+export function routeOfLanding(abs: string, pageUrl: string): string {
+    let to: URL, here: URL;
+    try { to = new URL(String(abs || '')); here = new URL(String(pageUrl || '')); } catch { return ''; }
+    if (to.origin !== here.origin || !/^https?:$/.test(to.protocol)) return '';
+    const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+    if (bare(to.pathname) === bare(here.pathname) && to.search === here.search) return to.hash.length > 1 ? to.hash : '';
+    return inAppRoutes([{ href: `${to.pathname}${to.search}`, abs: to.href, download: false }], pageUrl)[0] || '';
 }
 
 export function routeUrl(base: string, route: string): string {
@@ -1375,6 +1389,8 @@ export async function auditBuiltApp(
                 download: a.hasAttribute('download'),
             })),
         ).then((links: AppLink[]) => inAppRoutes(links, String(page.url() || url))).catch(() => []);
+        /** The addresses the landing page's presses reached (probeControls metrics.landedOn): screens to walk (learnPresses). */
+        let homeLandings: string[] = [];
 
         const allControls: any[] = [];
         const allForms: FormResult[] = [];
@@ -1411,6 +1427,8 @@ export async function auditBuiltApp(
             behaviourMetrics.intentFailures = [...(behaviourMetrics.intentFailures || []), ...(p.metrics.intentFailures || []).map((x: any) => ({ ...x, route }))];
             for (const [k, v] of Object.entries(p.metrics.intentsMetBy || {})) behaviourMetrics.intentsMetBy = { ...(behaviourMetrics.intentsMetBy || {}), [k]: Number(behaviourMetrics.intentsMetBy?.[k] || 0) + Number(v || 0) };
             behaviourMetrics.formsPersistenceEvidence = [...(behaviourMetrics.formsPersistenceEvidence || []), ...(p.metrics.formsPersistenceEvidence || []).map((x: any) => ({ ...x, route }))];
+            behaviourMetrics.ordersNotKept = Number(behaviourMetrics.ordersNotKept || 0) + Number(p.metrics.ordersNotKept || 0);
+            behaviourMetrics.ordersNotKeptEvidence = [...(behaviourMetrics.ordersNotKeptEvidence || []), ...(p.metrics.ordersNotKeptEvidence || []).map((x: any) => ({ ...x, route }))];
             behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
             behaviourMetrics.formsNotReachedEvidence.push(...(p.metrics.formsNotReachedEvidence || []).map((evidence: any) => ({ ...evidence, route })));
@@ -1466,6 +1484,8 @@ export async function auditBuiltApp(
         const seenForms = new Set<string>();
         /** The link destinations this walk reached by a press: checked within reach on other screens, not travelled again. */
         const pressedHrefs = new Set<string>();
+        /** The buttons whose press took the walk to another screen: checked within reach on the others (probeControls travelled). */
+        const travelled = new Set<string>();
         // One deadline governs the entire visible walk. Do not reset a small
         // per-page minimum after the deadline: on a route-heavy app that made
         // the browser appear frozen for minutes after "pressing" had started.
@@ -1475,6 +1495,7 @@ export async function auditBuiltApp(
             budgetMs: Math.min(CONTROL_PASS_BUDGET_MS * scale, remainingWalkMs()),
             seenForms,
             pressedHrefs,
+            travelled,
             formScope,
             formContext,
             isEyeOpen: eyeIsOpen,
@@ -1566,6 +1587,7 @@ export async function auditBuiltApp(
                 if (!cut && !homeProbe.metrics.eyeLost) walked.set('desktop:/', { view: homeView, probe: homeProbe, heard: heardSince(heard) });
             }
             mergeProbe(homeProbe, '/');
+            homeLandings = Array.isArray(homeProbe?.metrics?.landedOn) ? homeProbe.metrics.landedOn : [];
             if (opts?.externalApi) {
                 opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
                 const scenarioStart = successfulExternalRequests.length;
@@ -1747,24 +1769,40 @@ export async function auditBuiltApp(
          */
         const routePattern = (r: string) => r.replace(/\/[^/?#]*\d[^/?#]*/g, '/:id');
         const knownPatterns = new Set(routes.map(routePattern));
-        const learnRoutes = async (from: string) => {
+        /** One screen learned: once per pattern, at most MAX_WALKED_ROUTES, the walk's clock grown by its share. */
+        const learnRoute = (found: string, from: string, how: string) => {
+            if (!found || routes.length >= MAX_WALKED_ROUTES || routes.includes(found)) return;
+            const pattern = routePattern(found);
+            if (knownPatterns.has(pattern)) return;
+            knownPatterns.add(pattern);
+            routes.push(found);
+            walkUntil = Math.min(walkCeiling, walkUntil + LEARNED_ROUTE_MS);
+            opts?.onProgress?.(`screen found ${how} on ${from}: ${found}`);
+        };
+        /*
+         * ⛔ …AND THE SCREENS ITS BUTTONS OPEN.
+         *
+         * L160 (2026-11-10, a car rental admin): its four views were buttons that
+         * set «#cars», «#bookings», «#customers» — no link — and the walk walked
+         * only «/», its summary: three screens and every form of the admin
+         * unwalked. An address a press landed on (probeControls metrics.landedOn)
+         * is a screen like a link's; one that shows a screen already walked is
+         * met as «same view» and costs a look.
+         */
+        const learnPresses = (from: string, landed: unknown) => {
+            for (const at of Array.isArray(landed) ? landed : []) learnRoute(routeOfLanding(String(at), url), from, 'by a press');
+        };
+        const learnRoutes = async (from: string, probe?: { metrics?: Record<string, any> }) => {
             if (routes.length >= MAX_WALKED_ROUTES) return;
             const links: AppLink[] = await page.evaluate(() =>
                 Array.from(document.querySelectorAll('a[href]')).map(a => ({
                     href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '', download: a.hasAttribute('download'),
                 })),
             ).catch(() => []);
-            for (const found of inAppRoutes(links, String(page.url() || url))) {
-                if (routes.includes(found)) continue;
-                const pattern = routePattern(found);
-                if (knownPatterns.has(pattern)) continue;
-                knownPatterns.add(pattern);
-                routes.push(found);
-                walkUntil = Math.min(walkCeiling, walkUntil + LEARNED_ROUTE_MS);
-                opts?.onProgress?.(`screen found on ${from}: ${found}`);
-                if (routes.length >= MAX_WALKED_ROUTES) break;
-            }
+            for (const found of inAppRoutes(links, String(page.url() || url))) learnRoute(found, from, 'by a link');
+            learnPresses(from, probe?.metrics?.landedOn);
         };
+        learnPresses('/', homeLandings);
         for (const r of routes) {
             const unit = `desktop:${r}`;
             const routeKept = carried.get(unit);
@@ -1785,7 +1823,16 @@ export async function auditBuiltApp(
             const pageAddress = r.startsWith('/');
             const heard = mark();
             try {
-                const opened = await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                //  A jump inside one document («/#summary» → «/#cars») loads nothing: a product that reads its #view on load is loaded again.
+                const jumpFrom = sameDocumentUrl(String(page.url() || ''), target)
+                    ? viewKey(await evalInPage(page, readViewParts).catch(() => null)) : '';
+                let opened = await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                if (jumpFrom) {
+                    await page.waitForTimeout(300);
+                    if (viewKey(await evalInPage(page, readViewParts).catch(() => null)) === jumpFrom) {
+                        opened = await page.reload({ waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) }).catch(() => opened);
+                    }
+                }
                 const status = Number(opened?.status?.() || 0);
                 if (pageAddress && status >= 400) { brokenRoutes.push(`${r} (HTTP ${status})`); continue; }
                 await page.waitForTimeout(500);
@@ -1803,7 +1850,7 @@ export async function auditBuiltApp(
                 if (view) seenViews.set(view, r);
                 const routeProbe = await probeControls(page, probeOpts(`desktop:${r}`, r));
                 mergeProbe(routeProbe, r);
-                await learnRoutes(r);
+                await learnRoutes(r, routeProbe);
                 const cut = (routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs();
                 if (cut) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
