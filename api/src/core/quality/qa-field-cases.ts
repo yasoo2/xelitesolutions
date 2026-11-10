@@ -196,7 +196,11 @@ export function fillValueFor(f: QaField, nonce = '', language = 'en'): string {
              * showed nothing the page had not shown before — «never showed outside the form», four times.
              */
             const spread = nonce ? [...nonce].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 21 : 0;
-            const day = /birth|\bdob\b|ميلاد/u.test(words) ? '1990-05-15' : clampDate(isoIn((second ? 9 : 7) + spread));
+            //  A field whose max the spread would cross keeps the days it always had (the second review, 2026-11-11):
+            //  clamped, a start and an end would both land on the max — the same day, refused by any booking form.
+            const base = second ? 9 : 7;
+            const spreadOk = !(f.max && /^\d{4}-\d{2}-\d{2}/.test(String(f.max)) && isoIn(base + spread) > String(f.max));
+            const day = /birth|\bdob\b|ميلاد/u.test(words) ? '1990-05-15' : clampDate(isoIn(base + (spreadOk ? spread : 0)));
             if (type === 'month') return day.slice(0, 7);
             if (type === 'datetime-local') return `${day}T12:30`;
             if (type === 'week') return `${day.slice(0, 4)}-W20`;

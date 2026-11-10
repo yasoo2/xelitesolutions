@@ -45,7 +45,7 @@ test('«+ Add customer» after Cars is dead, and the finding names the id the pa
         await tab.evaluate(() => { location.hash = '#customers'; });
         await tab.waitForTimeout(300);
         const probe = await probeControls(tab, { fillForms: false, budgetMs: 30_000 });
-        expect(probe.metrics.duplicateIds).toEqual([{ id: 'addBtn', count: 2 }]);
+        expect(probe.metrics.duplicateIds).toEqual([{ id: 'addBtn', count: 2, labels: ['+ Add car', '+ Add customer'] }]);
         const verdict = judgeBehaviour(probe.controls, { ...probe.metrics });
         const dead = verdict.findings.filter(f => /dead_controls/.test(f.code));
         expect(dead.map(f => f.en).join(' ')).toMatch(/\+ Add customer/);
@@ -55,6 +55,12 @@ test('«+ Add customer» after Cars is dead, and the finding names the id the pa
         await browser.close();
         await new Promise<void>(r => server.close(() => r()));
     }
+});
+
+test('an id held twice by controls that are not the dead one is not given as its cause', () => {
+    const controls = [{ label: 'Save', kind: 'button', worked: false, effect: '' }, { label: 'Open', kind: 'button', worked: true, effect: 'dom' }, { label: 'Next', kind: 'button', worked: true, effect: 'dom' }];
+    const f = judgeBehaviour(controls as any, { duplicateIds: [{ id: 'menu', count: 2, labels: ['Menu'] }] }).findings.find(x => /dead_controls/.test(x.code))!;
+    expect(f.en).toBe('Unresponsive controls: "Save"');
 });
 
 test('with no id held twice, a dead button is told as before', () => {

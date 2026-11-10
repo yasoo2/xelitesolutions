@@ -29,7 +29,7 @@ test('a booking with no text of its own is never deleted by its date: the earlie
 <style>body{font-family:sans-serif;margin:16px} button,input,select{min-height:44px;margin:4px} .hidden{display:none}</style></head><body>
 <h1>Bookings</h1><p id="count"></p>
 <form id="f"><select name="car" required><option value="">Car…</option><option>Corolla</option></select>
-<input type="date" name="start" required><input type="date" name="end" required><button>Save</button></form>
+<input type="date" name="start" required min="${inDays(7)}" max="${inDays(7)}"><input type="date" name="end" required min="${inDays(9)}" max="${inDays(9)}"><button>Save</button></form>
 <table id="list" class="hidden"><tbody id="rows"></tbody></table>
 <script>
   function draw(list) {

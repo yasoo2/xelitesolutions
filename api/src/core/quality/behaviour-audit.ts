@@ -587,7 +587,7 @@ export function namesCurrentPage(label: string, pageNames: string, url = ''): bo
 /** Runs in the page: how many shown controls carry each name, named as findControls names them — stamping nothing. Self-contained. */
 export function controlLabelCounts(): Record<string, number> {
     const out: Record<string, number> = {};
-    document.querySelectorAll('button, [role="button"], a[href], summary, input[type="submit"], input[type="button"], [role="tab"], [role="menuitem"], [role="link"]').forEach(node => {
+    document.querySelectorAll('button, [role="button"], a[href], summary, input[type="submit"], input[type="button"], [role="tab"], [role="menuitem"], [role="link"], [data-tab], .tab, .filter, [data-filter], [aria-expanded], [aria-haspopup], .menu-toggle, .nav-toggle, .hamburger, .burger, [data-menu]').forEach(node => {
         const el = node as HTMLElement;
         const r = el.getBoundingClientRect();
         const cs = getComputedStyle(el);
@@ -643,8 +643,10 @@ export function currentLinkFacts(sel: string): { names: string; toggle: boolean;
  * with its «All statuses» select was «filled in completely and submitted, and nothing happened»,
  * because only a box alone counted as a search — a blocking refusal of a working search.
  */
-export function isSearchForm(fields: Array<{ tag?: string; type?: string; name?: string }>): boolean {
+export function isSearchForm(fields: Array<{ tag?: string; type?: string; name?: string }>, label = ''): boolean {
     if (!fields.length) return false;
+    //  The second review, 2026-11-11: «Add booking» with a «Search customer…» box beside its dates is a form that writes.
+    if (/\b(?:add|create|save|submit|book|reserve|order|send|register|update|post|publish|confirm|pay|check ?out|sign (?:in|up)|log ?in|apply now)\b|أضف|إضافة|اضافة|حفظ|احفظ|أرسل|ارسل|إرسال|ارسال|احجز|حجز|تأكيد|سجّل|سجل|تسجيل|اطلب|ادفع/iu.test(String(label))) return false;
     const meanings = fields.map(x => meaningOf({ tag: x.tag, type: x.type, name: x.name } as any));
     return meanings.includes('search') && meanings.every(m => m === 'search' || m === 'select' || m === 'check' || m === 'date' || m === 'range' || m === 'number');
 }
@@ -697,13 +699,43 @@ export function newRecordTokens(before: string[]): string[] {
     return out.sort((a, b) => lettered(b) - lettered(a)).slice(0, 12);
 }
 
+/**
+ * Runs in the page: the delete button of a record that holds the QA's own mark, stamped — or ''.
+ * Self-contained.
+ *
+ * The second review, 2026-11-11: «exactly one record holds the mark» counted the containers the
+ * delete buttons sat in, then clicked the first button. In a card grid (.row > .col > .card), every
+ * «Delete» resolved to the one .row, the count was 1, and the first card — a visitor's — was the one
+ * pressed. Now each delete is tied to the smallest part of the page that holds the mark above it,
+ * and that part must hold no other delete: the record's own button, never a neighbour's. With
+ * `onlyOne`, two such records (two of the QA's, or a lookalike) are never guessed between.
+ */
+export function stampOwnDelete(arg: { needle: string; stamp: string; onlyOne: boolean }): string {
+    const { needle, stamp, onlyOne } = arg;
+    document.querySelectorAll(`[${stamp}]`).forEach(el => el.removeAttribute(stamp));
+    if (!needle) return '';
+    const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText].filter(Boolean).join(' '));
+    const deletes = (Array.from(document.querySelectorAll('button,[role="button"],a')) as HTMLElement[]).filter(isDelete);
+    const own = deletes.filter(button => {
+        let holder: HTMLElement | null = button.parentElement;
+        while (holder && holder !== document.body && !String(holder.innerText || '').includes(needle)) holder = holder.parentElement;
+        if (!holder || holder === document.body) return false;
+        const inside = holder;
+        return deletes.filter(d => inside.contains(d)).length === 1;
+    });
+    if (!own.length || (onlyOne && own.length !== 1)) return '';
+    own[0].setAttribute(stamp, '1');
+    return `[${stamp}="1"]`;
+}
+
 /** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
 export function recordRowCount(): number {
     const ROW = 'li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]';
     const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice,form,nav,header,footer,thead,script,style,template';
     let n = 0;
     document.querySelectorAll(ROW).forEach(el => {
-        if (el.closest(noise) || el.querySelector(ROW)) return;
+        //  A panel holding a form is the form, not a record: its closing must not cancel the row it added.
+        if (el.closest(noise) || el.querySelector(ROW) || el.querySelector('form')) return;
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width > 1 && r.height > 1) n++;
     });
@@ -719,13 +751,19 @@ export function recordRowCount(): number {
  * Cars, its «+ Add customer» did nothing. The walk was right to call it dead, and the builder,
  * told only «unresponsive», changed the form's validation twice.
  */
-export function duplicateControlIds(): Array<{ id: string; count: number }> {
-    const counts = new Map<string, number>();
+export function duplicateControlIds(): Array<{ id: string; count: number; labels: string[] }> {
+    const seen = new Map<string, { count: number; labels: string[] }>();
     document.querySelectorAll('button[id],a[id],input[id],select[id],textarea[id],form[id],[role="button"][id]').forEach(el => {
         const id = el.getAttribute('id') || '';
-        if (id) counts.set(id, (counts.get(id) || 0) + 1);
+        if (!id) return;
+        const s = seen.get(id) || { count: 0, labels: [] };
+        s.count++;
+        //  Named as findControls names a control, so the hint is given only beside a dead control that carries the id.
+        const name = el.getAttribute('aria-label') || el.getAttribute('title') || String((el as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+        if (name && !s.labels.includes(name)) s.labels.push(name);
+        seen.set(id, s);
     });
-    return Array.from(counts.entries()).filter(([, n]) => n > 1).map(([id, count]) => ({ id, count })).slice(0, 6);
+    return Array.from(seen.entries()).filter(([, s]) => s.count > 1).map(([id, s]) => ({ id, count: s.count, labels: s.labels.slice(0, 8) })).slice(0, 6);
 }
 
 /** Runs in the page: each visible form, by its fields and its button. Self-contained. */
@@ -990,16 +1028,8 @@ export async function deleteOwnRecords(page: any, needle: string, max = 4): Prom
                 .filter(el => !el.closest('form') && (el as HTMLElement).innerText.includes(n)).length, needle).catch(() => 0);
             const before = await count();
             if (!before) break;
-            const sel = await page.evaluate(({ n, i }: { n: string; i: number }) => {
-                const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText].filter(Boolean).join(' '));
-                const target = (Array.from(document.querySelectorAll('button,[role="button"],a')) as HTMLElement[]).filter(isDelete).find(el => {
-                    const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.card,.entry,article');
-                    return !!record && (record as HTMLElement).innerText.includes(n);
-                });
-                if (!target) return '';
-                target.setAttribute('data-joe-qa-own-delete', String(i));
-                return `[data-joe-qa-own-delete="${i}"]`;
-            }, { n: needle, i }).catch(() => '');
+            //  Each of its own records by its own button (stampOwnDelete); a stamp left by the last turn is cleared first.
+            const sel = await page.evaluate(stampOwnDelete, { needle, stamp: 'data-joe-qa-own-delete', onlyOne: false }).catch(() => '');
             if (!sel) break;
             await page.$(sel).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
             const until = Date.now() + 2000;
@@ -1258,7 +1288,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
     //  Read as the walk finds the page, before any restore draws it fresh (a reload loses the second copy).
-    const idsAtStart: Array<{ id: string; count: number }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    const idsAtStart: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
     const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     // Button exploration is useful, but a quality run that never reaches its
     // forms cannot prove the input contract the user relies on. Reserve a
@@ -2676,7 +2706,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         probeWrites.stop();
         phase('rest');
     }
-    const idsAtEnd: Array<{ id: string; count: number }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    const idsAtEnd: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
     metrics.duplicateIds = [...idsAtStart, ...idsAtEnd.filter(d => !idsAtStart.some(s => s.id === d.id))].slice(0, 6);
 
     return { controls, metrics, forms: filled };
@@ -3042,6 +3072,8 @@ export async function probeForms(
         let tokensBefore: string[] = [];
         /** …and how many records it showed: a record with no mark of its own is the row it added (recordRowCount). */
         let rowsBefore = -1;
+        /** The headings the form was sent under: the view a row count is compared on. */
+        let viewBeforeSubmit: string[] = [];
         /** How many writes the product had taken before this form was sent: the ones after are this form's. */
         let writtenBeforeSubmit = 0;
         try {
@@ -3058,6 +3090,7 @@ export async function probeForms(
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
+            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
@@ -3198,7 +3231,7 @@ export async function probeForms(
          * a blocking refusal. What a search does is judged where it can be seen: the list, by
          * the control's own job (qa-control-intent filter).
          */
-        else if (isSearchForm(f.fields)) {
+        else if (isSearchForm(f.fields, f.label) && !f.placesOrder) {
             effect = 'searched';
             metrics.searchesUnchanged = Number(metrics.searchesUnchanged || 0) + 1;
         }
@@ -3264,7 +3297,17 @@ export async function probeForms(
              * of records, after the submit and again after a reload; never deleted (it carries no run mark).
              */
             let byRows = false;
-            const rowAdded = async () => rowsBefore >= 0 && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
+            /*
+             * Only with no mark of its own to look for, and only on the view the form was sent from — the
+             * second review, 2026-11-11: a list filtered empty before the submit, or a reload that opens
+             * on a dashboard of cards, raises the count without a record; a heading shown before that is
+             * gone is another view, and proves nothing.
+             */
+            const sameView = async () => {
+                const now: string[] = await page.evaluate(visibleHeadings).catch(() => [] as string[]);
+                return viewBeforeSubmit.every(h => now.includes(h));
+            };
+            const rowAdded = async () => !anchor && rowsBefore >= 0 && await sameView() && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
             /*
              * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
              * closed its form at once and drew the bookings table after its GET answered; looked
@@ -3353,16 +3396,20 @@ export async function probeForms(
                                 if (parent.length > u.origin.length + 1) asks.add(parent);
                             } catch { /* an address that cannot be read is not asked */ }
                         }
-                        const bodies: string[] = await page.evaluate(async (list: string[]) => {
-                            const out: string[] = [];
-                            for (const at of list) {
-                                try {
-                                    const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json' } });
-                                    if (r.ok) out.push((await r.text()).slice(0, 400_000));
-                                } catch { /* not answered */ }
-                            }
-                            return out;
-                        }, [...asks].slice(0, 6)).catch(() => [] as string[]);
+                        //  Bounded: an endpoint that never answers (a stream, a long poll, a handler that threw) costs 3 s, never the walk.
+                        const bodies: string[] = await Promise.race([
+                            page.evaluate(async (list: string[]) => {
+                                const out: string[] = [];
+                                for (const at of list) {
+                                    try {
+                                        const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+                                        if (r.ok) out.push((await r.text()).slice(0, 400_000));
+                                    } catch { /* not answered */ }
+                                }
+                                return out;
+                            }, [...asks].slice(0, 6)).catch(() => [] as string[]),
+                            new Promise<string[]>(resolve => setTimeout(() => resolve([]), 12_000)),
+                        ]);
                         if (bodies.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
                     }
                 }
@@ -3387,28 +3434,8 @@ export async function probeForms(
                 const ownMark = [anchor, ...needles].find(n => !!n && n.includes(runNonce)) || '';
                 if (found && !ownMark) metrics.qaRecordsLeft = Number(metrics.qaRecordsLeft || 0) + 1;
                 if (found && ownMark) {
-                    const deleteSelector = await page.evaluate((needle: string) => {
-                        const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([
-                            el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText,
-                        ].filter(Boolean).join(' '));
-                        const candidates = Array.from(document.querySelectorAll('button,[role="button"],a'))
-                            .filter(isDelete) as HTMLElement[];
-                        const records = new Set<Element>();
-                        const own = candidates.filter(el => {
-                            const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.transaction,.entry,article');
-                            if (!record || !(record as HTMLElement).innerText.includes(needle)) return false;
-                            records.add(record);
-                            return true;
-                        });
-                        //  Exactly one record holds the mark: never a guess between two.
-                        if (records.size !== 1) return '';
-                        const target = own[0];
-                        if (!target) return '';
-                        //  One stamp at a time: a stamp left on another view's button would be clicked instead.
-                        document.querySelectorAll('[data-joe-qa-delete-own-record]').forEach(el => el.removeAttribute('data-joe-qa-delete-own-record'));
-                        target.setAttribute('data-joe-qa-delete-own-record', 'true');
-                        return '[data-joe-qa-delete-own-record="true"]';
-                    }, ownMark).catch(() => '');
+                    //  Exactly one record holds the mark, by its own button (stampOwnDelete): never a guess, never a neighbour's.
+                    const deleteSelector = await page.evaluate(stampOwnDelete, { needle: ownMark, stamp: 'data-joe-qa-delete-own-record', onlyOne: true }).catch(() => '');
                     if (deleteSelector) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
@@ -3567,7 +3594,8 @@ export function judgeBehaviour(
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;
     //  Where a dead control's handler may have gone: an id the page holds twice (duplicateControlIds).
-    const twice: Array<{ id: string; count: number }> = Array.isArray(metrics.duplicateIds) ? metrics.duplicateIds : [];
+    const twice: Array<{ id: string; count: number; labels?: string[] }> = (Array.isArray(metrics.duplicateIds) ? metrics.duplicateIds : [])
+        .filter((d: { labels?: string[] }) => !Array.isArray(d.labels) || dead.some(x => d.labels!.includes(String(x.bare || x.label))));
     const twiceEn = twice.length ? ` — the page holds ${twice.map(d => `id="${d.id}" ${d.count} times`).join(', ')}: code that finds an element by its id gets the first, which may be a hidden screen's copy; give each screen's controls their own ids, or look them up inside their own screen` : '';
     const twiceAr = twice.length ? ` — في الصفحة ${twice.map(d => `المعرّف «${d.id}» ${d.count} مرات`).join('، ')}: الشيفرة التي تبحث عن عنصر بمعرّفه تجد الأول، وقد يكون نسخة شاشة مخفية؛ أعطِ أزرار كل شاشة معرّفات خاصة بها، أو ابحث عنها داخل شاشتها` : '';
     if (dead.length >= 2 && deadRatio >= 0.4) {
