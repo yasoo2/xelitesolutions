@@ -480,6 +480,14 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     // Same reason as the controls above: a hash route keeps the old stamps.
     document.querySelectorAll('[data-joe-form]').forEach(el => el.removeAttribute('data-joe-form'));
     document.querySelectorAll('[data-joe-fld]').forEach(el => el.removeAttribute('data-joe-fld'));
+    /*
+     * …and the submit stamps with them. The seventh live check, 2026-11-10 (L160, one document, its views
+     * hidden and shown): the cars view's «Save» kept «joe-form-1» from the cars pass; on the customers
+     * view the customers' «Save» got «joe-form-1» too, and the QA filled the customers' form and pressed
+     * the first stamp in the document — the hidden cars «Save». Nothing was sent: «filled in completely and
+     * submitted, and nothing happened at all», ten refusals, and a working dashboard failed after 76 minutes.
+     */
+    document.querySelectorAll('[data-joe-sub]').forEach(el => el.removeAttribute('data-joe-sub'));
     const forms: Array<{
         sel: string; label: string;
         fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string }>;
@@ -576,6 +584,21 @@ export function namesCurrentPage(label: string, pageNames: string, url = ''): bo
     return words.every(w => page.has(w));
 }
 
+/** Runs in the page: how many shown controls carry each name, named as findControls names them — stamping nothing. Self-contained. */
+export function controlLabelCounts(): Record<string, number> {
+    const out: Record<string, number> = {};
+    document.querySelectorAll('button, [role="button"], a[href], summary, input[type="submit"], input[type="button"], [role="tab"], [role="menuitem"], [role="link"]').forEach(node => {
+        const el = node as HTMLElement;
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        if (!(r.width > 4 && r.height > 4 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05)) return;
+        const text = (el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+        const name = el.getAttribute('aria-label') || el.getAttribute('title') || text || el.tagName.toLowerCase();
+        out[name] = (out[name] || 0) + 1;
+    });
+    return out;
+}
+
 /** Runs in the page: the headings a visitor sees, numbers masked — the view he is on («Your cart (2)» is the cart either way). Self-contained. */
 export function visibleHeadings(): string[] {
     const out: string[] = [];
@@ -611,6 +634,19 @@ export function currentLinkFacts(sel: string): { names: string; toggle: boolean;
     const own = String(el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').toLowerCase();
     const brand = !!el.closest('header, [role="banner"]') && !group && own.length >= 2 && String(document.title || '').toLowerCase().includes(own);
     return { names, toggle, marked, first, brand };
+}
+
+/**
+ * A FORM THAT SEARCHES: a search box, with nothing beside it but what narrows the search — a
+ * select, a date, a checkbox, a number. Sent with words that match what the list already shows,
+ * it rightly changes nothing. The seventh live check, 2026-11-10 (L160): the bookings' «Search»
+ * with its «All statuses» select was «filled in completely and submitted, and nothing happened»,
+ * because only a box alone counted as a search — a blocking refusal of a working search.
+ */
+export function isSearchForm(fields: Array<{ tag?: string; type?: string; name?: string }>): boolean {
+    if (!fields.length) return false;
+    const meanings = fields.map(x => meaningOf({ tag: x.tag, type: x.type, name: x.name } as any));
+    return meanings.includes('search') && meanings.every(m => m === 'search' || m === 'select' || m === 'check' || m === 'date' || m === 'range' || m === 'number');
 }
 
 /** A control that moves a visitor forward first (0), one that takes something away last (2). */
@@ -1308,14 +1344,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * control that went missing later (the review of 2026-11-10).
          */
         const takenAway = new Map<string, number>();
-        const controlCounts = async (): Promise<Map<string, number>> => {
-            const counts = new Map<string, number>();
-            for (const x of await evalInPage(page, findControls, limit).catch(() => [] as any[])) {
-                const name = String((x as any)?.label || '');
-                if (name) counts.set(name, (counts.get(name) || 0) + 1);
-            }
-            return counts;
-        };
+        //  Read, never stamped: findControls wipes every handle the walk still holds (data-joe-ctl), and the
+        //  walk then sought its own controls again, press by press — a minute lost on a ten-control page.
+        const controlCounts = async (): Promise<Map<string, number>> =>
+            new Map(Object.entries(await page.evaluate(controlLabelCounts).catch(() => ({} as Record<string, number>))));
         const noteTakenAway = async (before: Map<string, number> | null) => {
             if (!before) return;
             const after = await controlCounts();
@@ -3123,7 +3155,7 @@ export async function probeForms(
          * a blocking refusal. What a search does is judged where it can be seen: the list, by
          * the control's own job (qa-control-intent filter).
          */
-        else if (f.fields.length && f.fields.every((x: any) => meaningOf({ tag: x.tag, type: x.type, name: x.name }) === 'search')) {
+        else if (isSearchForm(f.fields)) {
             effect = 'searched';
             metrics.searchesUnchanged = Number(metrics.searchesUnchanged || 0) + 1;
         }
@@ -3258,21 +3290,41 @@ export async function probeForms(
                     persistedThis = true;
                     if (keptBy !== 'page') metrics.formsPersistedOutOfView = Number(metrics.formsPersistedOutOfView || 0) + 1;
                 }
-                if (found) {
+                /*
+                 * ⛔ THE QA DELETES ONLY WHAT CARRIES ITS OWN MARK, AND ONLY WHEN ONE RECORD CARRIES IT.
+                 *
+                 * The seventh live check, 2026-11-10 (L160, a car rental dashboard): a booking has no
+                 * text to type, so what the submit made was found by its date, «2026-11-17» — and an
+                 * earlier booking on the same dates was the first row holding it. The QA deleted
+                 * booking 1, a record that was not its own, kept its own, and then reported «a record
+                 * created by the QA run itself could not be deleted». On a real system that is a
+                 * visitor's data gone. A record the QA made without its mark is left, and said so.
+                 */
+                const ownMark = [anchor, ...needles].find(n => !!n && n.includes(runNonce)) || '';
+                if (found && !ownMark) metrics.qaRecordsLeft = Number(metrics.qaRecordsLeft || 0) + 1;
+                if (found && ownMark) {
                     const deleteSelector = await page.evaluate((needle: string) => {
                         const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([
                             el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText,
                         ].filter(Boolean).join(' '));
                         const candidates = Array.from(document.querySelectorAll('button,[role="button"],a'))
                             .filter(isDelete) as HTMLElement[];
-                        const target = candidates.find(el => {
+                        const records = new Set<Element>();
+                        const own = candidates.filter(el => {
                             const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.transaction,.entry,article');
-                            return !!record && (record as HTMLElement).innerText.includes(needle);
+                            if (!record || !(record as HTMLElement).innerText.includes(needle)) return false;
+                            records.add(record);
+                            return true;
                         });
+                        //  Exactly one record holds the mark: never a guess between two.
+                        if (records.size !== 1) return '';
+                        const target = own[0];
                         if (!target) return '';
+                        //  One stamp at a time: a stamp left on another view's button would be clicked instead.
+                        document.querySelectorAll('[data-joe-qa-delete-own-record]').forEach(el => el.removeAttribute('data-joe-qa-delete-own-record'));
                         target.setAttribute('data-joe-qa-delete-own-record', 'true');
                         return '[data-joe-qa-delete-own-record="true"]';
-                    }, found).catch(() => '');
+                    }, ownMark).catch(() => '');
                     if (deleteSelector) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
@@ -3280,7 +3332,7 @@ export async function probeForms(
                         let removed = false;
                         while (!removed && Date.now() < removalDeadline) {
                             await page.waitForTimeout(150);
-                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), found).catch(() => false);
+                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), ownMark).catch(() => false);
                         }
                         if (removed) metrics.qaRecordsDeleted++;
                         else metrics.qaRecordsNotDeleted++;
