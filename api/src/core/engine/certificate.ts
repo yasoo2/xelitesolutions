@@ -144,17 +144,40 @@ export function qaCoverageOf(audit: any): QaCoverage | undefined {
 }
 
 /** One sentence of what was tried, in the interface's language. */
+/**
+ * A number and what it counts, as Arabic counts them: «شاشة واحدة», «شاشتين»,
+ * «3 شاشات» (3–10 take the plural), «12 شاشة» (11–99 the singular), «100 شاشة».
+ * The live check, 2026-11-10: «مرّ على 1 شاشة، وضغط 7 زراً، وملأ 1 نموذجاً (4 حقلاً)»
+ * — the owner reads Arabic, and a sentence that counts wrongly reads as careless.
+ */
+export function arabicCount(n: number, w: { one: string; two: string; plural: string; single: string; hundred?: string }): string {
+    if (n === 1) return w.one;
+    if (n === 2) return w.two;
+    const r = n % 100;
+    if (n >= 100 && r <= 2) return `${n} ${w.hundred || w.single}`;
+    const k = n >= 100 ? r : n;
+    return k >= 3 && k <= 10 ? `${n} ${w.plural}` : `${n} ${w.single}`;
+}
+
+const AR_SCREEN = { one: 'شاشة واحدة', two: 'شاشتين', plural: 'شاشات', single: 'شاشة', hundred: 'شاشة' };
+const AR_ELEMENT = { one: 'عنصراً واحداً', two: 'عنصرين', plural: 'عناصر', single: 'عنصراً', hundred: 'عنصر' };
+const AR_FORM = { one: 'نموذجاً واحداً', two: 'نموذجين', plural: 'نماذج', single: 'نموذجاً', hundred: 'نموذج' };
+const AR_FIELD = { one: 'حقل واحد', two: 'حقلان', plural: 'حقول', single: 'حقلاً', hundred: 'حقل' };
+const AR_VALUE = { one: 'قيمة واحدة', two: 'قيمتين', plural: 'قيم', single: 'قيمة', hundred: 'قيمة' };
+const AR_BUTTON = { one: 'زراً واحداً', two: 'زرّين', plural: 'أزرار', single: 'زراً', hundred: 'زر' };
+
 export function qaCoverageLine(c: QaCoverage | undefined, language: string): string {
     if (!c) return '';
     const ar = wordsFor(language) === INSTRUMENTS.ar;
     const parts: string[] = [];
     if (ar) {
-        if (c.screens) parts.push(`مرّ على ${c.screens} شاشة`);
-        if (c.pressed) parts.push(`وضغط ${c.pressed} زراً ورابطاً واحداً واحداً`);
-        if (c.formsFilled) parts.push(`وملأ ${c.formsFilled} نموذجاً (${c.fieldsFilled} حقلاً)`);
-        if (c.cases) parts.push(`وجرّب فيها ${c.cases} قيمة خاطئة وصحيحة${c.casesSent ? `، وأرسل ${c.casesSent} منها مع النموذج ليرى ردّ الخادم` : ''}`);
-        if (c.reached) parts.push(`وتحقّق من أن ${c.reached} زراً في متناول اليد على شاشتي اللوحي والجوال`);
-        if (c.jobs) parts.push(`وتأكّد أن ${c.jobs} زراً أدّى عمله بالضبط`);
+        if (c.screens) parts.push(`مرّ على ${arabicCount(c.screens, AR_SCREEN)}`);
+        if (c.pressed) parts.push(`وضغط ${arabicCount(c.pressed, AR_ELEMENT)} واحداً تلو الآخر`);
+        if (c.formsFilled) parts.push(`وملأ ${arabicCount(c.formsFilled, AR_FORM)} (${arabicCount(c.fieldsFilled, AR_FIELD)})`);
+        const sent = c.casesSent === 1 ? 'واحدة' : c.casesSent === 2 ? 'اثنتين' : String(c.casesSent);
+        if (c.cases) parts.push(`وجرّب فيها ${arabicCount(c.cases, AR_VALUE)} بين خاطئة وصحيحة${c.casesSent ? `، وأرسل ${sent} منها مع النموذج ليرى ردّ الخادم` : ''}`);
+        if (c.reached) parts.push(`وتحقّق من أن ${arabicCount(c.reached, AR_BUTTON)} في متناول اليد على شاشتي اللوحي والجوال`);
+        if (c.jobs) parts.push(c.jobs === 1 ? 'وتأكّد أن زراً واحداً أدّى عمله بالضبط' : `وتأكّد أن كلاً من ${arabicCount(c.jobs, AR_BUTTON)} أدّى عمله بالضبط`);
         const journeys = (c.journeys || []).map(j => `${j.proven ? '✓' : '✗'} ${j.ar}`).join('، ');
         const tail = c.product && journeys ? ` ورحلات ${c.product.ar}: ${journeys}.` : '';
         return parts.length ? `جرّب جو في المتصفح: ${parts.join('، ')}.${tail}` : '';

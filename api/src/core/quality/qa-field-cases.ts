@@ -63,6 +63,8 @@ export function meaningOf(f: QaField): FieldMeaning {
     if (type === 'checkbox' || type === 'radio') return 'check';
     if (type === 'color') return 'color';
     if (type === 'range') return 'range';
+    //  A search box searches, whatever it names: «Search name, email or phone…» is not an email (L160, 2026-11-10).
+    if (type === 'search' || has(/\bsearch\b|(?<![؀-ۿ])(?:ال)?بحث(?![؀-ۿ])|ابحث/u, words)) return 'search';
     if (type === 'email' || has(/e-?mail|البريد(?!ي)|بريد\s*إلكتروني|الإيميل|ايميل/u, words)) return 'email';
     if (type === 'tel' || has(/phone|mobile|\btel\b|whatsapp|هاتف|جوال|جوّال|موبايل|رقم\s*(?:ال)?(?:تواصل|الاتصال)|واتس/u, words)) return 'tel';
     if (type === 'url' || has(/\burl\b|website|link|الموقع\s*الإلكتروني|رابط/u, words)) return 'url';

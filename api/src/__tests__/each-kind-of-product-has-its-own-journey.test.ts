@@ -55,6 +55,7 @@ test('the coverage sentence says what was built and each journey with ✓ or ✗
         product: { kind: 'store', ar: 'متجر', en: 'a store' },
         journeys: [{ id: 'cart', ar: 'الإضافة إلى السلة', en: 'adding to the cart', proven: true, why: '' }, { id: 'checkout', ar: 'إتمام الطلب والدفع', en: 'checking out', proven: false, why: '' }],
     }), 'ar');
-    expect(line).toContain('وتأكّد أن 3 زراً أدّى عمله بالضبط');
+    //  Counted as Arabic counts (certificate.ts arabicCount): «3 أزرار», not «3 زراً».
+    expect(line).toContain('وتأكّد أن كلاً من 3 أزرار أدّى عمله بالضبط');
     expect(line).toContain('ورحلات متجر: ✓ الإضافة إلى السلة، ✗ إتمام الطلب والدفع.');
 });

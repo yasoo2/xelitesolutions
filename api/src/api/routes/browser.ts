@@ -281,6 +281,23 @@ router.post('/nav/goto', authenticate as any, async (req: Request, res: Response
       }
     }
     if (lastError) {
+      /*
+       * ⛔ A NAVIGATION SOMEONE ELSE TOOK OVER, OR A PREVIEW THAT IS DOWN, IS AN ANSWER.
+       *
+       * The live check, 2026-11-10: a build's preview was announced at «localhost:4300» and
+       * «127.0.0.1:4300» moments apart, and Joe's own browser check drove the same page — the
+       * panel's goto was aborted by a navigation it did not make, or reached a preview the check
+       * had just stopped, and answered 502: a red console error on Joe's page every run (UI 92,
+       * «api_errors_behind_the_page»). Aborted by another navigation is superseded; a target
+       * that refuses the connection is «unreachable» — both answered, the panel shows them as
+       * it showed the 502. Any other failure stays a 502.
+       */
+      const said = String(lastError?.message || lastError);
+      if (/net::ERR_ABORTED|interrupted by another navigation|frame was detached/i.test(said)) return superseded();
+      if (transientNavigationError(lastError)) {
+        if (!navigation.isCurrent()) return superseded();
+        return res.json({ ok: false, unreachable: true, error: 'nav_target_unreachable', requested: u, attempts, detail: said, url: s.page.url() });
+      }
       const documentState = await readDocumentState(() => s.page.evaluate(() => document.readyState));
       if (!navigation.isCurrent()) return superseded();
       return res.status(502).json({

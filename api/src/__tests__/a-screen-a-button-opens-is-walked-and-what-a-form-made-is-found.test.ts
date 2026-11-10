@@ -188,7 +188,8 @@ async function probePage(html: string) {
         const tab = await browser.newPage({ viewport: { width: 1280, height: 900 } });
         await tab.goto(url, { waitUntil: 'load' });
         const probe = await probeControls(tab, { budgetMs: 60_000 });
-        return { probe, verdict: judgeBehaviour(probe.controls, { ...probe.metrics }) };
+        //  Judged as the walk judges it: with the forms the probe filled (app-audit passes them too).
+        return { probe, verdict: judgeBehaviour(probe.controls, { ...probe.metrics }, [], probe.forms || []) };
     } finally {
         await browser.close();
     }
@@ -216,4 +217,55 @@ test('an order confirmed and kept nowhere is told with the delivery, never refus
     const told = verdict.findings.find(f => f.code === 'order_not_kept');
     expect(told).toBeDefined();
     expect(told!.severity).toBe('minor');
+});
+
+/*
+ * L160 (2026-11-10), the second live check: «Search name, email or phone…» was read as an email
+ * field, and «Search» over an empty customers list as a dead form — two refusals, and Joe turned a
+ * working search box into type="text" to quiet them.
+ */
+const SEARCH = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Customers</title>
+<style>body{font-family:sans-serif;margin:16px} button{min-height:44px;min-width:100px} input{min-height:36px;width:300px}</style></head><body>
+<h1>Customers</h1>
+<form id="s" role="search"><input type="search" name="q" placeholder="Search name, email or phone…" aria-label="Search customers"><button type="submit">Search</button></form>
+<ul id="list"></ul><p id="empty">No customers yet.</p>
+<script>document.getElementById('s').onsubmit = function (e) { e.preventDefault(); };</script></body></html>`;
+
+test('a search box is not an email field, and a search over nothing is not a dead form', async () => {
+    const { verdict } = await probePage(SEARCH);
+    const codes = verdict.findings.map(f => f.code);
+    expect(codes).not.toContain('semantic_input_validation');
+    expect(codes).not.toContain('form_dead_submit');
+    expect(codes).not.toContain('some_dead_controls');
+    expect(codes).not.toContain('dead_controls');
+});
+
+/*
+ * L162 (2026-11-10), the second live check: the walk pressed «تأكيد الطلب» with every field empty;
+ * the store marked each field invalid and kept the marks until the next submit; the forms pass then
+ * typed an Arabic name into a field still marked — «refused Arabic text», a blocking refusal.
+ */
+const MARKS_UNTIL_NEXT_SUBMIT = `<!doctype html><html lang="ar" dir="rtl"><head><meta charset="utf-8"><title>متجر</title>
+<style>body{font-family:sans-serif;margin:16px} button{min-height:44px;min-width:100px} input{display:block;margin:6px 0;min-height:36px;width:300px}</style></head><body>
+<h1>متجر</h1>
+<form id="f" novalidate><h2>بيانات الطلب</h2>
+<label>الاسم الكامل<input name="name" id="name"></label><label>العنوان<input name="address" id="address"></label>
+<p class="error" id="err" role="alert"></p><button type="submit">تأكيد الطلب</button></form>
+<ul id="orders"></ul>
+<script>
+  document.getElementById('f').onsubmit = function (e) {
+    e.preventDefault();
+    var bad = ['name', 'address'].filter(function (k) { return !document.getElementById(k).value.trim(); });
+    ['name', 'address'].forEach(function (k) { document.getElementById(k).setAttribute('aria-invalid', bad.indexOf(k) >= 0 ? 'true' : 'false'); });
+    document.getElementById('err').textContent = bad.length ? 'يرجى تعبئة الحقول المطلوبة' : '';
+    if (bad.length) return;
+    var li = document.createElement('li'); li.textContent = 'طلب ' + document.getElementById('name').value; document.getElementById('orders').appendChild(li);
+  };
+</script></body></html>`;
+
+test('a field still marked from an earlier submit is not one that refused the value typed after it', async () => {
+    const { probe, verdict } = await probePage(MARKS_UNTIL_NEXT_SUBMIT);
+    const refusedArabic = (probe.metrics.fieldCaseFailures || []).filter((x: any) => /arabic/.test(String(x.case)) && x.outcome === 'rejected_valid');
+    expect(refusedArabic).toEqual([]);
+    expect(verdict.findings.map(f => f.code)).not.toContain('field_rejects_valid');
 });
