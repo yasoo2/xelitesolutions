@@ -710,6 +710,24 @@ export function recordRowCount(): number {
     return n;
 }
 
+/**
+ * Runs in the page: the ids the page's controls and fields carry more than once. Self-contained.
+ *
+ * The ninth live check, 2026-11-11 (L160, a car rental dashboard, one document): each screen drew
+ * its own «+ Add …» with id="addBtn" into its own section, and wired it with getElementById —
+ * which finds the FIRST, the hidden Cars screen's. Opened at its address, Customers worked; after
+ * Cars, its «+ Add customer» did nothing. The walk was right to call it dead, and the builder,
+ * told only «unresponsive», changed the form's validation twice.
+ */
+export function duplicateControlIds(): Array<{ id: string; count: number }> {
+    const counts = new Map<string, number>();
+    document.querySelectorAll('button[id],a[id],input[id],select[id],textarea[id],form[id],[role="button"][id]').forEach(el => {
+        const id = el.getAttribute('id') || '';
+        if (id) counts.set(id, (counts.get(id) || 0) + 1);
+    });
+    return Array.from(counts.entries()).filter(([, n]) => n > 1).map(([id, count]) => ({ id, count })).slice(0, 6);
+}
+
 /** Runs in the page: each visible form, by its fields and its button. Self-contained. */
 export function visibleFormPrints(): string[] {
     return Array.from(document.querySelectorAll('form'))
@@ -1237,6 +1255,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     };
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
+    //  Read as the walk finds the page, before any restore draws it fresh (a reload loses the second copy).
+    const idsAtStart: Array<{ id: string; count: number }> = await page.evaluate(duplicateControlIds).catch(() => []);
     const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     // Button exploration is useful, but a quality run that never reaches its
     // forms cannot prove the input contract the user relies on. Reserve a
@@ -2654,6 +2674,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         probeWrites.stop();
         phase('rest');
     }
+    const idsAtEnd: Array<{ id: string; count: number }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    metrics.duplicateIds = [...idsAtStart, ...idsAtEnd.filter(d => !idsAtStart.some(s => s.id === d.id))].slice(0, 6);
 
     return { controls, metrics, forms: filled };
 }
@@ -3508,11 +3530,15 @@ export function judgeBehaviour(
         });
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;
+    //  Where a dead control's handler may have gone: an id the page holds twice (duplicateControlIds).
+    const twice: Array<{ id: string; count: number }> = Array.isArray(metrics.duplicateIds) ? metrics.duplicateIds : [];
+    const twiceEn = twice.length ? ` — the page holds ${twice.map(d => `id="${d.id}" ${d.count} times`).join(', ')}: code that finds an element by its id gets the first, which may be a hidden screen's copy; give each screen's controls their own ids, or look them up inside their own screen` : '';
+    const twiceAr = twice.length ? ` — في الصفحة ${twice.map(d => `المعرّف «${d.id}» ${d.count} مرات`).join('، ')}: الشيفرة التي تبحث عن عنصر بمعرّفه تجد الأول، وقد يكون نسخة شاشة مخفية؛ أعطِ أزرار كل شاشة معرّفات خاصة بها، أو ابحث عنها داخل شاشتها` : '';
     if (dead.length >= 2 && deadRatio >= 0.4) {
         findings.push({
             code: 'dead_controls', severity: 'critical',
-            ar: `${dead.length} من ${pressable.length} أزرار لا تفعل شيئًا عند الضغط: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
-            en: `${dead.length} of ${pressable.length} controls do nothing when clicked: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
+            ar: `${dead.length} من ${pressable.length} أزرار لا تفعل شيئًا عند الضغط: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}${twiceAr}`,
+            en: `${dead.length} of ${pressable.length} controls do nothing when clicked: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}${twiceEn}`,
             hint: 'wire real handlers in the page JS, or make them links to a real destination',
             /**
              *  ⛔ THE LABELS, AS DATA — so a repairer can FIND the control.
@@ -3529,8 +3555,8 @@ export function judgeBehaviour(
     } else if (dead.length) {
         findings.push({
             code: 'some_dead_controls', severity: 'major',
-            ar: `أزرار لا تستجيب: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
-            en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
+            ar: `أزرار لا تستجيب: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}${twiceAr}`,
+            en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}${twiceEn}`,
             hint: 'each of these needs a real click handler or a real href',
             //  Same reason as `dead_controls` above: the offenders as data.
             evidence: dead.slice(0, 8).map(d => ({ label: d.bare || d.label, kind: d.kind })),
