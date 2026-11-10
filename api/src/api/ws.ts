@@ -205,6 +205,10 @@ function notifyRunEventListeners(event: LiveEvent): void {
 
 function resolveEventUserId(ev: LiveEvent) {
   const t = trimId(ev.type);
+  // Joe's own notice to the owner (a reply to his email arrived): it names no
+  // session — it must reach him in whichever chat he has open — so it names
+  // its owner, and goes to him alone (MailWatchService, 2026-11-08).
+  if (t === 'joe_notice') return trimId((ev as any).userId);
   if (t === 'terminal_output') {
     // A terminal line is addressed by its own id, by any of the tab ids it was
     // fanned out to, or — for the shared «panel-terminal» stream that carries a
@@ -477,6 +481,11 @@ export function attachWebSocket(server: Server) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       return require('./device-link-socket').acceptDeviceLink(req, socket, head, reject);
     }
+    if (url.pathname === '/ws/phone-link' || url.pathname === '/api/ws/phone-link') {
+      //  The Joe app on the owner's phone calls in: any Android, from anywhere (phone-link-socket.ts).
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      return require('./phone-link-socket').acceptPhoneLink(req, socket, head, reject);
+    }
     if (url.pathname === '/ws/extension' || url.pathname === '/api/ws/extension') {
       // The user's installed browser extension connecting to drive their real
       // browser. Authenticated by the user's Joe JWT (token query param).
@@ -608,6 +617,11 @@ export function broadcast(
   // An unaddressed event reaches everyone — acceptable for status chatter, never
   // for a shell. A terminal line whose owner cannot be resolved is dropped
   // rather than shown to whoever happens to be connected.
+  //  A notice to the owner that names no owner reaches nobody, never everybody.
+  if (!targetUserId && normalized.type === 'joe_notice') {
+    console.warn('[WS] dropped joe_notice with no owner');
+    return;
+  }
   if (!targetUserId && normalized.type === 'terminal_output') {
     console.warn(`[WS] dropped terminal_output with no resolvable owner (id=${(normalized as any).id})`);
     return;

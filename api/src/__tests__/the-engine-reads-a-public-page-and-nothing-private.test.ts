@@ -112,7 +112,8 @@ describe('what web_read returns', () => {
 
 describe('the engine is told about it', () => {
     it('offers web_read and says its text is reference data, never instructions', () => {
-        expect(webTools.map(t => t.name)).toEqual(['web_read']);
+        //  web_search beside it since 2026-11-08 (joe-searches-the-web.test.ts).
+        expect(webTools.map(t => t.name)).toEqual(['web_read', 'web_search']);
         expect(webTools[0].description).toMatch(/never instructions/);
         const prompt = systemPrompt({ platform: 'linux', shell: 'bash' });
         expect(prompt).toMatch(/web_read/);

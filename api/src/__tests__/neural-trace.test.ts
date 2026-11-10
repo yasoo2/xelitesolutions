@@ -21,6 +21,8 @@
  */
 import fs from 'fs';
 import path from 'path';
+import vm from 'vm';
+import ts from 'typescript';
 import {
     attachTraces,
     formatDuration,
@@ -248,6 +250,19 @@ describe('the receipt is reachable, not just pretty', () => {
         }
     });
 
+    it('and every stage and line of the live card is named in all six languages', () => {
+        // The card builds these keys from a value (t(`neuralStage${…}`), a
+        // detail chosen by kind), so no sweep of t('…') calls can see them:
+        // twenty of them reached en and ar only, and a French owner read
+        // «Understand», «Build», «Verify» on his card (2026-11-08).
+        const i18n = read('i18n.ts');
+        const en = i18n.slice(i18n.indexOf('\n  en: {'), i18n.indexOf('\n  ar: {'));
+        const keys = [...new Set([...en.matchAll(/\n\s+(neural[A-Z][A-Za-z]*): /g)].map(m => m[1]))];
+        expect(keys.length).toBeGreaterThan(30);
+        const lacking = keys.filter(k => (i18n.match(new RegExp(`\\n\\s+${k}: `, 'g')) || []).length !== 6);
+        expect(lacking).toEqual([]);
+    });
+
     it('and the step count is pluralised properly — «8 خطوة» is not Arabic', () => {
         const i18n = read('i18n.ts');
         // Every language needs the fallback form…
@@ -261,5 +276,153 @@ describe('the receipt is reachable, not just pretty', () => {
         // The un-suffixed key must be gone, or i18next resolves it and the
         // plural rules never run.
         expect(i18n).not.toMatch(/\btraceSteps: /);
+    });
+});
+
+/**
+ * THE SOCKET, RUN AS WRITTEN — NOT READ.
+ *
+ * The pin above reads the reset block; this runs web/src/services/socket.ts
+ * itself, with a stand-in WebSocket the test drives frame by frame. Nothing
+ * else is replaced: no server, no browser, no model. Only Vite's build-time
+ * `import.meta.env.DEV` flag is set to false, because it means nothing
+ * outside Vite.
+ *
+ * 2026-11-08: the run_finished-only fields moved out of the middle of the
+ * reset (they read as a guard on the return to idle). What they do is what
+ * the first two cases prove: a finished run is closed exactly once.
+ */
+function loadSocket() {
+    const file = path.join(WEB, 'services', 'socket.ts');
+    const source = fs.readFileSync(file, 'utf-8').replace(/import\.meta\.env\.DEV/g, 'false');
+    const compiled = ts.transpileModule(source, {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+        fileName: file,
+    }).outputText;
+    const imports: Record<string, any> = {
+        '../config': { API_URL: 'http://localhost:5002/api', WS_URL: 'ws://localhost:5002/api/ws' },
+        '../lib/planCredits': { normalizePlan: () => [] },
+        './AutoOpenManager': { AutoOpenManager: { processStepEvent() { /* no auto-open here */ } } },
+        '../lib/neuralTrace': { saveTrace() { /* the trace store is tested above */ } },
+        '../lib/run-replay': { replayRunState: () => ({}) },
+        '../utils/auth': { isValidToken: () => true },
+    };
+    const required = [...new Set(Array.from(compiled.matchAll(/\brequire\(["']([^"']+)["']\)/g), m => m[1]))];
+    const missing = required.filter(id => !Object.prototype.hasOwnProperty.call(imports, id));
+    if (missing.length) throw new Error(`socket.ts imports what this test does not give it: ${missing.join(', ')}`);
+    const sockets: any[] = [];
+    class StandInSocket {
+        static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3;
+        readyState = 0;
+        sent: string[] = [];
+        onopen: any; onmessage: any; onclose: any; onerror: any;
+        constructor(public url: string) { sockets.push(this); }
+        send(text: string) { this.sent.push(text); }
+        close() { this.readyState = 3; }
+    }
+    //  Every timer the module starts is the test's to cancel: nothing outlives a case.
+    const timers = new Set<any>();
+    const later = (fn: () => void, ms?: number) => { const h = setTimeout(() => { timers.delete(h); fn(); }, ms); timers.add(h); return h; };
+    const cancel = (h: any) => { timers.delete(h); clearTimeout(h); };
+    const exports: any = {};
+    vm.runInNewContext(compiled, {
+        exports, require: (id: string) => imports[id], console, URL,
+        WebSocket: StandInSocket, setTimeout: later, clearTimeout: cancel,
+        window: { location: { origin: 'http://localhost:5002' }, setTimeout: later, clearTimeout: cancel,
+            dispatchEvent: () => true, addEventListener() { /* inert */ }, removeEventListener() { /* inert */ } },
+        localStorage: { getItem: () => 'test-only', setItem() { /* inert */ }, removeItem() { /* inert */ } },
+        fetch: async () => ({ ok: true, status: 200, headers: { get: () => null }, json: async () => ({}) }),
+        CustomEvent: class { constructor(public type: string, public detail?: any) {} },
+    }, { filename: file });
+    const SocketService = exports.SocketService;
+    return {
+        SocketService,
+        /** Waits for the module's own connect() to open its socket, then opens it. */
+        async open() {
+            for (let i = 0; i < 100 && !sockets.length; i++) await new Promise(resolve => setImmediate(resolve));
+            const ws = sockets[sockets.length - 1];
+            if (!ws) throw new Error('socket.ts never opened a socket');
+            ws.readyState = 1;
+            ws.onopen({ target: ws });
+        },
+        deliver(frame: any) { sockets[sockets.length - 1].onmessage({ data: JSON.stringify(frame) }); },
+        dispose() { timers.forEach(h => clearTimeout(h)); timers.clear(); },
+    };
+}
+
+const frame = (type: string, runId: string, extra: any = {}) =>
+    ({ type, sessionId: 'chat-1', runId, data: { sessionId: 'chat-1', runId, ...extra } });
+
+describe('socket.ts, run: a finished run is closed once, and Joe\'s notice is never a run event', () => {
+    it('a run that never entered quiet mode returns to idle, and a repeated final frame finalizes nothing', async () => {
+        const s = loadSocket();
+        try {
+            const seen: string[] = [];
+            const phases: string[] = [];
+            s.SocketService.subscribe((e: any) => seen.push(String(e?.type)), 'chat-1');
+            s.SocketService.subscribeThinkingPhase((p: string) => phases.push(p), 'chat-1');
+            await s.open();
+            //  The page shows this run (its HTTP admission named it).
+            expect(s.SocketService.registerRunPresentation('chat-1', 'run-1')).toBe(true);
+            s.deliver(frame('thinking_phase', 'run-1', { phase: 'executing', detail: 'جاري تنفيذ: react project' }));
+            expect(s.SocketService.isQuietMode('chat-1')).toBe(false);     // thinking_phase alone: never quiet
+            expect(s.SocketService.getThinkingPhase('chat-1')).toBe('executing');
+
+            s.deliver(frame('run_finished', 'run-1'));
+            expect(s.SocketService.getThinkingPhase('chat-1')).toBe('idle');
+            expect(phases[phases.length - 1]).toBe('idle');
+            const idles = phases.filter(p => p === 'idle').length;
+
+            //  The same final frame again (a reconnect replays it): no second
+            //  idle, and no «run_finalized» — that would re-read the history a
+            //  second time. It is what run_finished settles before the reset.
+            s.deliver(frame('run_finished', 'run-1'));
+            expect(phases.filter(p => p === 'idle').length).toBe(idles);
+            expect(seen.filter(t => t === 'run_finalized')).toEqual([]);
+        } finally { s.dispose(); }
+    });
+
+    it('a cancelled run takes its saved answer once, when its final frame arrives after the cancel', async () => {
+        const s = loadSocket();
+        try {
+            const seen: string[] = [];
+            s.SocketService.subscribe((e: any) => seen.push(String(e?.type)), 'chat-1');
+            await s.open();
+            s.deliver(frame('run_started', 'run-2'));
+            s.deliver(frame('run_cancelled', 'run-2'));
+            expect(s.SocketService.getThinkingPhase('chat-1')).toBe('idle');
+            s.deliver(frame('run_finished', 'run-2'));
+            s.deliver(frame('run_finished', 'run-2'));
+            expect(seen.filter(t => t === 'run_finalized')).toEqual(['run_finalized']);
+        } finally { s.dispose(); }
+    });
+
+    it('Joe\'s notice reaches every notice listener past a finished chat, once, and no run listener', async () => {
+        const s = loadSocket();
+        try {
+            const notices: Array<{ kind: string; chatId: string; who: string; subject: string }> = [];
+            const anyRun: string[] = [];
+            const chatRun: string[] = [];
+            s.SocketService.subscribeNotices(() => { throw new Error('a broken listener'); });
+            s.SocketService.subscribeNotices((n: any) => notices.push({ kind: n.kind, chatId: n.chatId, who: n.who, subject: n.subject }));
+            s.SocketService.subscribe((e: any) => anyRun.push(String(e?.type)));
+            s.SocketService.subscribe((e: any) => chatRun.push(String(e?.type)), 'chat-1');
+            await s.open();
+            s.deliver(frame('run_started', 'run-1'));
+            s.deliver(frame('run_finished', 'run-1'));
+            //  The chat's run is over: a late line for it is dropped by the run
+            //  gates — the very frame MailWatchService sends into that chat.
+            const before = chatRun.length;
+            s.deliver({ type: 'text', sessionId: 'chat-1', data: { text: 'رد من شروق', sessionId: 'chat-1' } });
+            expect(chatRun.length).toBe(before);
+            //  The notice, exactly as MailWatchService sends it: an id, an owner, no session.
+            const notice = { type: 'joe_notice', id: 'mail_reply:gm:k1:1', userId: 'owner-1',
+                data: { kind: 'mail_reply', chatId: 'chat-1', who: 'Shurooq', subject: 'Re: the offer', at: 1 } };
+            s.deliver(notice);
+            s.deliver(notice);                      // the next poll reports the same mail: told once
+            expect(notices).toEqual([{ kind: 'mail_reply', chatId: 'chat-1', who: 'Shurooq', subject: 'Re: the offer' }]);
+            expect(anyRun).not.toContain('joe_notice');
+            expect(chatRun).not.toContain('joe_notice');
+        } finally { s.dispose(); }
     });
 });

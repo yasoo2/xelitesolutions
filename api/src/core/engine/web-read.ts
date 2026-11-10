@@ -40,6 +40,8 @@ export interface WebPage {
     text: string;
     /** The body was longer than the byte ceiling and was cut there. */
     truncated: boolean;
+    /** The page's own markup, when asked for (web-search.ts reads the results' links in it). */
+    html?: string;
 }
 
 export type Lookup = (hostname: string, options: dns.LookupAllOptions, callback: (err: NodeJS.ErrnoException | null, addresses: dns.LookupAddress[]) => void) => void;
@@ -111,12 +113,13 @@ export function htmlToText(html: string): { title: string; text: string } {
 
 interface Fetched { status: number; headers: http.IncomingHttpHeaders; body: Buffer; truncated: boolean }
 
-function getOnce(url: URL, lookup: ReturnType<typeof publicOnlyLookup>, signal?: AbortSignal): Promise<Fetched> {
+function getOnce(url: URL, lookup: ReturnType<typeof publicOnlyLookup>, signal?: AbortSignal, extra: Record<string, string> = {}): Promise<Fetched> {
     const lib = url.protocol === 'https:' ? https : http;
     return new Promise((resolve, reject) => {
         const req = lib.get(url, {
             lookup: lookup as any,
-            headers: { 'user-agent': 'Joe-web-read/1.0 (+reads public documentation)', accept: 'text/html,text/plain,text/markdown,application/json;q=0.9,*/*;q=0.1' },
+            //  Joe says who he is; a caller adds only what the service asks (a language, an API key).
+            headers: { accept: 'text/html,text/plain,text/markdown,application/json;q=0.9,*/*;q=0.1', ...extra, 'user-agent': 'Joe-web-read/1.0 (+reads public documentation)' },
             timeout: TIMEOUT_MS,
             signal,
         }, res => {
@@ -150,7 +153,7 @@ function getOnce(url: URL, lookup: ReturnType<typeof publicOnlyLookup>, signal?:
  * always uses the system's and isPrivateAddress (a test serves a page on its
  * own loopback by naming the one address it allows).
  */
-export async function readPublicPage(raw: string, opts: { lookup?: Lookup; blocked?: (address: string) => boolean; signal?: AbortSignal } = {}): Promise<WebPage> {
+export async function readPublicPage(raw: string, opts: { lookup?: Lookup; blocked?: (address: string) => boolean; signal?: AbortSignal; keepHtml?: boolean; headers?: Record<string, string> } = {}): Promise<WebPage> {
     const lookup = publicOnlyLookup(opts.lookup, opts.blocked);
     let current = String(raw || '').trim();
     for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
@@ -158,7 +161,7 @@ export async function readPublicPage(raw: string, opts: { lookup?: Lookup; block
         if (problem) throw new Error(`web_read refused ${current}: ${problem}`);
         const url = new URL(current);
         url.hash = '';
-        const got = await getOnce(url, lookup, opts.signal);
+        const got = await getOnce(url, lookup, opts.signal, opts.headers);
         if (got.status >= 300 && got.status < 400 && got.headers.location) {
             current = new URL(String(got.headers.location), url).toString();
             continue;
@@ -170,7 +173,7 @@ export async function readPublicPage(raw: string, opts: { lookup?: Lookup; block
         try { decoded = new TextDecoder(charset).decode(got.body); } catch { decoded = got.body.toString('utf8'); }
         const html = /html|xml/u.test(contentType) || (!contentType && /^\s*</u.test(decoded));
         const { title, text } = html && !/json/u.test(contentType) ? htmlToText(decoded) : { title: '', text: decoded.trim() };
-        return { url: url.toString(), status: got.status, contentType: contentType.split(';')[0] || '', title, text, truncated: got.truncated };
+        return { url: url.toString(), status: got.status, contentType: contentType.split(';')[0] || '', title, text, truncated: got.truncated, ...(opts.keepHtml ? { html: decoded } : {}) };
     }
     throw new Error(`web_read followed ${MAX_REDIRECTS} redirects from ${raw} and stopped`);
 }

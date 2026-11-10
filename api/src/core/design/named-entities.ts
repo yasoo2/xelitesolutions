@@ -556,6 +556,46 @@ const EMPTY_READING: ListedReading = { marker: null, region: null, entities: [],
  * passes the delivery's own fact. `actionLed` carries a run of leading actions
  * a caller already took off (normaliseListedRequest).
  */
+/**
+ * ⛔ «CUSTOMERS SEARCH WITH FILTERS AND BOOK» IS A SENTENCE, NOT TWO TABLES.
+ *
+ * The hard sample, 2026-11-09 (L372, a two-sided marketplace): «providers
+ * create listings with availability, customers search with filters and book,
+ * payments are held until completion, both sides review each other, and admins
+ * moderate». Under five words an item was read as a record, so «customers
+ * search with filters», «book» and «admins moderate» became tables the server
+ * had to serve — and a marketplace that searched, booked and moderated was
+ * refused five times, 33 minutes, for not serving /api/books. An item that
+ * opens with who acts and then what they do is a clause; a bare verb right
+ * after one («… and book») is the same sentence going on.
+ */
+const ACTOR_WORD = /^(?:customers?|clients?|users?|admins?|administrators?|moderators?|providers?|vendors?|sellers?|buyers?|members?|guests?|visitors?|students?|teachers?|parents?|doctors?|patients?|employees?|staff|managers?|owners?|agents?|drivers?|riders?|tenants?|landlords?|hosts?|travell?ers?|organi[sz]ers?|attendees?|candidates?|recruiters?|people|everyone|they)$/iu;
+const ACTION_VERB_BASE = /^(?:search|book|browse|create|view|see|moderate|review|rate|pay|manage|track|edit|delete|upload|download|receive|send|approve|reject|sign|log|register|chat|message|comment|cancel|schedule|invite|order|bid|buy|sell|list|post|follow|like|share|subscribe|check|reserve|request|apply|submit|vote|report|filter|compare|get|leave|write|find|join|choose|pick|rent|hire)$/iu;
+const MODAL = /^(?:can|may|must|will|should)$/iu;
+export function isActorClause(item: string): boolean {
+    const w = String(item || '').trim().split(/\s+/).filter(Boolean);
+    if (w.length < 2) return false;
+    // Arabic: «العملاء يبحثون…», «المشرفون يراجعون»: who, then a present-tense verb.
+    if (/^ال\p{L}{3,}$/u.test(w[0]) && /^ي\p{L}{2,}$/u.test(w[1])) return true;
+    if (/^both$/iu.test(w[0]) && /^sides?$/iu.test(w[1])) return w.length >= 3;
+    if (!ACTOR_WORD.test(w[0])) return false;
+    const verb = w[1].toLowerCase();
+    if (MODAL.test(verb)) return true;
+    //  «customers search»: a plural who and the verb's own form. «customer orders»,
+    //  «user profiles» — a plural noun after a holder — stay records.
+    const plural = /s$/iu.test(w[0]) || /^(?:staff|people|everyone|they)$/iu.test(w[0]);
+    if (plural) return ACTION_VERB_BASE.test(verb);
+    //  «admin approves listings»: one who and the verb with its s, in a phrase.
+    //  «approves» → approve, «searches» → search.
+    return w.length >= 3 && /s$/iu.test(verb)
+        && (ACTION_VERB_BASE.test(verb.slice(0, -1)) || ACTION_VERB_BASE.test(verb.replace(/es$/iu, '')));
+}
+/** «… and book»: a bare verb continuing the sentence before it. */
+function continuesASentence(item: string): boolean {
+    const w = String(item || '').trim().split(/\s+/).filter(Boolean);
+    return w.length >= 1 && w.length <= 3 && ACTION_VERB_BASE.test(w[0]);
+}
+
 export function listedRecords(request: string, opts: { backend?: boolean; actionLed?: boolean } = {}): ListedReading {
     // «بفئات: طعام، مواصلات، فواتير» declares the options of one field, never tables.
     const shaped = normaliseListedRequest(stripDeclaredOptions(String(request || '')));
@@ -575,7 +615,11 @@ export function listedRecords(request: string, opts: { backend?: boolean; action
     let curated = 0;
     // Items naming a record about a curated one («رواتب الموظفين»).
     let about = 0;
+    let afterASentence: boolean = false;
     for (const raw of splitListItems(region)) {
+        const sentence: boolean = isActorClause(raw) || (afterASentence && continuesASentence(raw));
+        afterASentence = sentence;
+        if (sentence) { entries.push({ item: raw, as: 'clause' }); continue; }
         if (isActionWord(raw) || isFeaturePhrase(raw)) continue;
         // "search by title", «وتعمل بلوحة المفاتيح»: how the app acts, said as a capability.
         if (isActionByManner(raw) || isBehaviourClause(raw)) { entries.push({ item: raw, as: 'capability' }); continue; }

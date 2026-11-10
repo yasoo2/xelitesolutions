@@ -54,6 +54,13 @@ const DELIBERATELY_SHARED: Record<string, string> = {
         + 'not about the one on screen, so this is the one consumer that deliberately listens without a session '
         + 'filter — scoping it would defeat its only purpose, which is to light the chip of a session you are NOT '
         + 'looking at. It writes to no panel: it keeps a set of ids and notifies subscribers.',
+    // 2026-11-08 (MailWatchService): the sweep matched `SocketService.subscribeNotices`.
+    'components/JoeNoticeBanner.tsx':
+        'Joe telling the OWNER, in whichever chat he has open, that a reply to his email arrived. It shows no run '
+        + 'at all: it listens to SocketService.subscribeNotices, never to the run stream (socket.ts hands a joe_notice '
+        + 'to the notice listeners and returns before any run listener). The server addresses each notice to its '
+        + 'owner alone and drops one with no owner (ws.ts resolveEventUserId / broadcast). Scoping it to the open '
+        + 'chat would defeat its only purpose: telling him about ANOTHER chat, and opening it in one press.',
 };
 
 describe('INVARIANT: what displays a run belongs to the run’s session', () => {
@@ -92,7 +99,105 @@ describe('INVARIANT: what displays a run belongs to the run’s session', () => 
         // its whole surface is a set of ids plus subscribers
         expect(src).toMatch(/const running = new Set<string>\(\)/);
     });
+
+    /**
+     * The exemption granted to the notice banner, held to what its reason
+     * says — by running the banner, not by reading it: it hears Joe's notices
+     * only, shows a mail reply only, names who wrote, and «open the chat»
+     * goes to THAT chat. It never subscribes to the run stream.
+     */
+    it('the notice banner shows only a reply to Joe\'s email, and opens the chat it belongs to', async () => {
+        const banner = await mountNoticeBanner();
+        try {
+            expect(banner.runSubscriptions()).toBe(0);
+            expect(banner.noticeListeners()).toBe(1);
+            await banner.notice({ kind: 'something_else', chatId: 'chat-2', who: 'Nobody' });
+            expect(banner.text()).toBe('');
+            const reply = { kind: 'mail_reply', chatId: 'chat-2', who: 'Shurooq', subject: 'Re: the offer' };
+            await banner.notice(reply);
+            await banner.notice({ ...reply });          // the same reply reported twice is one notice
+            expect(banner.text()).toContain('notice_mailReplyFrom:Shurooq');
+            expect(banner.text()).toContain('Re: the offer');
+            await banner.click('.joe-notice-open');
+            expect(banner.opened).toEqual(['chat-2']);
+            expect(banner.text()).toBe('');            // opened, and gone — no twin left behind it
+        } finally { await banner.close(); }
+        expect(banner.noticeListeners()).toBe(0);
+        //  Loading React and a DOM took 17 s on the owner's loaded laptop (2026-11-08): the
+        //  suite's 10 s default would fail the machine, not the banner.
+    }, 120_000);
 });
+
+async function mountNoticeBanner() {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const vm = require('vm') as typeof import('vm');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ts = require('typescript') as typeof import('typescript');
+    const repository = path.resolve(__dirname, '../../..');
+    const apiModules = fs.realpathSync(path.join(repository, 'api/node_modules'));
+    const webModules = path.join(path.dirname(path.dirname(apiModules)), 'web/node_modules');
+    //  Node's own loader: Jest virtualizes createRequire, and React must load as installed.
+    const { createRequire } = process.getBuiltinModule('module') as typeof import('module');
+    const nativeGlobal = (process.getBuiltinModule('vm') as typeof import('vm')).runInThisContext('globalThis');
+    const React = createRequire(path.join(webModules, 'react/package.json'))('react');
+    const jsxRuntime = createRequire(path.join(webModules, 'react/package.json'))('react/jsx-runtime');
+    const { createRoot } = createRequire(path.join(webModules, 'react/package.json'))('react-dom/client');
+    const { JSDOM } = createRequire(path.join(apiModules, 'jsdom/package.json'))('jsdom');
+    const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost:5002/' });
+    const previous: Array<{ target: any; key: string; descriptor?: PropertyDescriptor }> = [];
+    for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
+        for (const target of new Set([global, nativeGlobal])) {
+            previous.push({ target, key, descriptor: Object.getOwnPropertyDescriptor(target, key) });
+            Object.defineProperty(target, key, { configurable: true, writable: true, value });
+        }
+    }
+    const noticeListeners = new Set<(n: any) => void>();
+    let runSubscriptions = 0;
+    const file = path.join(WEB_SRC, 'components', 'JoeNoticeBanner.tsx');
+    const compiled = ts.transpileModule(fs.readFileSync(file, 'utf-8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.ReactJSX, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+        fileName: file,
+    }).outputText;
+    const icon = () => null;
+    const imports: Record<string, any> = {
+        react: React, 'react/jsx-runtime': jsxRuntime,
+        'react-i18next': { useTranslation: () => ({ t: (key: string, o?: any) => (o?.who ? `${key}:${o.who}` : key) }) },
+        'lucide-react': { Mail: icon, X: icon },
+        '../services/socket': { SocketService: {
+            subscribeNotices(cb: (n: any) => void) { noticeListeners.add(cb); return () => { noticeListeners.delete(cb); }; },
+            subscribe() { runSubscriptions += 1; return () => { /* never asked */ }; },
+        } },
+    };
+    const required = [...new Set(Array.from(compiled.matchAll(/\brequire\(["']([^"']+)["']\)/g), m => m[1]))];
+    const missing = required.filter(id => !Object.prototype.hasOwnProperty.call(imports, id));
+    if (missing.length) throw new Error(`Missing test imports for JoeNoticeBanner.tsx: ${missing.join(', ')}`);
+    const exports: any = {};
+    vm.runInNewContext(compiled, { exports, require: (id: string) => imports[id], window: dom.window, CustomEvent: dom.window.CustomEvent, console }, { filename: file });
+    const opened: string[] = [];
+    dom.window.addEventListener('joe:open-session', (e: any) => opened.push(String(e?.detail?.id)));
+    const root = createRoot(dom.window.document.getElementById('root'));
+    const act = React.act;
+    await act(async () => { root.render(React.createElement(exports.default)); });
+    const restore = () => {
+        dom.window.close();
+        previous.reverse().forEach(({ target, key, descriptor }) => {
+            if (descriptor) Object.defineProperty(target, key, descriptor); else delete target[key];
+        });
+    };
+    return {
+        opened,
+        text: () => String(dom.window.document.getElementById('root')?.textContent || ''),
+        noticeListeners: () => noticeListeners.size,
+        runSubscriptions: () => runSubscriptions,
+        async notice(n: any) { await act(async () => { noticeListeners.forEach(cb => cb(n)); }); },
+        async click(selector: string) {
+            const el = dom.window.document.querySelector(selector);
+            if (!el) throw new Error(`no ${selector} on screen`);
+            await act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); });
+        },
+        async close() { try { await act(async () => { root.unmount(); }); } finally { restore(); } },
+    };
+}
 
 /**
  * INVARIANT 5, the part that bit: every rendered control does something.

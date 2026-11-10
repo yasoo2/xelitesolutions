@@ -72,7 +72,11 @@ export function parsePlanArgs(raw: unknown): ParseResult<PlanArgs> {
         out.steps = [];
         for (const s of steps) {
             const title = typeof s === 'string' ? s : String((s as any)?.title ?? (s as any)?.step ?? '').trim();
-            const status = typeof s === 'string' ? 'pending' : String((s as any)?.status ?? 'pending');
+            //  A step the model calls blocked, failed or skipped is not done: it is
+            //  kept as pending instead of refusing the whole update (the owner's
+            //  phone, 2026-11-08: «Step status "blocked" is not one of…», a step lost).
+            const said = typeof s === 'string' ? 'pending' : String((s as any)?.status ?? 'pending').trim().toLowerCase();
+            const status = /^(?:blocked|failed|skipped|waiting|stuck|todo|open)$/u.test(said) ? 'pending' : said === 'completed' ? 'done' : said;
             if (!title) return { ok: false, error: 'Every step needs a "title".' };
             if (!STEP_STATUS.has(status)) return { ok: false, error: `Step status "${status}" is not one of pending, in_progress, done.` };
             out.steps.push({ title, status: status as PlanStep['status'] });
@@ -123,18 +127,21 @@ export function applyPlanUpdate(plan: PlanState, args: PlanArgs): string[] {
         }
         plan.steps = args.steps;
     }
+    //  Added before statuses are set: a model that adds a requirement and marks
+    //  it in the same call («add R1, R1 is open») was refused «There is no
+    //  requirement R1» — the owner's phone run, 2026-11-07, its first step red.
+    if (args.add_requirements) {
+        for (const a of args.add_requirements) {
+            if (plan.requirements.some(r => norm(r.text) === norm(a.text))) continue;
+            plan.requirements.push({ id: `R${plan.requirements.length + 1}`, text: a.text, status: 'open', fromRequest: false });
+        }
+    }
     if (args.requirements) {
         for (const u of args.requirements) {
             const r = plan.requirements.find(x => x.id === u.id);
             if (!r) { problems.push(`There is no requirement ${u.id}; the ids are ${plan.requirements.map(x => x.id).join(', ') || 'none yet'}.`); continue; }
             r.status = u.status;
             if (u.evidence !== undefined) r.evidence = u.evidence;
-        }
-    }
-    if (args.add_requirements) {
-        for (const a of args.add_requirements) {
-            if (plan.requirements.some(r => norm(r.text) === norm(a.text))) continue;
-            plan.requirements.push({ id: `R${plan.requirements.length + 1}`, text: a.text, status: 'open', fromRequest: false });
         }
     }
     if (args.note !== undefined) plan.note = args.note || undefined;
@@ -185,9 +192,12 @@ export const planUpdateTool: EngineTool<PlanArgs> = {
         const problems = applyPlanUpdate(ctx.state.plan, args);
         ctx.emit({ type: 'plan', plan: ctx.state.plan });
         const text = formatPlan(ctx.state.plan) || '(the plan is empty)';
+        //  The plan WAS updated: a note about an unknown id or a second step in
+        //  progress is said to the model, not shown to the owner as a red
+        //  «ERROR» (his phone runs, 2026-11-08: «There is no requirement R1»).
         return {
-            ok: problems.length === 0,
-            output: problems.length ? `${problems.join('\n')}\n\n${text}` : text,
+            ok: true,
+            output: problems.length ? `Note: ${problems.join('\n')}\n\n${text}` : text,
             facts: { plan: ctx.state.plan },
         };
     },

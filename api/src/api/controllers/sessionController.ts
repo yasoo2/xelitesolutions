@@ -12,7 +12,7 @@ import { readJoeProjectForRun } from '../page-store';
 import { engineOfRuns, getRunEvidenceForSession } from '../../shared/run-evidence-store';
 import { sessionLogLines, sessionTerminal } from '../../core/session/session-log-store';
 import { logTextFor, logStampFor, mergeLogSources } from '../../core/session/log-line';
-import { previewForSession, type SessionPreview } from '../session-preview';
+import { previewForSession, previewAddressAnswers, type SessionPreview } from '../session-preview';
 
 function isOfflineSessionStore(): boolean {
     return usesLocalChatStore();
@@ -835,6 +835,16 @@ export async function sessionEngine(req: Request, res: Response) {
     } catch {
         res.json({ engine: null });
     }
+}
+
+/** Whether the Preview tab's address still answers — asked of Joe, so the page's console stays clean (session-preview.ts). */
+export async function sessionPreviewAlive(req: Request, res: Response) {
+    const sessionId = String(req.params.id || '').trim();
+    if (!sessionId) return res.status(400).json({ error: 'session_id_required' });
+    const owned = await requireOwnedSession(req, res, sessionId);
+    if (!owned) return;
+    const alive = await previewAddressAnswers(req.query.url, req.hostname).catch(() => null);
+    res.json({ alive });
 }
 
 export async function sessionWorkspace(req: Request, res: Response) {

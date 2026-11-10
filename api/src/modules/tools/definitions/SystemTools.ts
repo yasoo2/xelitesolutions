@@ -1727,8 +1727,11 @@ export class ShellExecuteTool extends BaseTool {
         // 30s default KILLED those runs mid-install and the failure surfaced
         // as a build error nobody could reproduce. Explicit timeouts always
         // win; only the default is command-aware.
+        //  A test run is a long runner too: pytest, `python -m unittest`, `node --test`, `go test`
+        //  (2026-11-08: a project's own pytest was cut at 30 s on a busy laptop and read as failing).
         const isLongRunner = /^\s*(npm|npx|yarn|pnpm|pip3?|composer|dotnet|cargo|mvn|gradle|make)\b/.test(command)
-            || /&&\s*(npm|npx|yarn|pnpm)\b/.test(command);
+            || /&&\s*(npm|npx|yarn|pnpm)\b/.test(command)
+            || /\b(?:pytest|unittest|node\s+--test|go\s+test|jest|vitest|mocha)\b/u.test(command);
         const timeoutVal = Number(input?.timeout ?? (isLongRunner ? 300000 : 30000));
         const background = !!input?.background;
         const dryRun = !!input?.dryRun;

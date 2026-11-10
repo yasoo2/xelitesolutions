@@ -36,6 +36,7 @@
  */
 
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { readModelJson } from '../../shared/utils/json';
 import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion, splitListItems, stripLeadingConjunction } from '../design/request-lists';
@@ -480,11 +481,26 @@ export function foundInSource(evidence: string, source: string): boolean {
 const DOC_FILE = /(?:^|\/)(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt)$/iu;
 const ASKS_ABOUT_DOCS = /\breadme\b|\bdoc(?:s|uments?|umentation)?\b|\bchangelog\b|توثيق|وثائق|دليل\s+(?:الاستخدام|المستخدم)|اقرأني/iu;
 
-export function evidenceOnlyInDocs(evidence: string, source: string): boolean {
+/*
+ * …BUT A REPORT ASKED FOR IS THE PRODUCT, NOT ITS DOCUMENTATION. The Manus-style
+ * exam, 2026-11-09: a gold report delivered as report.md had every line of it
+ * refused as «only documentation». In a delivery with no code at all, a .md or
+ * .txt file is what was asked for; only a README, a changelog or Joe's own
+ * certificate still documents rather than delivers.
+ */
+const CODE_FILE = /\.(?:jsx?|tsx?|mjs|cjs|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|html?|css)$/iu;
+const ALWAYS_DOCS = /(?:^|\/)(?:readme|changelog|contributing|joe-delivery)(?:\.[a-z]+)?$/iu;
+
+export function evidenceOnlyInDocs(evidence: string, source: string, documentsAreTheProduct = false): boolean {
     const e = bare(evidence);
     if (!e) return false;
-    const holders = filesOf(source).filter(f => flat(f.block).includes(e));
-    return holders.length > 0 && holders.every(f => DOC_FILE.test(f.path));
+    const files = filesOf(source);
+    //  M07 (2026-11-09): a recommendation asked «in a file» was written as .md beside 15 files of
+    //  code the model added anyway, and refused as «only documentation». When the request asks
+    //  for a document, its documents are the product whatever else the project holds.
+    const codeDelivered = !documentsAreTheProduct && files.some(f => CODE_FILE.test(f.path) && !f.path.startsWith('(before this change)'));
+    const holders = files.filter(f => flat(f.block).includes(e));
+    return holders.length > 0 && holders.every(f => (codeDelivered ? DOC_FILE : ALWAYS_DOCS).test(f.path));
 }
 
 export function asksAboutDocumentation(r: Pick<NamedRequirement, 'text' | 'quote'>): boolean {
@@ -578,10 +594,24 @@ const WINDOW_JOIN = '\n\n… …\n\n';
 
 /** The content words of a requirement — what to look for in the source. */
 function requirementWords(r: NamedRequirement): string[] {
-    return (String(r.text || '') + ' ' + String(r.quote || ''))
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter(w => w.length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    /*
+     * ⛔ HIS MARKS ARE PART OF HIS WORD, AND HIS ACRONYM IS HIS MOST EXACT ONE.
+     *
+     * The hard sample, 2026-11-09 (L452, «شهادات PDF موقّعة»): the shadda split
+     * «موقّعة» into «موق» and «عة», «PDF» was three letters, and both were
+     * dropped as too short — the only word left was «شهادات», which an English
+     * codebase writes nowhere but in its Arabic labels. The judge was shown the
+     * page's strings and not src/pdf.js, and said so three times: «توليد ملف PDF
+     * نفسه غير ظاهر في الجزء المعروض». Marks are taken off before the words are
+     * cut, and a word he wrote in capitals (PDF, CSV, API, SMS, RTL) is kept.
+     */
+    //  Both spellings of a marked word: the source may write «موقّعة» as he did, or «موقعة».
+    const said = String(r.text || '') + ' ' + String(r.quote || '');
+    const acronyms = (said.match(/\b[A-Z][A-Z0-9]{2,5}\b/g) || []).map(w => w.toLowerCase());
+    const marked = said.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+    const words = [...marked, ...marked.map(w => w.replace(/\p{M}/gu, ''))]
+        .filter(w => w.replace(/\p{M}/gu, '').length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    return Array.from(new Set([...words, ...acronyms]));
 }
 
 /**
@@ -690,6 +720,85 @@ function filesOf(src: string): Array<{ path: string; block: string }> {
         path: m[1],
         block: src.slice(m.index || 0, i + 1 < marks.length ? (marks[i + 1].index || 0) - 1 : src.length),
     }));
+}
+
+/**
+ *  The project's files a judge's words name: by their path, or by their file
+ *  name when only one file has it. «app/files.py is not in the source shown»
+ *  names app/files.py; «the files module» names nothing.
+ */
+export function filesNamedIn(text: string, source: string): string[] {
+    const said = String(text || '');
+    const paths = filesOf(String(source || '')).map(f => f.path);
+    const base = (p: string) => p.split('/').pop() || p;
+    const byName = new Map<string, string[]>();
+    for (const p of paths) byName.set(base(p), [...(byName.get(base(p)) || []), p]);
+    //  Said as a word of its own: not the tail of a longer path or name.
+    const mentions = (needle: string): boolean => {
+        for (let i = said.indexOf(needle); i >= 0; i = said.indexOf(needle, i + 1)) {
+            const before = i > 0 ? said[i - 1] : ' ';
+            const after = said[i + needle.length] || ' ';
+            if (!/[\w./-]/.test(before) && !/[\w/-]/.test(after)) return true;
+        }
+        return false;
+    };
+    const out = new Set<string>();
+    for (const p of paths) {
+        if (mentions(p)) { out.add(p); continue; }
+        const name = base(p);
+        if (/\.[a-z0-9]{1,5}$/i.test(name) && (byName.get(name) || []).length === 1 && mentions(name)) out.add(p);
+    }
+    return [...out];
+}
+
+/** Words a judge writes about any source: never what it was looking for. */
+const JUDGE_PLAIN_WORDS: ReadonlySet<string> = new Set([
+    'about', 'above', 'after', 'again', 'below', 'being', 'cannot', 'called', 'calls', 'could', 'defined', 'defines',
+    'excerpt', 'exists', 'files', 'function', 'functions', 'handler', 'implementation', 'implemented', 'implements',
+    'itself', 'logic', 'missing', 'other', 'otherwise', 'partial', 'present', 'proves', 'route', 'routes', 'server',
+    'shown', 'shows', 'snippet', 'source', 'there', 'these', 'those', 'their', 'truncated', 'visible', 'where', 'which',
+    'while', 'would', 'should', 'without', 'within', 'section', 'sections', 'requirement', 'request', 'requests',
+    'response', 'client', 'frontend', 'backend', 'unprovable', 'confirm', 'verify', 'whether', 'because', 'since',
+]);
+
+/**
+ * The code words of a judge's answer: an identifier (signDigest, cert_code), a
+ * word it wrote in capitals (PDF, JSX), or a longer word that is not one every
+ * answer uses. Arabic prose around them is not a word the code writes.
+ */
+export function codeWordsOf(said: string): string[] {
+    const tokens = String(said || '').match(/[A-Za-z_$][A-Za-z0-9_$]{2,}/g) || [];
+    return Array.from(new Set(tokens
+        .filter(w => /^[A-Z][A-Z0-9]{2,5}$/.test(w) || /[a-z][A-Z]|_/.test(w) || (w.length >= 5 && !JUDGE_PLAIN_WORDS.has(w.toLowerCase())))
+        .map(w => w.toLowerCase())));
+}
+
+/**
+ *  ⛔ WHAT THE JUDGE SAYS IT WAS NOT SHOWN, IT IS SHOWN — BY ITS OWN WORDS.
+ *
+ *  The hard sample, 2026-11-09 (L452, an e-learning platform): «شهادات PDF
+ *  موقّعة» was «unprovable» three times — «the code signs the certificate
+ *  (signDigest), but generating the PDF file itself is not in the part of the
+ *  source shown». It named no file, so the re-ask by file name never ran, and
+ *  src/pdf.js (3 KB, buildPdf / certificatePdf) was never put in front of it.
+ *  When the answer names no file, the files it was not shown that hold the code
+ *  words of its answer are, most words first: the judge says what it looks for.
+ */
+export function filesHoldingWordsOf(said: string, source: string, shown: string, max = 2): string[] {
+    const words = codeWordsOf(said);
+    if (!words.length) return [];
+    const seen = String(shown || '');
+    return filesOf(String(source || ''))
+        .filter(f => !seen.includes(f.block))
+        .map(f => {
+            const low = f.block.toLowerCase();
+            //  A file it was shown none of comes before one it was shown blocks of.
+            return { path: f.path, hits: words.filter(w => low.includes(w)).length, absent: !seen.includes(`${JUDGE_FILE_MARK}${f.path} ====`) };
+        })
+        .filter(f => f.hits > 0)
+        .sort((a, b) => Number(b.absent) - Number(a.absent) || b.hits - a.hits || a.path.localeCompare(b.path))
+        .slice(0, max)
+        .map(f => f.path);
 }
 
 /** The largest block a file is cut into when it cannot be shown whole. */
@@ -925,6 +1034,11 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         `  · A word about how the page LOOKS (elegant, beautiful, modern, calm`,
         `    colours) is judged on a screenshot of the page, not here: judge the`,
         `    rest of the line, and never call a line "unprovable" for its look alone.`,
+        `  · Current facts (today's price, the latest news, this week's figures) are`,
+        `    met by the most recent value the cited sources publish, written with its`,
+        `    date and its source — even when that date is yesterday because nothing`,
+        `    newer is published yet, if the document says so plainly. They are unmet`,
+        `    when the value has no date or no source, or is plainly old (weeks or more).`,
         `  · Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
@@ -1275,6 +1389,18 @@ function residue(text: string, ...patterns: RegExp[]): string {
     return rest.replace(CONNECTOR, ' ').replace(/[«»"“”'،,.:;؛()]/gu, ' ').replace(/\s+/g, ' ').trim();
 }
 
+const FORM_CLAUSE = /^(?:(?:ال)?نموذج|(?:ال)?استمارة|(?:an?\s+)?(?:contact\s+|booking\s+|enquiry\s+|inquiry\s+)?form)\s*(?:(?:ال)?(?:تواصل|اتصال|حجز|استفسار))?\s*(?:with|containing|for|including|ب)?\s*(.*)$/iu;
+
+/** A form clause whose named fields are fields Joe knows, and at least one has no input that proves it. */
+function formNamesFieldsNotFound(r: NamedRequirement, source: string): boolean {
+    const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
+    const form = text.match(FORM_CLAUSE);
+    if (!form) return false;
+    const said = splitListItems(form[1] || '');
+    const fields = said.map(field => FORM_FIELDS.find(f => f.says.test(field)));
+    return fields.some(Boolean) && fields.some(f => f && !f.proof.test(String(source || '')));
+}
+
 function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
     const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
     const src = String(source || '');
@@ -1334,6 +1460,43 @@ function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | n
         return { ...r, verdict: 'met', why: `the generated hero renders${wantsImage ? ' its image' : ''}${quoted.length ? ` and ${quoted.map(v => `«${v}»`).join(' · ')}` : ''}` };
     }
     return null;
+}
+
+/*
+ * HOW LONG A DOCUMENT IS, MEASURED, NOT ARGUED.
+ *
+ * The Manus-style exam, 2026-11-09 (M01): «اكتب لي تقريرًا قصيرًا…» — the judge
+ * ruled «أن يكون التقرير قصيرًا» unprovable («short is relative, nothing in the
+ * lines shown sets the length»), four times, and a correct report was refused.
+ * A requirement that a document be short, brief or concise is judged on the
+ * words of the documents delivered (Joe's own certificate and the project's
+ * README aside): at most SHORT_DOCUMENT_WORDS is short.
+ */
+const SHORT_WORD = /(?:^|[\s«"(])(?:قصير|قصيرا|قصيره|قصيرة|مختصر|مختصرا|مختصره|مختصرة|موجز|موجزا|موجزه|موجزة)(?=$|[\s،,.»")])|\b(?:short|brief|concise)\b/iu;
+const DOCUMENT_FILE = /\.(?:md|markdown|txt|html?|csv)$/iu;
+const NOT_THE_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-delivery)(?:\.[a-z]+)?$|^\(before this change\)/iu;
+export const SHORT_DOCUMENT_WORDS = 1500;
+
+export function documentLengthVerdict(r: NamedRequirement, source: string, isArabic: boolean): JudgedNamed | null {
+    const said = `${r.text || ''} ${r.quote || ''}`.replace(/[ً-ٰٟـ]/gu, '');
+    if (!SHORT_WORD.test(said)) return null;
+    const docs = filesOf(String(source || ''))
+        .filter(f => DOCUMENT_FILE.test(f.path) && !NOT_THE_DOCUMENT.test(path.basename(f.path)) && !NOT_THE_DOCUMENT.test(f.path))
+        .map(f => {
+            const body = f.block.split('\n').slice(1).join('\n').replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/giu, ' ').replace(/<[^>]+>/gu, ' ');
+            return { path: f.path, words: (body.match(/[\p{L}\p{N}]+/gu) || []).length };
+        })
+        .filter(d => d.words > 0);
+    if (!docs.length) return null;
+    const longest = docs.reduce((a, b) => (b.words > a.words ? b : a));
+    const short = longest.words <= SHORT_DOCUMENT_WORDS;
+    return {
+        ...r,
+        verdict: short ? 'met' : 'unmet',
+        why: isArabic
+            ? `قِيس طول المستند: ${longest.path} فيه ${longest.words} كلمة (القصير حتى ${SHORT_DOCUMENT_WORDS} كلمة)`
+            : `measured: ${longest.path} has ${longest.words} words (short is at most ${SHORT_DOCUMENT_WORDS})`,
+    };
 }
 
 /**
@@ -1707,6 +1870,9 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     }
     const pageClause = pageClauseVerdict(r, src);
     if (pageClause) return pageClause;
+    //  A form that names its fields is met by those fields, never by «a contact form exists»:
+    //  «نموذج تواصل بالاسم والهاتف» on a form with no phone input is for a judge (2026-11-09).
+    if (formNamesFieldsNotFound(r, src)) return null;
     const knownCapabilities = requestedCapabilities(text);
     if (knownCapabilities.length && knownCapabilities.every(capability => capabilityEvidence(capability, src))) {
         return { ...r, verdict: 'met', why: `the generated source proves: ${knownCapabilities.map(item => item.en).join(', ')}` };
@@ -1721,6 +1887,8 @@ export async function verifyNamed(
     call: (prompt: string) => Promise<string>,
     externalApiEvidence?: ExternalApiAcceptanceEvidence | null,
     localBackend?: LocalBackendAcceptance | null,
+    /** The request asks for a document: its .md/.txt files are the product, not documentation. */
+    options: { documentsAreTheProduct?: boolean } = {},
 ): Promise<JudgedNamed[]> {
     const src = String(source || '');
     const blank = (why: string): JudgedNamed[] =>
@@ -1769,7 +1937,7 @@ export async function verifyNamed(
                     reasonCode: !grounded ? 'ungrounded_criterion' : proven ? 'verified' : compound ? 'compound_not_fully_proven' : 'backend_evidence_rejected' } });
             continue;
         }
-        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || deterministicSourceVerdict(r, src);
+        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || documentLengthVerdict(r, src, isArabic) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);
@@ -1992,6 +2160,51 @@ export async function verifyNamed(
             }
         }));
     }
+    /**
+     *  ⛔ A FILE THE JUDGE SAYS IT WAS NOT SHOWN IS SHOWN TO IT — ONCE.
+     *
+     *  The hard sample, 2026-11-09 (L332, a bookstore's documents, «thumbnails
+     *  for every upload»): the slice for the requirement was filled by a 22 KB
+     *  main.py and the tests, and three times the judge said what was missing,
+     *  by name: «app/files.py is not in the source shown, so the code that
+     *  generates the thumbnail is missing». The file was 3 KB and in the
+     *  project; the delivery was refused three times, until the model shrank it.
+     *  An answer other than «met» that names a project file the judge was not
+     *  shown is asked again, once, with that file added (whole, or its blocks
+     *  when it is large); the new answer is judged like any other.
+     */
+    const askedForFiles = reqs.map(r => {
+        if (deterministic.has(r.id)) return null;
+        const v = byId.get(r.id);
+        if (!v || v.verdict === 'met') return null;
+        const shown = shownFor.get(r.id) || full;
+        if (shown.length >= full.length) return null;
+        const blocks = filesOf(full);
+        const said = `${v.why} ${v.evidence}`;
+        const named = filesNamedIn(said, full);
+        //  No file by name: the files that hold the code words of its own answer (filesHoldingWordsOf).
+        const wanted = (named.length ? named : filesHoldingWordsOf(said, full, shown))
+            .map(p => blocks.find(b => b.path === p))
+            .filter((b): b is { path: string; block: string } => !!b && !shown.includes(b.block))
+            .slice(0, 3);
+        return wanted.length ? { r, shown, wanted, said } : null;
+    }).filter((x): x is { r: NamedRequirement; shown: string; wanted: Array<{ path: string; block: string }>; said: string } => !!x);
+    if (askedForFiles.length) {
+        await Promise.all(askedForFiles.map(async ({ r, shown, wanted, said }) => {
+            const looked = Array.from(new Set([...requirementWords(r), ...codeWordsOf(said)]));
+            const added = wanted.map(b => b.block.length <= ENCLOSING_BLOCK_MAX * 2
+                ? b.block
+                : `${JUDGE_FILE_MARK}${b.path} ====\n${enclosingBlocksFor(looked, b.block, ENCLOSING_BLOCK_MAX * 2) || b.block.slice(0, ENCLOSING_BLOCK_MAX * 2)}`);
+            const more = `${shown}${WINDOW_JOIN}${added.join('\n')}`;
+            let raw = '';
+            try { raw = await call(verificationPrompt([r], more, isArabic)); } catch { return; }
+            const parsed = parseVerdicts(raw);
+            const v = parsed.find(p => p.id === r.id) || (parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined);
+            if (!v) return;
+            byId.set(r.id, { id: r.id, verdict: v.verdict, evidence: v.evidence, why: v.why });
+            shownFor.set(r.id, more);
+        }));
+    }
     return reqs.map(r => {
         const known = deterministic.get(r.id);
         if (known) return known;
@@ -2011,7 +2224,7 @@ export async function verifyNamed(
                         : 'it was reported present and its evidence is not in the source — so I did not count it',
                 };
             }
-            if (evidenceOnlyInDocs(v.evidence, src) && !asksAboutDocumentation(r)) {
+            if (evidenceOnlyInDocs(v.evidence, src, options.documentsAreTheProduct === true) && !asksAboutDocumentation(r)) {
                 return {
                     ...r,
                     verdict: 'unprovable' as NamedVerdict,

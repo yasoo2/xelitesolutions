@@ -2,15 +2,23 @@
  * The owner's computers: this one, and the ones he linked (core/devices/device-link.ts).
  *
  *   POST /api/devices/pair            a pairing code and the one line to run on the other computer
+ *                                     ({keep: true, name}: a PERMANENT link under that name)
  *   GET  /api/devices/link.ps1?code=  the link script, served only while that code is waiting
+ *   GET  /api/devices/install.ps1?code= the permanent link's installer, served once
+ *   POST /api/devices/:id/forget      unlinks a computer for good
  *   GET  /api/devices                 this computer and the linked ones
  *   POST /api/devices/:id/disconnect  ends a link from here
+ *   GET  /api/devices/phone/screen    the phone's screen now (a PNG), for the live preview
+ *   GET  /api/devices/computer/screen this computer's screen now (a PNG), for the live preview
  */
 import { Router, Request, Response } from 'express';
 import os from 'os';
 import { authenticate } from '../middleware/auth';
 import { config } from '../../shared/config';
-import { deviceLinks, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
+import { deviceLinks, keepInstallScript, lanAddress, linkCommand, linkScript, reachableBase } from '../../core/devices/device-link';
+import { KeptStoreError } from '../../core/devices/linked-computers';
+import { psQuote } from '../../core/devices/windows-desktop';
+import { executionFirewall } from '../../orchestration/AgentExecutionFirewall';
 
 const router = Router();
 
@@ -28,11 +36,22 @@ export function publicBase(req: Request, env: NodeJS.ProcessEnv = process.env, l
 }
 
 router.post('/pair', authenticate as any, (req: Request, res: Response) => {
-    const { code, expiresAt } = deviceLinks.newPairingCode(uid(req));
+    //  { keep: true, name: «كمبيوتر المكتب» }: linked for good under that name (install.ps1);
+    //  otherwise a link for this session (link.ps1).
+    const keep = req.body?.keep === true || req.body?.permanent === true;
+    const name = String(req.body?.name || '').trim() || os.hostname();
+    let paired: { code: string; expiresAt: number };
+    try { paired = deviceLinks.newPairingCode(uid(req), Date.now(), keep ? name : undefined); }
+    catch (e: any) {
+        //  The record of kept computers cannot be read: no line, and the reason said (linked-computers.ts).
+        if (e instanceof KeptStoreError) return res.status(503).json({ ok: false, code: e.code, error: e.message });
+        throw e;
+    }
+    const { code, expiresAt } = paired;
     const base = publicBase(req);
-    const scriptUrl = `${base.http}/api/devices/link.ps1?code=${code}`;
+    const scriptUrl = `${base.http}/api/devices/${keep ? 'install' : 'link'}.ps1?code=${code}`;
     return res.json({
-        ok: true, code, expiresAt, scriptUrl, command: linkCommand(scriptUrl),
+        ok: true, code, expiresAt, scriptUrl, command: linkCommand(scriptUrl), keep, ...(keep ? { name } : {}),
         //  Said plainly: a network address reaches only computers on that network,
         //  and an address only this computer knows reaches none.
         via: base.via,
@@ -50,12 +69,103 @@ router.get('/link.ps1', (req: Request, res: Response) => {
     return res.type('text/plain; charset=utf-8').send(linkScript(`${base.ws}/ws/device-link?code=${encodeURIComponent(code)}`));
 });
 
+/**
+ * GET /api/devices/install.ps1?code= — the installer of a PERMANENT link, served
+ * once: fetching it claims the code, keeps the computer under the name the
+ * owner chose and makes its key, which travels inside this script only.
+ */
+router.get('/install.ps1', (req: Request, res: Response) => {
+    const code = String(req.query.code || '');
+    if (!deviceLinks.isWaitingToKeep(code)) {
+        return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
+    }
+    let kept: ReturnType<typeof deviceLinks.claimForKeeping>;
+    try { kept = deviceLinks.claimForKeeping(code); }
+    catch (e: any) {
+        //  Nothing was saved, so no key is served: an installer whose key no restart remembers left
+        //  an agent refused (4403) for ever (2026-11-08). The window on that computer says why, and
+        //  the code stays good for a retry once the record reads.
+        if (!(e instanceof KeptStoreError)) throw e;
+        console.warn(`[DeviceLink] a permanent link was refused: ${e.message}`);
+        return res.status(503).set('Cache-Control', 'no-store').type('text/plain; charset=utf-8').send(
+            `Write-Host ${psQuote(`Joe could not link this computer for good: ${e.message}`)} -ForegroundColor Red\n`
+            + `Write-Host ${psQuote('لم يستطع جو ربط هذا الكمبيوتر ربطاً دائماً: سجلّ الحواسيب المربوطة عنده لا يُقرأ أو لا يُحفظ الآن. لم يُثبَّت شيء.')} -ForegroundColor Red\n`);
+    }
+    if (!kept) return res.status(404).type('text/plain; charset=utf-8').send("Write-Host 'This link code is not waiting any more: ask Joe for a new one.' -ForegroundColor Red\n");
+    //  The computer that fetched this reached Joe at this very address: it calls back the same way.
+    const base = publicBase(req, {}, () => '');
+    res.set('Cache-Control', 'no-store');
+    return res.type('text/plain; charset=utf-8').send(keepInstallScript(`${base.ws}/ws/device-link`, kept.id, kept.key, kept.name));
+});
+
+/**
+ * POST /api/devices/:id/forget — unlinks a computer for good: its key opens
+ * nothing, its agent removes itself. By its exact id or exact name only
+ * (device-link.ts forgetExactly); anything else forgets nothing and answers
+ * with the names that come close, for the page or the chat to ask which one.
+ */
+router.post('/:id/forget', authenticate as any, (req: Request, res: Response) => {
+    const r = deviceLinks.forgetExactly(uid(req), String(req.params.id || ''));
+    if (r.ok) return res.json({ ok: true, name: r.device.name, id: r.device.id });
+    const status = r.reason === 'store' ? 503 : r.reason === 'ambiguous' ? 409 : 404;
+    return res.status(status).json({
+        ok: false, code: r.reason, error: r.error, close: r.close,
+        ...(r.reason === 'store' ? {} : { ask: r.close.length ? `Which one is meant: ${r.close.map(n => `«${n}»`).join(', ')}?` : `No computer is named exactly «${r.asked}».` }),
+    });
+});
+
 router.get('/', authenticate as any, (req: Request, res: Response) => {
     return res.json({
         ok: true,
         here: { name: os.hostname(), os: `${os.type()} ${os.release()}`, desktop: process.platform === 'win32' },
         linked: deviceLinks.list(uid(req)),
     });
+});
+
+/**
+ * GET /api/devices/phone/screen — the owner's phone screen now, a PNG, for the
+ * live Device view in Joe's page (EngineAndroidTool phoneScreenNow). Never
+ * cached; the phone, its model and whether its screen is on ride in headers.
+ */
+router.get('/phone/screen', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { phoneScreenNow } = require('../../modules/tools/definitions/EngineAndroidTool');
+        //  A fixed capture (adb devices, screencap, pull), no command from the page:
+        //  run as the owner's own system task, the way git.ts runs git (the firewall).
+        const serial = String(req.query.serial || '').trim() || undefined;
+        const frame = await executionFirewall.runAsSystem(() => phoneScreenNow(serial), { userId: uid(req) });
+        if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
+        return res.status(200).set({
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-store',
+            'X-Joe-Phone': encodeURIComponent(frame.serial),
+            'X-Joe-Phone-Model': encodeURIComponent(frame.model),
+            'X-Joe-Screen-Awake': frame.awake === null ? 'unknown' : String(frame.awake),
+            'X-Joe-Frame-At': String(frame.at),
+            'Access-Control-Expose-Headers': 'X-Joe-Phone, X-Joe-Phone-Model, X-Joe-Screen-Awake, X-Joe-Frame-At',
+        }).send(frame.png);
+    } catch (e: any) {
+        return res.status(500).set('Cache-Control', 'no-store').json({ ok: false, code: 'failed', error: String(e?.message || e) });
+    }
+});
+
+/** GET /api/devices/computer/screen — this computer's whole screen now (1280 wide), for the live preview. */
+router.get('/computer/screen', authenticate as any, async (req: Request, res: Response) => {
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const { computerScreenNow } = require('../../modules/tools/definitions/EngineDeviceTools');
+        const frame = await executionFirewall.runAsSystem(() => computerScreenNow(), { userId: uid(req) });
+        if (!frame.ok) return res.status(frame.code === 'failed' ? 502 : 404).set('Cache-Control', 'no-store').json({ ok: false, code: frame.code, error: frame.error });
+        return res.status(200).set({
+            'Content-Type': 'image/png',
+            'Cache-Control': 'no-store',
+            'X-Joe-Frame-At': String(frame.at),
+            'Access-Control-Expose-Headers': 'X-Joe-Frame-At',
+        }).send(frame.png);
+    } catch (e: any) {
+        return res.status(500).set('Cache-Control', 'no-store').json({ ok: false, code: 'failed', error: String(e?.message || e) });
+    }
 });
 
 router.post('/:id/disconnect', authenticate as any, (req: Request, res: Response) => {

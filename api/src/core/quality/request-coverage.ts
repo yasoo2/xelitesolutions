@@ -119,7 +119,11 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * a verb — neither asks for automated tests.
  */
 const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
-const AR_TESTS = /اختبار(?:ات)?\s+(?:ال)?(?:آلي|آلية|آليه|الي|الية|اليه|تلقائي|تلقائية|وحدة|الوحدة|وحدات|تكامل|التكامل|شاملة|شامله|لكل)|(?:مع|اكتب|أضف|اضف|بإضافة|باضافة)\s+(?:ال)?اختبارات|اختبارات\s+(?:ل|لـ)?كل\s/u;
+//  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
+//  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
+//  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
+//  on the source — «not provable» four times — instead of on Joe's own run of them).
+const AR_TESTS = /اختبار(?:ات)?\s+(?:ال)?(?:آلي|آلية|آليه|الي|الية|اليه|تلقائي|تلقائية|وحدة|الوحدة|وحدات|تكامل|التكامل|شاملة|شامله|لكل)|(?:مع|اكتب|أضف|اضف|بإضافة|باضافة)\s+(?:ال)?اختبارات|اختبارات\s+(?:ل|لـ)?كل\s|مجموع(?:ة|ه)\s+(?:ال)?اختبارات|(?:ال)?اختبارات\s+(?:في|داخل)\s+(?:ال)?مجلد|(?:ال)?اختبارات\s+(?:كلها\s+|جميعها\s+)?(?:تفشل|فاشلة|فاشله|حمراء|لا\s+تنجح|لا\s+تمر)|(?:اجعل|خل[يّ]|خلّي)\s+(?:كل\s+|جميع\s+)?(?:ال)?(?:اختبارات|مجموعة|مجموعه|فحوص)[^.؟!\n]{0,30}(?:تنجح|تمر|تعبر|خضراء)|فحوص\s+(?:ال)?تكامل\s+(?:ال)?(?:مستمر|حمراء|تفشل)?/u;
 
 /** The clause that asks for tests as a deliverable, or null. */
 export function testsRequestedIn(request: string): string | null {
@@ -833,6 +837,22 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
                 const under = text.slice(Math.max(0, open - 80), open).match(/(?:^|[\s,{(\[])(?:(["'])([A-Za-z][\w-]{1,40})\1|([A-Za-z_$][\w$]{1,40}))\s*:\s*$/u);
                 if (under) bind(record.key, under[2] || under[3]);
             }
+            /*
+             * A PAIR NAMES IT TOO: «['templates', 'قوالب البريد']».
+             *
+             * The hard sample, 2026-11-09 (L382, a municipal office's CRM): the
+             * menu was a list of pairs — ['contacts', 'جهات الاتصال'],
+             * ['templates', 'قوالب البريد'] — and served /api/contacts and
+             * /api/templates. His words had no dictionary English, the pairs
+             * were not read, and the CRM was refused seven times, 155 minutes,
+             * «جهات الاتصال (serving not measured)». A two-item pair of a name
+             * and his word, in either order, binds the name to his record.
+             */
+            const lab = escapeRe(label);
+            const pairAfter = new RegExp(`\\[\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*,\\s*["'\`]${lab}["'\`]\\s*[\\],]`, 'gu');
+            for (const m of text.matchAll(pairAfter)) bind(record.key, m[2]);
+            const pairBefore = new RegExp(`\\[\\s*["'\`]${lab}["'\`]\\s*,\\s*(["'\`])([A-Za-z][\\w-]{1,40})\\1\\s*[\\],]`, 'gu');
+            for (const m of text.matchAll(pairBefore)) bind(record.key, m[2]);
         }
     }
     if (text.includes('<')) harvestMarkupLabelKeys(text, records, bind);
@@ -841,7 +861,8 @@ function harvestLabelKeys(text: string, records: RequestedRecord[], out: Record<
 /** An element with its attributes and its own short text (no child elements). */
 const MARKUP_ELEMENT = /<([a-zA-Z][\w-]*)(\s[^<>]*)?>([^<>]{1,60})<\/\1\s*>/gu;
 /** The attributes that give a section or a resource its name in markup. */
-const MARKUP_NAME_ATTR = /\s(?:data-[\w-]+|id|aria-controls|href)\s*=\s*(["'])#?([A-Za-z][\w-]{1,40})\1/gu;
+//  «#/contacts», a hash router's address, names the resource as «#contacts» does.
+const MARKUP_NAME_ATTR = /\s(?:data-[\w-]+|id|aria-controls|href)\s*=\s*(["'])#?\/?([A-Za-z][\w-]{1,40})\1/gu;
 /** The interface's own words around a name: «tab-pickups», «pickups-section» are pickups. */
 const UI_WORD = /^(?:tabs?|sections?|sec|panels?|panes?|page|view|btn|button|link|nav|list|body|form|table|container|wrap(?:per)?|card|content|title|heading|header|menu|screen|area|box|block)$/iu;
 
@@ -1129,6 +1150,8 @@ export interface RequestedTestsRun {
     noRunner?: boolean;
     runner?: string;
     error?: string;
+    /** The project's files are byte for byte those of its last passing run: that pass, not run again. */
+    sameFilesAsLastPass?: boolean;
 }
 
 /** A test script that does work — the one placeholder reader decides (placeholder-script, Q9). */
@@ -1232,8 +1255,74 @@ export async function hasOwnTests(root: string): Promise<boolean> {
  * no __init__.py beside it, so working tests ran as «Ran 0 tests», exit 5 —
  * and a pytest-style file never ran at all unless the project declared pytest.
  * The test files are now found here, and the runner is given their folders.
+ *
+ * THE SAME FILES THAT PASSED ARE NOT RUN AGAIN. The Codex exam in Arabic,
+ * 2026-11-08: C03's second task_finish ran the whole suite again (63 s on the
+ * laptop) on a tree byte for byte the one that had just passed; the ladder's
+ * L150 ran `npm test` at 97–183 s on each of nine task_finish calls. A pass is
+ * kept with a fingerprint of every file of the project (its content, not its
+ * dates; the machine's own folders aside), and the same fingerprint again is
+ * that pass. Any edit is a new fingerprint and a new run; a failure is never
+ * kept (a flaky suite gets its run again). JOE_TEST_RUN_CACHE=off runs every time.
  */
 export async function runRequestedTests(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
+    const dir = String(root || '').trim();
+    if (!testRunCacheOn() || !dir) return runRequestedTestsNow(root, runTool);
+    const key = path.resolve(dir);
+    const fp = await treeFingerprint(key);
+    const kept = fp ? PASSED_RUNS.get(key) : undefined;
+    if (kept && kept.fp === fp && Date.now() - kept.at < PASSED_RUN_KEPT_MS) return { ...kept.run, sameFilesAsLastPass: true };
+    const run = await runRequestedTestsNow(root, runTool);
+    if (fp && run.passed) PASSED_RUNS.set(key, { fp, run, at: Date.now() });
+    else PASSED_RUNS.delete(key);
+    return run;
+}
+
+const PASSED_RUNS = new Map<string, { fp: string; run: RequestedTestsRun; at: number }>();
+const PASSED_RUN_KEPT_MS = 30 * 60_000;
+/** Folders a test run or the machine writes, which say nothing of the code tested. */
+const NOT_THE_CODE = new Set(['node_modules', '.git', '.joe', '.joe-versions', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', 'coverage', '.nyc_output', 'test-results', '.venv', 'venv', '.tox']);
+const MAX_FINGERPRINT_FILES = 4000;
+const MAX_FINGERPRINT_BYTES = 40 * 1024 * 1024;
+
+function testRunCacheOn(env: NodeJS.ProcessEnv = process.env): boolean {
+    const v = String(env.JOE_TEST_RUN_CACHE || '').toLowerCase();
+    if (v === 'off') return false;
+    //  Tests of the checks run the same fixture folder again on purpose; one test turns it on.
+    return v === 'on' || !env.JEST_WORKER_ID;
+}
+
+/** Every file of the project, by its path and content, in one hash; null when the tree is too large to read. */
+export async function treeFingerprint(dir: string): Promise<string | null> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const crypto = require('crypto') as typeof import('crypto');
+    const hash = crypto.createHash('sha256');
+    let files = 0, bytes = 0;
+    const walk = async (abs: string, rel: string): Promise<boolean> => {
+        let entries: fs.Dirent[];
+        try { entries = await fs.promises.readdir(abs, { withFileTypes: true }); } catch { return true; }
+        entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+        for (const e of entries) {
+            const childRel = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) {
+                if (NOT_THE_CODE.has(e.name)) continue;
+                if (!await walk(path.join(abs, e.name), childRel)) return false;
+                continue;
+            }
+            if (!e.isFile() || /\.log$/iu.test(e.name)) continue;
+            if (++files > MAX_FINGERPRINT_FILES) return false;
+            let buf: Buffer;
+            try { buf = await fs.promises.readFile(path.join(abs, e.name)); } catch { continue; }
+            bytes += buf.length;
+            if (bytes > MAX_FINGERPRINT_BYTES) return false;
+            hash.update(childRel); hash.update('\0'); hash.update(buf); hash.update('\0');
+        }
+        return true;
+    };
+    return await walk(dir, '') ? hash.digest('hex') : null;
+}
+
+async function runRequestedTestsNow(root: string, runTool: (tool: string, input: any) => Promise<any>): Promise<RequestedTestsRun> {
     const dir = String(root || '').trim();
     if (!dir || !(await exists(dir))) return { root: dir, ran: false, passed: false, error: 'no project root to run the requested tests in' };
     let scripts: Record<string, string> = {};
@@ -1264,10 +1353,13 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
         // The runner as a delivered script would run it; the interpreter is
         // the name this machine — the one running the check — ships.
         const runner = 'python tests (pytest where installed, else the standard-library runner)';
-        if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project, so the requested tests cannot run' };
+        if (!folders.length) return { root: dir, ran: false, passed: false, runner, error: 'no Python test file (test*.py, *_test.py) in the project: its own tests are what proves it, so write them beside it (tests/test_<name>.py, the standard library unittest is enough) and run them' };
         const command = pythonTestCommand(folders, false, pythonExecutable());
         try {
-            const run = await runTool('shell_execute', { command, cwd: dir });
+            //  A test run gets the time a test run takes: the shell's 30-second default for a
+            //  «short» command cut the owner's laptop's pytest under load (the Codex exam in
+            //  Arabic, C04, 2026-11-08: right code, «Execution timed out», refused four times).
+            const run = await runTool('shell_execute', { command, cwd: dir, timeout: 5 * 60_000 });
             const printed = `${String(run?.output?.stdout ?? '')}\n${String(run?.output?.stderr ?? '')}`;
             const judged = judgeTestRun(run?.ok === true, printed);
             // The runner fails an empty run itself (exit 1): its summary still says why.
@@ -1283,7 +1375,7 @@ export async function runRequestedTests(root: string, runTool: (tool: string, in
             return { root: dir, ran: false, passed: false, runner, error: String(error?.message || error).slice(0, 300) };
         }
     }
-    if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script, so the requested tests cannot run' };
+    if (hasManifest) return { root: dir, ran: false, passed: false, runner: 'npm test', error: 'package.json has no test script: its own tests are what proves it, so add a "test" script that runs them (node --test needs nothing installed)' };
     return { root: dir, ran: false, passed: false, noRunner: true, error: 'no test runner Joe knows for this project' };
 }
 

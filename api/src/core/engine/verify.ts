@@ -48,6 +48,7 @@ import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../qual
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { mendable, mendIsBetter, mendPage, refuses, type Mender } from './browser-mend';
 import { detectStart } from '../../modules/tools/definitions/ProjectRunTool';
 import {
     BUILD_COMMAND_NAMED, buildPipelineDecisionEvidence, deliveredPageDirectory, hasOnlyBrowserQaInfrastructureFindings,
@@ -158,6 +159,8 @@ function panelSessionOf(ctx: ToolContext): string {
 /** What the builder can do about a finding, when the finding itself does not say. */
 const FINDING_HINT: Record<string, string> = {
     authenticated_coverage_missing: 'give task_finish "sign_in": {"username": …, "password": …} — an account the project seeds — and Joe signs in through the product\'s own form and tests the screens behind it',
+    //  The walk's own clock (app-audit.ts keptWalks): what it finished is kept for the next walk over the same code.
+    qa_budget_exhausted: 'this is the walk\'s clock, not a defect found in the product. Every page the walk finished is kept: call task_finish again WITHOUT changing any file and the walk goes on from where it stopped. A change to any file of the project starts the walk again from the first page, so change a file only for a real defect',
 };
 
 export function browserFindingLine(f: { id?: unknown; detailEn?: unknown; detail?: unknown; evidence?: unknown }): string {
@@ -206,6 +209,8 @@ export interface VerifierDeps {
     browserQa?: BrowserQa;
     /** The same model shown a screenshot, when it can see: judges what the request says about the look. */
     look?: Look;
+    /** Joe's own repair of what the browser found, before he refuses (browser-mend.ts); null: none. */
+    mend?: Mender | null;
 }
 
 /** The order the report lists the instruments in: the order they are measured. */
@@ -286,6 +291,8 @@ async function liveRunInput(ctx: ToolContext, root: string): Promise<{ input: Re
 
 async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: BrowserQa, signIn?: SignInAccount, accounts?: RoleAccount[]): Promise<DeliveryVerification> {
     const root = path.resolve(ctx.projectDir);
+    //  Joe's own repair of what the browser found (browser-mend.ts): the real one unless a test gives its own, or none.
+    const mender: Mender | null = deps.mend === undefined ? mendPage : deps.mend;
     //  Law 4: every gate reads the user's full request — never the model's
     //  plan or the summary it wrote in task_finish.
     const request = String(ctx.request || '');
@@ -333,15 +340,22 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
      *  and what the repository already was is not this change's to answer for.
      */
     const repository = ctx.change?.repository;
-    const programOnly = !!repository || (roles.program && !roles.interface && !roles.service && !programServesAPage);
+    //  A document asked for (a report, a plan, a sheet, slides) is the file, judged on what it says (select.ts asksForDocument).
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const documentAsked = !repository && (require('./select') as typeof import('./select')).asksForDocument(request);
+    //  …judged as a document unless a page was built around it (then the page is proven too).
+    const documentOnly = documentAsked && !programServesAPage;
+    const programOnly = !!repository || documentOnly || (roles.program && !roles.interface && !roles.service && !programServesAPage);
     const primary: 'live' | 'program' = programOnly ? 'program' : 'live';
-    const required = new Set<DeliveryInstrument>(programOnly && !repository ? ['quality'] : []);
-    if (repository) required.add('program');
+    const required = new Set<DeliveryInstrument>(programOnly && !repository && !documentOnly ? ['quality'] : []);
+    if (repository || documentOnly) required.add('program');
     //  The acceptance judge always rules; an unmeasured acceptance is never a pass.
     required.add('acceptance');
     note(repository
         ? 'repository: the user\'s own repository — judged by its own test suite, the acceptance judge, and no new source problem'
-        : `roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
+        : documentOnly
+            ? 'document: the request asks for a document — the file is the delivery, judged on what it says; no page, server or tests are owed'
+            : `roles: service=${roles.service} interface=${roles.interface} program=${roles.program}${programOnly ? ' (program only: its own tests prove it runs)' : ''}`);
 
     const delivery = deliveryRun({
         productRequest: request,
@@ -405,7 +419,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     try { manifest = manifestText === null ? null : JSON.parse(manifestText); } catch { manifest = null; }
     const contract = inspectProjectQualityContract(root, request);
     const contractError = contract.ok ? undefined : `project quality contract failed — ${contract.failures.slice(0, 4).join('; ')}`;
-    if (programOnly && !repository) {
+    if (programOnly && !repository && !documentOnly) {
         ledger.record({ instrument: 'quality', ok: contract.ok, error: contractError });
     } else if (repository && !contract.ok) {
         remark('quality', `the repository's own manifest is not held to Joe's build contract (${contractError})`);
@@ -450,8 +464,21 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     if (programOnly) {
         skipped.set('live', repository
             ? 'the user\'s own repository is proven by its own test suite, not by a page Joe opens'
-            : 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
+            : documentOnly
+                ? 'the request asks for a document: the file is the delivery, not a page Joe opens'
+                : 'the request asks for a program, so its own test run proves it runs (there is no address to confirm)');
         await stage(['program'], async () => {
+            if (documentOnly) {
+                const docs = await deliveredDocuments(root);
+                ledger.record({
+                    instrument: 'program',
+                    target: root,
+                    ok: docs.length > 0,
+                    error: docs.length ? undefined : 'the request asks for a document, and the project holds none: write it as a file (a report or plan as .md, a sheet as .csv, slides as .html or .md) in the project folder',
+                });
+                passed.set('program', `the document(s) asked for are delivered: ${docs.map(d => `${d.path} (${d.words} words)`).join(', ')}`);
+                return;
+            }
             const run = await runRequestedTests(root, runTool);
             if (run.noRunner) {
                 skipped.set('program', `not measured, and the delivery needs it: ${run.error || 'no test runner Joe knows for this project'}`);
@@ -463,7 +490,9 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 ok: run.passed,
                 error: run.passed ? undefined : `the program's own tests ${run.ran ? 'did not pass' : 'could not run'}: ${String(run.error || '').slice(0, 400)}`,
             });
-            passed.set('program', `its own tests ran and passed (${run.runner || 'tests'})`);
+            passed.set('program', run.sameFilesAsLastPass
+                ? `its own tests passed (${run.runner || 'tests'}) on these very files at the last check; nothing changed since, so they were not run again`
+                : `its own tests ran and passed (${run.runner || 'tests'})`);
         });
     } else {
         skipped.set('program', 'the request asks for more than a program: the live run proves it');
@@ -524,7 +553,7 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     await stage(['acceptance'], async () => {
         const judged = await judgeRequirements(ctx, request, isAr, root, deps.ask, note, {
             built: buildsPassed, liveUrl, tests: delivery.state.requestCoverage,
-        }, interfaceDelivered);
+        }, interfaceDelivered, documentAsked);
         Object.assign(acceptance, judged.summary);
         bySight = judged.bySight;
         ledger.record({ instrument: 'acceptance', ok: !judged.blocked, error: judged.blocked ? judged.error : undefined, met: judged.met });
@@ -576,6 +605,33 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 const retry = await browserQa.audit(auditDir, options(45_000));
                 if (!retry.skipped) audit = retry;
             }
+            /*
+             * What Joe's repairer answers, Joe repairs, and measures once more
+             * (browser-mend.ts): kept only when the page is better, put back
+             * otherwise. Never in the user's own repository.
+             */
+            let mended: string[] = [];
+            //  Only for what would refuse: a rebuild and a second measurement are not spent on taste alone.
+            if (mender && !repository && !audit.skipped && mendable(audit.findings.filter(refuses))) {
+                const mendRoot = [...auditRoots].sort((a, b) => b.length - a.length)
+                    .find(r => path.resolve(auditDir) === path.resolve(r) || isWithinRoot(path.resolve(auditDir), path.resolve(r))) || root;
+                try {
+                    const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
+                    if (m) {
+                        const again = await browserQa.audit(auditDir, options(45_000));
+                        if (!again.skipped && mendIsBetter(audit.findings, again.findings)) {
+                            audit = again;
+                            mended = m.repairs;
+                            note(`browser QA: Joe repaired it himself (${m.changed.join(', ')}): ${m.repairs.join('; ')}`);
+                        } else {
+                            await m.undo();
+                            note('browser QA: Joe\'s own repair did not make the page better, so every file was put back');
+                        }
+                    }
+                } catch (e) {
+                    note(`browser QA: Joe's own repair could not run: ${message(e)}`);
+                }
+            }
             browserAudit = audit;
             if (audit.look?.path && audit.look.path !== proof.desktop) {
                 try {
@@ -591,17 +647,21 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             }
             const unmetLooks = (looks || []).filter(l => l.verdict === 'unmet')
                 .map(l => `${planIdOf(ctx, l.id)} «${l.text}» does not look as he asked: ${l.why}`);
+            //  A minor finding of taste is told with the delivery, never a refusal on its own (browser-mend.ts).
+            const blocking = audit.skipped ? [] : audit.findings.filter(refuses);
+            const told = audit.skipped ? [] : audit.findings.filter(f => !refuses(f));
+            const mendedLine = `${audit.carried ? `; ${audit.carried} part(s) of this walk were finished by the walk before it, on the same unchanged code` : ''}${mended.length ? `; Joe repaired it himself before this measurement: ${mended.join('; ')}` : ''}`;
             if (audit.skipped) {
                 ledger.record({ instrument: 'browser', ok: false, error: `browser QA skipped: ${audit.skipped}` });
-            } else if (audit.findings.length) {
-                const findings = audit.findings.map(browserFindingLine);
-                ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${audit.findings.length} blocking finding(s): ${findings.slice(0, 8).join(' | ')}${findings.length > 8 ? ` (+${findings.length - 8} more)` : ''}${unmetLooks.length ? ` | ${unmetLooks.join(' | ')}` : ''}` });
+            } else if (blocking.length) {
+                const findings = blocking.map(browserFindingLine);
+                ledger.record({ instrument: 'browser', ok: false, error: `browser QA found ${blocking.length} blocking finding(s): ${findings.slice(0, 8).join(' | ')}${findings.length > 8 ? ` (+${findings.length - 8} more)` : ''}${unmetLooks.length ? ` | ${unmetLooks.join(' | ')}` : ''}${told.length ? ` | minor, not blocking: ${told.map(f => f.id).join(', ')}` : ''}${mendedLine}` });
             } else if (unmetLooks.length) {
                 ledger.record({ instrument: 'browser', ok: false, error: `the page, seen on its screenshot: ${unmetLooks.join(' | ')}` });
             } else {
                 ledger.record({ instrument: 'browser', ok: true });
                 const seen = (looks || []).filter(l => l.verdict === 'met');
-                passed.set('browser', `visible Browser QA in the panel found nothing to fix (score ${audit.score})${seen.length ? `; seen on the page's screenshot: ${seen.map(l => `${planIdOf(ctx, l.id)} ${l.why}`).join(' | ')}` : ''}`);
+                passed.set('browser', `visible Browser QA in the panel found nothing ${told.length ? 'that blocks' : 'to fix'} (score ${audit.score})${mendedLine}${told.length ? `; minor notes, told and not refused: ${told.map(browserFindingLine).join(' | ')}` : ''}${seen.length ? `; seen on the page's screenshot: ${seen.map(l => `${planIdOf(ctx, l.id)} ${l.why}`).join(' | ')}` : ''}`);
             }
         });
     } else if (interfaceDelivered && !ledger.all().some(m => m.instrument === 'browser')) {
@@ -808,6 +868,32 @@ export async function measureProjectSource(root: string, deadlineAt: number, can
  */
 /** Source code, in every language a project may be written in. */
 const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|mjs|cjs)$/iu;
+
+/** A document a request can ask for, readable as text (a sheet as CSV, slides as HTML or Markdown). */
+const DOCUMENT_FILE = /\.(?:md|markdown|txt|csv|tsv|html?)$/iu;
+/** Binary documents: delivered, but read by no judge (named so the model knows to give a readable copy). */
+const BINARY_DOCUMENT_FILE = /\.(?:xlsx|docx|pptx|pdf)$/iu;
+const NOT_A_DELIVERED_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-delivery)(?:\.[a-z]+)?$/iu;
+
+/** The documents the project delivers, with their words, largest first (machine folders and Joe's own files aside). */
+export async function deliveredDocuments(root: string): Promise<Array<{ path: string; words: number }>> {
+    const files = await listProjectFiles(root, {
+        skipDirectory: name => name === 'node_modules' || name === 'dist' || name.startsWith('.'),
+        keepFile: (_relative, name) => (DOCUMENT_FILE.test(name) || BINARY_DOCUMENT_FILE.test(name)) && !NOT_A_DELIVERED_DOCUMENT.test(name),
+    });
+    const out: Array<{ path: string; words: number }> = [];
+    for (const rel of files) {
+        try {
+            const abs = path.join(root, rel);
+            const stat = await fs.promises.stat(abs);
+            if (!stat.size) continue;
+            const words = BINARY_DOCUMENT_FILE.test(rel) || stat.size > 2_000_000 ? 0
+                : (String(await fs.promises.readFile(abs, 'utf8')).replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>|<[^>]+>/giu, ' ').match(/[\p{L}\p{N}]+/gu) || []).length;
+            out.push({ path: rel.split(path.sep).join('/'), words });
+        } catch { /* unreadable is not delivered */ }
+    }
+    return out.sort((a, b) => b.words - a.words);
+}
 /**
  * The project's own documentation and configuration. C12 of the Codex exam
  * (2026-11-06): «rename timeout to timeout_seconds in the code, the tests
@@ -817,7 +903,8 @@ const JUDGE_CODE_FILE = /\.(?:jsx?|tsx?|html|css|py|go|rb|rs|java|kt|php|cs|vue|
  * config file, a version in package.json are requirements too. Small files
  * only (a big JSON is data, not configuration), and never a lockfile.
  */
-const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|json|ya?ml|toml|ini|cfg)$/iu;
+//  A sheet delivered as CSV is read too (the Manus-style exam, 2026-11-09: a comparison in a CSV).
+const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|csv|tsv|json|ya?ml|toml|ini|cfg)$/iu;
 const LOCKFILE = /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|pipfile\.lock|composer\.lock|cargo\.lock)$/iu;
 const JUDGE_DOC_BYTES = 64 * 1024;
 
@@ -840,6 +927,58 @@ export async function judgeSource(root: string): Promise<{ text: string; leftOut
         } catch { /* unreadable is not evidence */ }
     }
     return { text: judgeSourceOf(read), leftOut };
+}
+
+/*
+ * WHAT THE CHANGE CHANGED, AS IT WAS BEFORE.
+ *
+ * The Codex exam in Arabic, 2026-11-08: C03 asked for `--json` «and the plain
+ * output stays exactly as it is». The judge saw only the files as they are now
+ * and ruled it unprovable — «no previous version» — and the delivery was
+ * refused, though Joe had kept that version himself (the snapshot «تراجع»
+ * restores). In the user's own repository the judge is given, after the
+ * source, each code or doc file this change modified or deleted as it was
+ * before the change, and the names of the files it added.
+ */
+const BEFORE_MARK = '(before this change) ';
+const BEFORE_MAX_BYTES = 48 * 1024;
+
+export async function beforeThisChange(root: string, snapshotId: string): Promise<string> {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { VERSIONS_DIR } = require('../project/versions');
+    const kept = path.join(root, VERSIONS_DIR, String(snapshotId), 'files');
+    if (!snapshotId || !fs.existsSync(kept)) return '';
+    const judged = (rel: string) => JUDGE_CODE_FILE.test(rel) || (JUDGE_DOC_OR_CONFIG_FILE.test(path.basename(rel)) && !LOCKFILE.test(path.basename(rel)));
+    const walk = async (abs: string, rel: string, out: string[]): Promise<string[]> => {
+        let entries: fs.Dirent[] = [];
+        try { entries = await fs.promises.readdir(abs, { withFileTypes: true }); } catch { return out; }
+        for (const e of entries) {
+            const r = rel ? `${rel}/${e.name}` : e.name;
+            if (e.isDirectory()) { if (!e.name.startsWith('.') && e.name !== 'node_modules' && e.name !== 'dist') await walk(path.join(abs, e.name), r, out); }
+            else if (e.isFile() && judged(r)) out.push(r);
+        }
+        return out;
+    };
+    const was = await walk(kept, '', []);
+    const blocks: Array<{ path: string; text: string }> = [];
+    let bytes = 0;
+    for (const rel of was.sort()) {
+        let old = '', now: string | null = null;
+        try { old = await fs.promises.readFile(path.join(kept, rel), 'utf8'); } catch { continue; }
+        try { now = await fs.promises.readFile(path.join(root, rel), 'utf8'); } catch { now = null; }
+        if (now === old) continue;
+        if (bytes + old.length > BEFORE_MAX_BYTES) { blocks.push({ path: `${BEFORE_MARK}${rel}`, text: '(too large to show here)' }); continue; }
+        bytes += old.length;
+        blocks.push({ path: `${BEFORE_MARK}${rel}${now === null ? ' — deleted by this change' : ''}`, text: old });
+    }
+    const keptSet = new Set(was);
+    const added = (await walk(root, '', [])).filter(rel => !keptSet.has(rel) && !rel.startsWith(`${VERSIONS_DIR}/`));
+    if (!blocks.length && !added.length) return '';
+    return [
+        'THE SAME REPOSITORY BEFORE THIS CHANGE (Joe\'s own copy, taken before the run): each file this change modified or deleted, as it was. Judge a requirement that something stays as it was by comparing them; the files above are the repository now, and only they are the delivery.',
+        judgeSourceOf(blocks),
+        added.length ? `Files this change added: ${added.slice(0, 40).join(', ')}` : '',
+    ].filter(Boolean).join('\n');
 }
 
 /** The plan's R-id for a requirement the judge knows by its own id. */
@@ -873,6 +1012,7 @@ export async function judgeRequirements(
     note: (line: string) => void,
     evidence: { built: boolean; liveUrl: string; tests?: Pick<NonNullable<DeliveryRunState['requestCoverage']>, 'records' | 'testsRun'> },
     pageDelivered = false,
+    documentsAreTheProduct = false,
 ): Promise<{ blocked: boolean; error: string; requirementsCount: number; leftOut: string[]; bySight: NamedRequirement[]; met: string[]; summary: { requirements: JudgedRequirement[]; requestUnread: boolean; whyNotRead: string } }> {
     //  1. What the request names: the plan's requirements read from it (the
     //  same reader seeded them), or — when the seeding read nothing — a
@@ -905,7 +1045,13 @@ export async function judgeRequirements(
     if (byRun.length) note(`acceptance: ${byRun.map(x => `«${x.r.text}» ${x.run.verdict} on the run of the project's tests`).join(', ')}`);
     //  2-3. The source, and a verdict per requirement grounded in it.
     const source = await judgeSource(root);
-    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask) : [];
+    //  His own repository: the files this change changed, as they were before it, so a
+    //  requirement that something STAYS as it was is judged on both (beforeThisChange).
+    if (ctx.change?.repository && ctx.change.snapshot) {
+        const before = await beforeThisChange(root, ctx.change.snapshot);
+        if (before) source.text = `${source.text}\n${before}`;
+    }
+    const verdicts: JudgedNamed[] = onSource.length ? await verifyNamed(onSource, source.text, isAr, ask, undefined, undefined, { documentsAreTheProduct }) : [];
     //  4. The verdicts themselves are the criteria — always, even from a blind
     //  judge, so that criteria > 0 and a judge that could rule on nothing
     //  blocks. No catalogue or structural criterion is added.
@@ -995,7 +1141,8 @@ function reportChecks(
                 const read = readAsRequirements(asked, all.flatMap(m => m.instrument === 'acceptance' ? (m.met || []) : []));
                 if (read.length) detail += ` | read as requirements the judge found met: ${read.join(', ')}`;
             }
-            if (unread.length) detail += ` | requested items that could not be read: ${unread.join(', ')}`;
+            //  What reads an item, told once (L451, 2026-11-09: ten refusals spent on test names and plan entries, which read nothing).
+            if (unread.length) detail += ` | requested items that could not be read: ${unread.join(', ')} — an item is read when the server serves a route named for it, or when a requirement read from his request that holds every word of it is judged met on the source; a requirement added with plan_update, a test named after it, or an evidence line does not read it`;
             if (unverified.length) detail += ` | not measured, so not verified: ${unverified.join('; ')}`;
             if (instrument === 'acceptance' && requirements.length) {
                 const open = requirements.filter(r => r.verdict !== 'met');

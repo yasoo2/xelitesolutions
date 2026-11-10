@@ -7,6 +7,7 @@ import {
     Copy, CopyCheck, Trash2, Search, ArrowDownToLine, Columns2
 } from 'lucide-react';
 import { ErrorBoundary } from './ErrorBoundary';
+import LiveDevicePanel, { LiveBrowserChip, type LiveSource } from './LiveDevicePanel';
 import { useUiDir } from './NeuralTraceView';
 
 // Lazy load the heavy components
@@ -70,6 +71,10 @@ interface WorkspacePanelProps {
     problems?: any[];
     mobileCollapsed?: boolean;
     onMobileToggle?: () => void;
+    /** What Joe is working on now, shown live in the Preview: the phone, this computer, or his browser (LiveDevicePanel). */
+    liveSource?: LiveSource | null;
+    /** Back to the page preview from the live view. */
+    onLiveClose?: () => void;
 }
 
 // ─── Inline Copy Button ────────────────────────────────────────────
@@ -376,12 +381,15 @@ function EnhancedLogsPanel({ logs, liveFiles = [], buildStatus = null }: { logs:
     const renderedLogs = filter ? filtered : filtered.slice(-RENDERED_LOG_LIMIT);
     const hiddenLogCount = filtered.length - renderedLogs.length;
 
-    // Auto-scroll
+    // Auto-scroll. It follows every new line, not the count on screen: past
+    // RENDERED_LOG_LIMIT the window stays 220 lines long while the lines
+    // change, and the panel stood still on old lines during the owner's phone
+    // run (2026-11-08, 551 lines, the newest ones below the fold).
     useEffect(() => {
         if (autoScroll && scrollRef.current) {
             scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
         }
-    }, [renderedLogs.length, autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
+    }, [filtered.length, filtered[filtered.length - 1], autoScroll, liveFiles.reduce((n, f) => n + f.content.length, 0)]);
 
     const handleCopyAll = () => {
         // Everything the panel SHOWS is what "copy all" copies: the live file
@@ -608,7 +616,9 @@ export default function WorkspacePanel({
     buildStatus = null,
     problems = [],
     mobileCollapsed,
-    onMobileToggle
+    onMobileToggle,
+    liveSource = null,
+    onLiveClose,
 }: WorkspacePanelProps) {
     const { t } = useTranslation();
     const [internalCollapsed, setInternalCollapsed] = useState(false);
@@ -640,7 +650,10 @@ export default function WorkspacePanel({
             return !v;
         });
     };
-    const splitActive = splitView && (activeTab === 'logs' || activeTab === 'preview');
+    //  Joe's browser shown in the Preview takes the whole area: the same mounted
+    //  browser as the Browser tab, never a second one (it opens a real Chromium).
+    const browserInPreview = activeTab === 'preview' && liveSource === 'browser';
+    const splitActive = splitView && (activeTab === 'logs' || (activeTab === 'preview' && !browserInPreview));
 
     const handleMobileToggle = () => {
         if (onMobileToggle) {
@@ -655,6 +668,9 @@ export default function WorkspacePanel({
         { id: 'terminal', label: t('panelTerminal'), icon: <TerminalIcon size={16} /> },
         { id: 'preview', label: t('panelPreview'), icon: <Eye size={16} /> },
         { id: 'logs', label: t('wsp_tabLogs'), icon: <FileOutput size={16} />, badge: (logs.length + liveFiles.length) > 0 ? logs.length + liveFiles.length : undefined },
+        //  No tab of its own for a device: the owner, 2026-11-08, «on the same
+        //  preview, no more menus» — the Preview shows the phone or the
+        //  computer live while Joe works it (liveSource, below).
         // The Problems tab was removed at the owner's request — its findings
         // already reach the chat and the logs, so the extra tab was noise.
         // So was Activity (2026-11-02): what the engine does is drawn inside
@@ -748,12 +764,14 @@ export default function WorkspacePanel({
                     is visible. Browser QA borrows this exact surface; unmounting
                     it for Terminal used to make a real audit invisible just
                     before the first frame arrived. */}
-                <div style={{ display: activeTab === 'browser' ? 'contents' : 'none', width: '100%', height: '100%' }}>
+                <div style={{ display: activeTab === 'browser' || browserInPreview ? 'contents' : 'none', width: '100%', height: '100%' }}>
                     <ErrorBoundary fallbackTitle={t('loadBrowserFailed')}>
                         <Suspense fallback={<LoadingFallback />}>
                             <EmbeddedBrowser
                                 key={browserSessionId || (sessionId ? `browser:${sessionId}` : 'browser:no-session')}
                                 sessionId={browserSessionId || (sessionId ? `browser:${sessionId}` : '')}
+                                //  In the toolbar's row, never over its buttons (EmbeddedBrowser badge).
+                                badge={browserInPreview ? <LiveBrowserChip onClose={onLiveClose} /> : undefined}
                             />
                         </Suspense>
                     </ErrorBoundary>
@@ -785,7 +803,15 @@ export default function WorkspacePanel({
                     )}
                     <div style={splitActive
                         ? { flex: '1 1 50%', minWidth: 0, display: 'flex', flexDirection: 'column' }
-                        : { display: activeTab === 'preview' ? 'contents' : 'none' }}>
+                        : { display: activeTab === 'preview' && !browserInPreview ? 'contents' : 'none' }}>
+                        {/* What Joe is working on, live: the phone or this computer.
+                            The page preview stays mounted underneath, its listeners alive. */}
+                        {liveSource && liveSource !== 'browser' && (
+                            <ErrorBoundary fallbackTitle={t('dev_failed')}>
+                                <LiveDevicePanel source={liveSource} visible={activeTab === 'preview' || splitActive} onClose={onLiveClose} />
+                            </ErrorBoundary>
+                        )}
+                        <div style={liveSource && liveSource !== 'browser' ? { display: 'none' } : { display: 'contents' }}>
                         <ErrorBoundary fallbackTitle={t('loadPreviewFailed')}>
                             <Suspense fallback={<LoadingFallback />}>
                                 {/*
@@ -805,9 +831,10 @@ export default function WorkspacePanel({
                                   *  with nothing inherited — which is the only way
                                   *  «this session built nothing» can be shown at all.
                                   */}
-                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} />
+                                <PreviewPanel key={`preview:${sessionId || 'none'}`} url={previewUrl} sessionId={sessionId || undefined} />
                             </Suspense>
                         </ErrorBoundary>
+                        </div>
                     </div>
                 </div>
 

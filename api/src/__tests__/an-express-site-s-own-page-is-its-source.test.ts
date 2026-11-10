@@ -85,3 +85,18 @@ describe('a library shipped minified is never evidence', () => {
         } finally { fs.rmSync(dir, { recursive: true, force: true }); }
     });
 });
+
+describe('a store named is a kind of business; a store built is a catalogue (L010)', () => {
+    const asks = (text: string) => scopeReport(text, []).requested.map(c => c.en);
+    test.each([
+        'اعمل صفحة ترحيب واحدة لـمتجر عطور فيها الاسم وساعات العمل وزر اتصال.',
+        'اكتب أداة سطر أوامر بلغة Python تقرأ ملف CSV فيه العطور لـمتجر عطور',
+        'ابني دردشة فريق لـمتجر عطور فيها قنوات ورسائل خاصة',
+    ])('«%s» asks no catalogue', text => expect(asks(text)).not.toContain('product catalogue'));
+    test.each([
+        'ابني متجر إلكتروني للعطور بسلة ودفع',
+        'ابن لي متجراً لبيع الكتب',
+        'موقع لمتجر ملابس يعرض المنتجات بالصور والأسعار',
+        'Build an online store for a bakery',
+    ])('«%s» does', text => expect(asks(text)).toContain('product catalogue'));
+});

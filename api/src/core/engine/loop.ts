@@ -17,7 +17,7 @@
 import { promises as fsp } from 'fs';
 import path from 'path';
 import { Conversation, budgetFor, estimateTokens, formatPlan } from './context';
-import { firstMessage, systemPrompt, type MachineFacts } from './prompt';
+import { firstMessage, languageReminder, languageSection, noteInWrongScript, systemPrompt, type MachineFacts } from './prompt';
 import { newPlan, seededRequirements, type RequirementSeed } from './plan';
 import { keepJoeFilesOutOfGit } from '../project/git-exclude';
 import { operatorFirstMessage, operatorSystemPrompt } from './operate';
@@ -38,6 +38,13 @@ export interface EngineDeps {
     /** Reads the requested items. A failure leaves the ledger empty, never the run stopped. */
     seedRequirements?: (request: string, language: string) => Promise<RequirementSeed[]>;
     now?: () => number;
+    /**
+     * Before the first model call: work done without a model (experience.ts, a
+     * request done again from Joe's book). `finish` claims it done — the run's
+     * own task_finish checks it, and a pass delivers with no model call; `note`
+     * tells the model, in its first message, what was done and where it stopped.
+     */
+    before?: (ctx: ToolContext, tools: Map<string, EngineTool>) => Promise<{ finish?: string; note?: string; refused?: (failed: string) => string } | null>;
 }
 
 /** Steps with no file changed, no command passing and no page served before the engine steps in. */
@@ -57,13 +64,34 @@ export const MODEL_FAILURE_LIMIT = 3;
  */
 export const REFUSAL_LIMIT = 4;
 
-/** What a refusal refused, with its counts folded, so «8 tap targets» and «12 tap targets» read alike. */
+/**
+ * What a refusal refused, with its counts folded, so «8 tap targets» and «12 tap targets» read alike.
+ *
+ * A check that names the requirements it refused (R2, R7) is that check on those
+ * requirements, whatever its words: the acceptance judge is a model and words the
+ * same refusal anew each time. The ladder's L150, 2026-11-08: «R2 نقل الأقسام بين
+ * الأعمدة» was refused for two hours and 88 steps, never twice in the same words,
+ * so the run never stopped on it.
+ */
 export function refusalSignature(report: { checks?: { id: string; status: string; detail?: string }[] } | undefined): string {
     return (report?.checks || [])
-        .filter(c => c.status === 'failed')
-        .map(c => `${c.id}:${String(c.detail || '').replace(/\d+/g, '#').slice(0, 200)}`)
+        .filter(c => c.status === 'failed' || unmeasured(c))
+        .map(c => {
+            //  A check the delivery needs and that could not be measured (2026-11-09: the Browser QA
+            //  with no one watching Joe's page) is the same refusal each time: it counts toward the
+            //  limit, so the run ends honestly instead of calling task_finish again until its deadline.
+            if (c.status !== 'failed') return `${c.id}:unmeasured`;
+            const detail = String(c.detail || '');
+            const requirements = [...new Set(detail.match(/\bR\d{1,3}\b/gu) || [])].sort();
+            return requirements.length ? `${c.id}:${requirements.join(',')}` : `${c.id}:${detail.replace(/\d+/g, '#').slice(0, 200)}`;
+        })
         .sort()
         .join('|');
+}
+
+/** A check the delivery needs that was not measured (verify.ts: «not measured, and the delivery needs it»). */
+function unmeasured(c: { status: string; detail?: string }): boolean {
+    return c.status === 'skipped' && /^not measured, and the delivery needs it/u.test(String(c.detail || ''));
 }
 /** Recite the plan at least this often, even when it did not change. */
 export const RECITE_EVERY = 5;
@@ -167,14 +195,43 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
         type: 'function', function: { name: t.name, description: t.description, parameters: t.parameters },
     }));
     const toolTokens = estimateTokens(JSON.stringify(schemas)) + 64 * schemas.length;
+
+    //  Work done before any model call (experience.ts: a request done again from Joe's book).
+    //  Its claim goes through the run's own task_finish: a pass delivers with no model call.
+    let preDelivered: string | null = null;
+    let preNote = '';
+    const lastErrorsBefore: string[] = [];
+    if (deps.before) {
+        try {
+            const pre = await deps.before(ctx, tools);
+            const fin = tools.get('task_finish');
+            if (pre?.finish && fin) {
+                const parsed = fin.parse({ summary: pre.finish });
+                if (parsed.ok) {
+                    const outcome = await fin.run(parsed.value, ctx);
+                    absorbFacts(state, outcome.facts);
+                    if (outcome.facts?.verification?.passed) preDelivered = pre.finish;
+                    else {
+                        const failed = (outcome.facts?.verification?.checks || []).filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                        preNote = pre.refused ? pre.refused(failed || firstLine(outcome.output)) : pre.note || '';
+                    }
+                }
+            } else if (pre?.note) preNote = pre.note;
+        } catch (e) {
+            preNote = '';
+            lastErrorsBefore.push(`the work before the model failed: ${message(e)}`);
+        }
+    }
+
     const conv = new Conversation(stateDir, budgetFor(deps.model.contextTokens(), toolTokens));
-    conv.push({ role: 'system', content: req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine) });
-    conv.push({ role: 'user', content: req.operate
-        ? operatorFirstMessage(req.request, req.language, req.replyLanguage)
-        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change) });
+    conv.push({ role: 'system', content: (req.operate ? operatorSystemPrompt(deps.machine) : systemPrompt(deps.machine)) + languageSection(req.replyLanguage || req.language) });
+    const opening = req.operate
+        ? operatorFirstMessage(req.request, req.language, req.replyLanguage, req.operateTarget, req.operateHistory, req.operateAbout)
+        : firstMessage(req.request, req.language, state.plan, req.projectDir, req.replyLanguage, req.change);
+    conv.push({ role: 'user', content: preNote ? `${opening}\n\n${preNote}` : opening });
     req.emit({ type: 'plan', plan: state.plan });
 
-    const lastErrors: string[] = [];
+    const lastErrors: string[] = [...lastErrorsBefore];
     const failures = new Map<string, number>();
     let idle = 0;
     let modelFailures = 0;
@@ -189,6 +246,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     let summary = '';
     let howToRun = '';
     let ending: { status: EngineResult['status']; reason?: string } | null = null;
+    //  Done from Joe's book and passed his checks: delivered with no model call.
+    if (preDelivered !== null) { summary = preDelivered; ending = { status: 'delivered' }; }
     let served = deps.processes.list();
     const usage: NonNullable<ModelStep['usage']>[] = [];
 
@@ -219,6 +278,12 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     //  this call (the window follows free memory). Fold and ask again.
                     const c = conv.compact(state, lastErrors);
                     if (c.removed) { req.emit({ type: 'compacted', removedMessages: c.removed, summaryChars: c.summaryChars }); continue; }
+                }
+                //  A picture the model cannot read is taken out, and the call is asked again
+                //  without it (context.ts dropImages): it never fails a run that did its work.
+                if (/could not process image|image (?:is )?(?:invalid|corrupt|could not be)|unable to process (?:the )?image/iu.test(message(e)) && conv.dropImages() > 0) {
+                    lastErrors.push('a picture the model could not read was taken out of the conversation');
+                    continue;
                 }
                 if (FINAL_MODEL_FAILURES.has(code)) { ending = { status: 'failed', reason: `the model call cannot go on (${code}): ${message(e)}` }; break; }
                 if (code === 'LOCAL_COMPLETION_LIMIT' || code === 'COMPLETION_LIMIT') {
@@ -313,12 +378,18 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     sameRefusals = signature && signature === lastRefusal ? sameRefusals + 1 : 1;
                     lastRefusal = signature;
                     if (sameRefusals >= REFUSAL_LIMIT) {
-                        const failed = outcome.facts.verification.checks.filter(c => c.status === 'failed').map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
+                        const failed = outcome.facts.verification.checks.filter(c => c.status === 'failed' || unmeasured(c)).map(c => `${c.id}: ${firstLine(c.detail)}`).join('; ');
                         ending = { status: 'failed', reason: `Joe's checks refused the same thing ${sameRefusals} times in a row: ${failed}` };
                     }
                 }
                 if (ending) {
                     //  Ended above: the rest of the turn is answered as not run.
+                } else if (call.name === 'ask_owner' && outcome.facts?.ownerQuestion) {
+                    //  The run ends on one question to the owner, honestly, instead of
+                    //  asking it again and again in notes until the idle limit (the
+                    //  owner's «حاول مره اخرى», 2026-11-08: 24 steps, then «failed»).
+                    summary = outcome.facts.ownerQuestion;
+                    ending = { status: 'delivered' };
                 } else if (call.name === 'task_finish' && outcome.facts?.verification?.passed) {
                     summary = (args as FinishArgs | undefined)?.summary || summary;
                     howToRun = String((args as FinishArgs | undefined)?.how_to_run || '').trim();
@@ -340,6 +411,14 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                 recitedRevision = state.plan.revision;
                 recitedRunning = running;
                 recitedAt = state.steps;
+            }
+            //  A note in another script than the owner's language is answered
+            //  with one line asking for his: the owner's phone run, 2026-11-07,
+            //  wrote «The tap opened the flashlight detail panel…» to an Arabic
+            //  reader after a few English tool answers.
+            if (!ending && results.length && turn.text && noteInWrongScript(turn.text, req.replyLanguage || req.language)) {
+                const last = results[results.length - 1];
+                last.content = `${last.content}\n\n${languageReminder(req.replyLanguage || req.language)}`;
             }
             for (const r of results) conv.push(r);
             if (!ending && images.length && deps.model.vision) {

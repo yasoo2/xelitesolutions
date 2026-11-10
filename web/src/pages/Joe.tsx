@@ -103,6 +103,10 @@ export default function Joe() {
      * tab a build streams into, and showing it starts no process at all.
      */
     const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
+    //  What Joe works on now, shown live in the Preview: the phone or this computer (LiveDevicePanel).
+    const [liveSource, setLiveSource] = useState<'phone' | 'computer' | 'browser' | null>(null);
+    //  Another chat starts on its own page preview, not on the last chat's device.
+    useEffect(() => { setLiveSource(null); }, [activeSessionId]);
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
@@ -318,12 +322,16 @@ export default function Joe() {
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             };
+            //  Joe's browser, in the Preview: the same browser the Browser tab holds.
+            const showBrowser = () => { setLiveSource('browser'); setWorkspaceTab('preview'); };
             if (msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa') {
                 keepBrowserVisibleRef.current = true;
                 // QA is only trustworthy when its browser is actually on screen.
                 // Keeping the panel mounted in the background is not enough: the
                 // focus event is the server's explicit instruction to reveal it.
-                setWorkspaceTab('browser');
+                // Revealed in the PREVIEW: the owner, 2026-11-08, «the preview
+                // shows everything Joe does», the browser included (showBrowser).
+                showBrowser();
                 triggerUncollapse();
             }
             const maySwitchAwayFromBrowser = !keepBrowserVisibleRef.current;
@@ -361,14 +369,29 @@ export default function Joe() {
              * the user actually wants to watch it.
              */
 
-            // Auto switch to browser for browser actions
-            if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {
-                setWorkspaceTab('browser');
+            //  Joe works the owner's phone or this computer: the PREVIEW shows that
+            //  screen live (the owner, 2026-11-08: «why doesn't Joe's preview show
+            //  live what Joe is doing?… on the same preview, no more menus»). The
+            //  engine's steps are named engine:android_… and engine:device_…; the
+            //  device_ steps that list or link computers show no screen.
+            if (isToolStart && belongsToActiveSession(msg as any, activeSessionId)) {
+                const live = /^(?:engine:)?android_(?!devices|pair|connect|apps)/.test(toolName) ? 'phone'
+                    : /^(?:engine:)?device_(?:look|read|windows|focus|click|press|type|keys|scroll|open|drag)/.test(toolName) ? 'computer' : null;
+                if (live) {
+                    setLiveSource(live);
+                    setWorkspaceTab('preview');
+                    triggerUncollapse();
+                }
+            }
+
+            // Joe browses: the Preview shows his browser (the engine's steps are engine:browser_…).
+            if (isToolStart && (/^(?:engine:)?browser_/.test(toolName) || toolName === 'open_page' || toolName === 'click_element')) {
+                showBrowser();
                 triggerUncollapse();
             }
             // Only the names the server actually broadcasts.
             if (msg.type === 'browser_screenshot' || msg.type === 'stream_frame' || msg.type === 'browser_needs_user') {
-                setWorkspaceTab('browser');
+                showBrowser();
                 triggerUncollapse();
             }
 
@@ -446,6 +469,8 @@ export default function Joe() {
                          * page flips the tab to Preview.
                          */
                         if (shouldOpenPreviewOnReady(msg as any) && maySwitchAwayFromBrowser) {
+                            //  A finished page is what Joe works on now: the preview shows it, not a device.
+                            setLiveSource(null);
                             setWorkspaceTab('preview');
                             triggerUncollapse();
                         }
@@ -608,6 +633,26 @@ export default function Joe() {
         window.addEventListener('joe:workspace-tab-switch', handler);
         return () => window.removeEventListener('joe:workspace-tab-switch', handler);
     }, []);
+
+    // A REPLY TO JOE'S EMAIL ARRIVED (MailWatchService, 2026-11-08). Joe kept
+    // his message in the chat the email came from: when that chat is open it is
+    // read again at once (its live frame is dropped by the finished run's gate),
+    // and «open the chat» in the header's notice (JoeNoticeBanner) goes there.
+    useEffect(() => SocketService.subscribeNotices(n => {
+        if (n?.chatId && n.chatId === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+    }), []);
+    useEffect(() => {
+        const open = (e: Event) => {
+            const id = String((e as CustomEvent)?.detail?.id || '').trim();
+            if (!id) return;
+            if (agentSessions.some(s => s.id === id)) { setAgentSelected(id); setSelected(null); }
+            else { setSelected(id); setAgentSelected(null); }
+            try { localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id); } catch { /* storage unavailable */ }
+            if (id === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+        };
+        window.addEventListener('joe:open-session', open);
+        return () => window.removeEventListener('joe:open-session', open);
+    }, [agentSessions, setAgentSelected, setSelected]);
 
     // Load messages when the session changes. CRITICAL: clear the previous
     // session's messages immediately so a NEW/empty session never shows the old
@@ -1216,6 +1261,8 @@ export default function Joe() {
                 isLoading={isLoading || isRunning(activeSessionId || '')}
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
+                liveSource={liveSource}
+                onLiveClose={() => setLiveSource(null)}
                 onDeploymentsClick={() => nav('/super-admin/deployments')}
                 onSystemClick={() => nav('/super-admin/system')}
                 browserSessionId={browserSessionId || undefined}

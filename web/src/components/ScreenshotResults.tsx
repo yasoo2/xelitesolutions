@@ -302,35 +302,42 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
     setFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
   };
 
+  //  A card, not a raw image: seen 2026-11-07 in the ladder exam, a phone-width
+  //  capture (390×844) filled the whole chat and its download read as the
+  //  browser's default blue underlined link on the dark theme.
   return (
-    <section aria-label={t('shot_sectionLabel')} style={{ marginTop: 12 }}>
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    <section aria-label={t('shot_sectionLabel')} className="shot-section">
+      <ul className="shot-list">
         {items.map((item) => (
-          <li key={item.meta.id} style={{ marginBottom: 12 }}>
-            <figure style={{ margin: 0 }}>
+          <li key={item.meta.id} className="shot-card">
+            <figure className="shot-figure">
               {failed[item.meta.id] ? (
-                <div role="img" aria-label={t('shot_imageUnavailableFor', { name: item.meta.filename })}>
+                <div role="img" className="shot-missing" aria-label={t('shot_imageUnavailableFor', { name: item.meta.filename })}>
                   {t('shot_imageUnavailable')}
                 </div>
               ) : (
                 <img
                   src={item.dataUrl}
                   alt={item.meta.filename}
-                  style={{ maxWidth: '100%', height: 'auto', display: 'block' }}
+                  className={`shot-img${item.meta.height > item.meta.width ? ' tall' : ''}`}
                   onError={() => markFailed(item.meta.id)}
                 />
               )}
-              <figcaption>
-                {item.meta.filename} · {item.meta.width}×{item.meta.height}
+              <figcaption className="shot-meta">
+                <span className="shot-name">{item.meta.filename}</span>
+                <span className="shot-size">{item.meta.width}×{item.meta.height}</span>
+                {downloadState?.sid === sessionId && downloadState.items === items && downloadState.urls[item.meta.id] && !failed[item.meta.id] ? (
+                  <a className="shot-download" href={downloadState.urls[item.meta.id]} download={item.meta.filename}
+                    title={t('shot_download', { name: item.meta.filename })} aria-label={t('shot_download', { name: item.meta.filename })}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  </a>
+                ) : (
+                  <span role="status" className="shot-export-off">{t('shot_exportUnavailable')}</span>
+                )}
               </figcaption>
             </figure>
-            {downloadState?.sid === sessionId && downloadState.items === items && downloadState.urls[item.meta.id] && !failed[item.meta.id] ? (
-              <a href={downloadState.urls[item.meta.id]} download={item.meta.filename}>
-                {t('shot_download', { name: item.meta.filename })}
-              </a>
-            ) : (
-              <span role="status">{t('shot_exportUnavailable')}</span>
-            )}
           </li>
         ))}
       </ul>

@@ -19,6 +19,7 @@ import { workspaceService } from '../../modules/services/WorkspaceService';
 import { Message } from '../../shared/models/message';
 import { continuationExecutionGoal, findInterruptedContinuation, isContinuationCommand } from '../../core/resume/continuation-command';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { keepChatTurnInDatabase } from '../../core/engine/chat-history';
 
 const router = Router();
 
@@ -349,6 +350,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
+        } else {
+            //  On a server with Mongo the message was kept nowhere (2026-11-08): the
+            //  web reads a chat's history from Message, and so does a run's memory of
+            //  the chat (core/engine/chat-history.ts). Kept once, here, without making
+            //  the owner wait for the database before his run starts.
+            void keepChatTurnInDatabase({ sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta() });
         }
     } catch { /* non-fatal */ }
 
@@ -385,6 +392,14 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), engine: runEngineOf(provider || 'auto', model), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
 
+    //  Written from the Joe app on one of his phones: «this phone» is that one (linked-phones.ts phoneWrittenFrom).
+    let fromPhone: { id: string; name: string } | undefined;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const p = require('../../core/devices/linked-phones').phoneWrittenFrom(String(userId || ''), req.headers['user-agent']);
+        if (p) fromPhone = { id: String(p.id), name: String(p.name || p.model || '') };
+    } catch { /* no linked phones here */ }
+
     try {
         const traceId = traceManager.startTrace(runSessionId, executionText);
         
@@ -400,6 +415,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             workspaceId: resolvedWorkspaceId,
             resumeProjectRoot: resumeProjectRoot || undefined,
             resumeOriginRunId: resumedRunId || undefined,
+            //  What he typed, apart from the goal the run carries (a resumed goal, a file's
+            //  block): an answer to Joe's question is read on his words (select.ts, 2026-11-08).
+            ownerText: submittedText,
+            ...(fromPhone ? { fromPhone } : {}),
             userId,
             userName,
             systemInstructions,

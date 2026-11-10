@@ -9,6 +9,8 @@ data/
 # Ignore compiled js in src (ts project)
 src/**/*.js
 src/**/*.js.map
+# …but a test's fixture project is source, not compiled output: without it the test cannot run on a fresh checkout
+!src/__tests__/fixtures-*/**/*.js
 # File uploads and cache
 uploads/
 !uploads/.gitkeep

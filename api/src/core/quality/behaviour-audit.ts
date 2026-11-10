@@ -330,6 +330,18 @@ function findControls(limit: number) {
          * controls: "All"» on a filter that works perfectly.
          */
         if (el.getAttribute('aria-pressed') === 'true') return;
+        /**
+         * …AND THE SAME SAID BY A CLASS, AMONG ITS SIBLINGS.
+         *
+         * The ladder, 2026-11-09 (L150, a kanban board): «الكل», the All filter,
+         * carried class="active" and no aria-pressed; pressing it changed
+         * nothing — correctly — and the board was refused for «Unresponsive
+         * controls: "الكل"». A control whose class marks it the current choice
+         * (active, selected, current), with siblings of its own kind beside it
+         * (a filter, tab or segment group), is the one already on.
+         */
+        if (/(?:^|\s)(?:active|is-active|selected|is-selected|current|is-current)(?:\s|$)/u.test(String(el.getAttribute('class') || ''))
+            && !!el.parentElement && Array.from(el.parentElement.children).some(s => s !== el && s.tagName === el.tagName)) return;
         if (isLanguageSwitch(el, controlLabel) && languageIsCurrent(el, controlLabel)) return;
         if (el.hasAttribute('data-joe-ctl')) return;    // claimed by an earlier group
         // A stable per-run handle: index into a list we also stamp on the element.
@@ -890,8 +902,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
 
         // Anchors are checked without clicking: the question is whether the
         // destination exists, and a page that scrolls is not proof that it does.
-        const anchorTargets: Array<{ label: string; target: string; exists: boolean }> = await page.evaluate(() => {
-            const out: Array<{ label: string; target: string; exists: boolean }> = [];
+        const anchorTargets: Array<{ label: string; target: string; exists: boolean; present?: boolean }> = await page.evaluate(() => {
+            const out: Array<{ label: string; target: string; exists: boolean; present?: boolean }> = [];
             document.querySelectorAll('a[href^="#"]').forEach(a => {
                 const h = (a.getAttribute('href') || '').slice(1);
                 // Hash-router paths such as #product/classic-edition are app
@@ -899,8 +911,10 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // targets (for example #contact) strict and measurable.
                 if (!h || h === 'top' || h.includes('/')) return;
                 let exists = false;
+                let present = false;
                 try {
                     const target = document.getElementById(h) || document.querySelector(`[name="${CSS.escape(h)}"]`);
+                    present = !!target;
                     if (target) {
                         const rect = target.getBoundingClientRect();
                         let visible = rect.width > 2 && rect.height > 2;
@@ -913,7 +927,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         exists = visible;
                     }
                 } catch { exists = false; }
-                out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists });
+                out.push({ label: ((a as HTMLElement).innerText || h).trim().slice(0, 40), target: h, exists, present });
             });
             return out.slice(0, 30);
         });
@@ -924,14 +938,15 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // by clicking and disturbing the rest of the control walk. Preserve
         // that real measurement in the same evidence stream as pressed controls
         // so acceptance gates can prove a specifically requested CTA.
-        controls.push(...anchorTargets.map((anchor, instance) => ({
+        const anchorControls = anchorTargets.map((anchor, instance) => ({
             label: anchor.label,
             kind: 'anchor' as const,
             worked: anchor.exists,
             effect: anchor.exists ? 'target' : '',
             instance,
             href: `#${anchor.target}`,
-        })));
+        }));
+        controls.push(...anchorControls);
 
         let budgetHit = false;
         let attemptedControls = 0;
@@ -942,6 +957,44 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         // to restore, leaving later controls absent and falsely reported as
         // unreached.  Return to the exact route we started this probe on.
         const probeStartUrl = page.url();
+        /**
+         * ⛔ A CONTROL THE WALK'S OWN PRESSES TOOK AWAY IS NOT ONE IT COULD NOT REACH.
+         *
+         * The hard sample, 2026-11-09 (L451, a project tracker's board): each
+         * card offers «→ In Progress», «→ Review», «→ Done» for the moves its
+         * workflow allows. The walk pressed one, the server kept the move, and
+         * the baseline the walk restored was another board: the card's other
+         * moves were gone — or, once the builder drew every move on every card,
+         * disabled — and «2 of 58 controls were gone before I could press them»
+         * refused a working board six times in 35 minutes. A control missing from
+         * the restored baseline is told apart: the product still shows it and
+         * declines it in this state («declined», as a control disabled from the
+         * start is never pressed), or the walk's own presses wrote to the product
+         * and the page it was found on no longer exists («consumed»). Neither is
+         * pressed, neither is judged dead, neither is «gone before I could press».
+         */
+        let wroteToProduct = false;
+        const probeOrigin = (() => { try { return new URL(probeStartUrl).origin; } catch { return ''; } })();
+        const onWrite = (response: any) => {
+            try {
+                const method = String(response?.request?.()?.method?.() || '').toUpperCase();
+                if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) || Number(response.status()) >= 400) return;
+                if (probeOrigin && new URL(String(response.url())).origin !== probeOrigin) return;
+                wroteToProduct = true;
+            } catch { /* a response that cannot be read wrote nothing we know of */ }
+        };
+        try { page.on('response', onWrite); } catch { /* a page without events */ }
+        const goneByTheWalk = async (c: { label: string }): Promise<'' | 'declined' | 'consumed'> => {
+            const declined = await page.evaluate((want: string) => Array.from(document.querySelectorAll('button, [role="button"], input[type="button"], input[type="submit"], a'))
+                .some((node: any) => {
+                    if (!(node.disabled === true || node.getAttribute('aria-disabled') === 'true')) return false;
+                    const text = String(node.innerText || node.value || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+                    const name = node.getAttribute('aria-label') || node.getAttribute('title') || '';
+                    return text === want || name === want;
+                }), c.label).catch(() => false);
+            if (declined) return 'declined';
+            return wroteToProduct ? 'consumed' : '';
+        };
         /**
          * ⛔ THE BASELINE INCLUDES WHERE THE PAGE WAS SCROLLED.
          *
@@ -970,6 +1023,100 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
         };
+        /**
+         * ⛔ A TAB'S SECTION IS HIDDEN UNTIL ITS TAB IS PRESSED.
+         *
+         * The ladder, 2026-11-09 (L155, a photo studio's admin): «#sessions»,
+         * «#clients», «#albums» each showed its own section and hid the others,
+         * the commonest single-page layout there is. Read without a press, every
+         * hidden one was «a section that is missing or not visible», the delivery
+         * was refused, and the model rebuilt its navigation as pages. A link whose
+         * section IS in the page but hidden is pressed once, and the section is
+         * read again (a link with no section at all: below). The page is put
+         * back where the probe started before anything else is pressed.
+         */
+        /*
+         * ⛔ AND A HASH THAT A ROUTER ANSWERS IS A PAGE, NOT A MISSING SECTION.
+         *
+         * The hard sample, 2026-11-09 (L352, a coffee shop's ERP): «#inventory»,
+         * «#sales», «#invoices» — eleven links of a router that renders each page
+         * into one #view on hashchange; no element is called «inventory», and at
+         * three widths the walk counted «33 navigation link(s) point at a section
+         * that is missing». A link with no section is pressed too, and compared
+         * with what an address the app does not know shows from the same place:
+         * it works when its press changed the page AND the page is not what an
+         * unknown address leaves (a router that ignores it changes nothing; a
+         * page that hides every section on an unknown hash goes blank). The link
+         * to the page already open changes nothing the first time, so a link that
+         * changed nothing is tried once more after the others have moved the page.
+         */
+        const pressLink = (h: string) => evalInPage(page, function (target: string) {
+            var links = Array.prototype.slice.call(document.querySelectorAll('a[href="#' + target + '"]'));
+            for (var k = 0; k < links.length; k++) {
+                var r = links[k].getBoundingClientRect();
+                if (r.width > 2 && r.height > 2) { links[k].click(); return true; }
+            }
+            return false;
+        }, h).catch(() => false);
+        const sectionShown = (h: string) => evalInPage(page, function (target: string) {
+            var el = document.getElementById(target);
+            if (!el) return false;
+            var rect = el.getBoundingClientRect();
+            var visible = rect.width > 2 && rect.height > 2;
+            var node: Element | null = el;
+            while (visible && node) {
+                var style = getComputedStyle(node);
+                visible = style.display !== 'none' && style.visibility !== 'hidden' && Number(style.opacity) > 0.05;
+                node = node.parentElement;
+            }
+            return visible;
+        }, h).catch(() => false);
+        const pageNow = () => page.evaluate(snapshot).catch(() => null);
+        const samePage = (x: any, y: any) => !!x && !!y && !changed({ ...x, url: '', scroll: 0 }, { ...y, url: '', scroll: 0 });
+        const setHash = (h: string) => evalInPage(page, function (v: string) { location.hash = v; return true; }, h).catch(() => false);
+        const settle = () => page.waitForTimeout(350).catch(() => { });
+        /** 'worked' | 'still' (changed nothing from here) | 'dead' */
+        const routes = async (h: string): Promise<'worked' | 'still' | 'dead'> => {
+            const here = String(await page.evaluate(() => location.hash).catch(() => ''));
+            const before = await pageNow();
+            await setHash('joe-no-such-page'); await settle();
+            const unknown = await pageNow();
+            await setHash(here.replace(/^#/, '')); await settle();
+            const back = await pageNow();
+            if (!await pressLink(h)) return 'dead';
+            await settle();
+            const after = await pageNow();
+            if (samePage(after, back || before)) return 'still';
+            return samePage(after, unknown) ? 'dead' : 'worked';
+        };
+        const toRecheck = anchorTargets.map((a, i) => ({ a, i })).filter(x => !x.a.exists).slice(0, 16);
+        if (toRecheck.length) {
+            const credit = (i: number, effect: string) => {
+                anchorTargets[i].exists = true;
+                anchorControls[i].worked = true;
+                anchorControls[i].effect = effect;
+            };
+            const still: Array<{ a: typeof anchorTargets[number]; i: number }> = [];
+            for (const { a, i } of toRecheck) {
+                if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
+                if (a.present) {
+                    //  A section in the page, hidden until its tab is pressed.
+                    if (!await pressLink(a.target)) continue;
+                    await settle();
+                    if (await sectionShown(a.target)) credit(i, 'target');
+                    continue;
+                }
+                const r = await routes(a.target);
+                if (r === 'worked') credit(i, 'navigation');
+                else if (r === 'still') still.push({ a, i });
+            }
+            for (const { a, i } of still) {
+                if (opts?.isEyeOpen && !opts.isEyeOpen()) break;
+                if (await routes(a.target) === 'worked') credit(i, 'navigation');
+            }
+            await restoreProbeStart();
+            metrics.deadAnchors = anchorTargets.filter(a => !a.exists).length;
+        }
         /**
          * Can a person press it here: in view, and the topmost thing at its
          * centre? A sticky header or a fixed bar covers a control the page has
@@ -1072,7 +1219,12 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         el = await page.$(current.sel);
                     }
                 }
-                if (!el) { controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: 'not found', instance: c.ordinal, href: c.href }); continue; }
+                if (!el) {
+                    //  Gone from the restored baseline: declined by the product, or consumed by the walk (above).
+                    const gone = await goneByTheWalk(c);
+                    controls.push({ label: c.label, kind: c.kind as any, worked: false, effect: gone || 'not found', instance: c.ordinal, href: c.href });
+                    continue;
+                }
                 // An empty form with required fields is BLOCKED by the browser, so
                 // nothing in the DOM changes and a naive check calls the submit
                 // button dead. Refusing to submit an empty form is the behaviour
@@ -1243,6 +1395,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             controls.push({ label: c.label, kind: c.kind as any, worked: !!effect && effect !== 'reload', effect, instance: c.ordinal, href: c.href });
         }
         metrics.budgetExhausted = budgetHit;
+        try { page.off('response', onWrite); } catch { /* the page may be gone */ }
 
         /**
          * EXPLORE THE STATES THAT THE FIRST CATALOGUE COULD NOT SEE.
@@ -1682,7 +1835,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
          * emptied. A control wired to nothing still changes nothing.
          */
         const SEARCH_LABEL = /^(?:search|find|go|apply|filter|بحث|ابحث|تصفية|تطبيق)$/iu;
-        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|show all|مسح|إعادة تعيين|اعادة تعيين|إلغاء البحث|عرض الكل)$/iu;
+        //  The ladder, 2026-11-09: «مسح الحقول», «إعادة الضبط», «Reset filters» on a page as it
+        //  loads clear nothing, correctly, and were reported as unresponsive.
+        const CLEAR_LABEL = /^(?:clear|reset|clear search|clear filters?|clear all|clear form|reset (?:filters?|form|all|search)|show all|مسح|مسح الكل|مسح الحقول|مسح البحث|مسح الفلاتر|إعادة تعيين|اعادة تعيين|إعادة الضبط|اعادة الضبط|إعادة ضبط|اعادة ضبط|إلغاء البحث|إلغاء الفلترة|عرض الكل|إظهار الكل|اظهار الكل)$/iu;
         const QUERY = 'zzqxjv';
         const queryLookUntil = Date.now() + 10_000;
         const asked = pressedQuiet.filter(q => SEARCH_LABEL.test(q.label.trim()) || CLEAR_LABEL.test(q.label.trim()));
@@ -2106,6 +2261,9 @@ export async function probeForms(
 
 /* ---- judgement, on what actually happened ------------------------------ */
 
+/** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed']);
+
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
     controls: ControlResult[],
@@ -2153,11 +2311,14 @@ export function judgeBehaviour(
         const key = `${control.context || ''}|${control.kind}|${control.bare || control.label}|${occurrence}`;
         const previous = evidence.get(key);
         if (!previous || (!previous.worked && control.worked)
-            || (previous.effect === 'not found' && control.effect !== 'not found')) evidence.set(key, control);
+            || (previous.effect === 'not found' && control.effect !== 'not found')
+            || (NOT_PRESSED.has(String(previous.effect || '')) && !NOT_PRESSED.has(String(control.effect || '')))) evidence.set(key, control);
     });
     const judgedControls = [...evidence.values()];
-    const pressable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect !== 'not found');
+    const pressable = judgedControls.filter(c => c.kind !== 'anchor' && !NOT_PRESSED.has(String(c.effect || '')));
     const unreachable = judgedControls.filter(c => c.kind !== 'anchor' && c.effect === 'not found');
+    //  Declined by the product, or consumed by the walk's own writes (probeControls): told in the metrics, never judged.
+    metrics.goneByTheWalk = judgedControls.filter(c => c.kind !== 'anchor' && (c.effect === 'declined' || c.effect === 'consumed')).length;
     const measuredFormSubmits = new Set(forms.filter(form => form.effect === 'submitted' || form.effect === 'validation' || form.effect === 'refused').map(form => `${form.scope || ''}|${form.label}`));
     const dead = pressable.filter(c => !c.worked && !(c.kind === 'submit' && measuredFormSubmits.has(`${c.context || ''}|${c.bare || c.label}`)));
     metrics.pressed = pressable.length;

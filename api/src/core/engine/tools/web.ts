@@ -57,4 +57,35 @@ export const webReadTool: EngineTool<WebReadArgs> = {
     },
 };
 
-export const webTools: EngineTool[] = [webReadTool];
+/*
+ * web_search (the owner, 2026-11-08: «better than Manus»): research, comparisons,
+ * current prices and news are looked up, not remembered.
+ */
+export const webSearchTool: EngineTool<{ query: string; count?: number }> = {
+    name: 'web_search',
+    description: 'Search the web and get the best results: title, address and a line of what each says. Use it whenever the work needs facts you cannot be sure of from memory — research, a comparison, current prices or versions, news, places, people, companies, a list of sources — then web_read the best two to four results and use what they say, naming the addresses. Search in the language the answer is wanted in; try the other language when it finds little.',
+    parameters: {
+        type: 'object',
+        properties: {
+            query: { type: 'string', description: 'What to search for, in the words a person would type.' },
+            count: { type: 'integer', description: 'How many results, 1 to 10. Default 6.' },
+        },
+        required: ['query'],
+    },
+    parse: raw => {
+        const a = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw as Record<string, unknown> : {};
+        const query = typeof a.query === 'string' ? a.query.trim() : '';
+        if (!query) return { ok: false, error: 'web_search needs "query": what to search for.' };
+        const count = a.count === undefined || a.count === null || a.count === '' ? undefined : Math.floor(Number(a.count));
+        if (count !== undefined && (!Number.isFinite(count) || count < 1 || count > 10)) return { ok: false, error: '"count" is 1 to 10.' };
+        return { ok: true, value: { query: query.slice(0, 300), ...(count ? { count } : {}) } };
+    },
+    async run(args, ctx): Promise<ToolOutcome> {
+        const result = await gateway()('engine_web_search', { ...args }, toolContextFor(ctx));
+        const text = result?.output && typeof result.output.text === 'string' ? result.output.text : '';
+        if (!text) return { ok: false, output: `web_search was refused by Joe's tool gateway: ${String(result?.error || 'no reason was given').slice(0, 500)}` };
+        return { ok: result?.ok === true, output: text };
+    },
+};
+
+export const webTools: EngineTool[] = [webReadTool, webSearchTool];

@@ -262,7 +262,8 @@ export function uiEmitter(sessionId: string | undefined, runId: string, language
                 case 'tool_result':
                     send(e.ok ? 'step_done' : 'step_failed', {
                         name: `engine:${e.name}`, callId: e.id, durationMs: e.durationMs,
-                        result: { ok: e.ok, output: clip(e.output) },
+                        //  A failed step says why in the log, not «ERROR: Unknown error» (log-line.ts reads result.error).
+                        result: { ok: e.ok, output: clip(e.output), ...(e.ok ? {} : { error: String(e.output || '').split('\n').find(l => l.trim())?.trim().slice(0, 300) || 'the step failed' }) },
                         ...(e.facts?.page?.screenshotPath ? { screenshotPath: e.facts.page.screenshotPath } : {}),
                         ...(e.facts?.filesChanged?.length ? { filesChanged: e.facts.filesChanged } : {}),
                         ...(e.facts?.served?.url ? { served: { name: e.facts.served.name, url: e.facts.served.url } } : {}),

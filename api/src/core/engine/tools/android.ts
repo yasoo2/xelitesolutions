@@ -24,6 +24,8 @@ function gateway(): (name: string, input: any, context?: any) => Promise<any> {
 
 const CONTROLS = new Map<string, AndroidControl[]>();
 export function forgetAndroid(runId: string): void { CONTROLS.delete(runId); }
+/** The controls of the run's last android_read: a tap's name is kept from them (experience.ts). */
+export function controlsOf(runId: string): AndroidControl[] { return CONTROLS.get(runId) || []; }
 
 async function phone(ctx: ToolContext, input: Record<string, unknown>): Promise<{ ok: boolean; text: string; output: any }> {
     const result = await gateway()('engine_android', input, toolContextFor(ctx));
@@ -82,34 +84,43 @@ export const androidLookTool: EngineTool<{ serial?: string }> = {
         const size = r.text.match(/^PICTURE\t(\d+)\t(\d+)/u);
         if (!r.ok || !size || !fs.existsSync(file)) return { ok: false, output: `android_look failed: ${r.text}` };
         saw(ctx, 'look');
-        return { ok: true, output: `A picture of the phone's screen, ${size[1]}×${size[2]} (the phone's own pixels).`, images: [{ path: file, mime: 'image/png' }] };
+        const state = r.text.split('\n').slice(1).join('\n').trim();
+        return { ok: true, output: `A picture of the phone's screen, ${size[1]}×${size[2]} (the phone's own pixels).${state ? `\n${state}` : ''}`, images: [{ path: file, mime: 'image/png' }] };
     },
 };
 
-export interface TapArgs { control?: number; x?: number; y?: number; serial?: string }
+/**
+ * «hold»: press and hold. The owner's lock screen, 2026-11-07: its flashlight
+ * button said «press and hold», and a tap did nothing; so do a message's
+ * menu, an icon's shortcuts, a word to select.
+ */
+export interface TapArgs { control?: number; x?: number; y?: number; hold?: boolean; serial?: string }
 export const androidTapTool: EngineTool<TapArgs> = {
     name: 'android_tap',
-    description: 'Tap a control by its number from the last android_read ("control"), or a point in the phone\'s pixels ("x", "y").',
-    parameters: { type: 'object', properties: { control: { type: 'integer' }, x: { type: 'integer' }, y: { type: 'integer' }, serial: SERIAL } },
+    description: 'Tap a control by its number from the last android_read ("control"), or a point in the phone\'s pixels ("x", "y"). "hold": true presses and holds (about a second) for what says «press and hold» / «اضغط مطولاً», a message\'s menu, an icon\'s shortcuts. A sleeping screen is woken first.',
+    parameters: { type: 'object', properties: { control: { type: 'integer' }, x: { type: 'integer' }, y: { type: 'integer' }, hold: { type: 'boolean' }, serial: SERIAL } },
     parse: raw => {
         const a = obj(raw);
+        const hold = a.hold === true || a.hold === 'true' ? { hold: true } : {};
         const control = Number(a.control);
-        if (Number.isInteger(control) && control > 0) return { ok: true, value: { control, ...withSerial(a) } };
+        if (Number.isInteger(control) && control > 0) return { ok: true, value: { control, ...hold, ...withSerial(a) } };
         const x = Number(a.x), y = Number(a.y);
-        if (Number.isFinite(x) && Number.isFinite(y)) return { ok: true, value: { x, y, ...withSerial(a) } };
+        if (Number.isFinite(x) && Number.isFinite(y)) return { ok: true, value: { x, y, ...hold, ...withSerial(a) } };
         return { ok: false, error: 'android_tap takes "control" (a number from android_read) or "x" and "y".' };
     },
     async run(a, ctx): Promise<ToolOutcome> {
-        let x = a.x, y = a.y, what = `tap ${a.x},${a.y}`;
+        const verb = a.hold ? 'hold' : 'tap';
+        let x = a.x, y = a.y, what = `${verb} ${a.x},${a.y}`;
         if (a.control) {
             const c = (CONTROLS.get(ctx.runId) || []).find(k => k.index === a.control);
             if (!c) return { ok: false, output: `Control ${a.control} is not in the last android_read: read the screen again.` };
             x = Math.round(c.x + c.width / 2); y = Math.round(c.y + c.height / 2);
-            what = `tap [${c.index}] «${c.text || c.description}»`;
+            what = `${verb} [${c.index}] «${c.text || c.description}»`;
         }
-        const r = await phone(ctx, { op: 'tap', x, y, ...withSerial(a as any) });
+        const r = await phone(ctx, { op: 'tap', x, y, ...(a.hold ? { holdMs: 1000 } : {}), ...withSerial(a as any) });
         did(ctx, 'android_tap', r.ok, what);
-        return { ok: r.ok, output: r.ok ? 'Tapped. Read or look again to see what it did.' : `android_tap failed: ${r.text}` };
+        const woke = /^The screen was asleep/u.test(r.text) ? 'The screen was asleep and was woken first. ' : '';
+        return { ok: r.ok, output: r.ok ? `${woke}${a.hold ? 'Pressed and held' : 'Tapped'}. Read or look again to see what it did.` : `android_tap failed: ${r.text}` };
     },
 };
 
@@ -130,7 +141,7 @@ export const androidTypeTool: EngineTool<{ text: string; serial?: string }> = {
 
 export const androidKeyTool: EngineTool<{ key: string; serial?: string }> = {
     name: 'android_key',
-    description: 'Press a phone key: back, home, recent, enter, delete, tab, up, down, left, right, volumeup, volumedown, power, search, menu.',
+    description: 'Press a phone key: wakeup (turns a sleeping screen on), back, home, recent, enter, delete, tab, up, down, left, right, volumeup, volumedown, search, menu, sleep, power (toggles the screen: use wakeup to wake it).',
     parameters: { type: 'object', properties: { key: { type: 'string' }, serial: SERIAL }, required: ['key'] },
     parse: raw => {
         const a = obj(raw);
@@ -140,6 +151,28 @@ export const androidKeyTool: EngineTool<{ key: string; serial?: string }> = {
         const r = await phone(ctx, { op: 'key', ...a });
         did(ctx, 'android_key', r.ok, `key ${a.key}`);
         return { ok: r.ok, output: r.ok ? `Pressed ${a.key}.` : `android_key failed: ${r.text}` };
+    },
+};
+
+/**
+ * The phone's pull-down panels. The owner's phone, 2026-11-07: «شغل الكشاف»
+ * — the flashlight has no app and no shell command; it is a tile in the
+ * quick settings, as are Wi-Fi, Bluetooth, airplane mode, mobile data,
+ * rotation and do-not-disturb. They open on the lock screen too.
+ */
+export const androidPanelTool: EngineTool<{ panel: 'quick_settings' | 'notifications' | 'close'; serial?: string }> = {
+    name: 'android_panel',
+    description: 'Open the phone\'s quick settings (the tiles: flashlight/torch, Wi-Fi, Bluetooth, airplane mode, mobile data, rotation, do not disturb, hotspot…) or its notifications, or close them. Then android_read and tap the tile by its number, and read again to see that it changed. Works on the lock screen.',
+    parameters: { type: 'object', properties: { panel: { type: 'string', enum: ['quick_settings', 'notifications', 'close'] }, serial: SERIAL }, required: ['panel'] },
+    parse: raw => {
+        const a = obj(raw);
+        const p = String(a.panel || '').trim().toLowerCase().replace(/[\s-]/gu, '_');
+        return ['quick_settings', 'notifications', 'close'].includes(p) ? { ok: true, value: { panel: p as any, ...withSerial(a) } } : { ok: false, error: '"panel" is quick_settings, notifications or close.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'panel', ...a });
+        did(ctx, 'android_panel', r.ok, `panel ${a.panel}`);
+        return { ok: r.ok, output: r.ok ? `The ${a.panel === 'close' ? 'panels are closed' : `${a.panel.replace('_', ' ')} panel is open`}. Read the screen to see it.` : `android_panel failed: ${r.text}` };
     },
 };
 
@@ -223,7 +256,175 @@ export const androidConnectTool: EngineTool<{ address: string }> = {
     },
 };
 
+/*
+ * WRITING AN EMAIL WITHOUT TYPING INTO ITS FIELDS.
+ *
+ * The owner, 2026-11-08: «send an email from Gmail to Outlook». Joe tapped
+ * Gmail's «To» field and typed; the address and the subject ended in the same
+ * field, deleting did not empty it, and after three minutes Joe asked him what
+ * to do. android_email opens the mail app's new message already filled (To,
+ * Cc, Subject, text) from one mailto: address; the run reads it, checks every
+ * field, and taps Send. android_clear empties the field the cursor is in.
+ */
+const MAIL_APP: Record<string, string> = { gmail: 'com.google.android.gm', outlook: 'com.microsoft.office.outlook' };
+const emails = (v: unknown): string[] => (Array.isArray(v) ? v : typeof v === 'string' ? v.split(/[,;\s]+/u) : [])
+    .map(x => String(x).trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(x));
+
+export const androidEmailTool: EngineTool<{ to: string[]; cc?: string[]; subject?: string; body?: string; app?: string; serial?: string }> = {
+    name: 'android_email',
+    description: 'Open a NEW email on the owner\'s phone with every field already filled: To, Cc, Subject and the text (any language), in Gmail or Outlook. Use it instead of tapping and typing into an email\'s fields. Then android_read: check the recipient, the subject and the text, tap Send by its number, and check the Sent folder. It sends nothing by itself.',
+    parameters: {
+        type: 'object',
+        properties: {
+            to: { type: 'array', items: { type: 'string' }, description: 'Recipient addresses (name@example.com).' },
+            cc: { type: 'array', items: { type: 'string' } },
+            subject: { type: 'string' },
+            body: { type: 'string', description: 'The text of the email.' },
+            app: { type: 'string', enum: ['gmail', 'outlook'], description: 'The app to write it in (the account it is sent from): gmail or outlook.' },
+            serial: SERIAL,
+        },
+        required: ['to'],
+    },
+    parse: raw => {
+        const a = obj(raw);
+        const to = emails(a.to);
+        if (!to.length) return { ok: false, error: '"to" holds the recipient addresses (name@example.com). The owner\'s own accounts are in the facts above; ask him only for an address nobody named.' };
+        const app = String(a.app || '').trim().toLowerCase();
+        return {
+            ok: true,
+            value: {
+                to,
+                ...(emails(a.cc).length ? { cc: emails(a.cc) } : {}),
+                ...(typeof a.subject === 'string' && a.subject.trim() ? { subject: a.subject.trim().slice(0, 300) } : {}),
+                ...(typeof a.body === 'string' && a.body.trim() ? { body: a.body.slice(0, 5000) } : {}),
+                ...(MAIL_APP[app] ? { app } : {}),
+                ...withSerial(a),
+            },
+        };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'email', to: a.to, cc: a.cc || [], subject: a.subject || '', body: a.body || '', app: a.app ? MAIL_APP[a.app] : '', ...withSerial(a as any) });
+        did(ctx, 'android_email', r.ok, `new email to ${a.to.join(', ')}${a.subject ? ` «${a.subject.slice(0, 60)}»` : ''}`);
+        return { ok: r.ok, output: r.ok ? `A new email to ${a.to.join(', ')} is open and filled${a.app ? ` in ${a.app}` : ''}. Read the screen now: check To, Subject and the text, then tap Send by its number. Nothing is sent yet.` : `android_email failed: ${r.text}` };
+    },
+};
+
+export const androidClearTool: EngineTool<{ serial?: string }> = {
+    name: 'android_clear',
+    description: 'Empty the text field the phone\'s cursor is in (tap the field first): all its text, and the recipient chips of an email field. Use it to fix a field that holds the wrong text, instead of deleting character by character.',
+    parameters: { type: 'object', properties: { serial: SERIAL } },
+    parse: raw => ({ ok: true, value: withSerial(obj(raw)) }),
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'clear', ...a });
+        did(ctx, 'android_clear', r.ok, 'empty the field');
+        return { ok: r.ok, output: r.ok ? 'The field is empty. Read the screen to check, then type what belongs there.' : `android_clear failed: ${r.text}` };
+    },
+};
+
+export const androidLinkTool: EngineTool<{ uri: string; package?: string; serial?: string }> = {
+    name: 'android_link',
+    description: 'Open an address on the phone in the app that handles it: a web page (https://…), a phone number to call (tel:+…), an SMS (sms:+…?body=…), a place on the map (geo:lat,lng?q=…), a WhatsApp chat (https://wa.me/<number>?text=…). Encode spaces and Arabic (%20…). It opens; it sends or calls nothing until a button is tapped.',
+    parameters: { type: 'object', properties: { uri: { type: 'string' }, package: { type: 'string', description: 'Optional: the app to open it in.' }, serial: SERIAL }, required: ['uri'] },
+    parse: raw => {
+        const a = obj(raw);
+        const uri = String(a.uri || '').trim();
+        return uri ? { ok: true, value: { uri, ...(typeof a.package === 'string' && a.package.trim() ? { package: a.package.trim() } : {}), ...withSerial(a) } } : { ok: false, error: '"uri" is the address to open.' };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'uri', ...a });
+        did(ctx, 'android_link', r.ok, `open ${a.uri.slice(0, 80)}`);
+        return { ok: r.ok, output: r.ok ? `Opened ${a.uri.slice(0, 80)}. Read the screen to see it.` : `android_link failed: ${r.text}` };
+    },
+};
+
+/*
+ * ANY ANDROID, FROM ANYWHERE: THE JOE APP.
+ *
+ * The owner, 2026-11-08: «why doesn't Joe work with every phone?» — his
+ * Samsung needed a driver on the cable. The Joe app links any Android phone
+ * or tablet once, with a six-digit code, and calls Joe over the internet by
+ * itself; every android_ tool then works on it as «app:<id>».
+ */
+/*
+ * 2026-11-08, later: a phone Joe already reaches by adb (the cable, or paired
+ * by Wireless debugging) gets the app from Joe himself — installed, joined to
+ * Joe by a private tunnel, and opened with the code filled in — so the owner
+ * only taps «Link» and allows the two permissions.
+ */
+export const androidLinkAppTool: EngineTool<{ name?: string; serial?: string }> = {
+    name: 'android_link_app',
+    description: 'Put the Joe app on a phone or tablet (any Android, any maker) and link it to Joe for good, so Joe reaches it with no cable and no driver. When the phone is connected by adb (the cable, or paired by Wireless debugging), Joe installs the app on it HIMSELF, opens a private tunnel to it and opens the app with the code filled in: the owner only taps «Link» and allows two permissions. Otherwise it gives a six-digit code and the steps (download the app from Joe, type the code, allow two permissions). Use it when he asks to install or put the Joe app on his phone, to link his phone through the app or for good, and right after a phone is paired by Wi-Fi to be linked.',
+    parameters: {
+        type: 'object',
+        properties: {
+            name: { type: 'string', description: 'The name the owner calls the phone («جوالي», «تابلت البيت»), if he named it.' },
+            serial: { type: 'string', description: 'The phone, as android_devices lists it, when more than one is connected.' },
+        },
+    },
+    parse: raw => {
+        const a = obj(raw);
+        const name = typeof a.name === 'string' && a.name.trim() ? a.name.trim().slice(0, 60) : '';
+        const serial = typeof a.serial === 'string' && a.serial.trim() ? a.serial.trim().slice(0, 120) : '';
+        return { ok: true, value: { ...(name ? { name } : {}), ...(serial ? { serial } : {}) } };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'app_link', ...(a.name ? { name: a.name } : {}), ...(a.serial ? { serial: a.serial } : {}) });
+        did(ctx, 'android_link_app', r.ok, `phone app link${a.name ? ` for «${a.name}»` : ''}${a.serial ? ` on ${a.serial}` : ''}`);
+        return { ok: r.ok, output: r.ok ? r.text.split('\n').slice(1).join('\n') : `android_link_app failed: ${r.text}` };
+    },
+};
+
+/*
+ * «يا جو شغل الكشاف» (the owner, 2026-11-08): on a phone with the Joe app the
+ * flashlight is turned on and off directly, with no tile looked for; on a
+ * phone reached by adb alone the tool says to use the quick settings tile.
+ */
+export const androidTorchTool: EngineTool<{ on?: boolean; serial?: string }> = {
+    name: 'android_torch',
+    description: 'Turn the phone\'s flashlight (torch, «الكشاف») on or off directly. "on": true to turn it on, false to turn it off; leave it out to switch it the other way. Works on a phone with the Joe app; on a phone reached only by adb it says so, and the flashlight tile in android_panel "quick_settings" does it.',
+    parameters: { type: 'object', properties: { on: { type: 'boolean' }, serial: SERIAL } },
+    parse: raw => {
+        const a = obj(raw);
+        const on = typeof a.on === 'boolean' ? a.on : a.on === 'true' ? true : a.on === 'false' ? false : undefined;
+        return { ok: true, value: { ...(on === undefined ? {} : { on }), ...withSerial(a) } };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'torch', ...a });
+        did(ctx, 'android_torch', r.ok, `flashlight ${a.on === undefined ? 'switched' : a.on ? 'on' : 'off'}`);
+        return { ok: r.ok, output: r.ok ? r.text : `android_torch failed: ${r.text}` };
+    },
+};
+
+export const androidVolumeTool: EngineTool<{ stream?: string; level?: number; change?: string; serial?: string }> = {
+    name: 'android_volume',
+    description: 'The phone\'s sound: set a stream\'s level (0–100) or change it (up, down, mute), and say the level now. "stream": media (music, videos — the default), ring, notification, alarm or call. With neither level nor change it only says the level.',
+    parameters: {
+        type: 'object',
+        properties: {
+            stream: { type: 'string', enum: ['media', 'ring', 'notification', 'alarm', 'call'] },
+            level: { type: 'number', description: '0 to 100 (percent).' },
+            change: { type: 'string', enum: ['up', 'down', 'mute'] },
+            serial: SERIAL,
+        },
+    },
+    parse: raw => {
+        const a = obj(raw);
+        const stream = typeof a.stream === 'string' && ['media', 'ring', 'notification', 'alarm', 'call'].includes(a.stream.toLowerCase()) ? a.stream.toLowerCase() : 'media';
+        const level = a.level === undefined || a.level === null || a.level === '' ? undefined : Number(a.level);
+        if (level !== undefined && (!Number.isFinite(level) || level < 0 || level > 100)) return { ok: false, error: '"level" is a number from 0 to 100.' };
+        const change = typeof a.change === 'string' ? a.change.toLowerCase() : '';
+        if (change && !['up', 'down', 'mute'].includes(change)) return { ok: false, error: '"change" is up, down or mute.' };
+        return { ok: true, value: { stream, ...(level === undefined ? {} : { level: Math.round(level) }), ...(change ? { change } : {}), ...withSerial(a) } };
+    },
+    async run(a, ctx): Promise<ToolOutcome> {
+        const r = await phone(ctx, { op: 'volume', ...a });
+        did(ctx, 'android_volume', r.ok, `${a.stream} volume${a.level !== undefined ? ` ${a.level}%` : a.change ? ` ${a.change}` : ''}`);
+        return { ok: r.ok, output: r.ok ? r.text : `android_volume failed: ${r.text}` };
+    },
+};
+
 export const androidTools: EngineTool[] = [
     androidDevicesTool, androidPairTool, androidConnectTool, androidReadTool, androidLookTool, androidTapTool, androidTypeTool,
-    androidKeyTool, androidScrollTool, androidOpenTool, androidAppsTool,
+    androidKeyTool, androidPanelTool, androidScrollTool, androidOpenTool, androidAppsTool, androidEmailTool, androidClearTool, androidLinkTool,
+    androidLinkAppTool, androidTorchTool, androidVolumeTool,
 ];

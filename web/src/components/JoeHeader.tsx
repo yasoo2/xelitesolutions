@@ -4,6 +4,7 @@ import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns
 import { resolveIdentity, nameFromEmail, initialsFrom, gravatarUrlFor, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 import UpdateJoeItem, { SelfUpdateOverlay, UpdateAutoPilot, useUpdateAvailable } from './UpdateJoeItem';
+import JoeNoticeBanner from './JoeNoticeBanner';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -111,6 +112,8 @@ export default function JoeHeader({
                 five of its controls, and on a desktop its sentence was cut
                 (UI/UX check, 2026-11-05). In flow it can only take free space. */}
             <div className="joe-header-center">
+                {/* A reply to an email Joe sent arrived (MailWatchService), from any chat. */}
+                <JoeNoticeBanner />
                 <UpdateAutoPilot inline />
             </div>
 

@@ -19,6 +19,7 @@ import { ErrorBoundary } from './ErrorBoundary';
 import WordReveal from './WordReveal';
 import ArtifactCard from './ArtifactCard';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
+import { splitAddresses } from '../lib/bidi';
 
 import { SocketService } from '../services/socket';
 
@@ -36,6 +37,16 @@ interface Message {
 // Old sessions stored system messages with literally escaped newlines ("\n\n"
 // rendered as text). The source strings are fixed, but persisted history still
 // carries them — unescape outside code fences so old chats read correctly too.
+/** Each address inside a message's text, isolated left to right (lib/bidi.ts). */
+function isolateAddresses(children: React.ReactNode): React.ReactNode {
+    return React.Children.map(children, (child) => {
+        if (typeof child !== 'string' || !/https?:\/\//.test(child)) return child;
+        return splitAddresses(child).map((piece, i) => piece.ltr
+            ? <bdi key={i} dir="ltr" className="joe-ltr-address">{piece.text}</bdi>
+            : <React.Fragment key={i}>{piece.text}</React.Fragment>);
+    });
+}
+
 function unescapeStoredNewlines(text: string): string {
     if (!text.includes('\\n')) return text;
     return text
@@ -328,13 +339,15 @@ export default function ChatPanel({
                                         components={{
                                             // Each paragraph/heading/list-item decides its own
                                             // direction — the BiDi fix above, block by block.
-                                            h1: ({ ...props }) => <h1 dir="auto" {...props} />,
-                                            h2: ({ ...props }) => <h2 dir="auto" {...props} />,
-                                            h3: ({ ...props }) => <h3 dir="auto" {...props} />,
+                                            //  …and inside an Arabic paragraph every address stands on its own,
+                                            //  left to right (isolateAddresses).
+                                            h1: ({ children, ...props }) => <h1 dir="auto" {...props}>{isolateAddresses(children)}</h1>,
+                                            h2: ({ children, ...props }) => <h2 dir="auto" {...props}>{isolateAddresses(children)}</h2>,
+                                            h3: ({ children, ...props }) => <h3 dir="auto" {...props}>{isolateAddresses(children)}</h3>,
                                             ul: ({ ...props }) => <ul dir="auto" {...props} />,
                                             ol: ({ ...props }) => <ol dir="auto" {...props} />,
-                                            li: ({ ...props }) => <li dir="auto" {...props} />,
-                                            p: ({ ...props }) => <p dir="auto" {...props} />,
+                                            li: ({ children, ...props }) => <li dir="auto" {...props}>{isolateAddresses(children)}</li>,
+                                            p: ({ children, ...props }) => <p dir="auto" {...props}>{isolateAddresses(children)}</p>,
                                             blockquote: ({ ...props }) => <blockquote dir="auto" {...props} />,
                                             code({ className, children, ...props }: any) {
                                                 // [ARTIFACT] A ```joe-artifact <json>``` block renders an elegant
@@ -413,7 +426,7 @@ export default function ChatPanel({
                                                         </SyntaxHighlighter>
                                                     </div>
                                                 ) : (
-                                                    <code className={className} {...props} style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--joe-gold-primary)' }}>
+                                                    <code dir="ltr" className={className} {...props} style={{ background: 'rgba(0,0,0,0.3)', padding: '2px 6px', borderRadius: '4px', color: 'var(--joe-gold-primary)', unicodeBidi: 'isolate' }}>
                                                         {children}
                                                     </code>
                                                 );

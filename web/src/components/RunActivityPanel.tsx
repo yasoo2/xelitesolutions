@@ -33,7 +33,7 @@ import { useTranslation } from 'react-i18next';
 import {
     Activity, AlertTriangle, AppWindow, Brain, Camera, CheckCircle2, ChevronDown, ChevronRight, Circle, CircleStop, Copy, CopyCheck,
     Eye, FileCode, FilePen, FileText, FlaskConical, FolderOpen, Globe, ListChecks, Loader2, MousePointerClick, Play, ScrollText,
-    Search, Server, ShieldAlert, ShieldCheck, SquareTerminal, Wrench, XCircle,
+    Search, Server, ShieldAlert, ShieldCheck, SquareTerminal, Wrench, XCircle, Smartphone, Monitor, Mail, Wifi,
 } from 'lucide-react';
 import { SocketService } from '../services/socket';
 import { api } from '../services/apiClient';
@@ -316,6 +316,7 @@ const KIND_ICON: Record<ToolKind, React.ComponentType<any>> = {
     read: FileText, list: FolderOpen, search: Search, write: FileCode, edit: FilePen,
     command: SquareTerminal, server: Server, log: ScrollText, stop: CircleStop,
     web: Globe, page: AppWindow, click: MousePointerClick, shot: Camera,
+    phone: Smartphone, computer: Monitor, mail: Mail, network: Wifi,
     plan: ListChecks, finish: ShieldCheck, run: Play, test: FlaskConical, other: Wrench,
 };
 

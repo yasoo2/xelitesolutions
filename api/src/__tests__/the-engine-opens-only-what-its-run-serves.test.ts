@@ -91,6 +91,13 @@ describe('browser_open opens a loopback address only on a port this run serves',
         expect(opened).toEqual([]);
     });
 
+    it('an address its own server served before Joe\'s check stopped it is refused with how to start it again', () => {
+        //  The ladder, 2026-11-09 (L128): four «Not opened» on :8080 after a refusal, then the run ended.
+        const d = openPolicy('http://127.0.0.1:8080/', context({ served: [{ name: 'site', port: 8080, running: false, command: 'node server.js' }] }).ctx);
+        expect(d.ok).toBe(false);
+        expect((d as any).reason).toMatch(/«site» served it and is stopped .*Start it again with shell_start \(name «site», command «node server\.js», cwd «\.»\)/);
+    });
+
     it('0.0.0.0 is refused with the address to use instead', () => {
         const d = openPolicy('http://0.0.0.0:5173/', context({ served: [{ port: 5173 }] }).ctx);
         expect(d.ok).toBe(false);

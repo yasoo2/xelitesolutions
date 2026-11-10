@@ -199,6 +199,11 @@ describe('the server and the UI agree on event names', () => {
     const CLIENT_ONLY = new Set([
         'connected', 'disconnected', 'terminal_input', 'terminal_resize', 'ping', 'pong',
         'message', 'error',                       // socket-level envelopes
+        // Born in the browser: socket.ts hands `run_finalized` to the chat when a
+        // late run_finished settles a run the page already closed (a cancel, then
+        // the saved answer). No server ever sends it — found 2026-11-08, when
+        // this lock reported it as an orphan; the next case proves it is born there.
+        'run_finalized',
     ]);
 
     it('every event the UI listens for is one the server can really send', () => {
@@ -216,6 +221,21 @@ describe('the server and the UI agree on event names', () => {
         expect(listened.some(n => n.includes(':'))).toBe(true);   // the namespaced ones are IN scope now
         const orphans = listened.filter(n => !api.includes(`'${n}'`));
         expect(orphans).toEqual([]);
+    });
+
+    it('a name the server never sends is one the browser makes itself — and listens to', () => {
+        // The exemption above is only honest while it stays true: the client
+        // makes the event, and someone listens. Neither half may rot alone.
+        // (neural-trace.test.ts runs socket.ts and sees it made exactly once.)
+        const socket = fs.readFileSync(path.join(WEB, 'services', 'socket.ts'), 'utf-8');
+        expect(socket).toMatch(/cb\(\{ type: 'run_finalized', sessionId: evSid, runId: evRunId \}\)/);
+        expect(fs.readFileSync(path.join(WEB, 'pages', 'Joe.tsx'), 'utf-8')).toContain("msg.type === 'run_finalized'");
+        // …and the server's own code never sends it (its tests may name it).
+        const serverCode = (dir: string): string => fs.readdirSync(dir, { withFileTypes: true })
+            .map(e => e.isDirectory() ? (['node_modules', '__tests__', 'tests'].includes(e.name) ? '' : serverCode(path.join(dir, e.name)))
+                : /\.ts$/.test(e.name) ? fs.readFileSync(path.join(dir, e.name), 'utf-8') : '')
+            .join('\n');
+        expect(serverCode(path.join(__dirname, '..'))).not.toMatch(/type: 'run_finalized'/);
     });
 
     it('the panel reads the FIELD the sender writes, not one that looks like it', () => {
@@ -326,7 +346,123 @@ describe('every URL the browser calls exists on the server', () => {
         expect(audio).toContain('tts_unavailable');
         expect(audio).toContain('res.status(503)');
     });
+
+    it('the device buttons and the live screen are read as the routes they call', () => {
+        // 2026-11-08: `/devices/${id}/${d.kept ? 'forget' : 'disconnect'}` and
+        // `/devices/${source}/screen` were read as «/api/devices/x/${d.kept» and
+        // «/api/devices/x/screen» — paths nothing serves. Each is written out
+        // whole now, and each is a route the server declares, with its verb.
+        const ui = uiPaths().map((u: any) => u.path);
+        const routes = serverRoutes();
+        expect(SRC('api', 'app.ts')).toContain("apiRouter.use('/devices', devicesRoutes)");
+        for (const [p, method] of [['/api/devices/x/forget', 'POST'], ['/api/devices/x/disconnect', 'POST'],
+            ['/api/devices/phone/screen', 'GET'], ['/api/devices/computer/screen', 'GET']]) {
+            expect({ p, called: ui.includes(p) }).toEqual({ p, called: true });
+            expect({ p, served: routes.some((r: any) => r.methods.includes(method) && routeRegex(r.path).test(p)) })
+                .toEqual({ p, served: true });
+        }
+    });
+
+    it('a query built inside the URL is not part of its path', () => {
+        // FileExplorerPanel imports into a chat with `/project/import${chat ? `?sessionId=…` : ''}`.
+        // The reader stopped inside that hole and reported «/api/project/import${chat» — a
+        // route that exists (POST /api/project/import), unread (found 2026-11-08).
+        const ui = uiPaths();
+        expect(ui.map((u: any) => u.path)).toContain('/api/project/import');
+        expect(ui.filter((u: any) => u.path.includes('${')).map((u: any) => `${u.path} ← ${u.file}`)).toEqual([]);
+    });
+
+    it('unlinking a computer, run: a kept one is forgotten, a session one disconnected, each at its route', async () => {
+        const panel = await mountDevicesPanel([
+            { id: 'office pc/1', name: 'Office', os: 'Windows', user: 'owner', screen: '1920x1080', connectedAt: 1, kept: true, online: true },
+            { id: 'tmp-2', name: 'Laptop', os: 'Windows', user: 'owner', screen: '1366x768', connectedAt: 2, kept: false, online: true },
+        ]);
+        try {
+            await panel.click('button[title="devicesForget"]');
+            await panel.click('button[title="devicesUnlink"]');
+            expect(panel.posts).toEqual(['/api/devices/office%20pc%2F1/forget', '/api/devices/tmp-2/disconnect']);
+            expect(panel.confirms()).toBe(1);                   // only the kept one asks first
+            const routes = serverRoutes();
+            for (const url of panel.posts) {
+                expect({ url, served: routes.some((r: any) => r.methods.includes('POST') && routeRegex(r.path).test(url)) })
+                    .toEqual({ url, served: true });
+            }
+        } finally { await panel.close(); }
+        //  Loading React and a DOM takes many seconds on the owner's loaded laptop.
+    }, 120_000);
 });
+
+/**
+ * The owner's Devices panel (web/src/components/DevicesPanel.tsx), rendered in
+ * a DOM with its only transport — fetch — answered here. React and jsdom load
+ * as installed; nothing reaches a server or a computer.
+ */
+async function mountDevicesPanel(linked: any[]) {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const vm = require('vm') as typeof import('vm');
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const ts = require('typescript') as typeof import('typescript');
+    const repository = path.resolve(__dirname, '../../..');
+    const apiModules = fs.realpathSync(path.join(repository, 'api/node_modules'));
+    const webModules = path.join(path.dirname(path.dirname(apiModules)), 'web/node_modules');
+    //  Node's own loader: Jest virtualizes createRequire, and React must load as installed.
+    const { createRequire } = process.getBuiltinModule('module') as typeof import('module');
+    const nativeGlobal = (process.getBuiltinModule('vm') as typeof import('vm')).runInThisContext('globalThis');
+    const loadWeb = createRequire(path.join(webModules, 'react/package.json'));
+    const React = loadWeb('react');
+    const { createRoot } = loadWeb('react-dom/client');
+    const { JSDOM } = createRequire(path.join(apiModules, 'jsdom/package.json'))('jsdom');
+    const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost:5002/' });
+    let confirms = 0;
+    (dom.window as any).confirm = () => { confirms += 1; return true; };
+    const previous: Array<{ target: any; key: string; descriptor?: PropertyDescriptor }> = [];
+    for (const [key, value] of Object.entries({ window: dom.window, document: dom.window.document, IS_REACT_ACT_ENVIRONMENT: true })) {
+        for (const target of new Set([global, nativeGlobal])) {
+            previous.push({ target, key, descriptor: Object.getOwnPropertyDescriptor(target, key) });
+            Object.defineProperty(target, key, { configurable: true, writable: true, value });
+        }
+    }
+    const posts: string[] = [];
+    const fetch = async (url: unknown, init?: any) => {
+        if (String(init?.method || 'GET').toUpperCase() === 'POST') { posts.push(String(url)); return { ok: true, json: async () => ({ ok: true }) }; }
+        return { ok: true, json: async () => ({ ok: true, here: { name: 'HOME-PC', os: 'Windows', desktop: true }, linked }) };
+    };
+    const file = path.join(__dirname, '..', '..', '..', 'web', 'src', 'components', 'DevicesPanel.tsx');
+    const compiled = ts.transpileModule(fs.readFileSync(file, 'utf-8'), {
+        compilerOptions: { module: ts.ModuleKind.CommonJS, jsx: ts.JsxEmit.React, target: ts.ScriptTarget.ES2020, esModuleInterop: true },
+        fileName: file,
+    }).outputText;
+    const icon = new Proxy({}, { get: () => () => null });
+    const imports: Record<string, any> = { react: React, 'lucide-react': icon, '../config': { API_URL: '/api' } };
+    const required = [...new Set(Array.from(compiled.matchAll(/\brequire\(["']([^"']+)["']\)/g), m => m[1]))];
+    const missing = required.filter(id => !Object.prototype.hasOwnProperty.call(imports, id));
+    if (missing.length) throw new Error(`Missing test imports for DevicesPanel.tsx: ${missing.join(', ')}`);
+    const exports: any = {};
+    vm.runInNewContext(compiled, {
+        exports, require: (id: string) => imports[id], console, window: dom.window, navigator: dom.window.navigator,
+        localStorage: dom.window.localStorage, fetch,
+    }, { filename: file });
+    const root = createRoot(dom.window.document.getElementById('root'));
+    const act = React.act;
+    const settle = () => new Promise(resolve => setTimeout(resolve, 20));
+    await act(async () => { root.render(React.createElement(exports.default, { t: (k: string) => k })); await settle(); });
+    const restore = () => {
+        dom.window.close();
+        previous.reverse().forEach(({ target, key, descriptor }) => {
+            if (descriptor) Object.defineProperty(target, key, descriptor); else delete target[key];
+        });
+    };
+    return {
+        posts,
+        confirms: () => confirms,
+        async click(selector: string) {
+            const el = dom.window.document.querySelector(selector);
+            if (!el) throw new Error(`no ${selector} on screen`);
+            await act(async () => { el.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true })); await settle(); });
+        },
+        async close() { try { await act(async () => { root.unmount(); }); } finally { restore(); } },
+    };
+}
 
 /**
  * WHO IS AN ADMIN — one rule, on the server, and the browser may not vote.
@@ -804,7 +940,13 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         // …and the session is claimed at the door, before the first frame
         expect(SRC('api', 'routes', 'run.ts')).toContain('registerSessionOwner(runSessionId');
         const toolSvc = SRC('modules', 'services', 'ToolService.ts');
-        expect(toolSvc).toContain("data: { tool: effectiveName, input: effectiveInput, sessionId: contextSessionId }");
+        // The started frame names its session twice, on the frame and in its
+        // data. Its input became `autonomousFileInput ? { ...effectiveInput } :
+        // effectiveInput` (a copy for the autonomous file policy, in the
+        // 2026-10-22 snapshot b906f3bc8);
+        // the pin demanded the older literal and failed on a frame that still
+        // carried its session (found 2026-11-08). It pins the session now.
+        expect(toolSvc).toMatch(/type: 'tool_started',[\s\S]{0,300}?\n\s*sessionId: contextSessionId,\s*\n\s*data: \{ tool: effectiveName, input: [^\n]*, sessionId: contextSessionId \}/);
         expect(toolSvc).toContain("data: { tool: effectiveName, ok, sessionId: contextSessionId }");
     });
 
@@ -820,9 +962,13 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(fw).toMatch(/userId\?: string; sessionId\?: string;/);
         const ws = SRC('api', 'ws.ts');
         expect(ws).toContain('executionFirewall.currentOwner?.()');
-        // and the entry points declare whose run it is
-        expect(SRC('orchestration', 'AgentOrchestrator.ts'))
-            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: goal\.id \}\)/);
+        // and the entry points declare whose run it is. The run is the one the
+        // caller named, or its trace, before the goal's own id (canonicalRunId,
+        // 2026-09-23, #90); the pin still demanded `runId: goal.id` (found 2026-11-08).
+        const orchestrator = SRC('orchestration', 'AgentOrchestrator.ts');
+        expect(orchestrator).toContain('const canonicalRunId = goal.runId || goal.traceId || goal.id;');
+        expect(orchestrator)
+            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: canonicalRunId \}\)/);
         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
     });
 
@@ -891,9 +1037,14 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         expect(isApologyOnly({ message: '🔗 كل الروابط تعمل.' })).toBe(false);
         // asked once, centrally, of every tool
         expect(SRC('modules', 'services', 'ToolService.ts')).toContain('if (ok && isApologyOnly(output))');
-        // and a dead brain is not an answer to surface as one
-        expect(SRC('orchestration', 'AgentOrchestrator.ts'))
-            .toContain('if (isDirectAnswer && !isProviderFailure(result.error))');
+        // and a dead brain is not an answer to surface as one. Since the
+        // 2026-10-22 snapshot (b906f3bc8) EVERY failed direct answer ends the
+        // run as a failure — a provider error,
+        // a refusal, a timeout or a cancel alike — instead of only the provider
+        // case being kept out of the answer branch; the pin still read the older
+        // condition (found 2026-11-08). It pins the stricter rule now.
+        const orch = SRC('orchestration', 'AgentOrchestrator.ts');
+        expect(orch).toMatch(/Failed answers are terminal evidence, not usable answer content\.[\s\S]{0,400}if \(isDirectAnswer\) \{[\s\S]{0,500}return \{ ok: false, result: text, steps: runSteps\(dag\) \};/);
     });
 
     it('a spent quota on the chosen provider is said in his session, and his choice stays', () => {
@@ -930,7 +1081,12 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         }
         // Every explicitly planned tool — including a written shell command — is
         // executed as selected; it never falls into a second short tool menu.
-        expect(orch).toContain("const plannedTool = node.tool.trim();");
+        // `let`, not `const`, since 2026-10-29 (bcfa5538a): a BUILD node goes to
+        // the agent engine when the run itself asks for it, and only then. The
+        // pin still demanded `const` (found 2026-11-08).
+        expect(orch).toContain('let plannedTool = node.tool.trim();');
+        expect(orch).toMatch(/if \(agentBuild\) \{\s*\n\s*plannedTool = 'agent_engine';/);
+        expect((orch.match(/plannedTool = 'agent_engine'/g) || []).length).toBe(1);
         expect(orch).toContain('executeTool(plannedTool, nodeInput, executionContext)');
         expect(orch).toContain('else if (agent)');
         expect(orch).toContain('unplanned_execution_node:');

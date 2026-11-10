@@ -1,3 +1,6 @@
+// First of all: inside the Joe app for Android, the phone's microphone and voice
+// become the page's speech objects before any module reads them (lib/joe-app-bridge.ts).
+import './lib/joe-app-bridge';
 import React, { Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
@@ -109,10 +112,19 @@ async function askServerIfSingleUser(): Promise<void> {
     //  BE '/api' today -- which is exactly what makes it the kind of defect
     //  that surfaces months later, in one panel only, when the base moves.
     //  The repository already guards this rule; my own line broke it.
-    const r = await fetch(API_URL + '/health', { cache: 'no-store' });
-    if (!r.ok) return;
-    const j = await r.json();
-    localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
+    //  «Not now» is not «no»: 2026-11-07 (L003), a fresh page met a 429 here,
+    //  never learned the mode, and stayed on the sign-in form. A refusal that
+    //  may pass (429, 5xx, a server still starting) is asked again, a few times.
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const r = await fetch(API_URL + '/health', { cache: 'no-store' }).catch(() => null);
+      if (r && r.ok) {
+        const j = await r.json();
+        localStorage.setItem(SINGLE_USER_KEY, j?.singleUser === true ? '1' : '0');
+        return;
+      }
+      if (r && r.status < 500 && r.status !== 429) return;
+      await new Promise(done => setTimeout(done, 800 * (attempt + 1)));
+    }
   } catch { /* offline: leave whatever was last known, never invent one */ }
 }
 const singleUserAnswer = askServerIfSingleUser();

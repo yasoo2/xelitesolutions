@@ -477,7 +477,13 @@ export function hasSortingEvidence(source: string, ctx?: ScopeEvidenceContext): 
 export const CAPABILITIES: Capability[] = [
     {
         id: 'catalog', ar: 'كتالوج المنتجات', en: 'product catalogue',
-        ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|متجر/i,
+        //  A store built is a catalogue; a store NAMED is a kind of business.
+        //  The ladder, 2026-11-07, L010: «صفحة ترحيب واحدة لـمتجر عطور فيها الاسم
+        //  وساعات العمل وزر اتصال» was refused for «missing: product catalogue»
+        //  after 17 minutes. Bare «متجر» asked a catalogue of 14 of the two
+        //  exams' 1000 requests that never wanted one (a CLI, a game, a team
+        //  chat, a search engine… «لـمتجر عطور»), and of none that did.
+        ask: /\b(?:catalog(?:ue)?|product\s+(?:catalog(?:ue)?|listing|grid)|storefront|online\s+store|e-?commerce|shopping\s+(?:app|platform))\b|منتجات\s+(?:المتجر|المنتجات)|كتالوج|(?:ابن[يِ]?|أنشئ|انشئ|اعمل|اصنع|صمّ?م|طوّ?ر)\s+(?:لي\s+)?متجر|متجر\s*(?:إلكتروني|الكتروني|أونلاين|اونلاين|على\s+الإنترنت)|(?:يعرض|تعرض|عرض|قائمة)\s+(?:ال)?منتجات/iu,
         // A catalogue is products rendered as a list, whatever the component
         // is called. Measured on 2026-11-01: an Arabic store's working
         // `ProductCatalogue` (cards, prices, search, filters, all seen in the
@@ -501,8 +507,11 @@ export const CAPABILITIES: Capability[] = [
         ask: /multi[- ]?vendor|marketplace|multi[- ]?seller|متعدد(ة)? البائعين|سوق إلكتروني|تجّار/i,
         // A generated data model declares its tables — «{"key":"vendors"…}» in
         // entities.js is a real table with real CRUD, not a mention of a word.
-        evidence: /vendor_?id|seller_?id|\/api\/vendors|"key":"vendors"|\bvendors\s*\(|VendorDashboard|merchant_?id/i,
-        records: ['vendors', 'vendor', 'sellers', 'seller', 'merchants'],
+        //  A services marketplace calls its sellers providers, hosts or suppliers
+        //  (the hard sample, 2026-11-09, L372: «providers create listings», keyed
+        //  `providerId` — refused five times as «missing: multi-vendor marketplace»).
+        evidence: /vendor_?id|seller_?id|merchant_?id|provider_?id|supplier_?id|host_?id|freelancer_?id|\/api\/(?:[\w-]+\/)?(?:vendors|sellers|merchants|providers|suppliers|hosts|freelancers)\b|"key":"(?:vendors|providers|suppliers|hosts)"|\bvendors\s*\(|VendorDashboard/i,
+        records: ['vendors', 'vendor', 'sellers', 'seller', 'merchants', 'providers', 'suppliers', 'hosts'],
     },
     {
         id: 'ai_generation', ar: 'توليد المنتجات بالذكاء الاصطناعي', en: 'AI product generation',
@@ -518,7 +527,9 @@ export const CAPABILITIES: Capability[] = [
     {
         id: 'payments', ar: 'المدفوعات', en: 'payments',
         ask: PAYMENT_REQUEST,
-        evidence: /stripe|paypal|payment_?intent|\/api\/payments?|checkout_?session/i,
+        //  A payment held until the work is done (an escrow) is a payment flow:
+        //  L372 kept `paymentStatus` held → released, at /api/admin/payments.
+        evidence: /stripe|paypal|payment_?intent|checkout_?session|\/api\/(?:[\w:-]+\/)*payments?\b|payment_?status|escrow/i,
         // «spots, entries, payments» of a parking garage (P088, P138, P188): a record he manages.
         records: ['payments', 'payment'],
     },
@@ -616,7 +627,10 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'responsive', ar: 'واجهة متجاوبة', en: 'responsive interface',
-        ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|الجوال|الهاتف/i,
+        //  The page on a phone, never a phone FIELD: «الاسم والبريد والهاتف» and «رقم الجوال»
+        //  ask for no responsive interface; five Arabic forms of the ladder exam were refused
+        //  «missing: responsive interface» for them (2026-11-09).
+        ask: /responsive|mobile[- ]first|tablet|phone[- ]friendly|متجاوب(?:ة|ه)?|للهاتف|للجوال|للموبايل|(?:على|في)\s+(?:ال)?(?:هاتف|جوال|موبايل|هواتف|أجهزة\s+(?:ال)?(?:هاتف|جوال|محمولة))|(?:ال)?شاشات?\s+(?:ال)?(?:هاتف|جوال|موبايل|صغير(?:ة|ه)?)|(?:ال)?هواتف\s+(?:ال)?ذكي(?:ة|ه)/iu,
         evidence: RESPONSIVE_LAYOUT,
     },
     {
@@ -656,10 +670,47 @@ export const CAPABILITIES: Capability[] = [
     },
 ];
 
+/*
+ * A FORM IS NOT AN ACCOUNT SYSTEM, AND A DISCOUNT FIELD IS NOT A COUPON SYSTEM.
+ *
+ * The ladder, 2026-11-08: «Build a registration form … with name, email,
+ * phone, a date of birth and a password with strength meter; show clear inline
+ * errors» was refused four times for «missing: user accounts» (L072–L080, every
+ * English one; the Arabic twins passed), and «a price calculator: quantity,
+ * unit price, discount percent and tax» for «missing: coupons and discounts»
+ * (L061–L069). He asked for a page with a form, and for a field in a
+ * calculator; Joe held its own good work to systems nobody asked for. A
+ * registration, sign-up or login FORM asks for accounts only when the request
+ * also asks for the system behind it (accounts, authentication, a server or
+ * database that keeps the users, users who log in); a discount as a field, a
+ * percent or a rate asks for coupons only beside coupons, promo or discount
+ * codes, or discounts the store manages.
+ */
+const FORM_ONLY = /\b(?:registration|sign[- ]?up|signup|register|login|log[- ]?in|sign[- ]?in)\s+(?:form|page|screen)\b/iu;
+const ACCOUNT_SYSTEM = /\b(?:user\s+accounts?|accounts?\s+(?:for|system|management|page|area)|my\s+account|authentication|authorization|auth\s+(?:system|flow|api)|backend|back[- ]end|server|database|api|store(?:s|d)?\s+(?:the\s+)?(?:users?|accounts?|registrations?)|users?\s+(?:can\s+)?(?:log|sign)\s*(?:in|up)|jwt|sessions?|roles?|admin(?:istrator)?s?\s+(?:can\s+)?(?:log|sign)\s*in)\b/iu;
+const DISCOUNT_FIELD = /\bdiscounts?\s*(?:percent(?:age)?|rate|%|field|amount|value|input)\b|\b(?:percent(?:age)?|rate)\s+(?:of\s+)?discount\b/iu;
+const COUPON_SYSTEM = /\bcoupons?\b|\bpromo(?:tion(?:al)?)?\s*codes?\b|\bpromo\b|\bdiscount\s+codes?\b|\bmanage(?:s|d)?\s+discounts?\b|\bdiscounts?\s+(?:management|campaigns?|rules?)\b/iu;
+/*
+ * Deliveries as a report's DATA are no shipping system. L128, 2026-11-08: «a
+ * report page for a flower shop with sample data about its deliveries and
+ * three charts» was refused for «missing: shipping» — every exam check passed.
+ * A report, a dashboard or charts ask for shipping only beside what a
+ * shipping system does: options, addresses, fees, zones, tracking, statuses.
+ */
+const REPORT_ONLY = /\b(?:reports?|dashboards?|charts?|graphs?|analytics|statistics|stats|kpis?)\b|تقرير|تقارير|لوحة\s+(?:معلومات|تحكم|إحصا|مؤشرات)|رسوم?\s*بيانية|رسوم|مخططات?|إحصائيات|إحصاءات/iu;
+const SHIPPING_SYSTEM = /\bshipping\s+(?:options?|address(?:es)?|service|management|rates?|costs?|fees?|zones?|methods?)\b|\bdelivery\s+(?:tracking|status(?:es)?|options?|address(?:es)?|service|management|zones?|fees?|slots?)\b|\btrack(?:s|ing)?\s+(?:the\s+)?(?:shipments?|deliver(?:y|ies)|orders?|packages?)\b|(?:خيارات|عناوين|عنوان|رسوم|تكلفة|مناطق|إدارة|نظام|طرق)\s+(?:الشحن|التوصيل)|تتبع\s+(?:الشحنات?|التوصيلات?|الطلبات?|الطرود)|حالة\s+(?:الشحنة|الشحنات|الطلب|الطلبات|التوصيل)/iu;
+
+/** The shipping system named by its own name («Shipping», «الشحن»), not deliveries or shipments as records. */
+const SHIPPING_NAMED = /\bshipping\b|(?<!\p{L})(?:ال)?شحن(?!\p{L})/iu;
+
 function capabilityIsRequested(capability: Capability, text: string): boolean {
     //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
     if (!asksAsWords(capability.ask, text)) return false;
+    if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
+    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
+    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text));
     if (capability.id !== 'accounts') return true;
+    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
     return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
 }
 
