@@ -49,6 +49,12 @@ test('each journey is proven, or not, on what the walk measured', () => {
     })[0].proven).toBe(true);
 });
 
+test('«نموذج إتمام طلب» asks for checking out as «إتمام الطلب» does (L162, the third live check)', () => {
+    const ids = (r: string) => productProfile(r).journeys.map(j => j.id);
+    expect(ids('ابني متجراً: سلة تضيف وتحذف، ونموذج إتمام طلب مع التحقق.')).toContain('checkout');
+    expect(ids('ابني متجراً فيه إتمام الطلب والدفع.')).toContain('checkout');
+});
+
 test('the coverage sentence says what was built and each journey with ✓ or ✗', () => {
     const line = qaCoverageLine(qaCoverageOf({
         routes: ['/', '#/cart'], pressed: 20, intentsMet: 3,
