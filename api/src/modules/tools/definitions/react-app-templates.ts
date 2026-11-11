@@ -1163,7 +1163,9 @@ export async function apiCreateOn(api, name, row) {
     });
     const d = await r.json().catch(() => ({}));
     if (!r.ok) return { ok: false, status: r.status, needsAuth: r.status === 401, error: d.error || '' };
-    return { ok: true, item: d.item || row };
+    // As apiCreate: the catalogue route answers an "item", a generated table a "row" — the server's
+    // id is adopted from either; the row sent has none, so it is never handed back as if it had.
+    return { ok: true, item: d.item || d.row || null, row: d.row || d.item || null };
   } catch { return null; }
 }
 
@@ -1176,7 +1178,7 @@ export async function apiUpdateOn(api, name, id, patch) {
       body: JSON.stringify(patch || {}),
     });
     const d = await r.json().catch(() => ({}));
-    return r.ok ? { ok: true, row: d.row } : { ok: false, error: d.error || 'save_failed' };
+    return r.ok ? { ok: true, row: d.row || d.item || null, item: d.item || d.row || null } : { ok: false, error: d.error || 'save_failed' };
   } catch { return { ok: false, error: 'no_server' }; }
 }
 

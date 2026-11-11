@@ -968,7 +968,9 @@ export async function deliveredDocuments(root: string): Promise<Array<{ path: st
  * only (a big JSON is data, not configuration), and never a lockfile.
  */
 //  A sheet delivered as CSV is read too (the Manus-style exam, 2026-11-09: a comparison in a CSV).
-const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|csv|tsv|json|ya?ml|toml|ini|cfg)$/iu;
+//  …and an installable app's manifest is its configuration (the eleventh live check, 2026-11-11, L191: «manifest.webmanifest
+//  itself is not shown» — the judge could not prove the salon's app installable, and Joe renamed it .json to be read).
+const JUDGE_DOC_OR_CONFIG_FILE = /^(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt|csv|tsv|json|webmanifest|ya?ml|toml|ini|cfg)$/iu;
 const LOCKFILE = /^(?:package-lock\.json|npm-shrinkwrap\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|pipfile\.lock|composer\.lock|cargo\.lock)$/iu;
 const JUDGE_DOC_BYTES = 64 * 1024;
 

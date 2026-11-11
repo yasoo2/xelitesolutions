@@ -823,6 +823,10 @@ export async function auditBuiltApp(
             page.setDefaultTimeout?.(5_000);
             page.setDefaultNavigationTimeout?.(navigationTimeoutMs);
         } catch { /* a minimal browser adapter may not expose Playwright defaults */ }
+        //  What changes by itself is learnt again for every audit (behaviour-audit learnAmbient): the
+        //  borrowed panel page outlives one build, and the fifth review (2026-11-11) found a rebuilt
+        //  app judged with the last build's clock paths.
+        try { delete (page as any).__joeQaAmbientLearnt; } catch { /* a frozen adapter */ }
         // Responsive checks must leave the visible Browser panel in a useful
         // desktop state. Reading the viewport after a phone pass only remembers
         // the transient test size and strands the user in a tiny preview.
@@ -1431,6 +1435,9 @@ export async function auditBuiltApp(
             behaviourMetrics.ordersNotKeptEvidence = [...(behaviourMetrics.ordersNotKeptEvidence || []), ...(p.metrics.ordersNotKeptEvidence || []).map((x: any) => ({ ...x, route }))];
             behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
+            //  A form whose submit stayed disabled is told to the builder (behaviour-audit form_submit_disabled).
+            behaviourMetrics.formsDeclined = Number(behaviourMetrics.formsDeclined || 0) + Number(p.metrics.formsDeclined || 0);
+            behaviourMetrics.formsDeclinedEvidence = [...(behaviourMetrics.formsDeclinedEvidence || []), ...(p.metrics.formsDeclinedEvidence || []).map((x: any) => ({ ...x, route }))];
             //  An id held twice, on any screen: kept with its largest count (behaviour-audit duplicateControlIds).
             for (const d of (p.metrics.duplicateIds || []) as Array<{ id: string; count: number; labels?: string[] }>) {
                 const list: Array<{ id: string; count: number; labels?: string[] }> = (behaviourMetrics.duplicateIds = behaviourMetrics.duplicateIds || []);

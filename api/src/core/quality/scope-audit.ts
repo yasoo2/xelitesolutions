@@ -547,7 +547,15 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'shipping', ar: 'الشحن', en: 'shipping',
-        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|التوصيل/i,
+        /*
+         * Arabic asks as English does: «الشحن» by its own name, or what a delivery SYSTEM does —
+         * its options, addresses, fees, zones, tracking, statuses, management. The eleventh live
+         * check, 2026-11-11 (L182, a flower shop's chatbot «يسمح بحجز أو إلغاء التوصيلات»): the bare
+         * «التوصيل» matched «التوصيلات», deliveries booked as records, and «artifact coverage 0% —
+         * missing: shipping» refused a bot that books and cancels them — its English twin («book or
+         * cancel deliveries») asks for no shipping at all.
+         */
+        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|(?:خدمة|خدمات|خيارات|عنوان|عناوين|رسوم|تكلفة|تكاليف|مناطق|إدارة|نظام|طرق|طريقة|تتبع|حالة|حالات)\s+(?:الشحن|التوصيل)|توصيل\s+(?:الطلبات|الطرود|المنتجات|الشحنات)|تتبع\s+(?:الشحنة|الشحنات|التوصيل|التوصيلات|الطرود)/i,
         evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
         records: ['shipments', 'shipment', 'deliveries'],
     },

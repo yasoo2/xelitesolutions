@@ -54,7 +54,7 @@ export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
     'qa_created_record_not_deletable', 'order_not_kept',
     'markup_executes', 'markup_drawn', 'field_accepts_invalid', 'field_rejects_valid', 'field_case_minor',
-    'control_missed_its_job', 'control_job_unseen',
+    'control_missed_its_job', 'control_job_unseen', 'form_submit_disabled',
 ]);
 
 export interface ControlResult {
@@ -290,6 +290,15 @@ function findControls(limit: number) {
     };
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
+        /*
+         * A field is filled, never pressed. The eleventh live check, 2026-11-11 (L232, a laundry):
+         * «Search orders» (an input type=search) and «Filter by status» (a select) carried
+         * data-filter, were catalogued as tabs, pressed, changed nothing — «Unresponsive controls»,
+         * five refusals. A field is the forms pass's, and a search's second look.
+         */
+        //  A checkbox or a radio too: the fourth review (2026-11-11) found a radio already checked
+        //  pressed, changing nothing, and reported dead under the label «input»; a checkbox always toggles.
+        if (/^(?:INPUT|SELECT|TEXTAREA)$/u.test(el.tagName) && !/^(?:submit|button|reset|image)$/iu.test(String((el as HTMLInputElement).type || ''))) return;
         const controlLabel = label(el);
         /**
          * Session exit and destructive mutations are scenario boundaries, not
@@ -728,6 +737,100 @@ export function stampOwnDelete(arg: { needle: string; stamp: string; onlyOne: bo
     return `[${stamp}="1"]`;
 }
 
+/**
+ * Runs in the page: watches the page's message areas for what a submit writes into them — the same
+ * words written again included. Self-contained; readFormAnswer() reads and stops it.
+ *
+ * The eleventh live check, 2026-11-11 (L171, a dental clinic's booking): «احجز الموعد» answered
+ * «اختر التاريخ أولاً.» in its role="status" line — the date and the slot are picked outside the
+ * form — and the QA's earlier cases had drawn the very same words. Compared before and after, the
+ * page had not changed: «filled in completely and submitted, and nothing happened at all». A
+ * person sees the message come again; the walk now sees it written.
+ */
+export function watchFormAnswer(): boolean {
+    const w = window as any;
+    try { w.__joeQaAnswerObs?.disconnect(); } catch { /* none yet */ }
+    w.__joeQaAnswer = [];
+    w.__joeQaAmbient = [];
+    const MSG = '[role="alert"],[role="status"],[aria-live],.error,.err,.msg,.message,.notice,.feedback,.toast,.alert,[data-error],[data-status]';
+    const obs = new MutationObserver(records => {
+        for (const r of records) {
+            const node = (r.target.nodeType === 1 ? r.target : r.target.parentElement) as Element | null;
+            const msg = node && node.closest(MSG);
+            //  A line learnt to change by itself (learnAmbient: a clock in a status line) answers no submit.
+            if (!msg || msg.closest('[data-joe-ambient]') || node!.closest('[data-joe-ambient]') || w.__joeQaAnswer.length >= 100) continue;
+            w.__joeQaAnswer.push({ el: msg, text: String((msg as HTMLElement).innerText || '').trim().slice(0, 300) });
+        }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    w.__joeQaAnswerObs = obs;
+    return true;
+}
+
+/**
+ * Runs in the page: what changed on its own while nothing was pressed (a clock, a sync line, a live
+ * counter) is set aside — the third review, 2026-11-11: such a line would answer every submit. Self-contained.
+ */
+export function markAnswerAmbient(): number {
+    const w = window as any;
+    const seen: Array<{ el: Element }> = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer : [];
+    w.__joeQaAmbient = seen.map(x => x.el);
+    w.__joeQaAnswer = [];
+    return w.__joeQaAmbient.length;
+}
+
+/** Runs in the page: what the message areas were written with since watchFormAnswer (the ambient set aside), and stops watching. Self-contained. */
+export function readFormAnswer(): string[] {
+    const w = window as any;
+    try { w.__joeQaAnswerObs?.disconnect(); } catch { /* not watching */ }
+    const ambient: Element[] = Array.isArray(w.__joeQaAmbient) ? w.__joeQaAmbient : [];
+    const seen: Array<{ el: Element; text: string }> = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer : [];
+    const out = seen.filter(x => !ambient.includes(x.el)).map(x => x.text).slice(0, 50);
+    w.__joeQaAnswer = [];
+    w.__joeQaAmbient = [];
+    return out;
+}
+
+/**
+ * Runs in the page: what a booking page asks first, outside its form — a date, a time, a choice
+ * left empty — stamped for the walk to fill (choosePrerequisites). Self-contained.
+ */
+export function stampPrerequisites(formSel: string): Array<{ sel: string; kind: 'date' | 'time' | 'datetime' | 'select' }> {
+    document.querySelectorAll('[data-joe-pre]').forEach(el => el.removeAttribute('data-joe-pre'));
+    const form = document.querySelector(formSel);
+    const shown = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); const s = getComputedStyle(el as HTMLElement); return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const out: Array<{ sel: string; kind: 'date' | 'time' | 'datetime' | 'select' }> = [];
+    document.querySelectorAll('input[type="date"],input[type="time"],input[type="datetime-local"],select').forEach((el, i) => {
+        if ((form && form.contains(el)) || !shown(el) || (el as HTMLInputElement).disabled) return;
+        if ((el as HTMLInputElement).value) return;
+        //  Never another form's field, nor a list's filter: choosing one would narrow the list the persistence check counts (the fifth review).
+        const owner = el.closest('form');
+        if (owner && owner !== form) return;
+        const named = [el.getAttribute('name'), el.id, el.getAttribute('aria-label'), el.getAttribute('data-filter') !== null ? 'filter' : '', (el as HTMLInputElement).labels?.[0]?.textContent].join(' ');
+        if (/search|filter|sort|order\s*by|بحث|فلتر|تصفية|ترتيب|فرز/iu.test(named)) return;
+        const type = String((el as HTMLInputElement).type || '').toLowerCase();
+        const kind = el.tagName === 'SELECT' ? 'select' : type === 'date' ? 'date' : type === 'time' ? 'time' : 'datetime';
+        el.setAttribute('data-joe-pre', String(i));
+        out.push({ sel: `[data-joe-pre="${i}"]`, kind });
+    });
+    return out.slice(0, 4);
+}
+
+/** Runs in the page: the first choice a booking page offers outside its form (a time slot, an option), stamped. Self-contained. */
+export function stampFirstChoice(formSel: string): string {
+    document.querySelectorAll('[data-joe-choice]').forEach(el => el.removeAttribute('data-joe-choice'));
+    const form = document.querySelector(formSel);
+    const shown = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+    const choice = (Array.from(document.querySelectorAll('button,[role="option"],[role="radio"],[data-slot],[data-time]')) as HTMLElement[]).find(el => {
+        if ((form && form.contains(el)) || !shown(el) || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        const marks = [el.className, el.getAttribute('role'), el.getAttribute('data-slot') !== null ? 'slot' : '', el.getAttribute('data-time') !== null ? 'time' : ''].join(' ');
+        return /slot|time|hour|option|choice|موعد|وقت/iu.test(marks) || /^\s*[0-9٠-٩]{1,2}[:٫.][0-9٠-٩]{2}/u.test(el.innerText || '');
+    });
+    if (!choice) return '';
+    choice.setAttribute('data-joe-choice', '1');
+    return '[data-joe-choice="1"]';
+}
+
 /** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
 export function recordRowCount(): number {
     const ROW = 'li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]';
@@ -776,6 +879,124 @@ export function visibleFormPrints(): string[] {
 }
 
 /** Runs in the page: a cheap fingerprint of everything a click could change. */
+/**
+ * ⛔ WHAT CHANGES ON ITS OWN IS NO PRESS'S ANSWER.
+ *
+ * The third review, 2026-11-11: a clock in a status line («الوقت الآن 10:32:15»), a countdown, a
+ * «synced 3 s ago» changes the page every second with nothing pressed — and every dead button and
+ * every dead form beside it looked alive: the fingerprint after the press differed from the one
+ * before. Watched once per view while nothing is pressed (watchAmbient → stampAmbient), what
+ * changed by itself is stamped and left out of every fingerprint. Small leaves only: never a
+ * container holding a control, never a long text — a list a press refreshes is still that press's
+ * answer. Runs in the page; self-contained.
+ */
+export function watchAmbient(): boolean {
+    const w = window as any;
+    try { w.__joeQaAmbientObs?.disconnect(); } catch { /* none yet */ }
+    const seen = new Set<Element>();
+    w.__joeQaAmbientSeen = seen;
+    const obs = new MutationObserver(records => {
+        for (const r of records) {
+            const el = (r.target.nodeType === 1 ? r.target : r.target.parentElement) as Element | null;
+            if (el && seen.size < 200) seen.add(el);
+        }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+    w.__joeQaAmbientObs = obs;
+    return true;
+}
+
+/**
+ * Runs in the page: stamps what watchAmbient saw change by itself (data-joe-ambient), stops
+ * watching, and returns where each stamped leaf sits (a path from the body), so a reload can
+ * stamp them again (restampAmbient). Self-contained.
+ */
+export function stampAmbient(): Array<{ path: string; tag: string }> {
+    const w = window as any;
+    try { w.__joeQaAmbientObs?.disconnect(); } catch { /* not watching */ }
+    const seen: Element[] = Array.from(w.__joeQaAmbientSeen || []);
+    w.__joeQaAmbientSeen = null;
+    const pathOf = (el: Element): string => {
+        const parts: string[] = [];
+        for (let n: Element | null = el; n && n !== document.body && n.parentElement; n = n.parentElement) {
+            parts.unshift(`${n.tagName.toLowerCase()}:nth-child(${Array.prototype.indexOf.call(n.parentElement.children, n) + 1})`);
+        }
+        return ['body', ...parts].join(' > ');
+    };
+    const out: Array<{ path: string; tag: string }> = [];
+    for (const el of seen) {
+        if (!(el instanceof HTMLElement) || !el.isConnected || el === document.body || el === document.documentElement) continue;
+        if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
+        if (el.closest('button,a[href],[role="button"],[role="link"]')) continue;
+        if (String(el.textContent || '').length > 160) continue;
+        el.setAttribute('data-joe-ambient', '1');
+        if (out.length < 40) out.push({ path: pathOf(el), tag: el.tagName });
+    }
+    return out;
+}
+
+/** Runs in the page: stamps again, where they are, the leaves learnt to change by themselves (stampAmbient's paths). Self-contained. */
+export function restampAmbient(leaves: Array<{ path: string; tag: string }>): number {
+    let n = 0;
+    for (const leaf of leaves || []) {
+        let el: Element | null = null;
+        try { el = document.querySelector(leaf.path); } catch { el = null; }
+        //  Still the leaf that was learnt: the same element, as small, outside every control, and
+        //  holding what ticks (a digit) — a total or a status line moved into its place is not stamped.
+        if (!(el instanceof HTMLElement) || el.tagName !== leaf.tag) continue;
+        if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
+        if (el.closest('button,a[href],[role="button"],[role="link"]')) continue;
+        const text = String(el.textContent || '');
+        if (text.length > 160 || !/[0-9٠-٩]/u.test(text)) continue;
+        el.setAttribute('data-joe-ambient', '1');
+        n++;
+    }
+    (window as any).__joeQaAmbientAt = location.href;
+    return n;
+}
+
+/**
+ * What changes by itself on this view, learnt while nothing is pressed (watchAmbient, stampAmbient)
+ * — once per document and address, a second at most, and only on a view that shows what ticks: a
+ * time («10:32», «2026-11-11T10:32»), a countdown, a «3 s ago». A view showing none of it is not
+ * waited on (a walk of many screens would pay a second for each).
+ */
+export async function learnAmbient(page: any, watchMs = 1100): Promise<number> {
+    /*
+     * A view learnt once is not learnt again: a reload, a baseline restored, the persistence check
+     * wipe every stamp, and the fourth review (2026-11-11) found the clock back in every fingerprint
+     * after the first restore. What was learnt here is stamped again where it is, at once.
+     */
+    /*
+     * …per audit (app-audit drops what a page learnt when a new audit begins) and per viewport: a
+     * phone's layout puts other leaves at the desktop's paths (the fifth review, 2026-11-11).
+     */
+    const learnt: Map<string, Array<{ path: string; tag: string }>> = page.__joeQaAmbientLearnt || (page.__joeQaAmbientLearnt = new Map());
+    const size = (() => { try { const v = page.viewportSize?.(); return v ? `${v.width}x${v.height}` : ''; } catch { return ''; } })();
+    const here = `${String(page.url() || '')}|${size}`;
+    const leaves = learnt.get(here);
+    //  Watched once, never again: a view whose times stood still (a booking's «10:30» slots) costs one second, not one per restore.
+    if (leaves) return leaves.length ? page.evaluate(restampAmbient, leaves).catch(() => 0) : 0;
+    const state: string = await page.evaluate(() => {
+        const w = window as any;
+        if (w.__joeQaAmbientAt === location.href) return 'known';
+        const text = String((document.body && document.body.innerText) || '').slice(0, 30000);
+        const ticks = /[0-9٠-٩]{1,2}[:٫][0-9٠-٩]{2}|\b(?:ago|seconds?|secs?|countdown|remaining|refreshed|synced)\b|منذ|ثانية|ثوانٍ|ثوان|متبقي|المتبقي|العد التنازلي|آخر تحديث/iu.test(text);
+        //  …or a place made for one, still empty until its first tick (`setInterval(draw, 1000)` draws nothing for a second).
+        const holder = !!document.querySelector('[role="timer"],[role="marquee"],[class*="clock" i],[id*="clock" i],[class*="timer" i],[id*="timer" i],[class*="countdown" i],[id*="countdown" i],[class*="ticker" i]');
+        if (!ticks && !holder) w.__joeQaAmbientAt = location.href;
+        return ticks || holder ? 'watch' : 'still';
+    }).catch(() => 'known');
+    //  A view that showed nothing ticking is asked again next time (cheaply, no wait): a time drawn later is learnt then.
+    if (state !== 'watch') return 0;
+    await page.evaluate(watchAmbient).catch(() => false);
+    await page.waitForTimeout(watchMs).catch(() => { });
+    const stamped: Array<{ path: string; tag: string }> = await page.evaluate(stampAmbient).catch(() => [] as Array<{ path: string; tag: string }>);
+    learnt.set(here, stamped);
+    await page.evaluate(() => { (window as any).__joeQaAmbientAt = location.href; }).catch(() => { });
+    return stamped.length;
+}
+
 function snapshot() {
     // A HASH, not a length. A cart badge going 0 -> 1 is the single most
     // important thing a click can do on a store page, and it changes neither the
@@ -794,7 +1015,32 @@ function snapshot() {
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width > 2 && r.height > 2) visible++;
     }
-    const text = document.body.innerText || '';
+    /*
+     * What changes on its own (stampAmbient) is left out: its text, its markup. Read without it
+     * the same way before and after every press, so a clock is no press's answer.
+     */
+    const ambient = Array.from(document.querySelectorAll('[data-joe-ambient]')) as HTMLElement[];
+    let text = document.body.innerText || '';
+    let bodyHtml = document.body.innerHTML || '';
+    if (ambient.length) {
+        const parts: string[] = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n: Node) => {
+                const p = n.parentElement;
+                if (!p || p.closest('[data-joe-ambient],script,style,noscript,template')) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            },
+        });
+        for (let n = walker.nextNode(); n && parts.length < 20000; n = walker.nextNode()) {
+            const s = String(n.nodeValue || '').trim();
+            if (s) parts.push(s);
+        }
+        text = parts.join('\n');
+        for (const el of ambient) {
+            const outer = el.outerHTML;
+            if (outer) bodyHtml = bodyHtml.split(outer).join('');
+        }
+    }
     /**
      * …AND THE FINGERPRINT IGNORES WHAT THE CAMERA WROTE.
      *
@@ -805,10 +1051,12 @@ function snapshot() {
      * Joe's own streamer no longer does this; a normalised hash means no other
      * camera can either.
      */
-    const html = (document.body.innerHTML || '').slice(0, 200000)
+    const html = bodyHtml.slice(0, 200000)
         .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
         // These handles belong to Joe's instrument, not the application.
         .replace(/\sdata-joe-(?:ctl|form|fld|sub|qbox|qa-[\w-]+)="[^"]*"/gi, '')
+        //  …and so do the mark of what changes by itself (stampAmbient) and of what a booking asked first (stampPrerequisites, stampFirstChoice).
+        .replace(/\sdata-joe-(?:ambient|pre|choice)="[^"]*"/gi, '')
         .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
@@ -898,8 +1146,15 @@ async function formFeedback(page: any, selector: string): Promise<string> {
             return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
         };
         return Array.from(scope.querySelectorAll('[role="alert"],[role="status"],[aria-live],.error,.err,.auth-error,.notice,.feedback,[data-error],[data-status]'))
-            .filter(visible)
-            .map(el => (el as HTMLElement).innerText.trim())
+            //  A status line that changes by itself (a clock: stampAmbient) answers no submit.
+            .filter(el => visible(el) && !el.closest('[data-joe-ambient]'))
+            //  …nor does the clock inside one («Last sync <time>10:32:15</time>»): read without it (the fifth review).
+            .map(el => {
+                if (!el.querySelector('[data-joe-ambient]')) return (el as HTMLElement).innerText.trim();
+                const copy = el.cloneNode(true) as HTMLElement;
+                copy.querySelectorAll('[data-joe-ambient]').forEach(x => x.remove());
+                return String(copy.textContent || '').replace(/\s+/g, ' ').trim();
+            })
             .filter(Boolean)
             .join('\n')
             .slice(0, 1200);
@@ -935,9 +1190,11 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
  * (2xx) and those it refused (4xx). A refused write is remembered by its address
  * so its console line is known as the same refusal (isExpectedRefusal).
  */
-export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; stop: () => void } {
+export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; pending: () => number; stop: () => void } {
     let saved = 0;
     let refused = 0;
+    /** Writes sent and not answered yet: what the page drew meanwhile is not their answer. */
+    let pending = 0;
     /** Where the product took a write (POST, PUT, PATCH), in order: where what a form made is asked for again. */
     const written: string[] = [];
     let origin = '';
@@ -957,8 +1214,20 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             }
         } catch { /* a response that cannot be read wrote nothing we know of */ }
     };
-    try { page.on('response', on); } catch { /* a page without events */ }
-    return { saved: () => saved, refused: () => refused, written: () => written.slice(), stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
+    const isWrite = (request: any) => {
+        try {
+            if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(request?.method?.() || '').toUpperCase())) return false;
+            return !origin || new URL(String(request.url())).origin === origin;
+        } catch { return false; }
+    };
+    const sent = (request: any) => { if (isWrite(request)) pending++; };
+    const answered = (response: any) => { if (isWrite(response?.request?.())) pending = Math.max(0, pending - 1); on(response); };
+    const lost = (request: any) => { if (isWrite(request)) pending = Math.max(0, pending - 1); };
+    try { page.on('request', sent); page.on('response', answered); page.on('requestfailed', lost); } catch { /* a page without events */ }
+    return {
+        saved: () => saved, refused: () => refused, written: () => written.slice(), pending: () => pending,
+        stop: () => { try { page.off('request', sent); page.off('response', answered); page.off('requestfailed', lost); } catch { /* gone */ } },
+    };
 }
 
 /** What one free-text field is sent with: it must come back as the text it was (probeForms). */
@@ -1289,6 +1558,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
     //  Read as the walk finds the page, before any restore draws it fresh (a reload loses the second copy).
     const idsAtStart: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    //  What changes by itself here (a clock, a countdown) is learnt before the first press, and credited to none.
+    const ambientHere = await learnAmbient(page);
+    if (ambientHere) metrics.ambientLeaves = ambientHere;
     const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     // Button exploration is useful, but a quality run that never reaches its
     // forms cannot prove the input contract the user relies on. Reserve a
@@ -1558,6 +1830,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             }
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
+            //  What changes by itself here is stamped again (learnAmbient: learnt once, no new wait).
+            await learnAmbient(page).catch(() => 0);
         };
         /**
          * ⛔ A TAB'S SECTION IS HIDDEN UNTIL ITS TAB IS PRESSED.
@@ -2644,20 +2918,31 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 return '';
             } catch { return ''; }
         };
-        for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
-            const quietItem = catalogued(quiet);
-            if (!quietItem || !eyeIsOpen()) continue;
+        /*
+         * ⛔ EVERY QUIET CONTROL GETS ITS FIRST SECOND LOOK BEFORE ANY GETS ITS THIRD.
+         *
+         * P204's own test, 2026-11-11 (failing on main too, at 100% CPU): «Wishlist», wired to
+         * nothing, took the whole 12 s — three movers, a reload each — and «Clear filters», the reset
+         * the second look exists for, was never pressed on a changed page: «Unresponsive». The movers
+         * are taken in rounds: each quiet control after its best mover first, then the next.
+         */
+        const quietOnes = pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3).map(quiet => {
             /*
              * A nav item undoes another nav item: «المتجر» (setView('shop')) after «السلة», not after
              * «أضف إلى السلة», which leaves the shop where it was (L162, the fifth live check: «Unresponsive
              * controls: "المتجر"» three times; Joe made it focus the search box, then a link, to quiet it).
              */
-            /** Pressed again on a view another control had moved to, and still quiet: tried where it had somewhere to go. */
-            let testedElsewhere = false;
             const moverRank = (m: ControlResult) => (nav(quiet.kind) && nav(m.kind) ? 0 : 2) + (['dom', 'open', 'state'].includes(String(m.effect)) ? 0 : 1);
             const tried = movers.filter(m => m.label !== quiet.label).map((m, i) => ({ m, i })).sort((a, b) => moverRank(a.m) - moverRank(b.m) || a.i - b.i).map(x => x.m);
-            for (const mover of tried.slice(0, 3)) {
-                if (Date.now() >= secondLookUntil || !eyeIsOpen()) break;
+            /** Pressed again on a view another control had moved to, and still quiet: tried where it had somewhere to go. */
+            return { quiet, quietItem: catalogued(quiet), tried: tried.slice(0, 3), testedElsewhere: false, answered: false };
+        }).filter(q => !!q.quietItem);
+        for (let round = 0; round < 3; round++) {
+            for (const q of quietOnes) {
+                if (q.answered || Date.now() >= secondLookUntil || !eyeIsOpen()) continue;
+                const { quiet, quietItem } = q;
+                const mover = q.tried[round];
+                if (!mover) continue;
                 const moverItem = catalogued(mover);
                 if (!moverItem) continue;
                 try {
@@ -2689,11 +2974,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
                     } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
-                    if (!effect && left) testedElsewhere = true;
+                    if (!effect && left) q.testedElsewhere = true;
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
-                    if (effect) break;
+                    if (effect) q.answered = true;
                 } catch { /* the control under test keeps its first verdict */ }
             }
+        }
+        for (const { quiet, quietItem, testedElsewhere } of quietOnes) {
             //  Still quiet, never tried from another view, and with evidence it is the open view's own link.
             const stillQuiet = !controls.some(r => r.worked && r.kind === quiet.kind && r.label === quiet.label);
             const why = stillQuiet && !testedElsewhere && eyeIsOpen() ? await currentPageEvidence(quiet, quietItem) : '';
@@ -2788,6 +3075,9 @@ export async function probeForms(
         if (!open) metrics.eyeLost = true;
         return open;
     };
+    //  What changes by itself here is learnt before the first submit (learnAmbient; once per view).
+    const ambientHere = await learnAmbient(page);
+    if (ambientHere) metrics.ambientLeaves = ambientHere;
     const pageLanguage = await page.evaluate(() => {
         const lang = String(document.documentElement.lang || '').trim();
         if (lang) return lang;
@@ -2813,6 +3103,8 @@ export async function probeForms(
     for (const planned of forms) {
         if (Date.now() > deadline) break;
         if (!eyeIsOpen()) break;
+        //  …and wipe the stamps of what changes by itself: stamped again where they are (learnAmbient, no new wait).
+        await learnAmbient(page).catch(() => 0);
         // Persistence checks reload the page. Instrument handles from the previous
         // document are no longer evidence of where the next form lives.
         const current = await evalInPage(page, findForms, {
@@ -3025,14 +3317,41 @@ export async function probeForms(
          * What the product saved this way carries the QA nonce in its other
          * fields and is removed after the form (deleteOwnRecords).
          */
+        /*
+         * ⛔ A SENT CASE IS WAITED FOR BEFORE THE NEXT FILL.
+         *
+         * The eleventh live check, 2026-11-11 (L232, a laundry): «Save customer» sent with letters in
+         * its phone was refused 400, and the app then reloaded the order and drew its form again —
+         * after the walk had already typed the valid values. The redraw put the stored «call-me»
+         * back, the last submit sent nothing, a leftover redraw was read as its answer, and «sent and
+         * taken, never shown» refused the laundry four times. Each sent case waits for its write to
+         * be answered and the page to be still, and so does the last fill.
+         */
+        const settleAfterSubmit = async (maxMs = 3000) => {
+            const until = Math.min(deadline, Date.now() + maxMs);
+            while (writes.pending() > 0 && Date.now() < until) await page.waitForTimeout(100);
+            let last = await page.evaluate(snapshot).catch(() => null);
+            while (Date.now() < until) {
+                await page.waitForTimeout(250);
+                const now = await page.evaluate(snapshot).catch(() => null);
+                if (!changed(last, now)) break;
+                last = now;
+            }
+            //  A form the page drew again is found again, and its valid values move to its new fields (relocate).
+            const marks = [f.sel, ...(f.submitSel ? [f.submitSel] : []), ...validValues.keys()];
+            const alive = await page.evaluate((list: string[]) => list.every(s => !!document.querySelector(s)), marks).catch(() => true);
+            if (!alive) await relocate();
+        };
         for (const cand of submitCandidates.slice(0, MAX_SUBMITTED_CASES_PER_FORM)) {
             if (Date.now() > deadline || !eyeIsOpen()) break;
+            if (cand !== submitCandidates[0]) await settleAfterSubmit();
             await refillValid(page, validValues);
             const field = await page.$(cand.sel);
             if (!field) continue;
             await eyes.lookAt(page, await boxOf(page, cand.sel), { note: `${cand.c.ar} — إرسال`, tone: 'warn', moveMouse: false });
             try { await field.fill(cand.c.value, { timeout: 1500 }); } catch { continue; }
             const wroteBefore = writes.saved();
+            const refusedBeforeCase = writes.refused();
             const feedbackBefore = await formFeedback(page, f.sel);
             const submitButton = f.submitSel ? await page.$(f.submitSel) : null;
             if (!submitButton) break;
@@ -3044,6 +3363,8 @@ export async function probeForms(
                 await page.waitForTimeout(150);
                 if (writes.saved() > wroteBefore) answer = 'saved';
                 else if (hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel))) answer = 'message';
+                //  The server refused the wrong value: the product said no, whatever the page then drew.
+                else if (writes.refused() > refusedBeforeCase) answer = 'refused';
                 else if (await page.evaluate((sel: string) => {
                     const x = document.querySelector(sel) as HTMLInputElement | null;
                     return !!x && (x.getAttribute('aria-invalid') === 'true' || (typeof x.checkValidity === 'function' && !x.checkValidity()));
@@ -3059,7 +3380,25 @@ export async function probeForms(
                 metrics.fieldCaseFailures.push({ form: f.label, field: cand.field, meaning: cand.meaning, case: cand.c.id, value: cand.c.value, ar: cand.c.ar, en: cand.c.en, weight: 'minor', outcome: 'refused_silently' });
             }
         }
-        if (submitCandidates.length) await refillValid(page, validValues);
+        if (submitCandidates.length) {
+            /*
+             * …and what was typed is still there a moment later. The laundry's own test, under load
+             * (2026-11-11): the page reloaded the record 600 ms after answering a refused case, the
+             * page had been still for 250 ms, so the walk typed the valid values — and the redraw
+             * wiped them: the last submit sent the stored «call-me». Typed again until they hold.
+             */
+            const valuesHeld = () => page.evaluate((entries: Array<[string, { kind: string; value: string }]>) => entries.every(([s, v]) => {
+                const el = document.querySelector(s) as HTMLInputElement | null;
+                if (!el) return false;
+                return v.kind === 'check' ? el.checked === true : String(el.value) === String(v.value);
+            }), Array.from(validValues.entries())).catch(() => true);
+            for (let attempt = 0; attempt < 3 && Date.now() < deadline; attempt++) {
+                await settleAfterSubmit();
+                await refillValid(page, validValues);
+                await page.waitForTimeout(700).catch(() => { });
+                if (await valuesHeld()) break;
+            }
+        }
         if (markupSel) await page.evaluate(() => { (window as any).__joeQaXss = 0; }).catch(() => { });
 
         // …and sent, through the button a visitor would press.
@@ -3077,6 +3416,45 @@ export async function probeForms(
         /** How many writes the product had taken before this form was sent: the ones after are this form's. */
         let writtenBeforeSubmit = 0;
         try {
+            /*
+             * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
+             *
+             * The eleventh live check, 2026-11-11 (L171, a dental clinic): «احجز الموعد» stayed disabled
+             * until a date and a time slot — both outside the form — were chosen, as booking pages do.
+             * The QA filled the name and the phone, pressed the greyed button, and called the form
+             * «filled in completely and submitted, and nothing happened at all»; the builder enabled the
+             * button to quiet it. The product declined the submit until what it needs is chosen: told as
+             * declined (the booking's journey says whether it was proven), never as a dead form.
+             */
+            const isSubmitDisabled = async (): Promise<boolean> => f.submitSel ? page.evaluate((s: string) => {
+                const b = document.querySelector(s) as HTMLButtonElement | null;
+                return !!b && (b.disabled === true || b.getAttribute('aria-disabled') === 'true');
+            }, f.submitSel).catch(() => false) : false;
+            let submitDisabled = await isSubmitDisabled();
+            /*
+             * …but first, what the page asks for outside its form, chosen as a person would: the empty
+             * date or time beside it, the first slot it then offers. The third review, 2026-11-11: told
+             * only «declined», a submit a bug keeps disabled forever would pass unseen; a booking whose
+             * slot is chosen is sent, and proven.
+             */
+            if (submitDisabled) {
+                const asked: Array<{ sel: string; kind: string }> = await page.evaluate(stampPrerequisites, f.sel).catch(() => []);
+                for (const p of asked) {
+                    if (p.kind === 'select') {
+                        const value = await page.evaluate((s: string) => { const x = document.querySelector(s) as HTMLSelectElement | null; return x ? (Array.from(x.options).find(o => o.value && !o.disabled)?.value || '') : ''; }, p.sel).catch(() => '');
+                        if (value) await page.selectOption(p.sel, value, { timeout: 1500 }).catch(() => { });
+                    } else {
+                        const day = valueFor('date', 'input', runNonce, pageLanguage);
+                        await page.fill(p.sel, p.kind === 'time' ? '10:30' : p.kind === 'datetime' ? `${day}T10:30` : day, { timeout: 1500 }).catch(() => { });
+                    }
+                }
+                if (asked.length) await page.waitForTimeout(1500).catch(() => { });
+                const choice: string = await page.evaluate(stampFirstChoice, f.sel).catch(() => '');
+                if (choice) { await page.click(choice, { timeout: 2500 }).catch(() => { }); await page.waitForTimeout(500).catch(() => { }); }
+                if (asked.length || choice) metrics.formsPrerequisitesChosen = Number(metrics.formsPrerequisitesChosen || 0) + 1;
+                submitDisabled = await isSubmitDisabled();
+            }
+            //  Every baseline below is taken after what the page asked for was chosen: those choices are no answer of the submit.
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
             const stillInvalid = await page.evaluate((sel: string) => {
@@ -3092,6 +3470,11 @@ export async function probeForms(
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
             viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
+            //  What the submit writes into the page's messages, the same words again included (watchFormAnswer);
+            //  what writes itself while nothing is pressed is set aside first (markAnswerAmbient).
+            await page.evaluate(watchFormAnswer).catch(() => false);
+            await page.waitForTimeout(400).catch(() => { });
+            await page.evaluate(markAnswerAmbient).catch(() => 0);
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -3100,6 +3483,8 @@ export async function probeForms(
                 if (!eyeIsOpen()) break;
                 await eyes.press(page);
                 if (!eyeIsOpen()) break;
+                //  Read again as it is pressed: a check that enables it a moment later is not a declined form.
+                submitDisabled = await isSubmitDisabled();
                 const sub = await page.$(f.submitSel);
                 await sub?.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
             } else {
@@ -3121,7 +3506,8 @@ export async function probeForms(
             }, f.sel).catch(() => true);
             let after = await page.evaluate(snapshot).catch(() => null);
             effect = await pending() ? '' : changed(before, after);
-            const effectDeadline = Math.min(deadline, Date.now() + 2500);
+            //  A disabled submit sends nothing: there is no answer to wait for.
+            const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);
             while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
@@ -3169,6 +3555,8 @@ export async function probeForms(
                     effect = 'submitted';
                 }
             }
+            //  What the page wrote into its messages (read now, judged after what the server said).
+            const written: string[] = await page.evaluate(readFormAnswer).catch(() => [] as string[]);
             /*
              * ⛔ WHAT THE SERVER SAID DECIDES WHAT THE PAGE DID NOT SHOW.
              *
@@ -3181,10 +3569,21 @@ export async function probeForms(
              * a refusal of the QA's value — said as a weak check when the
              * visitor is told nothing — never a record to find.
              */
+            /*
+             * A write still on its way is waited for: the page may draw before the server answers (a
+             * disabled button, a spinner, a list reloaded), and that drawing is not the answer. The
+             * eleventh live check, 2026-11-11 (L232): «Save customer» was refused 400 («phone may only
+             * contain digits») after the page had already changed, and was judged «sent and taken,
+             * never shown» — a record the server had refused, looked for four times.
+             */
+            const writesUntil = Math.min(deadline, Date.now() + 4000);
+            while (writes.pending() > 0 && Date.now() < writesUntil) await page.waitForTimeout(100);
             const savedNow = writes.saved() > savedBeforeSubmit;
             const refusedNow = writes.refused() > refusedBeforeSubmit;
             if (refusedNow && !savedNow && effect !== 'validation' && effect !== 'reload') {
-                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect) {
+                //  Told nothing unless the page wrote a refusal: said again in the same words is telling (watchFormAnswer);
+                //  a «Saving…» it then wiped is not (the fifth review).
+                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect && !written.some(w => isVisibleFormRefusal(w))) {
                     metrics.fieldCasesFailed++;
                     metrics.fieldCaseFailures.push({ form: f.label, field: f.label, meaning: 'form', case: 'form:refused', value: '', ar: 'رُفض الإرسال دون رسالة للزائر', en: 'the submit was refused and the visitor was told nothing', weight: 'minor', outcome: 'refused_silently' });
                 }
@@ -3193,6 +3592,12 @@ export async function probeForms(
                 effect = 'submitted';
                 metrics.formsSavedQuietly = Number(metrics.formsSavedQuietly || 0) + 1;
             }
+            //  Nothing changed to the eye and the server said nothing, yet the page wrote its answer again — the same words an earlier case drew.
+            if (!effect && written.some(Boolean)) {
+                effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
+                metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
+            }
+            if (!effect && submitDisabled) effect = 'declined';
         } catch { /* the form is what is under test */ }
 
         /*
@@ -3220,6 +3625,10 @@ export async function probeForms(
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'refused') metrics.formsRefused++;
         else if (effect === 'reload') metrics.formsReloaded++;
+        else if (effect === 'declined') {
+            metrics.formsDeclined = Number(metrics.formsDeclined || 0) + 1;
+            (metrics.formsDeclinedEvidence = metrics.formsDeclinedEvidence || []).push({ label: f.label, fields: f.fields.length, why: 'its submit stayed disabled with every field filled, and with what the page offered outside the form chosen' });
+        }
         else if (f.fields.length && filledCount < f.fields.length) {
             //  Not every field was filled (out of time, a field that would not take a value): sent like this, it proves nothing.
             metrics.formsUnfinished = Number(metrics.formsUnfinished || 0) + 1;
@@ -3341,9 +3750,12 @@ export async function probeForms(
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
                 //  What the server sends the reloaded page: a record it returns is kept, whichever view the page opens on.
                 const served: string[] = [];
+                /** When the reloaded page last heard from its server: while it is still being answered, it is still drawing. */
+                let lastServedAt = 0;
                 const onServed = async (response: any) => {
                     try {
                         if (served.length >= 40 || String(response.request().method()).toUpperCase() !== 'GET') return;
+                        lastServedAt = Date.now();
                         if (new URL(response.url()).origin !== new URL(page.url()).origin) return;
                         if (!/json|text|javascript/i.test(String(response.headers()['content-type'] || ''))) return;
                         served.push(String(await response.text()).slice(0, 400_000));
@@ -3352,13 +3764,19 @@ export async function probeForms(
                 try { page.on('response', onServed); } catch { /* a page without events */ }
                 const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
                     .then((response: any) => !!response && response.ok()).catch(() => false);
-                const persistenceDeadline = Math.min(deadline, Date.now() + 2500);
+                /*
+                 * 2.5 s, and longer while the page is still being answered (1.2 s after its last answer,
+                 * 6 s at most): under load the laundry's test page fetched its record, waited 600 ms and
+                 * drew it after the fixed window had closed — «never shown» for a record it kept.
+                 */
+                const reloadedAt = Date.now();
+                const persistenceUntil = () => Math.min(deadline, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));
                 let found = '';
                 do {
-                    if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
+                    if (!reloaded || Date.now() >= persistenceUntil() || !eyeIsOpen()) break;
                     found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
-                } while (!found && Date.now() < persistenceDeadline && eyeIsOpen());
+                } while (!found && Date.now() < persistenceUntil() && eyeIsOpen());
                 let keptBy = found ? 'page' : '';
                 if (!found && reloaded) {
                     //  Kept by the browser: a form's own draft («draft», «autosave») is not a record.
@@ -3590,6 +4008,21 @@ export function judgeBehaviour(
             ar: `${metrics.deadAnchors} رابط تنقّل يشير إلى قسم غير موجود أو غير مرئي في الصفحة`,
             en: `${metrics.deadAnchors} navigation link(s) point at a section that is missing or not visible`,
             hint: 'give every target section a matching id and ensure neither it nor an ancestor is visually hidden',
+        });
+    }
+    /*
+     * A form whose submit stayed disabled with every field filled — and with what it waits for outside
+     * the form chosen, where the walk could — is told (minor): a wait for a choice the visitor makes
+     * elsewhere is a design, a submit no choice enables is a bug; the builder knows which.
+     */
+    if (Number(metrics.formsDeclined || 0) > 0) {
+        const labels = (Array.isArray(metrics.formsDeclinedEvidence) ? metrics.formsDeclinedEvidence : []).map((e: any) => String(e.label || '')).filter(Boolean).slice(0, 3);
+        findings.push({
+            code: 'form_submit_disabled', severity: 'minor',
+            ar: `${metrics.formsDeclined} نموذج بقي زرّ إرساله معطّلاً وكل حقوله مملوءة${labels.length ? `: ${labels.map(l => `«${l}»`).join('، ')}` : ''} — إن كان ينتظر اختياراً خارج النموذج (تاريخاً أو موعداً) فليكن ظاهراً، وإلا فهو خلل`,
+            en: `${metrics.formsDeclined} form(s) kept their submit disabled with every field filled${labels.length ? `: ${labels.map(l => `"${l}"`).join(', ')}` : ''} — if it waits for a choice outside the form (a date, a slot), make it plain; if not, it is a bug`,
+            hint: 'enable the submit once what it needs is chosen, and say what is missing beside it',
+            evidence: (Array.isArray(metrics.formsDeclinedEvidence) ? metrics.formsDeclinedEvidence : []).slice(0, 4),
         });
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;

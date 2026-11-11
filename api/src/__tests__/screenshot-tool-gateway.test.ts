@@ -283,6 +283,9 @@ describe('screenshot tool gateway (legacy normal mode + autonomous admission)', 
     });
     mock('../modules/terminal/terminal-kernel', { terminalKernel: {} });
     mock('../core/session/attended-run', {
+      // ToolService binds the run's cancellation to its resources; without
+      // the real function every call ended in «bindRunCancellation is not a function».
+      bindRunCancellation: jest.requireActual('../core/session/attended-run').bindRunCancellation,
       registerRun: () => {
         const handle: any = {
           cancelled: false,

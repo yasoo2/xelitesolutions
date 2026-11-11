@@ -176,7 +176,8 @@ const python = spawnSync(pythonExecutable(), ['--version']).status === 0;
 
     it('a test file that holds no test is not «tested»; no test file at all is «could not run»', async () => {
         const empty = project({ 'app.py': APP, 'test_app.py': 'import unittest\n' });
-        expect(await runRequestedTests(empty, runTool('gate-empty'))).toMatchObject({ ran: true, passed: false, error: expect.stringMatching(/^the test command ran no tests \(unittest: Ran 0 tests/u) });
+        //  Whichever runner the machine has (unittest, or pytest where it is installed).
+        expect(await runRequestedTests(empty, runTool('gate-empty'))).toMatchObject({ ran: true, passed: false, error: expect.stringMatching(/^the test command ran no tests \((?:unittest: Ran 0 tests|pytest: [^)]*no tests ran)/u) });
         const none = project({ 'app.py': APP });
         expect(await runRequestedTests(none, runTool('gate-none'))).toMatchObject({ ran: false, passed: false, error: expect.stringMatching(/no Python test file/u) });
     });

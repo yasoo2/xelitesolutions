@@ -135,9 +135,21 @@ describe('the app can actually read and write that table', () => {
     it('a generated table answers «row» where the catalogue answers «item»', () => {
         // Knowing only one meant the server's real id was never adopted, and
         // the next edit went to /api/plants/<local-uid> and 404'd.
+        //  Every helper that creates or updates reads both, apiCreateOn too: since #90 (2026-09-23) it
+        //  answered `d.item || row` — the row sent, with no id — so a relation's parent saved to a
+        //  generated table kept a local id its children then pointed at (found 2026-11-11). The row
+        //  sent is never handed back as if the server had answered it.
         const t = T();
-        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| row \};/);
-        expect(t).toMatch(/return \{ ok: true, item: d\.item \|\| d\.row \|\| null \};/);
+        const body = (name: string) => {
+            const at = t.indexOf(`export async function ${name}(`);
+            expect(at).toBeGreaterThan(-1);
+            return t.slice(at, t.indexOf('\nexport ', at + 10));
+        };
+        for (const name of ['apiCreate', 'apiCreateOn', 'apiUpdate', 'apiUpdateOn']) {
+            const b = body(name);
+            expect(b).toMatch(/d\.item \|\| d\.row/);
+            expect(b).not.toMatch(/item: d\.item \|\| row\b/);
+        }
     });
 
     it('and it recognises its own server on a domain, not just localhost', () => {

@@ -47,4 +47,20 @@ module.exports = async function globalSetup(): Promise<void> {
     if (!process.env.JOE_TEST_TMP_ROOT) {
         process.env.JOE_TEST_TMP_ROOT = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-test-run-'));
     }
+    // The gateway suites (autonomous-*, isolated-runtime-, runtime-diagnostics-,
+    // log-rotation-retention) refuse to run without an absolute root they own
+    // and never delete. Nothing set it, so every plain run failed them. It lives
+    // inside the run's root, so `teardown.ts` removes it with everything else;
+    // an operator who names one keeps it, the same guard idiom as above.
+    if (!process.env.JOE_FILE_TEST_ROOT) {
+        const fileRoot = path.join(process.env.JOE_TEST_TMP_ROOT, 'file-test-root');
+        fs.mkdirSync(fileRoot, { recursive: true });
+        process.env.JOE_FILE_TEST_ROOT = fileRoot;
+    }
+    // screenshot-tool-gateway asks for its own owned root under another name.
+    if (!process.env.JOE_SCREENSHOT_TEST_ROOT) {
+        const shotRoot = path.join(process.env.JOE_TEST_TMP_ROOT, 'screenshot-test-root');
+        fs.mkdirSync(shotRoot, { recursive: true });
+        process.env.JOE_SCREENSHOT_TEST_ROOT = shotRoot;
+    }
 };

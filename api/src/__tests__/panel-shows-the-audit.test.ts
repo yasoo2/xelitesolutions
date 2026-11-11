@@ -38,7 +38,11 @@ describe('the browser is awake before the audit needs it', () => {
     it('and the build wakes it BEFORE npm install, not when the audit starts', () => {
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         const warmAt = r.indexOf('warmBrowserSession(');
-        const installAt = r.indexOf("run('npm', ['install'");
+        // Repointed (76f66a5d3): the project's own install is now a multi-line
+        // `run('npm', [` call; the first `run('npm', [` in the file is the
+        // clean-reinstall helper, so the anchor is this install's own flags.
+        const installAt = r.indexOf("'install', '--prefer-offline', '--no-audit', '--no-fund'");
+        expect(installAt).toBeGreaterThan(0);
         const auditAt = r.indexOf('audit = await auditBuiltApp');
         expect(warmAt).toBeGreaterThan(0);
         expect(r).toContain('browserSessionId');
@@ -60,7 +64,10 @@ describe('the browser is awake before the audit needs it', () => {
 
     it('and «أصلح ما تبقّى» warms it too — it audits within seconds of starting', () => {
         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
-        expect(p).toMatch(/warmBrowserSession\(PANEL_BROWSER_SID\)/);
+        // Repointed: the repair warms the session it will audit in, which is the
+        // panel's unless the caller named another one.
+        expect(p).toMatch(/const watchSessionId = String\(input\?\.watchSessionId \|\| context\?\.browserSessionId \|\| PANEL_BROWSER_SID/);
+        expect(p).toMatch(/warmBrowserSession\(watchSessionId\)/);
         // …before the first MEASUREMENT (the import above it is not the audit).
         // The directory the audit is handed was once called `dist` and is now
         // `auditDir`. The guarantee was never the NAME of that variable — it is
@@ -166,8 +173,12 @@ describe('and he is never invited to watch a browser he cannot see', () => {
         expect(r).toMatch(/if \(where === 'watching'\) \{\s*\n\s*auditVisible = true;/);
         expect(r).toMatch(/if \(where === 'pressing' && auditVisible\)/);
         expect(r).toMatch(/auditVisible = false;/);
+        // Repointed (c219da214): the behavioural probe emits 'pressing' itself,
+        // and the app audit hands it the caller's onProgress to say it with.
         const a = read('core', 'quality', 'app-audit.ts');
-        expect(a).toMatch(/onProgress\?\.\('pressing'\)/);
+        expect(a).toMatch(/onProgress: opts\?\.onProgress,/);
+        const b = read('core', 'quality', 'behaviour-audit.ts');
+        expect(b).toMatch(/onProgress\?\.\('pressing'\)/);
     });
 
     it('never calls a borrowed-but-unwatched browser visible', () => {
