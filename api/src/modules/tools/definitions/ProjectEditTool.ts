@@ -606,7 +606,15 @@ export default function CostCalculator({ services = [] }) {
 
 export function isNamedRowTextEditRequest(request: string): boolean {
     const text = String(request || '');
-    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text);
+    /*
+     * «خلّي / اجعل / set / make» ARE EDIT VERBS TOO — EDIT_CLAUSE_WORD above
+     * already reads them so — and «خلي سعر الإصدار الفاخر = 99 دولار» changed
+     * nothing («لم أجد ما يطابق الطلب») because this reader did not. They also
+     * make NEW things («اجعل حاسبة تعرض السعر», "make a calculator that shows
+     * the price"), so they count only when the field is their own object.
+     */
+    const mutation = /(?<![ء-ي])(?:غيّ?ر|عدّ?ل|بدّ?ل|استبدل)(?![ء-ي])|\b(?:change|edit|update|rename)\b/iu.test(text)
+        || /(?<![ء-ي])(?:اجعل|خلّ?ي|خلّ?)\s+(?:ال)?(?:سعر|أسعار|وصف|اسم)(?![ء-ي])|\b(?:set|make)\s+(?:the\s+)?(?:prices?|description|name)\b/iu.test(text);
     const namedField = /(?<![ء-ي])(?:سعر|السعر|بسعر|أسعار|الأسعار|وصف|الوصف|اسم|الاسم)(?![ء-ي])|\b(?:prices?|description|rename)\b/i.test(text);
     return mutation && namedField;
 }

@@ -284,7 +284,14 @@ export class AgentOrchestrator {
     };
 
     // Initialize Runtime Memory
-    const runtimeMemory = new ExecutionMemory(goal.id);
+    //
+    // …AND THE SAME RULE FOR EVERYTHING SAID DURING THE RUN. memory.sessionId
+    // is the address of every later broadcast — the stall and recovery notes,
+    // the narrator's line, a parallel batch, the reviewer department — and it
+    // was the RUN id, so with a session present each of them went to a
+    // listener nobody has open. The memory is still kept under the run
+    // (this.memory is per execution); what it carries is where to speak.
+    const runtimeMemory = new ExecutionMemory(liveSession);
     this.memory.set(goal.id, runtimeMemory);
 
     let traceEnded = false;
@@ -294,10 +301,11 @@ export class AgentOrchestrator {
         this.context!.signal = modelCancellation.signal;
         this.throwIfCancelled();
         // [Departments] BA analyses the request, then the Architect plans it.
-        emitDepartment(goal.id, 'analyst');
+        // Addressed to the session, like every other broadcast of this run.
+        emitDepartment(liveSession, 'analyst');
 
         // 1. Initial Dynamic Planning
-        emitDepartment(goal.id, 'architect');
+        emitDepartment(liveSession, 'architect');
         const dag = await this.plan(goal.goal, undefined, goal.traceId);
         this.throwIfCancelled();
         dag.id = goal.id;
@@ -311,15 +319,15 @@ export class AgentOrchestrator {
         }
 
         // 2. Adaptive Coordination Execution (Developer department)
-        emitDepartment(goal.id, 'developer');
+        emitDepartment(liveSession, 'developer');
         const result = await executionFirewall.runInContext(goal.traceId, () => {
             return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
-        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: canonicalRunId });
+        }, { userId: goal.context?.userId, sessionId: liveSession, runId: canonicalRunId });
         this.throwIfCancelled();
 
         // [Departments] QA reviews the outcome, then it's delivered.
-        emitDepartment(goal.id, 'reviewer');
-        emitDepartment(goal.id, 'delivered', result.ok ? 'ok' : 'failed');
+        emitDepartment(liveSession, 'reviewer');
+        emitDepartment(liveSession, 'delivered', result.ok ? 'ok' : 'failed');
 
         if (goal.traceId) {
             traceManager.endTrace(goal.traceId);

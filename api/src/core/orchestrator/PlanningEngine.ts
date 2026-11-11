@@ -54,6 +54,44 @@ function isReadOnlyInspectionRequest(goal: string): boolean {
         && !isBoundedTerminalDiagnosticRequest(goal);
 }
 
+/**
+ * The runtime appends coaching blocks to the goal («[STANDING USER
+ * INSTRUCTIONS …]», «[ENGINEERING DISCIPLINE …]», «[ATTACHED FILES …]»,
+ * «[RESPONSE LANGUAGE …]»). They carry the very words detection reacts to
+ * (deploy, launch, server, publish), so every reader of intent reads only what
+ * precedes them. One definition, used by generatePlan and readDeployIntent.
+ */
+const INJECTED_BLOCK_START = /\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)/i;
+function userPartOf(rawGoal: string): string {
+    const raw = String(rawGoal || '');
+    const injectedAt = raw.search(INJECTED_BLOCK_START);
+    return injectedAt >= 0 ? raw.slice(0, injectedAt).trim() : raw;
+}
+
+/** The review verbs the quality-review fast path reads (and isConstructionBrief locates). */
+const QUALITY_REVIEW_VERB = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i;
+/** A request whose first word (after a courtesy) orders that review. */
+const OPENS_WITH_REVIEW = new RegExp(`^\\s*(?:(?:please|kindly|من\\s+فضلك|لو\\s+سمحت|رجاء[ًا]?)[\\s،,]+)?[وف]?${QUALITY_REVIEW_VERB.source}`, 'i');
+
+/** What readDeployIntent read from one request. */
+export interface DeployIntentReading {
+    /** The deploy fast path's decision: put a site/project on the internet. */
+    deploy: boolean;
+    /**
+     * Why the words themselves rule a deploy out, or '' when nothing does:
+     * he said not to publish, or what he publishes is content (an article, a
+     * post, a tweet) rather than a site. A question is not a veto here: the
+     * fast path's `isQuestion` is a coarse reader (a trailing «؟», any «بحث»),
+     * and «هل يمكنك نشر الموقع؟» is a polite order — capabilityPlan has its own
+     * deed-first question reader for that.
+     */
+    veto: '' | 'denied' | 'content';
+    isQuestion: boolean;
+    hasBuildVerb: boolean;
+    projectTarget: boolean;
+    deniesExternalPublish: boolean;
+}
+
 /** Does this string actually look like a web address? Free classifier models
  *  hallucinate the "url" field — they have returned plain Arabic words and even
  *  tool names, which Chromium happily punycodes into a bogus host and then
@@ -325,6 +363,146 @@ export class PlanningEngine {
      *  existing call site and test keeps working unchanged. */
     static looksLikeBuild(goalRaw: string): boolean {
         return !isCaptureResultInquiry(goalRaw) && isBuildRequest(goalRaw).isBuild;
+    }
+
+    /**
+     * ONE READER FOR «IS THIS A SITE DEPLOY?»
+     *
+     * «انشر» and «publish» order two different things: putting a SITE on the
+     * internet, and publishing CONTENT — an article, a post, a tweet. The
+     * deploy fast path knew the difference (a content noun vetoed it). The
+     * capability matcher did not: its language bridge reads «انشر» as
+     * deploy/publish/pages, and deploy_pages wins on its own name. While the
+     * fast path ran first that never mattered; when capabilityPlan moved in
+     * front of the short-chat fallback (76f66a5d3), measured:
+     *
+     *     انشر مقالاً عن القهوة   → deploy_pages + deploy_project
+     *     انشر تدوينة عن موقعي    → deploy_pages + deploy_project
+     *
+     * An article request that would have put his project on GitHub Pages.
+     * Two guards over one question drift apart, so the question is answered
+     * here, once, and every road that can choose a deploy tool asks it:
+     *
+     *   • `deploy` is the fast path's decision — an unambiguous deploy word,
+     *     or a soft publish verb with a site/project target, and no veto, no
+     *     question and no build verb (a build owns its own publishing).
+     *   • `veto` is what the words themselves forbid. The capability matcher
+     *     may infer a target the fast path cannot see («انشره» right after a
+     *     build), but it never chooses a deploy tool past a veto.
+     */
+    static readDeployIntent(goalRaw: string): DeployIntentReading {
+        const userGoal = userPartOf(goalRaw);
+        const goalNorm = normalizeIntentText(userGoal);
+        const probe = goalNorm && goalNorm !== userGoal.toLowerCase() ? `${userGoal}\n${goalNorm}` : userGoal;
+
+        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
+
+        // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
+        // a topic; it does NOT command run/stop/deploy — those must yield to it.
+        const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
+            || /^\s*(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(?=\s|$)/.test(userGoal)
+            || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
+            || /\?\s*$/.test(userGoal.trim());
+
+        // إنشاء مشروع جديد يتغلب على التشغيل فقط إذا ورد كفعل إنشاء صريح في
+        // نص المستخدم الأصلي. لا نقرأ النسخة المطَبَّعة `probe` هنا: فهي قد
+        // تحوّل الاسم «البناء» في جملة تحقق مثل «أثبت هل البناء والتشغيل نجحا»
+        // إلى «ابن»، فتختطف أمراً واضحاً لتشغيل مشروع قائم.
+        // أما «ابنِ المشروع ثم شغّله» فيبقى إنشاءً جديداً كما ينبغي.
+        //
+        // النفي جزء من النية، لا كلمة فصل يمكن إسقاطها. كان «لا تنشئ مشروعاً
+        // جديداً؛ شغّل المشروع القائم» يطابق `انشئ` هنا، فيحجب مسار التشغيل
+        // الحتمي ثم تسقط الجملة إلى منشئ React. نزيل فعل الإنشاء فقط حين يقع
+        // مباشرة بعد نفي صريح، ونبقي أي فعل إيجابي لاحق في الجملة مرئياً.
+        const userGoalWithoutNegatedBuildVerb = userGoal
+            .replace(/(^|[\s،؛,:.!?])(?:لا|ليس|بدون)\s+(?:ت?نشئ|ت?نشيء|ت?بن(?:ي|ِ)?|ت?صمم|ت?طور|ت?عمل|ت?سوي|ت?سوّي|ت?ول[ّد]{1,2}|ت?برمج)(?=\s|$|[،,:؛.!?])/giu, '$1')
+            .replace(/(^|[\s,;:.!?])(?:do\s+not|don't|no)\s+(?:build|create|make|develop|design|generate|code|scaffold)(?=\s|$|[,;:.!?])/giu, '$1');
+        const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(userGoalWithoutNegatedBuildVerb)
+            // The imperative «ابنِ» carries a kasra after the final noon;
+            // accept optional Arabic vowel marks while still matching only a
+            // standalone explicit creation verb from the original user text.
+            || /(^|\s)(?:ابن[\u064B-\u065F]*|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)(?=\s|$|[،,:؛.!])/i.test(userGoalWithoutNegatedBuildVerb);
+
+        // A concrete project/server target — NOT a browser, NOT content. Word
+        // boundaries keep "serve" out of "server" and "app" out of "happen".
+        //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
+        //
+        //  Measured through generatePlan, the real road a request takes:
+        //
+        //      شغّل الخادم   → project_run
+        //      شغّل خادم     → central_answer
+        //      أوقف الخادم   → project_stop
+        //      أوقف خادم     → central_answer
+        //
+        //  The same sentence, one article apart, and one of them does
+        //  nothing. «المشروع» already carried its bare twin «مشروع»
+        //  right beside it; the other four did not, and «ال» is a
+        //  PREFIX — a bare form matches both, a prefixed one matches
+        //  half. Writing the article into a pattern can only subtract.
+        const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
+        //  …AND THE SAME PREFIX, ONE LINE DOWN.
+        //
+        //  Measured through generatePlan on his own phrasings:
+        //
+        //      انشر الموقع   → deploy_pages
+        //      انشر موقع     → browser_launch
+        //
+        //  One article apart, and the bare one opens a BROWSER instead
+        //  of publishing anything. The deploy guard did not match, so
+        //  the request fell through to the browser router, which takes
+        //  «انشر» and a noun as something to go and look at.
+        //
+        //  The definite form was not more correct — it was accidentally
+        //  protected, and «ال» is a prefix.
+        const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
+        // Content that "انشر/publish" ALSO applies to — publishing an article is
+        // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
+        const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
+
+        // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)
+        // fire on their own; the ambiguous ones (انشر / publish / host) need a
+        // site/project target and must not be about content.
+        const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
+        const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
+
+        const veto: DeployIntentReading['veto'] = deniesExternalPublish ? 'denied'
+            : contentNoun ? 'content'
+            : '';
+        const deploy = !veto && !isQuestion && !hasBuildVerb && (strongDeploy || (softPublish && deployTarget));
+        return { deploy, veto, isQuestion, hasBuildVerb, projectTarget, deniesExternalPublish };
+    }
+
+    /**
+     * A BUILD VERB IS NOT A BUILD.
+     *
+     * The quality-review fast path yields to a construction brief, because a
+     * brief may carry its own QA and audit sections. It asked looksLikeBuild,
+     * which says yes for any build verb beside any container word — and
+     * «راجع تقرير الجودة والنتيجة التي أنشأتها بنفسك … نفّذ الإصلاحات بنفسك»
+     * has one: «نفّذ», whose object is «الإصلاحات», the repairs themselves.
+     * Measured with a built project open: project_edit, the review undone.
+     *
+     * A construction brief either names its deliverable as the verb's object
+     * (requestedArtifact: the NEXUS brief → system), or it does not open by
+     * ordering a review. «Build an ERP for a coffee shop … an audit log and
+     * monthly reports» and «A compiler … type checker … a test suite» name
+     * objects the lexicon does not know, and neither opens with «review» —
+     * their audit and check words describe the product. Only a request that
+     * OPENS with the review and names no deliverable is the review.
+     */
+    static isConstructionBrief(goalRaw: string): boolean {
+        const goal = userPartOf(goalRaw);
+        if (!PlanningEngine.looksLikeBuild(goal)) return false;
+        if (requestedArtifact(goal).kind) return true;
+        return !OPENS_WITH_REVIEW.test(goal);
+    }
+
+    /** A tool that puts a site or project on the internet, by its own declaration (name or `deploy` tag). */
+    static isSiteDeployTool(name: string): boolean {
+        const toolName = String(name || '');
+        if (/^deploy_/.test(toolName)) return true;
+        const tool = (registeredTools as any[]).find(t => t?.name === toolName);
+        return Array.isArray(tool?.tags) && tool.tags.includes('deploy');
     }
 
     /**
@@ -713,7 +891,27 @@ Rules:
              * after the first receives the PREVIOUS step's result through
              * {{FROM:id}}, which this orchestrator already resolves.
              */
-            const chain = capabilityChain(goal, 5);
+            /*
+             * A DEPLOY TOOL IS CHOSEN ONLY WHERE THE DEPLOY READER ALLOWS IT.
+             * The language bridge reads «انشر» as deploy/publish/pages, so
+             * deploy_pages outranked everything for «انشر مقالاً عن القهوة».
+             * readDeployIntent is the reader the deploy fast path uses; a
+             * deploy tool is refused here past its veto (content, or a
+             * denial). A chain step is read on its own clause — «لخّص المقال
+             * ثم انشر الموقع» still publishes the site — but when the sentence
+             * as a whole publishes content, the step must name its own site
+             * target: «اكتب مقالاً ثم انشره» publishes the article, not his
+             * project. A denial anywhere in the sentence covers every step.
+             */
+            const whole = PlanningEngine.readDeployIntent(goal);
+            const refusedDeployStep = (name: string, part: string): boolean => {
+                if (!PlanningEngine.isSiteDeployTool(name)) return false;
+                if (whole.veto === 'denied') return true;
+                const own = PlanningEngine.readDeployIntent(part);
+                return !!own.veto || (!!whole.veto && !own.deploy);
+            };
+            const chain = capabilityChain(goal, 5)
+                .filter((c: any) => !refusedDeployStep(c?.name, String(c?.part || goal)));
             if (chain.length >= 2) {
                 console.log(`[PlanningEngine] capability chain -> ${chain.map((c: any) => c.name).join(' → ')}`);
                 return {
@@ -740,7 +938,8 @@ Rules:
                 };
             }
 
-            const capable = capableTools(goal, 3);
+            const capable = capableTools(goal, 3)
+                .filter((c: any) => !(whole.veto && PlanningEngine.isSiteDeployTool(c?.name)));
             if (!capable.length) return null;
             // IntentParser may supply one registry-backed deterministic
             // candidate. Revalidate it against the current matcher, then keep
@@ -844,8 +1043,7 @@ Rules:
         // sent «حلل هذه الصوره» + an image block into the browser+file
         // compound fast-path («browse then write is.txt», field-measured).
         const rawGoal = String(intent.goal || '');
-        const injectedAt = rawGoal.search(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)/i);
-        const userGoal = injectedAt >= 0 ? rawGoal.slice(0, injectedAt).trim() : rawGoal;
+        const userGoal = userPartOf(rawGoal);
         const goalNorm = normalizeIntentText(userGoal);
         const probe = goalNorm && goalNorm !== userGoal.toLowerCase()
             ? `${userGoal}\n${goalNorm}` : userGoal;
@@ -943,6 +1141,26 @@ Rules:
             })),
             metadata: { complexity: 'low', riskLevel: 'low', terminalExecution: true, noFileChanges: true, deterministic: true },
         };
+        // IntentParser has already proven that this is a bounded route decision.
+        // Honor its one-tool contract before broad build/read-only/capability routes
+        // can reinterpret words from the example application as a new project — and
+        // before the no-file-changes answer below: the decision changes no file, so
+        // «Choose the least-setup route … Do not change files.» is its own request.
+        if (Array.isArray(intent.requiredTools) && intent.requiredTools.length === 1 && intent.requiredTools[0] === 'decide_capability_route') {
+            return {
+                id: `capability_decision_${Date.now()}`,
+                goal: intent.goal,
+                steps: [{
+                    id: 'decide_capability_route',
+                    description: intent.goal,
+                    tool: 'decide_capability_route',
+                    agent: 'Dev',
+                    input: { request: intent.goal },
+                    dependsOn: [],
+                }],
+                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-capability-decision', deterministic: true, noFileChanges: true },
+            };
+        }
         if (requestedAction.isNoFileChanges && !boundedExplicitRead) {
             if (boundedReadNavigationUnderFileConstraint(userGoal)) {
                 console.log('[PlanningEngine] ⚡ No file changes constraint with browser target — preserving constraint, allowing browser navigation.');
@@ -975,25 +1193,6 @@ Rules:
                     },
                 };
             }
-        }
-
-        // IntentParser has already proven that this is a bounded route decision.
-        // Honor its one-tool contract before broad build/read-only/capability routes
-        // can reinterpret words from the example application as a new project.
-        if (Array.isArray(intent.requiredTools) && intent.requiredTools.length === 1 && intent.requiredTools[0] === 'decide_capability_route') {
-            return {
-                id: `capability_decision_${Date.now()}`,
-                goal: intent.goal,
-                steps: [{
-                    id: 'decide_capability_route',
-                    description: intent.goal,
-                    tool: 'decide_capability_route',
-                    agent: 'Dev',
-                    input: { request: intent.goal },
-                    dependsOn: [],
-                }],
-                metadata: { complexity: 'low', riskLevel: 'low', matchedBy: 'explicit-capability-decision', deterministic: true },
-            };
         }
 
         // Exact-response requests are complete without a planner or a second
@@ -1280,7 +1479,7 @@ Rules:
          * is stronger evidence than those incidental words.
          */
         {
-            const reviewVerb = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i.test(probe);
+            const reviewVerb = QUALITY_REVIEW_VERB.test(probe);
             const qualityTarget = /(جودة|الجودة|تقرير|النتيجة|النتائج|المخرجات|التسليم|quality|\bqa\b|browser\s+test(?:ing)?|report|result|output|delivery|deliverable)/i.test(probe);
             const explicitQualityReview = /(تقرير\s*الجودة|النتيجة\s*النهائية|quality\s*report|final\s+(?:result|output|deliverable))/i.test(probe);
             const built = findActiveBuiltProject(context?.sessionId);
@@ -1288,8 +1487,9 @@ Rules:
             // sections. Those words describe the deliverable's verification plan;
             // they must not hijack the construction request into repairing the
             // currently active (possibly unrelated) artifact. Only a request that
-            // is not itself an explicit build should use this fast-path.
-            const constructiveBuildRequest = PlanningEngine.looksLikeBuild(userGoal);
+            // is not itself an explicit build should use this fast-path —
+            // and a build verb alone does not make one (isConstructionBrief).
+            const constructiveBuildRequest = PlanningEngine.isConstructionBrief(userGoal);
             if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built && !constructiveBuildRequest) {
                 return {
                     id: `quality_review_${Date.now()}`,
@@ -1318,7 +1518,8 @@ Rules:
          * denies publishing, neither a chain nor the capability scorer may choose
          * deployment; the deterministic builder below owns the whole request.
          */
-        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
+        const deployReading = PlanningEngine.readDeployIntent(userGoal);
+        const deniesExternalPublish = deployReading.deniesExternalPublish;
         const localBuildContract = PlanningEngine.looksLikeBuild(userGoal) && deniesExternalPublish;
         // A long construction brief can quote its own rollback/version-history
         // acceptance requirements. Those words are evidence about the product,
@@ -1820,83 +2021,19 @@ Rules:
         // back into a chat answer. Checked before the build path so "شغّل" is
         // never mistaken for "ابنِ".
         {
-            // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
-            // a topic; it does NOT command run/stop/deploy — those must yield to it.
-            const isQuestion = /^\s*(how|what|why|when|where|which|can|do|does|is|are|should|explain)\b/i.test(userGoal.trim())
-                || /^\s*(كيف|ماذا|لماذا|متى|أين|هل|اشرح|وضّ?ح|ما\s+هو|ما\s+هي)(?=\s|$)/.test(userGoal)
-                || /(ابحث|بحث|دوّ?ر\s*عن|ابغى\s*اعرف|search\s+for|google|look\s*up)/i.test(probe)
-                || /\?\s*$/.test(userGoal.trim());
-
-            // إنشاء مشروع جديد يتغلب على التشغيل فقط إذا ورد كفعل إنشاء صريح في
-            // نص المستخدم الأصلي. لا نقرأ النسخة المطَبَّعة `probe` هنا: فهي قد
-            // تحوّل الاسم «البناء» في جملة تحقق مثل «أثبت هل البناء والتشغيل نجحا»
-            // إلى «ابن»، فتختطف أمراً واضحاً لتشغيل مشروع قائم.
-            // أما «ابنِ المشروع ثم شغّله» فيبقى إنشاءً جديداً كما ينبغي.
-            //
-            // النفي جزء من النية، لا كلمة فصل يمكن إسقاطها. كان «لا تنشئ مشروعاً
-            // جديداً؛ شغّل المشروع القائم» يطابق `انشئ` هنا، فيحجب مسار التشغيل
-            // الحتمي ثم تسقط الجملة إلى منشئ React. نزيل فعل الإنشاء فقط حين يقع
-            // مباشرة بعد نفي صريح، ونبقي أي فعل إيجابي لاحق في الجملة مرئياً.
-            const userGoalWithoutNegatedBuildVerb = userGoal
-                .replace(/(^|[\s،؛,:.!?])(?:لا|ليس|بدون)\s+(?:ت?نشئ|ت?نشيء|ت?بن(?:ي|ِ)?|ت?صمم|ت?طور|ت?عمل|ت?سوي|ت?سوّي|ت?ول[ّد]{1,2}|ت?برمج)(?=\s|$|[،,:؛.!?])/giu, '$1')
-                .replace(/(^|[\s,;:.!?])(?:do\s+not|don't|no)\s+(?:build|create|make|develop|design|generate|code|scaffold)(?=\s|$|[,;:.!?])/giu, '$1');
-            const hasBuildVerb = /\b(build|create|make|develop|scaffold|generate|code)\b/i.test(userGoalWithoutNegatedBuildVerb)
-                // The imperative «ابنِ» carries a kasra after the final noon;
-                // accept optional Arabic vowel marks while still matching only a
-                // standalone explicit creation verb from the original user text.
-                || /(^|\s)(?:ابن[\u064B-\u065F]*|ابني|انشئ|أنشئ|اصنع|صمم|طور|اعمل|اصمم|برمج)(?=\s|$|[،,:؛.!])/i.test(userGoalWithoutNegatedBuildVerb);
+            // The question, build-verb and target readings — and the deploy
+            // decision itself — come from readDeployIntent, the one reader the
+            // capability matcher asks too (see its comment for why there is one).
+            const { isQuestion, hasBuildVerb, projectTarget } = deployReading;
             const hasProjectMutation = /\b(add|change|modify|update|edit|remove|delete|implement|repair|fix)\b/i.test(userGoal)
                 || /(أضف|اضف|إضافة|اضافة|غيّر|غير|تغيير|عدّل|عدل|تعديل|حذف|إزالة|أصلح|اصلح|إصلاح|صلّح|عالج)/.test(userGoal);
-
-
-            // A concrete project/server target — NOT a browser, NOT content. Word
-            // boundaries keep "serve" out of "server" and "app" out of "happen".
-            //  A PATTERN WRITTEN WITH THE ARTICLE MATCHES HALF THE LANGUAGE.
-            //
-            //  Measured through generatePlan, the real road a request takes:
-            //
-            //      شغّل الخادم   → project_run
-            //      شغّل خادم     → central_answer
-            //      أوقف الخادم   → project_stop
-            //      أوقف خادم     → central_answer
-            //
-            //  The same sentence, one article apart, and one of them does
-            //  nothing. «المشروع» already carried its bare twin «مشروع»
-            //  right beside it; the other four did not, and «ال» is a
-            //  PREFIX — a bare form matches both, a prefixed one matches
-            //  half. Writing the article into a pattern can only subtract.
-            const projectTarget = /((?:ال)?مشروع|(?:ال)?نظام|(?:ال)?خادم|(?:ال)?سيرفر|(?:ال)?معاينة|\bproject\b|\bserver\b|\bapp\b|\bapplication\b|\bpreview\b|dev\s*server|localhost)/i.test(probe);
-            //  …AND THE SAME PREFIX, ONE LINE DOWN.
-            //
-            //  Measured through generatePlan on his own phrasings:
-            //
-            //      انشر الموقع   → deploy_pages
-            //      انشر موقع     → browser_launch
-            //
-            //  One article apart, and the bare one opens a BROWSER instead
-            //  of publishing anything. The deploy guard did not match, so
-            //  the request fell through to the browser router, which takes
-            //  «انشر» and a noun as something to go and look at.
-            //
-            //  The definite form was not more correct — it was accidentally
-            //  protected, and «ال» is a prefix.
-            const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
-            // Content that "انشر/publish" ALSO applies to — publishing an article is
-            // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
-            const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
 
             const stopIntent = !isQuestion && !hasBuildVerb && projectTarget
                 && /(أوقف|اوقف|إيقاف|ايقاف|اقفل|\bstop\b|\bkill\b|shut\s*down)/i.test(probe);
             const runIntent = !isQuestion && !hasBuildVerb && !hasProjectMutation && !stopIntent && projectTarget
                 && /(شغّ?ل|تشغيل|شغلي|\brun\b|\bstart\b|\blaunch\b|\bserve\b|\bpreview\b)/i.test(probe);
 
-            // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)
-            // fire on their own; the ambiguous ones (انشر / publish / host) need a
-            // site/project target and must not be about content.
-            const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
-            const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
-            const deployIntent = !deniesExternalPublish && !isQuestion && !hasBuildVerb && !contentNoun
-                && (strongDeploy || (softPublish && deployTarget));
+            const deployIntent = deployReading.deploy;
 
             if (stopIntent) {
                 return {
@@ -2033,12 +2170,16 @@ Rules:
         // (Git, browser, deploy, or otherwise), even when the request omits an
         // explicit «never deploy» clause. The later build routes select the
         // correct general engineering workflow from the actual workspace.
-        const capable = (pageIsOpen && looksLikeEdit)
+        const routed = (pageIsOpen && looksLikeEdit)
             || localBuildContract
             || explicitBrowserWorkflowRequest
             || PlanningEngine.looksLikeBuild(String(intent.goal || ''))
             ? null
             : capabilityRoute(String(intent.goal || ''), context);
+        // The same deploy reader the fast path and capabilityPlan ask: a
+        // deploy tool is never chosen past its veto (content, or a denial)
+        // on this road either.
+        const capable = routed && PlanningEngine.isSiteDeployTool(routed.tool) && deployReading.veto ? null : routed;
         if (capable) {
             console.log(`[PlanningEngine] capability router -> ${capable.tool} (score ${capable.score}, runner-up ${capable.runnerUp || 'none'})`);
             return {

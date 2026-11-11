@@ -967,8 +967,11 @@ describe('the planner is offered the whole toolbox, not a frozen list of seven',
         // 2026-09-23, #90); the pin still demanded `runId: goal.id` (found 2026-11-08).
         const orchestrator = SRC('orchestration', 'AgentOrchestrator.ts');
         expect(orchestrator).toContain('const canonicalRunId = goal.runId || goal.traceId || goal.id;');
+        //  The session is named once (liveSession, 2026-11-11: the run's memory and its
+        //  departments were addressed to the run, not the session) — the same address.
+        expect(orchestrator).toContain('const liveSession = (goal.context as any)?.sessionId || goal.id;');
         expect(orchestrator)
-            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: canonicalRunId \}\)/);
+            .toMatch(/\}, \{ userId: goal\.context\?\.userId, sessionId: liveSession, runId: canonicalRunId \}\)/);
         expect(SRC('api', 'routes', 'tools.ts')).toMatch(/\}, \{ userId, sessionId \}\)/);
     });
 
