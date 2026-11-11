@@ -89,7 +89,14 @@ describe('a product with no photo is drawn, not left blank', () => {
     });
 
     it('NEGATIVE — the records grid keeps the caller it already had', () => {
-        //  Wiring a second caller must not disturb the first.
-        expect(SRC).toContain('cardFor(draft[primary.key])');
+        //  Wiring a second caller must not disturb the first. The grid draws
+        //  each row through imageOf, which falls back to cardFor. (The form's
+        //  empty-draft preview that once called cardFor directly became an
+        //  explicit «choose an image» prompt in f8cf08521, deliberately.)
+        expect(SRC).toContain('src={imageOf(row, imageField.key, primary.key)}');
+        const at = SRC.indexOf('export function imageOf');
+        expect(at).toBeGreaterThan(-1);
+        const fn = SRC.slice(at, SRC.indexOf('\n}', at));
+        expect(fn).toMatch(/return cardFor\(/);
     });
 });

@@ -40,9 +40,20 @@ describe('every generation path forwards the model\'s own deltas', () => {
     });
 
     it('the custom-route OpenAI-compatible client streams when the caller wants tokens', () => {
-        const block = router.slice(router.indexOf('other OpenAI-compatible endpoint'));
-        expect(block.slice(0, 1600)).toContain('stream: true');
-        expect(block.slice(0, 1600)).toContain('onPartial(d)');
+        // b906f3bc8 (managed Ollama) and 45f30c6c3 (local admission) put their
+        // own blocks in front of the streaming call, so a fixed 1600-character
+        // window no longer reaches it. Read the custom route up to its buffered
+        // fallback instead: the stream must come before that, gated on a caller
+        // that wants tokens and no tool-calling.
+        const start = router.indexOf('other OpenAI-compatible endpoint');
+        expect(start).toBeGreaterThan(-1);
+        const block = router.slice(start);
+        const buffered = block.indexOf('const completion = await (client.chat.completions.create');
+        expect(buffered).toBeGreaterThan(-1);
+        const beforeBuffered = block.slice(0, buffered);
+        expect(beforeBuffered).toContain("if (typeof onPartial === 'function' && !tools?.length) {");
+        expect(beforeBuffered).toContain('stream: true');
+        expect(beforeBuffered).toContain('onPartial(d)');
     });
 });
 

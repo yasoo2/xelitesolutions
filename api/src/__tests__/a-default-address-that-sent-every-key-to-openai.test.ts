@@ -69,8 +69,14 @@ describe('every vendor Joe offers resolves to its own address', () => {
 
     it('⛔ NEGATIVE — the UI still wins when it sends an address', () => {
         //  The table is a floor, never an override. A user pointing a provider
-        //  at a proxy or a self-hosted gateway must keep that.
-        expect(SRC).toMatch(/const effectiveBaseUrl = cfgBaseUrl\?\.trim\(\) \|\| VENDOR_BASE\[/);
+        //  at a proxy or a self-hosted gateway must keep that. (A canonical
+        //  local pick takes that same typed address, normalized for the SDK by
+        //  classifyExplicitLocalSelection; every other provider takes it as
+        //  typed, and the table is consulted only after it.)
+        const start = SRC.indexOf('const effectiveBaseUrl');
+        const STMT = SRC.slice(start, SRC.indexOf(';', start));
+        expect(STMT).toMatch(/\? explicitLocal\.normalizedBaseUrl/);
+        expect(STMT).toMatch(/: \(cfgBaseUrl\?\.trim\(\) \|\| VENDOR_BASE\[/);
     });
 
     it('⛔ NEGATIVE — an unknown provider resolves to NOTHING, not to OpenAI', () => {

@@ -279,8 +279,18 @@ describe('project planner structured recovery', () => {
         });
 
         expect(mockCallLLM).toHaveBeenCalledTimes(2);
-        expect(mockCallLLM.mock.calls[0][2]).toMatchObject({ purpose: 'internal', providerTimeoutMs: 120000 });
-        expect(mockCallLLM.mock.calls[1][2]).toMatchObject({ purpose: 'internal', providerTimeoutMs: 120000 });
+        //  One planner run has one finite 120 s budget (planner-run-boundary):
+        //  every call carries the bounded planner deadline, capped by what is
+        //  left of that budget, so the retry can never wait longer than the
+        //  run has left.
+        const first = mockCallLLM.mock.calls[0][2];
+        const retry = mockCallLLM.mock.calls[1][2];
+        expect(first).toMatchObject({ purpose: 'internal' });
+        expect(retry).toMatchObject({ purpose: 'internal' });
+        expect(first.providerTimeoutMs).toBeLessThanOrEqual(120000);
+        expect(first.providerTimeoutMs).toBeGreaterThan(110000);
+        expect(retry.providerTimeoutMs).toBeGreaterThan(0);
+        expect(retry.providerTimeoutMs).toBeLessThanOrEqual(first.providerTimeoutMs);
         expect(mockCallLLM.mock.calls[1][0]).toMatch(/Do not return an empty phases array/i);
         expect(result.ok).toBe(true);
         expect(result.output.fallback).not.toBe(true);
