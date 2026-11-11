@@ -555,7 +555,7 @@ export const CAPABILITIES: Capability[] = [
          * missing: shipping» refused a bot that books and cancels them — its English twin («book or
          * cancel deliveries») asks for no shipping at all.
          */
-        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|(?:خدمة|خدمات|خيارات|عنوان|عناوين|رسوم|تكلفة|تكاليف|مناطق|إدارة|نظام|طرق|طريقة|تتبع|حالة|حالات)\s+(?:الشحن|التوصيل)|توصيل\s+(?:الطلبات|الطرود|المنتجات|الشحنات)|تتبع\s+(?:الشحنات?|التوصيلات?|الطلبات|الطرود)/i,
+        ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|(?:خدمة|خدمات|خيارات|عنوان|عناوين|رسوم|تكلفة|تكاليف|مناطق|إدارة|نظام|طرق|طريقة|تتبع|حالة|حالات)\s+(?:الشحن|التوصيل)|توصيل\s+(?:الطلبات|الطرود|المنتجات|الشحنات)|تتبع\s+(?:الشحنة|الشحنات|التوصيل|التوصيلات|الطرود)/i,
         evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
         records: ['shipments', 'shipment', 'deliveries'],
     },

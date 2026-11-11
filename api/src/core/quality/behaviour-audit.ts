@@ -54,7 +54,7 @@ export const BEHAVIOUR_CODES: ReadonlySet<string> = new Set([
     'some_dead_controls', 'semantic_input_validation', 'form_persistence_unproven',
     'qa_created_record_not_deletable', 'order_not_kept',
     'markup_executes', 'markup_drawn', 'field_accepts_invalid', 'field_rejects_valid', 'field_case_minor',
-    'control_missed_its_job', 'control_job_unseen',
+    'control_missed_its_job', 'control_job_unseen', 'form_submit_disabled',
 ]);
 
 export interface ControlResult {
@@ -296,6 +296,8 @@ function findControls(limit: number) {
          * data-filter, were catalogued as tabs, pressed, changed nothing — «Unresponsive controls»,
          * five refusals. A field is the forms pass's, and a search's second look.
          */
+        //  A checkbox or a radio too: the fourth review (2026-11-11) found a radio already checked
+        //  pressed, changing nothing, and reported dead under the label «input»; a checkbox always toggles.
         if (/^(?:INPUT|SELECT|TEXTAREA)$/u.test(el.tagName) && !/^(?:submit|button|reset|image)$/iu.test(String((el as HTMLInputElement).type || ''))) return;
         const controlLabel = label(el);
         /**
@@ -749,13 +751,15 @@ export function watchFormAnswer(): boolean {
     const w = window as any;
     try { w.__joeQaAnswerObs?.disconnect(); } catch { /* none yet */ }
     w.__joeQaAnswer = [];
+    w.__joeQaAmbient = [];
     const MSG = '[role="alert"],[role="status"],[aria-live],.error,.err,.msg,.message,.notice,.feedback,.toast,.alert,[data-error],[data-status]';
     const obs = new MutationObserver(records => {
         for (const r of records) {
             const node = (r.target.nodeType === 1 ? r.target : r.target.parentElement) as Element | null;
             const msg = node && node.closest(MSG);
-            if (!msg) continue;
-            w.__joeQaAnswer.push(String((msg as HTMLElement).innerText || '').trim().slice(0, 300));
+            //  A line learnt to change by itself (learnAmbient: a clock in a status line) answers no submit.
+            if (!msg || msg.closest('[data-joe-ambient]') || node!.closest('[data-joe-ambient]') || w.__joeQaAnswer.length >= 100) continue;
+            w.__joeQaAnswer.push({ el: msg, text: String((msg as HTMLElement).innerText || '').trim().slice(0, 300) });
         }
     });
     obs.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden'] });
@@ -763,13 +767,63 @@ export function watchFormAnswer(): boolean {
     return true;
 }
 
-/** Runs in the page: what the message areas were written with since watchFormAnswer, and stops watching. Self-contained. */
+/**
+ * Runs in the page: what changed on its own while nothing was pressed (a clock, a sync line, a live
+ * counter) is set aside — the third review, 2026-11-11: such a line would answer every submit. Self-contained.
+ */
+export function markAnswerAmbient(): number {
+    const w = window as any;
+    const seen: Array<{ el: Element }> = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer : [];
+    w.__joeQaAmbient = seen.map(x => x.el);
+    w.__joeQaAnswer = [];
+    return w.__joeQaAmbient.length;
+}
+
+/** Runs in the page: what the message areas were written with since watchFormAnswer (the ambient set aside), and stops watching. Self-contained. */
 export function readFormAnswer(): string[] {
     const w = window as any;
     try { w.__joeQaAnswerObs?.disconnect(); } catch { /* not watching */ }
-    const out: string[] = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer.slice(0, 50) : [];
+    const ambient: Element[] = Array.isArray(w.__joeQaAmbient) ? w.__joeQaAmbient : [];
+    const seen: Array<{ el: Element; text: string }> = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer : [];
+    const out = seen.filter(x => !ambient.includes(x.el)).map(x => x.text).slice(0, 50);
     w.__joeQaAnswer = [];
+    w.__joeQaAmbient = [];
     return out;
+}
+
+/**
+ * Runs in the page: what a booking page asks first, outside its form — a date, a time, a choice
+ * left empty — stamped for the walk to fill (choosePrerequisites). Self-contained.
+ */
+export function stampPrerequisites(formSel: string): Array<{ sel: string; kind: 'date' | 'time' | 'datetime' | 'select' }> {
+    document.querySelectorAll('[data-joe-pre]').forEach(el => el.removeAttribute('data-joe-pre'));
+    const form = document.querySelector(formSel);
+    const shown = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); const s = getComputedStyle(el as HTMLElement); return r.width > 2 && r.height > 2 && s.visibility !== 'hidden' && s.display !== 'none'; };
+    const out: Array<{ sel: string; kind: 'date' | 'time' | 'datetime' | 'select' }> = [];
+    document.querySelectorAll('input[type="date"],input[type="time"],input[type="datetime-local"],select').forEach((el, i) => {
+        if ((form && form.contains(el)) || !shown(el) || (el as HTMLInputElement).disabled) return;
+        if ((el as HTMLInputElement).value) return;
+        const type = String((el as HTMLInputElement).type || '').toLowerCase();
+        const kind = el.tagName === 'SELECT' ? 'select' : type === 'date' ? 'date' : type === 'time' ? 'time' : 'datetime';
+        el.setAttribute('data-joe-pre', String(i));
+        out.push({ sel: `[data-joe-pre="${i}"]`, kind });
+    });
+    return out.slice(0, 4);
+}
+
+/** Runs in the page: the first choice a booking page offers outside its form (a time slot, an option), stamped. Self-contained. */
+export function stampFirstChoice(formSel: string): string {
+    document.querySelectorAll('[data-joe-choice]').forEach(el => el.removeAttribute('data-joe-choice'));
+    const form = document.querySelector(formSel);
+    const shown = (el: Element) => { const r = (el as HTMLElement).getBoundingClientRect(); return r.width > 2 && r.height > 2; };
+    const choice = (Array.from(document.querySelectorAll('button,[role="option"],[role="radio"],[data-slot],[data-time]')) as HTMLElement[]).find(el => {
+        if ((form && form.contains(el)) || !shown(el) || (el as HTMLButtonElement).disabled || el.getAttribute('aria-disabled') === 'true') return false;
+        const marks = [el.className, el.getAttribute('role'), el.getAttribute('data-slot') !== null ? 'slot' : '', el.getAttribute('data-time') !== null ? 'time' : ''].join(' ');
+        return /slot|time|hour|option|choice|موعد|وقت/iu.test(marks) || /^\s*[0-9٠-٩]{1,2}[:٫.][0-9٠-٩]{2}/u.test(el.innerText || '');
+    });
+    if (!choice) return '';
+    choice.setAttribute('data-joe-choice', '1');
+    return '[data-joe-choice="1"]';
 }
 
 /** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
@@ -820,6 +874,116 @@ export function visibleFormPrints(): string[] {
 }
 
 /** Runs in the page: a cheap fingerprint of everything a click could change. */
+/**
+ * ⛔ WHAT CHANGES ON ITS OWN IS NO PRESS'S ANSWER.
+ *
+ * The third review, 2026-11-11: a clock in a status line («الوقت الآن 10:32:15»), a countdown, a
+ * «synced 3 s ago» changes the page every second with nothing pressed — and every dead button and
+ * every dead form beside it looked alive: the fingerprint after the press differed from the one
+ * before. Watched once per view while nothing is pressed (watchAmbient → stampAmbient), what
+ * changed by itself is stamped and left out of every fingerprint. Small leaves only: never a
+ * container holding a control, never a long text — a list a press refreshes is still that press's
+ * answer. Runs in the page; self-contained.
+ */
+export function watchAmbient(): boolean {
+    const w = window as any;
+    try { w.__joeQaAmbientObs?.disconnect(); } catch { /* none yet */ }
+    const seen = new Set<Element>();
+    w.__joeQaAmbientSeen = seen;
+    const obs = new MutationObserver(records => {
+        for (const r of records) {
+            const el = (r.target.nodeType === 1 ? r.target : r.target.parentElement) as Element | null;
+            if (el && seen.size < 200) seen.add(el);
+        }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, characterData: true });
+    w.__joeQaAmbientObs = obs;
+    return true;
+}
+
+/**
+ * Runs in the page: stamps what watchAmbient saw change by itself (data-joe-ambient), stops
+ * watching, and returns where each stamped leaf sits (a path from the body), so a reload can
+ * stamp them again (restampAmbient). Self-contained.
+ */
+export function stampAmbient(): string[] {
+    const w = window as any;
+    try { w.__joeQaAmbientObs?.disconnect(); } catch { /* not watching */ }
+    const seen: Element[] = Array.from(w.__joeQaAmbientSeen || []);
+    w.__joeQaAmbientSeen = null;
+    const pathOf = (el: Element): string => {
+        const parts: string[] = [];
+        for (let n: Element | null = el; n && n !== document.body && n.parentElement; n = n.parentElement) {
+            parts.unshift(`${n.tagName.toLowerCase()}:nth-child(${Array.prototype.indexOf.call(n.parentElement.children, n) + 1})`);
+        }
+        return ['body', ...parts].join(' > ');
+    };
+    const out: string[] = [];
+    for (const el of seen) {
+        if (!(el instanceof HTMLElement) || !el.isConnected || el === document.body || el === document.documentElement) continue;
+        if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
+        if (el.closest('button,a[href],[role="button"],[role="link"]')) continue;
+        if (String(el.textContent || '').length > 160) continue;
+        el.setAttribute('data-joe-ambient', '1');
+        if (out.length < 40) out.push(pathOf(el));
+    }
+    return out;
+}
+
+/** Runs in the page: stamps again, where they are, the leaves learnt to change by themselves (stampAmbient's paths). Self-contained. */
+export function restampAmbient(paths: string[]): number {
+    let n = 0;
+    for (const p of paths || []) {
+        let el: Element | null = null;
+        try { el = document.querySelector(p); } catch { el = null; }
+        if (!(el instanceof HTMLElement)) continue;
+        if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
+        if (String(el.textContent || '').length > 160) continue;
+        el.setAttribute('data-joe-ambient', '1');
+        n++;
+    }
+    (window as any).__joeQaAmbientAt = location.href;
+    return n;
+}
+
+/**
+ * What changes by itself on this view, learnt while nothing is pressed (watchAmbient, stampAmbient)
+ * — once per document and address, a second at most, and only on a view that shows what ticks: a
+ * time («10:32», «2026-11-11T10:32»), a countdown, a «3 s ago». A view showing none of it is not
+ * waited on (a walk of many screens would pay a second for each).
+ */
+export async function learnAmbient(page: any, watchMs = 1100): Promise<number> {
+    /*
+     * A view learnt once is not learnt again: a reload, a baseline restored, the persistence check
+     * wipe every stamp, and the fourth review (2026-11-11) found the clock back in every fingerprint
+     * after the first restore. What was learnt here is stamped again where it is, at once.
+     */
+    const learnt: Map<string, string[]> = page.__joeQaAmbientLearnt || (page.__joeQaAmbientLearnt = new Map<string, string[]>());
+    const here = String(page.url() || '');
+    if (learnt.has(here)) {
+        const paths = learnt.get(here) || [];
+        return paths.length ? page.evaluate(restampAmbient, paths).catch(() => 0) : 0;
+    }
+    const state: string = await page.evaluate(() => {
+        const w = window as any;
+        if (w.__joeQaAmbientAt === location.href) return 'known';
+        const text = String((document.body && document.body.innerText) || '').slice(0, 30000);
+        const ticks = /[0-9٠-٩]{1,2}[:٫][0-9٠-٩]{2}|\b(?:ago|seconds?|secs?|countdown|remaining|refreshed|synced)\b|منذ|ثانية|ثوانٍ|ثوان|متبقي|المتبقي|العد التنازلي|آخر تحديث/iu.test(text);
+        //  …or a place made for one, still empty until its first tick (`setInterval(draw, 1000)` draws nothing for a second).
+        const holder = !!document.querySelector('[role="timer"],[role="marquee"],[class*="clock" i],[id*="clock" i],[class*="timer" i],[id*="timer" i],[class*="countdown" i],[id*="countdown" i],[class*="ticker" i]');
+        if (!ticks && !holder) w.__joeQaAmbientAt = location.href;
+        return ticks || holder ? 'watch' : 'still';
+    }).catch(() => 'known');
+    if (state === 'still') learnt.set(here, []);
+    if (state !== 'watch') return 0;
+    await page.evaluate(watchAmbient).catch(() => false);
+    await page.waitForTimeout(watchMs).catch(() => { });
+    const paths: string[] = await page.evaluate(stampAmbient).catch(() => [] as string[]);
+    learnt.set(here, paths);
+    await page.evaluate(() => { (window as any).__joeQaAmbientAt = location.href; }).catch(() => { });
+    return paths.length;
+}
+
 function snapshot() {
     // A HASH, not a length. A cart badge going 0 -> 1 is the single most
     // important thing a click can do on a store page, and it changes neither the
@@ -838,7 +1002,32 @@ function snapshot() {
         const r = (el as HTMLElement).getBoundingClientRect();
         if (r.width > 2 && r.height > 2) visible++;
     }
-    const text = document.body.innerText || '';
+    /*
+     * What changes on its own (stampAmbient) is left out: its text, its markup. Read without it
+     * the same way before and after every press, so a clock is no press's answer.
+     */
+    const ambient = Array.from(document.querySelectorAll('[data-joe-ambient]')) as HTMLElement[];
+    let text = document.body.innerText || '';
+    let bodyHtml = document.body.innerHTML || '';
+    if (ambient.length) {
+        const parts: string[] = [];
+        const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, {
+            acceptNode: (n: Node) => {
+                const p = n.parentElement;
+                if (!p || p.closest('[data-joe-ambient],script,style,noscript,template')) return NodeFilter.FILTER_REJECT;
+                return NodeFilter.FILTER_ACCEPT;
+            },
+        });
+        for (let n = walker.nextNode(); n && parts.length < 20000; n = walker.nextNode()) {
+            const s = String(n.nodeValue || '').trim();
+            if (s) parts.push(s);
+        }
+        text = parts.join('\n');
+        for (const el of ambient) {
+            const outer = el.outerHTML;
+            if (outer) bodyHtml = bodyHtml.split(outer).join('');
+        }
+    }
     /**
      * …AND THE FINGERPRINT IGNORES WHAT THE CAMERA WROTE.
      *
@@ -849,10 +1038,12 @@ function snapshot() {
      * Joe's own streamer no longer does this; a normalised hash means no other
      * camera can either.
      */
-    const html = (document.body.innerHTML || '').slice(0, 200000)
+    const html = bodyHtml.slice(0, 200000)
         .replace(/caret-color:\s*transparent\s*!important;?\s*/gi, '')
         // These handles belong to Joe's instrument, not the application.
         .replace(/\sdata-joe-(?:ctl|form|fld|sub|qbox|qa-[\w-]+)="[^"]*"/gi, '')
+        //  …and so do the mark of what changes by itself (stampAmbient) and of what a booking asked first (stampPrerequisites, stampFirstChoice).
+        .replace(/\sdata-joe-(?:ambient|pre|choice)="[^"]*"/gi, '')
         .replace(/\sstyle="\s*"/gi, '');
     return {
         text: hash(text),
@@ -942,7 +1133,8 @@ async function formFeedback(page: any, selector: string): Promise<string> {
             return rect.width > 1 && rect.height > 1 && style.visibility !== 'hidden' && style.display !== 'none';
         };
         return Array.from(scope.querySelectorAll('[role="alert"],[role="status"],[aria-live],.error,.err,.auth-error,.notice,.feedback,[data-error],[data-status]'))
-            .filter(visible)
+            //  A status line that changes by itself (a clock: stampAmbient) answers no submit.
+            .filter(el => visible(el) && !el.closest('[data-joe-ambient]'))
             .map(el => (el as HTMLElement).innerText.trim())
             .filter(Boolean)
             .join('\n')
@@ -1347,6 +1539,9 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
     //  Read as the walk finds the page, before any restore draws it fresh (a reload loses the second copy).
     const idsAtStart: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    //  What changes by itself here (a clock, a countdown) is learnt before the first press, and credited to none.
+    const ambientHere = await learnAmbient(page);
+    if (ambientHere) metrics.ambientLeaves = ambientHere;
     const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     // Button exploration is useful, but a quality run that never reaches its
     // forms cannot prove the input contract the user relies on. Reserve a
@@ -1616,6 +1811,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             }
             await page.evaluate((at: { x: number; y: number }) => window.scrollTo(at.x, at.y), probeStartScroll).catch(() => { });
             await page.waitForTimeout(180).catch(() => { });
+            //  What changes by itself here is stamped again (learnAmbient: learnt once, no new wait).
+            await learnAmbient(page).catch(() => 0);
         };
         /**
          * ⛔ A TAB'S SECTION IS HIDDEN UNTIL ITS TAB IS PRESSED.
@@ -2846,6 +3043,9 @@ export async function probeForms(
         if (!open) metrics.eyeLost = true;
         return open;
     };
+    //  What changes by itself here is learnt before the first submit (learnAmbient; once per view).
+    const ambientHere = await learnAmbient(page);
+    if (ambientHere) metrics.ambientLeaves = ambientHere;
     const pageLanguage = await page.evaluate(() => {
         const lang = String(document.documentElement.lang || '').trim();
         if (lang) return lang;
@@ -2871,6 +3071,8 @@ export async function probeForms(
     for (const planned of forms) {
         if (Date.now() > deadline) break;
         if (!eyeIsOpen()) break;
+        //  …and wipe the stamps of what changes by itself: stamped again where they are (learnAmbient, no new wait).
+        await learnAmbient(page).catch(() => 0);
         // Persistence checks reload the page. Instrument handles from the previous
         // document are no longer evidence of where the next form lives.
         const current = await evalInPage(page, findForms, {
@@ -3167,6 +3369,45 @@ export async function probeForms(
         /** How many writes the product had taken before this form was sent: the ones after are this form's. */
         let writtenBeforeSubmit = 0;
         try {
+            /*
+             * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
+             *
+             * The eleventh live check, 2026-11-11 (L171, a dental clinic): «احجز الموعد» stayed disabled
+             * until a date and a time slot — both outside the form — were chosen, as booking pages do.
+             * The QA filled the name and the phone, pressed the greyed button, and called the form
+             * «filled in completely and submitted, and nothing happened at all»; the builder enabled the
+             * button to quiet it. The product declined the submit until what it needs is chosen: told as
+             * declined (the booking's journey says whether it was proven), never as a dead form.
+             */
+            const isSubmitDisabled = async (): Promise<boolean> => f.submitSel ? page.evaluate((s: string) => {
+                const b = document.querySelector(s) as HTMLButtonElement | null;
+                return !!b && (b.disabled === true || b.getAttribute('aria-disabled') === 'true');
+            }, f.submitSel).catch(() => false) : false;
+            let submitDisabled = await isSubmitDisabled();
+            /*
+             * …but first, what the page asks for outside its form, chosen as a person would: the empty
+             * date or time beside it, the first slot it then offers. The third review, 2026-11-11: told
+             * only «declined», a submit a bug keeps disabled forever would pass unseen; a booking whose
+             * slot is chosen is sent, and proven.
+             */
+            if (submitDisabled) {
+                const asked: Array<{ sel: string; kind: string }> = await page.evaluate(stampPrerequisites, f.sel).catch(() => []);
+                for (const p of asked) {
+                    if (p.kind === 'select') {
+                        const value = await page.evaluate((s: string) => { const x = document.querySelector(s) as HTMLSelectElement | null; return x ? (Array.from(x.options).find(o => o.value && !o.disabled)?.value || '') : ''; }, p.sel).catch(() => '');
+                        if (value) await page.selectOption(p.sel, value, { timeout: 1500 }).catch(() => { });
+                    } else {
+                        const day = valueFor('date', 'input', runNonce, pageLanguage);
+                        await page.fill(p.sel, p.kind === 'time' ? '10:30' : p.kind === 'datetime' ? `${day}T10:30` : day, { timeout: 1500 }).catch(() => { });
+                    }
+                }
+                if (asked.length) await page.waitForTimeout(1500).catch(() => { });
+                const choice: string = await page.evaluate(stampFirstChoice, f.sel).catch(() => '');
+                if (choice) { await page.click(choice, { timeout: 2500 }).catch(() => { }); await page.waitForTimeout(500).catch(() => { }); }
+                if (asked.length || choice) metrics.formsPrerequisitesChosen = Number(metrics.formsPrerequisitesChosen || 0) + 1;
+                submitDisabled = await isSubmitDisabled();
+            }
+            //  Every baseline below is taken after what the page asked for was chosen: those choices are no answer of the submit.
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
             const stillInvalid = await page.evaluate((sel: string) => {
@@ -3182,22 +3423,11 @@ export async function probeForms(
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
             viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
-            //  What the submit writes into the page's messages, the same words again included (watchFormAnswer).
+            //  What the submit writes into the page's messages, the same words again included (watchFormAnswer);
+            //  what writes itself while nothing is pressed is set aside first (markAnswerAmbient).
             await page.evaluate(watchFormAnswer).catch(() => false);
-            /*
-             * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
-             *
-             * The eleventh live check, 2026-11-11 (L171, a dental clinic): «احجز الموعد» stayed disabled
-             * until a date and a time slot — both outside the form — were chosen, as booking pages do.
-             * The QA filled the name and the phone, pressed the greyed button, and called the form
-             * «filled in completely and submitted, and nothing happened at all»; the builder enabled the
-             * button to quiet it. The product declined the submit until what it needs is chosen: told as
-             * declined (the booking's journey says whether it was proven), never as a dead form.
-             */
-            const submitDisabled: boolean = f.submitSel ? await page.evaluate((s: string) => {
-                const b = document.querySelector(s) as HTMLButtonElement | null;
-                return !!b && (b.disabled === true || b.getAttribute('aria-disabled') === 'true');
-            }, f.submitSel).catch(() => false) : false;
+            await page.waitForTimeout(400).catch(() => { });
+            await page.evaluate(markAnswerAmbient).catch(() => 0);
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -3206,6 +3436,8 @@ export async function probeForms(
                 if (!eyeIsOpen()) break;
                 await eyes.press(page);
                 if (!eyeIsOpen()) break;
+                //  Read again as it is pressed: a check that enables it a moment later is not a declined form.
+                submitDisabled = await isSubmitDisabled();
                 const sub = await page.$(f.submitSel);
                 await sub?.click({ timeout: 2500, force: true, noWaitAfter: true }).catch(() => { });
             } else {
@@ -3276,13 +3508,8 @@ export async function probeForms(
                     effect = 'submitted';
                 }
             }
-            //  Nothing changed to the eye, yet the page wrote its answer again — the same words as an earlier case drew.
+            //  What the page wrote into its messages (read now, judged after what the server said).
             const written: string[] = await page.evaluate(readFormAnswer).catch(() => [] as string[]);
-            if (!effect && written.some(Boolean)) {
-                effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
-                metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
-            }
-            if (!effect && submitDisabled) effect = 'declined';
             /*
              * ⛔ WHAT THE SERVER SAID DECIDES WHAT THE PAGE DID NOT SHOW.
              *
@@ -3307,7 +3534,8 @@ export async function probeForms(
             const savedNow = writes.saved() > savedBeforeSubmit;
             const refusedNow = writes.refused() > refusedBeforeSubmit;
             if (refusedNow && !savedNow && effect !== 'validation' && effect !== 'reload') {
-                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect) {
+                //  Told nothing only when the page wrote nothing either: its refusal said again in the same words is telling (watchFormAnswer).
+                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect && !written.some(Boolean)) {
                     metrics.fieldCasesFailed++;
                     metrics.fieldCaseFailures.push({ form: f.label, field: f.label, meaning: 'form', case: 'form:refused', value: '', ar: 'رُفض الإرسال دون رسالة للزائر', en: 'the submit was refused and the visitor was told nothing', weight: 'minor', outcome: 'refused_silently' });
                 }
@@ -3316,6 +3544,12 @@ export async function probeForms(
                 effect = 'submitted';
                 metrics.formsSavedQuietly = Number(metrics.formsSavedQuietly || 0) + 1;
             }
+            //  Nothing changed to the eye and the server said nothing, yet the page wrote its answer again — the same words an earlier case drew.
+            if (!effect && written.some(Boolean)) {
+                effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
+                metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
+            }
+            if (!effect && submitDisabled) effect = 'declined';
         } catch { /* the form is what is under test */ }
 
         /*
@@ -3345,7 +3579,7 @@ export async function probeForms(
         else if (effect === 'reload') metrics.formsReloaded++;
         else if (effect === 'declined') {
             metrics.formsDeclined = Number(metrics.formsDeclined || 0) + 1;
-            (metrics.formsDeclinedEvidence = metrics.formsDeclinedEvidence || []).push({ label: f.label, fields: f.fields.length, why: 'its submit stayed disabled with every field filled: it waits for something chosen outside the form' });
+            (metrics.formsDeclinedEvidence = metrics.formsDeclinedEvidence || []).push({ label: f.label, fields: f.fields.length, why: 'its submit stayed disabled with every field filled, and with what the page offered outside the form chosen' });
         }
         else if (f.fields.length && filledCount < f.fields.length) {
             //  Not every field was filled (out of time, a field that would not take a value): sent like this, it proves nothing.
@@ -3717,6 +3951,21 @@ export function judgeBehaviour(
             ar: `${metrics.deadAnchors} رابط تنقّل يشير إلى قسم غير موجود أو غير مرئي في الصفحة`,
             en: `${metrics.deadAnchors} navigation link(s) point at a section that is missing or not visible`,
             hint: 'give every target section a matching id and ensure neither it nor an ancestor is visually hidden',
+        });
+    }
+    /*
+     * A form whose submit stayed disabled with every field filled — and with what it waits for outside
+     * the form chosen, where the walk could — is told (minor): a wait for a choice the visitor makes
+     * elsewhere is a design, a submit no choice enables is a bug; the builder knows which.
+     */
+    if (Number(metrics.formsDeclined || 0) > 0) {
+        const labels = (Array.isArray(metrics.formsDeclinedEvidence) ? metrics.formsDeclinedEvidence : []).map((e: any) => String(e.label || '')).filter(Boolean).slice(0, 3);
+        findings.push({
+            code: 'form_submit_disabled', severity: 'minor',
+            ar: `${metrics.formsDeclined} نموذج بقي زرّ إرساله معطّلاً وكل حقوله مملوءة${labels.length ? `: ${labels.map(l => `«${l}»`).join('، ')}` : ''} — إن كان ينتظر اختياراً خارج النموذج (تاريخاً أو موعداً) فليكن ظاهراً، وإلا فهو خلل`,
+            en: `${metrics.formsDeclined} form(s) kept their submit disabled with every field filled${labels.length ? `: ${labels.map(l => `"${l}"`).join(', ')}` : ''} — if it waits for a choice outside the form (a date, a slot), make it plain; if not, it is a bug`,
+            hint: 'enable the submit once what it needs is chosen, and say what is missing beside it',
+            evidence: (Array.isArray(metrics.formsDeclinedEvidence) ? metrics.formsDeclinedEvidence : []).slice(0, 4),
         });
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;

@@ -1431,6 +1431,9 @@ export async function auditBuiltApp(
             behaviourMetrics.ordersNotKeptEvidence = [...(behaviourMetrics.ordersNotKeptEvidence || []), ...(p.metrics.ordersNotKeptEvidence || []).map((x: any) => ({ ...x, route }))];
             behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
+            //  A form whose submit stayed disabled is told to the builder (behaviour-audit form_submit_disabled).
+            behaviourMetrics.formsDeclined = Number(behaviourMetrics.formsDeclined || 0) + Number(p.metrics.formsDeclined || 0);
+            behaviourMetrics.formsDeclinedEvidence = [...(behaviourMetrics.formsDeclinedEvidence || []), ...(p.metrics.formsDeclinedEvidence || []).map((x: any) => ({ ...x, route }))];
             //  An id held twice, on any screen: kept with its largest count (behaviour-audit duplicateControlIds).
             for (const d of (p.metrics.duplicateIds || []) as Array<{ id: string; count: number; labels?: string[] }>) {
                 const list: Array<{ id: string; count: number; labels?: string[] }> = (behaviourMetrics.duplicateIds = behaviourMetrics.duplicateIds || []);

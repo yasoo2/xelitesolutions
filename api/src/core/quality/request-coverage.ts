@@ -118,7 +118,8 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * teachers and tests») is a table of exams, and «a quiz app that tests kids» is
  * a verb — neither asks for automated tests.
  */
-const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
+//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too.
+const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional|server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
 //  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
 //  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
 //  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
@@ -674,16 +675,64 @@ function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRout
  * dispatched decides the served path, so the route is never `known`: the live probe can prove it
  * served, never refute it.
  */
-const TABLE_ENTRY = /\[\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:(['"`])(\/[^'"`\n]*)\3|\/((?:\\.|[^/\n\\])+)\/[a-z]*)\s*,/gu;
-const OBJECT_ENTRY = /\{\s*method\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:path|url|route|pattern)\s*:\s*(?:(['"`])(\/[^'"`\n]*)\3|\/((?:\\.|[^/\n\\])+)\/[a-z]*)/gu;
+/*
+ * A pattern is read whole: a character class may hold a slash (`[^/]+`), and the third review
+ * (2026-11-11) found `/^\/api\/files\/([^/]+)$/` cut at it. A method may be written in lower case.
+ *
+ * …and a path may be written without its first slash, segment by segment as its dispatcher
+ * compares them. The thirteenth live check, 2026-11-11 (L232, the laundry again): `['GET',
+ * 'api/orders', …]` matched against `pathname.split('/').filter(Boolean)` — read as no route at
+ * all, «items (not served)» refused it four times, and the builder added an `/api/products` alias
+ * the request never asked for, to be read.
+ */
+const TABLE_ENTRY = /\[\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:(['"`])(\/[^'"`\n]*|[A-Za-z_:][\w:.\-]*(?:\/[^'"`\s]*)?)\3|\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\n\\[])+)\/[a-z]*)\s*,/giu;
+const OBJECT_ENTRY = /\{\s*method\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:path|url|route|pattern)\s*:\s*(?:(['"`])(\/[^'"`\n]*|[A-Za-z_:][\w:.\-]*(?:\/[^'"`\s]*)?)\3|\/((?:\\.|\[(?:\\.|[^\]\\\n])*\]|[^/\n\\[])+)\/[a-z]*)/giu;
+//  What a path without its first slash may not be: another method (an allowed-methods list), a media type.
+const NOT_A_RELATIVE_PATH = /^(?:GET|POST|PUT|PATCH|DELETE|ALL|HEAD|OPTIONS)$|^(?:text|application|image|audio|video|font|multipart)\//iu;
+//  A service worker's table caches what the browser fetches; it serves nothing — unless the same file
+//  is the server too (one that sends its worker's source as a string): it listens (the fourth review).
+const SERVICE_WORKER = /\baddEventListener\s*\(\s*(['"])fetch\1|\bself\s*\.\s*onfetch\s*=/u;
+const LISTENS = /\b(?:createServer|listen)\s*\(|\bexpress\s*\(\s*\)|\bnew\s+(?:Koa|Hono)\b|\bfastify\s*\(/u;
+
+/**
+ * The path a route pattern serves: its parameters (`(\d+)`, `(?<id>[^/]+)`) are `:id`, its
+ * optional parts (`(?:\/)?`, `(?:\/(\d+))?`) are left out, its escapes read as what they escape.
+ */
+export function regexRoutePath(pattern: string): string {
+    let p = String(pattern || '').replace(/^\^/u, '').replace(/\$$/u, '');
+    p = p.replace(/\[(?:\\.|[^\]\\])*\]/gu, 'X');                       //  a character class is one character of a parameter
+    //  A trailing slash captured as an optional group (`(\/)?`) is no parameter (the fourth review).
+    p = p.replace(/\((?:\\\/|\/)\)[?*]?/gu, '');
+    for (let guard = 0; guard < 8 && /\([^()]*\)/u.test(p); guard++) {
+        p = p.replace(/\(\?:[^()]*\)[?*]/gu, '')                          //  an optional part is left out
+            .replace(/\(\?:([^()|]*)(?:\|[^()]*)?\)/gu, '$1')               //  a plain group is its first alternative
+            .replace(/\((?!\?:)[^()]*\)[+*?]?/gu, ':id');                   //  a captured part is a parameter
+    }
+    p = p.replace(/\\([/.\-_~])/gu, '$1').replace(/\/\?$/u, '').replace(/\?$/u, '');
+    return p.split('/').map(segment => segment === ':id' || !PATTERN_PART.test(segment) ? segment : ':id').join('/');
+}
 
 function harvestRouteTable(text: string, file: string, routes: HarvestedRoute[]): void {
-    if (!READS_REQUEST.test(text)) return;
+    if (!READS_REQUEST.test(text) || (SERVICE_WORKER.test(text) && !LISTENS.test(text))) return;
     for (const re of [TABLE_ENTRY, OBJECT_ENTRY]) {
         for (const m of text.matchAll(re)) {
-            const raw = m[4] !== undefined ? String(m[4]) : String(m[5] || '').replace(/\\\//gu, '/');
-            if (!/^\^?\//u.test(raw)) continue;
-            const routePath = patternPath(raw).replace(/\/+$/u, '');
+            const written = m[4] !== undefined;
+            let raw = written ? String(m[4]) : String(m[5] || '');
+            if (written && !raw.startsWith('/')) {
+                if (NOT_A_RELATIVE_PATH.test(raw)) continue;
+                /*
+                 * A bare word with no slash is a route only beside a method written as a method
+                 * (`['GET', 'orders', …]`): `['all', 'active', 'done']` is a filter list, `['get',
+                 * 'list', …]` a list of verbs (the fourth review, 2026-11-11).
+                 */
+                if (!raw.includes('/') && (!/^(?:GET|POST|PUT|PATCH|DELETE|ALL)$/u.test(String(m[2])) || /^[A-Z][A-Z_]*$/u.test(raw))) continue;
+                raw = `/${raw}`;
+            }
+            if (!written && !/^\^?(?:\\)?\//u.test(raw)) {
+                if (!/^\^[A-Za-z]/u.test(raw)) continue;
+                raw = `^\\/${raw.slice(1)}`;
+            }
+            const routePath = (written ? patternPath(raw) : regexRoutePath(raw)).replace(/\/+$/u, '');
             const segments = routePath.split('/').filter(Boolean);
             if (!segments.length || segments.some(s => s.includes('.') && s !== ':id')) continue;
             const method = String(m[2]).toLowerCase();
