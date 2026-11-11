@@ -765,6 +765,58 @@ const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.spl
 const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
 const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
 
+/** From the brace at `open` to the one that closes it (strings and comments skipped), or '' when it never closes. */
+function balancedFrom(text: string, open: number): string {
+    const pairs: Record<string, string> = { '{': '}', '[': ']', '(': ')' };
+    const stack: string[] = [];
+    for (let i = open; i < text.length && i < open + 200_000; i++) {
+        const ch = text[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === '\\') i++;
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '/') { i = text.indexOf('\n', i); if (i < 0) return ''; continue; }
+        if (ch === '/' && text[i + 1] === '*') { i = text.indexOf('*/', i + 2); if (i < 0) return ''; i++; continue; }
+        if (pairs[ch]) stack.push(pairs[ch]);
+        else if (ch === '}' || ch === ']' || ch === ')') {
+            if (stack.pop() !== ch) return '';
+            if (!stack.length) return text.slice(open, i + 1);
+        }
+    }
+    return '';
+}
+
+/** The keys an object literal (`{ products: …, 'orders': …, warranties }`) names at its own top level. */
+function objectLiteralKeys(literal: string): string[] {
+    const keys: string[] = [];
+    let depth = 0;
+    let expectKey = false;
+    for (let i = 0; i < literal.length; i++) {
+        const ch = literal[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            const start = i;
+            for (i++; i < literal.length && literal[i] !== ch; i++) if (literal[i] === '\\') i++;
+            if (depth === 1 && expectKey && /^\s*:/u.test(literal.slice(i + 1))) keys.push(literal.slice(start + 1, i));
+            expectKey = false;
+            continue;
+        }
+        if (ch === '{' || ch === '[' || ch === '(') { depth++; if (depth === 1) expectKey = true; continue; }
+        if (ch === '}' || ch === ']' || ch === ')') { depth--; continue; }
+        if (depth === 1 && ch === ',') { expectKey = true; continue; }
+        if (depth === 1 && expectKey && /[A-Za-z_$]/u.test(ch)) {
+            const word = /^[A-Za-z_$][\w$-]*/u.exec(literal.slice(i));
+            const name = word ? word[0] : '';
+            const rest = literal.slice(i + name.length);
+            if (name && /^\s*[:,}(]/u.test(rest)) keys.push(name);
+            i += Math.max(0, name.length - 1);
+            expectKey = false;
+            continue;
+        }
+        if (depth === 1 && !/\s/u.test(ch)) expectKey = false;
+    }
+    return keys;
+}
+
 function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRoute[]): void {
     if (!READS_REQUEST.test(text)) return;
     const esc = (s: string) => s.replace(/[$]/gu, '\\$');
@@ -792,6 +844,39 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
         //  parts[1] === 'summary'
         for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
             add(Number(m[1]) - shift, m[3]);
+        }
+        /*
+         * ⛔ A SEGMENT LOOKED UP IN A TABLE OF HANDLERS SERVES EVERY KEY OF THE TABLE.
+         *
+         * The fourteenth live check, 2026-11-11 (L236, an electronics store): `const [, resource,
+         * rawId] = parts`, then `const c = collections[resource]` with `collections = { products:
+         * {…}, orders: {…}, warranties: {…} }` — read as no route at all, «orders, warranties (not
+         * served)» refused it four times. So do `v === 'orders'`, `case 'orders':` in a `switch (v)`,
+         * `v in TABLE` and `Object.hasOwn(TABLE, v)`.
+         */
+        for (const [v, index] of segmentVars) {
+            if (index < 0) continue;
+            /*
+             * …unless a list gates the segment first (`if (!COLLECTIONS.includes(coll)) return 404`):
+             * then the list decides (below), and `data[coll]` is its data, `coll === 'travelers'` a
+             * validator's branch — never routes (P070 holds a collection its list does not serve).
+             */
+            if (new RegExp(`\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'u').test(text)) continue;
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s*===?\\s*(['"])([^'"]+)\\1|(['"])([^'"]+)\\3\\s*===?\\s*${esc(v)}\\b`, 'gu'))) add(index, String(m[2] ?? m[4]));
+            for (const sw of text.matchAll(new RegExp(`\\bswitch\\s*\\(\\s*${esc(v)}\\s*\\)\\s*\\{`, 'gu'))) {
+                const body = balancedFrom(text, (sw.index || 0) + sw[0].length - 1);
+                for (const c of body.matchAll(/\bcase\s*(['"])([^'"]+)\1\s*:/gu)) add(index, c[2]);
+            }
+            const tables = new Set<string>();
+            for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*(?:\\?\\.)?\\[\\s*${esc(v)}\\s*\\]`, 'gu'))) tables.add(m[1]);
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s+in\\s+([A-Za-z_$][\\w$]*)\\b|\\bObject\\s*\\.\\s*(?:hasOwn|prototype\\s*\\.\\s*hasOwnProperty\\s*\\.\\s*call)\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*${esc(v)}\\s*\\)|\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*hasOwnProperty\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) tables.add(String(m[1] || m[2] || m[3]));
+            for (const table of tables) {
+                if (table === esc(parts) || table === parts) continue;
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(table)}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
         }
         //  LIST.includes(v), with LIST a literal list of names.
         for (const [v, index] of segmentVars) {
