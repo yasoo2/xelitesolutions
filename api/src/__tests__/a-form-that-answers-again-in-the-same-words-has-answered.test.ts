@@ -59,6 +59,19 @@ test('«احجز الموعد» answering «اختر التاريخ أولاً.�
     expect(result.forms.find(f => /احجز/.test(f.label))?.effect).toBe('refused');
 });
 
+//  The same clinic as first delivered: «احجز الموعد» disabled until a date and a slot are chosen (both outside the form).
+test('a submit the product keeps disabled until its date and slot are chosen is declined, not dead', async () => {
+    const html = page(true)
+        .replace('<button type="submit">احجز الموعد</button>', '<button type="submit" id="go" disabled>احجز الموعد</button>')
+        .replace("var date = '', time = '';", "var date = '', time = ''; function ready() { document.getElementById('go').disabled = !(date && time); }")
+        .replace("date = this.value; });", "date = this.value; ready(); });")
+        .replace("time = b.textContent; });", "time = b.textContent; ready(); });");
+    expect(html).toContain('id="go" disabled');
+    const result = await walk(html);
+    expect(Number(result.metrics.formsDeadSubmit || 0)).toBe(0);
+    expect(Number(result.metrics.formsDeclined || 0)).toBe(1);
+});
+
 test('a form that writes nothing at all is still dead', async () => {
     const result = await walk(page(false));
     expect(Number(result.metrics.formsDeadSubmit || 0)).toBe(1);

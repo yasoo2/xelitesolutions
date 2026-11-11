@@ -661,6 +661,39 @@ function harvestRegistrarCalls(text: string, file: string, routes: HarvestedRout
 }
 
 /**
+ * A ROUTE TABLE WRITTEN OUT, ENTRY BY ENTRY.
+ *
+ * The eleventh live check, 2026-11-11 (L232, a laundry service «with a Node server that stores
+ * orders, items, pickups in a real database»): the server was `node:http` with its routes in a
+ * table — `['GET', /^\/api\/orders$/, handler]`, `['PATCH', /^\/api\/orders\/(\d+)$/, …]` — and a
+ * dispatcher matching `req.method` and the path against it. «No delivered part registers server
+ * routes» refused it, and the builder rewrote a working server in Express to be read.
+ *
+ * In a file that reads the request, an array entry or an object naming an HTTP method and a path
+ * (a string, or a pattern whose groups are parameters) registers that route. Where the table is
+ * dispatched decides the served path, so the route is never `known`: the live probe can prove it
+ * served, never refute it.
+ */
+const TABLE_ENTRY = /\[\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:(['"`])(\/[^'"`\n]*)\3|\/((?:\\.|[^/\n\\])+)\/[a-z]*)\s*,/gu;
+const OBJECT_ENTRY = /\{\s*method\s*:\s*(['"])(GET|POST|PUT|PATCH|DELETE|ALL)\1\s*,\s*(?:path|url|route|pattern)\s*:\s*(?:(['"`])(\/[^'"`\n]*)\3|\/((?:\\.|[^/\n\\])+)\/[a-z]*)/gu;
+
+function harvestRouteTable(text: string, file: string, routes: HarvestedRoute[]): void {
+    if (!READS_REQUEST.test(text)) return;
+    for (const re of [TABLE_ENTRY, OBJECT_ENTRY]) {
+        for (const m of text.matchAll(re)) {
+            const raw = m[4] !== undefined ? String(m[4]) : String(m[5] || '').replace(/\\\//gu, '/');
+            if (!/^\^?\//u.test(raw)) continue;
+            const routePath = patternPath(raw).replace(/\/+$/u, '');
+            const segments = routePath.split('/').filter(Boolean);
+            if (!segments.length || segments.some(s => s.includes('.') && s !== ':id')) continue;
+            const method = String(m[2]).toLowerCase();
+            if (routes.some(r => r.file === file && r.path === routePath && r.method === method)) continue;
+            routes.push({ path: routePath, method, file, dynamic: false, known: false });
+        }
+    }
+}
+
+/**
  * A SERVER THAT ROUTES BY THE PATH'S OWN SEGMENTS.
  *
  * The 500 exam, 2026-11-06, P070: a travel agency on `http.createServer`
@@ -760,6 +793,7 @@ function harvestRoutes(text: string, file: string, routes: HarvestedRoute[], pre
     }
     harvestComparedPaths(text, file, routes);
     harvestRegistrarCalls(text, file, routes);
+    harvestRouteTable(text, file, routes);
     harvestSegmentDispatch(text, file, routes);
     // Python: an application's decorator path is the served path; a router's or
     // blueprint's joins its own prefix, and may be mounted under another.

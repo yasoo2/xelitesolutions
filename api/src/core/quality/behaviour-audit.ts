@@ -290,6 +290,13 @@ function findControls(limit: number) {
     };
     const push = (el: Element, kind: string) => {
         if (out.length >= limit || !vis(el)) return;
+        /*
+         * A field is filled, never pressed. The eleventh live check, 2026-11-11 (L232, a laundry):
+         * «Search orders» (an input type=search) and «Filter by status» (a select) carried
+         * data-filter, were catalogued as tabs, pressed, changed nothing — «Unresponsive controls»,
+         * five refusals. A field is the forms pass's, and a search's second look.
+         */
+        if (/^(?:INPUT|SELECT|TEXTAREA)$/u.test(el.tagName) && !/^(?:submit|button|reset|image)$/iu.test(String((el as HTMLInputElement).type || ''))) return;
         const controlLabel = label(el);
         /**
          * Session exit and destructive mutations are scenario boundaries, not
@@ -972,9 +979,11 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
  * (2xx) and those it refused (4xx). A refused write is remembered by its address
  * so its console line is known as the same refusal (isExpectedRefusal).
  */
-export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; stop: () => void } {
+export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; pending: () => number; stop: () => void } {
     let saved = 0;
     let refused = 0;
+    /** Writes sent and not answered yet: what the page drew meanwhile is not their answer. */
+    let pending = 0;
     /** Where the product took a write (POST, PUT, PATCH), in order: where what a form made is asked for again. */
     const written: string[] = [];
     let origin = '';
@@ -994,8 +1003,20 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             }
         } catch { /* a response that cannot be read wrote nothing we know of */ }
     };
-    try { page.on('response', on); } catch { /* a page without events */ }
-    return { saved: () => saved, refused: () => refused, written: () => written.slice(), stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
+    const isWrite = (request: any) => {
+        try {
+            if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(String(request?.method?.() || '').toUpperCase())) return false;
+            return !origin || new URL(String(request.url())).origin === origin;
+        } catch { return false; }
+    };
+    const sent = (request: any) => { if (isWrite(request)) pending++; };
+    const answered = (response: any) => { if (isWrite(response?.request?.())) pending = Math.max(0, pending - 1); on(response); };
+    const lost = (request: any) => { if (isWrite(request)) pending = Math.max(0, pending - 1); };
+    try { page.on('request', sent); page.on('response', answered); page.on('requestfailed', lost); } catch { /* a page without events */ }
+    return {
+        saved: () => saved, refused: () => refused, written: () => written.slice(), pending: () => pending,
+        stop: () => { try { page.off('request', sent); page.off('response', answered); page.off('requestfailed', lost); } catch { /* gone */ } },
+    };
 }
 
 /** What one free-text field is sent with: it must come back as the text it was (probeForms). */
@@ -3062,14 +3083,41 @@ export async function probeForms(
          * What the product saved this way carries the QA nonce in its other
          * fields and is removed after the form (deleteOwnRecords).
          */
+        /*
+         * ⛔ A SENT CASE IS WAITED FOR BEFORE THE NEXT FILL.
+         *
+         * The eleventh live check, 2026-11-11 (L232, a laundry): «Save customer» sent with letters in
+         * its phone was refused 400, and the app then reloaded the order and drew its form again —
+         * after the walk had already typed the valid values. The redraw put the stored «call-me»
+         * back, the last submit sent nothing, a leftover redraw was read as its answer, and «sent and
+         * taken, never shown» refused the laundry four times. Each sent case waits for its write to
+         * be answered and the page to be still, and so does the last fill.
+         */
+        const settleAfterSubmit = async (maxMs = 3000) => {
+            const until = Math.min(deadline, Date.now() + maxMs);
+            while (writes.pending() > 0 && Date.now() < until) await page.waitForTimeout(100);
+            let last = await page.evaluate(snapshot).catch(() => null);
+            while (Date.now() < until) {
+                await page.waitForTimeout(250);
+                const now = await page.evaluate(snapshot).catch(() => null);
+                if (!changed(last, now)) break;
+                last = now;
+            }
+            //  A form the page drew again is found again, and its valid values move to its new fields (relocate).
+            const marks = [f.sel, ...(f.submitSel ? [f.submitSel] : []), ...validValues.keys()];
+            const alive = await page.evaluate((list: string[]) => list.every(s => !!document.querySelector(s)), marks).catch(() => true);
+            if (!alive) await relocate();
+        };
         for (const cand of submitCandidates.slice(0, MAX_SUBMITTED_CASES_PER_FORM)) {
             if (Date.now() > deadline || !eyeIsOpen()) break;
+            if (cand !== submitCandidates[0]) await settleAfterSubmit();
             await refillValid(page, validValues);
             const field = await page.$(cand.sel);
             if (!field) continue;
             await eyes.lookAt(page, await boxOf(page, cand.sel), { note: `${cand.c.ar} — إرسال`, tone: 'warn', moveMouse: false });
             try { await field.fill(cand.c.value, { timeout: 1500 }); } catch { continue; }
             const wroteBefore = writes.saved();
+            const refusedBeforeCase = writes.refused();
             const feedbackBefore = await formFeedback(page, f.sel);
             const submitButton = f.submitSel ? await page.$(f.submitSel) : null;
             if (!submitButton) break;
@@ -3081,6 +3129,8 @@ export async function probeForms(
                 await page.waitForTimeout(150);
                 if (writes.saved() > wroteBefore) answer = 'saved';
                 else if (hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel))) answer = 'message';
+                //  The server refused the wrong value: the product said no, whatever the page then drew.
+                else if (writes.refused() > refusedBeforeCase) answer = 'refused';
                 else if (await page.evaluate((sel: string) => {
                     const x = document.querySelector(sel) as HTMLInputElement | null;
                     return !!x && (x.getAttribute('aria-invalid') === 'true' || (typeof x.checkValidity === 'function' && !x.checkValidity()));
@@ -3096,7 +3146,10 @@ export async function probeForms(
                 metrics.fieldCaseFailures.push({ form: f.label, field: cand.field, meaning: cand.meaning, case: cand.c.id, value: cand.c.value, ar: cand.c.ar, en: cand.c.en, weight: 'minor', outcome: 'refused_silently' });
             }
         }
-        if (submitCandidates.length) await refillValid(page, validValues);
+        if (submitCandidates.length) {
+            await settleAfterSubmit();
+            await refillValid(page, validValues);
+        }
         if (markupSel) await page.evaluate(() => { (window as any).__joeQaXss = 0; }).catch(() => { });
 
         // …and sent, through the button a visitor would press.
@@ -3131,6 +3184,20 @@ export async function probeForms(
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  What the submit writes into the page's messages, the same words again included (watchFormAnswer).
             await page.evaluate(watchFormAnswer).catch(() => false);
+            /*
+             * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
+             *
+             * The eleventh live check, 2026-11-11 (L171, a dental clinic): «احجز الموعد» stayed disabled
+             * until a date and a time slot — both outside the form — were chosen, as booking pages do.
+             * The QA filled the name and the phone, pressed the greyed button, and called the form
+             * «filled in completely and submitted, and nothing happened at all»; the builder enabled the
+             * button to quiet it. The product declined the submit until what it needs is chosen: told as
+             * declined (the booking's journey says whether it was proven), never as a dead form.
+             */
+            const submitDisabled: boolean = f.submitSel ? await page.evaluate((s: string) => {
+                const b = document.querySelector(s) as HTMLButtonElement | null;
+                return !!b && (b.disabled === true || b.getAttribute('aria-disabled') === 'true');
+            }, f.submitSel).catch(() => false) : false;
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -3160,7 +3227,8 @@ export async function probeForms(
             }, f.sel).catch(() => true);
             let after = await page.evaluate(snapshot).catch(() => null);
             effect = await pending() ? '' : changed(before, after);
-            const effectDeadline = Math.min(deadline, Date.now() + 2500);
+            //  A disabled submit sends nothing: there is no answer to wait for.
+            const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);
             while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
@@ -3214,6 +3282,7 @@ export async function probeForms(
                 effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
                 metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
             }
+            if (!effect && submitDisabled) effect = 'declined';
             /*
              * ⛔ WHAT THE SERVER SAID DECIDES WHAT THE PAGE DID NOT SHOW.
              *
@@ -3226,6 +3295,15 @@ export async function probeForms(
              * a refusal of the QA's value — said as a weak check when the
              * visitor is told nothing — never a record to find.
              */
+            /*
+             * A write still on its way is waited for: the page may draw before the server answers (a
+             * disabled button, a spinner, a list reloaded), and that drawing is not the answer. The
+             * eleventh live check, 2026-11-11 (L232): «Save customer» was refused 400 («phone may only
+             * contain digits») after the page had already changed, and was judged «sent and taken,
+             * never shown» — a record the server had refused, looked for four times.
+             */
+            const writesUntil = Math.min(deadline, Date.now() + 4000);
+            while (writes.pending() > 0 && Date.now() < writesUntil) await page.waitForTimeout(100);
             const savedNow = writes.saved() > savedBeforeSubmit;
             const refusedNow = writes.refused() > refusedBeforeSubmit;
             if (refusedNow && !savedNow && effect !== 'validation' && effect !== 'reload') {
@@ -3265,6 +3343,10 @@ export async function probeForms(
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'refused') metrics.formsRefused++;
         else if (effect === 'reload') metrics.formsReloaded++;
+        else if (effect === 'declined') {
+            metrics.formsDeclined = Number(metrics.formsDeclined || 0) + 1;
+            (metrics.formsDeclinedEvidence = metrics.formsDeclinedEvidence || []).push({ label: f.label, fields: f.fields.length, why: 'its submit stayed disabled with every field filled: it waits for something chosen outside the form' });
+        }
         else if (f.fields.length && filledCount < f.fields.length) {
             //  Not every field was filled (out of time, a field that would not take a value): sent like this, it proves nothing.
             metrics.formsUnfinished = Number(metrics.formsUnfinished || 0) + 1;
