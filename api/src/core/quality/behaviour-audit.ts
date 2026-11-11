@@ -609,9 +609,28 @@ export function controlLabelCounts(): Record<string, number> {
 }
 
 /** Runs in the page: the headings a visitor sees, numbers masked — the view he is on («Your cart (2)» is the cart either way). Self-contained. */
-export function visibleHeadings(): string[] {
+export function visibleHeadings(skipFormTitles?: boolean): string[] {
     const out: string[] = [];
+    /*
+     * A form's own title says which mode the form is in, not which view is open. The
+     * mosque app, qa-live15 (2026-11-11): «Edit lesson» above the fields while a record
+     * was edited, «Add lesson» after the reload — the view «was another», nothing was
+     * counted, and «found nowhere» refused the delivery three times on unchanged code.
+     * Asked for by the persistence check only; a title inside a form, or the one the
+     * form names as its label, is set aside.
+     */
+    const titles = new Set<Element>();
+    if (skipFormTitles) {
+        document.querySelectorAll('form').forEach(form => {
+            form.querySelectorAll('h1, h2, h3, [role="heading"]').forEach(h => titles.add(h));
+            for (const id of String(form.getAttribute('aria-labelledby') || '').split(/\s+/)) {
+                const el = id ? document.getElementById(id) : null;
+                if (el) titles.add(el);
+            }
+        });
+    }
     document.querySelectorAll('h1, h2, [role="heading"]').forEach(node => {
+        if (titles.has(node)) return;
         const h = node as HTMLElement;
         const r = h.getBoundingClientRect();
         const s = getComputedStyle(h);
@@ -3468,7 +3487,7 @@ export async function probeForms(
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
-            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
+            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  What the submit writes into the page's messages, the same words again included (watchFormAnswer);
             //  what writes itself while nothing is pressed is set aside first (markAnswerAmbient).
@@ -3713,7 +3732,7 @@ export async function probeForms(
              * gone is another view, and proves nothing.
              */
             const sameView = async () => {
-                const now: string[] = await page.evaluate(visibleHeadings).catch(() => [] as string[]);
+                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
                 return viewBeforeSubmit.every(h => now.includes(h));
             };
             const rowAdded = async () => !anchor && rowsBefore >= 0 && await sameView() && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
@@ -3735,7 +3754,7 @@ export async function probeForms(
                 if (anchor) shownAs = await visibleNeedle([anchor]);
             }
             const unproven = (where: string) => {
-                const evidence = { form: f.label, anchor, where, ...(needles[0] !== anchor ? { made: needles.slice(0, 3) } : {}) };
+                const evidence = { form: f.label, anchor, where, ...(needles[0] !== anchor ? { made: needles.slice(0, 3) } : {}), ...(byRows ? { by: 'rows' } : {}) };
                 if (f.placesOrder) {
                     metrics.ordersNotKept = Number(metrics.ordersNotKept || 0) + 1;
                     (metrics.ordersNotKeptEvidence = metrics.ordersNotKeptEvidence || []).push(evidence);
@@ -3832,7 +3851,16 @@ export async function probeForms(
                     }
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }
-                if (!keptBy) {
+                /*
+                 * A record proven by the count of rows alone is counted again only on the view it was
+                 * made on. A reload that opens on another one leaves nothing to count, and nothing of
+                 * the record to look for: not measured, never «found nowhere» — which says the page,
+                 * the browser's storage and the server were searched, and none was.
+                 */
+                const elsewhere = !keptBy && byRows && reloaded && !(await sameView());
+                if (elsewhere) {
+                    metrics.formsPersistenceUnmeasured = Number(metrics.formsPersistenceUnmeasured || 0) + 1;
+                } else if (!keptBy) {
                     unproven('after reload');
                 } else {
                     metrics.formsPersisted++;
@@ -4186,7 +4214,9 @@ export function judgeBehaviour(
          */
         const evidence: any[] = Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : [];
         const neverShown = evidence.filter(x => x?.where === 'after submit');
-        const gone = evidence.filter(x => x?.where !== 'after submit');
+        //  Counted, not searched: a record with nothing of its own to look for was a row more, and after the refresh it was not.
+        const counted = evidence.filter(x => x?.where !== 'after submit' && x?.by === 'rows');
+        const gone = evidence.filter(x => x?.where !== 'after submit' && x?.by !== 'rows');
         const parts = { ar: [] as string[], en: [] as string[] };
         if (neverShown.length) {
             parts.ar.push(`أُرسل ${neverShown.map(x => `«${x.form}»`).join('، ')} وقَبِله، ولم يظهر خارج النموذج ما صنعه: لا ما كتبه الفحص (${neverShown.map(x => `«${x.anchor}»`).join('، ')}) ولا سجلّ جديد`);
@@ -4196,12 +4226,16 @@ export function judgeBehaviour(
             parts.ar.push(`ظهر ما صنعه ${gone.map(x => `«${x.form}»`).join('، ')}، وبعد تحديث الصفحة لم يُعثر عليه: لا في الصفحة ولا في تخزين المتصفح ولا فيما أعاده الخادم`);
             parts.en.push(`what ${gone.map(x => `"${x.form}"`).join(', ')} made showed, and after a refresh it was found nowhere: not on the page, not in the browser's storage, not in what the server sent back`);
         }
+        if (counted.length) {
+            parts.ar.push(`أضاف ${counted.map(x => `«${x.form}»`).join('، ')} صفاً إلى القائمة، وبعد تحديث الصفحة عادت القائمة نفسها بعدد صفوفها الذي كان قبل الإرسال`);
+            parts.en.push(`${counted.map(x => `"${x.form}"`).join(', ')} added a row to the list, and after a refresh the same list was back to the rows it had before the submit`);
+        }
         findings.push({
             code: 'form_persistence_unproven', severity: 'major',
             ar: parts.ar.join('؛ ') || `${metrics.formsPersistenceUnproven} نتيجة نموذج لم يثبت بقاؤها بعد تحديث الصفحة`,
             en: parts.en.join('; ') || `${metrics.formsPersistenceUnproven} form result(s) could not be proven to survive a page refresh`,
-            hint: neverShown.length && !gone.length
-                ? 'after a successful submit, show what it made outside the form — the new row, card or entry with what was entered — and keep it'
+            hint: neverShown.length && !gone.length && !counted.length
+                ?'after a successful submit, show what it made outside the form — the new row, card or entry with what was entered — and keep it'
                 : 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
             ...(evidence.length ? { evidence: evidence.slice(0, 6) } : {}),
         });

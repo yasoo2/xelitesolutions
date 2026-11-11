@@ -104,6 +104,8 @@ export interface AppAudit {
     /** QA-created form records proven to survive reload, and records that did not. */
     formsPersisted?: number;
     formsPersistenceUnproven?: number;
+    /** Records proven by a row count whose reload opened on another view: nothing to count again, so not measured. */
+    formsPersistenceUnmeasured?: number;
     qaRecordsDeleted?: number;
     qaRecordsNotDeleted?: number;
     /** Semantic fields challenged with invalid and valid values. */
@@ -1401,7 +1403,7 @@ export async function auditBuiltApp(
         const behaviourMetrics: Record<string, any> = {
             pressed: 0, dead: 0, deadAnchors: 0, keyboardUnreachable: 0, keyboardUnreachableSamples: [],
             formsWithoutValidation: 0, formsFilled: 0, fieldsFilled: 0, formsDeadSubmit: 0, formsDeadSubmitEvidence: [], formsValidated: 0, formsReloaded: 0,
-            formsPersisted: 0, formsPersistenceUnproven: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
+            formsPersisted: 0, formsPersistenceUnproven: 0, formsPersistenceUnmeasured: 0, qaRecordsDeleted: 0, qaRecordsNotDeleted: 0,
             semanticFieldsTested: 0, semanticValidationFailures: 0, semanticValidationEvidence: [],
             formsNotReached: 0, formsNotReachedEvidence: [],
             disclosureEvidence: [],
@@ -1423,7 +1425,7 @@ export async function auditBuiltApp(
             behaviourMetrics.statesVisited += p.metrics.statesVisited || 0;
             behaviourMetrics.exploratoryActions += p.metrics.exploratoryActions || 0;
             behaviourMetrics.controlsDiscovered += p.metrics.controlsDiscovered || 0;
-            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures', 'fieldCasesTried', 'fieldCasesSubmitted', 'fieldCasesFailed', 'markupTried', 'formsRevealed', 'intentsJudged', 'intentsMet']) {
+            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'formsPersistenceUnmeasured', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures', 'fieldCasesTried', 'fieldCasesSubmitted', 'fieldCasesFailed', 'markupTried', 'formsRevealed', 'intentsJudged', 'intentsMet']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
@@ -2466,6 +2468,7 @@ export async function auditBuiltApp(
             fieldsFilled: behaviourMetrics.fieldsFilled,
             formsPersisted: behaviourMetrics.formsPersisted,
             formsPersistenceUnproven: behaviourMetrics.formsPersistenceUnproven,
+            formsPersistenceUnmeasured: Number((behaviourMetrics as any).formsPersistenceUnmeasured || 0),
             qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
             qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
