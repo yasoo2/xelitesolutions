@@ -3131,6 +3131,20 @@ export async function probeForms(
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  What the submit writes into the page's messages, the same words again included (watchFormAnswer).
             await page.evaluate(watchFormAnswer).catch(() => false);
+            /*
+             * ⛔ A SUBMIT THE PRODUCT KEEPS DISABLED WAS NOT SENT.
+             *
+             * The eleventh live check, 2026-11-11 (L171, a dental clinic): «احجز الموعد» stayed disabled
+             * until a date and a time slot — both outside the form — were chosen, as booking pages do.
+             * The QA filled the name and the phone, pressed the greyed button, and called the form
+             * «filled in completely and submitted, and nothing happened at all»; the builder enabled the
+             * button to quiet it. The product declined the submit until what it needs is chosen: told as
+             * declined (the booking's journey says whether it was proven), never as a dead form.
+             */
+            const submitDisabled: boolean = f.submitSel ? await page.evaluate((s: string) => {
+                const b = document.querySelector(s) as HTMLButtonElement | null;
+                return !!b && (b.disabled === true || b.getAttribute('aria-disabled') === 'true');
+            }, f.submitSel).catch(() => false) : false;
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -3160,7 +3174,8 @@ export async function probeForms(
             }, f.sel).catch(() => true);
             let after = await page.evaluate(snapshot).catch(() => null);
             effect = await pending() ? '' : changed(before, after);
-            const effectDeadline = Math.min(deadline, Date.now() + 2500);
+            //  A disabled submit sends nothing: there is no answer to wait for.
+            const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);
             while (!effect && Date.now() < effectDeadline && eyeIsOpen()) {
                 await page.waitForTimeout(250);
                 after = await page.evaluate(snapshot).catch(() => null);
@@ -3214,6 +3229,7 @@ export async function probeForms(
                 effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
                 metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
             }
+            if (!effect && submitDisabled) effect = 'declined';
             /*
              * ⛔ WHAT THE SERVER SAID DECIDES WHAT THE PAGE DID NOT SHOW.
              *
@@ -3265,6 +3281,10 @@ export async function probeForms(
         else if (effect === 'validation') metrics.formsValidated++;
         else if (effect === 'refused') metrics.formsRefused++;
         else if (effect === 'reload') metrics.formsReloaded++;
+        else if (effect === 'declined') {
+            metrics.formsDeclined = Number(metrics.formsDeclined || 0) + 1;
+            (metrics.formsDeclinedEvidence = metrics.formsDeclinedEvidence || []).push({ label: f.label, fields: f.fields.length, why: 'its submit stayed disabled with every field filled: it waits for something chosen outside the form' });
+        }
         else if (f.fields.length && filledCount < f.fields.length) {
             //  Not every field was filled (out of time, a field that would not take a value): sent like this, it proves nothing.
             metrics.formsUnfinished = Number(metrics.formsUnfinished || 0) + 1;
