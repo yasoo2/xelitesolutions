@@ -629,44 +629,51 @@ export function visibleHeadings(skipFormTitles?: boolean): string[] {
             }
         });
     }
-    const all: string[] = [];
     document.querySelectorAll('h1, h2, [role="heading"]').forEach(node => {
+        if (titles.has(node)) return;
         const h = node as HTMLElement;
         const r = h.getBoundingClientRect();
         const s = getComputedStyle(h);
         if (r.width <= 0 || r.height <= 0 || s.visibility === 'hidden' || s.display === 'none') return;
         const t = String(h.innerText || '').trim().replace(/\s+/g, ' ').replace(/\d+(?:[.,]\d+)?/g, '#').slice(0, 80);
-        if (!t) return;
-        all.push(t);
-        if (!titles.has(node)) out.push(t);
+        if (t) out.push(t);
     });
-    //  A page whose every heading is a form's title is still told by them: an empty view would match any page.
-    return out.length ? out : all;
+    return out;
 }
 
 /**
- * Runs in the page: presses the tab or navigation link named like a heading of the view
- * that was open — what a visitor does after a refresh opened the page on its first tab.
- * Only navigation (tabs, links, nav and header controls), never a form's button. Self-contained.
+ * Runs in the page: marks, best first, the tabs and navigation links named like the
+ * headings that a refresh took away — what a visitor presses to get back to the tab he
+ * was on. Returns how many were marked (data-joe-viewback="0", "1", …); the caller
+ * presses them one by one until the view is back. Words are compared whole, either way
+ * round («Stock» opens «Stock list», «📦 Stock (3)» opens «Stock»); a control holding a
+ * heading of its own (a brand link) and a form's button are never marked. Self-contained.
  */
-export function pressViewControl(headings: string[]): boolean {
-    const norm = (s: string) => String(s || '').replace(/\s+/g, ' ').replace(/\d+(?:[.,]\d+)?/g, '#').trim().toLowerCase();
-    const wanted = (Array.isArray(headings) ? headings : []).map(norm).filter(h => h.length >= 3);
-    if (!wanted.length) return false;
-    const nav = Array.from(document.querySelectorAll('[role="tab"], [role="tablist"] button, nav a, nav button, header a, header button, aside a, aside button, a[href^="#"]')) as HTMLElement[];
-    for (const el of nav) {
-        if (el.closest('form')) continue;
-        const r = el.getBoundingClientRect();
-        if (r.width <= 1 || r.height <= 1) continue;
-        const t = norm(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
-        if (t.length < 3) continue;
-        //  «Lessons» opens «Lessons» and «Upcoming lessons»; a word inside another word is not a match.
-        if (wanted.some(h => h === t || h.startsWith(`${t} `) || h.endsWith(` ${t}`) || h.includes(` ${t} `))) {
-            el.click();
-            return true;
+export function markViewControls(missing: string[]): number {
+    document.querySelectorAll('[data-joe-viewback]').forEach(el => el.removeAttribute('data-joe-viewback'));
+    const words = (s: string) => String(s || '').normalize('NFKC').toLowerCase()
+        .replace(/[\p{Extended_Pictographic}\p{P}\p{S}\d#]+/gu, ' ').split(/\s+/u).filter(w => w.length >= 2);
+    const wanted = (Array.isArray(missing) ? missing : []).map(words).filter(w => w.some(x => x.length >= 3));
+    if (!wanted.length) return 0;
+    const contains = (big: string[], small: string[]) => small.length > 0 && small.every(w => big.includes(w));
+    //  Tabs before navigation, navigation before a page's header and its links.
+    const tiers = ['[role="tab"]', '[role="tablist"] button, [role="tablist"] a', 'nav a, nav button, aside a, aside button', 'a[href^="#"]', 'header a, header button'];
+    const seen = new Set<Element>();
+    let n = 0;
+    for (const sel of tiers) {
+        for (const node of Array.from(document.querySelectorAll(sel))) {
+            const el = node as HTMLElement;
+            if (seen.has(el)) continue;
+            seen.add(el);
+            if (el.closest('form') || el.querySelector('h1, h2, h3, [role="heading"]')) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 1 || r.height <= 1) continue;
+            const label = words(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+            if (!label.some(w => w.length >= 3)) continue;
+            if (wanted.some(h => contains(h, label) || contains(label, h))) el.setAttribute('data-joe-viewback', String(n++));
         }
     }
-    return false;
+    return n;
 }
 
 /** Runs in the page: what says a quiet nav item is the link to the view already open (probeControls). Self-contained. */
@@ -3515,8 +3522,7 @@ export async function probeForms(
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
-            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];
-            await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
+            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];            await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  What the submit writes into the page's messages, the same words again included (watchFormAnswer);
             //  what writes itself while nothing is pressed is set aside first (markAnswerAmbient).
             await page.evaluate(watchFormAnswer).catch(() => false);
@@ -3759,11 +3765,27 @@ export async function probeForms(
              * on a dashboard of cards, raises the count without a record; a heading shown before that is
              * gone is another view, and proves nothing.
              */
-            const sameView = async () => {
-                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
-                return viewBeforeSubmit.every(h => now.includes(h));
+            const sameView = async (afterReload = false) => {
+                if (viewBeforeSubmit.length) {
+                    const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
+                    return viewBeforeSubmit.every(h => now.includes(h));
+                }
+                /*
+                 * Every heading was a form's own title, and a title that follows the form's mode or
+                 * what is typed says nothing about the view. Right after the submit it is the same
+                 * page; after a reload, the same view is one that still has no heading outside its
+                 * forms — a reload that opens on a dashboard with headings of its own is another.
+                 */
+                if (!afterReload) return true;
+                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => ['?'] as string[]);
+                return now.length === 0;
             };
-            const rowAdded = async () => !anchor && rowsBefore >= 0 && await sameView() && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
+            /** The headings of the view the form was sent from that are not on the page now. */
+            const missingHeadings = async (): Promise<string[]> => {
+                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
+                return viewBeforeSubmit.filter(h => !now.includes(h));
+            };
+            const rowAdded = async (afterReload = false) => !anchor && rowsBefore >= 0 && await sameView(afterReload) && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
             /*
              * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
              * closed its form at once and drew the bookings table after its GET answered; looked
@@ -3821,7 +3843,7 @@ export async function probeForms(
                 let found = '';
                 do {
                     if (!reloaded || Date.now() >= persistenceUntil() || !eyeIsOpen()) break;
-                    found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
+                    found = byRows ? (await rowAdded(true) ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
                 } while (!found && Date.now() < persistenceUntil() && eyeIsOpen());
                 /*
@@ -3831,15 +3853,23 @@ export async function probeForms(
                  * app that loses it on every reload is not told from one that keeps it.
                  */
                 let returnedToView = false;
-                if (!found && byRows && reloaded && eyeIsOpen() && !(await sameView())) {
-                    if (await page.evaluate(pressViewControl, viewBeforeSubmit).catch(() => false)) {
-                        const backUntil = Math.min(deadline, Date.now() + 3000);
+                if (!found && byRows && reloaded && eyeIsOpen() && !(await sameView(true))) {
+                    //  Named like what the refresh took away — never like the site's own heading, still on screen.
+                    const marked: number = await page.evaluate(markViewControls, await missingHeadings()).catch(() => 0);
+                    for (let i = 0; i < marked && !returnedToView && eyeIsOpen() && Date.now() < deadline; i++) {
+                        await page.evaluate((n: number) => {
+                            (document.querySelector(`[data-joe-viewback="${n}"]`) as HTMLElement | null)?.click();
+                        }, i).catch(() => { });
+                        //  A tab that fetches its list when opened is waited for while it is being answered.
+                        const pressedAt = Date.now();
+                        const backUntil = () => Math.min(deadline, pressedAt + 8000, Math.max(pressedAt + 3000, lastServedAt + 1200));
                         await page.waitForTimeout(300).catch(() => { });
-                        while (!found && Date.now() < backUntil && eyeIsOpen()) {
-                            if (await sameView()) { returnedToView = true; found = await rowAdded() ? 'a new row' : ''; }
+                        while (!found && Date.now() < backUntil() && eyeIsOpen()) {
+                            if (await sameView(true)) { returnedToView = true; found = await rowAdded(true) ? 'a new row' : ''; }
                             if (!found) await page.waitForTimeout(150).catch(() => { });
                         }
                     }
+                    await page.evaluate(() => document.querySelectorAll('[data-joe-viewback]').forEach(el => el.removeAttribute('data-joe-viewback'))).catch(() => { });
                 }
                 let keptBy = found ? 'page' : '';
                 if (!found && reloaded) {
@@ -3904,7 +3934,7 @@ export async function probeForms(
                  */
                 if (!keptBy) {
                     unproven(!reloaded ? 'reload failed'
-                        : byRows && !returnedToView && !(await sameView()) ? 'opened elsewhere'
+                        : byRows && !returnedToView && !(await sameView(true)) ? 'opened elsewhere'
                         : 'after reload');
                 } else {
                     metrics.formsPersisted++;

@@ -2239,16 +2239,18 @@ export async function retireRecordedServer(context: any, cwd: string, logs: stri
     }
 }
 
-/** The last stop's outcome per project: whether its port was let go (read by project_stop). */
-const LAST_RELEASE = new Map<string, boolean>();
-
-async function stopServer(key: string, logs: string[]): Promise<boolean> {
+/**
+ * `stopped`: the record is gone (the server was stopped, or what holds its port is not
+ * ours). `released`: nothing listens on its port any more. A server of ours that would
+ * not die keeps its record — never a live address Joe no longer knows it serves.
+ */
+async function stopServer(key: string, logs: string[]): Promise<{ stopped: boolean; released: boolean }> {
     const server = RUNNING.get(key);
-    if (!server?.pid) return false;
+    if (!server?.pid) return { stopped: false, released: true };
     const pid = server.pid;
-    const killed: number[] = [];
+    const killed: Array<{ pid: number; identity?: string }> = [];
     try {
-        if (await killRecorded(pid, server.identity, logs)) { killed.push(pid); logs.push(`stopped pid=${pid} port=${server.port}`); }
+        if (await killRecorded(pid, server.identity, logs)) { killed.push({ pid, identity: server.identity }); logs.push(`stopped pid=${pid} port=${server.port}`); }
     } catch (e: any) {
         logs.push(`stop_failed pid=${pid}: ${e?.message || e}`);
     }
@@ -2264,7 +2266,7 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
      */
     if (server.listener?.pid && server.listener.pid !== pid) {
         try {
-            if (await killRecorded(server.listener.pid, server.listener.identity, logs)) { killed.push(server.listener.pid); logs.push(`stopped listener pid=${server.listener.pid} port=${server.port}`); }
+            if (await killRecorded(server.listener.pid, server.listener.identity, logs)) { killed.push({ pid: server.listener.pid, identity: server.listener.identity }); logs.push(`stopped listener pid=${server.listener.pid} port=${server.port}`); }
         } catch (e: any) {
             logs.push(`stop_failed listener pid=${server.listener.pid}: ${e?.message || e}`);
         }
@@ -2273,13 +2275,26 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
     const released = killed.length
         ? await portReleased(server.port, killed)
         : !(await isPortOpen('127.0.0.1', server.port, 800));
-    if (!released) logs.push(`port ${server.port} is still held after the stop`);
-    LAST_RELEASE.set(key, released);
+    if (!released) {
+        logs.push(`port ${server.port} is still held after the stop`);
+        /*
+         * Held by our own server, whose identity could not be read in time (a loaded
+         * machine): it is still ours, and still serves. Its record stays, so the preview cap
+         * counts it, the next stop reaches it, and no delivery hands out an address nobody tracks.
+         */
+        if (!killed.length) {
+            const holder = await portListener.read(server.port, 1).catch(() => 0);
+            if (holder && (holder === pid || holder === server.listener?.pid)) {
+                logs.push(`pid ${holder} still listens on port ${server.port} and is this project's server: its record is kept`);
+                return { stopped: false, released: false };
+            }
+        }
+    }
     RUNNING.delete(key);
     // The session's record must not keep naming a pid that is gone: a later
     // retirement would otherwise kill whatever process reused it (finding 39).
     forgetRecordedLive(server.sessionKey, pid);
-    return true;
+    return { stopped: true, released };
 }
 
 /**
@@ -2289,18 +2304,32 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
  * outright. On Windows `taskkill /F` ends it at once and its pid may be reused within
  * seconds, so the port is what is watched there.
  */
-async function portReleased(port: number, pids: number[], waitMs = 15_000): Promise<boolean> {
+async function portReleased(port: number, killed: Array<{ pid: number; identity?: string }>, waitMs = 15_000): Promise<boolean> {
     if (!Number.isInteger(port) || port <= 0) return true;
-    const alive = (p: number) => { try { process.kill(p, 0); return true; } catch (e: any) { return e?.code === 'EPERM'; } };
     const posix = process.platform !== 'win32';
+    /** Still the process we killed: alive, not a zombie waiting to be reaped, and with its own start time. */
+    const stillOurs = (p: { pid: number; identity?: string }): boolean => {
+        if (process.platform === 'linux') {
+            try {
+                const stat = fs.readFileSync(`/proc/${p.pid}/stat`, 'utf8');
+                const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                if (fields[0] === 'Z' || fields[0] === 'X') return false;
+                return !p.identity || !fields[19] || p.identity === `linux:${fields[19]}`;
+            } catch { return false; }
+        }
+        try { process.kill(p.pid, 0); return true; } catch (e: any) { return e?.code === 'EPERM'; }
+    };
     const until = Date.now() + waitMs;
     let forced = false;
     for (;;) {
-        const running = posix && pids.some(alive);
+        const running = posix && killed.some(stillOurs);
         if (!running && !(await isPortOpen('127.0.0.1', port, 800))) return true;
         if (posix && !forced && Date.now() > until - waitMs / 2) {
             forced = true;
-            for (const p of pids) { try { process.kill(-p, 'SIGKILL'); } catch { try { process.kill(p, 'SIGKILL'); } catch { /* gone */ } } }
+            //  Only what is still the process we asked to stop: a pid reused since is never killed.
+            for (const p of killed.filter(stillOurs)) {
+                try { process.kill(-p.pid, 'SIGKILL'); } catch { try { process.kill(p.pid, 'SIGKILL'); } catch { /* gone */ } }
+            }
         }
         if (Date.now() >= until) return false;
         await new Promise(resolve => setTimeout(resolve, 250));
@@ -2602,7 +2631,7 @@ export async function adoptRecordedPreviews(
     const retired: string[] = [];
     const logs: string[] = [];
     for (const old of previewsToRetire(Array.from(RUNNING), '', opts.cap ?? livePreviewCap(), isRunning)) {
-        if (await stopServer(old, logs)) retired.push(old);
+        if ((await stopServer(old, logs)).stopped) retired.push(old);
     }
     return { adopted, forgotten, retired };
 }
@@ -2655,10 +2684,17 @@ export class ProjectStopTool implements ToolDefinition {
         const key = runKey(context);
         const server = RUNNING.get(key);
         if (!server) return { ok: true, output: { stopped: false, message: 'لا يوجد خادم يعمل لهذا المشروع.' }, logs };
-        await stopServer(key, logs);
-        const released = LAST_RELEASE.get(key) !== false;
-        LAST_RELEASE.delete(key);
-        return { ok: true, output: { stopped: true, released, message: released ? `تم إيقاف الخادم (المنفذ ${server.port}).` : `طُلب إيقاف الخادم، وما زال شيء يستمع على المنفذ ${server.port}.`, port: server.port }, logs };
+        const { stopped, released } = await stopServer(key, logs);
+        return {
+            ok: true,
+            output: {
+                stopped, released, port: server.port,
+                message: !stopped
+                    ? `لم يتوقف خادم المشروع، وما زال يستمع على المنفذ ${server.port}.`
+                    : released ? `تم إيقاف الخادم (المنفذ ${server.port}).` : `أُوقف خادم المشروع، وما زال شيء آخر يستمع على المنفذ ${server.port}.`,
+            },
+            logs,
+        };
     }
 }
 

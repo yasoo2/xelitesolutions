@@ -203,24 +203,34 @@ async function retry<T>(work: () => Promise<T>): Promise<T> {
  */
 export async function restoreAppData(s: AppDataSnapshot, keep: readonly string[] = []): Promise<AppDataRestore> {
     const result: AppDataRestore = { restored: [], removed: [], failed: [], tooLarge: [...s.tooLarge] };
-    for (const file of await appDataChanges(s, keep)) {
-        const rel = path.relative(s.root, file);
-        const before = s.files.get(file);
+    //  One family at a time: a database and its journal files, or a single file on its own.
+    const families = new Map<string, string[]>();
+    for (const file of await appDataChanges(s, keep)) families.set(familyOf(file), [...(families.get(familyOf(file)) || []), file]);
+    for (const members of families.values()) {
+        const staged: Array<{ file: string; tmp: string; k: KeptFile }> = [];
         try {
-            if (before) {
+            //  Every copy is written beside its file first: a family that cannot be staged whole is not touched.
+            for (const file of members) {
+                const k = s.files.get(file);
+                if (!k) continue;
+                const tmp = `${file}.joe-restore`;
                 await retry(async () => {
                     await fs.promises.mkdir(path.dirname(file), { recursive: true });
-                    await fs.promises.copyFile(before.copy, file);
-                    //  Its own times back too: what fingerprints the code reads them, and a walk's carried parts with it.
-                    await fs.promises.utimes(file, before.atime, before.mtime).catch(() => { });
+                    await fs.promises.copyFile(k.copy, tmp);
                 });
-                result.restored.push(rel);
-            } else {
-                await retry(() => fs.promises.rm(file, { force: true }));
-                result.removed.push(rel);
+                staged.push({ file, tmp, k });
+            }
+            for (const file of members) if (!s.files.has(file)) { await retry(() => fs.promises.rm(file, { force: true })); result.removed.push(path.relative(s.root, file)); }
+            for (const { file, tmp, k } of staged) {
+                await retry(() => fs.promises.rename(tmp, file));
+                //  Its own times back too: what fingerprints the code reads them, and a walk's carried parts with it.
+                await fs.promises.utimes(file, k.atime, k.mtime).catch(() => { });
+                result.restored.push(path.relative(s.root, file));
             }
         } catch (e: any) {
-            result.failed.push(`${rel} (${String(e?.code || e?.message || e).slice(0, 80)})`);
+            for (const { tmp } of staged) await fs.promises.rm(tmp, { force: true }).catch(() => { });
+            const why = String(e?.code || e?.message || e).slice(0, 80);
+            result.failed.push(...members.map(f => `${path.relative(s.root, f)} (${why})`));
         }
     }
     return result;

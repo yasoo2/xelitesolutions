@@ -49,7 +49,8 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
   load();
 </script></body></html>`;
 
-async function walk() {
+async function walk(siteHeading = true) {
+    const html = siteHeading ? PAGE : PAGE.replace(/<h1>Pantry stock<\/h1>\s*/u, '');
     const stock = [{ category: 'Rice', qty: 3 }];
     const server = http.createServer((req, res) => {
         if (req.url === '/api/stock' && req.method === 'POST') {
@@ -64,7 +65,7 @@ async function walk() {
             return;
         }
         if (req.url === '/api/stock') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(stock)); return; }
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(PAGE);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html);
     });
     await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
     const browser = await chromium.launch(getChromiumLaunchOptions());
@@ -85,11 +86,15 @@ async function walk() {
  * only in memory, whose tabs are state, lost every record on reload and was delivered with
  * no finding at all. A tester goes back to the tab he was on and counts there.
  */
-function tabbedPage(keptByServer: boolean): string {
+function tabbedPage(keptByServer: boolean, dressed = false): string {
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Pantry</title>
 <style>body{font-family:sans-serif;margin:16px} button,input,select{min-height:44px;margin:4px}</style></head><body>
-<h1>Pantry</h1>
-<nav><button type="button" class="tab" data-tab="home">Home</button><button type="button" class="tab" data-tab="stock">Stock</button></nav>
+${dressed
+    //  The second review: a brand link before the tabs, and a tab label with an emoji and a count.
+    ? `<header><a href="#" class="brand"><h1>Pantry</h1></a></header>
+<nav><button type="button" class="tab" data-tab="home">🏠 Home</button><button type="button" class="tab" data-tab="stock">📦 Stock <span class="badge">3</span></button></nav>`
+    : `<h1>Pantry</h1>
+<nav><button type="button" class="tab" data-tab="home">Home</button><button type="button" class="tab" data-tab="stock">Stock</button></nav>`}
 <section id="home"><h2>Welcome</h2><p>Your pantry at a glance.</p></section>
 <section id="stock" hidden><h2>Stock</h2><ul id="rows"></ul>
 <form id="add">
@@ -115,9 +120,9 @@ function tabbedPage(keptByServer: boolean): string {
 </script></body></html>`;
 }
 
-async function walkTabbed(keptByServer: boolean) {
+async function walkTabbed(keptByServer: boolean, dressed = false) {
     const stock = [{ category: 'Rice', qty: 3 }];
-    const html = tabbedPage(keptByServer);
+    const html = tabbedPage(keptByServer, dressed);
     const server = http.createServer((req, res) => {
         if (req.url === '/api/stock' && req.method === 'POST') {
             let body = '';
@@ -147,6 +152,20 @@ test('a record kept behind a tab is counted on that tab after the refresh, and p
     const { result, codes } = await walkTabbed(true);
     expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
     expect(codes.map(f => f.code)).not.toContain('form_persistence_unproven');
+});
+
+test('the way back to the tab is the tab: not the brand link before it, and found under its emoji and its count', async () => {
+    const { result, codes } = await walkTabbed(true, true);
+    expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
+    expect(codes.map(f => f.code)).not.toContain('form_persistence_unproven');
+});
+
+//  The second review: with no heading outside the form, the form's title still never decides the view right after the submit.
+test("a page whose only heading is the form's own title still has its record proven kept", async () => {
+    const { result, stock } = await walk(false);
+    expect(stock.length).toBeGreaterThan(1);
+    expect(Number(result.metrics.formsPersistenceUnproven || 0)).toBe(0);
+    expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
 });
 
 test('a record an app loses on every refresh is never let through as «not measured»', async () => {

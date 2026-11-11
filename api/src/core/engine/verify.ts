@@ -595,7 +595,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             return 'left';
         }
         //  Said stopped is not stopped: a file written back under a live server is written over again by it.
-        if ((stop as any)?.output?.released === false || (liveUrl && !(await addressIsFree(liveUrl)))) {
+        //  The address is asked itself when there is one: «released: false» can mean a zombie the port has already left.
+        if (liveUrl ? !(await addressIsFree(liveUrl)) : (stop as any)?.output?.released === false) {
             note(`browser QA: the records its forms left were not put back: something still answers at ${liveUrl || 'its address'} after the server was stopped, and a running server keeps its own copy of them`);
             return 'left';
         }
