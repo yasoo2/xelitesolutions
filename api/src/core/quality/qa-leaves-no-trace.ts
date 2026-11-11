@@ -1,0 +1,173 @@
+/**
+ * THE BROWSER QA LEAVES THE APP AS IT FOUND IT.
+ *
+ * The QA types into every form of the app it measures — a name of digits, a
+ * name of spaces, `<b>qa</b><img src=x onerror=…>` — and a working app keeps
+ * what it is given. On 2026-11-11 (qa-live15, the electronics store) the
+ * delivered store.db held two orders and three warranties named with that
+ * markup, and a product «QA123». They were the QA's, not the builder's, and
+ * the user would have opened his new app on them.
+ *
+ * They cost the delivery too. Each measurement saw the rows the one before it
+ * left: the look judge was shown a products table with «<b>qa</b>…» in it and
+ * answered «does not look clean», twice — two refused deliveries, four minutes
+ * of re-measuring, for text the app had escaped correctly.
+ *
+ * So the files the running app keeps its records in are read before the
+ * QA's first press and written back after its last, with the server stopped
+ * (a running server holds them open, and keeps its own copy in memory). A
+ * file the QA made the app create — an upload, a database that was not there
+ * — is removed. Only data is touched: a database file anywhere, and the
+ * files under a folder an app keeps records in. Source, builds, Joe's own
+ * folder and anything Joe's repair changed on purpose are never touched.
+ */
+import fs from 'fs';
+import path from 'path';
+
+/** Folders that are never an app's records: dependencies, builds, caches, Joe's own state. */
+const NOT_DATA_DIRS = new Set([
+    'node_modules', '.git', '.joe', '.next', '.nuxt', '.svelte-kit', '.output', 'dist', 'build', 'out',
+    'coverage', '.cache', '.parcel-cache', '.turbo', '.vite', '__pycache__', '.pytest_cache', '.venv', 'venv',
+    '.mypy_cache', '.idea', '.vscode',
+]);
+/** A database file, wherever it is kept, with the journal files beside it. */
+const DATABASE_FILE = /\.(?:db|sqlite|sqlite3|db3)(?:-wal|-shm|-journal)?$/iu;
+/** A folder an app keeps its records or uploads in: every file inside but code is data. («store» is not one: it is where a React app keeps its state code.) */
+const DATA_DIR = /^(?:data|db|database|databases|storage|uploads?|var|records)$/iu;
+/** Code and schema kept beside the records (data/seed.js, db/migrations/001.sql): source, never data. */
+const CODE_FILE = /\.(?:[cm]?[jt]sx?|py|rb|go|java|php|sql|css|scss|html?|vue|svelte|md)$/iu;
+/** A records file kept outside such a folder: db.json, store.json, data.jsonl… */
+const RECORDS_FILE = /^(?:db|database|data|store|storage|records|items|entries)\.json$|\.(?:jsonl|ndjson)$/iu;
+
+const MAX_FILES = 2000;
+const MAX_FILE_BYTES = 16 * 1024 * 1024;
+const MAX_TOTAL_BYTES = 64 * 1024 * 1024;
+const MAX_DEPTH = 6;
+
+export interface AppDataSnapshot {
+    root: string;
+    /** Every data file as it was, by absolute path. */
+    files: Map<string, Buffer>;
+    /** Data files too large to keep a copy of: never written back, and said so. */
+    tooLarge: string[];
+}
+
+export interface AppDataRestore {
+    restored: string[];
+    removed: string[];
+    failed: string[];
+    tooLarge: string[];
+}
+
+function isData(rel: string): boolean {
+    const parts = rel.split(/[\\/]/u);
+    const name = parts[parts.length - 1];
+    if (DATABASE_FILE.test(name)) return true;
+    if (parts.slice(0, -1).some(p => DATA_DIR.test(p))) return !CODE_FILE.test(name);
+    return RECORDS_FILE.test(name);
+}
+
+/** The data files under `root` now, relative to it. Links are never followed. */
+async function dataFiles(root: string): Promise<string[]> {
+    const found: string[] = [];
+    const walk = async (dir: string, depth: number): Promise<void> => {
+        if (depth > MAX_DEPTH || found.length >= MAX_FILES) return;
+        let entries: fs.Dirent[];
+        try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
+        for (const e of entries) {
+            if (found.length >= MAX_FILES) return;
+            if (e.isSymbolicLink()) continue;
+            const abs = path.join(dir, e.name);
+            if (e.isDirectory()) {
+                if (!NOT_DATA_DIRS.has(e.name.toLowerCase())) await walk(abs, depth + 1);
+            } else if (e.isFile() && isData(path.relative(root, abs))) {
+                found.push(abs);
+            }
+        }
+    };
+    await walk(root, 0);
+    return found;
+}
+
+/** The app's data files as they are now: taken before the QA's first press. */
+export async function snapshotAppData(root: string): Promise<AppDataSnapshot> {
+    const files = new Map<string, Buffer>();
+    const tooLarge: string[] = [];
+    let total = 0;
+    for (const file of await dataFiles(root)) {
+        try {
+            const size = (await fs.promises.stat(file)).size;
+            if (size > MAX_FILE_BYTES || total + size > MAX_TOTAL_BYTES) { tooLarge.push(file); continue; }
+            files.set(file, await fs.promises.readFile(file));
+            total += size;
+        } catch { /* gone between the walk and the read: it was not there to keep */ }
+    }
+    return { root, files, tooLarge };
+}
+
+const same = (a: Buffer, b: Buffer) => a.length === b.length && a.equals(b);
+
+/** The data files the app changed or created since the snapshot (a file kept on purpose excluded). */
+export async function appDataChanges(s: AppDataSnapshot, keep: readonly string[] = []): Promise<string[]> {
+    const kept = new Set(keep.map(k => path.resolve(s.root, k).toLowerCase()));
+    const changed: string[] = [];
+    const now = new Set((await dataFiles(s.root)).map(f => path.resolve(f)));
+    for (const file of now) {
+        if (kept.has(file.toLowerCase()) || s.tooLarge.includes(file)) continue;
+        const before = s.files.get(file);
+        if (!before) { changed.push(file); continue; }
+        try { if (!same(before, await fs.promises.readFile(file))) changed.push(file); } catch { changed.push(file); }
+    }
+    for (const file of s.files.keys()) if (!now.has(file) && !kept.has(file.toLowerCase())) changed.push(file);
+    return changed;
+}
+
+/** A file a server has just let go of can still be held for a moment on Windows. */
+async function retry<T>(work: () => Promise<T>): Promise<T> {
+    let last: unknown;
+    for (let i = 0; i < 8; i++) {
+        try { return await work(); } catch (e: any) {
+            last = e;
+            if (!/EBUSY|EPERM|EACCES|ENOTEMPTY/u.test(String(e?.code || e?.message))) throw e;
+            await new Promise(r => setTimeout(r, 150 * (i + 1)));
+        }
+    }
+    throw last;
+}
+
+/**
+ * Puts every data file back as the snapshot holds it, and removes what the
+ * app created since. Call it with the app's server stopped.
+ */
+export async function restoreAppData(s: AppDataSnapshot, keep: readonly string[] = []): Promise<AppDataRestore> {
+    const result: AppDataRestore = { restored: [], removed: [], failed: [], tooLarge: [...s.tooLarge] };
+    for (const file of await appDataChanges(s, keep)) {
+        const rel = path.relative(s.root, file);
+        const before = s.files.get(file);
+        try {
+            if (before) {
+                await retry(async () => {
+                    await fs.promises.mkdir(path.dirname(file), { recursive: true });
+                    await fs.promises.writeFile(file, before);
+                });
+                result.restored.push(rel);
+            } else {
+                await retry(() => fs.promises.rm(file, { force: true }));
+                result.removed.push(rel);
+            }
+        } catch (e: any) {
+            result.failed.push(`${rel} (${String(e?.code || e?.message || e).slice(0, 80)})`);
+        }
+    }
+    return result;
+}
+
+/** One line for the verification log: what the QA's own records were, and that they are gone. */
+export function restoreLine(r: AppDataRestore): string {
+    const parts: string[] = [];
+    if (r.restored.length) parts.push(`${r.restored.length} data file(s) put back as they were before it (${r.restored.slice(0, 6).join(', ')}${r.restored.length > 6 ? ', …' : ''})`);
+    if (r.removed.length) parts.push(`${r.removed.length} file(s) it made the app create removed (${r.removed.slice(0, 6).join(', ')}${r.removed.length > 6 ? ', …' : ''})`);
+    if (r.failed.length) parts.push(`could not be put back: ${r.failed.join(', ')}`);
+    if (r.tooLarge.length) parts.push(`too large to keep a copy of, so left as the QA left them: ${r.tooLarge.map(f => path.basename(f)).join(', ')}`);
+    return `the QA's own records are gone from the app: ${parts.join('; ') || 'nothing had changed'}`;
+}

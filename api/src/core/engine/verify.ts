@@ -45,6 +45,7 @@ import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
 import { runPython } from '../quality/python-runtime';
 import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../quality/app-audit';
+import { appDataChanges, restoreAppData, restoreLine, snapshotAppData, type AppDataSnapshot } from '../quality/qa-leaves-no-trace';
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -502,6 +503,9 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     let liveStarted = false;
     let stoppedServers: string[] = [];
     let auditRoots: string[] = [root];
+    /** The app's records before its server was started for this check, and how it was started (qa-leaves-no-trace.ts). */
+    let dataBefore: AppDataSnapshot | undefined;
+    let liveInput: Record<string, unknown> | undefined;
     if (programOnly) {
         skipped.set('live', repository
             ? 'the user\'s own repository is proven by its own test suite, not by a page Joe opens'
@@ -548,6 +552,9 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 remark('live', `started with the command this run's server ${start.adopted.name} was seen serving with: ${start.adopted.command}`);
             }
             liveStarted = true;
+            //  Read at rest, before the server holds the files: what the QA's records are put back to.
+            dataBefore = await snapshotAppData(root).catch(() => undefined);
+            liveInput = start.input;
             const started = await runTool('project_run', start.input);
             liveRun = postRepairRunOutcome(started);
             const cwd = String(liveRun?.output?.cwd || '').trim();
@@ -558,6 +565,34 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     }
     const liveUrl = verifiedLiveUrl(ledger.all());
     if (liveUrl) passed.set('live', `project_run started it and it answers at ${liveUrl}${liveRun?.output?.kind ? ` (${liveRun.output.kind})` : ''}`);
+
+    /*
+     * The Browser QA leaves the app as it found it (qa-leaves-no-trace.ts):
+     * before a second measurement, and once the verdict is known, the records
+     * its forms made the app keep are put back — the server stopped first, and
+     * started again on the same address when the page must stay live.
+     * A file Joe's own repair changed on purpose is never put back.
+     */
+    let qaAuditsTaken = 0;
+    const keptOnPurpose: string[] = [];
+    const livePort = (() => { try { const p = Number(new URL(String(liveUrl)).port); return p > 0 ? p : 0; } catch { return 0; } })();
+    const putQaRecordsBack = async (startAgain: boolean): Promise<void> => {
+        if (!dataBefore || !qaAuditsTaken) return;
+        let changes: string[] = [];
+        try { changes = await appDataChanges(dataBefore, keptOnPurpose); } catch { return; }
+        if (!changes.length) return;
+        const stop = await runTool('project_stop', {}).catch((e: unknown) => ({ ok: false, error: message(e) }));
+        if (stop?.ok !== true) {
+            note(`browser QA: the records its forms left could not be put back, because the server did not stop: ${String(stop?.error || 'project_stop failed')}`);
+            return;
+        }
+        note(`browser QA: ${restoreLine(await restoreAppData(dataBefore, keptOnPurpose))}`);
+        if (startAgain && liveInput) {
+            const again = await runTool('project_run', { ...liveInput, ...(livePort ? { port: livePort } : {}) })
+                .catch((e: unknown) => ({ ok: false, error: message(e) }));
+            if (again?.ok !== true) note(`live: the server could not be started again after the QA's records were put back: ${String(again?.error || 'project_run failed')}`);
+        }
+    };
 
     const interfaceRoots = deliveredRoots([...auditRoots, String(liveRun?.output?.cwd || '').trim()]);
 
@@ -644,16 +679,22 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
              * «qa_budget_exhausted», a kind the first measurement did not have,
              * so every repair on a product of that size was put back.
              */
+            /** One walk of the page, on the records the app had before the QA's first one. */
+            const walk = async (timeoutMs: number): Promise<AppAudit> => {
+                if (qaAuditsTaken > 0) await putQaRecordsBack(true);
+                qaAuditsTaken++;
+                return browserQa.audit(auditDir, options(timeoutMs));
+            };
             const measure = async (): Promise<AppAudit> => {
-                let a = await browserQa.audit(auditDir, options(45_000));
+                let a = await walk(45_000);
                 //  A coverage timeout is the walker's budget, not the app: once more, larger.
                 if (!a.skipped && a.findings.some(f => f.id === 'qa_budget_exhausted')) {
-                    const retry = await browserQa.audit(auditDir, options(COVERAGE_RETRY_TIMEOUT_MS));
+                    const retry = await walk(COVERAGE_RETRY_TIMEOUT_MS);
                     if (!retry.skipped) a = retry;
                 }
                 //  A browser-rig failure says nothing about the app: measured once more.
                 if (!a.skipped && hasOnlyBrowserQaInfrastructureFindings(a.findings)) {
-                    const retry = await browserQa.audit(auditDir, options(45_000));
+                    const retry = await walk(45_000);
                     if (!retry.skipped) a = retry;
                 }
                 return a;
@@ -674,6 +715,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
                 try {
                     const m = await mender(mendRoot, audit.findings, isAr, note, auditDir);
                     if (m) {
+                        //  What the repair wrote is its own, kept or undone by it — never put back as a QA record.
+                        keptOnPurpose.push(...m.changed.map(f => path.resolve(mendRoot, f)));
                         const again = await measure();
                         if (!again.skipped && mendIsBetter(audit.findings, again.findings)) {
                             audit = again;
@@ -784,6 +827,8 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             note(`live: the server project_run started could not be stopped: ${String(stop?.error || 'project_stop failed')}`);
         }
     }
+    //  The app he receives, and the next check, start from his records, never the QA's.
+    await putQaRecordsBack(liveStarted && verdict.verified);
 
     const testsAsked = testsRequestedIn(request);
     const reasons = skipReasons({
