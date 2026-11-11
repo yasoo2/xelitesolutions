@@ -58,12 +58,17 @@ describe('deliveries as a report\'s data ask for the report, not for a shipping 
         'اعمل صفحة تقرير تفاعلية لـمحل ورود تحمّل بيانات تجريبية عن التوصيلات وتعرض ثلاثة رسوم (حسب الشهر وحسب التصنيف وأعلى 5) مع فلترة حسب الفترة.',
         'Build an interactive report page for a flower shop that loads sample delivery data and shows three charts with a date filter.',
         'A dashboard of last month\'s shipments by region, with charts.',
+        //  L182, 2026-11-11: deliveries booked and cancelled from a chat are records, not a shipping system — in Arabic as in English.
+        'ابني صفحة روبوت محادثة لخدمة عملاء محل ورود يجيب من قائمة أسئلة مدمجة ويسمح بحجز أو إلغاء التوصيلات من المحادثة ويحفظ سجلها.',
+        'Build a customer-support chatbot page for a flower shop that answers from a built-in FAQ and lets customers book or cancel deliveries from the chat.',
     ])('«%s» does not ask for shipping', request => {
         expect(ids(request)).not.toContain('shipping');
     });
 
     test.each([
         'ابني متجر الكتروني للورود مع سلة وخيارات التوصيل وتتبع الطلبات',
+        'نظام لشركة شحن فيه الطرود ومناطق التوصيل وحالة التوصيل',
+        'متجر عطور مع رسوم التوصيل حسب المدينة',
         'Build an online store with cart, shipping options and order tracking',
         'A dashboard for a courier with delivery tracking and delivery statuses',
     ])('«%s» still asks for shipping', request => {
