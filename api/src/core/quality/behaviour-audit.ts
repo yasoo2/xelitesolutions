@@ -728,6 +728,43 @@ export function stampOwnDelete(arg: { needle: string; stamp: string; onlyOne: bo
     return `[${stamp}="1"]`;
 }
 
+/**
+ * Runs in the page: watches the page's message areas for what a submit writes into them — the same
+ * words written again included. Self-contained; readFormAnswer() reads and stops it.
+ *
+ * The eleventh live check, 2026-11-11 (L171, a dental clinic's booking): «احجز الموعد» answered
+ * «اختر التاريخ أولاً.» in its role="status" line — the date and the slot are picked outside the
+ * form — and the QA's earlier cases had drawn the very same words. Compared before and after, the
+ * page had not changed: «filled in completely and submitted, and nothing happened at all». A
+ * person sees the message come again; the walk now sees it written.
+ */
+export function watchFormAnswer(): boolean {
+    const w = window as any;
+    try { w.__joeQaAnswerObs?.disconnect(); } catch { /* none yet */ }
+    w.__joeQaAnswer = [];
+    const MSG = '[role="alert"],[role="status"],[aria-live],.error,.err,.msg,.message,.notice,.feedback,.toast,.alert,[data-error],[data-status]';
+    const obs = new MutationObserver(records => {
+        for (const r of records) {
+            const node = (r.target.nodeType === 1 ? r.target : r.target.parentElement) as Element | null;
+            const msg = node && node.closest(MSG);
+            if (!msg) continue;
+            w.__joeQaAnswer.push(String((msg as HTMLElement).innerText || '').trim().slice(0, 300));
+        }
+    });
+    obs.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class', 'hidden'] });
+    w.__joeQaAnswerObs = obs;
+    return true;
+}
+
+/** Runs in the page: what the message areas were written with since watchFormAnswer, and stops watching. Self-contained. */
+export function readFormAnswer(): string[] {
+    const w = window as any;
+    try { w.__joeQaAnswerObs?.disconnect(); } catch { /* not watching */ }
+    const out: string[] = Array.isArray(w.__joeQaAnswer) ? w.__joeQaAnswer.slice(0, 50) : [];
+    w.__joeQaAnswer = [];
+    return out;
+}
+
 /** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
 export function recordRowCount(): number {
     const ROW = 'li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]';
@@ -3092,6 +3129,8 @@ export async function probeForms(
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
             viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
+            //  What the submit writes into the page's messages, the same words again included (watchFormAnswer).
+            await page.evaluate(watchFormAnswer).catch(() => false);
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
             if (f.submitSel) {
@@ -3168,6 +3207,12 @@ export async function probeForms(
                 } else if (effect) {
                     effect = 'submitted';
                 }
+            }
+            //  Nothing changed to the eye, yet the page wrote its answer again — the same words as an earlier case drew.
+            const written: string[] = await page.evaluate(readFormAnswer).catch(() => [] as string[]);
+            if (!effect && written.some(Boolean)) {
+                effect = isVisibleFormRefusal(written.join('\n')) ? 'refused' : 'submitted';
+                metrics.formsAnsweredAgain = Number(metrics.formsAnsweredAgain || 0) + 1;
             }
             /*
              * ⛔ WHAT THE SERVER SAID DECIDES WHAT THE PAGE DID NOT SHOW.
