@@ -1942,11 +1942,50 @@ export class ProjectRunTool implements ToolDefinition {
         const probeList = buildProbeList(port, detected.forced, preExistingCommonPorts);
         let livePort = 0;
         let confirmedLiveUrl = '';
-        const deadline = Date.now() + 45000; // weak machines + npm cold start
+        /*
+         * ⛔ …AND A PORT IT DID NOT CHOOSE IS ITS OWN ONLY WHEN ITS OWN PROCESS HOLDS IT.
+         *
+         * The fourth live check, 2026-11-10 (L162, an Arabic store): a «vite preview»
+         * of another project had held 4173 for two days. The snapshot above gave each
+         * common port 250 ms on a loaded machine and saw 4173 free; the store was
+         * started on 4300, and the first port that answered was 4173 — «live preview:
+         * http://127.0.0.1:4173/», the store's own server never heard. The coverage
+         * probe then asked that other project for /api/products, got its page, and
+         * refused the store «products not served»; Joe rebuilt a server that worked,
+         * eleven minutes. A port other than the one this launch chose answers for
+         * this project only when the process listening on it descends from the
+         * process it launched; any other is somebody else's, and is never «the
+         * project is running».
+         */
+        const foreignPorts = new Set<number>();
+        /*
+         * Asking whose a port is takes its time on a loaded machine (the port table ~10 s, the
+         * process chain more): that time is the search's, not the server's, so it is added to the
+         * wait (at most a minute more), and after each such question the port this launch chose is
+         * heard first — a server that came up meanwhile is never lost to a pass spent on others
+         * (the review of 2026-11-10).
+         */
+        let deadline = Date.now() + 45000; // weak machines + npm cold start
+        let askedForMs = 0;
+        const ownPortAnswers = async (): Promise<string> => port > 0 && await isLoopbackPortOpen(port, 750) ? answeringLoopbackUrl(port, 1500) : '';
         while (Date.now() < deadline && !livePort) {
             await new Promise(r => setTimeout(r, 700));
             for (const p of probeList) {
+                if (foreignPorts.has(p)) continue;
                 if (!await isLoopbackPortOpen(p, 750)) continue;
+                if (p !== port) {
+                    const askedAt = Date.now();
+                    const held = await heldByLaunched(p, Number(pid));
+                    const grace = Math.min(Date.now() - askedAt, 60000 - askedForMs);
+                    if (grace > 0) { deadline += grace; askedForMs += grace; }
+                    if (held === false) {
+                        foreignPorts.add(p);
+                        logs.push(`project_run: port ${p} answers, but not from the process this launch started — somebody else's server, ignored`);
+                        const own = await ownPortAnswers();
+                        if (own) { livePort = port; confirmedLiveUrl = own; break; }
+                        continue;
+                    }
+                }
                 const answeringUrl = await answeringLoopbackUrl(p, 1500);
                 if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }
             }
@@ -2298,7 +2337,9 @@ export const portListener = {
             const result: any = await ExecutionGateway.execute({
                 id: `project-run-port-listener-${port}-${Date.now()}`,
                 type: 'shell',
-                payload: { command: probe.command, args: probe.args, options: { timeout: 10000, shell: false, stdio: 'pipe', windowsHide: true } },
+                //  The machine's whole table takes ~10 s on his laptop (10.4 s measured, 2026-11-10); 10 s timed out
+                //  three attempts in a row — thirty seconds spent to read «no listener». Given the time it needs.
+                payload: { command: probe.command, args: probe.args, options: { timeout: 25000, shell: false, stdio: 'pipe', windowsHide: true } },
                 priority: 'high',
             } as any);
             const out = String(result?.data?.output || result?.data?.stdout || '');
@@ -2309,6 +2350,76 @@ export const portListener = {
         }
     },
 };
+
+/**
+ * A process and the processes it descends from, nearest first (at most twelve):
+ * whether a port's listener is the server this launch started, or another's.
+ *
+ * A parent that started after its child is not its parent: the real one died and
+ * the system gave its number to a newer process — perhaps the very launch being
+ * asked about, which would make somebody else's long-running server look like
+ * this project's (the review of 2026-11-10). The chain stops there.
+ */
+export const processAncestry = {
+    async read(pid: number): Promise<number[]> {
+        if (!Number.isInteger(pid) || pid <= 0) return [];
+        try {
+            if (process.platform === 'linux') {
+                const chain: number[] = [];
+                let childStarted = Infinity;
+                for (let p = pid, i = 0; p > 1 && i < 12; i++) {
+                    let stat = '';
+                    try { stat = fs.readFileSync(`/proc/${p}/stat`, 'utf8'); } catch { break; }
+                    //  After «(name) »: state, ppid, … field 22 (starttime, in clock ticks since boot) is index 19.
+                    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                    const started = Number(fields[19]);
+                    if (Number.isFinite(started) && started > childStarted) break;
+                    chain.push(p);
+                    if (Number.isFinite(started)) childStarted = started;
+                    p = Number(fields[1]) || 0;
+                }
+                return chain;
+            }
+            const probe = process.platform === 'win32'
+                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `$p=${pid}; $c=@(); $t=$null; for($i=0; $i -lt 12 -and $p -gt 0; $i++){ $x=Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; if(-not $x){break}; if($t -and $x.CreationDate -and $x.CreationDate -gt $t){break}; $c+=$p; $t=$x.CreationDate; $p=[int]$x.ParentProcessId }; $c -join ','`] }
+                : { command: 'ps', args: ['-A', '-o', 'pid=,ppid='] };
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-ancestry-${pid}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 30000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const out = String(result?.data?.output || result?.data?.stdout || '').trim();
+            if (!result?.success) return [];
+            if (process.platform === 'win32') return out.split(/[\s,]+/u).map(Number).filter(n => Number.isInteger(n) && n > 0);
+            const parent = new Map<number, number>();
+            for (const line of out.split(/\r?\n/u)) {
+                const [a, b] = line.trim().split(/\s+/u).map(Number);
+                if (a > 0) parent.set(a, b || 0);
+            }
+            const chain: number[] = [];
+            for (let p = pid, i = 0; p > 1 && i < 12; i++) { chain.push(p); p = parent.get(p) || 0; }
+            return chain;
+        } catch {
+            return [];
+        }
+    },
+};
+
+/**
+ * Whether the process listening on a port is the one this launch started, or
+ * descends from it: true, false — or null when the machine's tables could not
+ * be read (a loaded machine times the query out), which proves neither.
+ */
+export async function heldByLaunched(port: number, launched: number): Promise<boolean | null> {
+    if (!Number.isInteger(launched) || launched <= 0) return null;
+    const listener = await portListener.read(port, 1);
+    if (!listener) return null;
+    if (listener === launched) return true;
+    const chain = await processAncestry.read(listener);
+    if (!chain.length) return null;
+    return chain.includes(launched);
+}
 
 /** The listener of a server's port when it is not the launched pid itself, with its identity. */
 async function listenerOf(port: number, launched: number): Promise<{ listener?: { pid: number; identity: string } }> {

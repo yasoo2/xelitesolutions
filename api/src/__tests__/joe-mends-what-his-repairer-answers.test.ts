@@ -25,7 +25,10 @@ describe('which findings refuse a delivery', () => {
         [{ id: 'form_no_validation', severity: 'low' }, false],
         [{ id: 'h1_count', severity: 'low' }, false],
         //  About proof: the walk did not reach them, the data was not checked live.
-        [{ id: 'controls_not_reached', severity: 'low' }, true],
+        //  A few the walk could not press are told — the builder cannot make the walk press what its own
+        //  presses took away (L162, 2026-11-10: three refusals for 1 of 22); a fifth of the page or more refuses.
+        [{ id: 'controls_not_reached', severity: 'low' }, false],
+        [{ id: 'controls_not_reached', severity: 'major' }, true],
         [{ id: 'live_data_not_verified', severity: 'low' }, true],
         //  Arabic is his: a field that types it from the left is fixed before delivery.
         [{ id: 'arabic_field_ltr', severity: 'low' }, true],

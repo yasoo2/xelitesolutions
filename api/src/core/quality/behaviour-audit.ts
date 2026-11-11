@@ -480,6 +480,14 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     // Same reason as the controls above: a hash route keeps the old stamps.
     document.querySelectorAll('[data-joe-form]').forEach(el => el.removeAttribute('data-joe-form'));
     document.querySelectorAll('[data-joe-fld]').forEach(el => el.removeAttribute('data-joe-fld'));
+    /*
+     * …and the submit stamps with them. The seventh live check, 2026-11-10 (L160, one document, its views
+     * hidden and shown): the cars view's «Save» kept «joe-form-1» from the cars pass; on the customers
+     * view the customers' «Save» got «joe-form-1» too, and the QA filled the customers' form and pressed
+     * the first stamp in the document — the hidden cars «Save». Nothing was sent: «filled in completely and
+     * submitted, and nothing happened at all», ten refusals, and a working dashboard failed after 76 minutes.
+     */
+    document.querySelectorAll('[data-joe-sub]').forEach(el => el.removeAttribute('data-joe-sub'));
     const forms: Array<{
         sel: string; label: string;
         fields: Array<{ sel: string; tag: string; type: string; required: boolean; options: string[]; name: string; pattern: string; min: string; max: string; minLength: number; maxLength: number; step: string; inputMode: string }>;
@@ -560,6 +568,89 @@ function findForms(o: { maxForms: number; maxFields: number }) {
     return forms;
 }
 
+/**
+ * Whether a nav item names the page it is on: its words (without «ال», «the») are in the page's
+ * title or main heading, or it is «Home» / «الرئيسية» on the start page.
+ */
+export function namesCurrentPage(label: string, pageNames: string, url = ''): boolean {
+    const norm = (s: string) => String(s || '').toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/u)
+        .filter(Boolean).map(w => w.replace(/^(?:ال|وال|بال|لل)(?=[\u0600-\u06FF]{2,})/u, '').replace(/^the$/u, '')).filter(Boolean);
+    const words = norm(label);
+    if (!words.length || words.length > 4) return false;
+    let start = false;
+    try { const u = new URL(url); start = (u.pathname === '/' || /\/index\.html?$/i.test(u.pathname)) && (!u.hash || u.hash === '#' || u.hash === '#/'); } catch { /* no address */ }
+    if (start && /^(?:home|homepage|main|الرئيسية|الصفحة الرئيسية|رئيسية|الرئيسيه)$/iu.test(String(label).trim())) return true;
+    const page = new Set(norm(pageNames));
+    return words.every(w => page.has(w));
+}
+
+/** Runs in the page: how many shown controls carry each name, named as findControls names them — stamping nothing. Self-contained. */
+export function controlLabelCounts(): Record<string, number> {
+    const out: Record<string, number> = {};
+    document.querySelectorAll('button, [role="button"], a[href], summary, input[type="submit"], input[type="button"], [role="tab"], [role="menuitem"], [role="link"], [data-tab], .tab, .filter, [data-filter], [aria-expanded], [aria-haspopup], .menu-toggle, .nav-toggle, .hamburger, .burger, [data-menu]').forEach(node => {
+        const el = node as HTMLElement;
+        const r = el.getBoundingClientRect();
+        const cs = getComputedStyle(el);
+        if (!(r.width > 4 && r.height > 4 && cs.visibility !== 'hidden' && cs.display !== 'none' && Number(cs.opacity) > 0.05)) return;
+        const text = (el.innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+        const name = el.getAttribute('aria-label') || el.getAttribute('title') || text || el.tagName.toLowerCase();
+        out[name] = (out[name] || 0) + 1;
+    });
+    return out;
+}
+
+/** Runs in the page: the headings a visitor sees, numbers masked — the view he is on («Your cart (2)» is the cart either way). Self-contained. */
+export function visibleHeadings(): string[] {
+    const out: string[] = [];
+    document.querySelectorAll('h1, h2, [role="heading"]').forEach(node => {
+        const h = node as HTMLElement;
+        const r = h.getBoundingClientRect();
+        const s = getComputedStyle(h);
+        if (r.width <= 0 || r.height <= 0 || s.visibility === 'hidden' || s.display === 'none') return;
+        const t = String(h.innerText || '').trim().replace(/\s+/g, ' ').replace(/\d+(?:[.,]\d+)?/g, '#').slice(0, 80);
+        if (t) out.push(t);
+    });
+    return out;
+}
+
+/** Runs in the page: what says a quiet nav item is the link to the view already open (probeControls). Self-contained. */
+export function currentLinkFacts(sel: string): { names: string; toggle: boolean; marked: boolean; first: boolean; brand: boolean } | null {
+    const el = document.querySelector(sel) as HTMLElement | null;
+    if (!el) return null;
+    const shown = (n: Element) => {
+        const r = (n as HTMLElement).getBoundingClientRect();
+        const s = getComputedStyle(n as HTMLElement);
+        return r.width > 0 && r.height > 0 && s.visibility !== 'hidden' && s.display !== 'none';
+    };
+    const names = [document.title, ...Array.from(document.querySelectorAll('h1')).filter(shown).map(h => (h as HTMLElement).innerText)].join(' ');
+    const cls = String(el.getAttribute('class') || '');
+    const popup = el.getAttribute('aria-haspopup');
+    const toggle = el.hasAttribute('aria-expanded') || (!!popup && popup !== 'false') || /(?:^|[\s_-])(?:menu-toggle|nav-toggle|hamburger|burger|toggle)(?:$|[\s_-])/i.test(cls);
+    const current = el.getAttribute('aria-current');
+    const marked = (!!current && current !== 'false') || el.getAttribute('aria-selected') === 'true' || /(?:^|\s)(?:active|current|selected|is-active|is-current)(?:$|\s)/i.test(cls);
+    const group = el.closest('nav, [role="navigation"], [role="tablist"], [role="menubar"]');
+    const items = group ? Array.from(group.querySelectorAll('a[href], button, [role="button"], [role="tab"], [role="link"], [role="menuitem"]')).filter(shown) : [];
+    const first = items.length > 1 && items[0] === el;
+    const own = String(el.innerText || el.getAttribute('aria-label') || el.getAttribute('title') || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    const brand = !!el.closest('header, [role="banner"]') && !group && own.length >= 2 && String(document.title || '').toLowerCase().includes(own);
+    return { names, toggle, marked, first, brand };
+}
+
+/**
+ * A FORM THAT SEARCHES: a search box, with nothing beside it but what narrows the search — a
+ * select, a date, a checkbox, a number. Sent with words that match what the list already shows,
+ * it rightly changes nothing. The seventh live check, 2026-11-10 (L160): the bookings' «Search»
+ * with its «All statuses» select was «filled in completely and submitted, and nothing happened»,
+ * because only a box alone counted as a search — a blocking refusal of a working search.
+ */
+export function isSearchForm(fields: Array<{ tag?: string; type?: string; name?: string }>, label = ''): boolean {
+    if (!fields.length) return false;
+    //  The second review, 2026-11-11: «Add booking» with a «Search customer…» box beside its dates is a form that writes.
+    if (/\b(?:add|create|save|submit|book|reserve|order|send|register|update|post|publish|confirm|pay|check ?out|sign (?:in|up)|log ?in|apply now)\b|أضف|إضافة|اضافة|حفظ|احفظ|أرسل|ارسل|إرسال|ارسال|احجز|حجز|تأكيد|سجّل|سجل|تسجيل|اطلب|ادفع/iu.test(String(label))) return false;
+    const meanings = fields.map(x => meaningOf({ tag: x.tag, type: x.type, name: x.name } as any));
+    return meanings.includes('search') && meanings.every(m => m === 'search' || m === 'select' || m === 'check' || m === 'date' || m === 'range' || m === 'number');
+}
+
 /** A control that moves a visitor forward first (0), one that takes something away last (2). */
 export function forwardRank(label: string): number {
     const s = String(label || '').trim().toLowerCase();
@@ -606,6 +697,73 @@ export function newRecordTokens(before: string[]): string[] {
     }
     const lettered = (t: string) => /[A-Za-z\u0600-\u06FF]/.test(t) ? 1 : 0;
     return out.sort((a, b) => lettered(b) - lettered(a)).slice(0, 12);
+}
+
+/**
+ * Runs in the page: the delete button of a record that holds the QA's own mark, stamped — or ''.
+ * Self-contained.
+ *
+ * The second review, 2026-11-11: «exactly one record holds the mark» counted the containers the
+ * delete buttons sat in, then clicked the first button. In a card grid (.row > .col > .card), every
+ * «Delete» resolved to the one .row, the count was 1, and the first card — a visitor's — was the one
+ * pressed. Now each delete is tied to the smallest part of the page that holds the mark above it,
+ * and that part must hold no other delete: the record's own button, never a neighbour's. With
+ * `onlyOne`, two such records (two of the QA's, or a lookalike) are never guessed between.
+ */
+export function stampOwnDelete(arg: { needle: string; stamp: string; onlyOne: boolean }): string {
+    const { needle, stamp, onlyOne } = arg;
+    document.querySelectorAll(`[${stamp}]`).forEach(el => el.removeAttribute(stamp));
+    if (!needle) return '';
+    const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText].filter(Boolean).join(' '));
+    const deletes = (Array.from(document.querySelectorAll('button,[role="button"],a')) as HTMLElement[]).filter(isDelete);
+    const own = deletes.filter(button => {
+        let holder: HTMLElement | null = button.parentElement;
+        while (holder && holder !== document.body && !String(holder.innerText || '').includes(needle)) holder = holder.parentElement;
+        if (!holder || holder === document.body) return false;
+        const inside = holder;
+        return deletes.filter(d => inside.contains(d)).length === 1;
+    });
+    if (!own.length || (onlyOne && own.length !== 1)) return '';
+    own[0].setAttribute(stamp, '1');
+    return `[${stamp}="1"]`;
+}
+
+/** Runs in the page: how many records the page shows — the innermost rows, items and cards, outside forms, menus and notices. Self-contained. */
+export function recordRowCount(): number {
+    const ROW = 'li,tr,article,[role="listitem"],[role="row"],.card,.item,.entry,.record,[data-item],[data-id],[data-row]';
+    const noise = '[role="status"],[role="alert"],[aria-live],.toast,.flash,.snackbar,.notice,form,nav,header,footer,thead,script,style,template';
+    let n = 0;
+    document.querySelectorAll(ROW).forEach(el => {
+        //  A panel holding a form is the form, not a record: its closing must not cancel the row it added.
+        if (el.closest(noise) || el.querySelector(ROW) || el.querySelector('form')) return;
+        const r = (el as HTMLElement).getBoundingClientRect();
+        if (r.width > 1 && r.height > 1) n++;
+    });
+    return n;
+}
+
+/**
+ * Runs in the page: the ids the page's controls and fields carry more than once. Self-contained.
+ *
+ * The ninth live check, 2026-11-11 (L160, a car rental dashboard, one document): each screen drew
+ * its own «+ Add …» with id="addBtn" into its own section, and wired it with getElementById —
+ * which finds the FIRST, the hidden Cars screen's. Opened at its address, Customers worked; after
+ * Cars, its «+ Add customer» did nothing. The walk was right to call it dead, and the builder,
+ * told only «unresponsive», changed the form's validation twice.
+ */
+export function duplicateControlIds(): Array<{ id: string; count: number; labels: string[] }> {
+    const seen = new Map<string, { count: number; labels: string[] }>();
+    document.querySelectorAll('button[id],a[id],input[id],select[id],textarea[id],form[id],[role="button"][id]').forEach(el => {
+        const id = el.getAttribute('id') || '';
+        if (!id) return;
+        const s = seen.get(id) || { count: 0, labels: [] };
+        s.count++;
+        //  Named as findControls names a control, so the hint is given only beside a dead control that carries the id.
+        const name = el.getAttribute('aria-label') || el.getAttribute('title') || String((el as HTMLElement).innerText || '').trim().replace(/\s+/g, ' ').slice(0, 48);
+        if (name && !s.labels.includes(name)) s.labels.push(name);
+        seen.set(id, s);
+    });
+    return Array.from(seen.entries()).filter(([, s]) => s.count > 1).map(([id, s]) => ({ id, count: s.count, labels: s.labels.slice(0, 8) })).slice(0, 6);
 }
 
 /** Runs in the page: each visible form, by its fields and its button. Self-contained. */
@@ -777,9 +935,11 @@ export function isExpectedRefusal(page: any, status: number, url = '', method = 
  * (2xx) and those it refused (4xx). A refused write is remembered by its address
  * so its console line is known as the same refusal (isExpectedRefusal).
  */
-export function watchWrites(page: any): { saved: () => number; refused: () => number; stop: () => void } {
+export function watchWrites(page: any): { saved: () => number; refused: () => number; written: () => string[]; stop: () => void } {
     let saved = 0;
     let refused = 0;
+    /** Where the product took a write (POST, PUT, PATCH), in order: where what a form made is asked for again. */
+    const written: string[] = [];
     let origin = '';
     try { origin = new URL(String(page.url())).origin; } catch { origin = ''; }
     const on = (response: any) => {
@@ -789,7 +949,7 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
             const at = String(response.url());
             if (origin && new URL(at).origin !== origin) return;
             const status = Number(response.status());
-            if (status >= 200 && status < 300) { if (method !== 'DELETE') saved++; return; }
+            if (status >= 200 && status < 300) { if (method !== 'DELETE') { saved++; written.push(at); } return; }
             if (status >= 400 && status < 500) {
                 refused++;
                 if (!page.__joeQaRefusedUrls) page.__joeQaRefusedUrls = new Set<string>();
@@ -798,7 +958,7 @@ export function watchWrites(page: any): { saved: () => number; refused: () => nu
         } catch { /* a response that cannot be read wrote nothing we know of */ }
     };
     try { page.on('response', on); } catch { /* a page without events */ }
-    return { saved: () => saved, refused: () => refused, stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
+    return { saved: () => saved, refused: () => refused, written: () => written.slice(), stop: () => { try { page.off('response', on); } catch { /* gone */ } } };
 }
 
 /** What one free-text field is sent with: it must come back as the text it was (probeForms). */
@@ -868,16 +1028,8 @@ export async function deleteOwnRecords(page: any, needle: string, max = 4): Prom
                 .filter(el => !el.closest('form') && (el as HTMLElement).innerText.includes(n)).length, needle).catch(() => 0);
             const before = await count();
             if (!before) break;
-            const sel = await page.evaluate(({ n, i }: { n: string; i: number }) => {
-                const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText].filter(Boolean).join(' '));
-                const target = (Array.from(document.querySelectorAll('button,[role="button"],a')) as HTMLElement[]).filter(isDelete).find(el => {
-                    const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.card,.entry,article');
-                    return !!record && (record as HTMLElement).innerText.includes(n);
-                });
-                if (!target) return '';
-                target.setAttribute('data-joe-qa-own-delete', String(i));
-                return `[data-joe-qa-own-delete="${i}"]`;
-            }, { n: needle, i }).catch(() => '');
+            //  Each of its own records by its own button (stampOwnDelete); a stamp left by the last turn is cleared first.
+            const sel = await page.evaluate(stampOwnDelete, { needle, stamp: 'data-joe-qa-own-delete', onlyOne: false }).catch(() => '');
             if (!sel) break;
             await page.$(sel).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
             const until = Date.now() + 2000;
@@ -1135,6 +1287,8 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
     };
     const eyes = opts?.eyes || new AuditEyes({ watchSessionId: opts?.watchSessionId });
     const limit = Math.max(1, Math.min(200, opts?.maxControls ?? MAX_CONTROLS));
+    //  Read as the walk finds the page, before any restore draws it fresh (a reload loses the second copy).
+    const idsAtStart: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
     const totalBudgetMs = Math.max(4000, opts?.budgetMs ?? DEFAULT_BUDGET_MS);
     // Button exploration is useful, but a quality run that never reaches its
     // forms cannot prove the input contract the user relies on. Reserve a
@@ -1248,6 +1402,25 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
         /** Whether the last control of the walk was really pressed (an Escape after it closes what it opened). */
         let lastWasPressed = false;
         let baselineMayBeDirty = false;
+        /*
+         * What the walk's own take-away presses (remove, decrease, clear, delete, ×) took with them:
+         * each control name, as many times as it was there just before the press and gone just after.
+         * Only those are the walk's doing — a «×» that closed a drawer early does not excuse every
+         * control that went missing later (the review of 2026-11-10).
+         */
+        const takenAway = new Map<string, number>();
+        //  Read, never stamped: findControls wipes every handle the walk still holds (data-joe-ctl), and the
+        //  walk then sought its own controls again, press by press — a minute lost on a ten-control page.
+        const controlCounts = async (): Promise<Map<string, number>> =>
+            new Map(Object.entries(await page.evaluate(controlLabelCounts).catch(() => ({} as Record<string, number>))));
+        const noteTakenAway = async (before: Map<string, number> | null) => {
+            if (!before) return;
+            const after = await controlCounts();
+            for (const [name, n] of before) {
+                const gone = n - (after.get(name) || 0);
+                if (gone > 0) takenAway.set(name, (takenAway.get(name) || 0) + gone);
+            }
+        };
         // Each in-app navigation is a real interaction, but it must not strand
         // the remaining controls on the destination route.  Going "back" is
         // unreliable for hash routers: there may be no browser history entry
@@ -1334,7 +1507,14 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     return text === want || name === want;
                 }), c.label).catch(() => false);
             if (declined) return 'declined';
-            return wroteToProduct ? 'consumed' : '';
+            /*
+             * …and so is one the walk's own «remove», «decrease» or «clear» took away with
+             * its line. The fifth live check, 2026-11-10 (L162, an Arabic store, phone
+             * width): «إنقاص» emptied a cart line held in the browser, the line's «زيادة
+             * كمية» went with it, and «1 of 22 controls were gone» refused the store three
+             * times — no server write, so it was never «consumed».
+             */
+            return wroteToProduct || (takenAway.get(c.label) || 0) > 0 ? 'consumed' : '';
         };
         /**
          * ⛔ THE BASELINE INCLUDES WHERE THE PAGE WAS SCROLLED.
@@ -1767,6 +1947,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const job = intentOf(c.label, c.kind);
                 const factsBefore = job.intent !== 'none' ? await evalInPage(page, readFacts).catch(() => null) : null;
                 const stateBefore = job.intent === 'toggle' ? await page.evaluate(readControlState, current.sel).catch(() => null) : null;
+                const countsBefore = forwardRank(c.label) === 2 ? await controlCounts() : null;
                 if (!eyeIsOpen()) break;
                 await eyes.press(page);
                 /**
@@ -1813,6 +1994,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                if (effect) await noteTakenAway(countsBefore);
                 await judgeJob(c.label, current.sel, effect, job, factsBefore, stateBefore);
                 // A submit that reloads the page proves the form is NOT handled —
                 // an unhandled submit is the browser's default, not a feature.
@@ -2007,6 +2189,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 const job = intentOf(candidate.label, candidate.kind);
                 const factsBefore = job.intent !== 'none' ? await evalInPage(page, readFacts).catch(() => null) : null;
                 const stateBefore = job.intent === 'toggle' ? await page.evaluate(readControlState, candidate.sel).catch(() => null) : null;
+                const countsBefore = forwardRank(candidate.label) === 2 ? await controlCounts() : null;
                 if (!eyeIsOpen()) break;
                 const download = observeDownload(page);
                 const handoff = observeHandoff(page);
@@ -2033,6 +2216,7 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 }
                 if (!effect && probeWrites.saved() > savedBeforePress) effect = 'saved';
                 else if (!effect && probeWrites.refused() > refusedBeforePress) effect = 'refused';
+                if (effect) await noteTakenAway(countsBefore);
                 await judgeJob(candidate.label, candidate.sel, effect, job, factsBefore, stateBefore);
                 if (effect === 'navigation') noteLanding(candidate);
                 if (effect === 'navigation' || effect === 'handoff') {
@@ -2429,11 +2613,50 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
             } catch { /* the control under test keeps its first verdict */ }
         }
         const answered = new Set(controls.filter(r => r.worked).map(r => `${r.kind}|${r.label}|${r.instance ?? 0}`));
-        const secondLookUntil = Date.now() + 8_000;
+        const secondLookUntil = Date.now() + 12_000;
+        const nav = (k: string) => k === 'menu' || k === 'tab' || k === 'link';
+        /**
+         * ⛔ A QUIET NAV ITEM IS THE LINK TO THE VIEW ALREADY OPEN ONLY WITH EVIDENCE, AND NEVER ONCE IT WAS TRIED FROM ANOTHER VIEW.
+         *
+         * «المتجر» on «متجر مكتب شكاوى البلدية» (L162) and «Shop» beside a disabled cart (L161, the sixth
+         * live check: refused twice, then rebuilt as a hash router) change nothing on the view they name.
+         * But the review of 2026-11-10 found the excuse too wide: read from hidden headings, wherever the
+         * walk ended, for a burger menu too, and after a nav item stayed quiet on a view another item had
+         * moved to. So, read on the page as the walk started and from what is shown there:
+         *   - never a menu toggle (aria-expanded, aria-haspopup, a burger);
+         *   - never one that stayed quiet after another control had moved the view away;
+         *   - and one of: its words are the page's shown title or main heading; it is marked current
+         *     (aria-current, aria-selected, «active»); it is the site's own name in the header; or it is
+         *     the first item of its navigation, when no other view could be reached to try it from.
+         */
+        const currentPageEvidence = async (quiet: ControlResult, quietItem: any): Promise<string> => {
+            try {
+                await restoreProbeStart();
+                const now = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
+                if (!now) return '';
+                const seen = await page.evaluate(currentLinkFacts, now.sel).catch(() => null);
+                if (!seen || seen.toggle) return '';
+                if (!nav(quiet.kind) && !seen.brand) return '';
+                if (namesCurrentPage(quiet.label, seen.names, probeStartUrl)) return 'its words name the page';
+                if (seen.marked) return 'marked as the current page';
+                if (seen.brand) return 'the site\'s own name, in its header';
+                if (seen.first) return 'the first item of its navigation, and no other view could be reached to try it from';
+                return '';
+            } catch { return ''; }
+        };
         for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
             const quietItem = catalogued(quiet);
             if (!quietItem || !eyeIsOpen()) continue;
-            for (const mover of movers.filter(m => m.label !== quiet.label).slice(0, 2)) {
+            /*
+             * A nav item undoes another nav item: «المتجر» (setView('shop')) after «السلة», not after
+             * «أضف إلى السلة», which leaves the shop where it was (L162, the fifth live check: «Unresponsive
+             * controls: "المتجر"» three times; Joe made it focus the search box, then a link, to quiet it).
+             */
+            /** Pressed again on a view another control had moved to, and still quiet: tried where it had somewhere to go. */
+            let testedElsewhere = false;
+            const moverRank = (m: ControlResult) => (nav(quiet.kind) && nav(m.kind) ? 0 : 2) + (['dom', 'open', 'state'].includes(String(m.effect)) ? 0 : 1);
+            const tried = movers.filter(m => m.label !== quiet.label).map((m, i) => ({ m, i })).sort((a, b) => moverRank(a.m) - moverRank(b.m) || a.i - b.i).map(x => x.m);
+            for (const mover of tried.slice(0, 3)) {
                 if (Date.now() >= secondLookUntil || !eyeIsOpen()) break;
                 const moverItem = catalogued(mover);
                 if (!moverItem) continue;
@@ -2442,12 +2665,16 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                     const attemptUntil = Math.min(secondLookUntil, Date.now() + 4000);
                     const moverNow = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), moverItem);
                     if (!moverNow || !await reachableOnScreen(moverNow.sel)) continue;
+                    const viewBefore: string[] = await page.evaluate(visibleHeadings).catch(() => []);
                     await eyes.lookAt(page, await boxOf(page, moverNow.sel), { note: `${KIND_AR[mover.kind] || 'عنصر'}: ${mover.label}`.slice(0, 64), moveMouse: true });
                     await eyes.press(page);
                     await (await page.$(moverNow.sel))?.click({ timeout: 2500, noWaitAfter: true });
                     // A change still arriving from the first press would be
                     // credited to the second one: measure only a still page.
                     if (!await settled(attemptUntil) || page.url() !== probeStartUrl) continue;
+                    //  The view was left when a heading shown before is gone («المنتجات» → «سلتك»); a badge's number is not a view.
+                    const viewAfter: string[] = await page.evaluate(visibleHeadings).catch(() => []);
+                    const left = viewBefore.some(h => !viewAfter.includes(h));
                     const quietNow = replacementFor(await evalInPage(page, findControls, limit).catch(() => [] as any[]), quietItem);
                     if (!quietNow || !await reachableOnScreen(quietNow.sel)) continue;
                     await eyes.lookAt(page, await boxOf(page, quietNow.sel), { note: `${KIND_AR[quiet.kind] || 'عنصر'}: ${quiet.label}`.slice(0, 64), moveMouse: true });
@@ -2462,14 +2689,25 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
                     } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
+                    if (!effect && left) testedElsewhere = true;
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
-                    break;
+                    if (effect) break;
                 } catch { /* the control under test keeps its first verdict */ }
+            }
+            //  Still quiet, never tried from another view, and with evidence it is the open view's own link.
+            const stillQuiet = !controls.some(r => r.worked && r.kind === quiet.kind && r.label === quiet.label);
+            const why = stillQuiet && !testedElsewhere && eyeIsOpen() ? await currentPageEvidence(quiet, quietItem) : '';
+            if (why) {
+                controls.push({ label: quiet.label, kind: quiet.kind, worked: false, effect: 'current', instance: quiet.instance, href: quiet.href });
+                metrics.currentPageLinks = Number(metrics.currentPageLinks || 0) + 1;
+                (metrics.currentPageWhy = metrics.currentPageWhy || []).push(`${quiet.label}: ${why}`);
             }
         }
         probeWrites.stop();
         phase('rest');
     }
+    const idsAtEnd: Array<{ id: string; count: number; labels: string[] }> = await page.evaluate(duplicateControlIds).catch(() => []);
+    metrics.duplicateIds = [...idsAtStart, ...idsAtEnd.filter(d => !idsAtStart.some(s => s.id === d.id))].slice(0, 6);
 
     return { controls, metrics, forms: filled };
 }
@@ -2832,6 +3070,12 @@ export async function probeForms(
         let persistedThis = false;
         /** The page's words before the form was sent: what the submit made is what was not there (newRecordTokens). */
         let tokensBefore: string[] = [];
+        /** …and how many records it showed: a record with no mark of its own is the row it added (recordRowCount). */
+        let rowsBefore = -1;
+        /** The headings the form was sent under: the view a row count is compared on. */
+        let viewBeforeSubmit: string[] = [];
+        /** How many writes the product had taken before this form was sent: the ones after are this form's. */
+        let writtenBeforeSubmit = 0;
         try {
             const before = await page.evaluate(snapshot).catch(() => null);
             const feedbackBefore = await formFeedback(page, f.sel);
@@ -2842,8 +3086,11 @@ export async function probeForms(
             //  Marked, so a new document is told from the same one moving to another of its views (below).
             const urlBeforeSubmit = String(page.url() || '');
             const savedBeforeSubmit = writes.saved();
+            writtenBeforeSubmit = writes.written().length;
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
+            rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
+            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings).catch(() => [] as string[]) : [];
             await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  A server that refuses what the QA sent decides about the QA's value; it is not a broken request.
             expectRefusal(page, 3500);
@@ -2984,7 +3231,7 @@ export async function probeForms(
          * a blocking refusal. What a search does is judged where it can be seen: the list, by
          * the control's own job (qa-control-intent filter).
          */
-        else if (f.fields.length && f.fields.every((x: any) => meaningOf({ tag: x.tag, type: x.type, name: x.name }) === 'search')) {
+        else if (isSearchForm(f.fields, f.label) && !f.placesOrder) {
             effect = 'searched';
             metrics.searchesUnchanged = Number(metrics.searchesUnchanged || 0) + 1;
         }
@@ -3002,7 +3249,7 @@ export async function probeForms(
         // delete action, keeping the test reversible and data-safe.
         //  No free text to carry the run's mark (a form of codes and numbers): what it made is still looked for (newRecordTokens).
         const anchor = persistenceAnchors.find(value => value.length > 4) || '';
-        if (effect === 'submitted' && f.expectsPersistence && (anchor || tokensBefore.length) && Date.now() < deadline && eyeIsOpen()) {
+        if (effect === 'submitted' && f.expectsPersistence && (anchor || tokensBefore.length || rowsBefore >= 0) && Date.now() < deadline && eyeIsOpen()) {
             /*
              * Where the record shows: anywhere in the page's own text (a card, a
              * board column, a heading — L451 drew its records as cards no list
@@ -3044,6 +3291,24 @@ export async function probeForms(
             let needles = anchor ? [anchor] : [];
             let shownAs = needles.length ? await visibleNeedle(needles) : '';
             /*
+             * …or, with nothing of its own to show (a booking: a car, a customer, two dates — all already on
+             * the page), the row it added. The eighth live check, 2026-11-10 (L160): «Add booking» was taken,
+             * its row was drawn, and «never showed outside the form» refused it four times. Proven by the count
+             * of records, after the submit and again after a reload; never deleted (it carries no run mark).
+             */
+            let byRows = false;
+            /*
+             * Only with no mark of its own to look for, and only on the view the form was sent from — the
+             * second review, 2026-11-11: a list filtered empty before the submit, or a reload that opens
+             * on a dashboard of cards, raises the count without a record; a heading shown before that is
+             * gone is another view, and proves nothing.
+             */
+            const sameView = async () => {
+                const now: string[] = await page.evaluate(visibleHeadings).catch(() => [] as string[]);
+                return viewBeforeSubmit.every(h => now.includes(h));
+            };
+            const rowAdded = async () => !anchor && rowsBefore >= 0 && await sameView() && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
+            /*
              * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
              * closed its form at once and drew the bookings table after its GET answered; looked
              * for in that instant, the booking «never showed». What was made is waited for, briefly.
@@ -3054,6 +3319,8 @@ export async function probeForms(
                     const made: string[] = await evalInPage(page, newRecordTokens, tokensBefore).catch(() => [] as string[]);
                     if (made.length) { needles = made.slice(0, 6); shownAs = made[0]; break; }
                 }
+                //  After its own marks: a mark says which record it is; a count says only that one was added.
+                if (await rowAdded()) { byRows = true; shownAs = 'a new row'; break; }
                 if (Date.now() >= madeUntil) break;
                 await page.waitForTimeout(250).catch(() => { });
                 if (anchor) shownAs = await visibleNeedle([anchor]);
@@ -3089,7 +3356,7 @@ export async function probeForms(
                 let found = '';
                 do {
                     if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
-                    found = await visibleNeedle(needles);
+                    found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
                 } while (!found && Date.now() < persistenceDeadline && eyeIsOpen());
                 let keptBy = found ? 'page' : '';
@@ -3110,6 +3377,41 @@ export async function probeForms(
                     }, needles).catch(() => false);
                     if (stored) keptBy = 'storage';
                     else if (served.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                    /*
+                     * …and, still not found, asked of the server where it was written. The tenth live check,
+                     * 2026-11-11 (L160, a React dashboard): a customer saved, shown, and after a reload the app
+                     * opened on its summary — the customers' tab is state, not an address — and fetched only
+                     * the totals. «Found nowhere», twice, for a record the server kept. A tester asks the
+                     * collection it was written to (POST /api/customers → GET /api/customers; PUT …/7 → …/7
+                     * and its collection), as the page itself would.
+                     */
+                    if (!keptBy && needles.length) {
+                        const asks = new Set<string>();
+                        for (const at of writes.written().slice(writtenBeforeSubmit)) {
+                            try {
+                                const u = new URL(at);
+                                u.search = ''; u.hash = '';
+                                asks.add(u.href);
+                                const parent = u.href.replace(/\/[^/]+\/?$/, '');
+                                if (parent.length > u.origin.length + 1) asks.add(parent);
+                            } catch { /* an address that cannot be read is not asked */ }
+                        }
+                        //  Bounded: an endpoint that never answers (a stream, a long poll, a handler that threw) costs 3 s, never the walk.
+                        const bodies: string[] = await Promise.race([
+                            page.evaluate(async (list: string[]) => {
+                                const out: string[] = [];
+                                for (const at of list) {
+                                    try {
+                                        const r = await fetch(at, { credentials: 'same-origin', headers: { accept: 'application/json' }, signal: AbortSignal.timeout(3000) });
+                                        if (r.ok) out.push((await r.text()).slice(0, 400_000));
+                                    } catch { /* not answered */ }
+                                }
+                                return out;
+                            }, [...asks].slice(0, 6)).catch(() => [] as string[]),
+                            new Promise<string[]>(resolve => setTimeout(() => resolve([]), 12_000)),
+                        ]);
+                        if (bodies.some(body => needles.some(n => body.includes(n)))) keptBy = 'server';
+                    }
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }
                 if (!keptBy) {
@@ -3119,21 +3421,21 @@ export async function probeForms(
                     persistedThis = true;
                     if (keptBy !== 'page') metrics.formsPersistedOutOfView = Number(metrics.formsPersistedOutOfView || 0) + 1;
                 }
-                if (found) {
-                    const deleteSelector = await page.evaluate((needle: string) => {
-                        const isDelete = (el: Element) => /delete|remove|حذف|إزالة/i.test([
-                            el.getAttribute('aria-label'), el.getAttribute('title'), (el as HTMLElement).innerText,
-                        ].filter(Boolean).join(' '));
-                        const candidates = Array.from(document.querySelectorAll('button,[role="button"],a'))
-                            .filter(isDelete) as HTMLElement[];
-                        const target = candidates.find(el => {
-                            const record = el.closest('li,tr,[data-item],[data-row],.row,.item,.transaction,.entry,article');
-                            return !!record && (record as HTMLElement).innerText.includes(needle);
-                        });
-                        if (!target) return '';
-                        target.setAttribute('data-joe-qa-delete-own-record', 'true');
-                        return '[data-joe-qa-delete-own-record="true"]';
-                    }, found).catch(() => '');
+                /*
+                 * ⛔ THE QA DELETES ONLY WHAT CARRIES ITS OWN MARK, AND ONLY WHEN ONE RECORD CARRIES IT.
+                 *
+                 * The seventh live check, 2026-11-10 (L160, a car rental dashboard): a booking has no
+                 * text to type, so what the submit made was found by its date, «2026-11-17» — and an
+                 * earlier booking on the same dates was the first row holding it. The QA deleted
+                 * booking 1, a record that was not its own, kept its own, and then reported «a record
+                 * created by the QA run itself could not be deleted». On a real system that is a
+                 * visitor's data gone. A record the QA made without its mark is left, and said so.
+                 */
+                const ownMark = [anchor, ...needles].find(n => !!n && n.includes(runNonce)) || '';
+                if (found && !ownMark) metrics.qaRecordsLeft = Number(metrics.qaRecordsLeft || 0) + 1;
+                if (found && ownMark) {
+                    //  Exactly one record holds the mark, by its own button (stampOwnDelete): never a guess, never a neighbour's.
+                    const deleteSelector = await page.evaluate(stampOwnDelete, { needle: ownMark, stamp: 'data-joe-qa-delete-own-record', onlyOne: true }).catch(() => '');
                     if (deleteSelector) {
                         await eyes.say(page, 'أختبر إزالة السجل الذي أنشأه الفحص فقط');
                         await page.$(deleteSelector).then((el: any) => el?.click({ timeout: 2500, force: true, noWaitAfter: true })).catch(() => { });
@@ -3141,7 +3443,7 @@ export async function probeForms(
                         let removed = false;
                         while (!removed && Date.now() < removalDeadline) {
                             await page.waitForTimeout(150);
-                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), found).catch(() => false);
+                            removed = await page.evaluate((needle: string) => !document.body.innerText.includes(needle), ownMark).catch(() => false);
                         }
                         if (removed) metrics.qaRecordsDeleted++;
                         else metrics.qaRecordsNotDeleted++;
@@ -3167,7 +3469,7 @@ export async function probeForms(
 /* ---- judgement, on what actually happened ------------------------------ */
 
 /** Controls that were never pressed: unreachable, declined by the product, consumed by the walk. */
-const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached']);
+const NOT_PRESSED: ReadonlySet<string> = new Set(['not found', 'declined', 'consumed', 'reached', 'current']);
 
 /** The verdict, kept separate so both audits reach it by the same road. */
 export function judgeBehaviour(
@@ -3216,6 +3518,8 @@ export function judgeBehaviour(
         const key = `${control.context || ''}|${control.kind}|${control.bare || control.label}|${occurrence}`;
         const previous = evidence.get(key);
         if (!previous || (!previous.worked && control.worked)
+            //  A quiet press later known to be the link to the page already open (probeControls second look).
+            || (!previous.worked && control.effect === 'current')
             || (previous.effect === 'not found' && control.effect !== 'not found')
             || (NOT_PRESSED.has(String(previous.effect || '')) && !NOT_PRESSED.has(String(control.effect || '')))) evidence.set(key, control);
     });
@@ -3247,10 +3551,27 @@ export function judgeBehaviour(
     metrics.unreachable = unreachable.length;
 
     if (unreachable.length) {
+        /*
+         * «Not pressed, so not judged» — told, not refused, when it is a few of many: the builder cannot
+         * make the walk press what its own presses took away (L162, three refusals for 1 of 22). A walk
+         * that lost a fifth of the page or more saw a page that keeps redrawing itself: that refuses.
+         */
+        //  Of the same population as what was not reached (links are not pressed), and screen by screen:
+        //  a screen that lost half its buttons is not diluted by the screens that kept theirs (the review of 2026-11-10).
+        const buttons = judgedControls.filter(c => c.kind !== 'anchor');
+        const share = buttons.length ? unreachable.length / buttons.length : 1;
+        const perScreen = new Map<string, { all: number; gone: number }>();
+        for (const c of buttons) {
+            const s = perScreen.get(String(c.context || '')) || { all: 0, gone: 0 };
+            s.all++;
+            if (c.effect === 'not found') s.gone++;
+            perScreen.set(String(c.context || ''), s);
+        }
+        const screenLost = [...perScreen.values()].some(s => s.gone >= 3 && s.gone / s.all >= 0.5);
         findings.push({
-            code: 'controls_not_reached', severity: 'minor',
-            ar: `لم أصل إلى ${unreachable.length} من ${judgedControls.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
-            en: `${unreachable.length} of ${judgedControls.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
+            code: 'controls_not_reached', severity: share >= 0.2 || screenLost ? 'major' : 'minor',
+            ar: `لم أصل إلى ${unreachable.length} من ${buttons.length} زرّاً لأجرّبه: ${unreachable.slice(0, 3).map(d => `«${d.label}»`).join('، ')} — اختفت من الصفحة قبل الضغط، ولا أدّعي أنّها معطوبة`,
+            en: `${unreachable.length} of ${buttons.length} controls were gone before I could press them: ${unreachable.slice(0, 3).map(d => `"${d.label}"`).join(', ')} — not pressed, so not judged`,
             hint: 'the route moved while the audit was pressing; these were never tested',
         });
     }
@@ -3272,11 +3593,16 @@ export function judgeBehaviour(
         });
     }
     const deadRatio = pressable.length ? dead.length / pressable.length : 0;
+    //  Where a dead control's handler may have gone: an id the page holds twice (duplicateControlIds).
+    const twice: Array<{ id: string; count: number; labels?: string[] }> = (Array.isArray(metrics.duplicateIds) ? metrics.duplicateIds : [])
+        .filter((d: { labels?: string[] }) => !Array.isArray(d.labels) || dead.some(x => d.labels!.includes(String(x.bare || x.label))));
+    const twiceEn = twice.length ? ` — the page holds ${twice.map(d => `id="${d.id}" ${d.count} times`).join(', ')}: code that finds an element by its id gets the first, which may be a hidden screen's copy; give each screen's controls their own ids, or look them up inside their own screen` : '';
+    const twiceAr = twice.length ? ` — في الصفحة ${twice.map(d => `المعرّف «${d.id}» ${d.count} مرات`).join('، ')}: الشيفرة التي تبحث عن عنصر بمعرّفه تجد الأول، وقد يكون نسخة شاشة مخفية؛ أعطِ أزرار كل شاشة معرّفات خاصة بها، أو ابحث عنها داخل شاشتها` : '';
     if (dead.length >= 2 && deadRatio >= 0.4) {
         findings.push({
             code: 'dead_controls', severity: 'critical',
-            ar: `${dead.length} من ${pressable.length} أزرار لا تفعل شيئًا عند الضغط: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
-            en: `${dead.length} of ${pressable.length} controls do nothing when clicked: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
+            ar: `${dead.length} من ${pressable.length} أزرار لا تفعل شيئًا عند الضغط: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}${twiceAr}`,
+            en: `${dead.length} of ${pressable.length} controls do nothing when clicked: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}${twiceEn}`,
             hint: 'wire real handlers in the page JS, or make them links to a real destination',
             /**
              *  ⛔ THE LABELS, AS DATA — so a repairer can FIND the control.
@@ -3293,8 +3619,8 @@ export function judgeBehaviour(
     } else if (dead.length) {
         findings.push({
             code: 'some_dead_controls', severity: 'major',
-            ar: `أزرار لا تستجيب: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}`,
-            en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}`,
+            ar: `أزرار لا تستجيب: ${dead.slice(0, 3).map(d => `«${d.label}»`).join('، ')}${twiceAr}`,
+            en: `Unresponsive controls: ${dead.slice(0, 3).map(d => `"${d.label}"`).join(', ')}${twiceEn}`,
             hint: 'each of these needs a real click handler or a real href',
             //  Same reason as `dead_controls` above: the offenders as data.
             evidence: dead.slice(0, 8).map(d => ({ label: d.bare || d.label, kind: d.kind })),

@@ -1431,6 +1431,15 @@ export async function auditBuiltApp(
             behaviourMetrics.ordersNotKeptEvidence = [...(behaviourMetrics.ordersNotKeptEvidence || []), ...(p.metrics.ordersNotKeptEvidence || []).map((x: any) => ({ ...x, route }))];
             behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
+            //  An id held twice, on any screen: kept with its largest count (behaviour-audit duplicateControlIds).
+            for (const d of (p.metrics.duplicateIds || []) as Array<{ id: string; count: number; labels?: string[] }>) {
+                const list: Array<{ id: string; count: number; labels?: string[] }> = (behaviourMetrics.duplicateIds = behaviourMetrics.duplicateIds || []);
+                const seen = list.find(x => x.id === d.id);
+                if (seen) {
+                    seen.count = Math.max(seen.count, d.count);
+                    seen.labels = [...new Set([...(seen.labels || []), ...(d.labels || [])])].slice(0, 8);
+                } else if (list.length < 6) list.push({ ...d, labels: [...(d.labels || [])] });
+            }
             behaviourMetrics.formsNotReachedEvidence.push(...(p.metrics.formsNotReachedEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.disclosureEvidence.push(...(p.metrics.disclosureEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.calculatorEvidence.push(...(p.metrics.calculatorEvidence || []).map((evidence: any) => ({ ...evidence, route })));

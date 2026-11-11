@@ -31,7 +31,7 @@ export interface MendFinding { id: string; severity?: string; evidence?: unknown
 /** The minor findings of taste: told with the delivery, never a refusal on their own. */
 export const TOLD_NOT_REFUSED: ReadonlySet<string> = new Set([
     'flat_hierarchy', 'type_scale_drift', 'spacing_drift', 'colour_drift', 'line_too_long',
-    'h1_count', 'heavy_images', 'form_no_validation', 'field_case_minor', 'route_headings', 'control_job_unseen', 'journey_not_proven', 'order_not_kept',
+    'h1_count', 'heavy_images', 'form_no_validation', 'field_case_minor', 'route_headings', 'control_job_unseen', 'journey_not_proven', 'order_not_kept', 'controls_not_reached',
 ]);
 
 /** Whether a finding refuses the delivery: everything except a minor finding of taste. */
@@ -104,6 +104,16 @@ export function mendIsBetter(before: MendFinding[], after: MendFinding[]): boole
     const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
     if (now.length === was.length && weight(now) < weight(was)) return true;
     return now.length === was.length && after.length < before.length;
+}
+
+/** Why a repair was put back, in words the builder can act on (mendIsBetter's reasons). */
+export function whyMendNotBetter(before: MendFinding[], after: MendFinding[]): string {
+    const was = before.filter(refuses), now = after.filter(refuses);
+    const wasIds = new Set(was.map(f => String(f.id || '')));
+    const brought = [...new Set(now.map(f => String(f.id || '')).filter(id => !wasIds.has(id)))];
+    if (brought.length) return `the page measured after it showed what it did not before: ${brought.join(', ')}`;
+    const weight = (fs: MendFinding[]) => fs.reduce((n, f) => n + findingWeight(f as any), 0);
+    return `the same ${now.length} blocking finding(s) stayed, ${weight(now)} instance(s) against ${weight(was)} before`;
 }
 
 /** Whether Joe's repairer answers any of these findings. */

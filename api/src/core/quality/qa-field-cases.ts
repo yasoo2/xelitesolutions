@@ -189,7 +189,18 @@ export function fillValueFor(f: QaField, nonce = '', language = 'en'): string {
             //  The second of a pair (an end, a return, a check-out) after the first: a booking from the 7th to the 9th, never to the same day.
             const words = String(f.name || '').toLowerCase();
             const second = /\bend|\bto\b|until|return|check-?out|departure|نهاي|انتهاء|مغادرة|عودة|(?<![؀-ۿ])إلى(?![؀-ۿ])/u.test(words);
-            const day = /birth|\bdob\b|ميلاد/u.test(words) ? '1990-05-15' : clampDate(isoIn(second ? 9 : 7));
+            /*
+             * Each run books its own days: a week ahead, moved by up to three weeks by the run's mark. The
+             * seventh and eighth live checks, 2026-11-10 (L160): every walk booked the 17th to the 19th, the
+             * QA's own bookings piled up on those days, and from the second walk on the booking it made
+             * showed nothing the page had not shown before — «never showed outside the form», four times.
+             */
+            const spread = nonce ? [...nonce].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 21 : 0;
+            //  A field whose max the spread would cross keeps the days it always had (the second review, 2026-11-11):
+            //  clamped, a start and an end would both land on the max — the same day, refused by any booking form.
+            const base = second ? 9 : 7;
+            const spreadOk = !(f.max && /^\d{4}-\d{2}-\d{2}/.test(String(f.max)) && isoIn(base + spread) > String(f.max));
+            const day = /birth|\bdob\b|ميلاد/u.test(words) ? '1990-05-15' : clampDate(isoIn(base + (spreadOk ? spread : 0)));
             if (type === 'month') return day.slice(0, 7);
             if (type === 'datetime-local') return `${day}T12:30`;
             if (type === 'week') return `${day.slice(0, 4)}-W20`;
