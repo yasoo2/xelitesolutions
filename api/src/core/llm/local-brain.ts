@@ -378,9 +378,24 @@ export async function initLocalBrain(): Promise<string> {
             ? `Local brain unavailable: no Ollama models detected at ${state.host} (using keyless free AI mesh).`
             : 'Local brain unavailable: no reachable Ollama host detected (using keyless free AI mesh).';
     }
-    // Warm up in the background — don't block server readiness.
-    void warmUpLocalBrain();
     // …and make sure the brain has EYES (background pull, never blocks).
     ensureLocalVisionModel();
-    return `Local brain ready: ${state.models.length} model(s) — chat=${state.chatModel}, code=${state.codeModel}. Warming up in background.`;
+    const ready = `Local brain ready: ${state.models.length} model(s) — chat=${state.chatModel}, code=${state.codeModel}.`;
+    if (!bootWarmupWanted()) return `${ready} Boot warm-up off (JOE_LOCAL_WARMUP=0): the model loads on its first real call.`;
+    // Warm up in the background — don't block server readiness.
+    void warmUpLocalBrain();
+    return `${ready} Warming up in background.`;
+}
+
+/**
+ * The boot warm-up loads the local model into memory before anyone asked for
+ * it. Where the local model is Auto's brain (the GPU server) that makes the
+ * first answer fast. Where runs go to another provider on a small machine it
+ * only costs memory: on 2026-11-06 the 16 GB test laptop running the Claude
+ * exam loaded a 7B model at every Joe restart, the 10 s warm-up timed out
+ * anyway, and llama-server died out of memory beside the build.
+ * JOE_LOCAL_WARMUP=0 (off, false, no) skips it; unset keeps it.
+ */
+export function bootWarmupWanted(env: NodeJS.ProcessEnv = process.env): boolean {
+    return !/^(?:0|off|false|no)$/i.test(String(env.JOE_LOCAL_WARMUP || '').trim());
 }

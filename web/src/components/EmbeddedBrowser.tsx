@@ -25,11 +25,19 @@ interface EmbeddedBrowserProps {
     /** Browser ownership is explicit; a shared panel browser is forbidden. */
     sessionId: string;
     onReady?: () => void;
+    /**
+     * What the Preview says of this browser («متصفح جو · مباشر»), shown IN the toolbar's own
+     * row beside its buttons. Floated over the toolbar it covered «رجوع/تقدم/تحديث/الرئيسية»
+     * in Arabic and «Screenshot/Open externally» in English — the exam's page check found it
+     * in 86 of 149 prompts (controls_covered_desktop, 2026-11-09).
+     */
+    badge?: React.ReactNode;
 }
 
 export default function EmbeddedBrowser({
     sessionId,
-    onReady
+    onReady,
+    badge,
 }: EmbeddedBrowserProps) {
     const { t } = useTranslation();
     const [currentUrl, setCurrentUrl] = useState('');
@@ -162,7 +170,8 @@ export default function EmbeddedBrowser({
             });
             const result = await response.json().catch(() => null);
             if (navigationId !== navigationSequence.current) return;
-            if (response.status === 409 && result?.error === 'nav_superseded') return;
+            //  A newer navigation replaced this one: an answer, not a failure (routes/browser.ts).
+            if (result?.error === 'nav_superseded') return;
             if (!response.ok || !result?.ok) throw new Error(String(result?.error || 'nav_goto_failed'));
             const resolvedUrl = String(result.url || targetUrl);
             setCurrentUrl(resolvedUrl);
@@ -228,7 +237,7 @@ export default function EmbeddedBrowser({
     // button to press — the manual one was redundant.)
 
     if (!hasSession) {
-        return <div className="joe-browser-container" aria-label="No active browser session" />;
+        return <div className="joe-browser-container" aria-label={t('eb_noBrowserSession')} />;
     }
 
     return (
@@ -324,7 +333,7 @@ export default function EmbeddedBrowser({
                                 whiteSpace: 'nowrap',
                                 fontFamily: 'monospace',
                                 direction: 'ltr',
-                            }} title={pageTitle ? `${pageTitle}${runtimeErrorCount ? ` · أخطاء: ${runtimeErrorCount}` : ''}` : undefined}>
+                            }} title={pageTitle ? `${pageTitle}${runtimeErrorCount ? ` · ${t('browser_errorsCount', { n: runtimeErrorCount })}` : ''}` : undefined}>
                                 {currentUrl || t('browserNoPageLoaded')}
                             </span>
                         </>
@@ -335,6 +344,7 @@ export default function EmbeddedBrowser({
                     Joe extension is connected (otherwise it shows nothing). The manual
                     "save login" button was removed — the session already auto-saves on
                     every navigation, so it stays logged in forever with no button. */}
+                {badge}
                 <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
                     {extConnected && (
                         <button

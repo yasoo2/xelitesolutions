@@ -25,6 +25,7 @@ import { formatAttachmentsBlock } from '../../shared/attachments';
 import { describeImageAttachments } from '../../shared/vision';
 import { withDeadline, RUN_DEADLINE_MS, DeadlineError } from '../../shared/utils/deadline';
 import { flushChatStores, usesLocalChatStore } from '../../api/chat-store';
+import { keepChatTurnInDatabase } from '../../core/engine/chat-history';
 import { clarifyGate } from '../../core/orchestrator/clarify';
 import { announceScaffoldSubstitution } from '../../core/design/scaffold-substitution';
 import { phaseDetail } from '../../core/orchestrator/phaseAnnounce';
@@ -32,9 +33,12 @@ import { composeAnswer, composeFailure } from '../../core/orchestrator/answerCom
 import { failureAnswerOf } from '../../core/orchestrator/failure-answer';
 import { compactRuntimeValue } from '../../core/orchestrator/ExecutionMemory';
 import { hasRequestFidelityMismatch, hasRequestFidelityEvidenceUnavailable } from '../tools/definitions/ProjectPipelineTool';
-import { appendRunEvidenceEvent, createRunEvidence, saveRunReceipt } from '../../shared/run-evidence-store';
+import { appendRunEvidenceEvent, closeRunEvidenceIfOpen, createRunEvidence, runEngineOf, saveRunReceipt } from '../../shared/run-evidence-store';
 import { registerRun, releaseHandle, bindRunCancellation, CANCELLED, type Cancellable } from '../../core/session/attended-run';
 import { requestResourceManager } from '../../core/resources/RequestResourceManager';
+import { withRunModelChoice } from '../../core/llm/run-model-choice';
+import { resourceRefusalSentence } from '../../shared/resource-refusal';
+import { planWrites } from '../tools/auto-build-readiness';
 
 /**
  * Lessons Joe applies to every system HE builds — each line was paid for by a
@@ -260,6 +264,11 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
     const completedSource = objects.find(value => Number.isFinite(Number(value.completedPhases)));
     const honestBlocker = objects.some(value => value.honestBlocker === true || value.requiresUserDecision === true);
     const reviewerFindingsLost = taskReceipts.some((receipt: any) => receipt?.tool === 'code_reviewer' && receipt?.reviewerFindingsLost === true);
+    // The delivery verdict, from whichever engine measured it (the pipeline
+    // and the agent engine both state it at the top of their output), so
+    // the receipt says whether Joe's own checks verified the delivery.
+    const deliverySource = objects.find(value => typeof value.deliveryStatus === 'string' && typeof value.verified === 'boolean');
+    const firstError = String(deliverySource?.firstError || '').slice(0, MAX_PHASE_RECEIPT_STRING_CHARS);
     const extractionMiss = taskReceipts.length === 0 && !root && fidelityVerdict === null;
     const envelopeKeys = extractionMiss && source && typeof source === 'object'
         ? Object.keys(source).slice(0, 20)
@@ -274,6 +283,12 @@ export function extractRunReceiptEvidence(source: any, runId: string, sessionId:
         selfFixReason: selfFixReason || undefined,
         completedPhases: completedSource?.completedPhases,
         honestBlocker,
+        ...(deliverySource ? {
+            verified: deliverySource.verified,
+            deliveryStatus: String(deliverySource.deliveryStatus).slice(0, 120),
+            partialDelivery: deliverySource.partialDelivery === true,
+            ...(firstError ? { firstError } : {}),
+        } : {}),
         ...(reviewerFindingsLost ? { reviewerFindingsLost: true, reportingDefect: 'reviewer_findings_lost' } : {}),
         ...(extractionMiss ? { extractionMiss: true, envelopeKeys } : {}),
         ...extra,
@@ -372,8 +387,10 @@ export class AgentLoopService {
             registerRunOwner(runId, String(options.userId));
             registerSessionOwner(sessionId, String(options.userId));
         }
+        // How the execution ended, for a record no receipt closed (closeRunEvidenceIfOpen).
+        let ended = 'failed';
         try {
-            return await requestResourceManager.run({
+            const outcome: any = await requestResourceManager.run({
                 requestId: runId, sessionId, userId: options.userId, workspaceId: options.workspaceId,
                 signal: cancellation.signal,
                 notify: event => {
@@ -381,7 +398,13 @@ export class AgentLoopService {
                     // are scheduling facts; they never grant tool/workspace authority.
                     void appendRunEvidenceEvent(runId, { type: 'resource_status', runId, sessionId, ts: Date.now(), data: event });
                     console.info('[RequestResources]', JSON.stringify({ runId, ...event }));
-                    if (event.state === 'queued') {
+                    if (event.state === 'queued' && event.details?.waitingFor === 'memory') {
+                        const freeMiB = Math.floor(Number(event.details?.availableBytes || 0) / 1048576);
+                        const needMiB = Math.floor(Number(event.details?.minFreeBytes || 0) / 1048576);
+                        publishResourceDetail(language === 'ar'
+                            ? `أنتظر أن تتوفر ذاكرة على الجهاز: المتاح ${freeMiB} ميجابايت من ${needMiB} مطلوبة. برنامج آخر يستعملها، ولن أوقفه.`
+                            : `Waiting for memory on this machine: ${freeMiB} MiB free of the ${needMiB} MiB needed. Another program is using it; I will not stop it.`);
+                    } else if (event.state === 'queued') {
                         publishResourceDetail(language === 'ar'
                             ? 'أنتظر انتهاء المهمة الثقيلة الحالية قبل بدء هذه الخطوة. يمكنك إلغاء الطلب أثناء الانتظار.'
                             : 'Waiting for the current heavy task to finish. You can cancel while waiting.');
@@ -393,9 +416,13 @@ export class AgentLoopService {
                     }
                 },
             }, () => {
-                return AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
-                    resourceSignal: cancellation.signal, resourceLifecycle });
+                //  The provider the user chose is the brain of every model call
+                //  this run makes, the helpers' too (core/llm/run-model-choice.ts).
+                return withRunModelChoice(options.modelConfig, () => AgentLoopService.executeScoped(goal, { ...options, sessionId, runId, cancellationHandle: handle,
+                    resourceSignal: cancellation.signal, resourceLifecycle }), { sessionId, runId, language });
             });
+            ended = outcome?.ok === false ? 'failed' : 'done';
+            return outcome;
         } catch (error: any) {
             // A measurement failure can happen before the ordinary executor has
             // installed its terminal event handler. End the same UI run honestly.
@@ -407,6 +434,9 @@ export class AgentLoopService {
                         store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId,
                             role: 'assistant', content: text, createdAt: new Date(), runId });
                         flushChatStores();
+                    } else {
+                        //  On a server with Mongo the answer goes where the web and the chat's memory read it (2026-11-08).
+                        await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: text, runId });
                     }
                 } catch { /* An archive failure must not leave the live run spinning. */ }
                 broadcast({ type: 'text', sessionId, runId, data: { text, sessionId } } as any);
@@ -418,6 +448,8 @@ export class AgentLoopService {
         } finally {
             cancellation.dispose();
             releaseHandle(handle, runId, sessionId);
+            if (handle.cancelled) ended = 'cancelled';
+            await closeRunEvidenceIfOpen(runId, ended, 'the execution returned without saving its receipt');
         }
     }
 
@@ -425,7 +457,7 @@ export class AgentLoopService {
      * Unified Autonomous Execution Entry Point
      * Everything is now dynamic and agent-driven at runtime.
      */
-    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
+    private static async executeScoped(goal: string, options: { sessionId?: string; browserSessionId?: string; workspaceId?: string; resumeProjectRoot?: string; resumeOriginRunId?: string; ownerText?: string; fromPhone?: { id: string; name: string }; userId?: string; userName?: string; systemInstructions?: string; attachments?: import('../../shared/attachments').AttachmentInput[]; traceId?: string; modelConfig?: any; language?: string; runId?: string; cancellationHandle?: Cancellable; resourceSignal?: AbortSignal; resourceLifecycle?: { handlerInstalled: boolean } } = {}) {
         const sessionId = options.sessionId || `session-${Date.now()}`;
         const userId = options.userId || 'anonymous';
         const userName = String(options.userName || '').trim();
@@ -438,41 +470,18 @@ export class AgentLoopService {
         const looksLikeEngineering = /build|deploy|script|install|server|service|launch|restart|update|setup|مشروع|سكربت|خادم|تشغيل|تحديث|نشر|ابنِ|ابني|موقع|تطبيق|نظام/i.test(goal);
 
         /**
-         * [CLARIFY GATE] A build prompt with almost nothing in it does not
-         * start a build — it starts a CONVERSATION. «ابن لي موقع» gets 4
-         * pointed questions (deterministic, no model call); the next message
-         * is merged with the original request and the build runs once, with
-         * the full picture. Detailed prompts, edits, attachments and «ابدأ
-         * مباشرة» pass straight through.
+         * [CLARIFY GATE] A build prompt with almost nothing in it is built
+         * with Joe's own choices, never stopped on a question (the owner,
+         * 2026-11-03: «بدون تدخل بشري»; core/orchestrator/clarify.ts). The
+         * gate says up front what he did not say and what Joe is choosing.
          */
         try {
             // The interface decides what Joe says; see the note on language0 below.
             const gateLang = replyLanguageCode(options.language, goal);
             const activeKey = String(sessionId).replace(/[^a-zA-Z0-9._-]/g, '_');
             const hasActivePage = !!((global as any).joePages && (global as any).joePages[activeKey]);
-            const gate = clarifyGate(goal, sessionId, gateLang, {
-                hasActivePage,
-            });
-            if (gate.kind === 'ask' && !(options.attachments || []).length) {
-                broadcastThinkingDetail(sessionId, gateLang === 'ar'
-                    ? '💬 الطلب مختصر جداً — أسأل توضيحات قبل أن أبني'
-                    : '💬 The brief is thin — asking a few questions before building');
-                const clarifyRunId = `clarify-${Date.now()}`;
-                try {
-                    if (usesLocalChatStore()) {
-                        const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
-                        store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: gate.text, createdAt: new Date() });
-                        flushChatStores();
-                    }
-                } catch { /* non-fatal */ }
-                broadcast({ type: 'text', sessionId, data: { text: gate.text, sessionId }, runId: clarifyRunId } as any);
-                broadcast({ type: 'run_finished', runId: clarifyRunId, data: { runId: clarifyRunId, ok: true, sessionId } } as any);
-                return { ok: true, result: { answer: gate.text, clarify: true } };
-            }
-            if (gate.kind === 'merge') {
-                console.log(`[AgentLoopService] 💬 clarify: merged the user's answers into the original build request`);
-                goal = gate.goal;
-            }
+            const gate = clarifyGate(goal, gateLang, { hasActivePage });
+            if (gate.kind === 'decide' && !(options.attachments || []).length) broadcastThinkingDetail(sessionId, gate.note);
         } catch { /* the gate must never block a run */ }
 
         const blocks = [goal];
@@ -659,7 +668,8 @@ export class AgentLoopService {
 
         // Evidence is a secondary sink. It observes the same canonical run and
         // must never become a prerequisite for the live wire.
-        await createRunEvidence(runId, { sessionId, status: 'running' });
+        const engine = runEngineOf(options.modelConfig?.provider || 'auto', options.modelConfig?.model);
+        await createRunEvidence(runId, { sessionId, status: 'running', ...(engine ? { engine } : {}) });
         if (options.resumeOriginRunId) {
             await appendRunEvidenceEvent(runId, {
                 type: 'continuation_started',
@@ -748,6 +758,12 @@ export class AgentLoopService {
                     // مستقل عن sessionId: هذا هو جذر مساحة العمل المختارة من الواجهة.
                     workspaceId: workspaceId || undefined,
                     resumeProjectRoot: String(options.resumeProjectRoot || '').trim() || undefined,
+                    //  What the owner typed: the goal above may be a resumed one, and carries
+                    //  his files' block. An answer to Joe's waiting question is read on these
+                    //  words, and the chat so far leaves them out once (select.ts, 2026-11-08).
+                    ownerText: String(options.ownerText ?? goal).trim() || undefined,
+                    //  Written from the Joe app on one of his phones (api/routes/run.ts): «this phone» is it.
+                    ...(options.fromPhone ? { fromPhone: options.fromPhone } : {}),
                     modelConfig,
                     memoryContext,
                     language,
@@ -792,6 +808,11 @@ export class AgentLoopService {
                     // durable copy synchronous before cleanup so a session
                     // switch cannot reopen without the reply.
                     flushChatStores();
+                } else {
+                    //  On a server with Mongo the answer was kept nowhere (2026-11-08): the web
+                    //  reads a chat's history from Message, and so does the next run's memory
+                    //  of the chat (core/engine/chat-history.ts). Kept before run_finished, as above.
+                    await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: finalText, runId });
                 }
             } catch { /* non-fatal */ }
             broadcast({ type: 'text', sessionId, data: { text: finalText, sessionId }, runId } as any);
@@ -868,6 +889,9 @@ export class AgentLoopService {
                     const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
                     store.push({ _id: `am-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId, role: 'assistant', content: failText, createdAt: new Date(), runId });
                     flushChatStores();
+                } else {
+                    //  On a server with Mongo, where the web and the chat's memory read it (2026-11-08).
+                    await keepChatTurnInDatabase({ sessionId, role: 'assistant', content: failText, runId });
                 }
             } catch { /* persistence must not prevent cleanup */ }
             // Still tell the UI so it stops "thinking" and shows what went wrong.
@@ -903,18 +927,8 @@ export class AgentLoopService {
     static humanizeFailure(text: string, language: string): string {
         const t = String(text || '').trim();
         if (!t) return t;
-        if (/RESOURCE_(?:LOW_MEMORY|MEMORY_UNAVAILABLE)/.test(t)) return language === 'ar'
-            ? 'تعذّر بدء الخطوة الثقيلة لأن الذاكرة المتاحة لا تكفي أو تعذّر قياسها. لم أوقف أي برنامج آخر.'
-            : 'The heavy step could not start because available memory is insufficient or could not be measured. No other application was stopped.';
-        if (/RESOURCE_CONTEXT_OVERFLOW|OLLAMA_OUTPUT_INPUT|LOCAL_COMPLETION_LIMIT/.test(t)) return language === 'ar'
-            ? 'لم يكتمل الطلب ضمن السياق والذاكرة المتاحين. لم أقصّ الطلب أو أغيّر النموذج؛ يلزم تقسيم العمل إلى خطوات أصغر.'
-            : 'The request did not complete within the available context and memory. The request was not truncated and the model was not changed; the work needs smaller steps.';
-        if (/RESOURCE_QUEUE_(?:FULL|TIMEOUT)/.test(t)) return language === 'ar'
-            ? 'تعذّر بدء الخطوة ضمن طابور الموارد المحدود. توقفت هذه المحاولة دون تشغيل عمل ثقيل إضافي.'
-            : 'The step could not start within the bounded resource queue. This attempt stopped without launching additional heavy work.';
-        if (/RESOURCE_CANCELLED|OLLAMA_ABORTED/.test(t)) return language === 'ar'
-            ? 'أوقفتُ الطلب بناءً على الإلغاء؛ تُحرَّر حجوزاته عند توقف العمل التابع له فعليًا.'
-            : 'The request was cancelled; its reservations are released as its owned work settles.';
+        const resource = resourceRefusalSentence(t, language === 'ar');
+        if (resource) return resource;
         const RAW_ERROR = /ENOENT|EACCES|EPERM|ECONN|ETIMEDOUT|EADDRINUSE|is not recognized as an internal|SyntaxError:|TypeError:|ReferenceError:|Cannot read propert|no such file or directory|command not found|MODULE_NOT_FOUND/i;
         if (!RAW_ERROR.test(t)) return t;
         return language === 'ar'
@@ -1099,6 +1113,13 @@ export class AgentLoopService {
             verificationBoundaries: compactVerificationBoundaries(plannerResult?.output?.verificationBoundaries),
             phaseExecutionIndex: -1,
             isFinalPhase: false,
+            // Every file the WHOLE plan will write. A component may import a file
+            // a later phase writes; the import gate knew only the current phase,
+            // so eval round 12 (P001) rejected App.tsx six times for importing
+            // Header/Hero/Services/Reviews/Contact/Footer that phases 3+ create.
+            // scaffold_project's files count too: its package.json is the
+            // manifest the phase build check looks for (P001, 2026-10-28).
+            plannedProjectFiles: planWrites(phases),
         };
         const executionContext = {
             runId,

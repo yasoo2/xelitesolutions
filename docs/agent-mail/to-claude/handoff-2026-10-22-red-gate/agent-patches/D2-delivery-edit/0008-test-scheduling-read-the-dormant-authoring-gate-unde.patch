@@ -1,0 +1,60 @@
+From a5559a855329f6b0da210cc7582648611d2836d8 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:08:03 +0000
+Subject: [PATCH 8/9] test(scheduling): read the dormant-authoring gate under
+ its current flag
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit 38d84ffc):
+  scheduling-system-contract › does not spend a provider call authoring the dormant single-table component
+  Expected substring: "!workflowSemanticContractPassed && !unifiedTables"
+
+Root cause: 38d84ffc lets a records/ledger engine derived from the request
+skip the authoring wait as well as a workflow engine that passed its
+contract, so the gate became
+  if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
+and the branch that selects a derived engine sets requestDerivedEngineReady
+together with workflowSemanticContractPassed. The gate skips the provider in
+a superset of the old cases; a multi-table (unifiedTables) system still never
+reaches the call.
+
+Decision: P. The case asserts the gate, that the authoring call sits inside
+it, and that the derived-engine branch sets both flags together.
+
+Mutations (ReactProjectTool.ts, restored, sha256 identical each time):
+  sched1 gate without `!unifiedTables`             -> ✕ Expected: > 0  Received: -1
+  sched2 derived engine does not set the ready flag -> ✕ Expected pattern /requestDerivedEngineReady = true;…workflowSemanticContractPassed = workflowContract;/
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/scheduling-system-contract.test.ts | 11 ++++++++++-
+ 1 file changed, 10 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/scheduling-system-contract.test.ts b/api/src/__tests__/scheduling-system-contract.test.ts
+index 3fd19a5c..e9099883 100644
+--- a/api/src/__tests__/scheduling-system-contract.test.ts
++++ b/api/src/__tests__/scheduling-system-contract.test.ts
+@@ -125,7 +125,16 @@ describe('multi-entity scheduling systems', () => {
+     it('does not spend a provider call authoring the dormant single-table component', () => {
+         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
+         const apiSource = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf8');
+-        expect(source).toContain('!workflowSemanticContractPassed && !unifiedTables');
++        //  The gate in front of the provider call. It read
++        //  `!workflowSemanticContractPassed && !unifiedTables`; it reads
++        //  `!requestDerivedEngineReady` now, because a records or ledger engine
++        //  derived from the request skips the wait as well — and the workflow
++        //  engine that passed its contract sets both flags together. A
++        //  multi-table system never reaches the call either way.
++        const gate = source.indexOf('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {');
++        expect(gate).toBeGreaterThan(0);
++        expect(source.slice(gate, gate + 300)).toContain('ai_write_file: authoring ${generatedEnginePath}');
++        expect(source).toMatch(/requestDerivedEngineReady = true;\s*\n\s*workflowSemanticContractPassed = workflowContract;/);
+         expect(source).toContain('!modelUnavailableDuringBuild && !unifiedTables');
+         expect(source).toContain('!modelUnavailableDuringBuild && !inheritedUnifiedTables');
+         expect(apiSource).toContain("tokenStorageKey: workflowApplication ? 'joe:auth'");
+-- 
+2.43.0
+

@@ -29,9 +29,12 @@ import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
 import { ROLES, describeRoles, rolesForRequest, type RoleSpec } from '../../../core/design/roles';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal } from '../../../core/quality/terminal-session';
+import { NETWORK_INSTALL_TIMEOUTS, installProgressProbe } from '../../../shared/network-install-timeouts';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
 import { replyLanguageCode } from '../../../shared/reply-language';
 import { backendFingerprint, durableReadCommand, issueBackendEvidence, payloadMatches, type LocalBackendEvidence } from '../../../core/quality/local-backend-evidence';
+import { testsRequestedIn } from '../../../core/quality/request-coverage';
+import { normaliseListedRequest } from '../../../core/design/listed-request';
 
 const slug = (s: string) => (String(s || '').toLowerCase()
     .replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 32)) || 'api';
@@ -218,6 +221,11 @@ export interface ApiPrimarySelection {
     labelAr: string;
     /** Keys backed by a declaration, named-entity list, or exact user token. */
     explicitKeys: string[];
+    /**
+     * The tables the request itself listed or declared, in its order — every
+     * one of them must be built, as the primary table or beside it.
+     */
+    requestedEntities: any[];
 }
 
 /**
@@ -230,11 +238,22 @@ export function selectApiPrimary(
     picked: { resource: string; labelAr: string; generic?: boolean },
     designed: any[],
     request: string,
+    opts: { listing?: any } = {},
 ): ApiPrimarySelection {
     const { declaredTables } = require('../../../core/design/declared-tables');
-    const { namedEntities } = require('../../../core/design/named-entities');
+    const { listedRecords } = require('../../../core/design/named-entities');
+    const { keyForPhrase } = require('../../../core/design/entity-inference');
     const declared = declaredTables(String(request || '')) as any[];
-    const listed = declared.length ? declared : namedEntities(String(request || '')) as any[];
+    /**
+     * HIS LIST, READ BY THE READER THE DELIVERY GATE READS (round 21 review, R2).
+     *
+     * listedRecords is the one reading of his listed records for every builder
+     * and for the gate; this tool builds a server, so it reads the list as a
+     * request for one. The caller may hand over the reading it already made of
+     * the raw request (a run of leading actions is part of what proves a list).
+     */
+    const listing = opts.listing || listedRecords(String(request || ''), { backend: true });
+    const listed = declared.length ? declared : (listing.entities || []) as any[];
     const listedKeys = Array.from(new Set(
         listed.map(entity => String(entity?.key || '').toLowerCase()).filter(Boolean),
     ));
@@ -280,30 +299,101 @@ export function selectApiPrimary(
             declaredKey = String(reading.entities[0]?.key || '').toLowerCase();
         }
     } catch { declaredKey = ''; }
-    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic';
+    /**
+     *  THE KIND'S TABLE IS A GUESS; HIS LIST IS NOT.
+     *
+     *  Eval round 15 (2026-10-24, P101): «… لـعيادة أسنان فيها نقاط وصول
+     *  لـالمرضى والمواعيد والعلاجات» read as a BOOKING app, so the kind's own
+     *  table won — `bookings` — and the six designed tables were dropped
+     *  without a word. The delivered API had no patient, no appointment and
+     *  no treatment, and passed every gate.
+     *
+     *  The kind's table is the primary when he named it (in either script,
+     *  or as a table the system already serves), when he named no table, or
+     *  when none of his tables plays its part — a booking system listing
+     *  «الغرف والعملاء» still stores bookings, beside those two. When one of
+     *  his own tables plays that part («المواعيد» for a booking kind), his
+     *  list wins: its first table is the primary and the rest are built
+     *  beside it.
+     */
+    const { inferKind } = require('../../../core/design/entity-inference');
+    const pickedKey = String(picked.resource || '').toLowerCase();
+    const requestedKeys = Array.from(new Set([...listedKeys, ...(declaredKey ? [declaredKey] : [])]));
+    const servedKeys: string[] = declared.length ? [] : (listing.served || []).map((s: any) => String(s.key));
+    const stem = (value: string) => String(value || '').replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآ]/g, 'ا').replace(/^ال/, '').trim();
+    const labelStem = stem(picked.labelAr);
+    const labelNamed = labelStem.length >= 3 && stem(String(request || '')).includes(labelStem);
+    const kindShape = pickedKey ? inferKind(pickedKey) : '';
+    //  Judged on his words for each table, never on a transliterated key:
+    //  «tawlats» reads as nothing, «الطاولات» reads as a container.
+    const sameRoleListed = listed.some(entity => [entity?.en, entity?.ar]
+        .some(label => String(label || '').trim() && inferKind(String(label)) === kindShape));
+    const kindTableWasAsked = !requestedKeys.length || requestedKeys.includes(pickedKey) || servedKeys.includes(pickedKey)
+        || keyWasNamed(pickedKey) || labelNamed || !sameRoleListed;
+    const knownPrimary = !!picked.resource && picked.generic !== true && appKind !== 'generic' && kindTableWasAsked;
+    /**
+     * A TABLE DESIGNED FROM AN ITEM OF HIS LIST IS HIS, IN EITHER SCRIPT (R2).
+     *
+     * The only evidence an uncurated designed table could show was an exact
+     * Latin token of the request — and «الإجازات» is keyed `ajazats`, a token
+     * no Arabic sentence contains, so every Arabic table the designer read
+     * from his own list was discarded (round 21 review: «ابن باك اند لمكتب:
+     * الموظفين، الإجازات، الحضور» became a generic /api/items). The item it
+     * was read from IS the evidence: a designed table keyed exactly as an item
+     * of his list is keyed (keyForPhrase, the one key reader) is his.
+     */
+    const listItemKeys = new Set<string>((listing.entries || [])
+        .filter((entry: any) => entry.as === 'record' || entry.as === 'unread')
+        .flatMap((entry: any) => [String(entry.key || ''), String(keyForPhrase(entry.item) || '')])
+        .map((key: string) => key.toLowerCase())
+        .filter(Boolean));
     const explicitKeys = Array.from(new Set([
-        ...listedKeys,
-        ...(declaredKey ? [declaredKey] : []),
-        ...(!knownPrimary ? (designed || []).map(entity => String(entity?.key || '').toLowerCase())
-            .filter(key => key && keyWasNamed(key)) : []),
+        ...requestedKeys,
+        ...(designed || []).map(entity => String(entity?.key || '').toLowerCase())
+            .filter(key => key && (listItemKeys.has(key) || (!knownPrimary && keyWasNamed(key)))),
     ]));
+    const requestedEntities = declared.length
+        ? declared
+        : listed.filter(entity => String(entity?.key || '').trim());
     if (knownPrimary) {
-        return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+        return { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys, requestedEntities };
     }
 
     // A generic app may promote only a table the user actually named. Inferred
     // count is deliberately not evidence: `calleds` came from `called`, not a
     // table anyone typed, and therefore cannot become a route or a screen.
-    const candidate = (designed || []).find(entity => {
+    const named = (entity: any) => {
         const key = String(entity?.key || '').toLowerCase();
-        if (!key || key === String(picked.resource || '').toLowerCase()) return false;
+        if (!key || key === pickedKey) return false;
         //  His declaration counts as naming it, because it is where the
         //  interface's own endpoint came from.
         return listedKeys.includes(key) || key === declaredKey;
-    });
+    };
+    //  His order decides which of his tables leads: the first one he wrote
+    //  that the design also carries, else the first one he wrote at all.
+    const designedByKey = new Map((designed || []).map(entity => [String(entity?.key || '').toLowerCase(), entity]));
+    const firstRequested = requestedEntities.find(entity => named(entity) && designedByKey.has(String(entity.key).toLowerCase()));
+    const candidate = (firstRequested ? designedByKey.get(String(firstRequested.key).toLowerCase()) : null)
+        || (designed || []).find(named)
+        || (kindTableWasAsked ? null : requestedEntities.find(named))
+        || null;
     return candidate
-        ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys }
-        : { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys };
+        ? { promoted: candidate, resource: String(candidate.key), labelAr: String(candidate.ar || candidate.key), explicitKeys, requestedEntities }
+        : { promoted: null, resource: picked.resource, labelAr: picked.labelAr, explicitKeys, requestedEntities };
+}
+
+/**
+ * The tables he listed that this build would not create — neither the primary
+ * table, nor one of the model's, nor a table every API already serves
+ * (`orders`, `items`…). Empty when every named table is built.
+ */
+export function unbuiltRequestedEntities(requested: any[], resource: string, model: any[]): string[] {
+    const { RESERVED_TABLES } = require('../../../core/design/schema-designer');
+    const built = new Set([String(resource || '').toLowerCase(), ...(model || []).map(entity => String(entity?.key || '').toLowerCase())]);
+    return (requested || [])
+        .filter(entity => !built.has(String(entity?.key || '').toLowerCase()) && !RESERVED_TABLES.has(String(entity?.key || '').toLowerCase()))
+        .map(entity => String(entity?.ar || entity?.en || entity?.key || ''))
+        .filter(Boolean);
 }
 
 /**
@@ -389,12 +479,191 @@ export function apiColumnsForRequest(probe: string): ApiColumn[] {
     }
 }
 
-function filePackageJson(name: string): string {
+function filePackageJson(name: string, withTests = false): string {
     return JSON.stringify({
         name: `api-${slug(name)}`, private: true, version: '0.1.0', type: 'module',
-        scripts: { start: 'node server.js', dev: 'node --watch server.js' },
+        scripts: { start: 'node server.js', dev: 'node --watch server.js', ...(withTests ? { test: 'node --test' } : {}) },
         dependencies: { express: '^4.21.2' },
     }, null, 2);
+}
+
+/** One served table the endpoint tests exercise: its key, and a body its own validation must refuse (or null). */
+export interface ApiTestResource { key: string; invalid: Record<string, unknown> | null }
+
+/**
+ * A body the generated server's OWN validation refuses with 400, computed from
+ * the schema it was built with — never a guess. The primary table (db.js
+ * validate): a missing required column, a non-number in a REAL/INT column, or
+ * a text over 2000 characters. A model table (entities.js validate): a missing
+ * required field, a text over 500 characters, or a link to a parent row that
+ * does not exist. null when the schema refuses nothing.
+ */
+export function apiTestResources(primary: { key: string; columns: Array<{ key: string; type?: string; required?: boolean }> } | null, entities: any[]): ApiTestResource[] {
+    const out: ApiTestResource[] = [];
+    if (primary && primary.key) {
+        const cols = Array.isArray(primary.columns) ? primary.columns : [];
+        const required = cols.find(c => c && c.required);
+        const numeric = cols.find(c => c && /^(?:REAL|INT)$/i.test(String(c.type || '')));
+        const textual = cols.find(c => c && !/^(?:REAL|INT)$/i.test(String(c.type || '')));
+        out.push({
+            key: primary.key,
+            invalid: required ? {} : numeric ? { [numeric.key]: 'not-a-number' } : textual ? { [textual.key]: 'x'.repeat(2001) } : null,
+        });
+    }
+    for (const entity of Array.isArray(entities) ? entities : []) {
+        const key = String(entity?.key || '').trim();
+        if (!key || out.some(r => r.key === key)) continue;
+        const fields: any[] = Array.isArray(entity?.fields) ? entity.fields : [];
+        const relations: any[] = Array.isArray(entity?.relations) && entity.relations.length ? entity.relations : (entity?.belongsTo ? [entity.belongsTo] : []);
+        const required = fields.find(f => f && f.required);
+        const textual = fields.find(f => f && String(f.type || '').toUpperCase() !== 'REAL');
+        const link = relations.find(r => r && r.key);
+        out.push({
+            key,
+            invalid: required ? {} : textual ? { [textual.key]: 'x'.repeat(501) } : link ? { [link.key]: 999999999 } : null,
+        });
+    }
+    return out;
+}
+
+/**
+ * tests/api.test.js — written because the request asked for tests.
+ *
+ * Eval round 15 (P101): «اختبارات آلية لكل نقطة» produced an API with no test
+ * at all, and no way for any gate to run one. These tests are real: they boot
+ * THIS server on a free port with a signing key of their own, and check what
+ * every table's endpoints promise — the list answers, a missing row is 404, a
+ * write without an account is 401, and a body the table's own validation must
+ * refuse is 400. They read and never write: a wrongly accepted body is deleted
+ * again before the test fails.
+ *
+ * The test is HIS project's file, run by his test runner, not a process Joe
+ * starts — but this source is Joe's, and the boot gate (ExecutionEnforcer)
+ * reads every bare spawn call in it as Joe bypassing the one execution path,
+ * and refuses to start. So the test calls the spawner through its module
+ * object, which is the same call to his runner.
+ */
+export function fileApiTestsJs(resources: ApiTestResource[], ownerEmail: string): string {
+    return `// Endpoint tests for this API — run them with: npm test
+// Each run boots the server on a free port with its own signing key and checks
+// every table's contract. They never write: a wrongly accepted body is deleted
+// again before the test fails.
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import childProcess from 'node:child_process';
+import crypto from 'node:crypto';
+import net from 'node:net';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const OWNER = ${JSON.stringify(ownerEmail)};
+const RESOURCES = ${JSON.stringify(resources, null, 2)};
+const SECRET = crypto.randomBytes(32).toString('hex');
+// How long the server may take to boot — longer on a slow machine if needed.
+const BOOT_MS = Number(process.env.API_TEST_BOOT_MS || 60000);
+
+let server;
+let base = '';
+let auth = {};
+let output = '';
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const probe = net.createServer();
+    probe.unref();
+    probe.on('error', reject);
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+}
+
+const b64 = (value) => Buffer.from(value).toString('base64url');
+function tokenFor(user) {
+  const now = Math.floor(Date.now() / 1000);
+  const header = b64(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+  const payload = b64(JSON.stringify({ sub: user.id, email: user.email, role: user.role, iat: now, exp: now + 600 }));
+  const sig = b64(crypto.createHmac('sha256', SECRET).update(\`\${header}.\${payload}\`).digest());
+  return \`\${header}.\${payload}.\${sig}\`;
+}
+
+before(async () => {
+  const port = await freePort();
+  base = \`http://127.0.0.1:\${port}\`;
+  server = childProcess.spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: { ...process.env, PORT: String(port), API_JWT_SECRET: SECRET, NODE_NO_WARNINGS: '1' },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  server.stdout.on('data', (chunk) => { output += chunk; });
+  server.stderr.on('data', (chunk) => { output += chunk; });
+  const deadline = Date.now() + BOOT_MS;
+  for (;;) {
+    try {
+      const res = await fetch(\`\${base}/api/health\`);
+      if (res.ok) break;
+    } catch { /* not listening yet */ }
+    if (server.exitCode !== null || Date.now() > deadline) {
+      throw new Error(\`the server did not start: \${output.slice(-800)}\`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  // The server seeded its owner on boot; sign in as that owner with this run's key.
+  const { db } = await import(new URL('../db.js', import.meta.url));
+  const owner = db.userByEmail(OWNER);
+  assert.ok(owner, \`no owner account \${OWNER} after boot\`);
+  auth = { Authorization: \`Bearer \${tokenFor(owner)}\` };
+});
+
+after(() => {
+  if (server && server.exitCode === null) server.kill();
+});
+
+test('GET /api/health answers', async () => {
+  const res = await fetch(\`\${base}/api/health\`);
+  assert.equal(res.status, 200);
+});
+
+for (const resource of RESOURCES) {
+  const url = () => \`\${base}/api/\${resource.key}\`;
+
+  test(\`GET /api/\${resource.key} answers with its rows\`, async () => {
+    const res = await fetch(url(), { headers: auth });
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    const rows = Array.isArray(body) ? body : (body[resource.key] ?? body.rows ?? body.items);
+    assert.ok(Array.isArray(rows), \`no list of \${resource.key} in \${JSON.stringify(body).slice(0, 200)}\`);
+  });
+
+  test(\`GET /api/\${resource.key}/<missing id> answers 404\`, async () => {
+    const res = await fetch(\`\${url()}/2147483000\`, { headers: auth });
+    assert.equal(res.status, 404);
+  });
+
+  test(\`POST /api/\${resource.key} without an account answers 401\`, async () => {
+    const res = await fetch(url(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
+    assert.equal(res.status, 401);
+  });
+
+  if (resource.invalid) {
+    test(\`POST /api/\${resource.key} with a body its validation refuses answers 400\`, async () => {
+      const res = await fetch(url(), {
+        method: 'POST',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify(resource.invalid),
+      });
+      const body = await res.json().catch(() => ({}));
+      const created = body && (body.row || body.item);
+      if (res.status === 201 && created && created.id !== undefined) {
+        await fetch(\`\${url()}/\${created.id}\`, { method: 'DELETE', headers: auth });
+      }
+      assert.equal(res.status, 400, \`expected 400, got \${res.status}: \${JSON.stringify(body).slice(0, 200)}\`);
+    });
+  }
+}
+`;
 }
 
 /**
@@ -2518,7 +2787,22 @@ export class ApiProjectTool extends BaseTool {
          * nothing is added behind them.
          */
         const { declaredTables } = require('../../../core/design/declared-tables');
-        const declaredForRelation = declaredTables(request).length;
+        /**
+         * HIS TABLES, READ THE WAY THE DELIVERY GATE READS THEM (round 20).
+         *
+         * «لإدارة مصمم مستقل: إضافة وتعديل وحذف وبحث في الأعمال والعملاء
+         * والفواتير» lists the actions before the records. Read raw, «بحث في
+         * الأعمال» is one item and «الأعمال» never became a table — while the
+         * gate, reading the same sentence, demanded it. Every table reader
+         * below takes the same normalised list (core/design/listed-request).
+         */
+        const listedRequest = normaliseListedRequest(request).text;
+        // One reading of his listed records — for the designer, for this tool's
+        // own selection, and the one the delivery gate makes (R2) — read from
+        // his request as he wrote it, so a run of leading actions still proves it.
+        const { listedRecords } = require('../../../core/design/named-entities');
+        const listing = listedRecords(request, { backend: true });
+        const declaredForRelation = declaredTables(listedRequest).length;
         /**
          * AND THE REST OF THE SYSTEM'S TABLES.
          *
@@ -2544,7 +2828,7 @@ export class ApiProjectTool extends BaseTool {
         const { designDataModel } = require('../../../core/design/schema-designer');
         const designed = workflowApplication
             ? []
-            : await designDataModel(request, { onNote: (n: string) => term(n) });
+            : await designDataModel(listedRequest, { onNote: (n: string) => term(n), listing });
 
         /**
          * AND THE SYSTEM NAMES ITS OWN PRIMARY TABLE.
@@ -2577,7 +2861,7 @@ export class ApiProjectTool extends BaseTool {
          * built. A restaurant keeps `dishes` and its seed menu, because
          * `dishes` IS in the model.
          */
-        const primarySelection = selectApiPrimary(appKind, picked, designed, request);
+        const primarySelection = selectApiPrimary(appKind, picked, designed, listedRequest, { listing });
         const promoted = primarySelection.promoted;
         const resource = primarySelection.resource;
         const labelAr = primarySelection.labelAr;
@@ -2676,14 +2960,53 @@ export class ApiProjectTool extends BaseTool {
         // dates/persistences. For every other domain the general designer stays
         // the source of truth exactly as before.
         const explicitKeys = new Set(primarySelection.explicitKeys);
+        /**
+         * A table he listed that the design did not carry is still his: the
+         * list reader gave it a key and columns, so it is built from those
+         * rather than dropped (eval round 15, P101 — «العلاجات»).
+         */
+        const { RESERVED_TABLES } = require('../../../core/design/schema-designer');
+        const designedKeys = new Set(designed.map((e: any) => String(e?.key || '').toLowerCase()));
+        const listedOnly = (primarySelection.requestedEntities || []).filter((e: any) => {
+            const key = String(e?.key || '').toLowerCase();
+            return key && key !== String(resource || '').toLowerCase() && !designedKeys.has(key)
+                && !RESERVED_TABLES.has(key) && Array.isArray(e?.fields) && e.fields.length > 0;
+        });
         const model = isProductivity
             ? productivityModel
             : appKind === 'finance'
                 ? designed.filter((e: any) => e.key !== resource)
-                : designed.filter((e: any) => {
+                : [...designed.filter((e: any) => {
                     const key = String(e?.key || '').toLowerCase();
                     return key !== String(resource || '').toLowerCase() && explicitKeys.has(key);
-                });
+                }), ...listedOnly];
+        /**
+         * AND A TABLE HE NAMED IS NEVER DROPPED IN SILENCE.
+         *
+         * If a table from his own list is neither the primary nor in the model,
+         * the API he asked for is not the one being built: stop and say which
+         * tables, instead of shipping a different system that passes its own
+         * proof. Productivity and finance keep their fixed contracts.
+         */
+        const unbuilt = (isProductivity || appKind === 'finance')
+            ? []
+            : unbuiltRequestedEntities(primarySelection.requestedEntities || [], resource, model);
+        if (unbuilt.length) {
+            term(`data model: requested tables not built — ${unbuilt.join(', ')}`);
+            return {
+                ok: false,
+                error: 'requested_entities_not_built',
+                output: {
+                    reason: 'requested_entities_not_built',
+                    missing: unbuilt,
+                    resource,
+                    message: isAr
+                        ? `لم أبنِ الواجهة: طلبتَ الجداول ${unbuilt.join('، ')} ولن يحملها المخطط المختار.`
+                        : `The API was not built: you asked for ${unbuilt.join(', ')} and the chosen schema would not hold them.`,
+                },
+                logs,
+            };
+        }
         if (collided.length) {
             term(`data model: ${collided.join(', ')} — already the system's own table, not regenerated`);
             if (sessionId) {
@@ -2820,9 +3143,18 @@ export class ApiProjectTool extends BaseTool {
             // .auth-secret holds the token-signing key: it must never be committed.
             '.gitignore': 'node_modules\n.npm-cache\ndata.db\ndata.json\n.auth-secret\n',
         };
+        // The request asked for tests (eval round 15, P101 «اختبارات آلية لكل
+        // نقطة»): real endpoint tests that boot this server, and a test script.
+        if (testsRequestedIn(requestForReading)) {
+            const testedEntities = (Array.isArray(model) ? model : []).filter((entity: any) => String(entity?.key || '') !== resource);
+            files['tests/api.test.js'] = fileApiTestsJs(apiTestResources(feed ? null : { key: resource, columns }, testedEntities), ownerEmail);
+            files['package.json'] = filePackageJson(brand, true);
+            term(`api_project: the request asks for tests — wrote tests/api.test.js (${feed ? '' : `/api/${resource}, `}${testedEntities.map((entity: any) => `/api/${entity.key}`).join(', ') || 'no other tables'}) and «npm test»`);
+        }
         // Streamed to the Logs panel as each file lands — a backend build is
         // watched the same way a frontend build is.
         for (const [rel, body] of Object.entries(files)) {
+            fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
             try {
                 broadcast({
@@ -2869,7 +3201,13 @@ export class ApiProjectTool extends BaseTool {
                 // package failure. One bounded attempt is useful evidence;
                 // npm's default retry backoff only keeps Joe waiting.
                 '--fetch-retries=0', '--fetch-timeout=10000',
-            ], { cwd: proj, timeout: 30_000 });
+                // The same measured budget as every project install: 30 s cut
+                // healthy cold installs on a busy CPU (eval run500 P001).
+            ], {
+                cwd: proj, timeout: NETWORK_INSTALL_TIMEOUTS.absoluteMs, idleTimeout: NETWORK_INSTALL_TIMEOUTS.idleMs,
+                // npm is silent on a pipe; what it writes is its progress.
+                idleProgress: installProgressProbe(proj, ['--cache', npmCache]),
+            });
             const inst = instRun.missing ? -1 : instRun.timedOut ? -2 : (instRun.exitCode as number);
             npmMissing = inst === -1;
             installed = inst === 0;

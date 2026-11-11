@@ -25,10 +25,27 @@ import path from 'path';
 
 export const VERSIONS_DIR = '.joe-versions';
 const MAX_VERSIONS = 10;
-const SKIP = new Set(['node_modules', 'dist', '.git', VERSIONS_DIR, '.cache', 'coverage']);
+/**
+ * `.joe` is the agent engine's record of its runs (transcript, screenshots,
+ * result): what happened to the project, never the project. Kept in a
+ * snapshot it would be put back over the newer record by «تراجع».
+ */
+const SKIP = new Set(['node_modules', 'dist', '.git', VERSIONS_DIR, '.cache', 'coverage', '.joe']);
+/**
+ * …but for the pictures JOE-DELIVERY.md shows: a certificate put back by
+ * «تراجع» must show the version it describes (live, 2026-11-05: the restored
+ * certificate of a counter page showed the dark mode just undone).
+ */
+const KEPT_RECORD = '.joe/delivery';
 /** A source tree that big is not a source tree; refuse rather than crawl it. */
 const MAX_FILES = 800;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+/**
+ * What makes a folder a project worth keeping: a manifest, or the page a
+ * plain HTML/JS app starts from (2026-11-05: the agent engine builds those
+ * too, and they had no version to put back).
+ */
+const PROJECT_MARKERS = ['package.json', 'index.html', 'requirements.txt', 'pyproject.toml', 'go.mod', 'Cargo.toml', 'composer.json'];
 
 export interface ProjectVersion {
     id: string;
@@ -58,9 +75,15 @@ export function sourceFiles(dir: string): string[] {
         try { entries = fs.readdirSync(abs, { withFileTypes: true }); } catch { return; }
         for (const e of entries) {
             if (out.length >= MAX_FILES) return;
-            if (SKIP.has(e.name)) continue;
             const childAbs = path.join(abs, e.name);
             const childRel = rel ? `${rel}/${e.name}` : e.name;
+            // Inside `.joe`, only the way to KEPT_RECORD, and all of it.
+            if (childRel === KEPT_RECORD || KEPT_RECORD.startsWith(`${childRel}/`)) {
+                if (e.isDirectory()) walk(childAbs, childRel, depth + 1);
+                continue;
+            }
+            if (rel && KEPT_RECORD.startsWith(`${rel}/`)) continue;
+            if (SKIP.has(e.name)) continue;
             if (e.isDirectory()) { walk(childAbs, childRel, depth + 1); continue; }
             if (!e.isFile()) continue;
             try { if (fs.statSync(childAbs).size > MAX_FILE_BYTES) continue; } catch { continue; }
@@ -102,7 +125,7 @@ function prune(dir: string): void {
  */
 export function snapshotProject(dir: string, label = ''): ProjectVersion | null {
     try {
-        if (!fs.existsSync(path.join(dir, 'package.json'))) return null;
+        if (!PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) return null;
         const existing = listVersions(dir);
         const files = sourceFiles(dir);
         if (!files.length) return null;

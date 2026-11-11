@@ -98,7 +98,7 @@ export default function Login() {
                         ? t('googleNoClientSecret')
                         : err === 'access_denied'
                             ? t('googleCancelled')
-                            : `Google OAuth error: ${err}${detail ? ` — ${detail}` : ''}`;
+                            : `${t('login_googleOAuthError', { code: err })}${detail ? ` — ${detail}` : ''}`;
             setError(msg);
             window.location.hash = '';
         }
@@ -139,10 +139,10 @@ export default function Login() {
             if (!res.ok) {
                 const serverError = String(data?.error || '').trim();
                 if (res.status === 401) {
-                    throw new Error(i18n.language?.startsWith('ar') ? t('badCredentials') : 'Invalid credentials.');
+                    throw new Error(t('badCredentials'));
                 }
                 if (res.status === 403 && /registration is currently closed/i.test(serverError)) {
-                    throw new Error(i18n.language?.startsWith('ar') ? t('registrationClosed') : 'Registration is currently closed.');
+                    throw new Error(t('registrationClosed'));
                 }
                 throw new Error(serverError || t('httpRequestFailed', { status: res.status }));
             }
@@ -189,10 +189,10 @@ export default function Login() {
                 localStorage.setItem('token', data.token);
                 nav('/joe');
             } else {
-                throw new Error(i18n.language?.startsWith('ar') ? t('guestCreateFailed') : 'Failed to create guest session. Please try again later.');
+                throw new Error(t('guestCreateFailed'));
             }
         } catch (err: any) {
-            setError(err?.message || 'Guest login failed');
+            setError(err?.message || t('login_guestFailed'));
         } finally {
             setLoading(false);
         }
@@ -384,7 +384,7 @@ export default function Login() {
 
                 <div style={{ display: 'flex', alignItems: 'center', margin: '24px 0', gap: '16px' }}>
                     <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
-                    <span style={{ fontSize: '12px', color: '#52525b', fontWeight: 500 }}>OR CONTINUE WITH</span>
+                    <span style={{ fontSize: '12px', color: '#52525b', fontWeight: 500 }}>{t('login_orContinueWith')}</span>
                     <div style={{ height: '1px', flex: 1, background: 'rgba(255,255,255,0.1)' }} />
                 </div>
 
@@ -442,7 +442,7 @@ export default function Login() {
                     }}
                 >
                     <LogIn size={18} />
-                    <span>{i18n.language?.startsWith('ar') ? t('guestLogin') : 'Continue as Guest'}</span>
+                    <span>{t('guestLogin')}</span>
                 </motion.button>
             </motion.div>
 

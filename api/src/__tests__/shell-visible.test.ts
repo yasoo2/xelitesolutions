@@ -300,7 +300,12 @@ describe('the terminal panel renders and preserves the agent stream', () => {
         expect(socket).toContain('terminalHistory:');
         expect(socket).toMatch(/getTerminalHistory\(sessionId\?: string\)/);
         expect(ui).toContain('const history = SocketService.getTerminalHistory(ownerSessionId)');
-        expect(ui).toContain('--- Restored Joe execution output ---');
+        //  The restored scrollback is announced by a header line, in the
+        //  interface language: the panel writes the key, the dictionary says it.
+        expect(ui).toContain("`--- ${t('term_restoredOutput')} ---`");
+        const dictionary = fs.readFileSync(
+            path.join(__dirname, '..', '..', '..', 'web', 'src', 'i18n.ts'), 'utf-8');
+        expect(dictionary).toContain("term_restoredOutput: 'Restored Joe execution output'");
     });
 
     test('clearing the visible terminal clears its replay buffer as well', () => {

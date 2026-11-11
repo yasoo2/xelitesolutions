@@ -11,6 +11,19 @@ interface Member {
     role: string;
 }
 
+/** The workspace roles the server knows (api/src/modules/services/WorkspaceService.ts). */
+const ROLE_LABEL: Record<string, { labelKey: string }> = {
+    OWNER: { labelKey: 'wset_roleOwner' },
+    ADMIN: { labelKey: 'wset_roleAdmin' },
+    DEVELOPER: { labelKey: 'wset_roleDeveloper' },
+    VIEWER: { labelKey: 'wset_roleViewer' },
+};
+const TABS = [
+    { id: 'members', labelKey: 'wset_tabMembers', icon: Users },
+    { id: 'providers', labelKey: 'aiProviders', icon: Key },
+    { id: 'billing', labelKey: 'wset_tabBilling', icon: CreditCard },
+];
+
 export default function WorkspaceSettings() {
     const { t } = useTranslation();
     const { workspaceId } = useParams();
@@ -64,24 +77,24 @@ export default function WorkspaceSettings() {
             }, { headers: { Authorization: `Bearer ${token}` } });
 
             setInviteEmail('');
-            showFeedback('success', 'Member invited successfully');
+            showFeedback('success', t('wset_inviteSuccess'));
             fetchData();
         } catch (e: any) {
-            showFeedback('error', e.response?.data?.error || 'Failed to invite');
+            showFeedback('error', e.response?.data?.error || t('wset_inviteFailed'));
         }
     };
 
     const handleRemoveMember = async (memberId: string) => {
-        if (!confirm('Are you sure you want to remove this member?')) return;
+        if (!confirm(t('wset_confirmRemove'))) return;
         try {
             const token = localStorage.getItem('token');
             await axios.delete(`${import.meta.env.VITE_API_URL}/api/workspaces/${workspaceId}/members/${memberId}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
-            showFeedback('success', 'Member removed');
+            showFeedback('success', t('wset_removeSuccess'));
             fetchData();
         } catch (e: any) {
-            showFeedback('error', e.response?.data?.error || 'Failed to remove');
+            showFeedback('error', e.response?.data?.error || t('wset_removeFailed'));
         }
     };
 
@@ -94,9 +107,9 @@ export default function WorkspaceSettings() {
                     anthropic: { apiKey: apiKeys.anthropic }
                 }
             }, { headers: { Authorization: `Bearer ${token}` } });
-            showFeedback('success', 'API Keys saved successfully');
+            showFeedback('success', t('wset_keysSaved'));
         } catch (e: any) {
-            showFeedback('error', 'Failed to save keys');
+            showFeedback('error', t('wset_keysSaveFailed'));
         }
     };
 
@@ -105,7 +118,7 @@ export default function WorkspaceSettings() {
         setTimeout(() => setFeedback(null), 3000);
     };
 
-    if (loading) return <div className="p-8 text-center text-white/50">Loading settings...</div>;
+    if (loading) return <div className="p-8 text-center text-white/50">{t('wset_loading')}</div>;
 
     return (
         <div className="max-w-4xl mx-auto p-6 text-white pt-24">
@@ -115,8 +128,8 @@ export default function WorkspaceSettings() {
                         {workspace?.name?.substring(0, 2).toUpperCase()}
                     </div>
                     <div>
-                        <h1 className="text-2xl font-bold">{workspace?.name} Settings</h1>
-                        <p className="text-white/50 text-sm">Manage your workspace preferences</p>
+                        <h1 className="text-2xl font-bold">{t('wset_title', { name: workspace?.name ?? '' })}</h1>
+                        <p className="text-white/50 text-sm">{t('wset_subtitle')}</p>
                     </div>
                 </div>
             </header>
@@ -135,18 +148,14 @@ export default function WorkspaceSettings() {
             <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                 {/* Sidebar */}
                 <div className="space-y-1">
-                    {[
-                        { id: 'members', label: 'Members', icon: Users },
-                        { id: 'providers', label: 'AI Providers', icon: Key },
-                        { id: 'billing', label: 'Billing & Plans', icon: CreditCard },
-                    ].map(tab => (
+                    {TABS.map(tab => (
                         <button
                             key={tab.id}
                             onClick={() => setActiveTab(tab.id)}
                             className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-left ${activeTab === tab.id ? 'bg-white/10 text-white font-medium' : 'text-white/60 hover:bg-white/5 hover:text-white'}`}
                         >
                             <tab.icon size={18} />
-                            {tab.label}
+                            {t(tab.labelKey)}
                         </button>
                     ))}
                 </div>
@@ -156,14 +165,14 @@ export default function WorkspaceSettings() {
 
                     {activeTab === 'members' && (
                         <div className="space-y-6">
-                            <h2 className="text-xl font-bold mb-4">Team Members</h2>
+                            <h2 className="text-xl font-bold mb-4">{t('wset_teamMembers')}</h2>
 
                             {/* Invite Form */}
                             <form onSubmit={handleInvite} className="flex gap-2 p-4 bg-white/5 rounded-lg border border-white/10">
                                 <input
                                     type="email"
                                     required
-                                    placeholder="Enter email to invite..."
+                                    placeholder={t('wset_invitePlaceholder')}
                                     className="flex-1 bg-transparent border-none outline-none text-white placeholder-white/30"
                                     value={inviteEmail}
                                     onChange={e => setInviteEmail(e.target.value)}
@@ -173,12 +182,12 @@ export default function WorkspaceSettings() {
                                     value={inviteRole}
                                     onChange={e => setInviteRole(e.target.value)}
                                 >
-                                    <option value="ADMIN">Admin</option>
-                                    <option value="DEVELOPER">Developer</option>
-                                    <option value="VIEWER">Viewer</option>
+                                    <option value="ADMIN">{t('wset_roleAdmin')}</option>
+                                    <option value="DEVELOPER">{t('wset_roleDeveloper')}</option>
+                                    <option value="VIEWER">{t('wset_roleViewer')}</option>
                                 </select>
                                 <button type="submit" className="bg-blue-600 hover:bg-blue-500 px-4 py-1 rounded text-sm font-medium transition-colors">
-                                    <Plus size={16} className="inline mr-1" /> Invite
+                                    <Plus size={16} className="inline mr-1" /> {t('wset_invite')}
                                 </button>
                             </form>
 
@@ -196,7 +205,7 @@ export default function WorkspaceSettings() {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <span className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 font-mono uppercase">{m.role}</span>
+                                            <span className="text-xs px-2 py-1 rounded bg-white/10 text-white/70 font-mono uppercase">{ROLE_LABEL[m.role] ? t(ROLE_LABEL[m.role].labelKey) : m.role}</span>
                                             {m.role !== 'OWNER' && (
                                                 <button
                                                     onClick={() => handleRemoveMember(m._id)}
@@ -215,13 +224,13 @@ export default function WorkspaceSettings() {
                     {activeTab === 'providers' && (
                         <div className="space-y-6">
                             <div>
-                                <h2 className="text-xl font-bold">AI Providers</h2>
-                                <p className="text-white/50 text-sm mt-1">Configure your own API keys to bypass rate limits and access premium models.</p>
+                                <h2 className="text-xl font-bold">{t('aiProviders')}</h2>
+                                <p className="text-white/50 text-sm mt-1">{t('wset_providersDesc')}</p>
                             </div>
 
                             <div className="space-y-4">
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-white/80">OpenAI API Key</label>
+                                    <label className="text-sm font-medium text-white/80">{t('wset_apiKeyFor', { provider: 'OpenAI' })}</label>
                                     <input
                                         type="password"
                                         placeholder="sk-..."
@@ -233,7 +242,7 @@ export default function WorkspaceSettings() {
                                 </div>
 
                                 <div className="space-y-2">
-                                    <label className="text-sm font-medium text-white/80">Anthropic API Key</label>
+                                    <label className="text-sm font-medium text-white/80">{t('wset_apiKeyFor', { provider: 'Anthropic' })}</label>
                                     <input
                                         type="password"
                                         placeholder="sk-ant-..."
@@ -249,7 +258,7 @@ export default function WorkspaceSettings() {
                                         onClick={handleSaveKeys}
                                         className="bg-green-600 hover:bg-green-500 text-white px-6 py-2 rounded-lg font-medium transition-colors shadow-lg shadow-green-900/20"
                                     >
-                                        Save Configuration
+                                        {t('wset_saveConfig')}
                                     </button>
                                 </div>
                             </div>
@@ -261,22 +270,22 @@ export default function WorkspaceSettings() {
                             <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4 text-white/20">
                                 <CreditCard size={32} />
                             </div>
-                            <h2 className="text-xl font-bold mb-2">Current Plan: {workspace?.plan.toUpperCase()}</h2>
-                            <p className="text-white/50 max-w-sm mx-auto mb-6">You are currently on the {workspace?.plan} plan. Usage limits apply.</p>
+                            <h2 className="text-xl font-bold mb-2">{t('wset_currentPlan', { plan: workspace?.plan.toUpperCase() })}</h2>
+                            <p className="text-white/50 max-w-sm mx-auto mb-6">{t('wset_planNote', { plan: workspace?.plan })}</p>
 
                             <div className="grid grid-cols-2 gap-4 max-w-sm mx-auto mb-8 text-left">
                                 <div className="p-3 bg-white/5 rounded border border-white/10">
-                                    <div className="text-xs text-white/40 uppercase">Daily Tokens</div>
+                                    <div className="text-xs text-white/40 uppercase">{t('wset_dailyTokens')}</div>
                                     <div className="text-lg font-mono">{workspace?.limits?.maxTokensPerDay.toLocaleString()}</div>
                                 </div>
                                 <div className="p-3 bg-white/5 rounded border border-white/10">
-                                    <div className="text-xs text-white/40 uppercase">Agents</div>
+                                    <div className="text-xs text-white/40 uppercase">{t('wset_agents')}</div>
                                     <div className="text-lg font-mono">{workspace?.limits?.maxAgents}</div>
                                 </div>
                             </div>
 
                             <button className="bg-white/10 hover:bg-white/20 text-white px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed" disabled>
-                                Upgrade Plan (Coming Soon)
+                                {t('wset_upgradeSoon')}
                             </button>
                         </div>
                     )}

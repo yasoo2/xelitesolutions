@@ -92,6 +92,16 @@ User request
 
 Do not introduce competing execution paths unless they are explicitly documented and guarded.
 
+### The second, documented path: the agent engine
+
+`api/src/core/engine/` holds a second way to build a project. One model drives a fixed list of general tools in a loop: read, write, run, look, fix. A run is delivered only when `task_finish` passes Joe's delivery checks. Its README explains the design. Its guards:
+
+- **Off by default.** The orchestrator hands a build node (`project_pipeline`, `react_project`, `api_project`) to the `agent_engine` tool only when the run's context carries `engine: 'agent'` or the deployment sets `JOE_ENGINE=agent` (`core/engine/select.ts`). Read-only audits and every other node stay on the path above.
+- **Through ToolService only.** Every file, shell and browser action of the engine is a registered `engine_*` ToolService tool, called through `executeTool`.
+- **Contained.** Paths resolve inside the run's project folder (`core/engine/workspace.ts`): no `..` escape, no links, no secret files, no writes into `.git`, `node_modules` or `.joe`.
+- **No self-awarded success.** `task_finish` runs the same delivery gates as the pipeline, plus the acceptance judge. A refuted claim returns to the model; it never ends the run as delivered.
+- **Honest stops.** No step cap. A run ends on delivery, cancel, the deadline, or a measured lack of progress, and says which.
+
 ## Non-negotiable architecture rules
 
 - `ProjectPlannerTool` is planner-only. It must never import or call `executeTool` and must never auto-execute generated tasks.

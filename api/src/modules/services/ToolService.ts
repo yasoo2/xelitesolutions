@@ -19,13 +19,18 @@ import { bindRunCancellation } from '../../core/session/attended-run';
 const RESOURCE_HEAVY_TOOLS = new Set([
     'shell_execute', 'npm_manager', 'docker_manager', 'project_edit', 'react_project',
 ]);
+// Heavy tools whose own heavy work is model calls (and the processes they start
+// through executeTool), each admitted on its own: never unload the model for them.
+const MODEL_BOUND_TOOLS = new Set(['project_edit', 'react_project']);
 import { isApologyOnly, apologyText } from '../../shared/utils/honestResult';
+import { describeResourceFault, describeResourceRefusal } from '../../shared/resource-refusal';
 import { agentSearchUrl } from '../browser/challenge';
 import { autonomousDevelopmentEnabled, autonomousToolAdmitted, autonomousIdentity, autonomousContextMatches } from './AutonomousDevelopmentPolicy';
 import { autonomousFileTool, snapshotAutonomousFileInput, validateAutonomousFileOperation } from './AutonomousFilePolicy';
 import { autonomousWorkspaceTool, snapshotAutonomousWorkspaceInput, validateAutonomousWorkspaceDirectory } from './AutonomousWorkspacePolicy';
 import { exactEngineeringModel, engineeringRunId, engineeringScope, issueEngineeringContext, scopedEngineeringTool, snapshotEngineeringChild, snapshotEngineeringRequest } from './AutonomousEngineeringPolicy';
 import { engineeringExecution, engineeringExecutionTask, hasEngineeringExecutionToken, bindEngineeringExecutionGateway } from './AutonomousEngineeringPolicy';
+import { localPlanDeadlineMs } from '../../core/orchestrator/planner-run-boundary';
 
 // Rate Limiting Logic (Ported) with periodic cleanup to prevent memory leaks
 const toolRateBuckets = new Map<string, { minute: number; count: number }>();
@@ -213,6 +218,11 @@ function classifyToolRisk(name: string, input: any): 'low' | 'medium' | 'high' |
         }
         return 'medium';
     }
+    // The agent engine's file tools carry the risk of the tools they stand in for:
+    // reading, listing and searching is read_file's, writing and editing is
+    // write_file's. Never the words of a file they write or a pattern they seek.
+    if (/^engine_file_(?:read|list|search)$/.test(n)) return 'low';
+    if (/^engine_file_(?:write|edit)$/.test(n)) return 'medium';
     if (/(delete|deploy)/.test(n)) return 'high';
     if (/(write_file|file_edit|scaffold_project|npm_manager|auto_tester|java_builder)/.test(n)) return 'medium';
     if (/(read_file|inspect_directory|inspect_symbol|grep_search|codebase_navigator|project_detect|analyze_codebase)/.test(n)) return 'low';
@@ -442,7 +452,9 @@ export async function executeTool(name: string, input: any, context?: ToolContex
         const scope = engineeringScope(effectiveContext);
         if (!scope) return { ok: false, error: 'policy_blocked', output: { status: 'failed', reason: 'engineering_scope_invalid' }, logs: [] };
         (effectiveContext as any).engineeringPipeline = false;
-        effectiveContext.plannerTimeoutMs = Math.max(1, Math.min(120_000, scope.expires - Date.now()));
+        // The scope's model is local by construction: its plan is budgeted from its
+        // size and this machine's measured speed, still inside the scope's lifetime.
+        effectiveContext.plannerTimeoutMs = Math.max(1, Math.min(localPlanDeadlineMs(scope.request), scope.expires - Date.now()));
         effectiveContext.plannerMaxCompletionTokens = Number.isSafeInteger(context?.plannerMaxCompletionTokens)
             ? Math.max(1, Math.min(12000, context!.plannerMaxCompletionTokens!)) : 12000;
     }
@@ -1115,7 +1127,12 @@ export async function executeTool(name: string, input: any, context?: ToolContex
                             : run());
                         return (RESOURCE_HEAVY_TOOLS.has(effectiveName) || effectiveName.startsWith('browser_')
                             || !!engineeringExecutionTask(name, executionContext))
-                            ? requestResourceManager.withHeavy(executeScoped, { kind: `tool:${effectiveName}`, signal: resourceCancellation.signal })
+                            ? requestResourceManager.withHeavy(executeScoped, {
+                                kind: `tool:${effectiveName}`, signal: resourceCancellation.signal,
+                                // Their heavy parts are model calls and the processes they
+                                // start, each admitted on its own (see HeavyOptions.modelBound).
+                                modelBound: MODEL_BOUND_TOOLS.has(effectiveName) || effectiveName.startsWith('browser_'),
+                            })
                             : executeScoped();
                     },
                     what: effectiveName,
@@ -1223,18 +1240,39 @@ export async function executeTool(name: string, input: any, context?: ToolContex
 
     } catch (e: any) {
         const duration = Date.now() - t0;
+        // A refusal from the resource guard (withHeavy above, or a model call
+        // inside the tool) is Joe declining to start, not a tool that broke:
+        // its code, his sentence and its numbers — never internal_exception
+        // and a stack pointing at the guard (shared/resource-refusal.ts).
+        const replyArabic = isArabicReply({
+            language: (context as any)?.language,
+            text: `${String((input as any)?.request || '')} ${String((input as any)?.prompt || '')}`,
+        });
+        const refusal = describeResourceRefusal(e, replyArabic);
+        if (refusal) {
+            logs.push(`resource_refused=${refusal} duration=${duration}ms`);
+            try {
+                const { broadcastTerminalLine } = require('../../api/ws');
+                broadcastTerminalLine(contextSessionId, `\x1b[33m${refusal}\x1b[0m\r\n`);
+            } catch { /* ws is optional in isolated unit tests */ }
+            return { ok: false, error: refusal, logs };
+        }
         const errStr = formatToolError(e);
         const cancelled = errStr.includes('run_cancelled_by_owner');
         logs.push(`${cancelled ? 'cancelled' : 'exception'}=${errStr} duration=${duration}ms`);
+        // Any other RESOURCE_* code (work that ran, or a guard against Joe's
+        // own call order) stays internal_exception, in words that say what it
+        // is; its stack stays in the log line above for whoever diagnoses it.
+        const shown = describeResourceFault(e, replyArabic) || errStr;
         // Owner cancellation is an expected terminal state, not an internal
         // failure. Keep real failures red and actionable, without printing a
         // frightening stack trace for a deliberate Stop action.
         if (!cancelled) {
             try {
                 const { broadcastTerminalLine } = require('../../api/ws');
-                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${errStr}\x1b[0m\r\n`);
+                broadcastTerminalLine(contextSessionId, `\x1b[31mERROR: internal_exception: ${shown}\x1b[0m\r\n`);
             } catch { /* ws is optional in isolated unit tests */ }
         }
-        return { ok: false, error: cancelled ? 'run_cancelled_by_owner' : `internal_exception: ${errStr}`, logs };
+        return { ok: false, error: cancelled ? 'run_cancelled_by_owner' : `internal_exception: ${shown}`, logs };
     }
 }

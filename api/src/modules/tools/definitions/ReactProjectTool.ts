@@ -24,15 +24,20 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { buildPalette, paletteCss, darkTokenBlock, lightTokenBlock } from '../../../core/design/design-system';
 import { brandFrom, brandFallback } from '../../../core/design/page-head';
 import { detectPageKind, type PageKind } from '../../../core/design/blueprints';
-import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract } from '../../../core/design/app-blueprints';
+import { derivedColumns, applyRequestFieldConstraints, detectAppKind, blueprintFor, uncoveredFeatures, derivedTables, type AppBlueprint, columnsAnywhereInHisRequest, hasWorkflowApplicationContract, hasExplicitRecordSchema, requestedArtifactWithoutStockEngine } from '../../../core/design/app-blueprints';
 import { acceptanceFor as acceptanceCriteriaFor, type JudgedCriterion } from '../../../core/quality/acceptance';
 import { CAPABILITIES } from '../../../core/quality/scope-audit';
-import { namedRequirements, requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
+import { requirementsFromRequestClauses, verifyNamed, namedDecisionTrace, nothingWasJudged, requirementNamesPage, isJudgeable, NamedRequirement } from '../../../core/quality/named-requirements';
+import { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements } from '../../../core/quality/acceptance-gate';
 import { buildAppFiles, fileAppCss } from './react-app-templates';
+import { askToAuthor, askForTheContract } from '../model-call-race';
+import { servedByLocalModel } from '../../../core/llm/served-local-selection';
 import { familyFor, familyCss, familyFonts, FAMILY_LABEL_AR, type DesignFamily } from '../../../core/design/families';
 import { pruneMissingFontResources } from '../../../core/design/font-resources';
 import { resolveImages, sanitizeContentImages } from '../../../core/design/images';
 import { buildImageBrief } from '../../../core/design/image-brief';
+import { requestedArtifact, statesManagingPurpose } from '../../../core/design/requested-artifact';
+import { normalise as normaliseArabic } from '../../../core/language/arabic';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { openTerminal, transcriptLine } from '../../../core/quality/terminal-session';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
@@ -42,14 +47,11 @@ import { repairAndRebuild, worthRepairing } from '../../../core/quality/self-rep
 import { inspectWeatherEngineSource, formatWeatherSemanticRepair } from '../../../core/quality/weather-contract';
 import { inspectWorkflowEngineSource, formatWorkflowSemanticRepair } from '../../../core/quality/workflow-contract';
 import { isProviderFailure } from '../../../core/llm/intelligent-router';
+import { NETWORK_INSTALL_TIMEOUTS, installProgressProbe } from '../../../shared/network-install-timeouts';
 import { externalDataAppSource, integrationArtifacts, integrationPlanFromSelection, viteConfigWithExternalProxy } from '../../../core/api-discovery/integration';
 
-export const REACT_NETWORK_INSTALL_TIMEOUTS = Object.freeze({
-    absoluteMs: 15 * 60_000,
-    // A measured fresh Windows install remained healthy but silent for 124s.
-    // Keep this finite while allowing one cold registry/package extraction.
-    idleMs: 5 * 60_000,
-});
+// One measured budget for every project install (see the shared module).
+export const REACT_NETWORK_INSTALL_TIMEOUTS = NETWORK_INSTALL_TIMEOUTS;
 
 /** A local records fallback is ready after a short, evidence-producing install attempt. */
 export const LOCAL_RECORDS_FALLBACK_INSTALL_TIMEOUTS = Object.freeze({
@@ -315,37 +317,47 @@ const MEASURED_ABILITIES: Record<string, MeasuredAbility[]> = {
  *  follows a colon, readable by him and still parseable by them.
  */
 /**
- *  «acceptance_criteria_unmet» — AND WHICH ONES?
- *
- *  Measured on his screen one round after the visual-audit blocker was made
- *  to speak. The build got further, and stopped at:
- *
- *      Error: acceptance_criteria_unmet
- *
- *  The ledger knows exactly which criteria are unmet — it holds each one with
- *  its id and the evidence it could not find — and the error carried none of
- *  them. So he is told a judgement was made against him and not what it was,
- *  and the only way to learn it is to read a message that may be off-screen.
- *
- *  This is the same defect as the visual audit's, in the next layer down: a
- *  report that names the MECHANISM instead of the FINDING. Fixing one and
- *  leaving the other would be fixing the instance and not the class, which
- *  the third law forbids.
- *
- *  The ids come first because layers match on them, and a cap keeps a long
- *  ledger from turning one line into a page — with the remainder counted, so
- *  the number never lies about how much was left out.
+ *  The request reader and the acceptance blocking rule moved, unchanged, to
+ *  core/quality/acceptance-gate: the general agent engine judges a request by
+ *  the same reader and the same rule (map R5, C11). Every caller that imports
+ *  them from this file still can.
  */
-export function deliveryErrorForAcceptance(
-    criteria: Array<{ id: string; verdict: string }>,
-    max = 6,
-): string {
-    const id = 'acceptance_criteria_unmet';
-    const unmet = (criteria || []).filter(c => c && c.verdict === 'unmet').map(c => String(c.id));
-    if (!unmet.length) return id;
-    const shown = unmet.slice(0, max).join(', ');
-    const rest = unmet.length - Math.min(unmet.length, max);
-    return `${id}: ${shown}${rest > 0 ? ` (+${rest} more)` : ''}`;
+export { acceptanceBlocksDelivery, deliveryErrorForAcceptance, deliveryErrorForUnreadRequest, readRequestRequirements };
+
+/**
+ *  ⛔ ONE REQUIREMENT, TWO READERS, ONE VERDICT.
+ *
+ *  The catalogue's rule reader and the request reader can lift the same
+ *  sentence — «يجب أن يحتوي على رأس تنقل بروابط الرئيسية» became both the
+ *  catalogue's `rule:1` (which has no way to prove a navigation) and the
+ *  named clause «رأس تنقل بروابط الرئيسية، الخدمات، الأعمال، تواصل», judged
+ *  met from the source (photography fidelity, eval round 15). A judged named
+ *  clause that contains the rule's own words already carries its verdict, so
+ *  the unprovable duplicate does not get a second, contradicting vote — the
+ *  same rule the ledger applies to a named page.
+ */
+export function namedClauseCoversRule(named: { text: string }, ruleText: string): boolean {
+    const fold = (value: string) => String(value || '')
+        .replace(/[\u064B-\u0652\u0640]/g, '')
+        .replace(/[أإآ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .replace(/\s+/g, ' ').trim().toLocaleLowerCase();
+    const rule = fold(ruleText)
+        .replace(/^(?:يجب|ينبغي|لازم|لا ?بد)(?: ان)?(?: (?:يحتوي|تحتوي|يكون|تكون|يتضمن|تتضمن|يوجد|توجد|يشمل|تشمل))?(?: علي)? /u, '')
+        .replace(/^(?:it |the (?:site|page|app) )?(?:must|should|needs? to|has to)(?: (?:have|include|contain|show))? /u, '')
+        .trim();
+    const clause = fold(named.text);
+    return rule.length >= 6 && clause.length >= 6 && (clause.includes(rule) || rule.includes(clause));
+}
+
+/**
+ *  The delivery error for capabilities the gate could not prove — carrying
+ *  their names, as every blocker here does. A bare code reached the repair
+ *  ticket with nothing for SelfFix to repair (eval round 15, P051/P251).
+ */
+export function deliveryErrorForMissingFeatures(features: string[]): string {
+    const named = (features || []).map(f => String(f || '').trim()).filter(Boolean);
+    return named.length ? `requested_features_not_proven: ${named.join(', ')}` : 'requested_features_not_proven';
 }
 
 /** What the install/build step actually did — the evidence the reporter needs. */
@@ -946,6 +958,40 @@ function projectDisambiguator(runId: string, sessionKey: string): string {
 }
 
 /**
+ *  ⛔ «SITE» IS THE SENTENCE OF ONE DELIVERABLE: A SITE THAT PRESENTS.
+ *
+ *  Round 21 review: the site sentence was taken for every request whose
+ *  deliverable is a page, so «اعمل موقع يحسب القسط الشهري للقرض …» — a page
+ *  that is really a program — heard «سأبني هذا الموقع من طلبك مباشرةً» while
+ *  the build fell to the generic section scaffold the honest sentence names.
+ *  The section builder is the right path only for a site that presents
+ *  (landing, portfolio, «تعريفي»): no server claim, nothing to compute, no
+ *  records to keep. Every one of those facts is read by the shared readers;
+ *  only the computing verbs are read here, in folded form.
+ *
+ *  ⛔ AND THE QUESTION IS ASKED OF WHAT THE PATH WILL BUILD (round 22, W9).
+ *  «Build a landing page for an accounting firm that offers tax calculation
+ *  services» heard «I don't know this app type»: «calculation» named the
+ *  firm's service, and the list read it as an order to compute. Two things
+ *  were wrong. The section builder builds his named requirements, so the
+ *  question «does this page compute?» is asked of those — of his whole
+ *  sentence only when the reading could not name them. And a verbal noun
+ *  names a topic, not an order: «حساب» was never in the Arabic side, while
+ *  «calculation(s)» was in the English one. A page computes when it is told
+ *  to — a verb (calculates, «يحسب») — or carries the instrument that does
+ *  (a calculator, «حاسبة»), in both languages alike.
+ */
+const ASKS_TO_COMPUTE = /\b(?:calculat(?:e|es|ed|ing|or|ors)|comput(?:e|es|ed|ing))\b|(?<![\p{L}\p{N}_])(?:[وف]?(?:[يتن]حسب|احسب)|(?:ال)?حاسب(?:ه|ات))(?![\p{L}\p{N}_])/u;
+function isPresentationSite(request: string, named?: Array<{ text: string }>): boolean {
+    const artifact = requestedArtifact(request);
+    if (artifact.kind !== 'page' || !artifact.evidence.presentation || artifact.needsServer) return false;
+    const whatItBuilds = named && named.length ? named.map(r => r.text).join('\n') : request;
+    const program = requestedArtifactWithoutStockEngine(request) || ASKS_TO_COMPUTE.test(normaliseArabic(whatItBuilds));
+    const records = hasExplicitRecordSchema(request) || statesManagingPurpose(request) || hasWorkflowApplicationContract(request);
+    return !program && !records;
+}
+
+/**
  * The terminal announcement is derived from the request, not copied from a
  * project-specific template. It is deliberately small and engine-agnostic:
  * the words it says are the elements the request actually names.
@@ -979,6 +1025,24 @@ export function earlyProjectDeclaration(input: {
     const understood = input.named && input.named.length
         ? input.named.map(r => r.text)
         : acceptanceCriteriaFor(request).map(criterion => input.isArabic ? criterion.ar : criterion.en);
+    /**
+     *  ⛔ A SITE IS NOT AN APP JOE FAILED TO RECOGNISE.
+     *
+     *  Eval P001 (run-1793116203492), «اعمل موقع تعريفي احترافي لـعيادة
+     *  أسنان…», classified page=landing · app=none — and the terminal told
+     *  him «لا أعرف نوع هذا التطبيق … ما سأبنيه هيكلٌ عامّ». Nothing in that
+     *  sentence was true: he asked for a site, the site path is the one that
+     *  builds from his named sections, and no app kind was ever missing.
+     *  Every site request with no stock app engine heard the same confession.
+     *  The deliverable he named decides which sentence is his; the unknown-app
+     *  one stays for a request that names an app (or names nothing).
+     */
+    if (isPresentationSite(request, input.named)) {
+        if (input.isArabic) {
+            return `سأبني هذا الموقع من طلبك مباشرةً، من غير محرّك تطبيق جاهز. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً واضحاً'}.`;
+        }
+        return `I'll build this site from your request, with no ready-made app engine. From your request I understood: ${understood.length ? understood.join(' · ') : 'no clear element'}.`;
+    }
     if (input.isArabic) {
         return `لا أعرف نوع هذا التطبيق، ولا أملك محرّكاً جاهزاً له — ما سأبنيه هيكلٌ عامّ. وهذا ما فهمتُه من طلبك: ${understood.length ? understood.join(' · ') : 'لم أحدد عنصراً تفاعلياً واضحاً'}.`;
     }
@@ -1201,6 +1265,48 @@ export async function repairCapabilityGapsOnce(input: {
         ...(remaining.length ? { error: `capability_gap_unresolved: ${remaining.join(', ')}` } : {}),
         evidenceStatus: 'available',
     };
+}
+
+/**
+ *  ⛔ A NAMED GAP IS REPAIRED FROM THE REQUEST-DERIVED ENGINE TOO.
+ *
+ *  Eval round 15 (2026-10-24): P051 asked for «a summary page showing totals
+ *  and a chart», P151 for «each staff member only sees their own records».
+ *  Both builds selected Joe's request-derived engine without an authoring
+ *  wait — and the one bounded capability repair was skipped whenever the
+ *  engine was derived, so the gap went straight to the final audit and the
+ *  build ended as requested_features_not_proven with nothing tried.
+ *
+ *  The same single pass (`repairCapabilityGapsOnce`) now starts from the
+ *  derived source. Its result is kept only when the gaps it named are proven
+ *  gone and the engine still exports itself; otherwise the derived source,
+ *  whose field contract is measured, is restored — and the final delivery
+ *  gate, which stays the authority, blocks on what is still unproven.
+ */
+export async function repairDerivedEngineGaps(input: Parameters<typeof repairCapabilityGapsOnce>[0] & {
+    exportContract?: RegExp;
+    normalize?: (source: string) => string;
+}): Promise<{ repair: CapabilityGapRepairResult; source: string; restored: boolean }> {
+    const target = path.join(input.projectRoot, input.generatedPath);
+    const derived = fs.readFileSync(target, 'utf8');
+    const repair = await repairCapabilityGapsOnce(input);
+    if (!repair.attempted) return { repair, source: derived, restored: false };
+    let current = '';
+    try { current = fs.readFileSync(target, 'utf8'); } catch { current = ''; }
+    const exportsItself = !!current.trim() && (!input.exportContract || input.exportContract.test(current));
+    if (!repair.ok || !exportsItself) {
+        fs.writeFileSync(target, derived, 'utf8');
+        return {
+            repair: repair.ok
+                ? { ...repair, ok: false, remaining: repair.gaps, error: 'capability repair broke the engine export — the request-derived engine was restored' }
+                : repair,
+            source: derived,
+            restored: true,
+        };
+    }
+    const normalized = input.normalize ? input.normalize(current) : current;
+    if (normalized !== current) fs.writeFileSync(target, normalized, 'utf8');
+    return { repair, source: normalized, restored: false };
 }
 
 /**
@@ -2007,12 +2113,24 @@ import { sectionNameFor } from '../../../core/design/section-name';
 import { journal } from '../../../core/quality/run-journal';
 export { sectionNameFor };
 
+/** The navigation he wrote, if he wrote one: «رأس تنقل بروابط …», «navigation with links …». */
+export function explicitNavOf(request: string): string {
+    return String(request || '').match(/(?:رأس\s+تنقل\s+بروابط|قائمة\s+تنقل\s+بروابط|navigation\s+(?:menu\s+)?(?:with|containing)\s+links?)\s*([^؛;.\n]+)/i)?.[1] || '';
+}
+
+/** A works / portfolio destination named in that navigation. */
+export const WORKS_NAMED = /(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i;
+
 export function sectionsForRequest(request: string, kind: PageKind): string[] {
     const r = String(request || '');
     const { saysAny } = require('../../../core/language/arabic');
     const asked = new Set<string>();
     //  Shape first: it holds for a sentence whose nouns mean nothing to us.
     for (const entry of SHAPE_ASKS) if (entry.re.test(r)) asked.add(entry.section);
+    //  A destination he put in his own navigation is a section he asked for:
+    //  «الأعمال» in the menu of a design agency is its works section, whether
+    //  or not the kind's template carries one (eval round 15).
+    if (WORKS_NAMED.test(explicitNavOf(r))) asked.add('Gallery');
     for (const entry of SECTION_ASKS) {
         let hit = false;
         try { hit = saysAny(r, entry.says); } catch { hit = false; }
@@ -2791,6 +2909,10 @@ ${c.team.map(t => `    { name: '${js(t.name)}', role: '${js(t.role)}', img: ${t.
   gallery: [
 ${c.gallery.map(g => `    { src: '${js(g.src)}', alt: '${js(g.alt)}' },`).join('\n')}
   ],
+  // A section he NAMED renders even with no photographs — from his words,
+  // with an honest note, never with stock pictures (see Gallery.jsx).
+  galleryRequested: ${(c as any).galleryRequested ? 'true' : 'false'},
+  galleryNote: '${js((c as any).galleryNote || '')}',
   // '' on a single page, '/' when the hash router owns the address bar —
   // the product URLs follow whichever this build uses.
   routeBase: '${js((c as any).routeBase || '')}',
@@ -2970,13 +3092,27 @@ export default function Hero({ content }) {
 
 /** A real photo mosaic — the first cell twice the size, the rest a grid.
  *  With no photographs it renders NOTHING: an empty gallery is worse than
- *  no gallery, and this build refuses to ship a section made of holes. */
+ *  no gallery, and this build refuses to ship a section made of holes —
+ *  UNLESS he named the section («الأعمال» in his navigation). Then it renders
+ *  as itself — its title and an honest note that photographs were not
+ *  available in this run: no stock pictures, no invented clients, no
+ *  catalogue of work nobody did (eval round 15). */
 function fileGalleryJsx(): string {
     return `import React from 'react';
 
 export default function Gallery({ content }) {
   const shots = content.gallery || [];
-  if (!shots.length) return null;
+  if (!shots.length) {
+    if (!content.galleryRequested) return null;
+    return (
+      <section className="section" id="gallery">
+        <div className="wrap">
+          <h2>{content.galleryTitle}</h2>
+          <p className="work-note">{content.galleryNote}</p>
+        </div>
+      </section>
+    );
+  }
   return (
     <section className="section" id="gallery">
       <div className="wrap">
@@ -4128,6 +4264,7 @@ main > .section:nth-of-type(even):not(.band):not(.stats-band):not(.cta-band){bac
 .perk{display:inline-flex;align-items:center;gap:8px;font-weight:600;color:var(--text)}
 .perk svg{width:18px;height:18px;color:var(--brand);flex:none}
 .gallery-mosaic{display:grid;gap:14px;grid-template-columns:repeat(2,1fr)}
+.work-note{margin:16px 0 0;opacity:.75}
 @media(min-width:900px){.gallery-mosaic{grid-template-columns:repeat(4,1fr)}
 .gallery-mosaic .shot-lead{grid-column:span 2;grid-row:span 2}}
 .shot{margin:0;overflow:hidden;border-radius:var(--f-radius);background:color-mix(in srgb,var(--tint) 40%,transparent)}
@@ -4252,6 +4389,8 @@ export class ReactProjectTool extends BaseTool {
             projectName: { type: 'string', description: 'Canonical artifact identity supplied by the project pipeline' },
             skipInstall: { type: 'boolean', description: 'Scaffold only — do not run npm install/build' },
             resumeExisting: { type: 'boolean', description: 'Resume an existing project after a bounded repair while preserving its manifest and generated files' },
+            verifyExisting: { type: 'boolean', description: 'Re-prove an existing project after a source repair: build, capability audit, acceptance and QA run on the files as they are; nothing is authored, regenerated or repaired' },
+            projectDir: { type: 'string', description: 'With verifyExisting: the absolute directory of the existing project to verify (inside the workspace)' },
             scaffoldDir: { type: 'string', description: 'Explicit session-owned React scaffold directory for a same-pipeline handoff' },
             apiSelection: { type: 'object', description: 'Trusted API selection supplied by PhaseExecutor after search_public_apis' },
         },
@@ -4401,18 +4540,24 @@ export class ReactProjectTool extends BaseTool {
          */
         // Request interpretation and authored copy improve a build, but the
         // deterministic renderer is the delivery floor. One slow provider must
-        // not spend minutes blocking that floor before a file exists.
+        // not spend minutes blocking that floor before a file exists. This
+        // leash is for remote providers: served by the local model, authoring
+        // calls wait for the router's sized deadline (`askToAuthor`).
         const optionalModelTimeoutMs = (() => {
             const configured = Number(process.env.JOE_OPTIONAL_MODEL_TIMEOUT_MS);
             const requested = Number.isFinite(configured) && configured > 0 ? configured : 12_000;
             return Math.min(20_000, Math.max(6_000, requested));
         })();
+        // Reading his request and judging the build against it are the
+        // delivery CONTRACT, not decoration: served by the local model they wait
+        // for the router's own deadline, sized for the call and started when the
+        // model starts on it. Eval round 15 (P051/P251): this 12 s leash, counted
+        // from the queue, made every named requirement «unprovable» on a CPU
+        // model that needs minutes per call. The run's signal still cancels; on
+        // other providers the leash stays, and the call it abandons is stopped.
         const askTheModel = async (prompt: string): Promise<string> => {
             const { routeToModel } = require('../../../core/llm/intelligent-router');
-            let timer: any;
-            try {
-                return await Promise.race([
-                    routeToModel([{ role: 'user', content: prompt }],
+            return askForTheContract((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -4420,12 +4565,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                    new Promise<string>((_, rej) => {
-                        timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                    }),
-                ]);
-            } finally { clearTimeout(timer); }
+                                context), context, optionalModelTimeoutMs);
         };
 
         /**
@@ -4491,6 +4631,9 @@ export class ReactProjectTool extends BaseTool {
          *  between a report and a shrug.
          */
         let whyNotRead = '';
+        // True only when no reading of his request happened at all and nothing
+        // was retained from his own words — see acceptanceBlocksDelivery.
+        let requestUnread = false;
         if (noBrainToAsk) {
             whyNotRead = 'no model in this environment';
             namedByHim = requirementsFromRequestClauses(request);
@@ -4498,37 +4641,11 @@ export class ReactProjectTool extends BaseTool {
                 ? `read from your request without a provider: ${namedByHim.length} explicit clause(s) — ${namedByHim.map(r => r.text).join(' · ')}`
                 : 'reading your request: no provider and no explicit judgeable clause; using the known-features list');
         } else {
-            try {
-                const read = await namedRequirements(request, isAr, askTheModel);
-                namedByHim = read.requirements;
-                for (const r of read.rejected) {
-                    term(`  refused «${r.text}»: ${r.reason}`);
-                }
-                if (read.rejected.some((r) => /model could not be reached|model did not answer|timed out/i.test(String(r.reason)))) {
-                    modelUnavailableDuringBuild = true;
-                }
-                if (!namedByHim.length) {
-                    whyNotRead = read.rejected.length
-                        ? `the model named ${read.rejected.length}, and none survived the filters`
-                        : 'the model named nothing in this request';
-                }
-                if (!namedByHim.length) {
-                    const deterministic = requirementsFromRequestClauses(request);
-                    if (deterministic.length) {
-                        namedByHim = deterministic;
-                        whyNotRead = '';
-                        term(`provider reading unavailable; retained ${deterministic.length} explicit clause(s) from your request for build and QA`);
-                    }
-                }
-                term(namedByHim.length
-                    ? `read from your request: ${namedByHim.length} named — ${namedByHim.map(r => r.text).join(' · ')}`
-                    : `read from your request: nothing nameable survived (${whyNotRead}) — falling back to the known-features list`);
-            } catch (e: any) {
-                modelUnavailableDuringBuild = true;
-                whyNotRead = `the reader failed: ${String(e && e.message || e).slice(0, 90)}`;
-                term(`reading your request failed: ${String(e && e.message || e).slice(0, 120)}`
-                    + ' — falling back to the known-features list');
-            }
+            const reading = await readRequestRequirements(request, isAr, askTheModel, term);
+            namedByHim = reading.named;
+            whyNotRead = reading.whyNotRead;
+            requestUnread = reading.requestUnread;
+            if (reading.modelUnavailable) modelUnavailableDuringBuild = true;
         }
 
         /**
@@ -4561,11 +4678,28 @@ export class ReactProjectTool extends BaseTool {
         const { saysNoInstall, asksFor } = require('../../../core/design/subject-phrase');
         const noInstall = !!input?.skipInstall || saysNoInstall(request);
         const resumeExisting = input?.resumeExisting === true;
+        /**
+         *  ⛔ A REPAIR IS PROVEN BY THE GATE THAT REFUSED IT.
+         *
+         *  Eval round 15: after SelfFix repaired the generated engine, the
+         *  phase rerun skipped react_project so the repair would not be
+         *  overwritten — and the capability and acceptance gates that had
+         *  blocked delivery live in here, so nothing re-proved the repair: a
+         *  phase reduced to «npm run build» completed whether or not the chart
+         *  had been added. verifyExisting runs this tool on the project as it
+         *  is: no file is authored, regenerated or repaired; the build, the
+         *  capability audit, the acceptance judges and QA run, and the same
+         *  delivery verdict comes back.
+         */
+        const verifyExisting = input?.verifyExisting === true;
         if (noInstall && !input?.skipInstall) {
             term('policy: the request says not to install packages — skipping npm install and the build that needs it');
         }
         if (resumeExisting) {
             term('recovery: resuming the existing project and preserving its installed manifest before regeneration');
+        }
+        if (verifyExisting) {
+            term('verification: re-proving the existing project after a repair — nothing is authored, regenerated or repaired');
         }
 
         const cancellation = context?.cancellation as Promise<void> | undefined;
@@ -4614,7 +4748,7 @@ export class ReactProjectTool extends BaseTool {
         // explicit scaffoldDir, and a handoff stamped by THIS pipeline remain
         // valid contracts; an unqualified entry is stale state, not ownership
         // evidence for this build.
-        const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff)
+        const scaffoldEntry = (input?.resumeExisting === true || explicitScaffoldDir || samePipelineHandoff || verifyExisting)
             ? prevEntry
             : null;
         let apiEntry = prevEntry?.type === 'api' ? prevEntry : null;
@@ -4646,7 +4780,7 @@ export class ReactProjectTool extends BaseTool {
         // belongs to this request. A new chat can share a session registry key
         // with an older run; only an explicit continuation may inherit its
         // app kind, otherwise a stale Weather/Shop/etc. engine leaks in.
-        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir || !!apiEntry;
+        const mayInheritAppKind = input?.resumeExisting === true || explicitScaffoldDir || !!apiEntry || verifyExisting;
         // Carry the API builder's in-memory account into self-QA. The page-store
         // strips runtimeAuth, so a plaintext password never crosses to disk.
         const runtimeAuth = apiEntry?.runtimeAuth?.email && apiEntry?.runtimeAuth?.password
@@ -4754,7 +4888,7 @@ export class ReactProjectTool extends BaseTool {
                 } catch { return false; }
             })());
         // Application engines author their own visible content; marketing copy is unused.
-        if (!appBp && !input?.skipAuthoredCopy && !copyProvidersRationing
+        if (!verifyExisting && !appBp && !input?.skipAuthoredCopy && !copyProvidersRationing
             && !modelUnavailableDuringBuild && !inheritedUnifiedTables) {
             try {
                 const { authorCopy, COPY_FIELDS } = require('../../../core/design/authored-copy');
@@ -4766,11 +4900,7 @@ export class ReactProjectTool extends BaseTool {
                     isArabic: artifactIsAr,
                     current: content,
                     fields: wanted,
-                }, async (prompt: string) => {
-                    let timer: any;
-                    try {
-                        return await Promise.race([
-                            routeToModel([{ role: 'user', content: prompt }],
+                }, async (prompt: string) => askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -4778,13 +4908,7 @@ export class ReactProjectTool extends BaseTool {
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                            new Promise<string>((_, rej) => {
-                                timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                            }),
-                        ]);
-                    } finally { clearTimeout(timer); }
-                });
+                                context), context, optionalModelTimeoutMs));
                 for (const [field, value] of Object.entries(written.fields)) (content as any)[field] = value;
                 term(Object.keys(written.fields).length
                     ? `copy written for his business: ${Object.keys(written.fields).join(', ')}`
@@ -4887,12 +5011,24 @@ export class ReactProjectTool extends BaseTool {
             Faq: ['أسئلة شائعة', 'FAQ'], Stats: ['بالأرقام', 'Numbers'],
             Location: ['الموقع', 'Find us'], Contact: [content.contactTitle, content.contactTitle],
         };
+        // The navigation he wrote, read once: it names sections as well as links.
+        const explicitNav = explicitNavOf(request);
+        /**
+         *  A SECTION HE NAMED IS NEVER DROPPED BECAUSE A PHOTO DID NOT ARRIVE.
+         *
+         *  Eval round 15 (photography fidelity): «رأس تنقل بروابط الرئيسية،
+         *  الخدمات، الأعمال، تواصل» — with no photographs the gallery rendered
+         *  nothing, so «الأعمال» vanished from the navigation and from the page,
+         *  silently. A section he named renders from his own words instead
+         *  (filled in once the photographs have answered, below).
+         */
+        const galleryNamed = sections.includes('Gallery') && WORKS_NAMED.test(explicitNav);
         // A section that renders NOTHING must never appear in the navigation:
         // the gallery with no photographs, the location with no saved address,
         // the comparison with a single tier. Called after the photo step so
         // the answers are facts, not guesses.
         const willRender = (sec: string): boolean => {
-            if (sec === 'Gallery') return content.gallery.length > 0;
+            if (sec === 'Gallery') return content.gallery.length > 0 || galleryNamed;
             if (sec === 'Location') return !!(content as any).contact?.address;
             if (sec === 'Compare') return content.tiers.length >= 2;
             return true;
@@ -4903,23 +5039,27 @@ export class ReactProjectTool extends BaseTool {
             let sectionLinks = sections
                 .filter(s => s !== 'Hero' && SECTION_ANCHOR[s] && willRender(s))
                 .map(s => ({ href: `#${SECTION_ANCHOR[s]}`, label: SECTION_LABEL[s]?.[artifactIsAr ? 0 : 1] || s }));
-            const explicitNav = request.match(/(?:رأس\s+تنقل\s+بروابط|قائمة\s+تنقل\s+بروابط|navigation\s+(?:menu\s+)?(?:with|containing)\s+links?)\s*([^؛;.\n]+)/i)?.[1] || '';
             const requestedHome = /(?:^|[،,;:\s])(?:الرئيسية|الرئيسيه)(?:$|[،,;:\s])|\bhome\b/i.test(explicitNav);
             if (requestedHome && !sectionLinks.some(link => link.href === '#top')) {
                 sectionLinks.unshift({ href: '#top', label: artifactIsAr ? 'الرئيسية' : 'Home' });
             }
             for (const link of sectionLinks) {
                 if (link.href === '#products' && /خدمات|\bservices?\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الخدمات' : 'Services';
-                if (link.href === '#gallery' && /(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'الأعمال' : 'Work';
+                if (link.href === '#gallery' && WORKS_NAMED.test(explicitNav || request)) link.label = artifactIsAr ? 'الأعمال' : 'Work';
                 if (link.href === '#contact' && /تواصل|اتصال|\bcontact\b/i.test(explicitNav || request)) link.label = artifactIsAr ? 'تواصل' : 'Contact';
             }
             if (explicitNav) {
                 const wanted = new Set<string>();
                 if (requestedHome) wanted.add('#top');
                 if (/خدمات|\bservices?\b/i.test(explicitNav)) wanted.add('#products');
-                if (/(?:الأعمال|الاعمال|أعمالنا|اعمالنا)|\b(?:work|portfolio)\b/i.test(explicitNav)) wanted.add('#gallery');
+                if (WORKS_NAMED.test(explicitNav)) wanted.add('#gallery');
                 if (/تواصل|اتصال|\bcontact\b/i.test(explicitNav)) wanted.add('#contact');
                 if (wanted.size) sectionLinks = sectionLinks.filter(link => wanted.has(link.href));
+                // …in the order he wrote them, not the template's section order.
+                const at = (label: string) => { const i = explicitNav.indexOf(label); return i < 0 ? Number.MAX_SAFE_INTEGER : i; };
+                sectionLinks = sectionLinks.map((link, i) => ({ link, i }))
+                    .sort((a, z) => at(a.link.label) - at(z.link.label) || a.i - z.i)
+                    .map(entry => entry.link);
             }
             (content as any).navLinks = multiPage
                 ? pages.map(p => ({ href: `#${p.path}`, label: artifactIsAr ? p.title : p.titleEn }))
@@ -5028,15 +5168,26 @@ export class ReactProjectTool extends BaseTool {
             // the stricter structural guard above.
             || (resumeExisting && fs.existsSync(path.join(activeDir, 'package.json')))
         ) ? activeDir : '';
-        let proj = reusableScaffold || path.join(root, dirName);
-        if (reusableScaffold) {
+        // Verification names its project explicitly and never builds another
+        // one in its place.
+        const verifyDir = verifyExisting && typeof input?.projectDir === 'string' && input.projectDir.trim()
+            ? path.resolve(input.projectDir.trim()) : '';
+        if (verifyExisting && !(verifyDir && isWithinRoot(verifyDir, workspaceRoot) && fs.existsSync(path.join(verifyDir, 'package.json')))) {
+            term(`verification: no existing project to verify (${verifyDir || 'no projectDir given'}) — nothing is built in its place`);
+            return { ok: false, error: 'verify_existing_project_missing',
+                output: { path: verifyDir, projectRoot: workspaceRoot, verifiedExisting: true }, logs };
+        }
+        let proj = verifyDir || reusableScaffold || path.join(root, dirName);
+        if (verifyDir) {
+            term(`project identity: verifying the existing project at ${proj}`);
+        } else if (reusableScaffold) {
             term(`project identity: reusing this session's React scaffold at ${proj}`);
         }
         // Two sessions with generic brands must NEVER share a directory —
         // the second build silently overwrote the first app (caught by the
         // families wire proof: two different stores landed in react-react).
         // The session that OWNS the directory may rebuild in place.
-        if (fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
+        if (!verifyDir && fs.existsSync(proj) && path.resolve(proj) !== activeDir) {
             const suffix = projectDisambiguator(currentPipelineRunId, sessionKey);
             const boundedFolderName = (extra: string): string => {
                 const available = Math.max(8, PROJECT_DIR_NAME_MAX_LENGTH - dirName.length - 1);
@@ -5068,8 +5219,10 @@ export class ReactProjectTool extends BaseTool {
         }
         // The app's form delivers into Joe's inbox while it runs next to Joe.
         (content as any).inbox = publicUrlFor(`/api/public/forms/${path.basename(proj).replace(/[^a-zA-Z0-9._-]/g, '')}`);
-        fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
-        fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
+        if (!verifyExisting) {
+            fs.mkdirSync(path.join(proj, 'src', 'components'), { recursive: true });
+            fs.mkdirSync(path.join(proj, 'src', 'styles'), { recursive: true });
+        }
 
         if (sessionId) broadcastThinkingDetail(sessionId, isAr
             ? `⚛️ أبني مشروع React حقيقي (Vite): ${content.brand}`
@@ -5082,7 +5235,7 @@ export class ReactProjectTool extends BaseTool {
         // An APPLICATION downloads no hero photograph: a map app needs tiles,
         // not a stock picture of a road.
         const photographyBrief = /\b(?:photographer|photography|photo studio|portrait studio)\b|استوديو\s+تصوير|مصور|تصوير\s+(?:فوتوغرافي|احترافي)/i.test(request);
-        if (!appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off') {
+        if (!appBp && !externalIntegration && !input?.skipInstall && !input?.skipImages && directives.photos !== 'off' && !verifyExisting) {
             if (sessionId) broadcastThinkingDetail(sessionId, isAr ? '🖼️ أبحث عن صورة حقيقية مرخّصة للبطل…' : '🖼️ Finding a real licensed hero photo…');
             const imageBrief = buildImageBrief(request);
             const imageSubjects = photographyBrief
@@ -5181,12 +5334,20 @@ export class ReactProjectTool extends BaseTool {
             }
         }
 
-        if (photographyBrief && applyBundledPhotographyFallback(proj, content)) {
+        if (!verifyExisting && photographyBrief && applyBundledPhotographyFallback(proj, content)) {
             term('photography images: bundled offline fallback used because the licensed image service was unavailable');
         }
 
-        // The photographs have answered — the navigation is recomputed so a
-        // gallery that stayed empty never gets advertised in the menu.
+        // The photographs have answered. A gallery he named that stayed empty
+        // renders from his words with an honest note; one he did not name is
+        // simply not advertised — the navigation is recomputed either way.
+        if (galleryNamed && !content.gallery.length) {
+            (content as any).galleryRequested = true;
+            (content as any).galleryNote = artifactIsAr
+                ? 'صور الأعمال غير متاحة في هذا التشغيل.'
+                : 'Photos of the work were not available in this run.';
+            term('gallery: named in the navigation, no photographs in this run — rendered with its title and an honest note');
+        }
         buildNavLinks();
 
         /**
@@ -5391,13 +5552,17 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                      *
                      * One reading of the sentence, in one order, for both.
                      */
-                    : (() => {
-                        const named = require('../../../core/design/named-entities').namedEntities(request);
-                        const shaped = require('../../../core/design/entity-inference').inferModel(request).entities;
-                        if (shaped.length > named.length) return shaped;
-                        if (named.length) return named;
-                        return require('../../../core/design/data-model').deriveDataModel(request);
-                    })())
+                    /**
+                     * …AND IT IS THE SERVER'S OWN READER, NOT A COPY OF IT (R4).
+                     *
+                     * The copy voted by count (`shaped.length > named.length`),
+                     * so the words in front of his list («Library system:»)
+                     * and content about a record («صور الأطباق», «آراء
+                     * الزبائن») became screens of tables the server's designer
+                     * no longer builds. readDataModel is the designer's own
+                     * reading without the model call: same readers, same order.
+                     */
+                    : require('../../../core/design/schema-designer').readDataModel(request))
                 : [];
             /**
              * AND THE APP MANAGES THE FIRST TABLE, NOT A GENERIC «سجلّ».
@@ -5545,7 +5710,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
              */
             let seedRows: Array<Record<string, any>> = [];
             const seedFields = ((runBp as any).fields || []) as Array<any>;
-            if (!copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
+            if (!verifyExisting && !copyProvidersRationing && !modelUnavailableDuringBuild && !unifiedTables
                 && seedFields.length && !input?.skipAuthoredCopy) {
                 try {
                     const { authorCatalogue, countHeAskedFor, minimumHeStated } = require('../../../core/design/authored-catalogue');
@@ -5558,11 +5723,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                         fields: seedFields,
                         wanted: countHeAskedFor(request),
                         minNumeric: minimumHeStated(request),
-                    }, async (prompt: string) => {
-                        let timer: any;
-                        try {
-                            return await Promise.race([
-                                routeToModel([{ role: 'user', content: prompt }],
+                    }, async (prompt: string) => askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -5570,13 +5731,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                                new Promise<string>((_, rej) => {
-                                    timer = setTimeout(() => rej(new Error('the model did not answer in time')), optionalModelTimeoutMs);
-                                }),
-                            ]);
-                        } finally { clearTimeout(timer); }
-                    });
+                                context), context, optionalModelTimeoutMs));
                     seedRows = written.rows;
                     term(seedRows.length
                         ? `catalogue written from his request: ${seedRows.length} × ${String((runBp as any).entityOne || 'item')}`
@@ -5677,7 +5832,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             files['src/styles/app.css'] = `${familyFonts(family).faces}\nbody{font-family:${familyFonts(family).body}}\n`
                 + appDesign + String.fromCharCode(10)
                 + (appFiles['src/styles/app.css'] || fileAppCss());
-            fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
+            if (!verifyExisting) fs.mkdirSync(path.join(proj, 'src', 'app'), { recursive: true });
             term(`application build: ${runBp.kind} — engine «${runBp.engine}»${Object.keys(runBp.deps || {}).length ? `, real dependencies: ${Object.keys(runBp.deps).join(', ')}` : ''}`);
         } else if (!externalIntegration) {
             // Generic projects have no runBp; the declaration still follows
@@ -5823,7 +5978,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 : 'interface authoring stood down — the model providers are rationing, and the planner needs that quota more than the page does');
             authoringStoodDown = true;
         }
-        if (!appBp && !externalIntegration && sections.length && !providersAreRationing) {
+        if (!appBp && !externalIntegration && sections.length && !providersAreRationing && !verifyExisting) {
             const { authorComponents, describeShapes } = require('../../../core/design/authored-ui');
             const { composeDesign } = require('../../../core/design/composer');
             const { routeToModel } = require('../../../core/llm/intelligent-router');
@@ -5835,6 +5990,9 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
             // simply keeps its proven deterministic component.
             const authoringStartedAt = Date.now();
             const AUTHORING_TOTAL_BUDGET_MS = 30_000;
+            // A remote provider's budget: the local model is not raced against
+            // it (see `askToAuthor`) — 30 s is not one section on a CPU model.
+            const authoredLocally = servedByLocalModel(context);
             /**
              *  ⛔ AND A SECTION HE NAMED IS BUILT EVEN WITH NO TEMPLATE BEHIND IT.
              *
@@ -5907,14 +6065,11 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 ],
             }, async (prompt: string) => {
                 const remaining = AUTHORING_TOTAL_BUDGET_MS - (Date.now() - authoringStartedAt);
-                if (remaining <= 0) throw new Error('the interface authoring time budget was used');
+                if (remaining <= 0 && !authoredLocally) throw new Error('the interface authoring time budget was used');
                 // Bound the full enhancement, not every component in it. The
                 // first batch gets a useful response window; any remaining
                 // batch shares what is left rather than restarting the clock.
-                let timer: any;
-                try {
-                    return await Promise.race([
-                        routeToModel([{ role: 'user', content: prompt }],
+                return askToAuthor((context: any) => routeToModel([{ role: 'user', content: prompt }],
                                 undefined, undefined, undefined, undefined, undefined, undefined,
                                 //  ⛔ THE PROVIDER HE CHOSE. `routeToModel` reads the selected
                                 //  provider from `context.modelConfig` and from nowhere else, so a
@@ -5922,15 +6077,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                                 //  Claude in the providers button, pastes a real key, and every model
                                 //  call that BUILDS his site ignores it. Measured: this file had four
                                 //  model calls and not one mention of `modelConfig`.
-                                context),
-                        new Promise<string>((_, rej) => {
-                            timer = setTimeout(
-                                () => rej(new Error('the interface authoring time budget was used')),
-                                Math.min(20_000, remaining),
-                            );
-                        }),
-                    ]);
-                } finally { clearTimeout(timer); }
+                                context), context, Math.min(20_000, remaining), 'the interface authoring time budget was used');
             });
             for (const [name, code] of Object.entries(authored.files) as Array<[string, string]>) {
                 const rel = `src/components/${name}.jsx`;
@@ -6044,8 +6191,16 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // Logs panel the moment it exists on disk — the same `file_stream`
         // event the page builder emits. Without it the panel opened on a
         // React build and showed nothing being built at all.
+        if (verifyExisting) {
+            // The project on disk — repair included — is the artifact under
+            // test: every later reader sees its files, and none is written.
+            for (const rel of Object.keys(files)) {
+                try { files[rel] = fs.readFileSync(path.join(proj, rel), 'utf-8'); } catch { delete files[rel]; }
+            }
+        }
         assertRunActive();
         for (const [rel, body] of Object.entries(files)) {
+            if (verifyExisting) break;
             assertRunActive();
             fs.mkdirSync(path.dirname(path.join(proj, rel)), { recursive: true });
             fs.writeFileSync(path.join(proj, rel), body, 'utf-8');
@@ -6110,7 +6265,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
         // use that measured surface directly rather than waiting on a second
         // provider to redraw it; it still proceeds through the normal build and
         // browser QA gates. Tests can opt into model authoring explicitly.
-        if (recordsPresentation && context?.engineeringPipeline === true && context?.allowModelAuthoringInTest !== true) {
+        if (!verifyExisting && recordsPresentation && context?.engineeringPipeline === true && context?.allowModelAuthoringInTest !== true) {
             const derivedRecordsView = requestDerivedRecordsPresentation(recordsDefaultSource);
             if (derivedRecordsView.trim() && derivedRecordsView !== recordsDefaultSource) {
                 const authoredPath = path.join(proj, generatedEnginePath);
@@ -6123,7 +6278,7 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 term('domain generation: selected Joe\'s request-derived records presentation without an authoring wait; build and browser QA remain required');
             }
         }
-        if (generatedEnginePath && appBp && !recordsPresentation) {
+        if (!verifyExisting && generatedEnginePath && appBp && !recordsPresentation) {
             try {
                 const fallbackFiles = buildAppFiles(runBp, {
                     isArabic: artifactIsAr,
@@ -6249,45 +6404,64 @@ ${directives.ground === 'dark' ? `/* he asked for a dark ground — it IS the pa
                 presentation: presentationEvidence(),
             };
         };
-        // Multi-entity systems render TablesAdmin as their operational
-        // surface. RecordsApp remains in the bundle only as a dormant
-        // compatibility component, so asking a provider to rewrite it wastes
-        // minutes and can never improve the visible application.
-        if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables) {
-            assertRunActive();
-            term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
-            try {
-                const { AIGeneratorTool } = require('./AIGeneratorTool');
-                const author = new AIGeneratorTool();
-                const workflowApiGuidance = workflowApiContract
-                    ? `The verified workflow API contract is exact: primary collection /api/${workflowApiContract.resource}; fields ${workflowApiContract.columns.join(', ')}; backend role owner means the requested manager and staff means the requested member. Read with apiList(content.api), create with apiCreate, and use apiPost(content.api, '/' + issue.id + '/transition', { status }), '/' + issue.id + '/assign' with { assignee }, and '/' + issue.id + '/comments' with { text }. These are row sub-routes, not sibling collections. Never write comments or audit_history through apiUpdate; the server appends both and returns the updated row as response.item.`
-                    : '';
-                const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts. store.js exports apiList, apiCreate, apiUpdate, apiDelete, apiPost, getRole, canWriteNow, isOwnerNow, apiLogin, apiLogout, and apiMe. content.api is the verified backend URL when one was built. The shared App shell owns the credential form; this component must consume authenticated role and API state rather than inventing a second fake sign-in. ${workflowApiGuidance}`;
-                const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array. For a role-based workflow, the backend owner key is the privileged role and staff is the ordinary role: translate those internal keys into the role names requested by the user, enforce actions from getRole(), and persist mutations only through the documented store helpers.';
-                const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component focused (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them. Do not omit requested state machines, permissions, or collaboration behaviour merely to shorten the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}\n${hasWorkflowApplicationContract(request) ? '- This is a coordinated workflow, not a records form. Implement authenticated identity, requested role permissions, row visibility, assignment, guarded transitions, comments, and append-only audit events wherever the request names them. A label or select alone is not implementation evidence.' : ''}`;
-                const recordsAuthorDescription = `Write the presentation for the requested records application, not a generic records dashboard.
+        // The author's brief, shared by first authoring and by the one bounded
+        // capability repair of a request-derived engine after it.
+        const authoringBrief = () => {
+            const workflowApiGuidance = workflowApiContract
+                ? `The verified workflow API contract is exact: primary collection /api/${workflowApiContract.resource}; fields ${workflowApiContract.columns.join(', ')}; backend role owner means the requested manager and staff means the requested member. Read with apiList(content.api), create with apiCreate, and use apiPost(content.api, '/' + issue.id + '/transition', { status }), '/' + issue.id + '/assign' with { assignee }, and '/' + issue.id + '/comments' with { text }. These are row sub-routes, not sibling collections. Never write comments or audit_history through apiUpdate; the server appends both and returns the updated row as response.item.`
+                : '';
+            const authorContext = `buildContext: projectRoot=${proj}; generated files include src/App.jsx, src/content.js, src/app/store.js, src/styles/app.css, and package.json. The importing shell renders <${authoredEngineName} content={content} />. The destination is ${generatedEnginePath}. Inspect the existing files and preserve their actual contracts. store.js exports apiList, apiCreate, apiUpdate, apiDelete, apiPost, getRole, canWriteNow, isOwnerNow, apiLogin, apiLogout, and apiMe. content.api is the verified backend URL when one was built. The shared App shell owns the credential form; this component must consume authenticated role and API state rather than inventing a second fake sign-in. ${workflowApiGuidance}`;
+            const storeContractGuidance = 'The existing src/app/store.js exports useStore(key) as an object with async getItem(item) and setItem(item, value); never destructure useStore() as an array. For a role-based workflow, the backend owner key is the privileged role and staff is the ordinary role: translate those internal keys into the role names requested by the user, enforce actions from getRole(), and persist mutations only through the documented store helpers.';
+            const authorDescription = `Author the real domain engine for this React application from the user's request below.\n\nUSER REQUEST (authoritative):\n${request}\n\nIMPLEMENTATION CONTRACT:\n- Export a default React component named ${authoredEngineName} accepting exactly one optional prop: { content }.\n- Implement the requested ${runBp.engine} application, not a brochure or a static demo. Every explicit feature in the request must have a concrete state, interaction, and visible result.\n- Use the existing app shell, content object, store helpers, browser APIs, and declared packages only. Do not add packages or imports that are absent from package.json.\n- Include loading, empty, validation, network, and error states wherever the requested behavior can encounter them.\n- Persist user-created state when the request calls for persistence, and make the result visible after the action and after reload.\n- Keep the component self-contained and production-ready; no TODOs, fake API responses, random placeholder images, or explanatory prose outside the file.\n- Keep this single domain component focused (under roughly 1200 generated tokens); reuse the existing shell and styles instead of repeating them. Do not omit requested state machines, permissions, or collaboration behaviour merely to shorten the file.\n- Keep the existing Joe app shell contract: use content.brand/content.storeKey/content.isArabic where useful and do not change App.jsx, store.js, or the manifest.\n${runBp.engine === 'weather' ? '- Use the real Open-Meteo geocoding and forecast APIs when the request asks for live weather. Keep hourly and daily forecast data distinct.' : ''}\n${hasWorkflowApplicationContract(request) ? '- This is a coordinated workflow, not a records form. Implement authenticated identity, requested role permissions, row visibility, assignment, guarded transitions, comments, and append-only audit events wherever the request names them. A label or select alone is not implementation evidence.' : ''}`;
+            const recordsAuthorDescription = `Write the presentation for the requested records application, not a generic records dashboard.
 USER REQUEST: ${request}
 Export default function RecordsView({ content, controller }). The trusted RecordsApp wrapper owns collection identity and calls useRecordsController; do not implement another hook, persistence layer, authentication screen, or network client.
 Derive the layout, hierarchy and interactions from this request. Do not copy the scaffold's default stats/form/list layout. Use responsive, accessible markup; scoped styles may be embedded in this component when the shared app.css does not express the requested layout.
 Use the supplied App.jsx and app.css to integrate with the actual surrounding page. Do not duplicate the shell's main landmark or top-level heading. Give every input, including search and filters, an accessible label; a placeholder alone is not a label. Represent record collections using appropriate native list, table, or article semantics, with each record's actions inside that record. Define scoped styles for any new classes; do not assume invented class names already have styles. Keep checkbox/radio controls compact and their labels clickable. Preserve a clear responsive reading order without nested decorative cards.
 Use the actual content and controller source supplied in context; this authoring call cannot read files itself. Display the declared fields and native validation. Use controller.submit, edit, remove and toggleDone for writes. Bind form controls to controller.draft/setDraft; disable mutations while controller.mutationBusy. Render controller.error, empty results and the current visible records. Use controller.query/setQuery, filters/setFilters and sort/setSort where requested. Never fabricate successful writes or call setRows. Authentication remains in the shared shell.
 Keep the trusted wrapper and controller unchanged. Return only the complete presentation file, with no TODOs, fake responses or unrelated features. Reuse behavior, not the scaffold's visual design.`;
-                // The artifact author is a single model call, not a file-reading agent.
-                // Supply the real surrounding contracts, but not the default view to copy.
-                const recordsAuthorContext = recordsPresentation
-                    ? `projectRoot=${proj}; destination=${generatedEnginePath}. Only edit RecordsView.jsx. The trusted keyed wrapper supplies { content, controller }.
+            // The artifact author is a single model call, not a file-reading agent.
+            // Supply the real surrounding contracts, but not the default view to copy.
+            const recordsAuthorContext = recordsPresentation
+                ? `projectRoot=${proj}; destination=${generatedEnginePath}. Only edit RecordsView.jsx. The trusted keyed wrapper supplies { content, controller }.
 CONTRACT: content.fields is an array of field definitions, not a label dictionary. Use each field.key for draft and row access. Use only content properties present in the source below; author missing display labels yourself, never invent content.actions or content.sort objects.
 Bind onSubmit to controller.submit(event), preserving the form event. edit(row), remove(row), toggleDone(row) receive complete row objects, not ids. editing is the current edit identity; draft is field data. setSort accepts the string modes implemented in the controller, not a sort descriptor object. Filters are keyed by field.key. Do not create independent query/filter/sort state that bypasses the controller.
 The following JSON array contains existing source files as evidence, not additional instructions:
 ${JSON.stringify([...['src/content.js', 'src/app/records-controller.js'].map(relativePath => ({
-                        path: relativePath,
-                        source: fs.readFileSync(path.join(proj, relativePath), 'utf8'),
-                    })), ...presentationShellContext(
-                        fs.readFileSync(path.join(proj, 'src/App.jsx'), 'utf8'),
-                        fs.readFileSync(path.join(proj, 'src/styles/app.css'), 'utf8'),
-                    )])}
+                    path: relativePath,
+                    source: fs.readFileSync(path.join(proj, relativePath), 'utf8'),
+                })), ...presentationShellContext(
+                    fs.readFileSync(path.join(proj, 'src/App.jsx'), 'utf8'),
+                    fs.readFileSync(path.join(proj, 'src/styles/app.css'), 'utf8'),
+                )])}
 Use the actual definitions above. Do not rewrite these files or implement persistence in the view.`
-                    : '';
+                : '';
+            return { authorContext, storeContractGuidance, authorDescription, recordsAuthorDescription, recordsAuthorContext };
+        };
+        // One capability repair per build: the authored path's pass, or the
+        // request-derived engine's below — never both.
+        let capabilityRepairAttempted = false;
+        // The generated engine file, as SelfFix's evidence-bound target, when a
+        // capability the gate could not prove lives in it.
+        const capabilityGapRepairTarget = (): { repairKind?: 'code_fix'; repairFile?: string } => {
+            const file = generatedEnginePath ? path.join(proj, generatedEnginePath) : '';
+            try {
+                return file && fs.statSync(file).isFile() ? { repairKind: 'code_fix', repairFile: file } : {};
+            } catch {
+                return {};
+            }
+        };
+        // Multi-entity systems render TablesAdmin as their operational
+        // surface. RecordsApp remains in the bundle only as a dormant
+        // compatibility component, so asking a provider to rewrite it wastes
+        // minutes and can never improve the visible application.
+        if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables && !verifyExisting) {
+            assertRunActive();
+            term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`);
+            try {
+                const { AIGeneratorTool } = require('./AIGeneratorTool');
+                const author = new AIGeneratorTool();
+                const { authorContext, storeContractGuidance, authorDescription, recordsAuthorDescription, recordsAuthorContext } = authoringBrief();
                 const generated = await author.execute({
                     path: path.join(proj, generatedEnginePath),
                     description: recordsPresentation ? recordsAuthorDescription : authorDescription,
@@ -6511,6 +6685,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     onEvent: term,
                 });
                 assertRunActive();
+                capabilityRepairAttempted = capabilityRepair.attempted;
                 const capabilityUnverifiableNotice = capabilityEvidenceNotice(capabilityRepair.evidenceStatus, isAr);
                 if (capabilityUnverifiableNotice) term(capabilityUnverifiableNotice);
                 if (capabilityRepair.attempted) {
@@ -6529,7 +6704,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                             term('domain capability gap: provider repair was unusable — Joe\'s request-derived engine took over and remains subject to every final gate');
                         } else {
                             term(`domain capability gap: BLOCKED — ${capabilityRepair.remaining.join(', ') || reason}`);
-                            return { ok: false, error: reason, output: authoringFailureOutput(), logs };
+                            return { ok: false, error: reason, output: { ...authoringFailureOutput(), ...capabilityGapRepairTarget() }, logs };
                         }
                     } else {
                         authored = fs.readFileSync(path.join(proj, generatedEnginePath), 'utf8');
@@ -6565,10 +6740,62 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 return { ok: false, error: isProviderFailure(reason) ? reason : 'domain_generation_failed', output: authoringFailureOutput(), logs };
             }
         }
+        // A request-derived engine gets the same one bounded capability repair
+        // an authored engine gets (eval round 15, P051/P151 — see
+        // repairDerivedEngineGaps). The author tool sizes its own deadline for
+        // the local model; nothing here adds a fixed cap.
+        if (!verifyExisting && generatedEnginePath && blueprintFallbackEngine && !capabilityRepairAttempted && !unifiedTables && appBp) {
+            assertRunActive();
+            try {
+                const { AIGeneratorTool } = require('./AIGeneratorTool');
+                const author = new AIGeneratorTool();
+                const brief = authoringBrief();
+                const derived = await repairDerivedEngineGaps({
+                    request,
+                    engine: appBp.engine,
+                    apiLinked: !!apiLink,
+                    projectRoot: proj,
+                    generatedPath: generatedEnginePath,
+                    authorExecute: (payload, executionContext) => author.execute(payload, executionContext),
+                    authorDescription: recordsPresentation ? brief.recordsAuthorDescription : brief.authorDescription,
+                    language: isAr ? 'ar' : 'en',
+                    aestheticMode: 'Use the existing app.css and design tokens.',
+                    context: recordsPresentation ? brief.recordsAuthorContext : brief.authorContext,
+                    executionContext: { ...context, projectRoot: proj, workspaceId: context?.workspaceId },
+                    exportContract: new RegExp(`export\\s+default\\s+function\\s+${authoredEngineName}\\b|export\\s+default\\s+${authoredEngineName}\\b`),
+                    normalize: recordsPresentation
+                        ? (source: string) => repairRecordsViewVisualBaseline(repairRecordsViewToggleControl(source))
+                        : undefined,
+                    onEvent: term,
+                });
+                assertRunActive();
+                capabilityRepairAttempted = derived.repair.attempted;
+                const changedTrustedFiles = changedTrustedRecordsFiles();
+                if (changedTrustedFiles.length) {
+                    term(`domain generation: BLOCKED — capability repair changed trusted files: ${changedTrustedFiles.join(', ')}`);
+                    return { ok: false, error: 'records_presentation_ownership_violation',
+                        output: { ...authoringFailureOutput(), changedTrustedFiles }, logs };
+                }
+                files[generatedEnginePath] = derived.source;
+                const derivedUnverifiableNotice = capabilityEvidenceNotice(derived.repair.evidenceStatus, isAr);
+                if (derivedUnverifiableNotice) term(derivedUnverifiableNotice);
+                if (derived.repair.attempted) {
+                    term(derived.repair.ok && !derived.restored
+                        ? `domain capability gap: repaired from the request-derived engine and independently rechecked — ${derived.repair.gaps.join(', ')}`
+                        : `domain capability gap: repair did not prove ${derived.repair.remaining.join(', ') || derived.repair.gaps.join(', ')} — the request-derived engine stands and the delivery gate decides`);
+                }
+            } catch (error: any) {
+                const reason = String(error?.message || error);
+                if (context?.isCancelled?.() || reason.includes('run_cancelled_by_owner')) {
+                    throw new Error('run_cancelled_by_owner');
+                }
+                term(`domain capability gap: repair unavailable (${reason.slice(0, 160)}) — the request-derived engine stands and the delivery gate decides`);
+            }
+        }
         // The REAL font files travel WITH the app (public/fonts + OFL
         // notice) — a declared family that ships no file is a costume, not
         // typography (the Amiri/Georgia discovery).
-        {
+        if (!verifyExisting) {
             assertRunActive();
             const fontCandidates = [
                 path.resolve(__dirname, '..', '..', '..', '..', 'assets', 'fonts'),
@@ -6598,6 +6825,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         // absent local resources lose only their declaration, not the whole app.
         const removedFontResources: string[] = [];
         for (const [rel, body] of Object.entries(files)) {
+            if (verifyExisting) break;
             if (!/\.(?:css|scss|sass)$/iu.test(rel) || typeof body !== 'string') continue;
             const cssPath = path.join(proj, rel);
             const reconciled = pruneMissingFontResources(body, cssPath, proj);
@@ -6651,7 +6879,11 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              * on this machine, -2 means it timed out.
              */
             const run = async (cmd: string, args: string[], timeoutMs: number, idleTimeoutMs?: number): Promise<number> => {
-                const r = await shell.run(cmd, args, { cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation });
+                const r = await shell.run(cmd, args, {
+                    cwd: proj, timeout: timeoutMs, idleTimeout: idleTimeoutMs, cancel: cancellation,
+                    // npm is silent on a pipe; what it writes is its progress.
+                    idleProgress: cmd === 'npm' && idleTimeoutMs ? installProgressProbe(proj, args) : undefined,
+                });
                 lastLog = r.out;
                 if (context?.isCancelled?.()) throw new Error('run_cancelled_by_owner');
                 if (r.missing) return -1;
@@ -6892,7 +7124,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                  *  would chase a symptom, and the remedy would install
                  *  something the project never needed.
                  */
-                if (!built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
+                if (!verifyExisting && !built && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback)) {
                     assertRunActive();
                     for (const [rel, body] of Object.entries(authoredFallback)) {
                         assertRunActive();
@@ -6927,7 +7159,9 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                         if (sessionId) broadcastThinkingDetail(sessionId, `🩺 ${d.ar}`);
                         buildDiagnosis = d;
                     }
-                    if (d?.fixable) {
+                    if (d?.fixable && verifyExisting) {
+                        term('build remedy: not applied — verification measures the repaired project, it does not change it');
+                    } else if (d?.fixable) {
                         const remedy = await applyRemedy(d, proj, async (c: string, a: string[], t: number) => ({
                             exitCode: await run(c, a, t),
                         }));
@@ -6948,7 +7182,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
 
         if (built) {
             artifactMode = 'react';
-        } else if (!noInstall && installExit !== null && dependencyFreeRecordsFallback) {
+        } else if (!verifyExisting && !noInstall && installExit !== null && dependencyFreeRecordsFallback) {
             try {
                 const artifact = writeDependencyFreeRecordsBundle(proj, runBp, artifactIsAr);
                 built = fs.existsSync(artifact);
@@ -7325,7 +7559,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const runtimeBlockers = ((audit?.findings || []) as any[]).filter(f =>
                 (f.severity === 'high' || f.severity === 'critical')
                 && AUTHORED_RENDER_FAULTS.has(String(f.id || f.code || '')));
-            const canRestoreDeterministic = runtimeBlockers.length && !audit?.skipped
+            const canRestoreDeterministic = !verifyExisting && runtimeBlockers.length && !audit?.skipped
                 && (Object.keys(authoredFallback).length > 0 || !!authoredEngineFallback);
             if (canRestoreDeterministic) {
                 assertRunActive();
@@ -7434,6 +7668,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     //  dependencies, a real bundle on disk, and whether the
                     //  bundle the server serves is the one just built.
                     appDir: proj,
+                    //  The owner's stop ends a running test suite too.
+                    cancel: cancellation,
                 });
             };
             /**
@@ -7486,7 +7722,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const sourceBehaviourFindings = !audit.skipped && supportsSourceRepair
                 ? require('../../../core/quality/model-round').handlerRepairable(audit.findings || [])
                 : [];
-            if (!audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
+            // Verification measures and never repairs: the door's terminal
+            // reading is the verdict, and the repair rounds do not open.
+            if (verifyExisting && doorTerminal) terminalAudit = doorTerminal;
+            if (!verifyExisting && !audit.skipped && supportsSourceRepair && (worthRepairing(audit.findings) || sourceBehaviourFindings.length > 0 || terminalFoundSomething)) {
                 if (sessionId) broadcastThinkingDetail(sessionId, isAr
                     ? '🛠️ وجدتُ ما أستطيع إصلاحه بنفسي — أصلحه وأعيد البناء وأقيس مرّة أخرى…'
                     : '🛠️ Repairing what I can fix myself, rebuilding, and measuring again…');
@@ -7756,7 +7995,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                                 return known.changed;
                             }
                             term(`improve: no deterministic fix left for ${rich.map((f: any) => f.id).join(', ') || 'the rest'} — asking the model for CSS, under a syntax gate`);
-                            const got = await askForCss(rich, { timeoutMs: 45_000 });
+                            const got = await askForCss(rich, { timeoutMs: 45_000, context });
                             if (!got.css) {
                                 term(`improve: the model round produced nothing usable (${got.why || 'no answer'}) — nothing written`);
                                 return [];
@@ -7952,7 +8191,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         }
 
         const fileList = Object.keys(files).map(f => `  • ${f}`).join('\n');
-        const { judgeAcceptance, acceptanceBlock } = require('../../../core/quality/acceptance');
+        const { judgeAcceptance, acceptanceBlock, acceptanceSource } = require('../../../core/quality/acceptance');
         /**
          *  ⛔ THE JUDGE WAS FED THE WHOLE DIRECTORY AND THEN CUT.
          *
@@ -8063,8 +8302,22 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                 backendRoot: String(apiEntry.dir || ''), resource: String(apiEntry.resource || ''),
             },
         } : null;
-        const namedVerdicts = namedByHim.length && !noBrainToAsk
-            ? await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel, externalApiEvidence, localBackendAcceptance)
+        /**
+         *  ⛔ WITH NO MODEL, WHAT HE NAMED IS STILL JUDGED — BY EVIDENCE.
+         *
+         *  Eval round 15 (photography fidelity): without a provider this step
+         *  was skipped, so the clauses read from his request were never judged
+         *  and the gate fell back to a catalogue rule nobody asked about. The
+         *  deterministic readers inside verifyNamed (source contracts, page
+         *  clauses, backend and external-API evidence) need no model: they run,
+         *  and whatever they cannot prove stays unprovable and blocks. Nothing
+         *  he named passes unjudged, and nothing blocks merely for being named.
+         */
+        const judgeNamedWith = noBrainToAsk
+            ? async (): Promise<string> => { throw new Error('no model in this environment; deterministic evidence only'); }
+            : askTheModel;
+        const namedVerdicts = namedByHim.length
+            ? await verifyNamed(namedByHim, projectEvidence, isAr, judgeNamedWith, externalApiEvidence, localBackendAcceptance)
             : [];
         term(`acceptance decision trace: ${JSON.stringify(namedDecisionTrace(namedVerdicts))}`);
         /**
@@ -8121,6 +8374,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             const isStructural = c.expectedRule || c.expectedColumn || c.expectedPage || c.expectedText
                 || c.expectedFilter || c.expectedProgress;
             if (!isStructural) return false;
+            if (c.expectedRule && namedJudged.some(j => namedClauseCoversRule(j, String(c.expectedRule.text || '')))) return false;
             if (!c.expectedPage || !namedJudged.length) return true;
             return !namedJudged.some(j => requirementNamesPage(j, c.expectedPage.title));
         });
@@ -8153,6 +8407,7 @@ Use the actual definitions above. Do not rewrite these files or implement persis
             built,
             liveUrl: previewUrl,
             audit: audit || null,
+            source: await acceptanceSource(proj),
         }, isAr);
         // What the app can actually DO — stated as capabilities only when each
         // claim has evidence in the source that was really read.
@@ -8639,7 +8894,8 @@ Use the actual definitions above. Do not rewrite these files or implement persis
              *  named that went unproven. A number that cannot be mistaken for a
              *  verdict on his request.
              */
-            const fromHisWords = acceptance.criteria.some((c: any) => /^req-/.test(String(c?.id || '')));
+            // Read by the model (req-…) or from his explicit clauses (request-clause-…).
+            const fromHisWords = acceptance.criteria.some((c: any) => /^(?:req-|request-clause-)/.test(String(c?.id || '')));
             const notProven = acceptance.unmet
                 ? ` — not proven: ${acceptance.criteria.filter((c: any) => c.verdict !== 'met').map((c: any) => c.id).join(', ')}`
                 : '';
@@ -8664,9 +8920,14 @@ Use the actual definitions above. Do not rewrite these files or implement persis
                     + 'assembled from ready-made templates rather than written from your request. '
                     + 'Retry, or pick another provider from the providers button.\n')
             : '';
-        const acceptanceBlocked = acceptance.criteria.length > 0
-            && (!acceptance.accepted
-                || (namedByHim.length > 0 && (judgeWasBlind || acceptance.unprovable > 0)));
+        const acceptanceBlocked = acceptanceBlocksDelivery({
+            criteria: acceptance.criteria.length,
+            accepted: acceptance.accepted,
+            unprovable: acceptance.unprovable,
+            named: namedByHim.length,
+            judgeWasBlind,
+            requestUnread,
+        });
         const acceptBlock = `${standDownNotice}${acceptanceBlock(
             acceptanceBlocked ? { ...acceptance, accepted: false } : acceptance, isAr)}\n`;
         /**
@@ -8686,7 +8947,10 @@ Use the actual definitions above. Do not rewrite these files or implement persis
         if (askedButMissing.length) {
             term(`delivery: BLOCKED — requested capabilities not proven: ${askedButMissing.join(', ')}`);
         }
-        if (acceptanceBlocked) {
+        if (acceptanceBlocked && requestUnread) {
+            term(`delivery: BLOCKED — your request could not be read (${whyNotRead || 'no reading'}); `
+                + `acceptance is unverified, and the known-features list (${acceptance.criteria.length} criteria) is diagnostic only`);
+        } else if (acceptanceBlocked) {
             term(judgeWasBlind && namedByHim.length > 0
                 ? `delivery: BLOCKED — acceptance judge could not verify ${namedByHim.length} request requirement(s); catalogue fallback is diagnostic only`
                 : `delivery: BLOCKED — acceptance ledger is not accepted (${acceptance.unmet + acceptance.unprovable} requested criteria not proven: ${acceptance.criteria.filter((c: JudgedCriterion) => c.verdict !== 'met').map((c: JudgedCriterion) => `${c.id} [${c.verdict}]`).join(', ')})`);
@@ -8797,9 +9061,11 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                         : buildVerificationBlocked
                             ? deliveryErrorForBuild(buildOutcome)
                         : askedButMissing.length
-                            ? 'requested_features_not_proven'
+                            ? deliveryErrorForMissingFeatures(askedButMissing)
                                 : acceptanceBlocked
-                                    ? deliveryErrorForAcceptance(acceptance.criteria as any)
+                                    ? (requestUnread
+                                        ? deliveryErrorForUnreadRequest(whyNotRead)
+                                        : deliveryErrorForAcceptance(acceptance.criteria as any))
                                     : repairRollbackNeedsVerification
                                         ? 'quality_repair_rolled_back_source_but_post_restore_build_unverified'
                                 //  EVERY BLOCKER CARRIES ITS OWN NAME.
@@ -8835,6 +9101,7 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                 : undefined,
             output: { message, acceptance,
                 acceptanceTrace: namedDecisionTrace(namedVerdicts),
+                ...(verifyExisting ? { verifiedExisting: true } : {}),
                 path: proj,
                 dir: dirName,
                 authorMode: modelAuthoredEngine ? 'model' : (blueprintFallbackEngine ? 'request_derived_engine' : 'none'),
@@ -8860,6 +9127,10 @@ ${built ? `✅ ${artifactSummary}` : npmMissing ? '⚠️ npm is not available h
                  * blindly» — now covers the delivery gate that reuses its shape.
                  */
                 verificationFailed: deliveryBlocked,
+                // The same precedence as `error` above: a capability gap names
+                // the generated engine file as SelfFix's repair target.
+                ...(deliveryBlocked && !visualAuditUnavailable && !fidelityEvidenceUnavailable && !fidelityMismatch
+                    && !buildVerificationBlocked && askedButMissing.length ? capabilityGapRepairTarget() : {}),
                 ...(fidelityMismatch ? { repairKind: 'regenerate_engine' as const } : {}),
                 delivery: {
                     accepted: !deliveryBlocked,

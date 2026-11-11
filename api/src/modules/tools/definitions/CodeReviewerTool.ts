@@ -4,6 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isWithinRoot } from '../utils';
+import { readModelJsonObject } from '../../../shared/utils/json';
 
 /**
  * CodeReviewerTool - AI-powered code review
@@ -288,9 +289,10 @@ Return ONLY valid JSON.`;
                 { role: 'system', content: 'You are a code review expert. Return only valid JSON.' }
             ]);
 
-            const jsonMatch = response.match(/\{[\s\S]*\}/);
-            const jsonStr = jsonMatch ? jsonMatch[0] : response;
-            const review = JSON.parse(jsonStr);
+            // The shared reader (round 22, W7); no object in the reply falls to
+            // the deterministic review below, as an unparseable one always did.
+            const review: any = readModelJsonObject(String(response || ''));
+            if (!review) throw new Error('the review reply held no JSON object');
 
             // Merge the LLM findings with the deterministic ones so the critical
             // static checks (secrets, merge markers, eval) are never dropped.

@@ -46,7 +46,7 @@ export function useSessionActions() {
 
     async function mergeSessions(sourceId: string, targetId: string) {
         if (sourceId === targetId) return;
-        if (!confirm('Are you sure you want to merge these sessions? This cannot be undone.')) return;
+        if (!confirm(t('sess_mergeConfirm'))) return;
         try {
             const res: any = await api.post('/sessions/merge', { sourceId, targetId });
             if (res.ok) {

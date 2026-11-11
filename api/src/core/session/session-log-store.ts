@@ -43,7 +43,10 @@ function storeDir(): string {
 }
 const logsFile = () => path.join(storeDir(), 'joe-session-logs.json');
 
-interface SessionLog { lines: string[]; at: number; }
+interface SessionLog { lines: string[]; at: number; terminal?: string; }
+
+/** The newest part of a session's terminal output that is kept: a few screens, small enough to write often. */
+export const MAX_TERMINAL_PER_SESSION = 48_000;
 
 function store(): Record<string, SessionLog> {
     const g: any = global as any;
@@ -103,16 +106,29 @@ export function recordSessionEvent(sessionId: unknown, event: any): void {
     const id = String(sessionId || '').trim();
     if (!id) return;
     const lines = logTextFor(event);
-    if (!lines.length) return;
+    //  What the terminal printed, as it printed it (UI/UX check, 2026-11-05):
+    //  a reopened conversation's Terminal tab was an empty shell, and the run
+    //  record that held its output does not survive a restart of Joe.
+    const terminalText = event?.type === 'terminal_output' && typeof event?.data === 'string' ? event.data : '';
+    if (!lines.length && !terminalText) return;
     const stamp = logStampFor(event?.ts);
     const all = store();
     const current = all[id] || { lines: [], at: 0 };
-    const next = current.lines.concat(lines.map(l => `[${stamp}] ${l}`));
+    const next = lines.length ? current.lines.concat(lines.map(l => `[${stamp}] ${l}`)) : current.lines;
+    const terminal = terminalText ? (String(current.terminal || '') + terminalText).slice(-MAX_TERMINAL_PER_SESSION) : current.terminal;
     all[id] = {
         lines: next.length > MAX_LINES_PER_SESSION ? next.slice(-MAX_LINES_PER_SESSION) : next,
         at: Date.now(),
+        ...(terminal ? { terminal } : {}),
     };
     schedulePersist();
+}
+
+/** What this session's terminal printed — the newest part, raw, as the Terminal tab draws it. */
+export function sessionTerminal(sessionId: unknown): string {
+    const id = String(sessionId || '').trim();
+    if (!id) return '';
+    return String(store()[id]?.terminal || '');
 }
 
 /** What this session printed, in the order it printed it. */

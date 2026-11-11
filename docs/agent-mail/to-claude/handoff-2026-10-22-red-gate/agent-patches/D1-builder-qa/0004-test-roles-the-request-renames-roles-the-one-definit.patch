@@ -1,0 +1,107 @@
+From 02719b7ff16ae102e736d263de02a9da349c08b4 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:05:54 +0000
+Subject: [PATCH 4/9] test(roles): the request renames roles, the one
+ definition still compiles them
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: a-team-not-a-person (culprit 0e2ff096)
+  the roles are COMPILED from one definition, not retyped
+    pinned `export const ROLES = ${JSON.stringify(ROLES.map` and the old
+    two-name import
+  and the build message tells the owner the roles exist at all
+    pinned `${describeRoles(false)}`
+
+Decision: P for both. 0e2ff096 added rolesForRequest(): «admin and
+receptionist roles» renames owner/staff (en, noteEn) over ROLES; the
+permission lattice is ROLES' own. ApiProjectTool compiles
+fileAuthJs(roleSpecs) from `const roleSpecs = rolesForRequest(...)`, and
+the build message describes the same roleSpecs in both languages. Nothing
+is retyped; the one definition still feeds server and message.
+
+The COMPILED test now follows that chain (fileAuthJs(roles = ROLES),
+rolesForRequest -> roleSpecs -> 'auth.js': fileAuthJs(roleSpecs)) and
+asserts the behaviour: a renaming request changes the names (proof the
+comparison is not empty) and leaves [key, write, ownRowsOnly, manageUsers]
+identical to ROLES. The message test reads describeRoles(..., roleSpecs)
+UNDER each message heading — a bare match was being satisfied by the
+README's own describeRoles(true) call.
+
+Non-vacuity:
+  roles-repermission (roles.ts): renaming staff also sets ownRowsOnly:false
+    ✕ the roles are COMPILED from one definition, not retyped
+    "staff", true, -  true, +  false,   RESTORED: sha256 identical
+  roles-retyped (ApiProjectTool.ts): server table typed by hand
+    ✕ the roles are COMPILED from one definition, not retyped
+    Expected pattern: /export const ROLES = \$\{JSON\.stringify\(roles\.map/
+    RESTORED: sha256 identical
+  roles-message-defaults (ApiProjectTool.ts): EN message describes
+  describeRoles(false) instead of the compiled list
+    ✕ and the build message tells the owner the roles exist at all
+    Expected pattern: /Team — three roles, accounts made from inside the system:\n\$\{describeRoles\(false, roleSpecs\)\}/
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/a-team-not-a-person.test.ts | 28 +++++++++++++++----
+ 1 file changed, 23 insertions(+), 5 deletions(-)
+
+diff --git a/api/src/__tests__/a-team-not-a-person.test.ts b/api/src/__tests__/a-team-not-a-person.test.ts
+index d30a9465..547598ca 100644
+--- a/api/src/__tests__/a-team-not-a-person.test.ts
++++ b/api/src/__tests__/a-team-not-a-person.test.ts
+@@ -18,7 +18,7 @@ import fs from 'fs';
+ import path from 'path';
+ import {
+     ROLES, ROLE_KEYS, OWNER_COLUMN, roleSpec, canWrite, ownRowsOnly, canManageUsers,
+-    isRole, describeRoles, DEFAULT_NEW_ROLE,
++    isRole, describeRoles, DEFAULT_NEW_ROLE, rolesForRequest,
+ } from '../core/design/roles';
+ import { fileAppStoreJs, fileAccountsJsx, fileAccountsCss, fileTablesAdminJsx, fileAppShellJsx } from '../modules/tools/definitions/react-app-templates';
+ import { blueprintFor } from '../core/design/app-blueprints';
+@@ -98,8 +98,22 @@ describe('the generated server decides nothing twice', () => {
+ 
+     it('the roles are COMPILED from one definition, not retyped', () => {
+         const a = API();
+-        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(ROLES\.map/);
+-        expect(a).toMatch(/import \{ ROLES, describeRoles \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
++        //  Since 0e2ff096 the request may NAME the roles («admin and
++        //  receptionist roles»), so the server is compiled from the list it is
++        //  handed — the one definition by default…
++        expect(a).toMatch(/export const ROLES = \$\{JSON\.stringify\(roles\.map/);
++        expect(a).toMatch(/function fileAuthJs\(roles: RoleSpec\[\] = ROLES\): string \{/);
++        expect(a).toMatch(/import \{ ROLES, describeRoles, rolesForRequest, type RoleSpec \} from '\.\.\/\.\.\/\.\.\/core\/design\/roles';/);
++        //  …and in a build, that list is derived from it and nothing else.
++        expect(a).toMatch(/const roleSpecs = rolesForRequest\(/);
++        expect(a).toMatch(/'auth\.js': fileAuthJs\(roleSpecs\)/);
++        //  A sentence may rename a role; it may not retype what the role can
++        //  do. The renaming is real (or the comparison below would be empty)…
++        const named = rolesForRequest('Build a clinic system with admin and receptionist roles');
++        expect(named.map(r => r.en)).not.toEqual(ROLES.map(r => r.en));
++        //  …and the permission lattice is the one definition's, bit for bit.
++        const lattice = (rs: typeof ROLES) => rs.map(r => [r.key, r.write, r.ownRowsOnly, r.manageUsers]);
++        expect(lattice(named)).toEqual(lattice(ROLES));
+     });
+ 
+     it('a viewer is refused once, for every table there is', () => {
+@@ -179,8 +193,12 @@ describe('the accounts routes, and the ways they can be abused', () => {
+     it('and the build message tells the owner the roles exist at all', () => {
+         const src = a();
+         expect(src).toContain('👥 فريقك — النظام لم يعد لشخص واحد:');
+-        expect(src).toMatch(/\$\{describeRoles\(true\)\}/);
+-        expect(src).toMatch(/\$\{describeRoles\(false\)\}/);
++        //  Read under each heading of the MESSAGE, in both languages — the
++        //  README carries a describeRoles call too, and a bare match would be
++        //  satisfied by it. And from the SAME list the server was compiled
++        //  from (0e2ff096), so the message names the roles auth.js enforces.
++        expect(src).toMatch(/👥 فريقك — النظام لم يعد لشخص واحد:\n\$\{describeRoles\(true, roleSpecs\)\}/);
++        expect(src).toMatch(/Team — three roles, accounts made from inside the system:\n\$\{describeRoles\(false, roleSpecs\)\}/);
+         expect(src).toContain('not_your_row');
+     });
+ });
+-- 
+2.43.0
+

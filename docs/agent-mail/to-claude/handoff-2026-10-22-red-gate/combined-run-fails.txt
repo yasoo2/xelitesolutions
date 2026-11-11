@@ -1,0 +1,222 @@
+# Combined run (branch e4be7fc1 + 24 agent commits + companion patch) — every failing test with its first raw error line
+# Source: the gate jest log (9.6 MB, not committed), parsed with: python3 tools/parse_fails.py <jest.log>
+
+### src/__tests__/a-cosmetic-layer-that-starved-the-planner.test.ts  (1 failing)
+  ● the stand-down knows what it is protecting › POSITIVE — with the local brain leading, the section author does not stand down
+      first: expect(received).toMatch(expected)
+      Expected pattern: /providersAreRationing = insideATest \|\| \(!localBrainLeads/
+      Received string:  "/**
+### src/__tests__/a-capability-is-not-a-column.test.ts  (1 failing)
+  ● the boundary of the English cut, declared and not hidden › a bare English capability with no introducer IS still read as a column
+      first: expect(received).toEqual(expected) // deep equality
+### src/__tests__/a-container-he-named-is-not-a-website.test.ts  (3 failing)
+  ● the question is about the thing he named › the exact live round: a bare table
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "جدول"
+      Received string:    "سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله في «undefined»؟·
+  ● the question is about the thing he named › …and it echoes HIS word, not the one we would have picked
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "كشف"
+      Received string:    "سؤال واحد قبل أن أبدأ — ما الذي تريد تسجيله في «undefined»؟·
+  ● the question is about the thing he named › …in English too
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "ledger"
+      Received string:    "One question before I start — what do you want to record in your undefined?·
+### src/__tests__/a-page-he-named-is-a-criterion-not-a-column.test.ts  (2 failing)
+  ● and a page he named is not a column in a table › a real column list is untouched — this is a boundary, not a ban on «فيه»
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: 3
+      Received: 0
+  ● and a page he named is not a column in a table › a page AND columns in one sentence keeps the columns
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: 2
+      Received: 0
+### src/__tests__/a-grey-box-where-the-product-should-be.test.ts  (1 failing)
+  ● a product with no photo is drawn, not left blank › NEGATIVE — the records grid keeps the caller it already had
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "cardFor(draft[primary.key])"
+      Received string:    "/**
+### src/__tests__/attachments.test.ts  (1 failing)
+  ● attachments — visible in the chat, and after a reload, with real names › the server echo and the stored message both carry the chips (meta only)
+      first: expect(received).toMatch(expected)
+      Expected pattern: /role: 'user', content: text, attachments: attachmentMeta\(\)/
+      Received string:  "import { Router, Request, Response } from 'express';
+### src/__tests__/command-composer-browser-session.test.ts  (3 failing)
+  ● each Joe run carries the browser of its chat session › derives the browser session before any text-specific browser detection
+      first: expect(received).toBeGreaterThan(expected)
+      Expected: > 0
+      Received:   -1
+  ● each Joe run carries the browser of its chat session › sends that effective session in the run payload
+      first: expect(received).toMatch(expected)
+      Expected pattern: /sessionId,\s*\n\s*browserSessionId: effectiveBrowserSessionId \|\| undefined,/
+      Received string:  "const payload: any = {
+  ● each Joe run carries the browser of its chat session › preserves an explicitly supplied browser session over the derived fallback
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "browserSessionId || (sessionId ? `browser:${sessionId}` : undefined)"
+      Received string:    "import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';·
+### src/__tests__/deadline.test.ts  (1 failing)
+  ● deadline wiring — the guards are actually in the pipeline › every node execution branch in the orchestrator runs under a deadline
+      first: expect(received).toBeGreaterThanOrEqual(expected)
+      Expected: >= 5
+      Received:    4
+### src/__tests__/every-loop-is-connected.test.ts  (3 failing)
+  ● renaming the site never needed a model › it needs BOTH a site word and a name word — «غيّر اسم المنتج» is not this
+      first: expect(received).toMatch(expected)
+      Expected pattern: /if \(siteWord && nameWord && val && val\.length <= 60/
+      Received string:  "/**
+  ● renaming the site never needed a model › and it only runs when nothing else already handled the request
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "if (!touched.length) {"
+      Received string:    "THE COMMONEST EDIT OF ALL — AND IT NEEDED A MODEL TO MAKE IT.
+  ● renaming the site never needed a model › and in the tab title too, so the rename is not half done
+      first: expect(received).toMatch(expected)
+      Expected pattern: /<title>\$\{String\(inner\)\.split\(oldBrand\)\.join\(val\)\}<\/title>/
+      Received string:  "/**
+### src/__tests__/media-review-contract.test.ts  (3 failing)
+  ● request-driven media review contract › classifies the workflow as an application instead of a marketing page
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: "media"
+      Received: "generic"
+  ● request-driven media review contract › builds the fields and behavior the request names
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: "Media Review Board"
+      Received: "where users"
+  ● request-driven media review contract › emits an original-image path and visible invalid-file rejection
+      first: expect(received).toEqual(expected) // deep equality
+### src/__tests__/npm-quarantine-integration.test.ts  (1 failing)
+  ● generated-project npm quarantine boundary › runs the held install script through scoped approval plus rebuild in a fresh project
+      first: expect(received).toEqual(expected) // deep equality
+### src/__tests__/project-preview.test.ts  (1 failing)
+  ● the preview loop is WIRED, end to end › the local Joe UI proxies durable previews to the API instead of serving its own SPA
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "const apiTarget = 'http://127.0.0.1:5000'"
+      Received string:    "import { defineConfig } from 'vite';
+### src/__tests__/react-project.test.ts  (2 failing)
+  ● dependency reuse only trusts a complete Vite tree › identifies Rollup when esbuild starts but the Rollup native binding cannot load
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: "rollup"
+      Received: null
+  ● dependency reuse only trusts a complete Vite tree › keeps dependencies untouched when the native executable probe times out
+      first: expect(received).resolves.toBe(expected) // Object.is equality
+      Expected: "indeterminate"
+      Received: null
+### src/__tests__/run-start-browser-fallback.test.ts  (1 failing)
+  ● run/start preserves browser ownership on the first message › resolves a new chat session before it can touch attachment memory or persistence
+      first: expect(received).toBeGreaterThan(expected)
+      Expected: > 9743
+      Received:   -1
+### src/__tests__/terminal-wiring.test.ts  (1 failing)
+  ● the stream is live, not a post-hoc flood › a tool that streamed live is not flushed a second time
+      first: expect(received).toMatch(expected)
+      Expected pattern: /if \(!\(res as any\)\?\.logsStreamedLive\)/
+      Received string:  "
+### src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts  (1 failing)
+  ● a control that only exists on a phone is pressed too › ⛔ POSITIVE — only controls the desktop walk never saw
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || '')));"
+      Received string:    "/**
+### src/__tests__/the-planner-asks-the-tools.test.ts  (2 failing)
+  ● the planner uses it — after its own routes, before the model › routes a selected workspace project to the editor even in a fresh chat
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: "project_edit"
+      Received: "decide_capability_route"
+  ● the planner uses it — after its own routes, before the model › lets the selected workspace override a stale project remembered by the chat
+      first: expect(received).toBe(expected) // Object.is equality
+      Expected: "project_edit"
+      Received: "decide_capability_route"
+### src/__tests__/the-run-opens-the-system.test.ts  (4 failing)
+  ● readiness does not adopt a stranger's server › an unconfirmed server yields an explicit verification failure, never a dead URL
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "ok: false"
+      Received string:    "if (!livePort) {
+  ● an already-running system is adopted, not raced › project_run probes the remembered address before starting anything
+      first: expect(received).toMatch(expected)
+      Expected pattern: /if \(!input\?\.cwd && !input\?\.command && liveUrl && canAdoptRecordedLive\(live, cwd\) && await answersHttp\(liveUrl\)\)/
+      Received string:  "import { ToolDefinition, ToolPermission } from '../types';·
+  ● an already-running system is adopted, not raced › adoption needs a real HTTP answer, not just an open port
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "return res.status < 500;"
+      Received string:    "import { ToolDefinition, ToolPermission } from '../types';·
+  ● an already-running system is adopted, not raced › an explicit cwd or command still starts fresh — adoption is the default only
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "!input?.cwd && !input?.command && liveUrl"
+      Received string:    "import { ToolDefinition, ToolPermission } from '../types';·
+### src/__tests__/what-orion-got-wrong.test.ts  (1 failing)
+  ● a missing interpreter is a skipped check, never a manufactured failure › the shared pipeline discovers first and propagates verification evidence
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }"
+      Received string:    "import { ToolDefinition, ToolPermission } from '../types';
+### src/__tests__/what-you-built-and-what-you-did-not.test.ts  (2 failing)
+  ● the builder's own words survive the phase › a FAILED task still reports its error, not a message
+      first: expect(received).toMatch(expected)
+      Expected pattern: /task:\s*taskDesc,\s*tool:\s*toolName,\s*ok:\s*false,\s*execution:\s*['"]ran['"],\s*error:\s*(?:errMsg|currentRunError),/
+      Received string:  "import { ToolDefinition, ToolPermission } from '../types';
+  ● the delivery report relays what was measured › it collects every message the phases carried
+      first: expect(received).toMatch(expected)
+      Expected pattern: /const msg = String\(t\?\.message \|\| ''\)\.trim\(\);/
+      Received string:  "import { ToolDefinition, ToolPermission } from '../types';
+### src/__tests__/wiring-policy.test.ts  (16 failing)
+  ● the planner is offered the whole toolbox, not a frozen list of seven › an event with no address of its own inherits the run it came from
+      first: expect(received).toMatch(expected)
+      Expected pattern: /\}, \{ userId: goal\.context\?\.userId, sessionId: goal\.context\?\.sessionId \|\| goal\.id, runId: goal\.id \}\)/
+      Received string:  "import { PlanningEngine } from '../core/orchestrator/PlanningEngine';
+  ● an application build ships a program, not a brochure › the app templates carry real behaviour, and the scaffolder reaches them
+      first: expect(received).toMatch(expected)
+      Expected pattern: /for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/
+      Received string:  "/**
+  ● a feed ships with a feed server › the feed branch is the one that actually gets written to disk
+      first: expect(received).toMatch(expected)
+      Expected pattern: /'auth\.js': fileAuthJs\(\),\n\s*'seed\.js': fileSeedJs\(\[\]/
+      Received string:  "/**
+  ● the full-stack claim matches the server that was built › a feed is not told it has an orders table
+      first: expect(received).toMatch(expected)
+      Expected pattern: /apiLink && !feedApi \? apiLink\.replace/
+      Received string:  "/**
+  ● the React head is publish-ready › a console error names the resource it came from
+      first: expect(received).toMatch(expected)
+      Expected pattern: /l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/
+      Received string:  "/**
+  ● a run keeps going while you read another conversation › persists a fatal answer before releasing the run
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "persistChatStores()"
+      Received string:    "Fatal runtime error:`, error);
+  ● a run keeps going while you read another conversation › serves persisted chat history in explicit offline mode
+      first: expect(received).toMatch(expected)
+      Expected pattern: /readyState !== 1 && !isPersistenceDisabled && process\.env\.OFFLINE_MODE !== 'true'/
+      Received string:  "import { Request, Response } from 'express';
+  ● a run keeps going while you read another conversation › the stop control clears its session immediately after a confirmed stop
+      first: expect(received).toMatch(expected)
+      Expected pattern: /if \(rid \|\| sid\)[\s\S]{0,260}runs\/stop/
+      Received string:  "import { useEffect, useMemo, useRef, useState, lazy, Suspense, forwardRef } from 'react';·
+  ● a plan may only name tools that exist › the executor checks again, because a phase can arrive from anywhere
+      first: expect(received).toMatch(expected)
+      Expected pattern: /if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}continue;/
+      Received string:  "import { ToolDefinition, ToolPermission } from '../types';
+  ● the biggest request gets the strongest route › the pipeline discovers evidence, plans phases, then executes verification
+      first: expect(received).toContain(expected) // indexOf
+      Expected substring: "projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }"
+      Received string:    "import { ToolDefinition, ToolPermission } from '../types';
+  ● the server stores what the app sends › the schema comes from the same blueprint the interface renders
+      first: expect(received).toMatch(expected)
+      Expected pattern: /const columns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/
+      Received string:  "/**
+  ● the server stores what the app sends › a declared parent table reaches the database, the routes and the interface
+      first: expect(received).toMatch(expected)
+      Expected pattern: /'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/
+      Received string:  "/**
+  ● the generated app can sign in to its own server › and one Joe-built system never borrows another's session
+      first: expect(received).toMatch(expected)
+      Expected pattern: /const TOKEN_KEY = 'joe:auth:' \+/
+      Received string:  "/**
+  ● the team reaches the roles › the accounts screen is written into the project whenever a server exists
+      first: expect(received).toMatch(expected)
+      Expected pattern: /\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic\) \} : \{\}\)/
+      Received string:  "/**
+  ● the team reaches the roles › and the shell imports it and renders it
+      first: expect(received).toMatch(expected)
+      Expected pattern: /'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/
+      Received string:  "/**
+  ● the built system is ready for a domain › and the interface is packaged INTO the server when both exist
+      first: expect(received).toMatch(expected)
+      Expected pattern: /prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/
+      Received string:  "/**

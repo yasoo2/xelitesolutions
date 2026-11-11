@@ -3,6 +3,7 @@ import { executeTool } from '../../services/ToolService';
 import { workspaceService } from '../../services/WorkspaceService';
 import { longTermMemory } from '../../../core/memory/long-term-memory';
 import { StructuredSpecification, Requirement, AcceptanceCriterion, SpecificationVerificationResult, RequirementVerificationResult } from '../../../core/intelligence/specification';
+import { judgeTestRun } from '../../../core/quality/test-run-evidence';
 import fs from 'fs';
 import path from 'path';
 
@@ -322,7 +323,12 @@ private async runTests(testFiles: string[], projectRoot: string, context?: any):
                 cwd: projectRootAbs,
                 timeout: 120000,
             }, context);
-            return { pass: result.ok, evidence: result.ok ? 'Tests passed' : `Tests failed: ${result.error || result.output || 'Unknown error'}` };
+            // Exit 0 with «ℹ tests 0» proved no criterion: the one test-run
+            // judge reads the runner's own summary (round 21 review, Q1).
+            const output: any = (result as any).output && typeof (result as any).output === 'object' ? (result as any).output : { stdout: String((result as any).output ?? '') };
+            const judged = judgeTestRun(result.ok === true, `${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`);
+            if (judged.ranNothing) return { pass: false, evidence: `Tests did not run: ${judged.reason}` };
+            return { pass: judged.passed, evidence: judged.passed ? 'Tests passed' : `Tests failed: ${result.error || output.stderr || output.stdout || 'Unknown error'}` };
         } catch (error: any) {
             return { pass: false, evidence: `Tests failed: ${error.message || String(error)}` };
         }

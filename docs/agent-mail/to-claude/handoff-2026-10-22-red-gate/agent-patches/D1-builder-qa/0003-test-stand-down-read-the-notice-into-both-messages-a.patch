@@ -1,0 +1,97 @@
+From 1ddffe9e0e8adf1c66adcdb259677485877af30c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:05:41 +0000
+Subject: [PATCH 3/9] test(stand-down): read the notice into both messages and
+ the guard pair
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: a-page-he-never-chose-delivered-as-a-choice
+  ⛔ POSITIVE — and it reaches the delivery message itself (culprit 76f66a5d)
+     pinned `${acceptanceBlock(acceptance, isAr)}`
+  ⛔ NEGATIVE — the stand-down itself is untouched (culprit 82179eeb, PR #88;
+     the change is 46e6d5d1 on its second parent)
+     pinned `if (!appBp && sections.length && providersAreRationing) {`
+
+Decision: P for both.
+- 76f66a5d hands acceptanceBlock() a ledger marked not-accepted when the
+  delivery is blocked; the notice still LEADS the block
+  (`${standDownNotice}${acceptanceBlock(`), and `${acceptBlock}` is in the
+  Arabic and the English message.
+- 46e6d5d1 added `!externalIntegration` to BOTH the stand-down and the
+  authoring branch. An external-API build replaces App.jsx with its
+  maintained capability and writes no section components
+  (`for (const c of (appBp || externalIntegration) ? [] : ...)`), so there
+  is nothing to author or announce; the stand-down for pages with sections
+  is unchanged.
+
+The POSITIVE now also proves the block reaches both language branches of
+the message. The NEGATIVE now asserts the stand-down and the author share
+one applicability guard with providersAreRationing on opposite sides, so
+no build can skip the author without standing down.
+
+Non-vacuity:
+  notice-dropped: acceptBlock no longer starts with ${standDownNotice}
+    ✕ ⛔ POSITIVE — and it reaches the delivery message itself
+    Expected pattern: /const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(/
+    RESTORED: sha256 identical
+  notice-en-missing: English message drops ${acceptBlock}
+    ✕ ⛔ POSITIVE — and it reaches the delivery message itself
+    Expected: 2  Received: 1   RESTORED: sha256 identical
+  standdown-drift: stand-down gains `!multiPage` the author lacks
+    ✕ ⛔ NEGATIVE — the stand-down itself is untouched
+    Expected: "!appBp && !externalIntegration && sections.length"
+    Received: "!appBp && !externalIntegration && !multiPage && sections.length"
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...-never-chose-delivered-as-a-choice.test.ts | 24 +++++++++++++++++--
+ 1 file changed, 22 insertions(+), 2 deletions(-)
+
+diff --git a/api/src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts b/api/src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts
+index 61f8565f..fed7d232 100644
+--- a/api/src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts
++++ b/api/src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts
+@@ -49,7 +49,16 @@ describe('a silent fallback is announced where he reads', () => {
+         //  The acceptance block is what he actually reads. A notice anywhere
+         //  else is a notice for someone reading logs, which is not him.
+         expect(REACT).toContain('const standDownNotice = authoringStoodDown');
+-        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(acceptance, isAr\)\}/);
++        //  The notice still LEADS the acceptance block. (76f66a5d hands that
++        //  block a ledger marked not-accepted when delivery is blocked, so the
++        //  argument is no longer the bare `acceptance`; the notice is untouched.)
++        expect(REACT).toMatch(/const acceptBlock = `\$\{standDownNotice\}\$\{acceptanceBlock\(/);
++        //  …and the block is in the message he receives, in BOTH languages: a
++        //  notice carried by one branch only is a notice for half his builds.
++        const at = REACT.indexOf('const message = isAr');
++        expect(at).toBeGreaterThan(0);
++        const message = REACT.slice(at, REACT.indexOf('return {', at));
++        expect((message.match(/\$\{acceptBlock\}/g) || []).length).toBe(2);
+     });
+ 
+     it('⛔ POSITIVE — in both languages, and it names what to DO', () => {
+@@ -78,6 +87,17 @@ describe('a silent fallback is announced where he reads', () => {
+         //  This repair is about telling him, not about spending the quota
+         //  anyway. The branch still stands down, and still says why.
+         expect(REACT).toContain('interface authoring stood down — the model providers are rationing');
+-        expect(REACT).toMatch(/if \(!appBp && sections\.length && providersAreRationing\) \{/);
++        //  The stand-down and the authoring are ONE applicability test with
++        //  `providersAreRationing` on opposite sides, so there is no build that
++        //  has sections to author, skips the author, and never stands down.
++        //  (46e6d5d1 excluded external-API builds from BOTH branches: such a
++        //  build replaces App.jsx with its maintained capability and writes no
++        //  section components, so there is nothing to author or to announce.)
++        const guardOf = (rationing: string): string | null => {
++            const m = REACT.match(new RegExp(`if \\((!appBp && [^{]*?sections\\.length) && ${rationing}\\) \\{`));
++            return m ? m[1] : null;
++        };
++        expect(guardOf('providersAreRationing')).toBe('!appBp && !externalIntegration && sections.length');
++        expect(guardOf('!providersAreRationing')).toBe(guardOf('providersAreRationing'));
+     });
+ });
+-- 
+2.43.0
+

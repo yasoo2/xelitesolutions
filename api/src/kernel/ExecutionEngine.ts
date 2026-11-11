@@ -7,6 +7,18 @@ import { engineeringExecution, recheckEngineeringExecutionGateway } from '../mod
 import { logger } from '../shared/utils/logger';
 import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
+import { dropReaped, forgetChild, isOwnRecord, parseProcessListing, parsePsElapsed, planReap, processLedgerFile, readLedger, recordChild } from './process-ledger';
+import type { LiveProcess } from './process-ledger';
+
+/**
+ * A long-lived child goes into the ledger while it lives (process-ledger.ts),
+ * so a Joe that boots after this one died can end what it left running.
+ */
+function keepInLedger(child: any, program: string): void {
+    if (!child?.pid) return;
+    const record = recordChild(child.pid, program, /(^|[\\/])setsid$/u.test(String(program || '')));
+    if (record) child.once('close', () => forgetChild(record));
+}
 
 /** Stop a timed-out shell and its descendants before the next repair starts. */
 function terminateProcessTree(child: any): Promise<void> {
@@ -94,6 +106,18 @@ export interface ExecutionOptions {
      * can never run forever.
      */
     idleTimeout?: number;
+    /**
+     * What a SILENT command is doing, when silence is not idleness.
+     *
+     * `npm install` on a pipe prints nothing until it is done. Eval run500
+     * P001 (2026-10-26): it wrote 2,226 files into node_modules and its cache
+     * in five minutes — 1,040 in the last full minute — and was killed as
+     * «no progress for 302.1s» while still writing. Asked only when the idle
+     * interval passes in silence: a changed answer re-arms the interval; the
+     * same answer, or a probe that throws, ends the command as before.
+     * `timeout` stays the absolute ceiling.
+     */
+    idleProgress?: () => Promise<string> | string;
     detached?: boolean;
     /**
      *  DO NOT WAIT FOR IT — WHICH IS NOT THE SAME AS DETACH IT.
@@ -726,8 +750,16 @@ export class ExecutionEngine {
      */
     runArgvStreaming(file: string, args: string[], options: ExecutionOptions & {
         onLine?: (line: string, stream: 'stdout' | 'stderr') => void;
+        /**
+         * The child is meant to outlive this Joe and has its own keeper: a
+         * project_run preview is recorded with the project and adopted by
+         * the next Joe (adoptRecordedPreviews), so the Preview tab keeps
+         * serving across a restart. It stays out of the process ledger,
+         * which would end it at the next boot.
+         */
+        outlivesJoe?: boolean;
     } = {}): { done: Promise<{ ok: boolean; exitCode: number | null; error?: string }>; kill: () => void; pid?: number } {
-        const { onLine, ...rest } = options;
+        const { onLine, outlivesJoe, ...rest } = options;
         // npm/npx/yarn/pnpm on Windows are .cmd shims, and since the fix for
         // CVE-2024-27980 (Node 18.20.2 / 20.12.2 / 21.7.3 and everything after)
         // spawning a .cmd or .bat WITHOUT a shell throws outright:
@@ -810,6 +842,7 @@ export class ExecutionEngine {
                 shell: false,
                 windowsHide: (rest as any).windowsHide !== false,
             } as any);
+        if (!outlivesJoe) keepInLedger(child, cmd);
         let settled = false;
         let stopping = false;
         let cancelRequested = false;
@@ -840,9 +873,32 @@ export class ExecutionEngine {
                 void terminateProcessTree(child).finally(() => settle({ ok: false, exitCode: 124, error: reason }));
             };
             let sawOutput = false;
+            // Each arm is a generation: output that arrives while the
+            // progress probe is being read supersedes that read's verdict.
+            let idleGeneration = 0;
+            let progressMark: string | null = null;
+            const readProgress = async (): Promise<string | null> => {
+                try { return String(await rest.idleProgress!()); } catch { return null; }
+            };
+            if (rest.idleTimeout && rest.idleProgress) {
+                void readProgress().then(mark => { if (progressMark === null) progressMark = mark; });
+            }
+            const onIdle = async (generation: number) => {
+                if (rest.idleProgress) {
+                    const mark = await readProgress();
+                    if (settled || stopping || generation !== idleGeneration) return;
+                    if (mark !== null && mark !== progressMark) {
+                        progressMark = mark;
+                        armIdleTimer();
+                        return;
+                    }
+                }
+                finishTimeout('idle_timeout');
+            };
             const armIdleTimer = () => {
                 if (!rest.idleTimeout || settled || stopping) return;
                 if (idleTimer) clearTimeout(idleTimer);
+                const generation = ++idleGeneration;
                 // Process creation and runtime bootstrap can be delayed by the
                 // host scheduler before user code has any chance to print.
                 // Give only that first silence a small bounded grace period;
@@ -850,7 +906,7 @@ export class ExecutionEngine {
                 const delay = sawOutput
                     ? rest.idleTimeout
                     : Math.max(rest.idleTimeout, Math.min(5_000, rest.idleTimeout * 3));
-                idleTimer = setTimeout(() => finishTimeout('idle_timeout'), delay);
+                idleTimer = setTimeout(() => { void onIdle(generation); }, delay);
             };
             const feed = (stream: 'stdout' | 'stderr') => (b: Buffer) => {
                 sawOutput = true;
@@ -887,6 +943,58 @@ export class ExecutionEngine {
             child.on('error', onError);
         });
         return { done, kill: () => { void terminateProcessTree(child); }, pid: child.pid };
+    }
+
+    /**
+     * END WHAT A JOE THAT DIED LEFT RUNNING (process-ledger.ts).
+     *
+     * Called once, after the server is listening. Nothing is listed when the
+     * ledger holds no record of another Joe: the listing costs seconds on a
+     * loaded machine (measured 12–30 s), and a boot owes it only when there is
+     * something to look for. Every step is best effort; a failure leaves the
+     * records for the next boot.
+     */
+    async reapPreviousLife(): Promise<{ records: number; reaped: number; ended: number[]; error?: string }> {
+        const records = readLedger();
+        const others = records.filter(r => !isOwnRecord(r));
+        if (!processLedgerFile() || !others.length) return { records: records.length, reaped: 0, ended: [] };
+        let live: LiveProcess[];
+        try {
+            live = await this.listProcessesForReap();
+        } catch (e: any) {
+            return { records: records.length, reaped: 0, ended: [], error: String(e?.message || e) };
+        }
+        if (!live.length) return { records: records.length, reaped: 0, ended: [], error: 'the process list came back empty' };
+        const plan = planReap(records, live);
+        const ended: number[] = [];
+        if (process.platform === 'win32') {
+            for (const pid of plan.trees) {
+                const r: any = await this.runArgvInternal('taskkill', ['/PID', String(pid), '/T', '/F'], { timeout: 30_000 });
+                if (r?.exitCode === 0) ended.push(pid);
+            }
+        } else {
+            for (const pgid of plan.groups) {
+                try { process.kill(-pgid, 'SIGKILL'); ended.push(pgid); } catch { /* the group is gone */ }
+            }
+            for (const pid of plan.trees) {
+                try { process.kill(pid, 'SIGKILL'); ended.push(pid); } catch { /* already gone */ }
+            }
+        }
+        dropReaped(plan.reaped);
+        return { records: records.length, reaped: plan.reaped.length, ended };
+    }
+
+    /** Every process on the machine as `pid ppid startedMs`. */
+    private async listProcessesForReap(): Promise<LiveProcess[]> {
+        if (process.platform === 'win32') {
+            const script = "Get-CimInstance Win32_Process | ForEach-Object { '' + $_.ProcessId + ' ' + $_.ParentProcessId + ' ' + ([DateTimeOffset]$_.CreationDate).ToUnixTimeMilliseconds() }";
+            const r: any = await this.runArgvInternal('powershell.exe', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], { timeout: 90_000 });
+            if (r?.exitCode !== 0) throw new Error(`the process listing failed (exit ${r?.exitCode}): ${String(r?.error || '').slice(0, 200)}`);
+            return parseProcessListing(String(r.output || ''));
+        }
+        const r: any = await this.runArgvInternal('ps', ['-eo', 'pid=,ppid=,etimes='], { timeout: 30_000 });
+        if (r?.exitCode !== 0) throw new Error(`ps failed (exit ${r?.exitCode}): ${String(r?.error || '').slice(0, 200)}`);
+        return parsePsElapsed(String(r.output || ''));
     }
 
     /**
@@ -1087,6 +1195,7 @@ export class ExecutionEngine {
                 };
                 child.once('error', (err) => finish({ ok: false, error: err.message, exitCode: null, pid: child.pid }));
                 if (options.detached) child.unref();
+                else keepInLedger(child, file);
                 setTimeout(() => finish({
                     ok: child.exitCode === null || child.exitCode === 0,
                     pid: child.pid,
@@ -1139,6 +1248,7 @@ export class ExecutionEngine {
                 //  Only a DETACHED child is disowned. A background child is
                 //  still ours: that is the whole difference between the two.
                 if (options.detached) child.unref();
+                else keepInLedger(child, cmd);
                 setTimeout(() => {
                     resolve({
                         ok: child.exitCode === null || child.exitCode === 0,

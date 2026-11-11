@@ -7,6 +7,7 @@ import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../..
 import { workspaceService } from '../../services/WorkspaceService';
 import { isArabicReply, say } from '../../../shared/reply-language';
 import { pythonExecutable, pythonMissingNote, runPython } from '../../../core/quality/python-runtime';
+import { judgeTestRun } from '../../../core/quality/test-run-evidence';
 
 const PLATFORM_DIR = 'autonomous-engineering-platform';
 
@@ -183,15 +184,28 @@ export class EnterprisePlatformFoundationTool extends BaseTool {
      * defect in what was just written. See core/quality/python-runtime.ts.
      */
     const pythonSkipped = compile.missing;
-    const verified = pythonSkipped ? jsonValid : (compile.ok && tests.ok && serviceTests.ok && jsonValid);
-    const state = (run: { ok: boolean }) => (pythonSkipped ? 'skipped (python not installed)' : run.ok ? 'passed' : 'failed');
-    term(`[enterprise] verification: python-contract-syntax=${state(compile)}; foundation-contract-tests=${state(tests)}; control-plane-contract-tests=${state(serviceTests)}; event-schema-json=${jsonValid ? 'passed' : 'failed'}`);
+    /**
+     * A SUITE THAT RAN NOTHING PROVED NOTHING (round 22). The control-plane
+     * contract tests skip themselves where FastAPI is absent — exit 0, «OK
+     * (skipped=N)» — and were reported «passed», the foundation «verified
+     * locally». Each run is read by the one judge of a test run
+     * (test-run-evidence): Joe's own foundation tests that ran nothing are a
+     * broken foundation; a control-plane suite that skipped every test was not
+     * measured, and is said so — never counted as passed.
+     */
+    const judged = (run: { ok: boolean; output: string; error: string }) => judgeTestRun(run.ok, `${run.output}\n${run.error}`);
+    const foundationRun = judged(tests);
+    const controlPlaneRun = judged(serviceTests);
+    const verified = pythonSkipped ? jsonValid : (compile.ok && foundationRun.passed && serviceTests.ok && jsonValid);
+    const state = (run: { ok: boolean }, judgement?: { ranNothing: unknown }) => (pythonSkipped ? 'skipped (python not installed)'
+        : judgement?.ranNothing ? 'not run (no test ran)' : run.ok ? 'passed' : 'failed');
+    term(`[enterprise] verification: python-contract-syntax=${state(compile)}; foundation-contract-tests=${state(tests, foundationRun)}; control-plane-contract-tests=${state(serviceTests, controlPlaneRun)}; event-schema-json=${jsonValid ? 'passed' : 'failed'}`);
     if (pythonSkipped) term(`[enterprise] ${pythonMissingNote(acceptanceCommand, false)}`);
     term('[enterprise] external deployment intentionally not attempted; human review and approvals are required.');
 
     return {
       ok: verified,
-      error: verified ? undefined : `foundation verification failed: ${compile.error || tests.error || serviceTests.error || compile.output || tests.output || serviceTests.output || 'contract validation failed'}`,
+      error: verified ? undefined : `foundation verification failed: ${foundationRun.reason || compile.error || tests.error || serviceTests.error || compile.output || tests.output || serviceTests.output || 'contract validation failed'}`,
       output: {
         projectPath,
         writtenFiles,
@@ -199,7 +213,9 @@ export class EnterprisePlatformFoundationTool extends BaseTool {
         verification: pythonSkipped
           ? `Architecture, contracts, control-plane skeleton, and JSON event contract written; the Python contract tests were NOT run — ${pythonMissingNote(acceptanceCommand, isAr)}`
           : verified
-            ? 'Python control-plane syntax, governed workflow-domain tests, control-plane API contract tests, and JSON event contract verified locally'
+            ? (controlPlaneRun.ranNothing
+              ? `Python control-plane syntax, governed workflow-domain tests, and JSON event contract verified locally; the control-plane API contract tests did not run — ${controlPlaneRun.reason}`
+              : 'Python control-plane syntax, governed workflow-domain tests, control-plane API contract tests, and JSON event contract verified locally')
             : 'Local verification failed',
         acceptanceRan: !pythonSkipped,
         acceptanceCommand,

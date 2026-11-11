@@ -8,26 +8,43 @@ import path from 'path';
 import fs from 'fs';
 import { agentSearchUrl } from '../../browser/challenge';
 import { artifactRootDir } from '../../../shared/artifact-root';
+import { previewKey, staticSiteRoot } from '../preview-site';
 
 const ARTIFACT_DIR = artifactRootDir();
 
+/**
+ * The local address of the project this CHAT session built, or ''.
+ *
+ * Eval round 14 (2026-10-24, P001) found two independent blockers here:
+ *   - the lookup used the browser panel's id («browser:<chat>»), while the
+ *     project is registered under the chat id — so it never found the project;
+ *   - only <dir>/dist was previewable, so a static site written file by file
+ *     (src/index.html, no bundler) had no address even when found.
+ * The key is now the chat id (previewKey strips «browser:»). A static site is
+ * served by project_run's loopback server (startLocalSitePreview below), never
+ * by widening the public /project-preview route. The session's project is read
+ * without a run filter, as before: «check my site» in a later message is a new
+ * run.
+ */
 export function localLivePreviewFor(sessionId: string): string {
-    const key = String(sessionId || '').replace(/[^a-zA-Z0-9._-]/g, '_');
+    const key = previewKey(sessionId);
     const project = (global as any).joeProjects?.[key];
     const record = project?.live;
     const raw = String(record?.url || '').trim();
     if (raw) {
         try {
             const u = new URL(raw);
-            if (['localhost', '127.0.0.1', '::1'].includes(u.hostname)) return raw;
+            // URL.hostname keeps the brackets of an IPv6 literal: «[::1]».
+            if (['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname)) return raw;
         } catch { /* fall through to the trusted local project preview */ }
     }
 
     /**
      * A completed build may have no live process: ReactProjectTool still
-     * publishes its dist through Joe's authenticated-session preview route.
-     * The old lookup treated a missing `live.url` as "no application", so the
-     * browser QA phase searched the web or stopped before touching the build.
+     * publishes its dist through Joe's own /project-preview route (no auth;
+     * build output only). The old lookup treated a missing `live.url` as "no
+     * application", so the browser QA phase searched the web or stopped before
+     * touching the build.
      */
     const dir = String(project?.dir || '').trim();
     const type = String(project?.type || '').toLowerCase();
@@ -36,6 +53,24 @@ export function localLivePreviewFor(sessionId: string): string {
         return `http://localhost:${port}/project-preview/${key}/index.html`;
     }
     return '';
+}
+
+/**
+ * Start the session's project on loopback when it has no address yet: a
+ * build-free static site (staticSiteRoot) is served by project_run's strict
+ * static server on 127.0.0.1, which also records the live URL for every later
+ * reader. Returns the URL, or '' when the project is not such a site.
+ */
+export async function startLocalSitePreview(context: any): Promise<string> {
+    const key = previewKey(context?.sessionId);
+    const dir = String((global as any).joeProjects?.[key]?.dir || '').trim();
+    if (!dir || !staticSiteRoot(dir, { servedAtRoot: true })) return '';
+    try {
+        const { startStaticSitePreview } = require('./ProjectRunTool');
+        return String(await startStaticSitePreview(context, dir) || '');
+    } catch {
+        return '';
+    }
 }
 
 /**
@@ -280,7 +315,17 @@ export class BrowserRunTool extends BaseTool {
         });
 
         if (actions.length === 0 && instructionText) {
-            const activePreview = asksToOpenTheActiveApp(instructionText) ? localLivePreviewFor(sid) : '';
+            // The project belongs to the CHAT session; `sid` drives the browser
+            // panel («browser:<chat>») and stays the id for Chromium and access.
+            const chatSessionId = String(context?.sessionId || sid).trim();
+            const opensTheActiveApp = asksToOpenTheActiveApp(instructionText);
+            let activePreview = opensTheActiveApp ? localLivePreviewFor(chatSessionId) : '';
+            // No address yet for a build-free site Joe just wrote: start it on
+            // loopback rather than refuse (eval round 14, P001).
+            if (!activePreview && opensTheActiveApp) {
+                activePreview = await startLocalSitePreview({ ...(context || {}), sessionId: chatSessionId });
+                if (activePreview) logs.push(`browser_run: started the static site on loopback ${activePreview}`);
+            }
             if (activePreview) {
                 actions = [{ type: 'goto', url: activePreview }, { type: 'wait', ms: 3000 }];
                 logs.push(`browser_run: resolved active live preview ${activePreview}`);

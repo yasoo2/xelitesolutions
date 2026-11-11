@@ -62,7 +62,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                 setRepoLoading(false);
             }
         } catch (e: any) {
-            setError(e.message || 'Failed to connect');
+            setError(e.message || t('ghdlg_connectFailed'));
         } finally {
             setLoading(false);
         }
@@ -257,7 +257,7 @@ const GitHubConnectDialog: React.FC<Props> = ({ isOpen, onClose, onConnected, on
                                         alignItems: 'center',
                                         padding: 0
                                     }}
-                                    title={showToken ? 'Hide Token' : 'Show Token'}
+                                    title={showToken ? t('ghdlg_hideToken') : t('ghdlg_showToken')}
                                 >
                                     {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
                                 </button>

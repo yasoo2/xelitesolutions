@@ -12,13 +12,14 @@ import { Artifact } from '../../shared/models/artifact';
 import { Session } from '../../shared/models/session';
 import { traceManager } from '../../modules/services/TraceManager';
 import { broadcast } from '../ws';
-import { getRunEvidence, getRunEvidenceForSession } from '../../shared/run-evidence-store';
+import { getRunEvidence, getRunEvidenceForSession, runEngineOf } from '../../shared/run-evidence-store';
 import { getActiveRunSessions, registerRunSession, unregisterRunSession, sessionOwnerOf, runOwnerOf } from '../ws';
 import { registerRun, releaseHandle } from '../../core/session/attended-run';
 import { workspaceService } from '../../modules/services/WorkspaceService';
 import { Message } from '../../shared/models/message';
 import { continuationExecutionGoal, findInterruptedContinuation, isContinuationCommand } from '../../core/resume/continuation-command';
 import { isWithinRoot } from '../../modules/tools/path-containment';
+import { keepChatTurnInDatabase } from '../../core/engine/chat-history';
 
 const router = Router();
 
@@ -117,17 +118,60 @@ router.post('/verify', authenticate as any, async (req: Request, res: Response) 
     if (typeof userId !== 'string' || !userId.trim()) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
-    const { provider, apiKey, baseUrl, model } = req.body || {};
+    //  The body is read once: `light` travels with the rest.
+    const { provider, apiKey, baseUrl, model, light } = req.body || {};
     try {
         // HONEST verify: test the SPECIFIC provider, never the whole free mesh — so a
         // green dot means THAT provider actually answered, and a key-required provider
         // with no key is reported as "needs a key" instead of borrowing another
         // provider's success (the old behaviour that made every free provider look
         // connected even when it wasn't).
+        //  Claude is verified the same honest way: one tiny real call with the
+        //  chosen model, through the engine's connector and budget guard, on
+        //  the key the user typed (or the server's key asked for by name).
+        //  Green means that key, with credit, ran that model. A refusal says
+        //  why with a code the interface words in the user's language.
+        const p = String(provider || '').trim().toLowerCase();
+        if (p === 'anthropic' || p === 'claude') {
+            const { serverClaudeChat, claudeModelRuns, claudeAccount, listClaudeModels } = require('../../core/engine/anthropic');
+            const chosen = String(model || '').trim();
+            if (chosen && !claudeModelRuns(chosen)) return res.status(200).json({ ok: false, code: 'MODEL_NOT_RUN', error: `Joe does not run ${chosen}.`, provider });
+            //  The check the interface makes on every page load spends nothing:
+            //  the key must list the chosen model (Anthropic's Models API).
+            //  Credit is proved by the real call Connect makes, and a run that
+            //  finds none says so (MODEL_BILLING).
+            if (light === true) {
+                const account = await claudeAccount(String(apiKey || '').trim());
+                if ('error' in account) return res.status(200).json({ ok: false, code: 'MODEL_AUTH', error: account.error, provider });
+                try {
+                    const offered = (await listClaudeModels(account.apiKey)).some((m: any) => m.runs && m.id === (chosen || 'claude-haiku-5-5'));
+                    return offered ? res.json({ ok: true, provider, model: chosen || undefined, detail: 'listed' })
+                        : res.status(200).json({ ok: false, code: 'MODEL_NOT_FOUND', error: `The key does not list ${chosen}.`, provider });
+                } catch (e: any) {
+                    const status = Number(e?.status) || 0;
+                    return res.status(200).json({ ok: false, code: status === 401 || status === 403 ? 'MODEL_AUTH' : 'PROVIDER_FAILURE', error: String(e?.message || e).slice(0, 300), provider });
+                }
+            }
+            try {
+                const answer = await serverClaudeChat([{ role: 'user', content: 'Reply with the single word OK.' }], chosen || undefined,
+                    `verify-${userId}`, undefined, process.env, undefined, String(apiKey || '').trim());
+                return answer ? res.json({ ok: true, provider, model: chosen || undefined }) : res.status(200).json({ ok: false, code: 'EMPTY', error: 'empty_response', provider });
+            } catch (e: any) {
+                return res.status(200).json({ ok: false, code: String(e?.code || 'PROVIDER_FAILURE'), error: String(e?.message || e).slice(0, 300), provider });
+            }
+        }
         const { verifyProviderDirect } = require('../../core/llm/intelligent-router');
-        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model });
+        //  `light`: the check every page load makes lists the models (free);
+        //  Connect makes one real call. The code is what the interface words.
+        //  A page that went away (reload, closed tab) ends its check: on
+        //  2026-11-06 abandoned checks kept a local generation going up to 90 s
+        //  each, queued one after another. `res` close, not `req` close: the
+        //  request's own close fires once its body is read.
+        const clientGone = new AbortController();
+        if (typeof (res as any).on === 'function') res.on('close', () => { if (!res.writableEnded) clientGone.abort(); });
+        const result = await verifyProviderDirect(provider, { apiKey, baseUrl, model, signal: clientGone.signal, ...(light === true ? { light: true } : {}) });
         if (!result.ok) {
-            return res.status(200).json({ ok: false, error: result.detail || 'empty_response', provider });
+            return res.status(200).json({ ok: false, ...(result.code ? { code: result.code } : {}), error: result.detail || 'empty_response', provider });
         }
         return res.json({ ok: true, provider, detail: result.detail });
     } catch (e: any) {
@@ -306,6 +350,12 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             const store: any[] = (global as any).mockMessages || ((global as any).mockMessages = []);
             store.push({ _id: `um-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta(), createdAt: new Date() });
             persistChatStores();
+        } else {
+            //  On a server with Mongo the message was kept nowhere (2026-11-08): the
+            //  web reads a chat's history from Message, and so does a run's memory of
+            //  the chat (core/engine/chat-history.ts). Kept once, here, without making
+            //  the owner wait for the database before his run starts.
+            void keepChatTurnInDatabase({ sessionId: runSessionId, role: 'user', content: submittedText, attachments: attachmentMeta() });
         }
     } catch { /* non-fatal */ }
 
@@ -339,8 +389,16 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
         // reveals itself and the live file list clears. They were listening
         // for an event the server never sent; the auto-open only happened
         // later, by luck, on the first tool.
-        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
+        broadcast({ type: 'run_started', sessionId: runSessionId, runId: tempRunId, data: { sessionId: runSessionId, runId: tempRunId, text: submittedText.slice(0, 200), engine: runEngineOf(provider || 'auto', model), ...(resumedRunId ? { resumedRunId } : {}) }, id: `run-${Date.now()}` } as any);
     } catch { /* non-fatal */ }
+
+    //  Written from the Joe app on one of his phones: «this phone» is that one (linked-phones.ts phoneWrittenFrom).
+    let fromPhone: { id: string; name: string } | undefined;
+    try {
+        // eslint-disable-next-line @typescript-eslint/no-var-requires
+        const p = require('../../core/devices/linked-phones').phoneWrittenFrom(String(userId || ''), req.headers['user-agent']);
+        if (p) fromPhone = { id: String(p.id), name: String(p.name || p.model || '') };
+    } catch { /* no linked phones here */ }
 
     try {
         const traceId = traceManager.startTrace(runSessionId, executionText);
@@ -357,6 +415,10 @@ router.post('/start', authenticate as any, async (req: Request, res: Response) =
             workspaceId: resolvedWorkspaceId,
             resumeProjectRoot: resumeProjectRoot || undefined,
             resumeOriginRunId: resumedRunId || undefined,
+            //  What he typed, apart from the goal the run carries (a resumed goal, a file's
+            //  block): an answer to Joe's question is read on his words (select.ts, 2026-11-08).
+            ownerText: submittedText,
+            ...(fromPhone ? { fromPhone } : {}),
             userId,
             userName,
             systemInstructions,
@@ -417,6 +479,48 @@ router.get('/active', authenticate as any, async (req, res) => {
             status: 'running',
         })),
     });
+});
+
+/**
+ * WHAT THE ENGINE REALLY RUNS ON, for the provider button. The button said
+ * «Auto (free)» while the engine ran on Claude (2026-11-01). It reads this:
+ * the engine in use, the model Auto means (free, never Claude), whether the
+ * server offers its own Claude key (never the key itself), the Claude models
+ * Joe runs, and the server key's budget spent so far.
+ */
+router.get('/engine', authenticate as any, async (_req, res) => {
+    try {
+        const { engineFor } = require('../../core/engine/select');
+        const { engineModelChoice } = require('../../core/engine/model');
+        const { anthropicSettings, CLAUDE_MODELS } = require('../../core/engine/anthropic');
+        const { ledgerFromEnv } = require('../../core/engine/budget');
+        const choice = engineModelChoice();
+        const claude = await anthropicSettings({ ...process.env, JOE_ENGINE_MODEL: CLAUDE_MODELS[0] });
+        const ledger = ledgerFromEnv();
+        const spent = 'error' in ledger ? null : await ledger.spent().catch(() => null);
+        res.json({
+            engine: engineFor(),
+            auto: 'error' in choice ? null : { provider: choice.provider, model: choice.model },
+            claude: { serverKey: !('error' in claude), models: CLAUDE_MODELS },
+            budget: spent && !('error' in ledger) ? { totalUsd: ledger.totalBudgetUsd, perRunUsd: ledger.runBudgetUsd, spentUsd: spent.totalUsd } : null,
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: String(e?.message || e).slice(0, 200) });
+    }
+});
+
+/**
+ * The models a provider really offers, for the provider panel's list
+ * (core/engine/provider-models.ts). The key stays on the server.
+ */
+router.post('/models', authenticate as any, async (req, res) => {
+    try {
+        const { providerModels } = require('../../core/engine/provider-models');
+        const { provider, apiKey, baseUrl } = req.body || {};
+        res.json(await providerModels({ provider, apiKey, baseUrl }));
+    } catch (e: any) {
+        res.status(200).json({ models: [], source: 'catalog', note: String(e?.message || e).slice(0, 200) });
+    }
 });
 
 router.get('/:id/receipt', authenticate as any, async (req, res) => {

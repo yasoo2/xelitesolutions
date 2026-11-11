@@ -12,12 +12,13 @@ import i18next from 'i18next';
 import { API_URL as API, WS_URL as WS } from '../config';
 import { resolveIdentity } from '../lib/userIdentity';
 import { setRunBusy } from '../lib/run-activity';
+import { isNetworkFailure } from '../lib/network-error';
 import { captureRunningAdmission, getRunningGeneration, markRunning } from '../services/runningSessions';
 import { SocketService } from '../services/socket';
 import { motion, AnimatePresence } from 'framer-motion';
 
 import NeuralThinkingIndicator from './NeuralThinkingIndicator';
-import TodosPanel from './TodosPanel';
+import { useUiDir } from './NeuralTraceView';
 
 
 // Web Speech API types
@@ -81,6 +82,328 @@ function authenticatedHeaders(json = false): Record<string, string> {
     ...(json ? { 'Content-Type': 'application/json' } : {}),
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
+}
+
+/*
+ * THE MICROPHONE HEARS THE LANGUAGE HE SPEAKS, NOT THE LANGUAGE OF THE MENUS.
+ *
+ * The owner, 2026-11-08: the interface opens in English by his own decision
+ * (i18n.ts), and dictation followed the interface — so his Arabic was heard
+ * as en-US and the box filled with English guesses. Dictation now keeps its
+ * own choice (localStorage 'joe-dictation-lang', set by the switch under the
+ * microphone). Until he makes one it follows the interface only when he
+ * chose that language himself (localStorage 'lang'), then the browser's own
+ * language, then Arabic. The interface's default English never decides,
+ * because nobody chose it.
+ */
+const DICTATION_LANGS = [
+  { code: 'ar', tag: 'ar-SA', label: 'العربية' },
+  { code: 'en', tag: 'en-US', label: 'English' },
+  { code: 'fr', tag: 'fr-FR', label: 'Français' },
+  { code: 'de', tag: 'de-DE', label: 'Deutsch' },
+  { code: 'ru', tag: 'ru-RU', label: 'Русский' },
+  { code: 'es', tag: 'es-ES', label: 'Español' },
+];
+const DICTATION_STORAGE_KEY = 'joe-dictation-lang';
+
+/** The offered language a saved value or a browser locale names ('ar-EG' is Arabic), if any. */
+function dictationLangOf(lang: string | null | undefined) {
+  const s = String(lang || '').trim().toLowerCase();
+  if (!s) return undefined;
+  return DICTATION_LANGS.find(l => l.tag.toLowerCase() === s)
+    || DICTATION_LANGS.find(l => l.code === s.split(/[-_]/)[0]);
+}
+
+/** The recognition language: his saved choice, the interface he chose, the browser, Arabic. */
+function pickDictationLang(saved: string | null | undefined, uiSaved: string | null | undefined, browserLang: string | null | undefined): string {
+  return (dictationLangOf(saved) || dictationLangOf(uiSaved) || dictationLangOf(browserLang) || DICTATION_LANGS[0]).tag;
+}
+
+/** The switch offers Arabic and English, the interface's language, and whatever is in use now. */
+function dictationChoices(current: string, uiLang: string) {
+  const wanted = ['ar', 'en', dictationLangOf(uiLang)?.code, dictationLangOf(current)?.code];
+  return DICTATION_LANGS.filter(l => wanted.includes(l.code));
+}
+
+/** One event's identity, the same way the auto-scroll names it: its id, else its type, time and place. */
+function eventSpeechKey(e: any, index: number): string {
+  if (!e) return '';
+  const id = typeof e.id === 'string' ? e.id : '';
+  const ts = typeof e.ts === 'number' ? String(e.ts) : '';
+  return id || `${String(e.type || '')}:${ts}:${index + 1}`;
+}
+
+/** The newest reply in the list (a run_finished after it does not hide it), with its identity. */
+function newestText(events: any[]): { key: string; text: string } | null {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const e = events[i];
+    if (e?.type !== 'text') continue;
+    const text = typeof e.data?.text === 'string' ? e.data.text.trim() : '';
+    return { key: eventSpeechKey(e, i), text };
+  }
+  return null;
+}
+
+/*
+ * JOE READS ALOUD ONLY WHAT ARRIVES AFTER VOICE MODE WAS TURNED ON.
+ *
+ * The owner, 2026-11-08: pressing voice mode opened the microphone while the
+ * last reply already on the screen was read aloud, so the microphone wrote
+ * down Joe's own voice. The identity of the newest reply is remembered when
+ * voice mode turns on (lastSpokenKeyRef); a reply is spoken only when its
+ * identity differs — once, however many times the list re-renders.
+ */
+function replyToSpeak(events: any[], lastKey: string): { key: string; text: string } | null {
+  const next = newestText(events);
+  return next && next.key && next.key !== lastKey && next.text ? next : null;
+}
+
+/** Where a start stands before the browser listens: none, starting, or the browser's «Allow?» is open. */
+type DictationPending = '' | 'starting' | 'asking';
+
+/** The dictation as the composer drives it; see createDictation. */
+interface Dictation {
+  supported: boolean;
+  /** True from the press until the browser ends or refuses: a start may still be waiting on him. */
+  wanted(): boolean;
+  /** A start that does not listen yet ('starting', or 'asking' while «Allow?» is open); '' otherwise. */
+  pending(): DictationPending;
+  start(): Promise<void>;
+  /** He finished talking: keep what was heard. */
+  stop(): void;
+  /** Close the microphone now, even while the browser's question is still open. */
+  abort(): void;
+  /** The recognizer is replaced or the composer leaves: no handler may fire after this. */
+  dispose(): void;
+}
+
+interface DictationDeps {
+  Recognition: any;
+  lang: string;
+  isSecure: () => boolean;
+  permission: () => Promise<string | undefined>;
+  t: (key: string) => string;
+  onListening: (on: boolean) => void;
+  /** The pending start's phase, for the button. Optional: a caller that shows none leaves it out. */
+  onPending?: (phase: DictationPending) => void;
+  onProblem: (text: string) => void;
+  onTranscript: (said: string) => void;
+}
+
+/*
+ * THE MICROPHONE STOPS WHEN HE SAYS STOP, EVEN WHILE THE BROWSER IS STILL ASKING.
+ *
+ * The owner, 2026-11-08: turning voice mode off while the browser's «Allow
+ * the microphone?» question was open did not stop anything — the off branch
+ * stopped only a microphone that was already listening, so his «Allow» then
+ * opened a microphone nobody wanted. `want` is set BEFORE the wait on the
+ * browser, read again right before start(), read once more when the browser
+ * says it started, and cleared on end, on error and by abort(), which always
+ * aborts. On an http address that is not this computer the browser refuses
+ * the microphone outright and its permission answer says «denied», so the
+ * secure-page check comes first: the fix is an https address, not the lock
+ * icon.
+ *
+ * EVERY PRESS IS ITS OWN START, AND A LATE END TOUCHES ONLY ITS OWN.
+ *
+ * Independent review of 2026-11-08: one shared yes/no «want» served every
+ * start. When Joe's speech closed the microphone and the speech ended fast,
+ * the closed session's late onend cleared the wish of the NEW start, and the
+ * microphone never reopened. Now each start takes its own number (`want`),
+ * the session the browser runs keeps its number (`running`), and onstart,
+ * onend and onerror act only on the start they belong to. An older session's
+ * end that arrives after a newer press only lets that newer start begin: the
+ * browser refuses a second start() until the first has ended, so the newer
+ * one is held (`waiting`) until then instead of being lost.
+ *
+ * The phase of a start that does not listen yet (`phase`, told through
+ * onPending) is what the button shows, so a press that seems to do nothing is
+ * seen to be working (the composer's toggleListening).
+ */
+function createDictation(deps: DictationDeps): Dictation {
+  const { Recognition, t } = deps;
+  const rec = Recognition ? new Recognition() : null;
+  let seq = 0;      // the number the next press takes
+  let want = 0;     // the start he wants now; 0: none
+  let running = 0;  // the start whose session the browser runs (start() accepted, no onend yet); 0: none
+  let waiting = 0;  // a start held until the browser's older session has ended
+  let phase: DictationPending = '';
+  let disposed = false;
+  /*
+   * A BROWSER THAT NEVER SAYS «START» OR «END» DOES NOT FREEZE THE BUTTON.
+   *
+   * Review of 2026-11-08: a pending start can no longer be cancelled by a
+   * press, and only onend ends a session; a browser that accepted start() or
+   * abort() and never fired 'start' or 'end' left the button «Connecting…» for
+   * good, ignoring every press. A start that has not begun listening in 10 s
+   * (2 minutes while the «Allow?» question waits for him) is given up and
+   * said; a newer start held for an older session's end stops waiting after 3 s.
+   */
+  let watchdog: ReturnType<typeof setTimeout> | null = null;
+  const clearWatch = () => { if (watchdog) { clearTimeout(watchdog); watchdog = null; } };
+  const watch = (ms: number, fire: () => void) => {
+    clearWatch();
+    if (typeof setTimeout !== 'function') return; // a page always has one; a bare sandbox may not
+    watchdog = setTimeout(() => { watchdog = null; if (!disposed) fire(); }, ms);
+  };
+  const setPhase = (next: DictationPending) => {
+    if (next === phase) return;
+    phase = next;
+    if (!disposed) deps.onPending?.(next);
+  };
+  /** Nothing is wanted any more: no start, none held, nothing pending. */
+  const drop = () => { want = 0; waiting = 0; clearWatch(); setPhase(''); };
+  /** Ask the browser to listen for start n; none of our sessions is open. */
+  const launch = (n: number) => {
+    const asking = phase === 'asking';
+    try {
+      rec.start();
+      running = n;
+    } catch {
+      // Refused although none of our sessions is open: say so, rather than
+      // leave a button that waits for ever and ignores his presses.
+      drop();
+      deps.onProblem(t('cc_micFailed'));
+      return;
+    }
+    watch(asking ? 120_000 : 10_000, () => {
+      if (want !== n || running !== n) return;
+      running = 0;
+      drop();
+      try { rec.abort(); } catch { /* never began */ }
+      deps.onListening(false);
+      deps.onProblem(t('cc_micFailed'));
+    });
+  };
+  if (rec) {
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.lang = deps.lang;
+    rec.onstart = () => {
+      // Listening began for a start nobody wants any more (stopped, aborted,
+      // or followed by a newer press): close it.
+      if (disposed || !want || want !== running) { try { rec.abort(); } catch { /* already closed */ } return; }
+      clearWatch();
+      setPhase('');
+      deps.onListening(true);
+      deps.onProblem('');
+    };
+    rec.onaudiostart = () => deps.onProblem('');
+    rec.onend = () => {
+      const ended = running;
+      running = 0;
+      deps.onListening(false);
+      // An older session ended after a newer press: that press goes on, and
+      // begins now if it was held for this very end.
+      if (want && want !== ended) {
+        if (waiting === want) { waiting = 0; launch(want); }
+        return;
+      }
+      drop();
+    };
+    rec.onresult = (event: any) => {
+      const said = event?.results?.[0]?.[0]?.transcript;
+      if (typeof said === 'string' && said.trim()) deps.onTranscript(said);
+    };
+    rec.onerror = (event: any) => {
+      deps.onListening(false);
+      // An older session's error after a newer press (most often the
+      // «aborted» of a microphone closed for Joe's speech) is not the newer
+      // start's: it neither cancels it nor speaks for it.
+      if (want && want !== running) return;
+      drop();
+      const code = String(event?.error || '');
+      deps.onProblem(code === 'not-allowed' || code === 'service-not-allowed'
+        ? (deps.isSecure() ? t('cc_micDenied') : t('cc_micInsecure'))
+        : code === 'audio-capture' ? t('cc_micNone')
+        : code === 'network' ? t('cc_micNetwork')
+        : code === 'no-speech' ? t('cc_micNoSpeech')
+        : code === 'aborted' ? '' : t('cc_micFailed'));
+    };
+  }
+  return {
+    supported: !!rec,
+    wanted: () => want !== 0,
+    pending: () => phase,
+    async start() {
+      if (!rec || disposed || want) return;
+      const n = ++seq;
+      want = n;
+      setPhase('starting');
+      deps.onProblem('');
+      if (!deps.isSecure()) { drop(); deps.onProblem(t('cc_micInsecure')); return; }
+      /*
+       * Said BEFORE the browser asks (the owner: «it said it wants access from
+       * the browser… do it yourself»). Only he can press «Allow»: the page says
+       * where it will appear, and when he refused before, how to undo it.
+       */
+      try {
+        const state = await deps.permission();
+        // Stopped, aborted or replaced while the browser answered: this start is over.
+        if (want !== n || disposed) return;
+        if (state === 'denied') { drop(); deps.onProblem(t('cc_micBlockedHowTo')); return; }
+        if (state === 'prompt') { setPhase('asking'); deps.onProblem(t('cc_micAskAllow')); }
+      } catch { /* this browser does not say: the listening itself will */ }
+      if (want !== n || disposed) return;
+      // The browser is still closing an older session (one closed for Joe's
+      // speech): its onend begins this start — or, if that end never comes, 3 s.
+      if (running) {
+        waiting = n;
+        watch(3_000, () => { if (waiting === n && want === n) { waiting = 0; running = 0; launch(n); } });
+        return;
+      }
+      launch(n);
+    },
+    stop() {
+      drop();
+      try { rec?.stop(); } catch { /* not listening */ }
+    },
+    abort() {
+      drop();
+      try { rec?.abort(); } catch { /* not listening */ }
+    },
+    dispose() {
+      disposed = true;
+      drop();
+      clearWatch();
+      running = 0;
+      if (!rec) return;
+      rec.onstart = rec.onaudiostart = rec.onend = rec.onresult = rec.onerror = null;
+      try { rec.abort(); } catch { /* not listening */ }
+    },
+  };
+}
+
+/** Joe is about to speak: close a listening (or starting) microphone, and remember to reopen it. */
+function micPauseForSpeech(mic: Dictation | null, resume: { current: boolean }) {
+  if (!mic?.wanted()) return;
+  resume.current = true;
+  mic.abort();
+}
+
+/** Joe's speech has ended: reopen the microphone only if speaking closed it and voice mode is still on. */
+function micAfterSpeech(resume: { current: boolean }, voiceOn: boolean, listen: () => void) {
+  const again = resume.current && voiceOn;
+  resume.current = false;
+  if (again) listen();
+}
+
+/*
+ * The browser's answer about the microphone, or nothing when it does not say.
+ * A press during a pending start now waits instead of cancelling it
+ * (toggleListening, 2026-11-08), so a permission question that never answers
+ * must not hold the start for ever: after `ms` the listening itself goes
+ * ahead and the browser asks or refuses through it.
+ */
+function micPermissionState(permissions: any, ms: number): Promise<string | undefined> {
+  return new Promise(resolve => {
+    const timer = setTimeout(() => resolve(undefined), ms);
+    const done = (state?: string) => { clearTimeout(timer); resolve(state); };
+    try {
+      Promise.resolve(permissions?.query({ name: 'microphone' }))
+        .then((s: any) => done(typeof s?.state === 'string' ? s.state : undefined), () => done(undefined));
+    } catch { done(undefined); }
+  });
 }
 
 const EliteLogo = ({ size = 120, className = "" }: { size?: number; className?: string }) => {
@@ -168,9 +491,9 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
   const md = report.engineeringReportMarkdown || '';
   
   const generateSummaryFromJson = (r: any) => {
-    const ok = r.ok ? '✅ SUCCESS' : '❌ FAILED';
+    const ok = r.ok ? `✅ ${t('cc_reportSuccess')}` : `❌ ${t('cc_reportFailed')}`;
     const progress = `${r.completedPhases} / ${r.totalPlannedPhases || '?'}`;
-    return `### Pipeline Summary\n- **Status**: ${ok}\n- **Progress**: ${progress}\n\nDetailed orchestration data available.`;
+    return t('cc_reportSummary', { status: ok, progress });
   };
 
   const displayMd = md || (report.engineeringReport ? generateSummaryFromJson(report.engineeringReport) : '');
@@ -186,12 +509,12 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
       <div className="report-header">
         <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <ShieldCheck size={20} className="report-icon" />
-          <span>Joe Engineering Report</span>
+          <span>{t('cc_reportTitle')}</span>
         </div>
         <button 
           onClick={() => setShowRaw(!showRaw)}
           className="debug-toggle-btn"
-          title="Toggle Debug Info"
+          title={t('cc_reportToggleDebug')}
         >
           <Code size={14} />
         </button>
@@ -238,7 +561,7 @@ const EngineeringReport = ({ report, ts, t }: { report: any; ts?: number; t: any
           animate={{ opacity: 1, height: 'auto' }}
           className="report-debug-info"
         >
-          <div className="debug-header">RAW ORCHESTRATION DATA</div>
+          <div className="debug-header">{t('cc_reportRawData')}</div>
           <pre className="debug-content">
             {JSON.stringify(report.engineeringReport || report, null, 2)}
           </pre>
@@ -612,7 +935,7 @@ const ChatBubble = forwardRef(
         {showAvatar ? (
           <div className={`chat-avatar ${bubbleVariant}`} aria-hidden="true">
             {bubbleVariant === 'user' && userPicture ? (
-              <img src={userPicture} alt="User" style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
+              <img src={userPicture} alt={t('you')} style={{ width: '100%', height: '100%', borderRadius: '50%', objectFit: 'cover' }} />
             ) : bubbleVariant === 'user' ? (
               <SenderIcon size={16} />
             ) : (
@@ -633,7 +956,7 @@ const ChatBubble = forwardRef(
                   <span>{fmtTime(ts)}</span>
                 </div>
                 {showCopy ? (
-                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title="Copy">
+                  <button className="chat-action-btn" onClick={doCopy} disabled={!canCopy} title={t('copy')}>
                     {copied ? <CheckCircle2 size={14} /> : <Copy size={14} />}
                   </button>
                 ) : null}
@@ -654,14 +977,14 @@ const ChatBubble = forwardRef(
                     {/* An attached IMAGE shows itself, not a generic icon — the
                         composer already carries the data-URI preview it made. */}
                     {f.preview ? (
-                      <img src={f.preview} alt={f.name || 'image'} style={{
+                      <img src={f.preview} alt={f.name || t('artifacts.image')} style={{
                         width: 44, height: 44, objectFit: 'cover', borderRadius: 6, display: 'block'
                       }} />
                     ) : (
                       <FileText size={12} style={{ opacity: 0.7 }} />
                     )}
                     <span style={{ maxWidth: 120, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {f.name || 'File'}
+                      {f.name || t('artifacts.file')}
                     </span>
                   </div>
                 ))}
@@ -740,7 +1063,7 @@ const ChatBubble = forwardRef(
             )}
 
             {isTyping && !streamingRef.current ? (
-              <div className="typing-dots" aria-label="Typing">
+              <div className="typing-dots" aria-label={t('cc_typing')}>
                 <span className="typing-dot" />
                 <span className="typing-dot" />
                 <span className="typing-dot" />
@@ -766,6 +1089,9 @@ interface ProviderConfig {
   // untranslated — only the descriptor around them changes with the language.
   nameKey?: string;
   tagKey?: string;
+  // The short word the toolbar button writes when `name` is not a brand
+  // («Auto», «Local»): a brand stays as it is, a common word follows the language.
+  labelKey?: string;
   apiKey: string;
   isConnected: boolean;
   baseUrl?: string;
@@ -778,41 +1104,92 @@ interface ProviderConfig {
   // a live request. The status dot is green only when this is true — never by
   // default. Reset to false whenever the key changes.
   verified?: boolean;
+  // Claude: the user pressed «use the server's key». Only then is 'server-key' theirs to keep.
+  serverKeyChosen?: boolean;
 }
 
-// OpenRouter available models
-const OPENROUTER_MODELS: Array<{ id: string; name: string; free: boolean; descriptionKey: string }> = [
-  { id: 'moonshotai/kimi-k2:free', name: 'Kimi K2', free: true, descriptionKey: 'modelKimiDesc' },
-  { id: 'meta-llama/llama-3-8b-instruct:free', name: 'Llama 3 8B', free: true, descriptionKey: 'modelLlamaDesc' },
-  { id: 'google/gemma-2-9b-it:free', name: 'Gemma 2 9B', free: true, descriptionKey: 'modelGemmaDesc' },
-  { id: 'minimax/minimax-m2', name: 'MiniMax M2.1 ⭐', free: false, descriptionKey: 'modelMinimaxDesc' },
-  { id: 'deepseek/deepseek-chat', name: 'DeepSeek V3', free: false, descriptionKey: 'modelDeepseekDesc' },
-  { id: 'openai/gpt-4o-mini', name: 'GPT-4o Mini', free: false, descriptionKey: 'modelGpt4oMiniDesc' },
-  { id: 'openai/gpt-4o', name: 'GPT-4o', free: false, descriptionKey: 'modelGpt4oDesc' },
-  { id: 'anthropic/claude-3.5-sonnet', name: 'Claude 3.5 Sonnet', free: false, descriptionKey: 'modelSonnetDesc' },
+// The Claude models Joe runs, cheapest first: the server keeps the same list
+// (core/engine/anthropic.ts CLAUDE_MODELS) with a checked price for each. The
+// panel shows the models the user's own account offers (POST /runs/models,
+// asked of Anthropic with the key); this list names and describes them, and
+// stands in until the key is added.
+const ANTHROPIC_MODELS: Array<{ id: string; name: string; descriptionKey: string }> = [
+  { id: 'claude-haiku-5-5', name: 'Claude Haiku 5.5', descriptionKey: 'modelHaikuDesc' },
+  { id: 'claude-sonnet-5-5', name: 'Claude Sonnet 5.5', descriptionKey: 'modelSonnet55Desc' },
+  { id: 'claude-opus-5-5', name: 'Claude Opus 5.5', descriptionKey: 'modelOpusDesc' },
+  { id: 'claude-fable-5-2', name: 'Claude Fable 5.2', descriptionKey: 'modelFableDesc' },
+  { id: 'claude-fable-5-1', name: 'Claude Fable 5.1', descriptionKey: 'modelFable51Desc' },
 ];
+
+// Why a model list is only suggestions, in the user's language (provider-models.ts reason codes).
+const MODELS_REASON_KEYS: Record<string, string> = {
+  needs_key: 'modelsNeedsKey', refused: 'modelsRefused', unreachable: 'modelsUnreachable', empty: 'modelsEmpty',
+  no_address: 'modelsNoAddress', local_down: 'modelsLocalDown', local_empty: 'modelsLocalEmpty', none_runnable: 'claudeModelsNoneRun',
+};
+
+// Why Claude did not connect, in the user's language (the codes /runs/verify returns).
+const CLAUDE_ERROR_KEYS: Record<string, string> = {
+  MODEL_AUTH: 'provClaudeErrAuth', MODEL_BILLING: 'provClaudeErrBilling', MODEL_NOT_FOUND: 'provClaudeErrModel',
+  MODEL_NOT_RUN: 'provClaudeErrModel', ENGINE_BUDGET_EXHAUSTED: 'provClaudeErrBudget', PROVIDER_FAILURE: 'provClaudeErrDown',
+};
+
+// Why the chosen provider stopped a run, in the user's language (run-model-choice.ts codes).
+const PROVIDER_STATUS_REASON: Record<string, string> = {
+  PROVIDER_NEEDS_KEY: 'cc_provReasonNeedsKey',
+  PROVIDER_AUTH: 'cc_provReasonAuth', PROVIDER_BILLING: 'cc_provReasonBilling', PROVIDER_QUOTA: 'cc_provReasonQuota',
+  PROVIDER_MODEL: 'cc_provReasonModel', PROVIDER_DOWN: 'cc_provReasonDown', PROVIDER_COOLING: 'cc_provReasonDown',
+  PROVIDER_BUDGET: 'cc_provReasonBudget', PROVIDER_UNSUPPORTED: 'cc_provReasonUnsupported',
+};
+// The router's spellings of a provider, as the panel's keys.
+const PROVIDER_STATUS_KEY: Record<string, string> = { claude: 'anthropic', google: 'gemini', xai: 'grok' };
+
+/** What the server's engine really runs on (GET /runs/engine). */
+interface EngineInfo {
+  engine: 'agent' | 'legacy';
+  auto: { provider: string; model: string } | null;
+  claude: { serverKey: boolean; models: string[] };
+  budget: { totalUsd: number; perRunUsd: number; spentUsd: number } | null;
+}
 
 const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
   // Free-first: Joe relies primarily on FREE providers. "Auto" picks the best
   // available free provider automatically (see the router's free-first mesh).
   auto: { name: 'Auto', nameKey: 'provAuto', apiKey: 'auto-mode', isConnected: true, model: 'auto', isCustom: true, isFree: true },
   // The SDK requires a nonempty key; Ollama ignores this public sentinel.
-  local: { name: 'Local', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
-  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'gemini-2.0-flash', isFree: true },
+  local: { name: 'Local', nameKey: 'cc_provLocal', labelKey: 'cc_provLocal', apiKey: 'ollama', isConnected: false, baseUrl: 'http://127.0.0.1:11434/v1', model: 'qwen2.5:1.5b', isFree: true },
+  // ⛔ NO VENDOR IS «CONNECTED» WITHOUT A KEY. These six were marked connected
+  // with the placeholder 'free-mode', and the server ran a placeholder as Auto:
+  // «DeepSeek» answered from the free mesh. Measured 2026-11-02 against the
+  // vendors, every one answers 401/400/403 without a key. The «free» ones give
+  // a FREE key (the panel links to it); Auto is the only thing that needs none.
+  // The default models are the vendors' current ones: the old defaults
+  // (gemini-2.0-flash, Cerebras' llama-3.3-70b, kimi-k2:free, deepseek-chat,
+  // grok-beta) are retired, and a retired model never turns green.
+  gemini: { name: 'Google Gemini', tagKey: 'provFree', apiKey: '', isConnected: false, model: 'gemini-3.8-flash', isFree: true },
   // Groq (شركة Groq — مفتاحها يبدأ بـ gsk_). ضع مفتاح Groq هنا. النموذج مطابق للمفتاح.
-  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.groq.com/openai/v1', model: 'llama-3.3-70b-versatile', isFree: true },
-  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.cerebras.ai/v1', model: 'llama-3.3-70b', isFree: true },
-  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://openrouter.ai/api/v1', model: 'moonshotai/kimi-k2:free', isFree: true },
-  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
-  deepseek: { name: 'DeepSeek', tagKey: 'provFree', apiKey: 'free-mode', isConnected: true, model: 'deepseek-chat', isCustom: true, isFree: true },
-  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-4o' },
-  anthropic: { name: 'Anthropic', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-3-opus-20240229' },
+  groq: { name: 'Groq ⚡', tagKey: 'provGroqHint', apiKey: '', isConnected: false, baseUrl: 'https://api.groq.com/openai/v1', model: 'openai/gpt-oss-120b', isFree: true },
+  cerebras: { name: 'Cerebras', tagKey: 'provUltraFast', apiKey: '', isConnected: false, baseUrl: 'https://api.cerebras.ai/v1', model: 'gpt-oss-120b', isFree: true },
+  openrouter: { name: 'OpenRouter', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://openrouter.ai/api/v1', model: 'google/gemma-4-31b-it:free', isFree: true },
+  mistral: { name: 'Mistral', tagKey: 'provFree', apiKey: '', isConnected: false, baseUrl: 'https://api.mistral.ai/v1', model: 'mistral-small-latest', isFree: true },
+  deepseek: { name: 'DeepSeek', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'deepseek-flash', isCustom: true },
+  openai: { name: 'OpenAI', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'gpt-6-luna' },
+  anthropic: { name: 'Claude', tagKey: 'provPaidKey', apiKey: '', isConnected: false, model: 'claude-haiku-5-5' },
   // ⚠️ xAI Grok — شركة إيلون ماسك (x.ai)، مختلفة تماماً عن Groq. مفتاح gsk_ لا يعمل هنا.
-  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-beta' },
+  grok: { name: 'xAI Grok', tagKey: 'provGrokNote', apiKey: '', isConnected: false, baseUrl: 'https://api.x.ai/v1', model: 'grok-4.7' },
 };
 
+/** Defaults the vendors have retired: a saved one is moved to the current default. */
+const RETIRED_DEFAULT_MODELS: Record<string, string[]> = {
+  gemini: ['gemini-2.0-flash'], groq: ['qwen/qwen3-32b'],
+  cerebras: ['llama-3.3-70b', 'llama3.1-8b', 'qwen-3-32b'], openrouter: ['moonshotai/kimi-k2:free', 'google/gemma-2-9b-it:free', 'meta-llama/llama-3-8b-instruct:free'],
+  deepseek: ['deepseek-chat', 'deepseek-reasoner'], grok: ['grok-beta', 'grok-3', 'grok-3-mini'],
+};
+/** What the panel once stored where no key was typed. It is not a key. */
+const PLACEHOLDER_KEY = /^(?:free-mode|auto-mode|free|dummy)$/;
+
 // Honest per-provider key info. `auto` is NOT listed — it is the pure keyless mesh.
-//  - 'keyless'  : works with NO key at all (DeepSeek via the Pollinations proxy).
+//  - 'keyless'  : works with NO key at all. No vendor in the menu does (measured
+//                 2026-11-02); DeepSeek was labelled so while another model answered.
 //  - 'optional' : keyless-capable but a personal key raises speed/limits.
 //  - 'required' : the FREE tier still needs a FREE key to work — the earlier UI
 //                 wrongly said "no key needed", which is why these felt "fake".
@@ -820,7 +1197,7 @@ const DEFAULT_PROVIDERS: { [key: string]: ProviderConfig } = {
 type KeyNeed = 'keyless' | 'optional' | 'required' | 'paid';
 const PROVIDER_KEY_INFO: Record<string, { need: KeyNeed; getUrl?: string; getLabel?: string; placeholder?: string; placeholderKey?: string }> = {
   groq: { need: 'required', getUrl: 'https://console.groq.com/keys', getLabel: 'console.groq.com/keys', placeholderKey: 'keyPlaceholderGroq' },
-  deepseek: { need: 'keyless', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholderKey: 'keyPlaceholderOptional' },
+  deepseek: { need: 'paid', getUrl: 'https://platform.deepseek.com/api_keys', getLabel: 'platform.deepseek.com', placeholder: 'sk-...' },
   gemini: { need: 'required', getUrl: 'https://aistudio.google.com/app/apikey', getLabel: 'aistudio.google.com/app/apikey', placeholder: 'AIza...' },
   cerebras: { need: 'required', getUrl: 'https://cloud.cerebras.ai/', getLabel: 'cloud.cerebras.ai', placeholder: 'csk-...' },
   mistral: { need: 'required', getUrl: 'https://console.mistral.ai/api-keys', getLabel: 'console.mistral.ai/api-keys', placeholderKey: 'keyPlaceholderMistral' },
@@ -865,7 +1242,8 @@ export default function CommandComposer({
   onGithubAuthRequired?: (details: { reason?: string; needsRepo?: boolean; repoName?: string }) => void;
 
 }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const uiDir = useUiDir();
   const showToolUi = sessionKind === 'agent' || DEBUG_TOOL_UI;
   const handleUnauthorized = () => {
     localStorage.removeItem('token');
@@ -959,7 +1337,7 @@ export default function CommandComposer({
       const token = localStorage.getItem('token');
       if (token) {
         const payload = JSON.parse(atob(token.split('.')[1]));
-        const name = payload.name || payload.email?.split('@')[0] || 'User';
+        const name = payload.name || payload.email?.split('@')[0] || t('cc_userFallback');
         const pic = payload.picture || '';
         setUserName(name);
         if (pic) setUserPicture(pic);
@@ -968,7 +1346,7 @@ export default function CommandComposer({
         if (events.length === 0) {
           setEvents([{
             type: 'text',
-            data: { text: `👋 Welcome back, **${name}**! How can I help you today?` },
+            data: { text: t('cc_welcomeBack', { name }) },
             duration: 0
           }]);
         }
@@ -1007,7 +1385,16 @@ export default function CommandComposer({
   );
   const isQuietMode = SocketService.isQuietMode(sessionId);
 
-  const recognitionRef = useRef<any>(null);
+  const recognitionRef = useRef<Dictation | null>(null);
+  // Voice-mode bookkeeping read by callbacks that outlive their render
+  // (speech end handlers, the recognizer's events): see speak() and the
+  // voice-mode button.
+  const isVoiceModeRef = useRef(false);
+  const lastSpokenKeyRef = useRef('');
+  const speechHeadRef = useRef('');
+  const resumeListenRef = useRef(false);
+  const restartListenRef = useRef(false);
+  const speechIdRef = useRef(0);
   const synthRef = useRef<SpeechSynthesis>(window.speechSynthesis);
   const endRef = useRef<HTMLDivElement>(null);
   const eventsScrollRef = useRef<HTMLDivElement>(null);
@@ -1044,6 +1431,16 @@ export default function CommandComposer({
 
   // AI Provider State
   const [showProviders, setShowProviders] = useState(false);
+  const [engineInfo, setEngineInfo] = useState<EngineInfo | null>(null);
+  // The models each provider really offers (POST /runs/models), and which
+  // provider's model the user chose to type by hand.
+  const [modelLists, setModelLists] = useState<Record<string, {
+    models: string[]; source: 'live' | 'catalog'; note?: string; loading?: boolean;
+    reason?: { code: string; status?: number }; names?: Record<string, string>; unsupported?: string[];
+  }>>({});
+  const [customModel, setCustomModel] = useState<Record<string, boolean>>({});
+  const customModelRef = useRef(customModel);
+  customModelRef.current = customModel;
   // Standing instructions are edited in Settings and read fresh at send time
   // inside run() — no component state needed here.
   const initialProviderState = useMemo(() => {
@@ -1067,14 +1464,28 @@ export default function CommandComposer({
            * The user's own settings (key, model, baseUrl) are theirs to keep;
            * identity is ours, and it is restored on every load.
            */
-          const { name, nameKey, tagKey, ...userOwned } = (parsed[k] || {}) as any;
+          const { name, nameKey, tagKey, isFree, ...userOwned } = (parsed[k] || {}) as any;
           baseProviders[k] = {
             ...baseProviders[k], ...userOwned,
             name: DEFAULT_PROVIDERS[k].name,
             nameKey: DEFAULT_PROVIDERS[k].nameKey,
             tagKey: DEFAULT_PROVIDERS[k].tagKey,
+            // Free or paid is the vendor's, not the cache's: DeepSeek was saved «free».
+            isFree: DEFAULT_PROVIDERS[k].isFree,
           };
+          if (k !== 'auto' && k !== 'local' && PLACEHOLDER_KEY.test(String(baseProviders[k].apiKey || ''))) {
+            baseProviders[k] = { ...baseProviders[k], apiKey: '' };
+          }
+          if ((RETIRED_DEFAULT_MODELS[k] || []).includes(String(baseProviders[k].model || ''))) {
+            baseProviders[k] = { ...baseProviders[k], model: DEFAULT_PROVIDERS[k].model };
+          }
         });
+      }
+      // Claude is paid, so the server's key is used only when the user asks for
+      // it. The build of 2026-11-01 filled 'server-key' in by itself; that was
+      // never the user's choice, so it is not kept. A choice the user made is.
+      if (baseProviders.anthropic?.apiKey === 'server-key' && !baseProviders.anthropic.serverKeyChosen) {
+        baseProviders.anthropic = { ...baseProviders.anthropic, apiKey: '' };
       }
       // Never trust a persisted "verified/connected" flag across reloads — the dot
       // must reflect a REAL test in THIS session. Keep the saved key, but clear the
@@ -1095,7 +1506,11 @@ export default function CommandComposer({
       const savedActive = localStorage.getItem('active_provider');
       console.log('[ProviderDebug] Loaded active_provider:', savedActive);
 
-      if (savedActive && baseProviders[savedActive]) {
+      // A vendor saved as active with no key ran on the free mesh all along,
+      // under its name. It is Auto now, honestly; his key brings it back.
+      const keyOf = (k: string) => String(baseProviders[k]?.apiKey || '').trim();
+      const runnable = (k: string) => k === 'auto' || k === 'local' || !!keyOf(k);
+      if (savedActive && baseProviders[savedActive] && runnable(savedActive)) {
         return { providers: baseProviders, activeProvider: savedActive };
       }
       return { providers: baseProviders, activeProvider: pickFirstKeyedProvider() };
@@ -1105,6 +1520,55 @@ export default function CommandComposer({
   }, []);
 
   const [providers, setProviders] = useState<{ [key: string]: ProviderConfig }>(initialProviderState.providers);
+
+  // THE BUTTON SAYS WHAT REALLY RUNS. Measured on 2026-11-01: the button read
+  // «Auto (free)» while the engine ran on Claude. The server says what Auto
+  // runs on (free, never Claude) and whether it offers its own Claude key.
+  // Claude is paid: it is connected only by the user, with their key (or the
+  // server's key when they ask for it), never filled in for them.
+  useEffect(() => {
+    let alive = true;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    fetch(`${API}/runs/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((info: EngineInfo | null) => { if (alive && info) setEngineInfo(info); })
+      .catch(() => { /* an older server without the endpoint: the button keeps its own state */ });
+    return () => { alive = false; };
+  }, []);
+
+  /**
+   *  WHAT THE OPEN SESSION RUNS ON.
+   *
+   *  2026-11-04: the owner opened a session the exam ran on Claude Haiku and
+   *  the button said «Auto · free» in red — this browser's choice for his NEXT
+   *  message, not the run he was looking at («المفروض يكون كلود»). The button
+   *  keeps saying what his next message uses (Claude is paid: it is chosen by
+   *  him, never switched on for him); beside it, the session says what its own
+   *  runs use when that is something else.
+   */
+  const [sessionEngine, setSessionEngine] = useState<{ provider: string; model: string } | null>(null);
+  useEffect(() => {
+    const sid = String(sessionId || '').trim();
+    setSessionEngine(null);
+    if (!sid) return;
+    let alive = true;
+    const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+    fetch(`${API}/sessions/${encodeURIComponent(sid)}/engine`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((info: any) => { if (alive && info?.engine?.provider) setSessionEngine(info.engine); })
+      .catch(() => { /* an older server: the button alone, as before */ });
+    const unsubscribe = SocketService.subscribe((msg: any) => {
+      const msgSession = String(msg?.sessionId || msg?.data?.sessionId || '');
+      if (!alive || msgSession !== sid) return;
+      if (msg?.type === 'run_started' && msg?.data?.engine?.provider) setSessionEngine(msg.data.engine);
+      if (msg?.type === 'engine_final' && typeof msg?.data?.model === 'string' && msg.data.model.includes(':')) {
+        const at = msg.data.model.indexOf(':');
+        setSessionEngine({ provider: msg.data.model.slice(0, at), model: msg.data.model.slice(at + 1) });
+      }
+    });
+    return () => { alive = false; unsubscribe?.(); };
+  }, [sessionId]);
+
   const providerVerificationRevisionRef = useRef<Record<string, number>>({});
   const providerConfigurationRevisionRef = useRef<Record<string, number>>({});
   const providerActivationRevisionRef = useRef(0);
@@ -1119,6 +1583,44 @@ export default function CommandComposer({
   // configuring in the panel (changing it does NOT switch the runtime provider).
   const [activeProvider, setActiveProvider] = useState(initialProviderState.activeProvider);
   const [selectedProvider, setSelectedProvider] = useState(initialProviderState.activeProvider);
+
+  // EVERY PROVIDER OFFERS ITS MODELS. The panel had one free-text «Model ID»
+  // (Claude's held claude-3-opus-20240229). The server asks the provider for
+  // its own list with the key (the key stays on the server) and says when the
+  // list is only suggestions. Asked again when the provider or its key changes:
+  // pasting a Claude key lists the models that account offers.
+  const pickerProvider = showProviders && selectedProvider && selectedProvider !== 'auto' ? selectedProvider : '';
+  const pickerKey = pickerProvider ? String(providers[pickerProvider]?.apiKey || '') : '';
+  const pickerBaseUrl = pickerProvider ? String(providers[pickerProvider]?.baseUrl || '') : '';
+  useEffect(() => {
+    if (!pickerProvider) return;
+    let alive = true;
+    setModelLists(prev => ({ ...prev, [pickerProvider]: { ...(prev[pickerProvider] || { models: [], source: 'catalog' }), loading: true } }));
+    const timer = setTimeout(() => {
+      const token = (() => { try { return localStorage.getItem('token'); } catch { return null; } })();
+      fetch(`${API}/runs/models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({ provider: pickerProvider, apiKey: pickerKey, baseUrl: pickerBaseUrl || undefined }),
+      })
+        .then(r => (r.ok ? r.json() : null))
+        .then(list => {
+          if (!alive) return;
+          setModelLists(prev => ({ ...prev, [pickerProvider]: list && Array.isArray(list.models)
+            ? { models: list.models, source: list.source === 'live' ? 'live' : 'catalog', note: list.note, loading: false, reason: list.reason, names: list.names, unsupported: list.unsupported }
+            : { models: [], source: 'catalog', note: undefined, loading: false } }));
+          // A model the provider does not offer is replaced by the first it does
+          // (its recommended one: the server lists those first). A model typed
+          // by hand is his to keep.
+          if (list?.source === 'live' && list.models?.length) {
+            setProviders(prev => (list.models.includes(String(prev[pickerProvider]?.model || '')) || customModelRef.current[pickerProvider] ? prev
+              : { ...prev, [pickerProvider]: { ...prev[pickerProvider], model: list.models[0], isConnected: false, verified: false, lastError: undefined } }));
+          }
+        })
+        .catch(() => { if (alive) setModelLists(prev => ({ ...prev, [pickerProvider]: { models: [], source: 'catalog', loading: false } })); });
+    }, 500);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [pickerProvider, pickerKey, pickerBaseUrl]);
   const [showKey, setShowKey] = useState<{ [key: string]: boolean }>({});
   const [activeRunId, setActiveRunIdState] = useState<string | null>(null);
   // The session-scoped socket callback outlives a render. Read the current
@@ -1309,7 +1811,7 @@ export default function CommandComposer({
         sessionId: String(detail?.sessionId || '').trim(),
         report: {
           ok: Boolean(report.ok),
-          title: String(report.title || 'فحص جودة المتصفح'),
+          title: String(report.title || t('cc_browserQualityTitle')),
           checks: report.checks.map(String),
         },
         ts: Date.now(),
@@ -1324,6 +1826,30 @@ export default function CommandComposer({
   useEffect(() => {
     localStorage.setItem('ai_providers', JSON.stringify(providers));
   }, [providers]);
+
+  //  THE LOCAL MODEL IS THE ONE THE SERVER HAS, NOT A GUESS IN THE BUNDLE.
+  //  The Local provider defaulted to «qwen2.5:1.5b», which the owner's machine
+  //  does not have: its dot went red while /api/status reported the server's own
+  //  model installed and answering (owner, 2026-10-23). A model the user chose
+  //  and the server has installed is kept; anything else follows the server.
+  useEffect(() => {
+    let cancelled = false;
+    const token = localStorage.getItem('token');
+    fetch(`${API}/status`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then(r => (r.ok ? r.json() : null))
+      .then((s: any) => {
+        const ai = s?.ai;
+        if (cancelled || ai?.mode !== 'local' || !ai?.modelInstalled || typeof ai?.model !== 'string') return;
+        const installed: string[] = Array.isArray(ai.installedModels) ? ai.installedModels : [];
+        setProviders(prev => {
+          const local = prev.local;
+          if (!local || installed.includes(String(local.model || ''))) return prev;
+          return { ...prev, local: { ...local, model: ai.model, ...(ai.endpoint ? { baseUrl: ai.endpoint } : {}), isConnected: false, verified: false, lastError: undefined } };
+        });
+      })
+      .catch(() => { /* offline: keep what the user has */ });
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('active_provider', activeProvider);
@@ -1418,19 +1944,39 @@ export default function CommandComposer({
     }
     if (onStepsUpdate) onStepsUpdate(derived.steps);
     if (onMessagesUpdate) onMessagesUpdate(events, sessionId);
+  }, [events, derived.steps, onMessagesUpdate, onStepsUpdate, isThinking]);
 
-    // Auto-speak new assistant messages if voice mode is on
-    if (isVoiceMode && events.length > 0) {
-      const last = events[events.length - 1];
-      if (last.type === 'text' && last.data.text) {
-        speak(last.data.text);
-      }
-    }
-  }, [events, derived.steps, isVoiceMode, onMessagesUpdate, onStepsUpdate, isThinking]);
+  // Auto-speak a reply that ARRIVES while voice mode is on (replyToSpeak).
+  // A list that was replaced rather than grown (another session opened, a
+  // history restored) is what was already on the screen: its newest reply
+  // is recorded as said, not read aloud.
+  useEffect(() => {
+    const head = eventSpeechKey(events[0], 0);
+    const replaced = head !== speechHeadRef.current;
+    speechHeadRef.current = head;
+    if (!isVoiceMode) return;
+    const next = replyToSpeak(events, lastSpokenKeyRef.current);
+    if (!next) return;
+    lastSpokenKeyRef.current = next.key;
+    if (!replaced) void speak(next.text);
+  }, [events, isVoiceMode]);
 
   const speak = async (text: string) => {
-    if (!isVoiceMode) return;
-    stopSpeaking();
+    if (!isVoiceModeRef.current) return;
+    /*
+     * JOE'S VOICE DOES NOT GO INTO HIS OWN MICROPHONE.
+     *
+     * The owner, 2026-11-08: the microphone was open while Joe read a reply
+     * aloud, and the box filled with Joe's own words. The microphone closes
+     * before Joe makes a sound and opens again only from speechEnded(), when
+     * the speech has really ended, never while it plays.
+     */
+    micPauseForSpeech(recognitionRef.current, resumeListenRef);
+    cancelSpeech();
+    const id = ++speechIdRef.current;
+    // Only THIS speech may end itself: a cancelled one fires its end handler
+    // late (speechSynthesis.cancel() calls onend/onerror afterwards).
+    const finish = () => { if (id === speechIdRef.current) speechEnded(); };
 
     setIsSpeaking(true);
 
@@ -1446,10 +1992,12 @@ export default function CommandComposer({
           },
           body: JSON.stringify({ text, voice: 'onyx' })
         });
+        // A newer reply, his stop, or voice mode off came while the server answered.
+        if (id !== speechIdRef.current) return;
 
         if (res.status === 401) {
           handleUnauthorized();
-          setIsSpeaking(false);
+          finish();
           return;
         }
         // 503 = this machine has no speech engine configured. That will not
@@ -1457,18 +2005,22 @@ export default function CommandComposer({
         if (res.status === 503) serverTtsOff.current = true;
         if (res.ok) {
           const blob = await res.blob();
+          if (id !== speechIdRef.current) return;
           const url = URL.createObjectURL(blob);
           const audio = new Audio(url);
-          audio.onended = () => setIsSpeaking(false);
-          audio.onerror = () => setIsSpeaking(false);
-          audio.play();
+          const done = () => { URL.revokeObjectURL(url); finish(); };
+          audio.onended = done;
+          audio.onerror = done;
           (window as any).currentAudio = audio; // Keep ref to stop it
+          // A refused autoplay never fires onended: the microphone must still come back.
+          audio.play().catch(done);
           return;
         }
       }
     } catch (e) {
       console.warn('Backend TTS failed, falling back to browser', e);
     }
+    if (id !== speechIdRef.current) return;
 
     // 2. Fallback to Browser Speech
     const utterance = new SpeechSynthesisUtterance(text);
@@ -1479,13 +2031,15 @@ export default function CommandComposer({
       const arVoice = voices.find(v => v.lang.includes('ar') && v.name.includes('Google')) || voices.find(v => v.lang.includes('ar'));
       if (arVoice) utterance.voice = arVoice;
     }
-    utterance.onstart = () => setIsSpeaking(true);
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
+    utterance.onstart = () => { if (id === speechIdRef.current) setIsSpeaking(true); };
+    utterance.onend = finish;
+    utterance.onerror = finish;
     window.speechSynthesis.speak(utterance);
   };
 
-  const stopSpeaking = () => {
+  /** Silence Joe without counting it as an end: speak() replacing a speech, voice mode off, leaving. */
+  const cancelSpeech = () => {
+    speechIdRef.current++;
     window.speechSynthesis.cancel();
     if ((window as any).currentAudio) {
       (window as any).currentAudio.pause();
@@ -1494,44 +2048,163 @@ export default function CommandComposer({
     setIsSpeaking(false);
   };
 
+  /** The speech has ended: the microphone that speaking closed listens again. */
+  const speechEnded = () => {
+    setIsSpeaking(false);
+    micAfterSpeech(resumeListenRef, isVoiceModeRef.current, () => { void startListening(); });
+  };
+
+  /** His stop-speaking button: the speech ends now, so the microphone may come back. */
+  const stopSpeaking = () => {
+    cancelSpeech();
+    speechEnded();
+  };
+
   useEffect(() => {
     window.speechSynthesis.getVoices();
     window.speechSynthesis.onvoiceschanged = () => {
       window.speechSynthesis.getVoices();
     };
     return () => {
-      stopSpeaking();
+      resumeListenRef.current = false;
+      cancelSpeech();
     };
   }, []);
 
-  // Voice Recognition Init
-  useEffect(() => {
-    const Recognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (Recognition) {
-      const recognition = new Recognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = 'ar-SA';
-      recognition.onstart = () => setIsListening(true);
-      recognition.onend = () => setIsListening(false);
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setText(prev => prev + (prev ? ' ' : '') + transcript);
-      };
-      recognitionRef.current = recognition;
-    }
-  }, []);
+  /*
+   * THE MICROPHONE SAYS WHY IT DOES NOT LISTEN.
+   *
+   * The owner, 2026-11-08: «I pressed Joe's microphone and it did not work» —
+   * the browser had refused the microphone and Joe said nothing at all (no
+   * onerror), and the first press only opened the voice panel. Now one press
+   * listens, in the language he speaks (pickDictationLang), and every refusal
+   * is said in his language with what to do: allow the microphone, use a page
+   * served over https (or from this computer), check that a microphone
+   * exists, or connect to the internet the browser's speech service needs.
+   * The listening itself is createDictation's.
+   */
+  const [micProblem, setMicProblem] = useState('');
+  // A start that does not listen yet: the button shows it (createDictation's phase).
+  const [micPending, setMicPending] = useState<DictationPending>('');
+  /*
+   * Independent review of 2026-11-08: the recognizer's effect depended on t,
+   * which changes with the interface language, so switching the menus'
+   * language while he spoke (or while «Allow?» was open) closed the
+   * microphone without a word. The recognizer reads the current t here and
+   * is rebuilt only for another dictation language.
+   */
+  const tRef = useRef(t);
+  tRef.current = t;
+  const [dictationPick, setDictationPick] = useState<string | null>(() => {
+    try { return localStorage.getItem(DICTATION_STORAGE_KEY); } catch { return null; }
+  });
+  const dictationLang = useMemo(() => {
+    let uiSaved: string | null = null;
+    try { uiSaved = localStorage.getItem('lang'); } catch { /* storage blocked: nothing was chosen */ }
+    return pickDictationLang(dictationPick, uiSaved, typeof navigator !== 'undefined' ? navigator.language : '');
+  }, [dictationPick, i18n.language]);
+  const dictation = dictationLangOf(dictationLang) || DICTATION_LANGS[0];
+  const dictationOptions = dictationChoices(dictationLang, i18n.language);
+  // What the big microphone is doing, said on it and under it.
+  //  While the browser's «Allow?» is open the button says so, not «Connecting…» (review, 2026-11-08).
+  const micStatus = isListening ? t('cc_listening') : micPending === 'asking' ? t('cc_micAskAllow') : micPending ? t('connecting') : t('cc_tapToSpeak');
 
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert(t('speechUnsupported'));
+  useEffect(() => {
+    const mic = createDictation({
+      Recognition: (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition,
+      lang: dictationLang,
+      isSecure: () => window.isSecureContext !== false,
+      permission: () => micPermissionState((navigator as any).permissions, 3000),
+      t: (key) => tRef.current(key),
+      onListening: setIsListening,
+      onPending: setMicPending,
+      onProblem: setMicProblem,
+      onTranscript: (said) => setText(prev => prev + (prev ? ' ' : '') + said),
+    });
+    recognitionRef.current = mic.supported ? mic : null;
+    // The language changed while he wanted to listen: listening goes on in the new one.
+    if (mic.supported && restartListenRef.current) {
+      restartListenRef.current = false;
+      void mic.start();
+    }
+    // A replaced recognizer (another language) or a composer that leaves must
+    // not keep the microphone open or fire into a stale render.
+    return () => {
+      // A start he still wants — listening, or still waiting on «Allow» — goes
+      // on in the next recognizer, whether the switch under the microphone or
+      // an interface language he chose changed the dictation language.
+      if (mic.wanted()) restartListenRef.current = true;
+      mic.dispose();
+      if (recognitionRef.current === mic) recognitionRef.current = null;
+      setIsListening(false);
+      setMicPending('');
+    };
+  }, [dictationLang]);
+
+  const chooseDictationLang = (tag: string) => {
+    if (tag === dictationLang) return;
+    setDictationPick(tag);
+    try { localStorage.setItem(DICTATION_STORAGE_KEY, tag); } catch { /* remembered for this page only */ }
+  };
+
+  const startListening = async () => {
+    const mic = recognitionRef.current;
+    if (!mic) {
+      setMicProblem(t('speechUnsupported'));
       return;
     }
-    if (isListening) {
-      recognitionRef.current.stop();
-    } else {
-      recognitionRef.current.start();
+    await mic.start();
+  };
+
+  /*
+   * THE BIG MICROPHONE: A PRESS STARTS, A PRESS WHILE LISTENING FINISHES, AND
+   * A PRESS WHILE THE BROWSER IS STILL STARTING WAITS FOR IT.
+   *
+   * Independent review of 2026-11-08: while the permission question ran or
+   * the browser's «Allow?» was open the button looked untouched («Tap to
+   * speak», not pressed), so a second press — the natural one when nothing
+   * seems to happen — cancelled the start: after «Allow» the session closed at
+   * once, nothing was heard and nothing said why. The pending start now shows
+   * on the button (micPending: busy, pulsing, «Connecting…», the «Allow»
+   * sentence) and a press during it only repeats that sentence. Voice mode
+   * off still cancels it.
+   */
+  const toggleListening = () => {
+    const mic = recognitionRef.current;
+    if (mic?.pending()) {
+      //  Said again, so the alert is read again: the same text set twice is not announced.
+      if (mic.pending() === 'asking') {
+        setMicProblem('');
+        setTimeout(() => setMicProblem(t('cc_micAskAllow')), 30);
+      }
+      return;
     }
+    resumeListenRef.current = false;
+    if (mic?.wanted()) {
+      mic.stop();
+      return;
+    }
+    // He wants to talk: Joe stops talking first, or the microphone hears Joe.
+    if (isSpeaking) cancelSpeech();
+    void startListening();
+  };
+
+  /** The voice-mode button. Off always aborts: a start still waiting on «Allow» is stopped too. */
+  const toggleVoiceMode = () => {
+    const on = !isVoiceMode;
+    isVoiceModeRef.current = on;
+    if (on) {
+      // What is already on the screen was read; only a reply that arrives from now on is spoken.
+      lastSpokenKeyRef.current = newestText(events)?.key || '';
+      setIsVoiceMode(true);
+      // One press listens (the owner pressed once and nothing happened).
+      void startListening();
+      return;
+    }
+    setIsVoiceMode(false);
+    resumeListenRef.current = false;
+    recognitionRef.current?.abort();
+    cancelSpeech();
   };
 
   const clearToolTimers = () => {
@@ -1907,24 +2580,32 @@ export default function CommandComposer({
         }
       }
 
-      // THE DAY'S QUOTA RAN OUT — AND THE BUTTON STILL SAID OTHERWISE.
-      // When the chosen provider hits its daily limit Joe keeps working on the
-      // free/local mesh, but the provider button went on showing the dead
-      // provider: the user could not tell why answers changed character, and
-      // every new run still asked for a quota that was gone. The switch is made
-      // HERE, for real — the button moves to «تلقائي» and the reason is said
-      // once, in the conversation, in the user's own language.
-      if (msg.type === 'provider_quota') {
+      // THE PROVIDER HE CHOSE DID NOT ANSWER — AND IT STAYS HIS CHOICE.
+      // Joe no longer swaps in another model (the server waits a short limit
+      // out on the same provider, or stops). The light turns red with the
+      // reason, the button keeps his choice, and the reason is said once in
+      // the conversation, in his language. The old `provider_quota` event
+      // moved the button to Auto, and it reached every connected user.
+      if (msg.type === 'provider_status') {
         const d: any = msg?.data || {};
-        const target = String(d.switchTo || 'auto');
-        setActiveProvider(target);
-        setSelectedProvider(target);
-        try { localStorage.setItem('active_provider', target); } catch { /* private mode */ }
-        const noticeId = `quota:${d.provider || ''}:${d.until || Date.now()}`;
+        if (d.ok !== false) return;
+        const key = PROVIDER_STATUS_KEY[String(d.provider || '').toLowerCase()] || String(d.provider || '').toLowerCase();
+        const minutes = Number(d.minutes);
+        const when = Number.isFinite(minutes) && minutes > 0
+          ? (minutes >= 60 ? t('cc_quotaHours', { n: Math.round(minutes / 60) }) : t('cc_quotaMinutes', { n: Math.ceil(minutes) }))
+          : '';
+        const reasonKey = PROVIDER_STATUS_REASON[String(d.code || '')] || 'cc_provReasonDown';
+        const reason = reasonKey === 'cc_provReasonQuota' && !when ? t('cc_provReasonQuotaNow') : t(reasonKey, { when });
+        setProviders(prev => prev[key]
+          ? { ...prev, [key]: { ...prev[key], isConnected: false, isVerifying: false, verified: false, lastError: reason } }
+          : prev);
+        const name = providersRef.current?.[key]?.name || String(d.provider || '');
+        const noticeId = `provider:${key}:${d.code || ''}:${msg?.runId || d.until || ''}`;
+        const text = t('cc_provStopped', { provider: name, model: d.model ? ` (${d.model})` : '', reason });
         setEvents((prev: any[]) => (
           prev.some((e: any) => e?.id === noticeId)
             ? prev
-            : [...prev, { type: 'text', id: noticeId, data: String(d.message || 'انتهت حصّة المزوّد — تم التحويل إلى الوضع التلقائي.') }]
+            : [...prev, { type: 'text', id: noticeId, data: text }]
         ));
         return;
       }
@@ -2525,7 +3206,7 @@ export default function CommandComposer({
         lastGateSigRef.current.secret = undefined;
         setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء حفظ التوكن: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2546,7 +3227,7 @@ export default function CommandComposer({
         await approve(decision);
         lastGateSigRef.current.approval = undefined;
       } catch (e) {
-        setEvents(prev => [...prev, { type: 'error', data: `حدث خطأ أثناء إرسال قرار الموافقة: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+        setEvents(prev => [...prev, { type: 'error', data: t('cc_approvalSendError', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
       }
       return;
     }
@@ -2582,9 +3263,11 @@ export default function CommandComposer({
       } catch (error: any) {
         if (submissionEpoch !== submissionEpochRef.current) return;
         awaitingRunIdentityRef.current = false;
+        // 'session_creation_failed' is this function's own code, not a sentence.
+        const createMessage = String(error?.message || '').trim();
         setEvents(prev => [...prev, {
           type: 'error',
-          data: String(error?.message || 'Unable to create a conversation for this task.'),
+          data: createMessage && createMessage !== 'session_creation_failed' ? createMessage : t('cc_sessionCreateFailed'),
           ts: Date.now(),
         }]);
         return;
@@ -2791,7 +3474,7 @@ export default function CommandComposer({
             body: JSON.stringify({ sessionId: opened.sessionId, instructionText: `افتح ${desiredUrl}`, mode: 'execute' }),
           }).catch(() => null);
         } catch (e: any) {
-          const msg = String(e?.message || e || 'فشل فتح المتصفح');
+          const msg = String(e?.message || e || t('cc_browserOpenFailed'));
           setEvents(prev => [...prev, { type: 'error', data: msg, ts: Date.now() }]);
           const sid = runSessionId;
           const looksLikeUnauthorizedWorker = /worker_error=401\b|unauthorized\b|غير مصرح/i.test(msg);
@@ -2812,7 +3495,7 @@ export default function CommandComposer({
       // and reports its failure without silently substituting another vendor.
       const providerToSend = activeProvider;
       const providerCfgToSend = providers[providerToSend];
-      if (!providerCfgToSend) throw new Error('Selected provider is unavailable. Open Providers and choose a provider.');
+      if (!providerCfgToSend) throw new Error(t('cc_providerUnavailable'));
 
       const payload: any = {
         type: 'run_start',
@@ -2982,8 +3665,17 @@ export default function CommandComposer({
     }
   }
 
-  /** The composer is free to start a new run right now. */
-  const composerIdle = status === 'idle' && !approval && !secretPrompt;
+  /**
+   * The composer is free to start a new run right now — never while the server
+   * says this session's run is still going (`runActive`).
+   *
+   * `status` alone goes back to 'idle' 300 ms after every tool (hideToolSoon),
+   * and the model then thinks for seconds or minutes before the next one. The
+   * UI/UX check of 2026-11-05 caught it ninety-seven steps into the clinic:
+   * the Stop button had turned back into Send, a typed message would have been
+   * sent as a new run, and the queue's 1.2 s timer would have fired mid-run.
+   */
+  const composerIdle = status === 'idle' && !runActive && !approval && !secretPrompt;
 
   // Published for anyone outside the composer who must not act while a task
   // runs — today that is the self-update autopilot, which would otherwise
@@ -3042,7 +3734,7 @@ export default function CommandComposer({
     if (pendingQueue.length > 0) setQueuePaused(true);
     if (!target && awaitingRunIdentityRef.current && !activeRunIdentityRef.current) {
       pendingStopEpochRef.current = submissionEpochRef.current;
-      setActiveToolName('Stopping your request…');
+      setActiveToolName(t('cc_stoppingRequest'));
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3171,7 +3863,7 @@ export default function CommandComposer({
     // the owner retry or see the eventual terminal event instead of believing
     // a task vanished when it is still consuming tools in the background.
     if (!serverConfirmedStop && (rid || sid)) {
-      setActiveToolName('Unable to confirm that the requested run stopped.');
+      setActiveToolName(t('cc_stopUnconfirmed'));
       setToolVisible(true);
       setStatus('thinking');
       setIsThinking(true);
@@ -3251,7 +3943,7 @@ export default function CommandComposer({
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue', 'Token saved. Continuing execution.')}`, ts: Date.now() }]);
     } catch (e) {
-      setEvents(prev => [...prev, { type: 'error', data: `تعذّر متابعة المتصفح: ${String((e as any)?.message || e)}`, ts: Date.now() }]);
+      setEvents(prev => [...prev, { type: 'error', data: t('cc_browserResumeFailed', { error: String((e as any)?.message || e) }), ts: Date.now() }]);
     } finally {
       setBrowserCred(null);
       setBrowserCredValue('');
@@ -3291,9 +3983,12 @@ export default function CommandComposer({
         },
         body: JSON.stringify({
           provider: key,
-          apiKey: p.apiKey || (p.isFree ? 'free-mode' : ''),
+          apiKey: p.apiKey || '',
           baseUrl: p.baseUrl,
           model: p.model,
+          // The check on every page load must not spend: for Claude it asks
+          // whether the key lists the model (free); Connect makes one real call.
+          light: !!opts?.background,
         }),
       });
 
@@ -3302,7 +3997,7 @@ export default function CommandComposer({
         handleUnauthorized();
         throw new Error(t('unauthorized', 'Unauthorized'));
       }
-      const data = await res.json().catch(() => ({ ok: false, error: 'bad_response' }));
+      const data = await res.json().catch(() => ({ ok: false, error: t('cc_badResponse') }));
       if (!currentVerification()) return false;
 
       if (data?.ok) {
@@ -3311,7 +4006,7 @@ export default function CommandComposer({
         if (!opts?.background && activationRevision === providerActivationRevisionRef.current) setActiveProvider(key);
         setProviders(prev => ({
           ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined, apiKey: prev[key].apiKey || (prev[key].isFree ? 'free-mode' : prev[key].apiKey) },
+          [key]: { ...prev[key], isVerifying: false, isConnected: true, verified: true, lastError: undefined },
         }));
         if (opts?.closeOnSuccess && !opts?.background
           && activationRevision === providerActivationRevisionRef.current) setShowProviders(false);
@@ -3320,14 +4015,19 @@ export default function CommandComposer({
       // The live request FAILED (bad key, blocked, empty) — show it red, honestly.
       setProviders(prev => ({
         ...prev,
-          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (data?.error || 'فشل الاتصال') },
+          [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined
+            : (key === 'anthropic' && CLAUDE_ERROR_KEYS[data?.code] ? t(CLAUDE_ERROR_KEYS[data.code])
+              : PROVIDER_STATUS_REASON[data?.code] ? t('cc_provNotConnected', { reason: t(PROVIDER_STATUS_REASON[data.code], { when: '' }) })
+                : (data?.error || t('cc_connectionFailed'))) },
       }));
       return false;
     } catch (err: any) {
       if (!currentVerification()) return false;
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (err.message || 'فشل الاتصال') },
+        //  The browser's own words for «Joe did not answer» («Failed to fetch») are English and
+        //  say nothing: the owner read them while Joe was restarting (2026-11-09). Said in his language.
+        [key]: { ...prev[key], isVerifying: false, isConnected: false, verified: false, lastError: opts?.background && !opts?.reportError ? undefined : (isNetworkFailure(err) ? t('cc_joeUnreachable') : (err.message || t('cc_connectionFailed'))) },
       }));
       return false;
     }
@@ -3380,21 +4080,21 @@ export default function CommandComposer({
   }, [activeProvider]);
 
   const deleteProviderKey = (key: string) => {
-    if (confirm('Are you sure you want to remove the API key?')) {
+    if (confirm(t('cc_confirmRemoveKey'))) {
       invalidateProviderVerification(key);
-      // A free provider (e.g. Groq) must fall BACK to free mode, not be left keyless
-      // and dead. Reset its key to the 'free-mode' placeholder so it keeps working.
-      const isFree = !!providers[key]?.isFree;
+      // A vendor without its key cannot run, free tier or paid: the 'free-mode'
+      // placeholder this used to leave behind ran the free mesh under its name.
       setProviders(prev => ({
         ...prev,
-        [key]: { ...prev[key], apiKey: isFree ? 'free-mode' : '', isConnected: isFree, isVerifying: false, verified: false, lastError: undefined }
+        [key]: { ...prev[key], apiKey: '', isConnected: false, isVerifying: false, verified: false, lastError: undefined }
       }));
-      if (!isFree) setActiveProvider('openai');
+      // Joe goes back to Auto, which needs no key.
+      if (activeProvider === key) setActiveProvider('auto');
     }
   };
 
   const handleDisconnect = async (key: string) => {
-    if (!confirm('Are you sure you want to disconnect?')) return;
+    if (!confirm(t('cc_confirmDisconnect'))) return;
     invalidateProviderVerification(key);
 
     setProviders(prev => ({
@@ -3895,18 +4595,18 @@ export default function CommandComposer({
             {/* Left Sidebar */}
             <div className="providers-left">
               <h3 style={{ margin: '0 0 16px 0', fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}>
-                <Cpu size={18} /> Providers
+                <Cpu size={18} /> {t('aiProviders')}
               </h3>
 
               <div className="provider-section">
-                <div className="section-header free">🆓 مجاني — Free</div>
+                <div className="section-header free">{t('cc_sectionFree')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('providerClickToView')}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToView', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -3920,14 +4620,14 @@ export default function CommandComposer({
               </div>
 
               <div className="provider-section">
-                <div className="section-header paid">💳 مدفوع — Paid</div>
+                <div className="section-header paid">{t('cc_sectionPaid')}</div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   {Object.entries(providers).filter(([, p]) => !p.isFree).map(([key, p]) => (
                     <button
                       key={key}
                       className={`provider-item ${selectedProvider === key ? 'active' : ''}`}
                       onClick={() => setSelectedProvider(key)}
-                      title={p.lastError ? `لا يعمل: ${p.lastError}` : activeProvider === key ? 'قيد الاستخدام الآن' : 'اضغط للعرض، أدخل المفتاح، ثم Verify للتفعيل'}
+                      title={p.lastError ? t('providerNotWorking', { error: p.lastError }) : activeProvider === key ? t('providerInUse') : t('cc_providerClickToViewKey', { action: t('cc_connectActivate') })}
                     >
                       <span style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                         <span className={`provider-status-dot ${p.isVerifying ? 'verifying' : p.verified ? 'connected' : p.lastError ? 'failed' : 'disconnected'}`} />
@@ -3945,96 +4645,40 @@ export default function CommandComposer({
             <div className="providers-right">
               {providers[selectedProvider] && (
                 <>
-                  {/* OpenRouter Model Selection */}
-                  {selectedProvider === 'openrouter' && (
-                    <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">اختر النموذج</label>
-                      <select
-                        className="model-select"
-                        value={providers[selectedProvider].model || ''}
-                        onChange={(e) => {
-                          invalidateProviderVerification(selectedProvider);
-                          const selectedModel = OPENROUTER_MODELS.find(m => m.id === e.target.value);
-                          const isFreeModel = selectedModel?.free ?? true;
-                          setProviders(prev => ({
-                            ...prev,
-                            [selectedProvider]: {
-                              ...prev[selectedProvider],
-                              model: e.target.value,
-                              isFree: isFreeModel,
-                              isConnected: false,
-                              isVerifying: false,
-                              verified: false,
-                              lastError: undefined
-                            }
-                          }));
-                        }}
-                      >
-                        <optgroup label={t('modelsFree')}>
-                          {OPENROUTER_MODELS.filter(m => m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                        <optgroup label={t('modelsPaid')}>
-                          {OPENROUTER_MODELS.filter(m => !m.free).map(m => (
-                            <option key={m.id} value={m.id}>{m.name} - {t(m.descriptionKey)}</option>
-                          ))}
-                        </optgroup>
-                      </select>
-                      {/* Show selected model info */}
-                      {(() => {
-                        const selected = OPENROUTER_MODELS.find(m => m.id === providers[selectedProvider].model);
-                        if (!selected) return null;
-                        return (
-                          <div style={{
-                            marginTop: 8, padding: '8px 12px', borderRadius: 8,
-                            background: selected.free ? 'rgba(34, 197, 94, 0.1)' : 'rgba(59, 130, 246, 0.1)',
-                            border: `1px solid ${selected.free ? 'rgba(34, 197, 94, 0.3)' : 'rgba(59, 130, 246, 0.3)'}`,
-                            fontSize: 12
-                          }}>
-                            {selected.free ? (
-                              <span style={{ color: '#22c55e' }}>✓ هذا النموذج مجاني — يحتاج مفتاح API من OpenRouter</span>
-                            ) : (
-                              <span style={{ color: '#3b82f6' }}>💳 هذا النموذج مدفوع - يحتاج API Key من OpenRouter</span>
-                            )}
-                          </div>
-                        );
-                      })()}
-                    </div>
-                  )}
-
                   {/* Auto is the pure keyless mesh — no key. */}
                   {selectedProvider === 'auto' && (
-                    <div className="info-box free">
-                      <div style={{ fontWeight: 700, marginBottom: 4 }}>✨ تلقائي — بلا مفتاح</div>
-                      <div>يختار أفضل مزوّد مجاني متاح تلقائياً (محلي + مجاني). لا يحتاج أي مفتاح.</div>
+                    <div className="info-box free" dir="auto">
+                      <div style={{ fontWeight: 700, marginBottom: 4 }}>{t('provClaudeAutoTitle')}</div>
+                      <div>{t('provClaudeAutoBody')}</div>
                     </div>
                   )}
 
                   {selectedProvider === 'local' && (
                     <div className="info-box free">
-                      <div>Uses your existing local Ollama service. Enter an installed Model ID, then connect. No API key or model download is required.</div>
+                      <div>{t('cc_localBody')}</div>
                     </div>
                   )}
 
                   {/* Honest per-provider info box driven by PROVIDER_KEY_INFO. */}
                   {selectedProvider !== 'auto' && PROVIDER_KEY_INFO[selectedProvider] && (() => {
                     const info = PROVIDER_KEY_INFO[selectedProvider];
-                    const title = info.need === 'keyless' ? '🆓 مجاني بلا مفتاح — ويقبل مفتاحك (اختياري)'
-                      : info.need === 'optional' ? '⚡ مجاني — ويقبل مفتاحك الخاص (اختياري، لسرعة وحدود أعلى)'
-                        : info.need === 'required' ? '🔑 يحتاج مفتاح API'
-                          : '💳 مزوّد مدفوع — يحتاج مفتاحه';
+                    const title = info.need === 'keyless' ? t('cc_needKeyless')
+                      : info.need === 'optional' ? t('cc_needOptional')
+                        : info.need === 'required' ? t('cc_needRequired')
+                          : t('cc_needPaid');
+                    // The body names the button below by its own translated label.
+                    const action = t('cc_connectActivate');
                     const body = info.need === 'required'
-                      ? 'ألصق مفتاح API لهذا المزوّد بالأسفل، ثم اضغط «Connect & Activate» للتحقّق منه. يمكن أيضاً استعمال المفتاح المُعدّ للخدمة مسبقاً.'
+                      ? t('cc_bodyRequired', { action })
                       : info.need === 'paid'
-                        ? 'ألصق مفتاح المزوّد بالأسفل ثم اضغط «Connect & Activate» للتحقّق منه.'
-                        : 'يعمل مجاناً مباشرة. ولمزيد من السرعة والحدود يمكنك (اختياريّاً) لصق مفتاحك الخاص بالأسفل.';
+                        ? t('cc_bodyPaid', { action })
+                        : t('cc_bodyFree');
                     return (
                       <div className="info-box free">
                         <div style={{ fontWeight: 700, marginBottom: 4 }}>{title}</div>
                         <div>{body}</div>
                         {info.getUrl && (
-                          <div style={{ marginTop: 6, fontSize: 12 }}>احصل على مفتاح من <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
+                          <div style={{ marginTop: 6, fontSize: 12 }}>{t('cc_getKeyFrom')} <a href={info.getUrl} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--accent-primary)', unicodeBidi: 'isolate' }}>{info.getLabel || info.getUrl}</a></div>
                         )}
                       </div>
                     );
@@ -4046,28 +4690,19 @@ export default function CommandComposer({
                     const keyOptional = info.need === 'keyless' || info.need === 'optional';
                     return (
                     <div style={{ marginBottom: 20 }}>
-                      <label className="section-label">API Key{keyOptional ? ' (اختياري)' : ''}</label>
+                      <label className="section-label">{keyOptional ? t('cc_apiKeyLabelOptional') : t('cc_apiKeyLabel')}</label>
                       <div style={{ position: 'relative', display: 'flex', gap: 8 }}>
                         <div style={{ position: 'relative', flex: 1 }}>
                           <input
                             type={showKey[selectedProvider] ? "text" : "password"}
                             className="api-key-input"
                             dir="ltr"
-                            value={/^(free-mode|auto-mode)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
+                            value={/^(free-mode|auto-mode|server-key)$/.test(String(providers[selectedProvider].apiKey || '')) ? '' : providers[selectedProvider].apiKey}
                             onChange={(e) => {
                               invalidateProviderVerification(selectedProvider);
-                              const newKey = e.target.value;
-                              // Keyless/optional providers fall back to the free mesh when the
-                              // box is empty; required/paid providers stay empty until a key.
-                              const emptyVal = keyOptional ? 'free-mode' : '';
-                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey || emptyVal, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
-                              if (selectedProvider === 'openai' && newKey.trim().startsWith('sk-')) {
-                                fetch(`${API}/providers/openai/key`, {
-                                  method: 'POST',
-                                  headers: { 'Content-Type': 'application/json' },
-                                  body: JSON.stringify({ apiKey: newKey.trim() })
-                                }).catch(err => console.error('Failed to send API key to server:', err));
-                              }
+                              // The key travels with each request; an empty box is no key.
+                              const newKey = e.target.value.trim();
+                              setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], apiKey: newKey, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
                             }}
                             placeholder={info.placeholderKey ? t(info.placeholderKey) : info.placeholder}
                           />
@@ -4089,7 +4724,7 @@ export default function CommandComposer({
                               }).catch(err => console.error('Failed to clear API key on server:', err));
                             }
                           }}
-                          title="Clear Key"
+                          title={t('cc_clearKey')}
                           style={{
                             padding: '0 12px', borderRadius: 8, border: '1px solid var(--border-color)',
                             background: 'var(--bg-secondary)', color: '#ef4444', cursor: 'pointer'
@@ -4103,25 +4738,113 @@ export default function CommandComposer({
                   })()}
 
 
-                  {/* Model ID - Hide for Auto and OpenRouter (which has dropdown) */}
-                  {selectedProvider !== 'auto' && selectedProvider !== 'openrouter' && (
+                  {/* CLAUDE: paste the key, the account's models appear, pick one, Connect. Claude is paid. */}
+                  {selectedProvider === 'anthropic' && (() => {
+                    const list = modelLists.anthropic;
+                    const current = String(providers.anthropic?.model || '');
+                    const runnable = list?.models?.length ? list.models : ANTHROPIC_MODELS.map(m => m.id);
+                    const known = (id: string) => ANTHROPIC_MODELS.find(m => m.id === id);
+                    const nameOf = (id: string) => list?.names?.[id] || known(id)?.name || id;
+                    const descOf = (id: string) => (known(id) ? ` — ${t(known(id)!.descriptionKey)}` : '');
+                    const usingServerKey = providers.anthropic?.apiKey === 'server-key';
+                    const setClaude = (patch: Partial<ProviderConfig>) => {
+                      invalidateProviderVerification('anthropic');
+                      setProviders(prev => ({ ...prev, anthropic: { ...prev.anthropic, ...patch, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                    };
+                    const reasonKey = list?.reason?.code === 'needs_key' ? 'claudeModelsNeedKey' : MODELS_REASON_KEYS[String(list?.reason?.code || '')];
+                    return (
+                      <div style={{ marginBottom: 20 }}>
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        <select
+                          className="model-select"
+                          value={runnable.includes(current) ? current : runnable[0]}
+                          onChange={(e) => setClaude({ model: e.target.value })}
+                        >
+                          {runnable.map(id => <option key={id} value={id}>{nameOf(id)}{descOf(id)}</option>)}
+                          {!!list?.unsupported?.length && (
+                            <optgroup label={t('claudeModelsNotRun')}>
+                              {list.unsupported.map(id => <option key={id} value={id} disabled>{nameOf(id)}</option>)}
+                            </optgroup>
+                          )}
+                        </select>
+                        <div dir="auto" style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                          {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                            : list?.source === 'live' && !list?.reason ? t('claudeModelsLive', { count: runnable.length })
+                            : reasonKey ? t(reasonKey, { status: list?.reason?.status ?? '' }) : t('modelsCatalog')}
+                        </div>
+                        <div dir="auto" style={{ marginTop: 10, padding: '8px 12px', borderRadius: 8, background: 'rgba(245, 158, 11, 0.1)', border: '1px solid rgba(245, 158, 11, 0.35)', fontSize: 12 }}>
+                          💳 {t('provClaudePaid')}
+                        </div>
+                        {engineInfo?.claude?.serverKey && (
+                          <div dir="auto" style={{ marginTop: 8, fontSize: 12 }}>
+                            {usingServerKey ? (
+                              <>
+                                {t('provClaudeServerNote', { spent: (engineInfo.budget?.spentUsd ?? 0).toFixed(2), total: (engineInfo.budget?.totalUsd ?? 0).toFixed(0) })}{' '}
+                                <button type="button" className="link-button" onClick={() => setClaude({ apiKey: '', serverKeyChosen: false })}>{t('provClaudeUseOwnKey')}</button>
+                              </>
+                            ) : (
+                              <button type="button" className="link-button" onClick={() => setClaude({ apiKey: 'server-key', serverKeyChosen: true })}>{t('provClaudeUseServerKey')}</button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+
+                  {/* The model: a list of what the provider offers (Auto and Claude have their own). */}
+                  {selectedProvider !== 'auto' && selectedProvider !== 'anthropic' && (
                     <div style={{ display: 'grid', gridTemplateColumns: selectedProvider === 'grok' ? '1fr 1fr' : '1fr', gap: 16, marginBottom: 20 }}>
                       <div>
-                        <label className="section-label">Model ID</label>
-                        <input
-                          type="text"
-                          className="api-key-input"
-                          value={providers[selectedProvider].model || ''}
-                          onChange={(e) => {
+                        <label className="section-label">{t('chooseModel', 'Choose the model')}</label>
+                        {(() => {
+                          const list = modelLists[selectedProvider];
+                          const current = String(providers[selectedProvider].model || '');
+                          const options = list?.models || [];
+                          const typing = customModel[selectedProvider] === true;
+                          const setModel = (model: string) => {
                             invalidateProviderVerification(selectedProvider);
-                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model: e.target.value, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
-                          }}
-                          placeholder="gpt-4o"
-                        />
+                            setProviders(prev => ({ ...prev, [selectedProvider]: { ...prev[selectedProvider], model, isConnected: false, isVerifying: false, verified: false, lastError: undefined } }));
+                          };
+                          return (
+                            <>
+                              <select
+                                className="model-select"
+                                value={typing ? '__custom__' : current}
+                                onChange={(e) => {
+                                  if (e.target.value === '__custom__') { setCustomModel(prev => ({ ...prev, [selectedProvider]: true })); return; }
+                                  setCustomModel(prev => ({ ...prev, [selectedProvider]: false }));
+                                  setModel(e.target.value);
+                                }}
+                              >
+                                {current && !options.includes(current) && <option value={current}>{current}</option>}
+                                {options.map(m => <option key={m} value={m}>{m}</option>)}
+                                <option value="__custom__">{t('modelOther', 'Another model…')}</option>
+                              </select>
+                              {typing && (
+                                <input
+                                  type="text"
+                                  className="api-key-input"
+                                  style={{ marginTop: 8 }}
+                                  value={current}
+                                  onChange={(e) => setModel(e.target.value)}
+                                  placeholder={options[0] || ''}
+                                />
+                              )}
+                              <div style={{ marginTop: 6, fontSize: 12, color: 'var(--text-muted)' }}>
+                                {list?.loading ? t('modelsLoading', 'Fetching the models…')
+                                  : list?.source === 'live' ? t('modelsLive', { count: options.length })
+                                  : t('modelsCatalog')}
+                                {/* A public list (OpenRouter) is the provider's own; only chatting needs the key. */}
+                                {!list?.loading && list?.source === 'live' && list?.reason?.code === 'needs_key' ? ` — ${t('modelsPublicNeedsKey')}`
+                                  : !list?.loading && list?.reason && MODELS_REASON_KEYS[list.reason.code] ? ` — ${t(MODELS_REASON_KEYS[list.reason.code], { status: list.reason.status ?? '' })}` : ''}
+                              </div>
+                            </>
+                          );
+                        })()}
                       </div>
                       {selectedProvider === 'grok' && (
                         <div>
-                          <label className="section-label">Base URL</label>
+                          <label className="section-label">{t('cc_baseUrl')}</label>
                           <input
                             type="text"
                             className="api-key-input"
@@ -4171,16 +4894,16 @@ export default function CommandComposer({
                     >
                       {providers[selectedProvider].isVerifying ? (
                         <>
-                          <Loader2 size={18} className="spin" /> Verifying...
+                          <Loader2 size={18} className="spin" /> {t('cc_verifying')}
                         </>
                       ) : providers[selectedProvider].isConnected && providers[selectedProvider].verified
                         && selectedProvider === activeProvider ? (
                         <>
-                          <CheckCircle2 size={18} /> Verified & Active
+                          <CheckCircle2 size={18} /> {t('cc_verifiedActive')}
                         </>
                       ) : (
                         <>
-                          <Zap size={18} /> Connect & Activate
+                          <Zap size={18} /> {t('cc_connectActivate')}
                         </>
                       )}
                     </button>
@@ -4192,7 +4915,7 @@ export default function CommandComposer({
                         handleDisconnect(selectedProvider);
                       }}
                       disabled={!providers[selectedProvider].isConnected}
-                      title="Disconnect Provider"
+                      title={t('cc_disconnectProvider')}
                       style={{
                         padding: '12px 16px', borderRadius: 8, border: '1px solid var(--border-color)',
                         background: 'var(--bg-secondary)',
@@ -4223,7 +4946,7 @@ export default function CommandComposer({
                 </div>
                 <div>
                   <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('secretGateTitle', 'Authentication Required')}</h3>
-                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>GitHub / Service Token</div>
+                  <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>{t('cc_serviceToken')}</div>
                 </div>
               </div>
 
@@ -4249,7 +4972,7 @@ export default function CommandComposer({
                           const key = secretPrompt.key;
                           const provider = secretPrompt.provider;
                           setSecretPrompt(null);
-                          setEvents(prev => [...prev, { type: 'user_input', data: '🔐 [Token Provided]', ts: Date.now() }]);
+                          setEvents(prev => [...prev, { type: 'user_input', data: t('secretSentMask'), ts: Date.now() }]);
 
                           const token = localStorage.getItem('token');
                           try {
@@ -4263,10 +4986,10 @@ export default function CommandComposer({
                               return;
                             }
                             if (!res.ok) throw new Error(`HTTP ${res.status}`);
-                            setEvents(prev => [...prev, { type: 'text', data: '✅ Token verified. Resuming operation...', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'text', data: `✅ ${t('secretSavedContinue')}`, ts: Date.now() }]);
                             pendingBrowserRetryRef.current = null;
                           } catch (err) {
-                            setEvents(prev => [...prev, { type: 'error', data: 'Failed to save token.', ts: Date.now() }]);
+                            setEvents(prev => [...prev, { type: 'error', data: t('cc_tokenSaveFailed'), ts: Date.now() }]);
                           }
                         }
                       }
@@ -4281,7 +5004,7 @@ export default function CommandComposer({
                 </div>
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>Your token is sent securely and not stored permanently.</span>
+                  <span>{t('cc_tokenSecureNote')}</span>
                 </div>
               </div>
 
@@ -4290,7 +5013,7 @@ export default function CommandComposer({
                   onClick={() => setSecretPrompt(null)}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: 'pointer' }}
                 >
-                  Cancel
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4302,16 +5025,16 @@ export default function CommandComposer({
         // Browser agent paused for a credential / 2FA code — answered HERE in the
         // chat (not inside the browser panel), then the same live browser resumes.
         browserCred && (
-          <div className="modal" dir="rtl">
+          <div className="modal" dir={uiDir}>
             <div className="panel" style={{ width: 420, border: '1px solid var(--border-color)', background: 'var(--bg-secondary)', boxShadow: '0 20px 40px rgba(0,0,0,0.5)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
                 <div style={{ padding: 10, borderRadius: 12, background: 'rgba(var(--accent-secondary-rgb), 0.1)', color: 'var(--accent-secondary)' }}>
                   <Lock size={24} />
                 </div>
                 <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>المتصفح يحتاج بياناتك للمتابعة</h3>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>{t('cc_browserNeedsCreds')}</h3>
                   <div style={{ fontSize: 13, color: 'var(--text-secondary)' }}>
-                    {/PASSWORD/i.test(browserCred.secretKey) ? 'كلمة المرور' : /EMAIL/i.test(browserCred.secretKey) ? 'البريد الإلكتروني' : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? 'رمز التحقّق' : 'بيانات الدخول'}
+                    {/PASSWORD/i.test(browserCred.secretKey) ? t('password') : /EMAIL/i.test(browserCred.secretKey) ? t('email') : /2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('cc_credCode') : t('cc_credLogin')}
                   </div>
                 </div>
               </div>
@@ -4324,7 +5047,7 @@ export default function CommandComposer({
                   <input
                     type={/PASSWORD/i.test(browserCred.secretKey) ? 'password' : 'text'}
                     autoFocus
-                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : 'rtl'}
+                    dir={/EMAIL/i.test(browserCred.secretKey) ? 'ltr' : uiDir}
                     value={browserCredValue}
                     onChange={(e) => setBrowserCredValue(e.target.value)}
                     placeholder={/2FA|OTP|CODE/i.test(browserCred.secretKey) ? t('enter2faCode') : /EMAIL/i.test(browserCred.secretKey) ? t('enterEmail') : /PASSWORD/i.test(browserCred.secretKey) ? t('enterPassword') : t('enterRequiredValue')}
@@ -4359,7 +5082,7 @@ export default function CommandComposer({
                 )}
                 <div style={{ marginTop: 12, fontSize: 12, color: 'var(--text-muted)', display: 'flex', gap: 6, alignItems: 'center' }}>
                   <ShieldCheck size={12} />
-                  <span>تُرسَل بأمان وتُخزَّن مشفّرة — لا تظهر في السجلّ ولا في اللقطات.</span>
+                  <span>{t('cc_credSecureNote')}</span>
                 </div>
               </div>
 
@@ -4376,7 +5099,7 @@ export default function CommandComposer({
                   disabled={browserCredBusy}
                   style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid var(--border-color)', background: 'transparent', color: 'var(--text-secondary)', cursor: browserCredBusy ? 'default' : 'pointer' }}
                 >
-                  إلغاء
+                  {t('cancel')}
                 </button>
               </div>
             </div>
@@ -4405,12 +5128,12 @@ export default function CommandComposer({
             {pendingQueue.length > 0 && (
               <div className="pending-queue-strip">
                 <span className="pending-queue-title">
-                  <Clock size={12} /> {t('queueTitle', 'قيد الانتظار')} ({pendingQueue.length})
+                  <Clock size={12} /> {t('queueTitle')} ({pendingQueue.length})
                 </span>
                 {pendingQueue.map((item) => (
                   <div key={item.id} className="pending-queue-card">
                     <span className="pending-queue-text" dir="auto">
-                      {item.text || t('queueFilesOnly', 'مرفقات فقط')}
+                      {item.text || t('queueFilesOnly')}
                     </span>
                     {item.files.length > 0 && (
                       <span className="pending-queue-files"><Paperclip size={11} /> {item.files.length}</span>
@@ -4418,7 +5141,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn"
-                      title={t('queueSendNow', 'أرسل الآن')}
+                      title={t('queueSendNow')}
                       disabled={!composerIdle || isUploading}
                       onClick={() => dispatchQueuedItem(item.id)}
                     >
@@ -4427,7 +5150,7 @@ export default function CommandComposer({
                     <button
                       type="button"
                       className="pending-queue-btn pending-queue-remove"
-                      title={t('queueRemove', 'حذف من الانتظار')}
+                      title={t('queueRemove')}
                       onClick={() => setPendingQueue(prev => prev.filter(q => q.id !== item.id))}
                     >
                       <X size={12} />
@@ -4440,7 +5163,7 @@ export default function CommandComposer({
                     className="pending-queue-resume"
                     onClick={() => setQueuePaused(false)}
                   >
-                    {t('queueResume', 'استئناف الإرسال التلقائي')}
+                    {t('queueResume')}
                   </button>
                 )}
               </div>
@@ -4475,10 +5198,10 @@ export default function CommandComposer({
                       {file.size && (
                         <span className="file-size">
                           {file.size < 1024
-                            ? `${file.size} B`
+                            ? t('act_sizeBytes', { n: file.size })
                             : file.size < 1024 * 1024
-                              ? `${(file.size / 1024).toFixed(1)} KB`
-                              : `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+                              ? t('act_sizeKB', { n: (file.size / 1024).toFixed(1) })
+                              : t('act_sizeMB', { n: (file.size / (1024 * 1024)).toFixed(1) })
                           }
                         </span>
                       )}
@@ -4535,8 +5258,8 @@ export default function CommandComposer({
               </div>
             )}
 
-            <TodosPanel sessionId={sessionId} />
-
+            {/* The plan is not here: it lives inside Joe's reply (PlanCredits), so
+                nothing floats over what the user is typing (the owner, 2026-11-02). */}
 
             <textarea
               className="main-input"
@@ -4724,6 +5447,7 @@ export default function CommandComposer({
                   };
 
                   return (
+                    <>
                     <button
                       className={`provider-btn provider-${activeProvider} ${(() => {
                         const st = providers[activeProvider];
@@ -4734,7 +5458,7 @@ export default function CommandComposer({
                         return st?.lastError ? 'is-disconnected' : 'is-unknown';
                       })()}`}
                       onClick={() => setShowProviders(true)}
-                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}`}
+                      title={`${t('aiProviders', 'AI Providers')}: ${providers[activeProvider]?.name || activeProvider}${activeProvider === 'auto' && engineInfo?.engine === 'agent' && engineInfo.auto ? ` — ${t('provEngineRunsOn', { model: engineInfo.auto.model })}` : ''}`}
                     >
                       {/*
                         THE PROVIDER SAYS ITS NAME.
@@ -4747,9 +5471,11 @@ export default function CommandComposer({
                         The ⚡ in «Groq ⚡» is stripped — a name, not decoration.
                       */}
                       <span className="provider-label">
-                        {String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
-                          .replace(/[^\p{L}\p{N} .+-]/gu, '')
-                          .trim() || activeProvider}
+                        {DEFAULT_PROVIDERS[activeProvider]?.labelKey
+                          ? t(String(DEFAULT_PROVIDERS[activeProvider].labelKey))
+                          : String(DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider)
+                            .replace(/[^\p{L}\p{N} .+-]/gu, '')
+                            .trim() || activeProvider}
                       </span>
                       {/*
                         A KEY, NOT A SENTENCE.
@@ -4768,21 +5494,41 @@ export default function CommandComposer({
                           <Key
                             size={10}
                             className={`provider-key${need === 'optional' ? ' is-optional' : ''}${hasKey ? ' has-key' : ''}`}
-                            aria-label={need === 'optional' ? t('provKeyOptional', 'a key is optional') : t('provKeyNeeded', 'needs an API key')}
+                            aria-label={hasKey ? t('provKeySet') : need === 'optional' ? t('provKeyOptional') : t('provKeyNeeded')}
                           />
                         );
                       })()}
-                      {providers[activeProvider]?.isFree ? (
-                        <span className="provider-free">free</span>
-                      ) : null}
+                      {(() => {
+                        // Auto is free (it never runs Claude). Claude names its
+                        // model and says it is paid, so the cost is never hidden.
+                        if (activeProvider === 'anthropic') {
+                          const id = String(providers.anthropic?.model || '');
+                          const name = (modelLists.anthropic?.names?.[id] || ANTHROPIC_MODELS.find(x => x.id === id)?.name || id).replace(/^Claude /, '');
+                          return <span className="provider-free provider-paid">{name} · {t('provClaudePaidBadge')}{providers.anthropic?.apiKey === 'server-key' ? ` · ${t('provServerKey')}` : ''}</span>;
+                        }
+                        return providers[activeProvider]?.isFree ? (<span className="provider-free">{t('provFree')}</span>) : null;
+                      })()}
                     </button>
+                    {sessionEngine && sessionEngine.provider !== activeProvider && (() => {
+                      const id = sessionEngine.model;
+                      const name = sessionEngine.provider === 'anthropic'
+                        ? (modelLists.anthropic?.names?.[id] || ANTHROPIC_MODELS.find(x => x.id === id)?.name || `Claude ${id}`)
+                        : `${DEFAULT_PROVIDERS[sessionEngine.provider]?.labelKey ? t(String(DEFAULT_PROVIDERS[sessionEngine.provider].labelKey)) : (DEFAULT_PROVIDERS[sessionEngine.provider]?.name || sessionEngine.provider)}${id && id !== 'auto' ? ` · ${id}` : ''}`;
+                      const next = DEFAULT_PROVIDERS[activeProvider]?.labelKey ? t(String(DEFAULT_PROVIDERS[activeProvider].labelKey)) : (DEFAULT_PROVIDERS[activeProvider]?.name || activeProvider);
+                      return (
+                        <span className="provider-session" dir="auto" title={t('provSessionRunsOnTitle', { name, next })}>
+                          {t('provSessionRunsOn', { name })}
+                        </span>
+                      );
+                    })()}
+                    </>
                   );
                 })()}
 
                 <button
                   className="action-btn"
                   onClick={() => fileInputRef.current?.click()}
-                  title={t('attachFile') || "Attach file"}
+                  title={t('attachFile')}
                   disabled={isUploading}
                 >
                   {isUploading ? (
@@ -4793,7 +5539,7 @@ export default function CommandComposer({
                 <button
                   className="action-btn"
                   onClick={onGitClick}
-                  title="GitHub Integration"
+                  title={t('cc_githubIntegration')}
                 >
                   <Github size={14} color={githubConnected ? "#10b981" : "#ef4444"} />
                 </button>
@@ -4802,8 +5548,9 @@ export default function CommandComposer({
 
                 <button
                   className={`action-btn ${isVoiceMode ? 'active' : ''}`}
-                  onClick={() => setIsVoiceMode(!isVoiceMode)}
-                  title="Voice Mode"
+                  onClick={toggleVoiceMode}
+                  title={t('cc_voiceMode')}
+                  aria-pressed={isVoiceMode}
                 >
                   {isVoiceMode ? <Mic size={14} /> : <MicOff size={14} />}
                 </button>
@@ -4817,16 +5564,16 @@ export default function CommandComposer({
                   type="button"
                   className="action-btn queue-add-btn"
                   onClick={queueCurrentDraft}
-                  title={t('queueAdd', 'أضف إلى الانتظار — يُرسل بعد انتهاء المهمة الجارية')}
+                  title={t('queueAdd')}
                 >
                   <ListPlus size={14} />
                 </button>
               )}
               {/* Send Button - Pushed to right via CSS space-between */}
               <button
-                className={`send-btn ${status !== 'idle' || !!approval || !!secretPrompt ? 'is-busy' : ''}`}
+                className={`send-btn ${!composerIdle ? 'is-busy' : ''}`}
                 onClick={() => {
-                  if (status !== 'idle' || !!approval || !!secretPrompt) {
+                  if (!composerIdle) {
                     if ((text.trim() || attachedFiles.length > 0) && !isUploading && !approval && !secretPrompt) {
                       queueCurrentDraft();
                       return;
@@ -4843,11 +5590,11 @@ export default function CommandComposer({
                     console.error('run() threw synchronously:', e);
                   }
                 }}
-                disabled={status !== 'idle' || !!approval || !!secretPrompt ? false : (isUploading || !text.trim() || !!approval)}
-                title={status !== 'idle' || !!approval || !!secretPrompt ? (t('stop') || 'Stop') : t('send')}
+                disabled={!composerIdle ? false : (isUploading || !text.trim() || !!approval)}
+                title={!composerIdle ? t('stop') : t('send')}
                 style={{ position: 'relative' }}
               >
-                {status !== 'idle' || !!approval || !!secretPrompt ? (
+                {!composerIdle ? (
                   // «حلقة التقدّم»: the ring and arc are drawn by the button's
                   // own ::before/::after — only the stop square is content.
                   <Square size={10} fill="currentColor" />
@@ -4858,18 +5605,41 @@ export default function CommandComposer({
 
           {isVoiceMode && (
             <div className="voice-controls">
+              {/* Three states, not two (review of 2026-11-08): a start still
+                  waiting on the browser is pressed, busy and pulsing, so he
+                  sees it working instead of pressing again (toggleListening). */}
               <button
-                className={`voice-record-btn ${isListening ? 'listening' : ''}`}
+                className={`voice-record-btn${isListening ? ' listening' : micPending ? ' starting' : ''}`}
                 onClick={toggleListening}
+                aria-label={micStatus}
+                aria-pressed={isListening || !!micPending}
+                aria-busy={!!micPending}
               >
                 {isListening ? <Loader2 className="spin" size={24} /> : <Mic size={24} />}
               </button>
               <div className="voice-info">
-                <span className="voice-status">{isListening ? 'Listening...' : 'Tap to Speak'}</span>
-                <span className="voice-lang">Arabic (SA) / English (US)</span>
+                <span className="voice-status">{micStatus}</span>
+                {/* The language the browser really listens in, not a fixed list of two. */}
+                {micProblem
+                  ? <span className="voice-problem" role="alert" dir="auto">{micProblem}</span>
+                  : <span className="voice-lang" dir="auto">{t('cc_dictationLang', { lang: dictation.label, tag: dictation.tag })}</span>}
+              </div>
+              <div className="voice-lang-switch" role="group" aria-label={t('cc_dictationSwitch')}>
+                {dictationOptions.map(l => (
+                  <button
+                    key={l.tag}
+                    type="button"
+                    lang={l.code}
+                    className={`voice-lang-btn${l.tag === dictationLang ? ' active' : ''}`}
+                    aria-pressed={l.tag === dictationLang}
+                    onClick={() => chooseDictationLang(l.tag)}
+                  >
+                    {l.label}
+                  </button>
+                ))}
               </div>
 
-              <button className="action-btn" title="Stop Speaking" onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
+              <button className="action-btn" title={t('cc_stopSpeaking')} onClick={stopSpeaking} disabled={!isSpeaking} style={{ marginLeft: 'auto', opacity: isSpeaking ? 1 : 0.3 }}>
                 <Volume2 size={18} />
               </button>
             </div>

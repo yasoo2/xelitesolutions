@@ -69,6 +69,8 @@ export interface TerminalSession {
         timeout?: number;
         /** Kill a command that has produced no output for this interval. */
         idleTimeout?: number;
+        /** Evidence other than output that a silent command is still working (see ExecutionEngine). */
+        idleProgress?: () => Promise<string> | string;
         env?: Record<string, string>;
         /** Prefix each output line; default two spaces, like a real shell wrap. */
         quiet?: boolean;
@@ -193,6 +195,7 @@ export function openTerminal(say: (line: string) => void, options: TerminalOptio
             const { executionEngine } = require('../../kernel/ExecutionEngine');
             const h = executionEngine.runArgvStreaming(executableForPlatform(file), args, {
                 cwd, timeout: opts.timeout || 120_000, idleTimeout: opts.idleTimeout,
+                idleProgress: opts.idleProgress,
                 env: { NO_COLOR: '1', ...(opts.env || {}) },
                 cancel: opts.cancel,
                 onLine: (l: string) => {

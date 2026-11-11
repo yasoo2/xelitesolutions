@@ -1,0 +1,67 @@
+From c7fdac398e166644c6ac0629dbfdfabd3e96aab6 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:03 +0000
+Subject: [PATCH 5/9] test(app-audit): the borrowed probe takes scoped options;
+ add its negative
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: app-is-used (culprit 76f66a5d)
+  the React audit borrows the probe instead of growing its own
+    pinned `await probeControls(page, probeOpts())`
+
+Decision: P. 76f66a5d gave the shared options a form scope and route:
+probeOpts('desktop:/', '/') and probeOpts(`desktop:${r}`, r). The probe is
+still the one imported from behaviour-audit, with the same shared budget,
+eyes and seen-forms set. The positive now accepts any arguments to
+probeOpts(...). Added the missing NEGATIVE half of «borrows»: app-audit
+defines no probeControls/judgeBehaviour of its own.
+
+Non-vacuity:
+  probe-homegrown: import dropped, a local probeControls defined
+    ✕ the React audit borrows the probe instead of growing its own
+    ✕ NEGATIVE — and the audit defines no probe of its own
+    Expected pattern: not /(?:function|const|let|var)\s+(?:probeControls|judgeBehaviour)\b/
+    RESTORED: sha256 identical
+  probe-no-shared-opts: desktop probes get an inline options object
+    ✕ the React audit borrows the probe instead of growing its own
+    Expected pattern: /await probeControls\(page, probeOpts\([^)]*\)\)/
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/app-is-used.test.ts | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/app-is-used.test.ts b/api/src/__tests__/app-is-used.test.ts
+index acddac42..8272e723 100644
+--- a/api/src/__tests__/app-is-used.test.ts
++++ b/api/src/__tests__/app-is-used.test.ts
+@@ -23,10 +23,21 @@ describe('one definition of a dead control', () => {
+     it('the React audit borrows the probe instead of growing its own', () => {
+         const A = read('core', 'quality', 'app-audit.ts');
+         expect(A).toMatch(/import \{ probeControls, judgeBehaviour, FormResult, ControlResult \} from '\.\/behaviour-audit'/);
+-        expect(A).toMatch(/await probeControls\(page, probeOpts\(\)\)/);
++        //  The shared options now carry the form's scope and route (76f66a5d),
++        //  so the call reads `probeOpts('desktop:/', '/')` — still the shared
++        //  budget, eyes and seen-forms set, still the borrowed probe.
++        expect(A).toMatch(/await probeControls\(page, probeOpts\([^)]*\)\)/);
+         expect(A).toMatch(/judgeBehaviour\(allControls, behaviourMetrics/);
+     });
+ 
++    it('NEGATIVE — and the audit defines no probe of its own', () => {
++        //  «Borrows» has two halves: the import above, and nothing local
++        //  standing in for it. A second definition is how two meanings of a
++        //  dead control come back.
++        const A = read('core', 'quality', 'app-audit.ts');
++        expect(A).not.toMatch(/(?:function|const|let|var)\s+(?:probeControls|judgeBehaviour)\b/);
++    });
++
+     it('and the HTML builder still reaches it by the same road', () => {
+         const B = read('core', 'quality', 'behaviour-audit.ts');
+         expect(B).toMatch(/export async function probeControls/);
+-- 
+2.43.0
+

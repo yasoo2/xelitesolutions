@@ -1,11 +1,14 @@
 import { ExecutionGateway } from '../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
+import { leadWithFailure } from '../../shared/utils/failure-text';
 
 export interface HandlerResult {
     ok: boolean;
     output?: any;
     error?: string;
+    /** The command's stderr exactly as printed; `error` is the same text with the failure first. */
+    stderr?: string;
     logs: string[];
 }
 
@@ -15,7 +18,9 @@ export async function handleShellCommand(
     cwd?: string,
     timeoutMs = 60000,
     dryRun = false,
-    sessionId?: string
+    sessionId?: string,
+    /** Variables for this one command only, over the process environment. */
+    env?: NodeJS.ProcessEnv,
 ): Promise<HandlerResult> {
     const logs: string[] = [];
     const validCwd = cwd ? path.resolve(cwd) : process.cwd();
@@ -36,16 +41,19 @@ export async function handleShellCommand(
             options: { 
                 cwd: validCwd, 
                 timeout: timeoutMs,
-                shell: true 
+                shell: true,
+                ...(env ? { env } : {}),
             }
         },
         priority: 'normal'
     });
 
+    const stderr = String(result.error || result.data?.error || '');
     return {
         ok: result.success && result.data?.ok !== false,
         output: result.data?.output || '',
-        error: result.error || result.data?.error || '',
+        error: leadWithFailure(stderr),
+        stderr,
         logs
     };
 }

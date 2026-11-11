@@ -1,0 +1,15 @@
+--- a/api/src/__tests__/intelligence-economy.test.ts
++++ b/api/src/__tests__/intelligence-economy.test.ts
+@@ -62,7 +62,11 @@
+         const src = router();
+         expect(src).toContain("const localFirst = LOCAL_BRAIN_FIRST || !!String(process.env.LOCAL_LLM_BASE_URL || '').trim()");
+         expect(src).toContain('if (!hasGroq && !localFirst)');
+-        expect(src).toContain('internalCall: true');
++        // The router reads «internal» from `purpose` alone — an `internalCall`
++        // key is read by nothing (a-flag-nothing-reads-is-a-flag-that-was-
++        // never-set.test.ts). Asserted on the local-first call itself.
++        const localFirstCall = src.slice(src.indexOf('const responseText = localFirst'), src.indexOf(': await callGroq(analyst'));
++        expect(localFirstCall).toContain("purpose: 'internal',");
+         expect(src).toMatch(/\? await routeToModel\([\s\S]*?\)\s*:\s*await callGroq\(analyst/);
+     });
+ 

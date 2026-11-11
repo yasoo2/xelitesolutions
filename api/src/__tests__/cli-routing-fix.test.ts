@@ -17,7 +17,9 @@ const testCases = [
     {
         name: 'Web app with login',
         input: 'Build a web app with user login and dashboard',
-        expectedScope: 'app',
+        // A login is a declared server claim: a sign-in with no server behind
+        // it is fake (CLAUDE.md law 2). Pinned 'app' by snapshot b906f3bc.
+        expectedScope: 'system',
         expectedSchema: false,
     },
     {

@@ -25,9 +25,15 @@
  * build-shaped request whatever the object is called. The VERB is the closed
  * class; the object never is. And «enough detail» for such a request means
  * one thing only — that he said what it will HOLD.
+ *
+ * ⛔ 2026-11-03 — the owner: «اريد جو مستقل … بدون تدخل بشري». A thin request is
+ * no longer stopped on a question: it is built with Joe's own choices, and the
+ * gate says up front what he did not say and what Joe is choosing. The reading
+ * below — what counts as thin, and what his thing is — is unchanged; the
+ * sentence it produces is the decision instead of the question.
  */
 
-import { isVagueBuildRequest, clarifyQuestions, clarifyGate } from '../core/orchestrator/clarify';
+import { isVagueBuildRequest, decisionNote, clarifyGate } from '../core/orchestrator/clarify';
 
 describe('something he says he will keep track of is something to be built', () => {
     // POSITIVE — the live request, and the same shape with objects in no list.
@@ -38,12 +44,12 @@ describe('something he says he will keep track of is something to be built', () 
         ['كلمة بلا معنى', 'بدي أتابع الزنابق تبعي'],
         ['English', 'I want to track my shipments'],
         ['English manage', 'I need to manage my clients'],
-    ])('%s is asked about, not answered', (_label, ask) => {
+    ])('%s is recognised as thin, not answered', (_label, ask) => {
         expect(isVagueBuildRequest(ask)).toBe(true);
     });
 
     // POSITIVE — the gate's original case still works.
-    it('a bare build request is still asked about', () => {
+    it('a bare build request is still recognised as thin', () => {
         expect(isVagueBuildRequest('ابن لي موقع')).toBe(true);
     });
 
@@ -72,7 +78,7 @@ describe('something he says he will keep track of is something to be built', () 
 });
 
 /**
- * …AND THE QUESTION IS ABOUT HIS THING, NOT ABOUT SECTIONS AND COLOURS.
+ * …AND WHAT JOE CHOOSES IS ABOUT HIS THING, NOT ABOUT SECTIONS AND COLOURS.
  *
  * Measured live once the gate fired. Joe stopped lecturing him about interest
  * rates — and asked this instead, for a man who wants to track his debts:
@@ -84,11 +90,11 @@ describe('something he says he will keep track of is something to be built', () 
  * only one kind of request.
  *
  * There is exactly one thing Joe cannot build without and must never invent —
- * WHAT EACH ROW HOLDS. So that is the question, and it names his own word
- * back to him, in the language of the interface he is looking at.
+ * WHAT EACH ROW HOLDS. So that is what Joe says he is choosing, and it names
+ * his own word back to him, in the language of the interface he is looking at.
  */
-describe('the question names his own thing', () => {
-    const q = (goal: string, lang = 'ar'): string => clarifyQuestions(goal, lang);
+describe('the decision names his own thing', () => {
+    const q = (goal: string, lang = 'ar'): string => decisionNote(goal, lang);
 
     // POSITIVE — his word comes back, in objects that are in no list.
     it.each([
@@ -97,56 +103,46 @@ describe('the question names his own thing', () => {
         ['زنابق (بلا معنى)', 'بدي أتابع الزنابق تبعي', 'ar', 'الزنابق'],
         ['shipments', 'I want to track my shipments', 'en', 'shipments'],
         ['clients', 'I need to manage my clients', 'en', 'clients'],
-    ])('%s is asked about by name', (_label, goal, lang, word) => {
+    ])('%s is named in the decision', (_label, goal, lang, word) => {
         expect(q(goal, lang)).toContain(word);
     });
 
-    // POSITIVE — one question about the columns, not four about a website.
-    it('asks what each row holds, not what sections the site has', () => {
-        const asked = q('بدي شي أتابع فيه ديوني', 'ar');
-        expect(asked).toMatch(/تسجيله|تسجّل/);
-        expect(asked).not.toMatch(/الأقسام|ألوان|صفحة واحدة/);
+    // POSITIVE — the fields each row holds, not a website's sections.
+    it('chooses what each row holds, not what sections a site has', () => {
+        const decided = q('بدي شي أتابع فيه ديوني', 'ar');
+        expect(decided).toMatch(/يُسجَّل لكل واحد/);
+        expect(decided).not.toMatch(/أقسامه|ألوانه|صفحة واحدة/);
     });
 
     // POSITIVE — the interface owns the wording even when he writes Arabic.
-    it('an English interface asks in English about his Arabic word', () => {
-        const asked = q('بدي شي أتابع فيه ديوني', 'en');
-        expect(asked).toContain('what do you want to record');
-        expect(asked).toContain('ديوني');
+    it('an English interface says it in English about his Arabic word', () => {
+        const decided = q('بدي شي أتابع فيه ديوني', 'en');
+        expect(decided).toContain('You did not say what each of your');
+        expect(decided).toContain('ديوني');
     });
 
-    // NEGATIVE — a bare site request keeps the four site questions.
-    it('a bare build request still gets the original questions', () => {
-        const asked = q('ابن لي موقع', 'ar');
-        expect(asked).toMatch(/الأقسام/);
-        expect(asked).not.toMatch(/تسجيله/);
+    // NEGATIVE — a bare site request is about the site's subject and sections.
+    it('a bare build request is about the site, not about rows', () => {
+        const decided = q('ابن لي موقع', 'ar');
+        expect(decided).toMatch(/أقسامه/);
+        expect(decided).not.toMatch(/يُسجَّل/);
     });
 
     // NEGATIVE — no language must not silently become Arabic for an English request.
     it('an English request without a language does not default to Arabic', () => {
-        //  This pinned «One thing before I start», the opening of the
-        //  four-question site questionnaire. «I want a table» names a
-        //  CONTAINER now, so it gets one question about what goes in it —
-        //  which is the better answer and a different sentence.
-        //
-        //  What this test is actually for is the LANGUAGE: an English
-        //  request with no interface language must not come back in
-        //  Arabic. That is asserted directly, and it holds.
-        const asked = clarifyQuestions('I want a table', '');
-        expect(asked).toMatch(/before I start/);
-        expect(asked).not.toMatch(/[؀-ۿ]/);
+        //  What this test is for is the LANGUAGE: an English request with
+        //  no interface language must not come back in Arabic.
+        const decided = decisionNote('I want a table', '');
+        expect(decided).toMatch(/You did not say what your table records/);
+        expect(decided).not.toMatch(/[؀-ۿ]/);
     });
 
-    it('a pending English clarification without a language keeps the English marker', () => {
-        const session = `clarify-language-${Date.now()}`;
-        const first = clarifyGate('I want a table', session, '');
-        expect(first.kind).toBe('ask');
-        const merged = clarifyGate('blue and green', session, '');
-        expect(merged.kind).toBe('merge');
-        if (merged.kind === 'merge') {
-            expect(merged.goal).toContain('[The user\'s clarifications]');
-            expect(merged.goal).not.toContain('[توضيحات المستخدم عن المشروع]');
-        }
+    it('a thin request is built: the gate decides, and nothing waits for an answer', () => {
+        const first = clarifyGate('I want a table', '');
+        expect(first).toEqual({ kind: 'decide', note: decisionNote('I want a table', '') });
+        //  The next message is a message of its own, never an answer merged
+        //  into a remembered brief.
+        expect(clarifyGate('blue and green', '')).toEqual({ kind: 'pass' });
     });
 });
 
@@ -168,17 +164,17 @@ describe('the question names his own thing', () => {
  * possessive suffix — «ـي» in ديوني، شحناتي، زنابقي — and that suffix is a
  * closed class. Verb shape AND owned object. Either alone is noise.
  */
-describe('an invented verb still asks the right question', () => {
+describe('an invented verb still gets the right decision', () => {
     // POSITIVE — a real-but-unlisted verb, and a verb that means nothing at all.
     it.each([
         ['أفهرس', 'بدي أفهرس ديوني', 'ديوني'],
         ['أزغرم (بلا معنى)', 'بدي أزغرم زنابقي', 'زنابقي'],
         ['أرشف', 'بدي أرشف فواتيري', 'فواتيري'],
-    ])('%s asks about «%s» by name', (_label, goal, word) => {
+    ])('%s names «%s» in the decision', (_label, goal, word) => {
         expect(isVagueBuildRequest(goal)).toBe(true);
-        const asked = clarifyQuestions(goal, 'ar');
-        expect(asked).toContain(word);
-        expect(asked).toMatch(/تسجيله/);
+        const decided = decisionNote(goal, 'ar');
+        expect(decided).toContain(word);
+        expect(decided).toMatch(/يُسجَّل لكل واحد/);
     });
 
     // NEGATIVE — the trap the obvious repair would have walked into.
@@ -193,7 +189,7 @@ describe('an invented verb still asks the right question', () => {
 
     // NEGATIVE — a verb with no owned object is not enough on its own.
     it('a verb without something of his is not tracking', () => {
-        expect(clarifyQuestions('بدي أفهرس الكتب', 'ar')).not.toMatch(/تسجيله/);
+        expect(decisionNote('بدي أفهرس الكتب', 'ar')).not.toMatch(/يُسجَّل لكل واحد/);
     });
     /**
      *  AND THE OBJECT HAS TO FOLLOW THE VERB, NOT MERELY EXIST.
@@ -211,7 +207,7 @@ describe('an invented verb still asks the right question', () => {
         ['CRM', 'ابنِ تطبيقاً لإدارة العملاء مع بحث وتصفية وإجمالي'],
         ['نسبة في آخر الجملة', 'بدي تطبيق فيه بحث وتصفية وإجمالي'],
     ])('%s is not a tracking request', (_label, goal) => {
-        expect(clarifyQuestions(goal, 'ar')).not.toMatch(/تسجيله/);
+        expect(decisionNote(goal, 'ar')).not.toMatch(/يُسجَّل لكل واحد/);
     });
 });
 
@@ -235,7 +231,7 @@ describe('an invented verb still asks the right question', () => {
  *     subject and not one column, and a table with no columns can only be
  *     invented.
  */
-describe('a request too thin to build is asked about', () => {
+describe('a request too thin to build is recognised', () => {
     // POSITIVE — an artefact named and nothing else, in every phrasing.
     it.each([
         ['جدول', 'بدي جدول'],
@@ -245,7 +241,7 @@ describe('a request too thin to build is asked about', () => {
         ['متجر', 'بدي متجر'],
         ['English', 'I want a table'],
         ['أمر', 'ابن لي موقع'],
-    ])('%s is asked about', (_label, goal) => {
+    ])('%s is recognised as thin', (_label, goal) => {
         expect(isVagueBuildRequest(goal)).toBe(true);
     });
 

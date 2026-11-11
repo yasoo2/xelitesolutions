@@ -16,7 +16,7 @@ import zlib from 'zlib';
  *  «تطبيق ويب» stays a web page. */
 export function wantsMobileApp(text: string): boolean {
     const t = String(text || '');
-    const phone = /(اندرويد|أندرويد|آيفون|ايفون|أيفون|آبل|ابل\b|جوال|موبايل|للهاتف|الهاتف|هواتف|android|iphone|ios\b|mobile|smart\s*phone)/i.test(t);
+    const phone = /(اندرويد|أندرويد|آيفون|ايفون|أيفون|آبل|ابل(?![\p{L}\p{N}_])|جوال|موبايل|للهاتف|الهاتف|هواتف|android|iphone|ios\b|mobile|smart\s*phone)/iu.test(t);
     const app = /(تطبيق|ابلكيشن|أبلكيشن|app\b|application)/i.test(t);
     const install = /(يتثبت|تثبيت|أثبته|يتنزل|home\s*screen|installable|pwa)/i.test(t);
     return (phone && app) || /\bpwa\b/i.test(t) || (phone && install);

@@ -105,12 +105,10 @@ export default function MyBrowserView({ sessionId }: { sessionId: string }) {
                 style={{ flex: 1, overflow: 'hidden', outline: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: connected ? 'crosshair' : 'default' }}
             >
                 {frame ? (
-                    <img ref={imgRef} src={frame} onClick={onClick} alt="متصفحك" style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
+                    <img ref={imgRef} src={frame} onClick={onClick} alt={t('mybr_alt')} style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', display: 'block' }} />
                 ) : (
                     <div style={{ color: '#9aa4b2', textAlign: 'center', fontSize: 13, padding: 24, lineHeight: 1.8 }}>
-                        {connected
-                            ? '⏳ بانتظار أول لقطة من متصفحك… اكتب رابطاً بالأعلى أو قل لجو «افتح يوتيوب في متصفحي».'
-                            : '🧩 متصفحك غير متصل. ثبّت إضافة «Joe Browser Connector» وافتح تبويب جو — ستظهر نقطة خضراء على أيقونة الإضافة.'}
+                        {connected ? t('mybr_waitingFirstFrame') : t('mybr_notConnected')}
                     </div>
                 )}
             </div>

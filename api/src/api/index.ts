@@ -1,10 +1,14 @@
 import { ExecutionEnforcer } from '../kernel/ExecutionEnforcer';
 import { ExecutionGuard } from '../kernel/ExecutionGuard';
 import { reconcileInterruptedRunEvidence } from '../shared/run-evidence-store';
+import { installLoopbackInferenceTransport } from '../core/llm/providers/loopback-fetch';
 
 // Phase 1.8: Hard Architecture Enforcement
 ExecutionEnforcer.validateIntegrity();
 ExecutionGuard.install();
+// Local inference answers can take longer than fetch's fixed 300 s headers timeout on a CPU
+// (eval round 6: UND_ERR_HEADERS_TIMEOUT at 312 s); the caller's deadline governs instead.
+installLoopbackInferenceTransport();
 
 // Polyfill for libraries that expect browser globals (like pdfjs-dist used by pdf-parse)
 if (typeof (global as any).DOMMatrix === 'undefined') {
@@ -41,6 +45,8 @@ import { User } from '../shared/models/user';
 import { executeTool } from '../modules/services/ToolService';
 import { initLocalBrain } from '../core/llm/local-brain';
 import { buildIdentity } from '../shared/build-info';
+import { executionEngine } from '../kernel/ExecutionEngine';
+import { enableProcessLedger, ledgerFileFor } from '../kernel/process-ledger';
 import path from 'path';
 import fs from 'fs';
 
@@ -116,6 +122,10 @@ async function main() {
   const server = http.createServer(app);
   attachWebSocket(server);
 
+  // Every long-lived child is written down from here on, and what a Joe that
+  // died left running is ended once this one serves (kernel/process-ledger.ts).
+  enableProcessLedger(ledgerFileFor());
+
   // Ensure projects data directory exists
   const isApiDir = path.basename(process.cwd()) === 'api';
   const projectRoot = isApiDir ? path.join(process.cwd(), '..') : process.cwd();
@@ -136,12 +146,32 @@ async function main() {
     noteActivity('serving');
     logger.info({ port: config.port, bindHost, crashLog: crashLogPath() }, 'API server listening and WebSocket attached');
 
+    executionEngine.reapPreviousLife()
+      .then((r) => {
+        if (r.reaped || r.error) logger.warn(r, 'Ended what the previous API process left running');
+      })
+      .catch(() => { /* best effort: the records stay for the next boot */ });
+
     // Local Brain: detect installed Ollama models, choose a fast chat model +
     // the strongest coding model, and warm them up so the first request is fast.
     // Best-effort — degrades quietly to the keyless free mesh if Ollama is absent.
     initLocalBrain()
       .then((summary) => logger.info(`🧠 ${summary}`))
       .catch(() => { /* non-fatal */ });
+
+    // Joe watches, on his own, for the replies to the emails he sent and tells
+    // the owner in the chat (modules/services/MailWatchService.ts). JOE_MAIL_WATCH=off stops it.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('../modules/services/MailWatchService').mailWatchService.start();
+    } catch (e: any) { logger.warn(`[MailWatch] not started: ${e?.message || e}`); }
+
+    // The private tunnel (adb reverse) to each phone Joe put his app on comes back when the phone
+    // reconnects (modules/services/PhoneTunnelService.ts). JOE_PHONE_TUNNEL=off stops it.
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      require('../modules/services/PhoneTunnelService').phoneTunnelService.start(Number(config.port || 5000));
+    } catch (e: any) { logger.warn(`[PhoneTunnel] not started: ${e?.message || e}`); }
 
     // Optional Startup Indexing
     if (process.env.ENABLE_STARTUP_AUTO_INDEXING === 'true') {

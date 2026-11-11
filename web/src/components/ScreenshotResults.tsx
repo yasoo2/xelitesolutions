@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { api } from '../services/apiClient';
 import { createRasterBlobUrl, revokeRasterBlobUrl } from '../lib/raster-download';
 
@@ -217,6 +218,7 @@ interface ScreenshotResultsProps {
 }
 
 export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotResultsProps) {
+  const { t } = useTranslation();
   const [ownerSid, setOwnerSid] = useState<string | null>(null);
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const [items, setItems] = useState<ScreenshotItem[]>([]);
@@ -286,12 +288,12 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
   if (status === 'loading') {
     return (
       <div role="status" aria-live="polite">
-        Loading screenshots…
+        {t('shot_loading')}
       </div>
     );
   }
   if (status === 'error') {
-    return <div role="status">Screenshots unavailable.</div>;
+    return <div role="status">{t('shot_unavailable')}</div>;
   }
   if (status !== 'ready') return null;
   if (items.length === 0) return null;
@@ -300,35 +302,42 @@ export default function ScreenshotResults({ sessionId, refreshKey }: ScreenshotR
     setFailed((prev) => (prev[id] ? prev : { ...prev, [id]: true }));
   };
 
+  //  A card, not a raw image: seen 2026-11-07 in the ladder exam, a phone-width
+  //  capture (390×844) filled the whole chat and its download read as the
+  //  browser's default blue underlined link on the dark theme.
   return (
-    <section aria-label="Screenshots" style={{ marginTop: 12 }}>
-      <ul style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+    <section aria-label={t('shot_sectionLabel')} className="shot-section">
+      <ul className="shot-list">
         {items.map((item) => (
-          <li key={item.meta.id} style={{ marginBottom: 12 }}>
-            <figure style={{ margin: 0 }}>
+          <li key={item.meta.id} className="shot-card">
+            <figure className="shot-figure">
               {failed[item.meta.id] ? (
-                <div role="img" aria-label={`${item.meta.filename} – image unavailable`}>
-                  Image unavailable
+                <div role="img" className="shot-missing" aria-label={t('shot_imageUnavailableFor', { name: item.meta.filename })}>
+                  {t('shot_imageUnavailable')}
                 </div>
               ) : (
                 <img
                   src={item.dataUrl}
                   alt={item.meta.filename}
-                  style={{ maxWidth: '100%', height: 'auto', display: 'block' }}
+                  className={`shot-img${item.meta.height > item.meta.width ? ' tall' : ''}`}
                   onError={() => markFailed(item.meta.id)}
                 />
               )}
-              <figcaption>
-                {item.meta.filename} · {item.meta.width}×{item.meta.height}
+              <figcaption className="shot-meta">
+                <span className="shot-name">{item.meta.filename}</span>
+                <span className="shot-size">{item.meta.width}×{item.meta.height}</span>
+                {downloadState?.sid === sessionId && downloadState.items === items && downloadState.urls[item.meta.id] && !failed[item.meta.id] ? (
+                  <a className="shot-download" href={downloadState.urls[item.meta.id]} download={item.meta.filename}
+                    title={t('shot_download', { name: item.meta.filename })} aria-label={t('shot_download', { name: item.meta.filename })}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                  </a>
+                ) : (
+                  <span role="status" className="shot-export-off">{t('shot_exportUnavailable')}</span>
+                )}
               </figcaption>
             </figure>
-            {downloadState?.sid === sessionId && downloadState.items === items && downloadState.urls[item.meta.id] && !failed[item.meta.id] ? (
-              <a href={downloadState.urls[item.meta.id]} download={item.meta.filename}>
-                Download {item.meta.filename}
-              </a>
-            ) : (
-              <span role="status">Export unavailable.</span>
-            )}
           </li>
         ))}
       </ul>

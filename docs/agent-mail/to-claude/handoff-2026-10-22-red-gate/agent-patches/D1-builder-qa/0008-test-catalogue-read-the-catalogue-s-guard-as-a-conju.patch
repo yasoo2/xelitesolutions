@@ -1,0 +1,74 @@
+From 1012587d4b2bbc6e48d7ab7b62aa8b633de02525 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:35 +0000
+Subject: [PATCH 8/9] test(catalogue): read the catalogue's guard as a
+ conjunction, not an adjacency
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: he-asked-for-six-and-got-an-empty-shelf (culprit 0e2ff096)
+  the seed reaches the shelf, not just a variable
+  › NEGATIVE — and the catalogue stands down with the other authors
+    pinned `if (!copyProvidersRationing && seedFields.length`
+
+Decision: P. 0e2ff096 inserted two more stand-down terms between the two
+names: `!modelUnavailableDuringBuild` (from 154e231d, the same term the
+copy and section authors carry) and `!unifiedTables` (a 3+ entity system
+renders TablesAdmin; RecordsApp is dormant, so there is no shelf to seed).
+Both make the catalogue stand down MORE; the rationing term is untouched.
+
+The test now finds the `if` that directly guards the authorCatalogue
+require (nothing but `try {` between them), requires it to be a pure
+conjunction (no `||`), and requires `!copyProvidersRationing` and
+`seedFields.length` among its terms — so rationing alone stands it down,
+whatever terms are added.
+
+Non-vacuity:
+  catalogue-no-rationing: `!copyProvidersRationing` removed from the guard
+    ✕ NEGATIVE — and the catalogue stands down with the other authors
+    Expected value: "!copyProvidersRationing"
+    Received array: ["!modelUnavailableDuringBuild", "!unifiedTables", "seedFields.length", "!input?.skipAuthoredCopy"]
+    RESTORED: sha256 identical
+  catalogue-rationing-optional: `(!copyProvidersRationing || seedFields.length > 6) && ...`
+    ✕ NEGATIVE — and the catalogue stands down with the other authors
+    Expected substring: not "||"
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...asked-for-six-and-got-an-empty-shelf.test.ts | 17 ++++++++++++++++-
+ 1 file changed, 16 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/he-asked-for-six-and-got-an-empty-shelf.test.ts b/api/src/__tests__/he-asked-for-six-and-got-an-empty-shelf.test.ts
+index 5f912b73..965c377a 100644
+--- a/api/src/__tests__/he-asked-for-six-and-got-an-empty-shelf.test.ts
++++ b/api/src/__tests__/he-asked-for-six-and-got-an-empty-shelf.test.ts
+@@ -259,7 +259,22 @@ describe('the seed reaches the shelf, not just a variable', () => {
+     it('NEGATIVE — and the catalogue stands down with the other authors', () => {
+         //  It spends the same rationed fuel as the section and copy authors;
+         //  guarding two of three is the «one layer, two generators» class.
+-        expect(TOOL).toMatch(/if \(!copyProvidersRationing && seedFields\.length/);
++        //
++        //  Read as the condition that guards the catalogue author, not as an
++        //  adjacency: 0e2ff096 added more reasons to stand down between the
++        //  two names this used to pin. The guard is a pure conjunction, and
++        //  rationing is one of its terms — so rationing alone stands it down.
++        const call = TOOL.indexOf('const { authorCatalogue');
++        expect(call).toBeGreaterThan(0);
++        const ifAt = TOOL.lastIndexOf('if (', call);
++        const open = TOOL.indexOf(') {', ifAt);
++        //  …and it is THE guard: nothing but `try {` between it and the call.
++        expect(TOOL.slice(open + 3, call).replace(/\s+/g, '')).toBe('try{');
++        const guard = TOOL.slice(ifAt + 'if ('.length, open).replace(/\s+/g, ' ');
++        expect(guard).not.toContain('||');
++        const terms = guard.split('&&').map((t: string) => t.trim());
++        expect(terms).toContain('!copyProvidersRationing');
++        expect(terms).toContain('seedFields.length');
+     });
+ });
+ 
+-- 
+2.43.0
+

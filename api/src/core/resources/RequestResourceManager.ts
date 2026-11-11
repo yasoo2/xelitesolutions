@@ -1,8 +1,17 @@
 import { AsyncLocalStorage } from 'node:async_hooks';
 import * as os from 'node:os';
+import { releaseResidentInference, residentInferenceBytes, type ResidentRelease } from './resident-inference';
+import { LOCAL_INFERENCE_HARD_MAX_MS } from '../llm/local-throughput';
+import { CONTEXT_HARD_MAX_TOKENS, contextTierForMemory, localContextCeilingTokens } from './context-ceiling';
 
 const MiB = 1024 ** 2;
 const GiB = 1024 ** 3;
+const MIN_FITTED_OUTPUT_TOKENS = 256;
+// After an unload: how long memory is given to show what the server handed
+// back (the server has already said its runner exited), in readings.
+const UNLOAD_SETTLE_READINGS = 8;
+const UNLOAD_SETTLE_MS = 250;
+const NO_RELEASE: ResidentRelease = { releasedBytes: 0, unloadedModels: 0, confirmed: false };
 
 export type ResourceAdmissionCode = 'RESOURCE_QUEUE_FULL' | 'RESOURCE_QUEUE_TIMEOUT'
     | 'RESOURCE_LOW_MEMORY' | 'RESOURCE_MEMORY_UNAVAILABLE' | 'RESOURCE_CONTEXT_OVERFLOW'
@@ -45,6 +54,8 @@ export interface ResourceEvent {
     queueWaitMs?: number;
     elapsedMs?: number;
     code?: string;
+    /** The numbers behind a refusal (prompt/context tokens, memory), so a failure explains itself. */
+    details?: Record<string, number | string>;
 }
 
 export interface ResourceRequestScope {
@@ -60,6 +71,17 @@ export interface HeavyOptions {
     kind?: string;
     signal?: AbortSignal;
     queueTimeoutMs?: number;
+    /**
+     * This work's heavy parts are model calls (admitted on their own) or a
+     * browser that is already running — project_edit, react_project, a browser
+     * action. The model the local server holds counts as available to it, and
+     * it is never unloaded for it: unloading it there only made the work's own
+     * first model call load it again (second review of round 21: five
+     * project_edit runs, five unloads, five cold loads). Work that allocates its
+     * own memory — a process, an install, a build, a recogniser — leaves this
+     * unset and is judged on what is really free.
+     */
+    modelBound?: boolean;
 }
 
 export interface InferenceOptions extends HeavyOptions {
@@ -67,6 +89,8 @@ export interface InferenceOptions extends HeavyOptions {
     requestedOutputTokens?: number;
     /** A trusted server/provider cap only; never a user-body override. */
     requestedContextTokens?: number;
+    /** Opt-in: serve the room the prompt leaves instead of refusing an output wish that does not fit. */
+    fitOutputToContext?: boolean;
 }
 
 export interface ContextBudget {
@@ -83,10 +107,30 @@ export interface ContextBudget {
 export interface RequestResourceManagerOptions {
     maxQueued?: number;
     queueTimeoutMs?: number;
+    /**
+     * How long a heavy step refused for memory waits for it to come back,
+     * measuring again every few seconds (another program's memory returns).
+     * 0 refuses at once, as before.
+     */
+    memoryWaitMs?: number;
     minFreeBytes?: number;
     reserveBytes?: number;
     maxContextTokens?: number;
     sampleMemory?: () => MemoryReading;
+    /**
+     * RAM the local inference server holds for loaded models (not their VRAM).
+     * It is reclaimable for the next local model call only (withInference),
+     * never for other heavy work.
+     */
+    sampleResidentInference?: () => Promise<number>;
+    /**
+     * Unload the idle models the local server holds in RAM and say what that
+     * did (see admitBesideIdleModels). Defaults to the loopback server's own
+     * unload; an injected memory reading with no unloader unloads nothing.
+     */
+    releaseResidentInference?: () => Promise<ResidentRelease>;
+    /** How often a running inference re-reads what the server holds (see withInference). */
+    residencyRefreshMs?: number;
     now?: () => number;
 }
 
@@ -197,8 +241,11 @@ export class RequestResourceManager {
     private readonly inference: FifoLane;
     private readonly maxQueued: number;
     private readonly liveHeavyLeases = new Set<HeavyLease>();
-    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens: number };
+    private readonly policy: { queueTimeoutMs: number; minFreeBytes: number; reserveBytes: number; maxContextTokens?: number; memoryWaitMs: number };
     private readonly sampleMemory: () => MemoryReading;
+    private readonly sampleResidentInference: () => Promise<number>;
+    private readonly releaseResidentInference: () => Promise<ResidentRelease>;
+    private readonly residencyRefreshMs: number;
     private readonly now: () => number;
     private lastMemory: MemorySnapshot | null = null;
     private activeRequests = 0;
@@ -211,12 +258,27 @@ export class RequestResourceManager {
         this.heavy = new FifoLane(maxQueued);
         this.inference = new FifoLane(maxQueued);
         this.policy = { queueTimeoutMs: boundedInteger(options.queueTimeoutMs, 120000, 1, 300000),
+            memoryWaitMs: boundedInteger(options.memoryWaitMs, 0, 0, 30 * 60_000),
             minFreeBytes: boundedInteger(options.minFreeBytes, GiB, GiB, Number.MAX_SAFE_INTEGER),
             reserveBytes: boundedInteger(options.reserveBytes, 768 * MiB, 768 * MiB, Number.MAX_SAFE_INTEGER),
-            // The current local profile is verified only at 4096. A larger trusted
-            // constructor policy requires separate runtime acceptance before use.
-            maxContextTokens: boundedInteger(options.maxContextTokens, 4096, 256, 8192) };
+            // ⛔ 4096 could not hold Joe's own planner: its prompt measured ~16.6k
+            // characters (~5.5k tokens) on 2026-10-22, so local planning failed with
+            // «no room for an answer» on every build. The window now follows memory
+            // (tiers below) up to the operator's ceiling (context-ceiling.ts, 16384
+            // unless LOCAL_MAX_CONTEXT raises it); qwen3.5's hybrid attention costs
+            // ~32 KiB of KV per token, ~0.5 GiB at 16384. An explicit option is fixed
+            // at construction; otherwise the ceiling is read per call.
+            maxContextTokens: options.maxContextTokens === undefined ? undefined
+                : boundedInteger(options.maxContextTokens, 16384, 256, CONTEXT_HARD_MAX_TOKENS) };
         this.sampleMemory = options.sampleMemory || defaultMemoryReading;
+        // An injected memory reading is a test of the floor itself: no live server is asked.
+        this.sampleResidentInference = options.sampleResidentInference
+            || (options.sampleMemory ? async () => 0 : residentInferenceBytes);
+        this.releaseResidentInference = options.releaseResidentInference
+            || (options.sampleMemory ? async () => NO_RELEASE : () => releaseResidentInference());
+        // 0: an injected memory reading with no residency reader asks no live server, so nothing is kept fresh.
+        this.residencyRefreshMs = options.sampleMemory && !options.sampleResidentInference ? 0
+            : boundedInteger(options.residencyRefreshMs, 20000, 10, 20000);
         this.now = options.now || Date.now;
     }
 
@@ -273,9 +335,35 @@ export class RequestResourceManager {
         });
     }
 
+    /**
+     * Admit heavy work that is NOT a local model call: an install, a build, a
+     * browser, a tool. Its floor is the memory that is really free.
+     *
+     * ⛔ Review r21 (14726945): this used to credit the resident model's bytes
+     * to every heavy tool, so `npm install` was admitted with 0.9 GB free
+     * because a 5.7 GB model was loaded — memory npm can never use, since
+     * Ollama gives it back only to the next model call. That credit belongs to
+     * withInference alone (see admitHeavy() and admitMemory()).
+     */
     async withHeavy<T>(work: () => Promise<T>, options: HeavyOptions = {}): Promise<T> {
+        return this.admitHeavy(work, options, false);
+    }
+
+    /**
+     * A local model call to a server Joe cannot size — a generic
+     * OpenAI-compatible server has no portable context parameter, so there is
+     * no budget to give it (withInference is for the managed Ollama path). It
+     * is still a MODEL CALL: the model the server holds is its own, credited to
+     * it, and never unloaded for it (admitBesideIdleModels is for other heavy
+     * work). Serialized like every heavy admission.
+     */
+    async withLocalModelCall<T>(work: () => Promise<T>, options: HeavyOptions = {}): Promise<T> {
+        return this.admitHeavy(work, options, true);
+    }
+
+    private async admitHeavy<T>(work: () => Promise<T>, options: HeavyOptions, localInference: boolean): Promise<T> {
         const store = this.context.getStore();
-        if (!store) return this.run({ requestId: `resource-${++this.implicitCounter}`, signal: options.signal }, () => this.withHeavy(work, options));
+        if (!store) return this.run({ requestId: `resource-${++this.implicitCounter}`, signal: options.signal }, () => this.admitHeavy(work, options, localInference));
         this.assertOpen(store);
         const parent = store.heavyLease;
         if (parent && (!parent.live || !parent.accepting)) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
@@ -297,7 +385,12 @@ export class RequestResourceManager {
                 this.assertOpen(store);
                 if (parent && !parent.live) throw new ResourceAdmissionError('RESOURCE_HEAVY_LEASE_CLOSED');
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                const memory = this.admitMemory();
+                // A model call, or work whose heavy parts are model calls, counts the
+                // resident model as its own; work that allocates its own memory may
+                // have an idle one unloaded for it.
+                const memory = await this.untilMemory(async () => (localInference || options.modelBound
+                    ? this.admitMemory(await this.reclaimableBytes())
+                    : this.admitBesideIdleModels(signal.signal)), signal.signal, store, kind);
                 started = this.now();
                 lease = { live: true, accepting: true, depth: parent ? parent.depth + 1 : 0,
                     lane: new FifoLane(this.maxQueued), children: new Set() };
@@ -336,25 +429,40 @@ export class RequestResourceManager {
 
     async withInference<T>(work: (budget: ContextBudget) => Promise<T>, options: InferenceOptions): Promise<T> {
         if (this.inferenceContext.getStore()?.live) throw new ResourceAdmissionError('RESOURCE_INFERENCE_REENTRANT');
-        return this.withHeavy(async () => {
+        return this.admitHeavy(async () => {
             const store = this.context.getStore()!;
             const signal = combinedSignal(store.signal, options.signal);
             const startedWaiting = this.now();
             const kind = this.kind(options.kind || 'inference');
             let release: Release | undefined;
             let marker: { live: boolean } | undefined;
+            let residency: ReturnType<typeof setInterval> | undefined;
             let started = 0;
             try {
                 release = await this.inference.acquire(signal.signal, this.timeout(options.queueTimeoutMs),
                     () => this.emit(store, { lane: 'inference', state: 'queued', kind }));
                 this.assertOpen(store);
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
-                const budget = this.budget(this.admitMemory(), options, signal.signal);
+                const reclaimable = await this.reclaimableBytes();
+                const budget = this.budget(this.admitMemory(reclaimable), options, signal.signal, reclaimable);
                 started = this.now();
                 marker = { live: true };
                 this.emit(store, { lane: 'inference', state: 'started', kind, ...this.memoryEvent(budget.memory),
                     contextTokens: budget.contextTokens, outputTokens: budget.outputTokens, queueWaitMs: Math.max(0, started - startedWaiting) });
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+                // ⛔ P001-landing-ar, run-1793050584667 (2026-10-27): a 37-minute local
+                // call finished, and 768 ms later the next inference was refused
+                // RESOURCE_LOW_MEMORY with reclaimableBytes 0 (available 1 072 111 616,
+                // floor 1 073 741 824), then the phase's npm install the same way. The
+                // model that had just answered was resident, but residency had last been
+                // read when that call was admitted — 37 minutes earlier, maybe before the
+                // model loaded — so the missed probe had no recent answer to reuse.
+                // While the call runs, the server is read again (it answers /api/ps in
+                // ~6 ms while generating), so the next admission knows what it holds.
+                if (this.residencyRefreshMs) {
+                    residency = setInterval(() => { void this.reclaimableBytes(); }, this.residencyRefreshMs);
+                    residency.unref?.();
+                }
                 const result = await this.inferenceContext.run(marker, () => work(budget));
                 if (signal.signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
                 this.emit(store, { lane: 'inference', state: 'completed', kind, contextTokens: budget.contextTokens,
@@ -364,11 +472,12 @@ export class RequestResourceManager {
                 this.recordFailure(store, 'inference', kind, error, started || startedWaiting);
                 throw error;
             } finally {
+                if (residency !== undefined) clearInterval(residency);
                 if (marker) marker.live = false;
                 release?.();
                 signal.dispose();
             }
-        }, { ...options, kind: options.kind || 'inference' });
+        }, { ...options, kind: options.kind || 'inference' }, true);
     }
 
     registerCleanup(cleanup: () => void | Promise<void>): () => void {
@@ -422,25 +531,144 @@ export class RequestResourceManager {
         return memory;
     }
 
-    private admitMemory(): MemorySnapshot {
+    private async reclaimableBytes(): Promise<number> {
+        try { return nonnegative(await this.sampleResidentInference()) ?? 0; } catch { return 0; }
+    }
+
+    /**
+     * HEAVY WORK THAT IS NOT A MODEL CALL, BESIDE AN IDLE MODEL IN RAM.
+     *
+     * Review r21 stopped crediting a resident model's RAM to an install —
+     * nothing gives it back to npm — and so, on the owner's 16 GB laptop with
+     * qwen3.5:9b resident (5.7 GiB), every `npm install` and build with 0.9 GB
+     * free was refused while the model sat idle: the build stopped although the
+     * memory was there to be had. Ollama unloads a model on request and loads
+     * it again for the next call. So the floor is judged on free memory first,
+     * and only when it fails and the RAM the server holds would clear it is
+     * that model unloaded and free memory read again (the server returns it as
+     * it unloads). The model is idle then: a model call holds the heavy lane
+     * for its whole run (withInference is admitted through admitHeavy), so
+     * while this heavy work is being admitted no model call of this process is
+     * running. A model call already queued behind this work loads the model
+     * again when its turn comes — the price of the install running at all,
+     * where the alternative was refusing it. Only work that allocates its own
+     * memory comes here (HeavyOptions.modelBound). A GPU server's model sits
+     * in VRAM — it has no RAM part to give and is never unloaded for an
+     * install; a refusal that unloading cannot cure stays the refusal it was,
+     * with its numbers.
+     *
+     * ⛔ AN UNLOAD THAT GAVE NOTHING BACK IS SAID AS ONE (second review of
+     * round 21). Some machines do not give the memory back where it is read:
+     * Linux maps the weights from the model file, so they were already
+     * counted as available and stay cached after the unload; a container's
+     * own limit does not see a host server's memory. Neither can be told
+     * apart beforehand from any reading Node offers — what the server holds
+     * and what is free are both true, and only the unload shows whether one
+     * becomes the other. So the judgement follows the unload at once: the
+     * server says when its runner has exited (resident-inference), memory
+     * gets a short settle to show it, and the step is admitted or refused
+     * then — not after a blind ten seconds of holding the heavy lane. A
+     * refusal after an unload carries what was unloaded (unloadedModels,
+     * releasedBytes), what came back (recoveredBytes) and whether the server
+     * confirmed, and its sentence says the model was asked to unload: the
+     * plain refusal's «no other application was stopped» alone hid that.
+     */
+    private async admitBesideIdleModels(signal: AbortSignal): Promise<MemorySnapshot> {
+        try { return this.admitMemory(0); } catch (refusal) {
+            if (!(refusal instanceof ResourceAdmissionError) || refusal.code !== 'RESOURCE_LOW_MEMORY') throw refusal;
+            const held = await this.reclaimableBytes();
+            const before = this.measure();
+            if (!held || !this.clearsFloor(before.availableBytes + held)) throw refusal;
+            let release = NO_RELEASE;
+            try { release = await this.releaseResidentInference() || NO_RELEASE; } catch { release = NO_RELEASE; }
+            const releasedBytes = nonnegative(release.releasedBytes) ?? 0;
+            if (!releasedBytes) throw refusal;
+            for (let reading = 0; ; reading++) {
+                if (signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+                const now = this.measure();
+                if (this.clearsFloor(now.availableBytes)) return now;
+                if (reading >= UNLOAD_SETTLE_READINGS) {
+                    throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { ...refusal.details, availableBytes: now.availableBytes,
+                        unloadedModels: nonnegative(release.unloadedModels) ?? 0, releasedBytes,
+                        recoveredBytes: Math.max(0, now.availableBytes - before.availableBytes),
+                        unloadConfirmed: release.confirmed ? 1 : 0 });
+                }
+                await new Promise(resolve => setTimeout(resolve, UNLOAD_SETTLE_MS));
+            }
+        }
+    }
+
+    /**
+     * ⛔ A MACHINE SHORT OF MEMORY IS WAITED FOR, NOT BLAMED ON THE WORK.
+     *
+     * The 500-prompt exam, 2026-11-04 (P306): another program on the machine —
+     * a video render — left 0.6 GB of the 1 GB a heavy step needs, and the
+     * program's own tests were refused within a second, four times; the run
+     * ended with «the program's own tests did not pass». Memory another process
+     * holds comes back. A heavy step refused for memory now waits for it
+     * (memoryWaitMs), measuring again every few seconds and saying so; only
+     * when the wait is over is the refusal what it was, with its numbers.
+     */
+    private async untilMemory(admit: () => Promise<MemorySnapshot>, signal: AbortSignal, store: RequestStore, kind: string): Promise<MemorySnapshot> {
+        const deadline = this.now() + this.policy.memoryWaitMs;
+        let said = false;
+        for (;;) {
+            try { return await admit(); } catch (refusal) {
+                if (!(refusal instanceof ResourceAdmissionError) || refusal.code !== 'RESOURCE_LOW_MEMORY') throw refusal;
+                const left = deadline - this.now();
+                if (left <= 0 || signal.aborted) throw refusal;
+                if (!said) {
+                    said = true;
+                    this.emit(store, { lane: 'heavy', state: 'queued', kind, details: { waitingFor: 'memory', ...refusal.details } });
+                }
+                await new Promise<void>(resolve => {
+                    const timer = setTimeout(done, Math.min(MEMORY_RETRY_MS, left));
+                    function done() { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); }
+                    signal.addEventListener('abort', done, { once: true });
+                });
+                if (signal.aborted) throw new ResourceAdmissionError('RESOURCE_CANCELLED');
+            }
+        }
+    }
+
+    /** The floor admitMemory holds every admission to. */
+    private clearsFloor(usableBytes: number): boolean {
+        return usableBytes >= this.policy.minFreeBytes && usableBytes > this.policy.reserveBytes;
+    }
+
+    /**
+     * The floor guards against starting heavy work in too little memory. For a
+     * local model call, a model the server already holds is reused or evicted
+     * for the next one, so its RAM counts toward what that call can use (see
+     * resident-inference.ts). Every other caller passes 0: nothing gives that
+     * memory back to an install or a build.
+     */
+    private admitMemory(reclaimableBytes = 0): MemorySnapshot {
         const memory = this.measure();
-        if (memory.availableBytes < this.policy.minFreeBytes || memory.availableBytes <= this.policy.reserveBytes) {
-            throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { availableBytes: memory.availableBytes,
+        const usable = memory.availableBytes + reclaimableBytes;
+        if (usable < this.policy.minFreeBytes || usable <= this.policy.reserveBytes) {
+            throw new ResourceAdmissionError('RESOURCE_LOW_MEMORY', { availableBytes: memory.availableBytes, reclaimableBytes,
                 minFreeBytes: this.policy.minFreeBytes, reservedMemoryBytes: this.policy.reserveBytes });
         }
         return memory;
     }
 
-    private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal): ContextBudget {
+    private budget(memory: MemorySnapshot, options: InferenceOptions, signal: AbortSignal, reclaimableBytes = 0): ContextBudget {
         const prompt = options.promptEstimatedTokens;
-        const output = options.requestedOutputTokens ?? 512;
-        const requestedContext = options.requestedContextTokens ?? this.policy.maxContextTokens;
+        let output = options.requestedOutputTokens ?? 512;
+        const ceiling = this.policy.maxContextTokens ?? localContextCeilingTokens();
+        const requestedContext = options.requestedContextTokens ?? ceiling;
         if (!Number.isFinite(prompt) || prompt < 0 || !Number.isSafeInteger(prompt)
             || !Number.isSafeInteger(output) || output < 1 || !Number.isSafeInteger(requestedContext) || requestedContext < 1) {
             throw new ResourceAdmissionError('RESOURCE_INVALID_BUDGET');
         }
-        const tier = memory.availableBytes >= 4 * GiB ? 8192 : memory.availableBytes >= 2 * GiB ? 4096 : 2048;
-        const contextTokens = Math.min(tier, this.policy.maxContextTokens, requestedContext);
+        const usable = memory.availableBytes + reclaimableBytes;
+        const tier = contextTierForMemory(usable);
+        const contextTokens = Math.min(tier, ceiling, requestedContext);
+        // A caller that opted in gets the room the prompt leaves, if a real answer fits.
+        if (prompt + output > contextTokens && options.fitOutputToContext && contextTokens - prompt - 1 >= MIN_FITTED_OUTPUT_TOKENS) {
+            output = contextTokens - prompt - 1;
+        }
         if (prompt + output > contextTokens) throw new ResourceAdmissionError('RESOURCE_CONTEXT_OVERFLOW',
             { promptEstimatedTokens: prompt, requestedOutputTokens: output, contextTokens });
         return { signal, contextTokens, outputTokens: output, promptEstimatedTokens: prompt,
@@ -453,7 +681,8 @@ export class RequestResourceManager {
     }
 
     private timeout(value: number | undefined): number {
-        return boundedInteger(value, this.policy.queueTimeoutMs, 1, 300000);
+        // An explicit per-call wait may reach the local inference hard maximum.
+        return boundedInteger(value, this.policy.queueTimeoutMs, 1, LOCAL_INFERENCE_HARD_MAX_MS);
     }
 
     private kind(value: string): string { return value.replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 48); }
@@ -470,8 +699,20 @@ export class RequestResourceManager {
         const cancelled = (error instanceof ResourceAdmissionError && error.code === 'RESOURCE_CANCELLED') || store.signal.aborted;
         this.emit(store, { lane, state: cancelled ? 'cancelled' : 'failed', kind,
             code: error instanceof ResourceAdmissionError ? error.code : 'RESOURCE_OPERATION_FAILED',
+            ...(error instanceof ResourceAdmissionError && Object.keys(error.details).length ? { details: { ...error.details } } : {}),
+            // A failed operation names its own error code (never its message), so a
+            // bare RESOURCE_OPERATION_FAILED is traceable to the layer that failed.
+            ...(!(error instanceof ResourceAdmissionError) && /^[A-Z][A-Z0-9_]{2,63}$/.test(String((error as any)?.code ?? ''))
+                ? { details: { cause: String((error as any).code) } } : {}),
             elapsedMs: Math.max(0, this.now() - started) });
     }
 }
 
-export const requestResourceManager = new RequestResourceManager();
+/** Between two readings of memory while a heavy step waits for it. */
+const MEMORY_RETRY_MS = 5_000;
+
+//  Joe's own manager waits up to three minutes for memory another program
+//  holds (JOE_MEMORY_WAIT_MS overrides it; 0 refuses at once).
+export const requestResourceManager = new RequestResourceManager({
+    memoryWaitMs: Number.isFinite(Number(process.env.JOE_MEMORY_WAIT_MS)) && process.env.JOE_MEMORY_WAIT_MS !== '' ? Number(process.env.JOE_MEMORY_WAIT_MS) : 180_000,
+});

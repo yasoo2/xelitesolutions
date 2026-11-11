@@ -1,5 +1,6 @@
 import { noteMissingKey } from '../../../shared/startup-notes';
 import OpenAI from 'openai';
+import { admitLocalModelCall } from '../../resources/local-model-call';
 
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || '';
 
@@ -120,9 +121,14 @@ export class OpenAIProvider {
                 request.reasoning = { effort: options.reasoningEffort };
             }
             const requestOptions = this.buildRequestOptions(options);
-            const completion = requestOptions
-                ? await (this.client.chat.completions.create as any)(request, requestOptions)
-                : await this.client.chat.completions.create(request);
+            const client = this.client;
+            // A compatible gateway on this machine (OPENAI_API_BASE at a local
+            // server) is a local model call, admitted for its whole run (second
+            // review of round 21); api.openai.com is not.
+            const completion = await admitLocalModelCall(this.baseURL, () => requestOptions
+                ? (client.chat.completions.create as any)(request, requestOptions)
+                : client.chat.completions.create(request),
+            { kind: 'compatible-gateway-inference', signal: options?.signal, queueTimeoutMs: requestOptions?.timeout });
 
             const choices = Array.isArray((completion as any)?.choices)
                 ? (completion as any).choices

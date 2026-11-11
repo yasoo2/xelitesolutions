@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ShieldAlert, Activity, FileText, Settings, ShieldCheck, Crosshair, AlertTriangle, Server } from 'lucide-react';
 import LiveIncidents from './LiveIncidents';
@@ -31,6 +32,7 @@ type Stats = {
 const UNKNOWN: Stats = { critical: 0, high: 0, medium: 0, open: 0, servers: 0, blocked: null };
 
 export default function SentinelDashboard() {
+    const { t } = useTranslation();
     const [activeTab, setActiveTab] = useState<SentinelTab>('overview');
     const [stats, setStats] = useState<Stats>(UNKNOWN);
     const [loaded, setLoaded] = useState(false);
@@ -52,11 +54,11 @@ export default function SentinelDashboard() {
             setChainResult({
                 ok,
                 text: ok
-                    ? `Chain intact — ${Array.isArray(data.data) ? data.data.length : 0} entries verified`
-                    : `Chain BROKEN${integrity.brokenAt ? ` at ${integrity.brokenAt}` : ''}`,
+                    ? t('sn_chainIntact', { n: Array.isArray(data.data) ? data.data.length : 0 })
+                    : integrity.brokenAt ? t('sn_chainBrokenAt', { at: integrity.brokenAt }) : t('sn_chainBroken'),
             });
         } catch (e: any) {
-            setChainResult({ ok: false, text: `Could not verify: ${String(e?.message || e).slice(0, 80)}` });
+            setChainResult({ ok: false, text: t('sn_verifyFailed', { error: String(e?.message || e).slice(0, 80) }) });
         } finally { setChainBusy(false); }
     };
 
@@ -65,9 +67,9 @@ export default function SentinelDashboard() {
         const fetchStats = async () => {
             try {
                 const res = await fetch(`${API_URL}/admin/sentinel/incidents`, { headers: auth });
-                if (!res.ok) throw new Error(`incidents: HTTP ${res.status}`);
+                if (!res.ok) throw new Error(t('sn_incidentsHttp', { status: res.status }));
                 const data = await res.json();
-                if (!data.success || !Array.isArray(data.data)) throw new Error(data.error || 'incidents: malformed response');
+                if (!data.success || !Array.isArray(data.data)) throw new Error(data.error || t('sn_incidentsMalformed'));
                 const incidents: any[] = data.data;
 
                 // The real number of blocked addresses: distinct targets in the
@@ -175,29 +177,29 @@ export default function SentinelDashboard() {
                 </div>
                 <div>
                     <h2 style={{ margin: 0, fontSize: '24px', color: 'var(--text-primary)' }}>Joe Sentinel</h2>
-                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '14px' }}>Autonomous Server Security & Intrusion Detection</p>
+                    <p style={{ margin: '4px 0 0', color: 'var(--text-muted)', fontSize: '14px' }}>{t('sn_subtitle')}</p>
                 </div>
             </div>
 
             <div className="sentinel-layout">
                 <div className="sentinel-sidebar">
                     <button className={`sentinel-nav-btn ${activeTab === 'overview' ? 'active' : ''}`} onClick={() => setActiveTab('overview')}>
-                        <Activity size={18} /> Overview
+                        <Activity size={18} /> {t('sn_tabOverview')}
                     </button>
                     <button className={`sentinel-nav-btn ${activeTab === 'health' ? 'active' : ''}`} onClick={() => setActiveTab('health')}>
-                        <Server size={18} /> Server Health
+                        <Server size={18} /> {t('sn_tabHealth')}
                     </button>
                     <button className={`sentinel-nav-btn ${activeTab === 'incidents' ? 'active' : ''}`} onClick={() => setActiveTab('incidents')}>
-                        <AlertTriangle size={18} /> Live Incidents
+                        <AlertTriangle size={18} /> {t('sn_tabIncidents')}
                     </button>
                     <button className={`sentinel-nav-btn ${activeTab === 'policies' ? 'active' : ''}`} onClick={() => setActiveTab('policies')}>
-                        <Settings size={18} /> Policies & Rules
+                        <Settings size={18} /> {t('sn_tabPolicies')}
                     </button>
                     <button className={`sentinel-nav-btn ${activeTab === 'audit' ? 'active' : ''}`} onClick={() => setActiveTab('audit')}>
-                        <FileText size={18} /> Audit Trail
+                        <FileText size={18} /> {t('sn_tabAudit')}
                     </button>
                     <button className={`sentinel-nav-btn ${activeTab === 'forensics' ? 'active' : ''}`} onClick={() => setActiveTab('forensics')}>
-                        <Crosshair size={18} /> Forensics
+                        <Crosshair size={18} /> {t('sn_tabForensics')}
                     </button>
                 </div>
 
@@ -207,22 +209,22 @@ export default function SentinelDashboard() {
                             <motion.div key="overview" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '16px', marginBottom: '24px' }}>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
-                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Open Incidents</h4>
+                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('sn_openIncidents')}</h4>
                                         <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.open > 0 ? '#f97316' : '#10b981' }}>{num(stats.open)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
-                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Critical Threats</h4>
+                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('sn_criticalThreats')}</h4>
                                         <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.critical > 0 ? '#ef4444' : 'var(--text-primary)' }}>{num(stats.critical)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
-                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Risky Servers</h4>
+                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('sn_riskyServers')}</h4>
                                         <h1 style={{ margin: '8px 0 0', color: !loaded ? 'var(--text-secondary)' : stats.open > 0 ? '#f97316' : 'var(--text-primary)' }}>{num(stats.servers)}</h1>
                                     </div>
                                     <div style={{ background: 'var(--bg-card)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border-color)' }}>
-                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>Blocked IPs</h4>
+                                        <h4 style={{ margin: 0, color: 'var(--text-secondary)' }}>{t('sn_blockedIps')}</h4>
                                         <h1 style={{ margin: '8px 0 0', color: stats.blocked === null ? 'var(--text-secondary)' : '#3b82f6' }}>{num(stats.blocked)}</h1>
                                         {loaded && stats.blocked === null && (
-                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>audit trail unreadable</p>
+                                            <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--text-secondary)' }}>{t('sn_auditUnreadable')}</p>
                                         )}
                                     </div>
                                 </div>
@@ -230,16 +232,16 @@ export default function SentinelDashboard() {
                                 {loadError && (
                                     <div className="empty-block" style={{ borderColor: '#ef4444' }}>
                                         <AlertTriangle size={48} style={{ opacity: 0.35, margin: '0 auto 16px', color: '#ef4444' }} />
-                                        <h3>Security status unknown</h3>
-                                        <p>Could not read Sentinel data: {loadError}. These figures are not a clean bill of health — nothing was checked.</p>
+                                        <h3>{t('sn_statusUnknown')}</h3>
+                                        <p>{t('sn_loadFailed', { error: loadError })}</p>
                                     </div>
                                 )}
 
                                 {loaded && stats.open === 0 && (
                                     <div className="empty-block">
                                         <ShieldCheck size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
-                                        <h3>No open incidents</h3>
-                                        <p>Sentinel reports no unresolved incidents across the monitored fleet.</p>
+                                        <h3>{t('sn_noOpenIncidents')}</h3>
+                                        <p>{t('sn_noOpenIncidentsBody')}</p>
                                     </div>
                                 )}
                             </motion.div>
@@ -258,8 +260,8 @@ export default function SentinelDashboard() {
                             <motion.div key="policies" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}>
                                 <div className="empty-block">
                                     <Crosshair size={48} style={{ opacity: 0.2, margin: '0 auto 16px' }} />
-                                    <h3>Static Policies</h3>
-                                    <p>Joe Sentinel uses built-in heuristic rules for Phase 1. Dynamic policy editor coming in Phase 6.</p>
+                                    <h3>{t('sn_staticPolicies')}</h3>
+                                    <p>{t('sn_staticPoliciesBody')}</p>
                                 </div>
                             </motion.div>
                         )}
@@ -279,15 +281,15 @@ export default function SentinelDashboard() {
                                         endpoint; what the server really offers is the audit
                                         chain's own integrity verification, so that is what
                                         this button now does, under its true name. */}
-                                    <h3>Audit Chain Integrity</h3>
-                                    <p style={{ color: 'var(--text-muted)' }}>Verify that the tamper-evident audit log has not been altered.</p>
+                                    <h3>{t('sn_chainIntegrity')}</h3>
+                                    <p style={{ color: 'var(--text-muted)' }}>{t('sn_chainIntegrityBody')}</p>
                                     <div style={{ display: 'flex', gap: '8px', marginTop: '16px', alignItems: 'center' }}>
                                         <button
                                             onClick={verifyChain}
                                             disabled={chainBusy}
                                             style={{ padding: '12px 24px', borderRadius: '8px', background: 'var(--primary-color)', color: 'white', border: 'none', fontWeight: 600, cursor: chainBusy ? 'not-allowed' : 'pointer', opacity: chainBusy ? 0.6 : 1 }}
                                         >
-                                            {chainBusy ? 'Verifying…' : 'Verify chain'}
+                                            {chainBusy ? t('sn_verifying') : t('sn_verifyChain')}
                                         </button>
                                         {chainResult && (
                                             <span style={{ color: chainResult.ok ? 'var(--success-color, #22c55e)' : 'var(--danger-color, #ef4444)', fontWeight: 600 }}>

@@ -7,6 +7,7 @@ import { broadcast, broadcastTerminalLine, broadcastThinkingDetail } from '../..
 import { workspaceService } from '../../services/WorkspaceService';
 import { isArabicReply, say } from '../../../shared/reply-language';
 import { pythonExecutable, pythonMissingNote, runPython } from '../../../core/quality/python-runtime';
+import { judgeTestRun } from '../../../core/quality/test-run-evidence';
 
 const ORION_DIR = 'orion-business-operating-system';
 
@@ -225,9 +226,13 @@ if __name__ == "__main__": unittest.main()
      * change.
      */
     const pythonSkipped = compile.missing;
-    const verified = pythonSkipped ? schemaValid : (compile.ok && testRun.ok && schemaValid);
-    const state = (run: { ok: boolean }) => (pythonSkipped ? 'skipped (python not installed)' : run.ok ? 'passed' : 'failed');
-    term(`[orion] verification: business-core-syntax=${state(compile)}; business-acceptance=${state(testRun)}; payment-event-schema=${schemaValid ? 'passed' : 'failed'}`);
+    // An acceptance run that ran nothing proved nothing: read by the one judge
+    // of a test run (test-run-evidence), never by its exit code alone (round 22).
+    const acceptance = judgeTestRun(testRun.ok, `${testRun.output}\n${testRun.error}`);
+    const verified = pythonSkipped ? schemaValid : (compile.ok && acceptance.passed && schemaValid);
+    const state = (run: { ok: boolean }, judgement?: { ranNothing: unknown }) => (pythonSkipped ? 'skipped (python not installed)'
+        : judgement?.ranNothing ? 'not run (no test ran)' : run.ok ? 'passed' : 'failed');
+    term(`[orion] verification: business-core-syntax=${state(compile)}; business-acceptance=${state(testRun, acceptance)}; payment-event-schema=${schemaValid ? 'passed' : 'failed'}`);
     if (pythonSkipped) term(`[orion] ${pythonMissingNote(acceptanceCommand, false)}`);
     term('[orion] external effects intentionally not attempted; payment, identity, mail, cloud, and deployment adapters require explicit configuration and approval.');
 
@@ -238,7 +243,7 @@ if __name__ == "__main__": unittest.main()
         : 'Local verification failed';
     return {
       ok: verified,
-      error: verified ? undefined : `ORION verification failed: ${compile.error || testRun.error || compile.output || testRun.output || 'schema validation failed'}`,
+      error: verified ? undefined : `ORION verification failed: ${acceptance.reason || compile.error || testRun.error || compile.output || testRun.output || 'schema validation failed'}`,
       output: {
         projectPath, writtenFiles, verified, verification,
         acceptanceRan: !pythonSkipped,

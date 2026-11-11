@@ -11,7 +11,6 @@ async function evalUnfamiliarProject() {
     process.env.JOE_PRO_ALPHA = '1';
     process.env.OFFLINE_MODE = 'true';
     process.env.JWT_SECRET = process.env.JWT_SECRET || 'eval-only';
-    process.env.JOE_TEST_MODE = 'true';
 
     const evidenceRoot = path.resolve('data/tests/eval_unfamiliar_project');
     fs.mkdirSync(evidenceRoot, { recursive: true });

@@ -79,8 +79,14 @@ describe('and the thing in front of him decides what his word means', () => {
         const at = SOURCE.indexOf('THE THING IN FRONT OF HIM DECIDES');
         expect(at).toBeGreaterThan(0);
         const block = SOURCE.slice(at, at + 2200);
-        expect(block).toContain("tool: 'project_edit'");
+        //  601644e1 gave the edit plan one builder, projectEditPlan, instead of
+        //  a literal step at every route; the route must still call it, and
+        //  that builder must still emit the surgical editor.
+        const code = block.slice(block.indexOf('if (readsAsAnOrder)'));
+        expect(code).toMatch(/return PlanningEngine\.projectEditPlan\(intent, context,/);
         expect(block).toContain('joeProjects');
+        const builder = SOURCE.slice(SOURCE.indexOf('private static projectEditPlan('));
+        expect(builder.slice(0, builder.indexOf('\n    }\n'))).toContain("tool: 'project_edit'");
     });
 
     it('…and it decides from what is open, never from a vocabulary', () => {

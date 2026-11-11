@@ -35,6 +35,7 @@ import githubRoutes from './routes/github';
 import browserRoutes from './routes/browser';
 import oauthRoutes from './routes/oauth';
 import extensionRoutes from './routes/extension';
+import devicesRoutes from './routes/devices';
 import browserAgentRoutes from './routes/browserAgent';
 import statusRoutes from './routes/status';
 import serverRoutes from './routes/servers';
@@ -73,6 +74,33 @@ export function joeRunsWithoutAccounts(env: NodeJS.ProcessEnv = process.env): bo
   return env.NODE_ENV !== 'production' && env.ENABLE_AUTH_BYPASS === 'true';
 }
 
+/**
+ * WHAT THE RATE LIMIT NEVER COUNTS.
+ *
+ * The ladder exam, 2026-11-07 (L003): Joe's page on a phone-width tab opened on
+ * the sign-in form with «SYSTEM Connecting…», behind twelve «429 Too Many
+ * Requests». Every page on this machine came from 127.0.0.1 — the owner's
+ * panel, the exam's pages, the watcher — and together they passed 1000
+ * requests in 15 minutes. The first thing a fresh page asks is /api/health
+ * («is this a single-user Joe?»); refused, it never learned it, and stayed on
+ * the sign-in form.
+ *
+ * - /api/health is never counted: it is how a page learns what it is talking to.
+ * - On a single-user install (not production, accounts off) the owner's own
+ *   machine is never counted: there is no one else to protect him from.
+ * A shared server keeps the limit for everyone, the loopback included.
+ */
+const LOOPBACK = /^(?:127\.\d+\.\d+\.\d+|::1|::ffff:127\.\d+\.\d+\.\d+)$/;
+export function rateLimitSkips(req: { ip?: string; originalUrl?: string; url?: string; socket?: { remoteAddress?: string } }, env: NodeJS.ProcessEnv = process.env): boolean {
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  if (/^\/api\/health\/?$/.test(path)) return true;
+  //  The live phone view asks for a frame again and again; it is signed in and
+  //  throttles itself (one capture at a time, a frame shared for 700 ms).
+  if (/^\/api\/devices\/(?:phone|computer)\/screen\/?$/.test(path)) return true;
+  const ip = String(req.ip || req.socket?.remoteAddress || '');
+  return joeRunsWithoutAccounts(env) && LOOPBACK.test(ip);
+}
+
 export const createApp = () => {
   const app = express();
   const apiRouter = express.Router();
@@ -90,6 +118,21 @@ export const createApp = () => {
   // the page that was on screen instead of starting a tool circus.
   try { loadJoePages(); } catch { /* best-effort */ }
   try { loadJoeProjects(); } catch { /* best-effort */ }
+  //  The previews a previous Joe started still serve: adopt them, so the
+  //  live-preview bound counts them and project_stop can stop them.
+  setImmediate(() => {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      //  As a system task: outside one, the firewall refused the identity reads
+      //  and every preview was forgotten while it served (adoptPreviewsAtStart).
+      const { adoptPreviewsAtStart } = require('../modules/tools/definitions/ProjectRunTool');
+      adoptPreviewsAtStart()
+        .then((r: { adopted: string[]; forgotten: string[]; retired: string[] }) => {
+          if (r.adopted.length || r.forgotten.length) logger.info({ adopted: r.adopted.length, forgotten: r.forgotten.length, retired: r.retired.length }, '[project_run] previews of the previous start');
+        })
+        .catch(() => { /* best-effort */ });
+    } catch { /* best-effort */ }
+  });
   /**
    *  WRITE DOWN WHAT THE PANEL WOULD HAVE DRAWN.
    *
@@ -176,6 +219,7 @@ export const createApp = () => {
     message: { success: false, error: 'Too many requests, please try again later.' },
     standardHeaders: true,
     legacyHeaders: false,
+    skip: (req) => rateLimitSkips(req),
   });
   app.use('/api', globalLimiter);
 
@@ -295,6 +339,10 @@ export const createApp = () => {
   apiRouter.use('/browser', browserRoutes);
   apiRouter.use('/oauth', oauthRoutes);
   apiRouter.use('/extension', extensionRoutes);
+  apiRouter.use('/devices', devicesRoutes);
+  //  The owner's phones through the Joe app: any Android, from anywhere (routes/phones.ts).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  apiRouter.use('/phones', require('./routes/phones').default);
   apiRouter.use('/browser-agent', browserAgentRoutes);
   apiRouter.use('/status', statusRoutes);
   apiRouter.use('/servers', authenticate, serverRoutes);

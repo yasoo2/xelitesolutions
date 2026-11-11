@@ -36,7 +36,10 @@
  */
 
 import { createHash } from 'node:crypto';
+import path from 'node:path';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
+import { readModelJson } from '../../shared/utils/json';
+import { ALEF, CONJUNCTION_WAW_SOURCE, WORD_END, cleanListItem, isDeliverable, isPossessivePhrase, listRegion, splitListItems, stripLeadingConjunction } from '../design/request-lists';
 
 export interface NamedRequirement {
     /** Stable id derived from the quote, so the same request yields the same ids. */
@@ -90,7 +93,7 @@ const NOT_A_FEATURE = /^(?:build|make|create|website|site|app|page|responsive|de
 //  defect in a new place: a pattern that reads letters instead of words.
 //  The guard caught it only because it was written from HIS logs, in both
 //  languages. A lookahead asks the question directly.
-const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|انشئ|أنشئ|صمم|اصنع|اكتب|بدي|اريد|أريد)(?=\s|$)/iu;
+const OPENS_WITH_THE_ASKING = /^(?:please\s+)?(?:build|make|create|develop|design|generate|write|اعمل|ابن|[اأإآ]نشئ|صمم|اصنع|اكتب|بدي|[اأإآ]ريد)(?=\s|$)/iu;
 
 /**
  *  ⛔ AN INSTRUCTION TO JOE IS NOT A REQUIREMENT OF THE PROJECT.
@@ -258,25 +261,20 @@ export function extractionPrompt(request: string, isArabic: boolean): string {
     ].join('\n');
 }
 
+/**
+ *  Read through the shared reader (shared/utils/json): a raw line break inside
+ *  a quote, a ```bash fence inside a requirement, or a sentence with a brace
+ *  after the answer each threw every named requirement away here.
+ */
 export function parseRequirements(raw: string): Array<{ text: string; quote: string }> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        try {
-            const parsed = JSON.parse(c.slice(start, end + 1));
-            const list = parsed && (parsed.requirements || parsed.features);
-            if (Array.isArray(list)) {
-                return list
-                    .filter(r => r && typeof r === 'object')
-                    .map(r => ({ text: String(r.text ?? ''), quote: String(r.quote ?? '') }))
-                    .filter(r => r.text.trim());
-            }
-        } catch { /* try the next candidate */ }
-    }
-    return [];
+    return readModelJson(String(raw || ''), parsed => {
+        const list = parsed && (parsed.requirements || parsed.features);
+        if (!Array.isArray(list)) return undefined;
+        return list
+            .filter((r: any) => r && typeof r === 'object')
+            .map((r: any) => ({ text: String(r.text ?? ''), quote: String(r.quote ?? '') }))
+            .filter((r: { text: string }) => r.text.trim());
+    }) ?? [];
 }
 
 /**
@@ -448,6 +446,16 @@ export function namedDecisionTrace(verdicts: JudgedNamed[]) {
 const flat = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerCase();
 
 /**
+ *  Nor is what a quote is wrapped in. Eval P402 (2026-11-03): the judge
+ *  copied the last item of a question list as `{ q: "…", answer: 0 },` — the
+ *  line was there, without the comma a list item usually has, and a true
+ *  «10 questions» was not counted. A separator or a code fence at either end
+ *  of a quote is how it was written down, not what it proves; everything
+ *  between them must still be in the source character for character.
+ */
+const bare = (s: string) => flat(s).replace(/^(?:[,;\s]|`+)+|(?:[,;\s]|`+)+$/gu, '');
+
+/**
  *  ⛔ THE EVIDENCE MUST BE IN THE SOURCE, NOT MERELY PLAUSIBLE.
  *
  *  Short strings are refused outright: `div`, `form`, `{}` appear in every
@@ -455,9 +463,59 @@ const flat = (s: string) => String(s || '').replace(/\s+/g, ' ').trim().toLowerC
  *  again — a token present in every file standing in for a claim.
  */
 export function foundInSource(evidence: string, source: string): boolean {
-    const e = flat(evidence);
-    if (e.length < 12) return false;
+    const e = bare(evidence);
+    if (e.length < EVIDENCE_MIN_CHARS) return false;
     return flat(source).includes(e);
+}
+
+/**
+ *  A README PROVES A README, NOT A FEATURE.
+ *
+ *  Since C12 of the Codex exam (2026-11-06) the judge reads the project's
+ *  documentation as well as its code: «…and the README» is a requirement too.
+ *  But a README can claim what the code does not do, and a «met» whose only
+ *  line is a sentence of documentation would let it. So a «met» whose
+ *  evidence stands only in documentation files counts only for a requirement
+ *  about documentation; for any other it is not counted.
+ */
+const DOC_FILE = /(?:^|\/)(?:readme|changelog|contributing)(?:\.[a-z]+)?$|\.(?:md|mdx|rst|txt)$/iu;
+const ASKS_ABOUT_DOCS = /\breadme\b|\bdoc(?:s|uments?|umentation)?\b|\bchangelog\b|توثيق|وثائق|دليل\s+(?:الاستخدام|المستخدم)|اقرأني/iu;
+
+/*
+ * …BUT A REPORT ASKED FOR IS THE PRODUCT, NOT ITS DOCUMENTATION. The Manus-style
+ * exam, 2026-11-09: a gold report delivered as report.md had every line of it
+ * refused as «only documentation». In a delivery with no code at all, a .md or
+ * .txt file is what was asked for; only a README, a changelog or Joe's own
+ * certificate still documents rather than delivers.
+ */
+const CODE_FILE = /\.(?:jsx?|tsx?|mjs|cjs|py|go|rb|rs|java|kt|php|cs|vue|svelte|astro|html?|css)$/iu;
+const ALWAYS_DOCS = /(?:^|\/)(?:readme|changelog|contributing|joe-delivery)(?:\.[a-z]+)?$/iu;
+
+export function evidenceOnlyInDocs(evidence: string, source: string, documentsAreTheProduct = false): boolean {
+    const e = bare(evidence);
+    if (!e) return false;
+    const files = filesOf(source);
+    //  M07 (2026-11-09): a recommendation asked «in a file» was written as .md beside 15 files of
+    //  code the model added anyway, and refused as «only documentation». When the request asks
+    //  for a document, its documents are the product whatever else the project holds.
+    const codeDelivered = !documentsAreTheProduct && files.some(f => CODE_FILE.test(f.path) && !f.path.startsWith('(before this change)'));
+    const holders = files.filter(f => flat(f.block).includes(e));
+    return holders.length > 0 && holders.every(f => (codeDelivered ? DOC_FILE : ALWAYS_DOCS).test(f.path));
+}
+
+export function asksAboutDocumentation(r: Pick<NamedRequirement, 'text' | 'quote'>): boolean {
+    return ASKS_ABOUT_DOCS.test(`${r.text || ''} ${r.quote || ''}`);
+}
+
+/** The shortest line that can stand as proof (see foundInSource). */
+const EVIDENCE_MIN_CHARS = 12;
+
+/** Why a «met» line was not accepted, in the words the judge is asked again with. */
+function whyNotAccepted(evidence: string): string {
+    const e = bare(evidence);
+    if (!e) return 'you gave no line';
+    if (e.length < EVIDENCE_MIN_CHARS) return `it has ${e.length} characters, too few to tell one feature from another`;
+    return 'it is not in the source character for character';
 }
 
 /**
@@ -531,12 +589,29 @@ export const MAX_SOURCE_CHARS = 40_000;
  */
 const SLICE_WINDOW = 1_400;
 
+/** What marks the place where the source was cut between two windows. */
+const WINDOW_JOIN = '\n\n… …\n\n';
+
 /** The content words of a requirement — what to look for in the source. */
 function requirementWords(r: NamedRequirement): string[] {
-    return (String(r.text || '') + ' ' + String(r.quote || ''))
-        .toLowerCase()
-        .split(/[^\p{L}\p{N}]+/u)
-        .filter(w => w.length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    /*
+     * ⛔ HIS MARKS ARE PART OF HIS WORD, AND HIS ACRONYM IS HIS MOST EXACT ONE.
+     *
+     * The hard sample, 2026-11-09 (L452, «شهادات PDF موقّعة»): the shadda split
+     * «موقّعة» into «موق» and «عة», «PDF» was three letters, and both were
+     * dropped as too short — the only word left was «شهادات», which an English
+     * codebase writes nowhere but in its Arabic labels. The judge was shown the
+     * page's strings and not src/pdf.js, and said so three times: «توليد ملف PDF
+     * نفسه غير ظاهر في الجزء المعروض». Marks are taken off before the words are
+     * cut, and a word he wrote in capitals (PDF, CSV, API, SMS, RTL) is kept.
+     */
+    //  Both spellings of a marked word: the source may write «موقّعة» as he did, or «موقعة».
+    const said = String(r.text || '') + ' ' + String(r.quote || '');
+    const acronyms = (said.match(/\b[A-Z][A-Z0-9]{2,5}\b/g) || []).map(w => w.toLowerCase());
+    const marked = said.toLowerCase().split(/[^\p{L}\p{M}\p{N}]+/u).filter(Boolean);
+    const words = [...marked, ...marked.map(w => w.replace(/\p{M}/gu, ''))]
+        .filter(w => w.replace(/\p{M}/gu, '').length > 3 && !/^(?:with|that|this|from|your|have|show|page|site|the|and|for)$/.test(w));
+    return Array.from(new Set([...words, ...acronyms]));
 }
 
 /**
@@ -578,7 +653,7 @@ function joinWindows(src: string, merged: Array<[number, number]>, max: number):
     let out = '';
     for (const [a, b] of merged) {
         if (out.length >= max) break;
-        out += (out ? '\n\n… …\n\n' : '') + src.slice(a, Math.min(b, a + (max - out.length)));
+        out += (out ? WINDOW_JOIN : '') + src.slice(a, Math.min(b, a + (max - out.length)));
     }
     return out;
 }
@@ -602,11 +677,325 @@ export function sliceFor(r: NamedRequirement, source: string, max = MAX_SOURCE_C
 export function sliceForMany(reqs: NamedRequirement[], source: string, max = MAX_SOURCE_CHARS): string {
     const src = String(source || '');
     if (src.length <= max) return src;
+    const files = filesOf(src);
+    if (files.length >= 2) {
+        const whole = wholeFilesFor(reqs, files, src, max);
+        if (whole) return whole;
+    }
     const merged = windowsFor(reqs, src);
     //  Nothing of his words anywhere: fall back to the old slice rather than
     //  send an empty prompt. The enforcement downstream is what makes this safe.
     if (!merged.length) return boundedSource(src, max);
     return joinWindows(src, merged, max);
+}
+
+/**
+ *  ⛔ A JUDGE SHOWN HALF A FUNCTION CANNOT SAY THE FUNCTION WORKS.
+ *
+ *  The hard exam, 2026-11-04, H01: a clinic of 45 files. «Appointments with no
+ *  double-booking» was judged nine times over windows cut around his words, and
+ *  every time the judge said what it saw: «a comment says checkSlot rejects
+ *  overlapping bookings with HTTP 409, but the checkSlot body is cut off
+ *  (`.get(doctorId, wee`) and the POST route that calls it is not shown». The
+ *  builder could change nothing that would let it see more, and the delivery
+ *  was refused for a rule the code kept.
+ *
+ *  A project too big to show whole is shown by whole files: the files where the
+ *  requirements' own words are, most first, then the file that defines each
+ *  function those files call, as long as they fit. A requirement none of whose
+ *  words made it in still gets its windows. A file is never cut in the middle.
+ */
+export const JUDGE_FILE_MARK = '// ==== file: ';
+const FILE_MARK_LINE = /^\/\/ ==== file: (.+?) ====$/gmu;
+
+/** The judge's source from named files, each opened by its own marker line. */
+export function judgeSourceOf(files: Array<{ path: string; text: string }>): string {
+    return files.map(f => `${JUDGE_FILE_MARK}${f.path} ====\n${f.text}`).join('\n');
+}
+
+/** The files of a source written by `judgeSourceOf`, each with its marker line. */
+function filesOf(src: string): Array<{ path: string; block: string }> {
+    const marks = Array.from(src.matchAll(FILE_MARK_LINE));
+    return marks.map((m, i) => ({
+        path: m[1],
+        block: src.slice(m.index || 0, i + 1 < marks.length ? (marks[i + 1].index || 0) - 1 : src.length),
+    }));
+}
+
+/**
+ *  The project's files a judge's words name: by their path, or by their file
+ *  name when only one file has it. «app/files.py is not in the source shown»
+ *  names app/files.py; «the files module» names nothing.
+ */
+export function filesNamedIn(text: string, source: string): string[] {
+    const said = String(text || '');
+    const paths = filesOf(String(source || '')).map(f => f.path);
+    const base = (p: string) => p.split('/').pop() || p;
+    const byName = new Map<string, string[]>();
+    for (const p of paths) byName.set(base(p), [...(byName.get(base(p)) || []), p]);
+    //  Said as a word of its own: not the tail of a longer path or name.
+    const mentions = (needle: string): boolean => {
+        for (let i = said.indexOf(needle); i >= 0; i = said.indexOf(needle, i + 1)) {
+            const before = i > 0 ? said[i - 1] : ' ';
+            const after = said[i + needle.length] || ' ';
+            if (!/[\w./-]/.test(before) && !/[\w/-]/.test(after)) return true;
+        }
+        return false;
+    };
+    const out = new Set<string>();
+    for (const p of paths) {
+        if (mentions(p)) { out.add(p); continue; }
+        const name = base(p);
+        if (/\.[a-z0-9]{1,5}$/i.test(name) && (byName.get(name) || []).length === 1 && mentions(name)) out.add(p);
+    }
+    return [...out];
+}
+
+/** Words a judge writes about any source: never what it was looking for. */
+const JUDGE_PLAIN_WORDS: ReadonlySet<string> = new Set([
+    'about', 'above', 'after', 'again', 'below', 'being', 'cannot', 'called', 'calls', 'could', 'defined', 'defines',
+    'excerpt', 'exists', 'files', 'function', 'functions', 'handler', 'implementation', 'implemented', 'implements',
+    'itself', 'logic', 'missing', 'other', 'otherwise', 'partial', 'present', 'proves', 'route', 'routes', 'server',
+    'shown', 'shows', 'snippet', 'source', 'there', 'these', 'those', 'their', 'truncated', 'visible', 'where', 'which',
+    'while', 'would', 'should', 'without', 'within', 'section', 'sections', 'requirement', 'request', 'requests',
+    'response', 'client', 'frontend', 'backend', 'unprovable', 'confirm', 'verify', 'whether', 'because', 'since',
+]);
+
+/**
+ * The code words of a judge's answer: an identifier (signDigest, cert_code), a
+ * word it wrote in capitals (PDF, JSX), or a longer word that is not one every
+ * answer uses. Arabic prose around them is not a word the code writes.
+ */
+export function codeWordsOf(said: string): string[] {
+    const tokens = String(said || '').match(/[A-Za-z_$][A-Za-z0-9_$]{2,}/g) || [];
+    return Array.from(new Set(tokens
+        .filter(w => /^[A-Z][A-Z0-9]{2,5}$/.test(w) || /[a-z][A-Z]|_/.test(w) || (w.length >= 5 && !JUDGE_PLAIN_WORDS.has(w.toLowerCase())))
+        .map(w => w.toLowerCase())));
+}
+
+/**
+ *  ⛔ WHAT THE JUDGE SAYS IT WAS NOT SHOWN, IT IS SHOWN — BY ITS OWN WORDS.
+ *
+ *  The hard sample, 2026-11-09 (L452, an e-learning platform): «شهادات PDF
+ *  موقّعة» was «unprovable» three times — «the code signs the certificate
+ *  (signDigest), but generating the PDF file itself is not in the part of the
+ *  source shown». It named no file, so the re-ask by file name never ran, and
+ *  src/pdf.js (3 KB, buildPdf / certificatePdf) was never put in front of it.
+ *  When the answer names no file, the files it was not shown that hold the code
+ *  words of its answer are, most words first: the judge says what it looks for.
+ */
+export function filesHoldingWordsOf(said: string, source: string, shown: string, max = 2): string[] {
+    const words = codeWordsOf(said);
+    if (!words.length) return [];
+    const seen = String(shown || '');
+    return filesOf(String(source || ''))
+        .filter(f => !seen.includes(f.block))
+        .map(f => {
+            const low = f.block.toLowerCase();
+            //  A file it was shown none of comes before one it was shown blocks of.
+            return { path: f.path, hits: words.filter(w => low.includes(w)).length, absent: !seen.includes(`${JUDGE_FILE_MARK}${f.path} ====`) };
+        })
+        .filter(f => f.hits > 0)
+        .sort((a, b) => Number(b.absent) - Number(a.absent) || b.hits - a.hits || a.path.localeCompare(b.path))
+        .slice(0, max)
+        .map(f => f.path);
+}
+
+/** The largest block a file is cut into when it cannot be shown whole. */
+const ENCLOSING_BLOCK_MAX = 7_000;
+
+/**
+ *  ⛔ A FILE TOO BIG TO SHOW WHOLE WAS NOT SHOWN AT ALL.
+ *
+ *  The hard exam, 2026-11-05, H01 again: the clinic's server/app.js was 33 KB,
+ *  and the files ranked above it — the API tests, which say «double-booking»
+ *  more often — had already used the room. app.js no longer fit, so it was
+ *  skipped whole, and the judge was shown the test that asserts the rule and
+ *  not the route that keeps it: «R8 unprovable: Only a test asserting the rule
+ *  is shown; the appointment-creation code in server/app.js … is not in the
+ *  source». The builder spent forty minutes moving the rule into a file small
+ *  enough to be seen.
+ *
+ *  Such a file is now shown by its whole blocks: for each place its rare words
+ *  are, the largest enclosing statement that fits — the route handler, the
+ *  function — from the line where it starts to the line that closes it. Never
+ *  half a function (the rule above); never nothing.
+ */
+export function enclosingBlocksFor(words: string[], block: string, max: number): string {
+    const lines = block.split('\n');
+    const low = lines.map(l => l.toLowerCase());
+    const indent = (l: string) => (l.match(/^[ \t]*/) || [''])[0].replace(/\t/g, '    ').length;
+    const blank = (l: string) => !l.trim();
+    const closes = (l: string) => /^[ \t]*[}\])]/.test(l);
+    const comment = (l: string) => /^[ \t]*(?:\/\/|\/\*|\*|#)/.test(l);
+    const ranges: Array<[number, number]> = [];
+    for (let k = 0; k < lines.length; k++) {
+        if (!words.some(w => low[k].includes(w))) continue;
+        if (ranges.some(([a, b]) => k >= a && k < b)) continue;
+        //  Indentation levels at or above this line's, outermost first: the
+        //  first enclosing statement that fits is the largest one that does.
+        const levels = Array.from(new Set(lines.slice(0, k + 1).filter(l => !blank(l)).map(indent))).filter(v => v <= indent(lines[k])).sort((a, b) => a - b);
+        for (const level of levels) {
+            let s = k;
+            while (s > 0 && (blank(lines[s]) || indent(lines[s]) > level || closes(lines[s]))) s--;
+            //  The comment above a statement belongs to it.
+            while (s > 0 && comment(lines[s - 1]) && indent(lines[s - 1]) === level) s--;
+            let e = s + 1;
+            const statementEnd = (from: number): number => {
+                let end = from;
+                while (end < lines.length && (blank(lines[end]) || indent(lines[end]) > level)) end++;
+                //  The line that closes the statement belongs to it.
+                while (end < lines.length && indent(lines[end]) === level && closes(lines[end])) end++;
+                return end;
+            };
+            e = statementEnd(e);
+            //  A comment says what the statement under it does: show both.
+            while (e < lines.length && lines.slice(s, e).every(l => blank(l) || comment(l))) e = statementEnd(e + 1);
+            const size = lines.slice(s, e).join('\n').length;
+            if (size <= ENCLOSING_BLOCK_MAX) { ranges.push([s, e]); break; }
+        }
+    }
+    if (!ranges.length) return '';
+    ranges.sort((a, b) => a[0] - b[0]);
+    const merged: Array<[number, number]> = [];
+    for (const r of ranges) {
+        const last = merged[merged.length - 1];
+        if (last && r[0] <= last[1]) last[1] = Math.max(last[1], r[1]);
+        else merged.push([r[0], r[1]]);
+    }
+    let out = '';
+    for (const [a, b] of merged) {
+        const part = lines.slice(a, b).join('\n');
+        const cost = part.length + (out ? WINDOW_JOIN.length : 0);
+        if (out.length + cost > max) continue;
+        out += (out ? WINDOW_JOIN : '') + part;
+    }
+    return out;
+}
+
+/** Whole files for these requirements, within `max`; '' when none of their words is in any file. */
+function wholeFilesFor(reqs: NamedRequirement[], files: Array<{ path: string; block: string }>, src: string, max: number): string {
+    const words = Array.from(new Set(reqs.flatMap(requirementWords)));
+    const lows = files.map(f => f.block.toLowerCase());
+    //  A word every file says («appointments» in a clinic) locates nothing; the
+    //  rare ones («double-booking») find where the requirement is kept.
+    const weight = new Map(words.map(w => {
+        const df = lows.filter(low => low.includes(w)).length;
+        return [w, df ? Math.log((files.length + 1) / df) : 0];
+    }));
+    const scored = files.map((f, i) => {
+        let score = 0;
+        let hits = 0;
+        for (const w of words) {
+            if (!lows[i].includes(w)) continue;
+            score += weight.get(w) || 0;
+            for (let at = lows[i].indexOf(w); at >= 0; at = lows[i].indexOf(w, at + w.length)) hits++;
+        }
+        return { f, score, density: hits / Math.max(1, f.block.length) };
+    }).filter(x => x.score > 0);
+    if (!scored.length) return '';
+    const ranked = scored.sort((a, b) => b.score - a.score || b.density - a.density).map(x => x.f);
+    //  The file that defines a function another calls.
+    const definedIn = new Map<string, { path: string; block: string }>();
+    const DEFINES = /\bfunction\s+([A-Za-z_$][\w$]{2,})\s*\(|\b(?:const|let|var)\s+([A-Za-z_$][\w$]{2,})\s*=\s*(?:async\s*)?(?:function\b|\([^()]*\)\s*=>|[A-Za-z_$][\w$]*\s*=>)|\bexports\.([A-Za-z_$][\w$]{2,})\s*=/gu;
+    for (const f of files) for (const m of f.block.matchAll(DEFINES)) {
+        const name = m[1] || m[2] || m[3];
+        if (name && !definedIn.has(name)) definedIn.set(name, f);
+    }
+    //  The server file that registers a route another file calls — a test, a
+    //  page — by the route's fixed part, up to its first parameter (H02: the
+    //  tests called /api/timetable and expected 409, and timetable.js, which
+    //  answers it, held none of his words).
+    const servedIn: Array<{ path: string; home: { path: string; block: string } }> = [];
+    const REGISTERS = /\.\s*(?:get|post|put|patch|delete|all|route)\s*\(\s*(['"`])(\/[^'"`]*)\1\s*,/gu;
+    for (const f of files) {
+        if (/\bdocument\.|\bwindow\./u.test(f.block)) continue;
+        for (const m of f.block.matchAll(REGISTERS)) {
+            const fixed = m[2].split(/\/:|\$\{|[*?]/u)[0].replace(/\/+$/u, '');
+            if (fixed.split('/').filter(Boolean).length < 2) continue;
+            if (!servedIn.some(s => s.path === fixed && s.home === f)) servedIn.push({ path: fixed, home: f });
+        }
+    }
+    //  How near a call of the route is to his words in the calling file: a test
+    //  calls every route, and the one called where «تعارض» is said comes first.
+    const rare = new Set(words.filter(w => lows.filter(low => low.includes(w)).length <= files.length / 2));
+    const nearness = (i: number, route: string): number => {
+        const low = lows[i];
+        const own = words.filter(w => low.includes(w));
+        const marks = (own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own).flatMap(w => {
+            const at: number[] = [];
+            for (let p = low.indexOf(w); p >= 0; p = low.indexOf(w, p + w.length)) at.push(p);
+            return at;
+        });
+        let best = Infinity;
+        for (let at = files[i].block.indexOf(route); at >= 0; at = files[i].block.indexOf(route, at + 1)) {
+            if (/[\w-]/u.test(files[i].block[at + route.length] || '')) continue;
+            best = Math.min(best, marks.length ? Math.min(...marks.map(p => Math.abs(p - at))) : at);
+        }
+        return best;
+    };
+    const chosen: Array<{ path: string; block: string }> = [];
+    let used = 0;
+    const take = (f: { path: string; block: string }): boolean => {
+        if (chosen.includes(f)) return true;
+        const cost = f.block.length + (chosen.length ? WINDOW_JOIN.length : 0);
+        if (used + cost > max) return false;
+        chosen.push(f);
+        used += cost;
+        return true;
+    };
+    //  A file that no longer fits whole is shown by the whole blocks where its
+    //  rarest of his words are (enclosingBlocksFor), under its own marker line.
+    const takeBlocks = (f: { path: string; block: string }): { path: string; block: string } | null => {
+        const i = files.indexOf(f);
+        const own = words.filter(w => lows[i].includes(w));
+        const pick = own.some(w => rare.has(w)) ? own.filter(w => rare.has(w)) : own;
+        const marker = f.block.split('\n', 1)[0];
+        const room = max - used - (chosen.length ? WINDOW_JOIN.length : 0) - marker.length - 1;
+        if (room < 400) return null;
+        const body = f.block.slice(marker.length + 1);
+        const first = enclosingBlocksFor(pick, body, room);
+        if (!first) return null;
+        //  …and where those blocks' own functions are called: the rule is shown
+        //  with the route that keeps it (assertBookable → app.post('/api/appointments')).
+        const names = Array.from(first.matchAll(DEFINES)).map(m => (m[1] || m[2] || m[3] || '').toLowerCase()).filter(n => n.length > 3);
+        const blocks = names.length ? (enclosingBlocksFor([...pick, ...names.map(n => `${n}(`)], body, room) || first) : first;
+        const part = { path: f.path, block: `${marker}\n${blocks}` };
+        chosen.push(part);
+        used += part.block.length + (chosen.length > 1 ? WINDOW_JOIN.length : 0);
+        return part;
+    };
+    //  Each file, then at once what it calls: a route is shown with the rule it
+    //  keeps, and a test with the routes it calls.
+    for (const ranked_f of ranked) {
+        let f = ranked_f;
+        if (!take(f)) {
+            const part = takeBlocks(f);
+            if (!part) continue;
+            f = part;
+        }
+        for (const m of f.block.matchAll(/\b([A-Za-z_$][\w$]{2,})\s*\(/gu)) {
+            const home = definedIn.get(m[1]);
+            if (home && home !== f && home !== ranked_f) take(home);
+        }
+        const i = files.indexOf(ranked_f);
+        servedIn
+            .filter(s => s.home !== f && s.home !== ranked_f)
+            .map(s => ({ home: s.home, near: nearness(i, s.path) }))
+            .filter(h => h.near < Infinity)
+            .sort((a, b) => a.near - b.near)
+            .forEach(h => take(h.home));
+    }
+    if (!chosen.length) return '';
+    //  A requirement none of whose words made it in still gets its windows.
+    const shown = chosen.map(f => f.block).join(WINDOW_JOIN).toLowerCase();
+    const missed = reqs.filter(r => !requirementWords(r).some(w => shown.includes(w)));
+    let out = chosen.map(f => f.block).join(WINDOW_JOIN);
+    if (missed.length && out.length < max) {
+        const extra = joinWindows(src, windowsFor(missed, src), max - out.length - WINDOW_JOIN.length);
+        if (extra) out += WINDOW_JOIN + extra;
+    }
+    return out;
 }
 
 
@@ -631,16 +1020,53 @@ export function verificationPrompt(reqs: NamedRequirement[], source: string, isA
         ``,
         `Rules:`,
         `  · "met" ONLY if you can copy a line OUT OF THE SOURCE ABOVE that`,
-        `    delivers it. Put that line, character for character, in "evidence".`,
+        `    delivers it. Put that line, character for character, in "evidence":`,
+        `    a whole line of at least ${EVIDENCE_MIN_CHARS} characters — a shorter one (\`score++;\`)`,
+        `    together with the line before or after it.`,
         `  · "unmet" if the source does not deliver it.`,
         `  · "unprovable" if you cannot tell from what you were shown. The`,
         `    source above may be CUT — if the part you need is missing, say`,
         `    "unprovable" rather than guessing.`,
         `  · Do not guess a line. A line you cannot find is "unprovable".`,
+        `  · A line of documentation (a README, a .md or .txt file) proves only a`,
+        `    requirement about that documentation. A feature, a route or a rule is`,
+        `    met only by a line of code or configuration that does it.`,
+        `  · A word about how the page LOOKS (elegant, beautiful, modern, calm`,
+        `    colours) is judged on a screenshot of the page, not here: judge the`,
+        `    rest of the line, and never call a line "unprovable" for its look alone.`,
+        `  · Current facts (today's price, the latest news, this week's figures) are`,
+        `    met by the most recent value the cited sources publish, written with its`,
+        `    date and its source — even when that date is yesterday because nothing`,
+        `    newer is published yet, if the document says so plainly. They are unmet`,
+        `    when the value has no date or no source, or is plainly old (weeks or more).`,
         `  · Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
         ``,
         `REPLY WITH JSON AND NOTHING ELSE:`,
         `{"verdicts":[{"id":"…","verdict":"met|unmet|unprovable","evidence":"…","why":"…"}]}`,
+    ].join('\n');
+}
+
+/**
+ *  The question asked again, once, about «met» answers whose line was not
+ *  accepted — over the very source those answers were given on, saying why
+ *  each line failed. Its answers are checked exactly as the first ones were.
+ */
+export function requotePrompt(items: Array<{ r: NamedRequirement; evidence: string }>, source: string, isArabic: boolean): string {
+    return [
+        `Here is the source of a project that was just built.`,
+        ``,
+        `SOURCE:`,
+        boundedSource(source),
+        ``,
+        `You answered "met" for the requirements below, but the line you gave as evidence could not be accepted:`,
+        ...items.map(({ r, evidence }, i) => `  ${i + 1}. [${r.id}] ${r.text}   your line: «${String(evidence || '').trim().slice(0, 300)}» — ${whyNotAccepted(evidence)}`),
+        ``,
+        `For each one, copy OUT OF THE SOURCE ABOVE the line that delivers it — a whole line of at least ${EVIDENCE_MIN_CHARS} characters, or several consecutive lines — character for character, into "evidence". Add nothing and drop nothing.`,
+        `If no line of the source delivers it, answer "unprovable".`,
+        `Write "why" in ${isArabic ? 'Arabic' : 'English'}, one short sentence.`,
+        ``,
+        `REPLY WITH JSON AND NOTHING ELSE:`,
+        `{"verdicts":[{"id":"…","verdict":"met|unprovable","evidence":"…","why":"…"}]}`,
     ].join('\n');
 }
 
@@ -696,21 +1122,23 @@ const asVerdict = (v: any, fallbackId: string) => {
 };
 
 export function parseVerdicts(raw: string): Array<{ id: string; verdict: string; evidence: string; why: string }> {
-    const text = String(raw || '');
-    const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    for (const c of [fenced ? fenced[1] : '', text]) {
-        const start = c.indexOf('{');
-        const end = c.lastIndexOf('}');
-        if (start < 0 || end <= start) continue;
-        let parsed: any;
-        try { parsed = JSON.parse(c.slice(start, end + 1)); } catch { continue; }
-        if (!parsed || typeof parsed !== 'object') continue;
+    //  Every candidate the reply holds, read the shared way (shared/utils/json);
+    //  the first that has one of the three shapes below is the answer.
+    return readModelJson(String(raw || ''), (parsed: any) => {
+        if (!parsed || typeof parsed !== 'object') return undefined;
 
-        //  1. the shape the brief asks for
-        const list = Array.isArray(parsed.verdicts) ? parsed.verdicts
+        //  1. the shape the brief asks for — or that list on its own
+        const list = Array.isArray(parsed) ? parsed
+            : Array.isArray(parsed.verdicts) ? parsed.verdicts
             : Array.isArray(parsed.results) ? parsed.results
                 : null;
-        if (list) {
+        //  A list is the verdicts only when it speaks a verdict (round 22): an
+        //  example list the model wrote before its answer — «each item looks
+        //  like [{"id":"r1"}]» — was taken as the verdicts, every one empty,
+        //  and the real answer after it was never read. An item in a list that
+        //  does speak one is kept as before, so a single silent item is still
+        //  told apart from a missing one.
+        if (list && list.some((v: any) => v && typeof v === 'object' && ('verdict' in v || 'met' in v))) {
             const out = list.filter((v: any) => v && typeof v === 'object').map((v: any) => asVerdict(v, ''));
             if (out.length) return out;
         }
@@ -722,9 +1150,8 @@ export function parseVerdicts(raw: string): Array<{ id: string; verdict: string;
         //     measured coming back from the keyless mesh
         const entries = Object.entries(parsed)
             .filter(([, v]) => v && typeof v === 'object' && ('verdict' in (v as any) || 'met' in (v as any)));
-        if (entries.length) return entries.map(([k, v]) => asVerdict(v, k));
-    }
-    return [];
+        return entries.length ? entries.map(([k, v]) => asVerdict(v, k)) : undefined;
+    }) ?? [];
 }
 
 /**
@@ -783,13 +1210,76 @@ function declaredRequirementItems(sentence: string): string[] {
     return items.length >= 2 ? items : [];
 }
 
+/**
+ *  ⛔ JAVASCRIPT'S \b DOES NOT KNOW ARABIC.
+ *
+ *  Eval round 15 (2026-10-24, P101): every Arabic verb below sat behind `\b`,
+ *  which is defined by the ASCII word class even with the /u flag. «تحقق من
+ *  المدخلات» could never match, the Arabic request produced ZERO acceptance
+ *  criteria, and a delivery with zero criteria counted as accepted — so a
+ *  stock booking API passed for a clinic API with patients, appointments
+ *  and treatments. The boundary is now «no letter or digit of any script
+ *  follows», and an alef is any of its hamza forms.
+ */
+const ACTION_VERB = `(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|${ALEF}ضف|${ALEF}نشئ|عدّل|عدل|${ALEF}حذف|تحقق|${ALEF}عرض|${ALEF}حفظ)${WORD_END}`;
+const ACTION_SPLIT = new RegExp(`(?:[.;!?؟]+|\\s*[,،]\\s*(?=${ACTION_VERB}))`, 'iu');
+const OPENS_WITH_ACTION = new RegExp(`^${ACTION_VERB}`, 'iu');
+
+/**
+ *  ⛔ A LIST HE WROTE IS A LIST OF REQUIREMENTS — IN ARABIC TOO.
+ *
+ *  «فيها نقاط وصول لـالمرضى والمواعيد والعلاجات، مع التحقق من المدخلات ورموز
+ *  أخطاء صحيحة واختبارات آلية لكل نقطة» names six things the API must have and
+ *  starts with no imperative, so the action reader above never saw any of
+ *  them. A list behind an interface head is a list of nouns, split on every
+ *  «و»; a feature list after a colon or «فيها / with» splits on commas, and
+ *  on «و» only between short items — «عرض المنتجات بالصور والأسعار» is one
+ *  feature. «مع / with» opens the qualities that come with the list. An item
+ *  owned by someone («their name», «باسمه ورقم هاتفه» — isPossessivePhrase)
+ *  is a field of the action it follows, never a requirement of its own.
+ *  English feature lists after «with» or a colon stay with the English
+ *  readers above; only a list behind an interface head is read here in both
+ *  languages.
+ */
+function listedRequirementItems(request: string): Array<{ text: string; quote: string }> {
+    const out: Array<{ text: string; quote: string }> = [];
+    const conjunction = new RegExp(CONJUNCTION_WAW_SOURCE, 'u');
+    for (const sentence of request.split(/[.!?؟;]+/u)) {
+        const found = listRegion(sentence);
+        if (!found || found.marker === 'colon' && !/[,،]/u.test(found.region)) continue;
+        if (found.marker !== 'head' && !/[ء-ي]/u.test(found.region)) continue;
+        const nounList = found.marker === 'head';
+        const glue = /^(?:[لب]ـ|لل|ل(?=ال))/u.test(found.region) ? ' لـ' : ' ';
+        const items: string[] = [];
+        //  «رأس تنقل بروابط الرئيسية، الخدمات، الأعمال، تواصل؛ قسم افتتاحي …؛
+        //  ونموذج تواصل …» — when he separates his items with «؛», the commas
+        //  belong INSIDE an item (the links of one navigation), not between items.
+        const semicolons = !nounList && /[؛;]/u.test(found.region);
+        const separator = semicolons ? /\s*[؛;]\s*/u : /\s*[,،;؛]\s*/u;
+        for (const segment of found.region.replace(/\s+(?:مع|with)\s+/giu, semicolons ? '؛ ' : '، ').split(separator)) {
+            const pieces = segment.split(conjunction);
+            const split = nounList || pieces.every(piece => piece.trim().split(/\s+/).length <= 2);
+            items.push(...(split ? pieces : [segment]));
+        }
+        const cleaned = items
+            .map(item => cleanListItem(item).replace(/^و(?=ال|[أإآ])/u, '').trim())
+            .filter(item => item && !isPossessivePhrase(item) && isJudgeable(item));
+        if (cleaned.length < 2) continue;
+        for (const item of cleaned) {
+            const headed = nounList && found.head && !isDeliverable(item);
+            out.push({ text: headed ? `${found.head}${glue}${item}`.replace(/\s+/g, ' ').trim() : item, quote: item });
+        }
+    }
+    return out;
+}
+
 export function requirementsFromRequestClauses(requestRaw: string): NamedRequirement[] {
     const request = String(requestRaw || '').replace(/\s+/g, ' ').trim();
     if (!request) return [];
     const actionClauses = request
-        .split(/(?:[.;!?؟]+|\s*,\s*(?=(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b))/iu)
+        .split(ACTION_SPLIT)
         .map(value => value.trim().replace(/^(?:and|then|و)\s+/iu, '').replace(/[,:;]+$/u, '').trim())
-        .filter(value => /^(?:add|create|edit|delete|remove|validate|show|display|persist|save|test|عرض|أضف|انشئ|إنشئ|عدّل|عدل|احذف|تحقق|اعرض|احفظ)\b/iu.test(value))
+        .filter(value => OPENS_WITH_ACTION.test(value))
         // A behavior list may continue after the first imperative: "add and
         // delete records, a live total, and persistence after refresh".
         // Preserve field lists such as "add name, date and note" while
@@ -807,12 +1297,13 @@ export function requirementsFromRequestClauses(requestRaw: string): NamedRequire
         const items = declaredRequirementItems(sentence).filter(isJudgeable);
         if (items.length >= 2) declaredFields.push(...items);
     }
-    const clauses = [...declaredFields, ...actionClauses];
-    const unique = clauses.filter((value, index) => clauses.findIndex(other => other.toLowerCase() === value.toLowerCase()) === index);
-    return unique.slice(0, 20).map((text, index) => ({
+    const clauses = [...declaredFields, ...actionClauses].map(text => ({ text, quote: text }));
+    for (const item of listedRequirementItems(request)) clauses.push(item);
+    const unique = clauses.filter((value, index) => clauses.findIndex(other => other.text.toLowerCase() === value.text.toLowerCase()) === index);
+    return unique.slice(0, 20).map(({ text, quote }, index) => ({
         id: `request-clause-${index + 1}-${text.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '').slice(0, 36)}`,
         text,
-        quote: text,
+        quote,
     }));
 }
 
@@ -830,10 +1321,183 @@ export function requirementNamesPage(requirement: Pick<NamedRequirement, 'text' 
 }
 
 import { inspectWorkflowEngineSource } from './workflow-contract';
-import { capabilityEvidence, requestedCapabilities } from './scope-audit';
+import { capabilityEvidence, hasServerLoginEvidence, requestedCapabilities } from './scope-audit';
 import { externalApiSourceVerdict, type ExternalApiAcceptanceEvidence } from '../api-discovery/acceptance-evidence';
 import { recordFeatureCovered } from '../design/app-blueprints';
 import { ownedExpressSource, validateBackendEvidence, type LocalBackendAcceptance } from './local-backend-evidence';
+
+/**
+ *  ⛔ A PAGE CLAUSE HAS EVIDENCE A MACHINE CAN READ — SO IT IS READ.
+ *
+ *  Eval round 15 (photography fidelity): with no model in the run, «رأس تنقل
+ *  بروابط الرئيسية، الخدمات، الأعمال، تواصل», «قسم افتتاحي بصورة واضحة وزر
+ *  «احجز جلسة»», «ثلاثة أقسام فعلية» and «نموذج تواصل بالاسم والبريد
+ *  والرسالة» were read from his request and then never judged at all, so
+ *  the gate either ignored them (before the Arabic reader worked) or blocked
+ *  on a catalogue rule nobody asked about. Each of these shapes leaves a
+ *  literal trace in the generated source: a navigation label, a quoted
+ *  string, a hero with an image, a count of rendered sections, the inputs of
+ *  a form. A clause is judged only when EVERY part of it is one of those
+ *  shapes — anything left over means a part no reader here can see, and the
+ *  clause stays for a model to judge (or unprovable without one).
+ */
+const NAV_HEAD = /(?:رأس\s+(?:ال)?تنقل|شريط\s+(?:ال)?تنقل|قائمة\s+(?:ال)?تنقل|navigation(?:\s+(?:bar|menu))?|nav\s*bar|top\s+menu)\s*(?:ب?روابط|with\s+links?(?:\s+(?:to|for))?|containing\s+links?(?:\s+(?:to|for))?|links?(?:\s+(?:to|for))?)?\s*[:：]?\s*/iu;
+
+const NUMBER_WORDS: Array<[RegExp, number]> = [
+    [/^(?:اثنان|اثنين|اثنتان|اثنتين|two|2|٢)$/iu, 2],
+    [/^(?:ثلاث|ثلاثة|three|3|٣)$/iu, 3],
+    [/^(?:أربع|اربع|أربعة|اربعة|four|4|٤)$/iu, 4],
+    [/^(?:خمس|خمسة|five|5|٥)$/iu, 5],
+    [/^(?:ست|ستة|six|6|٦)$/iu, 6],
+    [/^(?:سبع|سبعة|seven|7|٧)$/iu, 7],
+    [/^(?:ثماني|ثمانية|eight|8|٨)$/iu, 8],
+    [/^(?:تسع|تسعة|nine|9|٩)$/iu, 9],
+    [/^(?:عشر|عشرة|ten|10|١٠)$/iu, 10],
+];
+
+/** Form fields a contact or booking form names, and the input that proves each. */
+const FORM_FIELDS: Array<{ says: RegExp; proof: RegExp }> = [
+    { says: /^(?:ال)?اسم$|^(?:full\s+)?name$/iu, proof: /\b(?:form|values?|data|state)\.(?:full_?)?name\b|name=["'](?:full_?)?name["']|aria-label=\{t\.name\}|autoComplete=["']name["']/i },
+    { says: /^(?:ال)?(?:بريد(?:\s+(?:ال)?إلكتروني)?|إيميل|ايميل)$|^e-?mail(?:\s+address)?$/iu, proof: /type=["']email["']|name=["']email["']/i },
+    { says: /^(?:ال)?(?:هاتف|جوال|رقم(?:\s+(?:ال)?هاتف)?)$|^(?:phone|mobile|telephone)(?:\s+number)?$/iu, proof: /type=["']tel["']|name=["'](?:phone|tel|mobile)["']/i },
+    { says: /^(?:ال)?(?:رسالة|ملاحظات)$|^(?:message|notes?)$/iu, proof: /<textarea\b|name=["']message["']/i },
+    { says: /^(?:ال)?موضوع$|^subject$/iu, proof: /name=["']subject["']/i },
+    { says: /^(?:ال)?تاريخ$|^date$/iu, proof: /type=["']date["']/i },
+    { says: /^(?:ال)?وقت$|^time$/iu, proof: /type=["']time["']/i },
+];
+
+/** The hero's own words, an image, a button, and the qualities nobody can measure. */
+const HERO_WORD = /(?<![\p{L}\p{N}])(?:قسم\s+(?:ال)?افتتاحي|(?:ال)?قسم\s+(?:ال)?ترحيبي|(?:ال)?افتتاحي|hero(?:\s+section)?|banner)(?![\p{L}\p{N}])/giu;
+const IMAGE_WORD = /(?<![\p{L}\p{N}])(?:ب?(?:ال)?صور(?:ة|ه)?|(?:an?\s+)?(?:image|photo(?:graph)?|picture))(?![\p{L}\p{N}])/giu;
+const BUTTON_WORD = /(?<![\p{L}\p{N}])(?:و?(?:ال)?زر|(?:an?\s+)?(?:button|cta|call[- ]to[- ]action))(?![\p{L}\p{N}])/giu;
+const QUALITY_WORD = /(?<![\p{L}\p{N}])(?:واضح(?:ة|ه)?|جذاب(?:ة|ه)?|كبير(?:ة|ه)?|بارز(?:ة|ه)?|جميل(?:ة|ه)?|حديث(?:ة|ه)?|clear|large|big|prominent|bold|beautiful|striking|modern)(?![\p{L}\p{N}])/giu;
+const CONNECTOR = /(?:^|\s)(?:و|ب|مع|with|and|a|an|the|that|says?|labelled|labeled)(?=\s|$)/giu;
+
+function literalIn(src: string, value: string): boolean {
+    const esc = value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`['"\`>]\\s*${esc}\\s*['"\`<]`, 'u').test(src);
+}
+
+function navLabelIn(src: string, label: string): boolean {
+    const esc = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`label\\s*:\\s*['"\`]${esc}['"\`]|<a\\b[^>]*>\\s*${esc}\\s*</a>`, 'u').test(src);
+}
+
+function residue(text: string, ...patterns: RegExp[]): string {
+    let rest = ` ${text} `;
+    for (const re of patterns) rest = rest.replace(re, ' ');
+    return rest.replace(CONNECTOR, ' ').replace(/[«»"“”'،,.:;؛()]/gu, ' ').replace(/\s+/g, ' ').trim();
+}
+
+const FORM_CLAUSE = /^(?:(?:ال)?نموذج|(?:ال)?استمارة|(?:an?\s+)?(?:contact\s+|booking\s+|enquiry\s+|inquiry\s+)?form)\s*(?:(?:ال)?(?:تواصل|اتصال|حجز|استفسار))?\s*(?:with|containing|for|including|ب)?\s*(.*)$/iu;
+
+/** A form clause whose named fields are fields Joe knows, and at least one has no input that proves it. */
+function formNamesFieldsNotFound(r: NamedRequirement, source: string): boolean {
+    const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
+    const form = text.match(FORM_CLAUSE);
+    if (!form) return false;
+    const said = splitListItems(form[1] || '');
+    const fields = said.map(field => FORM_FIELDS.find(f => f.says.test(field)));
+    return fields.some(Boolean) && fields.some(f => f && !f.proof.test(String(source || '')));
+}
+
+function pageClauseVerdict(r: NamedRequirement, source: string): JudgedNamed | null {
+    const text = stripLeadingConjunction(String(r.text || '').trim().replace(/^and\s+/i, '').replace(/^(?:an?|the)\s+/i, ''));
+    const src = String(source || '');
+    if (!text || !src) return null;
+
+    //  1. A navigation and the destinations he listed.
+    const nav = text.match(NAV_HEAD);
+    if (nav && nav.index === 0) {
+        const labels = splitListItems(text.slice(nav[0].length)).filter(label => label.split(/\s+/).length <= 3);
+        if (labels.length >= 2) {
+            const missing = labels.filter(label => !navLabelIn(src, label));
+            if (!missing.length) return { ...r, verdict: 'met', why: `the generated navigation links to every destination named: ${labels.join(' · ')}` };
+            if (missing.length < labels.length) return { ...r, verdict: 'unmet', why: `the generated navigation has no link for: ${missing.join(' · ')}` };
+        }
+        return null;
+    }
+
+    //  2. «N sections».
+    const count = text.match(/^(\S+)\s+(?:أقسام|اقسام|sections?)(?:\s+(?:فعلية|فعليه|حقيقية|حقيقيه|real|actual|distinct|separate))?$/iu);
+    if (count) {
+        const n = NUMBER_WORDS.find(([re]) => re.test(count[1]))?.[1];
+        if (!n) return null;
+        const ids = new Set([...src.matchAll(/<section\b[^>]*\bid=["']([^"']+)["']/giu)].map(m => m[1]).filter(id => id !== 'top'));
+        //  Sections without an id are not counted, so too few is not proof.
+        return ids.size >= n
+            ? { ...r, verdict: 'met', why: `the generated page renders ${ids.size} sections beyond the hero (${[...ids].join(', ')})` }
+            : null;
+    }
+
+    //  3. A form and the fields he listed.
+    const form = text.match(/^(?:(?:ال)?نموذج|(?:ال)?استمارة|(?:an?\s+)?(?:contact\s+|booking\s+|enquiry\s+|inquiry\s+)?form)\s*(?:(?:ال)?(?:تواصل|اتصال|حجز|استفسار))?\s*(?:with|containing|for|including|ب)?\s*(.*)$/iu);
+    if (form && /<form\b/i.test(src)) {
+        const said = splitListItems(form[1] || '');
+        if (said.length < 2) return null;
+        const fields = said.map(field => FORM_FIELDS.find(f => f.says.test(field)));
+        if (fields.some(f => !f)) return null;
+        //  Inputs are written many ways; a field not found is left for a judge
+        //  (and stays unprovable without one) rather than declared missing.
+        if (said.some((_field, i) => !fields[i]!.proof.test(src))) return null;
+        return { ...r, verdict: 'met', why: `the generated form carries every field named: ${said.join(' · ')}` };
+    }
+
+    //  4. A hero, its image, its button and the words on the button.
+    if (new RegExp(HERO_WORD.source, 'iu').test(text)) {
+        const quoted = [...text.matchAll(/[«"“]([^«»"“”]{2,60})[»"”]?/gu)].map(m => m[1].trim()).filter(Boolean);
+        const rest = residue(text.replace(/[«"“][^«»"“”]{2,60}[»"”]?/gu, ' '), HERO_WORD, IMAGE_WORD, BUTTON_WORD, QUALITY_WORD);
+        if (rest) return null;   // a part of the clause none of these shapes covers
+        if (!/className=["'][^"']*\bhero\b|heroTitle\s*:/i.test(src)) return null;
+        const wantsImage = new RegExp(IMAGE_WORD.source, 'iu').test(text);
+        if (wantsImage && /heroImage\s*:\s*null/.test(src)) {
+            return { ...r, verdict: 'unmet', why: 'the generated hero renders no image (heroImage is null)' };
+        }
+        if (wantsImage && !/heroImage\s*:\s*(?:\{|['"`])/.test(src)) return null;
+        const absent = quoted.filter(value => !literalIn(src, value));
+        if (absent.length) return { ...r, verdict: 'unmet', why: `the generated hero does not carry: ${absent.map(v => `«${v}»`).join(' · ')}` };
+        if (new RegExp(BUTTON_WORD.source, 'iu').test(text) && !quoted.length && !/className=["'][^"']*\bbtn\b|<button\b/i.test(src)) return null;
+        return { ...r, verdict: 'met', why: `the generated hero renders${wantsImage ? ' its image' : ''}${quoted.length ? ` and ${quoted.map(v => `«${v}»`).join(' · ')}` : ''}` };
+    }
+    return null;
+}
+
+/*
+ * HOW LONG A DOCUMENT IS, MEASURED, NOT ARGUED.
+ *
+ * The Manus-style exam, 2026-11-09 (M01): «اكتب لي تقريرًا قصيرًا…» — the judge
+ * ruled «أن يكون التقرير قصيرًا» unprovable («short is relative, nothing in the
+ * lines shown sets the length»), four times, and a correct report was refused.
+ * A requirement that a document be short, brief or concise is judged on the
+ * words of the documents delivered (Joe's own certificate and the project's
+ * README aside): at most SHORT_DOCUMENT_WORDS is short.
+ */
+const SHORT_WORD = /(?:^|[\s«"(])(?:قصير|قصيرا|قصيره|قصيرة|مختصر|مختصرا|مختصره|مختصرة|موجز|موجزا|موجزه|موجزة)(?=$|[\s،,.»")])|\b(?:short|brief|concise)\b/iu;
+const DOCUMENT_FILE = /\.(?:md|markdown|txt|html?|csv)$/iu;
+const NOT_THE_DOCUMENT = /^(?:readme|changelog|contributing|license|joe-delivery)(?:\.[a-z]+)?$|^\(before this change\)/iu;
+export const SHORT_DOCUMENT_WORDS = 1500;
+
+export function documentLengthVerdict(r: NamedRequirement, source: string, isArabic: boolean): JudgedNamed | null {
+    const said = `${r.text || ''} ${r.quote || ''}`.replace(/[ً-ٰٟـ]/gu, '');
+    if (!SHORT_WORD.test(said)) return null;
+    const docs = filesOf(String(source || ''))
+        .filter(f => DOCUMENT_FILE.test(f.path) && !NOT_THE_DOCUMENT.test(path.basename(f.path)) && !NOT_THE_DOCUMENT.test(f.path))
+        .map(f => {
+            const body = f.block.split('\n').slice(1).join('\n').replace(/<script[\s\S]*?<\/script>|<style[\s\S]*?<\/style>/giu, ' ').replace(/<[^>]+>/gu, ' ');
+            return { path: f.path, words: (body.match(/[\p{L}\p{N}]+/gu) || []).length };
+        })
+        .filter(d => d.words > 0);
+    if (!docs.length) return null;
+    const longest = docs.reduce((a, b) => (b.words > a.words ? b : a));
+    const short = longest.words <= SHORT_DOCUMENT_WORDS;
+    return {
+        ...r,
+        verdict: short ? 'met' : 'unmet',
+        why: isArabic
+            ? `قِيس طول المستند: ${longest.path} فيه ${longest.words} كلمة (القصير حتى ${SHORT_DOCUMENT_WORDS} كلمة)`
+            : `measured: ${longest.path} has ${longest.words} words (short is at most ${SHORT_DOCUMENT_WORDS})`,
+    };
+}
 
 /**
  * Generated records apps expose a small, explicit contract. Verify that
@@ -988,10 +1652,33 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
                     && /View changes|Show changes|Audit history|<details|<summary|عرض التغييرات|سجل التدقيق/iu.test(src),
                 'the interface renders each record audit history as inspectable change details'],
         ];
+        // Measured on 2026-11-01: the agent engine built a clinic system with
+        // a real login and admin/staff roles, and both were judged unmet
+        // because the source had no name from Joe's first templates
+        // (apiLogin, TOKEN_KEY, CustomApp). Login and roles are judged by
+        // what the code does, whatever it is named:
+        //  - a login: hasServerLoginEvidence, the reading the scope audit shares;
+        //  - roles: a role on the user, a check of it, and a 403 for the rest.
+        const roleOnUser = /\brole\s*[:=]\s*['"`]?(?:admin|staff|manager|user|receptionist|doctor)\b|\broles?\s*:\s*\[|\brole\b[^\n]{0,40}\b(?:TEXT|VARCHAR|String|enum)\b/iu.test(src);
+        const roleChecked = /\brole\s*(?:!==|===|!=|==)\s*['"`](?:admin|staff|manager|receptionist|doctor)['"`]|\b(?:requireRole|requireAdmin|authorize|hasRole|checkRole|isAdmin|roleRequired|requiresRole)\s*\(|\.includes\(\s*(?:req\.)?user\.role\s*\)/iu.test(src);
+        const forbidden = /status\s*\(\s*403\s*\)|\b403\b|Forbidden|abort\(\s*403\s*\)/iu.test(src);
+        workflowEvidence.push(
+            [/\bsign[- ]?in\b|\blog[- ]?in\b|\bauth(?:entication)?\b|\baccounts?\b|تسجيل\s*(?:الدخول|دخول)|دخول/iu,
+                hasServerLoginEvidence(src),
+                'the server has a login route that checks a hashed password and issues a session or token'],
+            [/\badmin\b|\broles?\b|\bpermissions?\b|\bstaff\b|صلاحيات|أدوار|مدير|موظف/iu,
+                roleOnUser && roleChecked && forbidden,
+                'users carry a role, the server checks it, and refuses the others with 403'],
+        );
         const proven = workflowEvidence.find(([asked, present]) => asked.test(fieldPhrase) && present);
         if (proven) return { ...r, verdict: 'met', why: proven[2] };
         if (!/(?:function|class|const|let|var)\s+CustomApp\b/i.test(src)) {
-            return { ...r, verdict: 'unmet', why: 'the build rendered a generic records form instead of a workflow engine' };
+            //  Not Joe's old template, and no shape above proved it: the judge
+            //  reads the source and must quote the line. P155 (2026-11-03): a
+            //  real login on authRouter.post was refused four times as «unmet:
+            //  the build rendered a generic records form instead of a workflow
+            //  engine» — a sentence about the old template's component.
+            return null;
         }
         const defects = inspectWorkflowEngineSource(text, src);
         return defects.length
@@ -1181,6 +1868,11 @@ function deterministicSourceVerdict(r: NamedRequirement, source: string): Judged
     if (/export/iu.test(text) && /toCsv|download\s*\(/i.test(src)) {
         return { ...r, verdict: 'met', why: 'the generated records view exports the visible rows' };
     }
+    const pageClause = pageClauseVerdict(r, src);
+    if (pageClause) return pageClause;
+    //  A form that names its fields is met by those fields, never by «a contact form exists»:
+    //  «نموذج تواصل بالاسم والهاتف» on a form with no phone input is for a judge (2026-11-09).
+    if (formNamesFieldsNotFound(r, src)) return null;
     const knownCapabilities = requestedCapabilities(text);
     if (knownCapabilities.length && knownCapabilities.every(capability => capabilityEvidence(capability, src))) {
         return { ...r, verdict: 'met', why: `the generated source proves: ${knownCapabilities.map(item => item.en).join(', ')}` };
@@ -1195,6 +1887,8 @@ export async function verifyNamed(
     call: (prompt: string) => Promise<string>,
     externalApiEvidence?: ExternalApiAcceptanceEvidence | null,
     localBackend?: LocalBackendAcceptance | null,
+    /** The request asks for a document: its .md/.txt files are the product, not documentation. */
+    options: { documentsAreTheProduct?: boolean } = {},
 ): Promise<JudgedNamed[]> {
     const src = String(source || '');
     const blank = (why: string): JudgedNamed[] =>
@@ -1243,7 +1937,7 @@ export async function verifyNamed(
                     reasonCode: !grounded ? 'ungrounded_criterion' : proven ? 'verified' : compound ? 'compound_not_fully_proven' : 'backend_evidence_rejected' } });
             continue;
         }
-        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || deterministicSourceVerdict(r, src);
+        const verdict = externalApiSourceVerdict(r, externalApiEvidence) || documentLengthVerdict(r, src, isArabic) || deterministicSourceVerdict(r, src);
         if (verdict) deterministic.set(r.id, verdict);
     }
     if (deterministic.size === reqs.length) return reqs.map(r => deterministic.get(r.id)!);
@@ -1330,14 +2024,14 @@ export async function verifyNamed(
      */
     const fromBatch = new Map<string, { id: string; verdict: string; evidence: string; why: string }>();
     let batchError = '';
+    const batchShown = reqs.length > 1 ? sliceForMany(reqs, src) : '';
     if (reqs.length > 1) {
-        const shown = sliceForMany(reqs, src);
         try {
-            const raw = await call(verificationPrompt(reqs, shown, isArabic));
+            const raw = await call(verificationPrompt(reqs, batchShown, isArabic));
             for (const v of parseVerdicts(raw)) {
                 if (v.id && reqs.some(r => r.id === v.id)) {
                     fromBatch.set(v.id, v);
-                    shownFor.set(v.id, shown);
+                    shownFor.set(v.id, batchShown);
                 }
             }
         } catch (e: any) {
@@ -1345,12 +2039,40 @@ export async function verifyNamed(
         }
     }
 
-    const stillUnanswered = reqs.filter(r => !fromBatch.has(r.id));
+    /**
+     *  ⛔ AN ANSWER GIVEN OVER THE BATCH'S CUT IS NOT THE LAST WORD.
+     *
+     *  Eval P051 (dental admin, ten requirements, 136962 chars of source): the
+     *  batch slice was 40007 chars of windows filled in source order, and the
+     *  summary page's JSX sat past it. The judge said so honestly — «the JSX
+     *  rendering code … is cut off» — and that «unprovable» was taken as the
+     *  verdict: the per-requirement road never ran, and delivery was blocked on
+     *  «a summary page showing totals, a chart» while the slice chosen for that
+     *  requirement alone carried the chart.
+     *
+     *  So when the batch was shown a cut that left out part of a requirement's
+     *  own slice, only a «met» whose line is in what it was shown settles it.
+     *  Any other answer is asked again over the requirement's own slice, and
+     *  judged against what THAT call showed. A batch that already carried every
+     *  window of the requirement is not asked again — the same text would only
+     *  ask the same question. A re-ask that returns nothing leaves the batch
+     *  answer standing.
+     */
+    const batchCut = !!batchShown && batchShown.length < src.length;
+    const batchShowedAllOf = (own: string): boolean =>
+        own.split(WINDOW_JOIN).every(piece => batchShown.includes(piece));
+    const settledByBatch = (r: NamedRequirement): boolean => {
+        const v = fromBatch.get(r.id);
+        if (!v) return false;
+        if (!batchCut || deterministic.has(r.id)) return true;
+        if (v.verdict === 'met' && foundInSource(v.evidence, batchShown)) return true;
+        return batchShowedAllOf(sliceFor(r, src));
+    };
+    const stillUnanswered = reqs.filter(r => !settledByBatch(r));
     const answers = await Promise.all(stillUnanswered.map(async r => {
         const shown = sliceFor(r, src);
-        shownFor.set(r.id, shown);
-        try { return { id: r.id, raw: await call(verificationPrompt([r], shown, isArabic)) }; }
-        catch (e: any) { return { id: r.id, raw: '', error: String(e && e.message || e) }; }
+        try { return { id: r.id, raw: await call(verificationPrompt([r], shown, isArabic)), shown }; }
+        catch (e: any) { return { id: r.id, raw: '', shown, error: String(e && e.message || e) }; }
     }));
     /**
      *  A brain that cannot be reached certifies nothing and condemns nothing.
@@ -1394,7 +2116,94 @@ export async function verifyNamed(
         const named = parsed.find(v => v.id === a.id);
         const lone = parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined;
         const answer = named || lone;
-        if (answer) byId.set(a.id, { ...answer, id: a.id });
+        if (answer) {
+            byId.set(a.id, { ...answer, id: a.id });
+            shownFor.set(a.id, a.shown);
+        } else if (!fromBatch.has(a.id)) shownFor.set(a.id, a.shown);
+    }
+    /**
+     *  ⛔ A TRUE LINE, COPIED SO IT COULD NOT BE ACCEPTED, IS ASKED FOR AGAIN — ONCE.
+     *
+     *  Eval P402 (2026-11-03), a quiz game: «The app tracks the score» was
+     *  answered «met» with `score++;` — a real line of app.js, and too short to
+     *  be accepted as proof. Asked again by hand, three times over the same
+     *  source, the judge gave that same line each time, and the delivery was
+     *  refused four times on a score the game kept.
+     *
+     *  The check stays what it was: a «met» counts only on a line that is in
+     *  the source and long enough to tell one feature from another. What is
+     *  added is the second question: each «met» whose line failed is asked once
+     *  more, over the source that answer was given on, with the reason its line
+     *  failed. Only a «met» whose new line passes the same check replaces it; any
+     *  other reply leaves the first answer to be downgraded exactly as before.
+     */
+    const misquoted = reqs.filter(r => {
+        const v = byId.get(r.id);
+        return !deterministic.has(r.id) && v?.verdict === 'met' && !foundInSource(v.evidence, shownFor.get(r.id) || full);
+    });
+    if (misquoted.length) {
+        const byShown = new Map<string, NamedRequirement[]>();
+        for (const r of misquoted) {
+            const shown = shownFor.get(r.id) || full;
+            byShown.set(shown, [...(byShown.get(shown) || []), r]);
+        }
+        await Promise.all(Array.from(byShown, async ([shown, group]) => {
+            let raw = '';
+            try { raw = await call(requotePrompt(group.map(r => ({ r, evidence: byId.get(r.id)!.evidence })), shown, isArabic)); }
+            catch { return; }
+            const parsed = parseVerdicts(raw);
+            for (const r of group) {
+                const v = parsed.find(p => p.id === r.id) || (group.length === 1 && parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined);
+                if (v?.verdict === 'met' && foundInSource(v.evidence, shown)) {
+                    byId.set(r.id, { id: r.id, verdict: 'met', evidence: v.evidence, why: v.why || byId.get(r.id)!.why });
+                }
+            }
+        }));
+    }
+    /**
+     *  ⛔ A FILE THE JUDGE SAYS IT WAS NOT SHOWN IS SHOWN TO IT — ONCE.
+     *
+     *  The hard sample, 2026-11-09 (L332, a bookstore's documents, «thumbnails
+     *  for every upload»): the slice for the requirement was filled by a 22 KB
+     *  main.py and the tests, and three times the judge said what was missing,
+     *  by name: «app/files.py is not in the source shown, so the code that
+     *  generates the thumbnail is missing». The file was 3 KB and in the
+     *  project; the delivery was refused three times, until the model shrank it.
+     *  An answer other than «met» that names a project file the judge was not
+     *  shown is asked again, once, with that file added (whole, or its blocks
+     *  when it is large); the new answer is judged like any other.
+     */
+    const askedForFiles = reqs.map(r => {
+        if (deterministic.has(r.id)) return null;
+        const v = byId.get(r.id);
+        if (!v || v.verdict === 'met') return null;
+        const shown = shownFor.get(r.id) || full;
+        if (shown.length >= full.length) return null;
+        const blocks = filesOf(full);
+        const said = `${v.why} ${v.evidence}`;
+        const named = filesNamedIn(said, full);
+        //  No file by name: the files that hold the code words of its own answer (filesHoldingWordsOf).
+        const wanted = (named.length ? named : filesHoldingWordsOf(said, full, shown))
+            .map(p => blocks.find(b => b.path === p))
+            .filter((b): b is { path: string; block: string } => !!b && !shown.includes(b.block))
+            .slice(0, 3);
+        return wanted.length ? { r, shown, wanted, said } : null;
+    }).filter((x): x is { r: NamedRequirement; shown: string; wanted: Array<{ path: string; block: string }>; said: string } => !!x);
+    if (askedForFiles.length) {
+        await Promise.all(askedForFiles.map(async ({ r, shown, wanted, said }) => {
+            const looked = Array.from(new Set([...requirementWords(r), ...codeWordsOf(said)]));
+            const added = wanted.map(b => b.block.length <= ENCLOSING_BLOCK_MAX * 2
+                ? b.block
+                : `${JUDGE_FILE_MARK}${b.path} ====\n${enclosingBlocksFor(looked, b.block, ENCLOSING_BLOCK_MAX * 2) || b.block.slice(0, ENCLOSING_BLOCK_MAX * 2)}`);
+            const more = `${shown}${WINDOW_JOIN}${added.join('\n')}`;
+            let raw = '';
+            try { raw = await call(verificationPrompt([r], more, isArabic)); } catch { return; }
+            const parsed = parseVerdicts(raw);
+            const v = parsed.find(p => p.id === r.id) || (parsed.length === 1 && !parsed[0].id ? parsed[0] : undefined);
+            if (!v) return;
+            byId.set(r.id, { id: r.id, verdict: v.verdict, evidence: v.evidence, why: v.why });
+            shownFor.set(r.id, more);
+        }));
     }
     return reqs.map(r => {
         const known = deterministic.get(r.id);
@@ -1413,6 +2222,15 @@ export async function verifyNamed(
                     why: isArabic
                         ? 'قال إنّه موجود ولم أجد شاهده في المصدر — فلم أحتسبه'
                         : 'it was reported present and its evidence is not in the source — so I did not count it',
+                };
+            }
+            if (evidenceOnlyInDocs(v.evidence, src, options.documentsAreTheProduct === true) && !asksAboutDocumentation(r)) {
+                return {
+                    ...r,
+                    verdict: 'unprovable' as NamedVerdict,
+                    why: isArabic
+                        ? 'شاهده سطر توثيق فقط، والتوثيق يقول ما يدّعيه المشروع لا ما يفعله — فلم أحتسبه'
+                        : 'its only evidence is a line of documentation, which says what the project claims, not what it does — so I did not count it',
                 };
             }
             return {

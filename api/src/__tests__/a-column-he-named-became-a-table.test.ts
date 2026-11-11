@@ -78,7 +78,9 @@ describe('one table, when that is what he described', () => {
 describe('…and several tables, when he wrote the container in front of each', () => {
     it('three tables named one by one', () => {
         expect(keys('بدي نظام للمدرسة فيه جدول الطلاب وجدول المعلمين وجدول الصفوف'))
-            .toEqual(['students', 'teachers', 'alsfwfs']);
+            // «الصفوف» has been on the curated list since round 20 (classes); the
+            // point here is three tables, one per container word.
+            .toEqual(['students', 'teachers', 'classes']);
     });
 
     it('the same shape with an invented noun', () => {
@@ -106,6 +108,8 @@ describe('and a request that describes no table is untouched — including its d
         //  The harm is bounded upstream rather than here: inferModel is
         //  reached under a build intent, and neither of these is one.
         expect(inferModel('مرحبا').entities.map(e => e.ar)).toEqual(['مرحبا']);
-        expect(inferModel('ما الفرق بين قاعدة البيانات والجدول؟').entities).toHaveLength(2);
+        //  Round 21: the clause «ما الفرق بين قاعدة البيانات» is no longer spelled
+        //  out as a key (a record is named in one or two words); «الجدول؟» still is.
+        expect(inferModel('ما الفرق بين قاعدة البيانات والجدول؟').entities.map(e => e.ar)).toEqual(['الجدول؟']);
     });
 });

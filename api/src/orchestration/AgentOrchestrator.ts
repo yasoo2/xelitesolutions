@@ -114,6 +114,12 @@ const MAX_REPAIR_NODES = 6;
  */
 export function isFinalPipelineOutcome(tool: string | undefined, output: any): boolean {
   if (tool === 'project_pipeline') return output?.pipelineFinal === true;
+  // The agent engine runs the build node it takes over under the planned
+  // name, so its measured delivery verdict arrives as a react_project or
+  // api_project result. That verdict is final like the pipeline's: a
+  // recovery planner would rebuild what Joe's own gates just judged.
+  if ((tool === 'react_project' || tool === 'api_project')
+    && output?.pipelineFinal === true && typeof output?.engineStatus === 'string') return true;
   // A surgical edit already built and measured the current project. When its
   // own acceptance or visible-browser gate fails, the payload is final
   // evidence for this attempt. Sending it to a generative recovery planner
@@ -338,7 +344,33 @@ export class AgentOrchestrator {
    */
   public async plan(goalText: string, memory?: ExecutionMemory, traceId?: string): Promise<AgentDAG> {
     this.throwIfCancelled();
-    const context = IntentParser.createContext('orchestrator', 'global', [], this.context, this.context?.signal);
+    // With the agent engine on, a request to build software, or to change the
+    // project this chat already has, goes to the engine as one build node
+    // (core/engine/select.ts agentEngineRoute). The first planner never picks
+    // a tool for it: on 2026-11-01 it turned «عدّل نفس التطبيق…» into a
+    // question to the user and nothing changed. Loaded on demand: this
+    // file's static imports are guarded.
+    const agentRoute = await (async () => {
+      try { return await require('../core/engine/select').agentEngineRoute(goalText, this.context); } catch { return null; }
+    })();
+    if (agentRoute) {
+      return {
+        id: randomUUID(),
+        status: 'idle',
+        nodes: [{
+          id: 'agent_build', traceId, agent: 'Dev' as AgentType, task: String(goalText || '').slice(0, 300), tool: 'project_pipeline',
+          input: { request: goalText, ...(agentRoute.kind === 'change' ? { path: agentRoute.path } : {}), ...(agentRoute.kind === 'operate' ? { mode: 'operate', ...(agentRoute.target ? { target: agentRoute.target } : {}) } : {}) },
+          dependencies: [], status: 'pending',
+        }],
+      };
+    }
+    //  The provider the user chose, not the whole run context: given the whole
+    //  context as its modelConfig, the parser's call found no provider in it and
+    //  ran on the default (measured 2026-11-02: Claude chosen, the request read
+    //  by the local model on the CPU for minutes). The run id keeps a paid
+    //  call's spend on the run's line in the ledger.
+    const context = IntentParser.createContext('orchestrator', 'global', [], this.context?.modelConfig, this.context?.signal);
+    (context as any).runId = this.context?.runId;
     const intent = await IntentParser.parse(goalText, context);
     this.throwIfCancelled();
 
@@ -593,11 +625,22 @@ export class AgentOrchestrator {
           // Keep the value on the canonical context so ProjectPipelineTool can
           // carry it through PhaseExecutor, verifiers, generators, and repairs.
           const engineeringNode = ['project_pipeline', 'react_project', 'api_project'].includes(String(node.tool || ''));
+          // ⛔ 120 s was the default for EVERY engineering node and flowed into the
+          // planner, every phase and every generator — on the owner's CPU each local
+          // call stopped at exactly 120 s ([LocalDeadline] requestedMs 120000 vs a
+          // sized 993600, eval round 5, 2026-10-23). When the LOCAL model serves, the
+          // call ceiling is the operator's local ceiling (the router sizes each call
+          // under it) and the planner deadline is left for the pipeline to size.
+          // Loaded only for engineering nodes: the orchestrator's static import surface
+          // is guarded (file-step-narration sandboxes it with an allowlist).
+          const localServed = engineeringNode && (() => {
+              try { return require('../core/llm/served-local-selection').servedByLocalModel(goalContext || {}) === true; } catch { return false; }
+          })();
           const engineeringLlmTimeoutMs = engineeringNode
-            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : 120000)
+            ? (Number(goalContext?.providerTimeoutMs) > 0 ? Number(goalContext?.providerTimeoutMs) : localServed ? require('../core/orchestrator/planner-run-boundary').localPlannerCeilingMs() : 120000)
             : goalContext?.providerTimeoutMs;
           const engineeringPlannerTimeoutMs = engineeringNode
-            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : 120000)
+            ? (Number(goalContext?.plannerTimeoutMs) > 0 ? Number(goalContext?.plannerTimeoutMs) : localServed ? undefined : 120000)
             : goalContext?.plannerTimeoutMs;
           const executionContext = {
               sessionId: liveSessionId,
@@ -707,7 +750,22 @@ export class AgentOrchestrator {
               // مخططة (خصوصاً browser_run وأدوات التحقق) بأداة مختلفة أو برد
               // نصي. ننفذ الاسم كما هو؛ الاسم غير المسجّل يفشل صراحة في بوابة
               // الأدوات بدلاً من اختراع بديل.
-              const plannedTool = node.tool.trim();
+              let plannedTool = node.tool.trim();
+              // The general agent engine (core/engine) builds the project when
+              // the run asks for it: JOE_ENGINE=agent, or the run's own `engine`
+              // field. It takes the BUILD nodes only. The read-only audits that
+              // also travel as project_pipeline, and every other node, stay on
+              // this path. node.tool is left as planned, so deadlines and the
+              // final-outcome rule below treat it as the build it is. Loaded on
+              // demand: this file's static imports are guarded.
+              const agentBuild = engineeringNode
+                && !['read_only_audit', 'workspace_overview'].includes(String(node.id || ''))
+                && (() => { try { return require('../core/engine/select').engineFor(goalContext) === 'agent'; } catch { return false; } })();
+              if (agentBuild) {
+                plannedTool = 'agent_engine';
+                nodeInput.request = goalText;
+                if (goalContext?.resumeProjectRoot) nodeInput.path = goalContext.resumeProjectRoot;
+              }
               if (!DETERMINISTIC_TOOLS.includes(plannedTool)) {
                 console.log(`[AgentOrchestrator] executing planned non-catalogued tool directly: ${plannedTool}`);
               }

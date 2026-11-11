@@ -117,6 +117,17 @@ describe('048b durable run evidence contract', () => {
     await cleanup(`${runId}-disk-failure`);
   });
 
+  test('the receipt carries the delivery verdict the engine measured', () => {
+    const receipt: any = extractRunReceiptEvidence({ ok: false, result: { output: {
+      verified: false, deliveryStatus: 'not_verified', partialDelivery: true,
+      firstError: 'R2 "a booking form" is not proven', engineStatus: 'failed', pipelineFinal: true,
+      results: [{ phaseNumber: 1, phaseName: 'delivery verification', status: 'failed', projectRoot: 'D:/w/joe-app-1', projectRootRuntimeBound: true }],
+    } } }, 'run-engine-verdict', 'session-engine-verdict', 'failed');
+    expect(receipt).toMatchObject({ verified: false, deliveryStatus: 'not_verified', partialDelivery: true, firstError: 'R2 "a booking form" is not proven' });
+    const none: any = extractRunReceiptEvidence({ ok: true, result: { answer: 'hi' } }, 'run-chat', 'session-chat', 'completed');
+    expect(none.deliveryStatus).toBeUndefined();
+  });
+
   test('extractRunReceiptEvidence marks an empty {ok,result} envelope as an extraction miss', () => {
     const receipt = extractRunReceiptEvidence({ ok: true, result: null }, 'run-empty-envelope', 'session-empty-envelope', 'failed');
     expect(receipt.extractionMiss).toBe(true);

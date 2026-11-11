@@ -39,7 +39,8 @@ describe('navigation route supersession', () => {
         await next(request(''), newer);
         await pending;
         expect(newer.statusCode).toBe(200);
-        expect(older.statusCode).toBe(409);
+        //  Said as an answer: a 4xx is a red console error on Joe's page.
+        expect(older.statusCode).toBe(200);
         expect(older.body.error).toBe('nav_superseded');
         expect(page.goto).toHaveBeenCalledTimes(1);
         expect(url).toBe('http://localhost/newer');
@@ -49,7 +50,7 @@ describe('navigation route supersession', () => {
         (canAccessBrowserSession as jest.Mock).mockResolvedValue(true);
     });
 
-    test('an interrupted older request returns conflict without retrying over the newer page', async () => {
+    test('an interrupted older request is answered as superseded without retrying over the newer page', async () => {
         let rejectOlder!: (error: Error) => void;
         let entered!: () => void;
         const started = new Promise<void>(resolve => { entered = resolve; });
@@ -73,8 +74,9 @@ describe('navigation route supersession', () => {
         await started;
         await handler(request('http://localhost/latest'), latest);
         await pending;
-        expect(older.statusCode).toBe(409);
-        expect(older.body).toEqual({ ok: false, error: 'nav_superseded', attempts: 1 });
+        //  Said as an answer: a 4xx is a red console error on Joe's page.
+        expect(older.statusCode).toBe(200);
+        expect(older.body).toEqual({ ok: false, superseded: true, error: 'nav_superseded', attempts: 1 });
         expect(latest.body).toEqual({ ok: true, url: 'http://localhost/latest' });
         expect(page.goto).toHaveBeenCalledTimes(2);
     });
@@ -89,6 +91,25 @@ describe('navigation route supersession', () => {
         expect(res.body.error).toBe('nav_goto_failed');
         expect(res.body.documentState).toBe('interactive');
         expect(page.goto).toHaveBeenCalledTimes(1);
+    });
+
+    test('a goto another navigation aborted is superseded, and a preview that is down is unreachable — answers, not 502s', async () => {
+        const aborted = { url: () => 'http://localhost:4300/', goto: jest.fn().mockRejectedValue(new Error('page.goto: net::ERR_ABORTED at http://127.0.0.1:4300/')),
+            evaluate: jest.fn().mockResolvedValue('complete') };
+        (getBrowserSession as jest.Mock).mockResolvedValue({ page: aborted });
+        const one = response();
+        await handler(request('http://127.0.0.1:4300/'), one);
+        expect(one.statusCode).toBe(200);
+        expect(one.body.error).toBe('nav_superseded');
+
+        const down = { url: () => 'about:blank', goto: jest.fn().mockRejectedValue(new Error('page.goto: net::ERR_CONNECTION_REFUSED at http://127.0.0.1:4300/')),
+            evaluate: jest.fn().mockResolvedValue('complete') };
+        (getBrowserSession as jest.Mock).mockResolvedValue({ page: down });
+        const two = response();
+        await handler(request('http://127.0.0.1:4300/'), two);
+        expect(two.statusCode).toBe(200);
+        expect(two.body).toMatchObject({ ok: false, unreachable: true, error: 'nav_target_unreachable' });
+        expect(down.goto).toHaveBeenCalledTimes(2);
     });
 
     test('unauthorized and cross-user requests never claim or navigate a page', async () => {

@@ -1,0 +1,73 @@
+From a0fff0b08ea85a412c9fadc82efef3935ce22d7c Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:02 +0000
+Subject: [PATCH 5/9] test(qa): hold the theme probe to "recorded, never fatal"
+ instead of a click line
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (culprit c219da21; the case was BORN red there):
+  qa-work-is-reported › does not let an optional theme probe cancel the behavioural audit
+  Expected substring: "await page.click('.theme-toggle,…', { timeout: 2_500 });"
+
+Root cause: c219da21 added this case pinning a `page.click(…, { timeout: 2_500 })`
+that the same squash replaced before it landed: the probe now finds a VISIBLE
+toggle inside the page and clicks it there (no selector wait to time out),
+inside a try whose catch sets toggleWorks = false and records
+`theme toggle probe: …` in auditErrors. The invariant — the optional probe
+can fail without cancelling the control walk that follows — holds.
+
+Decision: P. The case now asserts the structure that makes it true: nothing
+the probe awaits sits outside the try, the click is inside it, the catch keeps
+the reason and contains no throw, and the behavioural walk comes after.
+
+Mutations (app-audit.ts, restored, sha256 identical each time):
+  qa1 catch rethrows instead of recording -> ✕ Expected substring "theme toggle probe:"
+  qa2 awaited page.click before the try    -> ✕ Expected pattern: not /\bawait\b/
+  qa3 catch records and then rethrows      -> ✕ Expected pattern: not /\bthrow\b/
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/qa-work-is-reported.test.ts | 24 ++++++++++++++++++-
+ 1 file changed, 23 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/qa-work-is-reported.test.ts b/api/src/__tests__/qa-work-is-reported.test.ts
+index dd005a3c..50230874 100644
+--- a/api/src/__tests__/qa-work-is-reported.test.ts
++++ b/api/src/__tests__/qa-work-is-reported.test.ts
+@@ -52,7 +52,29 @@ describe('the self-QA reaches the user in whatever language he asked in', () =>
+     it('does not let an optional theme probe cancel the behavioural audit', () => {
+         const audit = fs.readFileSync(path.join(__dirname, '..', 'core', 'quality', 'app-audit.ts'), 'utf-8');
+         expect(audit).toContain('theme toggle probe:');
+-        expect(audit).toContain("await page.click('.theme-toggle,[aria-label=\"Toggle dark mode\"],[aria-label=\"تبديل الوضع الليلي\"]', { timeout: 2_500 });");
++        //  The probe presses only a toggle that is VISIBLE at that moment, from
++        //  inside the page — there is no selector wait to time out — and the
++        //  whole probe is one try whose catch records the failure as evidence
++        //  and goes on. (The `page.click(…, { timeout: 2_500 })` this case
++        //  first pinned was replaced in the same commit that added the case.)
++        const at = audit.indexOf('if (dom.hasToggle) {');
++        expect(at).toBeGreaterThan(0);
++        const probe = audit.slice(at, audit.indexOf('\n        }\n', at) + 10);
++        const tryAt = probe.indexOf('try {');
++        const catchAt = probe.indexOf('} catch (error: any) {');
++        const clickAt = probe.indexOf('toggle?.click()');
++        expect(tryAt).toBeGreaterThan(0);
++        //  Nothing the probe waits on runs outside the try…
++        expect(probe.slice(0, tryAt)).not.toMatch(/\bawait\b/);
++        expect(clickAt).toBeGreaterThan(tryAt);
++        expect(clickAt).toBeLessThan(catchAt);
++        //  …and the catch keeps the reason and never throws it on.
++        const handler = probe.slice(catchAt);
++        expect(handler).toContain('toggleWorks = false;');
++        expect(handler).toContain('auditErrors.push(`theme toggle probe: ');
++        expect(handler).not.toMatch(/\bthrow\b/);
++        //  The behavioural walk it must not cancel comes after it.
++        expect(audit.indexOf('const homeProbe = await probeControls(page, probeOpts(')).toBeGreaterThan(at);
+     });
+ 
+     it('the section is built once, not per branch', () => {
+-- 
+2.43.0
+

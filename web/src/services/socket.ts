@@ -1,6 +1,8 @@
 import { API_URL, WS_URL } from '../config';
+import { normalizePlan } from '../lib/planCredits';
 import { AutoOpenManager } from './AutoOpenManager';
 import { saveTrace, type NeuralTrace, type TraceStep } from '../lib/neuralTrace';
+import { replayRunState } from '../lib/run-replay';
 
 const __DEV__ = import.meta.env.DEV;
 
@@ -188,6 +190,18 @@ const taskTrackerListeners: Set<SessionListener<(tasks: any[], sessionId?: strin
 /** Fires when a run ends and its trace has been written to the session's history. */
 const traceSealedListeners: Set<SessionListener<(trace: NeuralTrace) => void>> = new Set();
 
+/** What Joe tells the owner on his own, from any chat (api/src/modules/services/MailWatchService.ts). */
+export interface JoeNotice {
+  kind?: string;
+  chatId?: string;
+  who?: string;
+  address?: string;
+  subject?: string;
+  app?: string;
+  at?: number;
+}
+const noticeListeners: Set<(notice: JoeNotice) => void> = new Set();
+
 function forSession<T>(listeners: Set<SessionListener<T>>, sessionId: string, invoke: (cb: T) => void) {
   const sid = normalizeSessionId(sessionId);
   listeners.forEach(listener => {
@@ -223,12 +237,14 @@ function sealTrace(sessionId = '') {
     state.runSessionId = '';
     forSession(thinkingStepsListeners, sid, cb => cb([], sid));
     if (!steps.length || !traceSid) return;
+    const plan = normalizePlan(state.taskTrackerData);
     const trace: NeuralTrace = {
         id: `tr_${traceSid}_${startedAt || steps[0].at}`,
         sessionId: traceSid,
         startedAt: startedAt || steps[0].at,
         endedAt: Date.now(),
         steps,
+        ...(plan.length ? { plan } : {}),
     };
     saveTrace(trace);
     forSession(traceSealedListeners, traceSid, cb => cb(trace));
@@ -463,6 +479,17 @@ async function connect() {
         }
       }
 
+      // JOE TELLS THE OWNER SOMETHING NOBODY ASKED FOR THIS MINUTE: a reply to
+      // the email he sent arrived (2026-11-08). It belongs to the account, not
+      // to a run, and must pass before the run gates below: they drop every
+      // event of a chat whose run has finished — the very chat the email was
+      // sent from.
+      if (data?.type === 'joe_notice') {
+        const notice = data?.data && typeof data.data === 'object' ? data.data : {};
+        noticeListeners.forEach(cb => { try { cb(notice); } catch { /* one listener never breaks another */ } });
+        return;
+      }
+
       // [Wakil 5.5] Auto Quiet Mode & Thinking Phase Management
       const msgType = String(data?.type || '');
       // Every runtime cache is owned by the event's session. Events without a
@@ -600,14 +627,19 @@ async function connect() {
         // which is only set by `user_input` / `step_started`; a run driven purely
         // by `thinking_phase` events therefore never came back, and the card sat
         // on screen saying «جو ينفّذ» after the answer had already arrived.
-        runtime.quietMode = false;
-        runtime.thinkingStatus = '';
-        runtime.closedAt = Date.now();
-        runtime.pendingFinalRunId = !runtime.presentationSuppressed && isRunTerminal && msgType !== 'run_finished' ? evRunId : '';
+        //
+        // What only run_finished settles is written BEFORE the reset, so the
+        // reset itself stays one unconditional block that always ends in idle
+        // (neural-trace.test.ts reads it as such: the `if` that used to sit in
+        // the middle of it only set two fields, but it read as a guard on idle).
         if (msgType === 'run_finished') {
           runtime.presentedRunId = '';
           runtime.lastFinalizedRunId = evRunId;
         }
+        runtime.quietMode = false;
+        runtime.thinkingStatus = '';
+        runtime.closedAt = Date.now();
+        runtime.pendingFinalRunId = !runtime.presentationSuppressed && isRunTerminal && msgType !== 'run_finished' ? evRunId : '';
         runtime.activeRunId = '';
         emitPhase('idle');
         forSession(thinkingStatusListeners, evSid, cb => cb('', evSid));
@@ -919,6 +951,13 @@ export const SocketService = {
   clearTerminalHistory(sessionId?: string) {
     getSessionRuntime(sessionId).terminalHistory = '';
   },
+  /** A reopened conversation's terminal, from the server's record; never over live output. */
+  seedTerminalHistory(sessionId: string, text: string) {
+    const runtime = getSessionRuntime(sessionId);
+    if (runtime.terminalHistory || !text) return false;
+    runtime.terminalHistory = String(text).slice(-TERMINAL_HISTORY_CAP);
+    return true;
+  },
   subscribe(cb: (data: any) => void, sessionId?: string) {
     const release = addSessionListener(listeners, cb, sessionId);
     if (!socket && !isConnecting) connect();
@@ -933,6 +972,12 @@ export const SocketService = {
   injectLocal(event: any) {
     const sid = String(event?.sessionId || event?.data?.sessionId || '');
     forSession(listeners, sid, (cb: any) => cb(event));
+  },
+  /** Joe's own notices to the owner (a reply to his email arrived), whatever chat is open. */
+  subscribeNotices(cb: (notice: JoeNotice) => void) {
+    noticeListeners.add(cb);
+    if (!socket && !isConnecting) connect();
+    return () => { noticeListeners.delete(cb); };
   },
   subscribeStatus(cb: (status: { state: string; detail?: string }) => void) {
     statusListeners.add(cb);
@@ -990,5 +1035,40 @@ export const SocketService = {
   // [Wakil 6.1] Get last preview URL (for mount-time read)
   getLastPreviewUrl(sessionId?: string) {
     return getSessionRuntime(sessionId).lastPreviewUrl;
+  },
+  /**
+   * A page opened mid-run: rebuild this session's live card, plan and terminal
+   * from the run's own record (lib/run-replay). State and its listeners only —
+   * no chat event is dispatched. Steps that arrived live meanwhile are kept
+   * after the replayed ones. Returns false when there was nothing to add.
+   */
+  seedRun(sessionId: string, runId: string, events: any[]) {
+    const sid = normalizeSessionId(sessionId);
+    const id = normalizeSessionId(runId);
+    if (!sid || !id) return false;
+    const runtime = getSessionRuntime(sid);
+    if (runtime.activeRunId && runtime.activeRunId !== id) return false;
+    if (runtime.lastFinalizedRunId === id) return false;
+    const replayed = replayRunState(Array.isArray(events) ? events : []);
+    const lastSeeded = replayed.steps.length ? replayed.steps[replayed.steps.length - 1].at : 0;
+    const liveNewer = runtime.thinkingSteps.filter(step => step.at > lastSeeded);
+    if (runtime.thinkingSteps.length >= replayed.steps.length && liveNewer.length === runtime.thinkingSteps.length) return false;
+    runtime.thinkingSteps = [...replayed.steps, ...liveNewer];
+    runtime.activeRunId = id;
+    runtime.runStartedAt = runtime.runStartedAt || replayed.startedAt || Date.now();
+    runtime.runSessionId = sid;
+    runtime.quietMode = true;
+    runtime.closedAt = 0;
+    if (!liveNewer.length) {
+      runtime.thinkingPhase = replayed.phase;
+      runtime.thinkingStatus = replayed.status;
+    }
+    if (!runtime.taskTrackerData.length && replayed.tasks.length) runtime.taskTrackerData = replayed.tasks;
+    if (!runtime.terminalHistory && replayed.terminal) runtime.terminalHistory = replayed.terminal.slice(-TERMINAL_HISTORY_CAP);
+    forSession(thinkingPhaseListeners, sid, cb => cb(runtime.thinkingPhase, sid));
+    forSession(thinkingStatusListeners, sid, cb => cb(runtime.thinkingStatus, sid));
+    forSession(thinkingStepsListeners, sid, cb => cb([...runtime.thinkingSteps], sid));
+    forSession(taskTrackerListeners, sid, cb => cb([...runtime.taskTrackerData], sid));
+    return true;
   }
 };

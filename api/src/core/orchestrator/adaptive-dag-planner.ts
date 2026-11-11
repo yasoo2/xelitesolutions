@@ -15,6 +15,7 @@ import { routeToModel, TaskAnalysis } from '../llm/intelligent-router';
 import { catalogueFor } from './toolCatalog';
 import { compactHistoryForPrompt } from './history-compact';
 import { isBuildRequest } from '../intelligence/intent-classifier';
+import { parseModelJsonArray } from '../../shared/utils/json';
 
 export interface ParallelGroup {
     stepIds: string[];
@@ -313,6 +314,19 @@ export async function generatePlanAttempts(
 }
 
 /**
+ * A REPAIR IS PLANNED FROM THE ERROR — on every road a recovery can take.
+ *
+ * The adaptive planner and the planner's single-attempt fallback both write a
+ * DAG for «Fix and continue: …». When these rules moved into this file, the
+ * fallback kept its prompt and lost them, so a recovery that reached the
+ * fallback could re-run the failed step unchanged. One text, both prompts.
+ */
+export const FAILURE_RECOVERY_RULES = `This is a FAILURE-RECOVERY plan. Non-negotiable rules:
+- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
+- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
+- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.`;
+
+/**
  * Single plan generation with enhanced prompt
  */
 async function generateSinglePlan(
@@ -328,10 +342,7 @@ async function generateSinglePlan(
         : null;
 
     const recoveryRules = isRecovery ? `
-This is a FAILURE-RECOVERY plan. Non-negotiable rules:
-- READ the error text inside the goal. Every step you propose must address its CAUSE (missing dependency -> install it; wrong path -> locate the right one; syntax error -> read the file and fix that line).
-- NEVER just re-run the failed step unchanged as the whole plan; earn the retry with a diagnosis or repair step before it.
-- Keep it minimal: diagnose -> repair -> re-run. Do not re-author work that already succeeded.
+${FAILURE_RECOVERY_RULES}
 ${failureDiagnosis ? `
 FAILURE DIAGNOSIS (pre-computed):
 Root Cause: ${failureDiagnosis.rootCause}
@@ -404,22 +415,17 @@ Return ONLY a JSON array of steps:
 }
 
 /**
- * Parse JSON array from LLM response (handles markdown fences, extra text)
+ * Parse JSON array from LLM response (handles markdown fences, extra text).
+ *
+ * This was a private copy of the first-fence / first `[` to last `]` reader,
+ * without the raw line breaks, trailing commas and salvage PlanningEngine's
+ * reader already tolerated — one weak character threw the adaptive plan away
+ * where the other planner kept it. Both now read through the shared reader.
  */
 function parseJsonArrayLoose(text: string): any[] | null {
     if (!text) return null;
-    // Try to extract JSON array from markdown fence
-    const fenceMatch = text.match(/```(?:json)?\s*(\[[\s\S]*?\])\s*```/);
-    if (fenceMatch) {
-        try { return JSON.parse(fenceMatch[1]); } catch { }
-    }
-    // Try to find first [ and last ]
-    const start = text.indexOf('[');
-    const end = text.lastIndexOf(']');
-    if (start >= 0 && end > start) {
-        try { return JSON.parse(text.slice(start, end + 1)); } catch { }
-    }
-    return null;
+    return parseModelJsonArray(text, kept =>
+        console.warn(`[AdaptiveDAG] JSON was broken — salvaged ${kept} valid step(s) instead of failing over.`));
 }
 
 /**

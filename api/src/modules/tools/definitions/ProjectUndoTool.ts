@@ -19,6 +19,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { listVersions, restoreVersion, snapshotProject } from '../../../core/project/versions';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { recordUndo } from '../../../core/engine/run';
 
 interface SurgicalHistoryEntry {
     file: string;
@@ -98,7 +99,7 @@ export class ProjectUndoTool extends BaseTool {
         const preferSurgical = !input?.versionId
             && surgical.batch.length > 0
             && (!versions.length || newestSurgicalAt >= Number(versions[0]?.at || 0));
-        const when = (at: number) => new Date(at).toLocaleString('ar');
+        const when = (at: number) => new Date(at).toLocaleString(isAr ? 'ar' : 'en');
 
         if (input?.list === true) {
             const snapshotLines = versions.length
@@ -170,11 +171,11 @@ export class ProjectUndoTool extends BaseTool {
 
                 const rebuilt = await this.rebuild(dir, sessionId, isAr, term);
                 const message = isAr
-                    ? `↩️ أعدتُ آخر دفعة تعديل كاملة (${restore.size} ملف).${rebuilt.ok ? '\n✅ وأعدتُ البناء ليطابق المصدر المستعاد.' : `\n⚠️ استُعيد المصدر، لكن البناء لم يكتمل: ${rebuilt.note}`}`
-                    : `↩️ Restored the latest complete edit batch (${restore.size} file(s)).${rebuilt.ok ? '\n✅ Rebuilt the project to match the restored source.' : `\n⚠️ The source was restored, but the build did not complete: ${rebuilt.note}`}`;
+                    ? `↩️ أعدتُ آخر دفعة تعديل كاملة (${restore.size} ملف).${!rebuilt.built ? '' : rebuilt.ok ? '\n✅ وأعدتُ البناء ليطابق المصدر المستعاد.' : `\n⚠️ استُعيد المصدر، لكن البناء لم يكتمل: ${rebuilt.note}`}`
+                    : `↩️ Restored the latest complete edit batch (${restore.size} file(s)).${!rebuilt.built ? '' : rebuilt.ok ? '\n✅ Rebuilt the project to match the restored source.' : `\n⚠️ The source was restored, but the build did not complete: ${rebuilt.note}`}`;
                 return {
                     ok: true,
-                    output: { message, restored: [...restore.keys()], removed: [], rebuilt: rebuilt.ok, source: 'surgical_history' },
+                    output: { message, restored: [...restore.keys()], removed: [], rebuilt: rebuilt.built && rebuilt.ok, source: 'surgical_history' },
                     logs,
                 } as any;
         }
@@ -182,7 +183,7 @@ export class ProjectUndoTool extends BaseTool {
         if (!versions.length) {
             return {
                 ok: false, error: 'no_versions',
-                output: { message: '📜 لا توجد نسخة أرجع إليها — لم يعدّل جو هذا المشروع بعد.' },
+                output: { message: say(isAr, '📜 لا توجد نسخة أرجع إليها — لم يعدّل جو هذا المشروع بعد.', '📜 There is no version to go back to: Joe has not changed this project yet.') },
                 logs,
             } as any;
         }
@@ -193,23 +194,38 @@ export class ProjectUndoTool extends BaseTool {
             return { ok: false, error: res.error || 'restore_failed', logs } as any;
         }
         term(`undo: restored ${res.restored.length} file(s)${res.removed.length ? `, removed ${res.removed.length}` : ''} from ${res.version?.id}`);
+        // The runs after the restored version no longer describe the project.
+        if (res.version) recordUndo(dir, res.version, res.undoOf?.id);
 
-        // A restored source with a stale dist lies in the preview panel.
+        // A restored source with a stale dist lies in the preview panel. A
+        // project with no build says nothing about one (2026-11-05: a plain
+        // HTML project answered «✅ وأُعيد البناء» with nothing built).
         const rebuild = await this.rebuild(dir, sessionId, isAr, term);
-        const rebuilt = rebuild.ok;
+        const rebuilt = rebuild.built && rebuild.ok;
         const buildNote = rebuild.note;
+        const label = res.version!.label ? ` — ${res.version!.label}` : '';
 
-        const message = [
-            `↩️ رجعتُ بالمشروع إلى نسخة ${when(res.version!.at)}${res.version!.label ? ` — ${res.version!.label}` : ''}.`,
+        const message = (isAr ? [
+            `↩️ رجعتُ بالمشروع إلى نسخة ${when(res.version!.at)}${label}.`,
             ``,
             `   📄 أُعيد ${res.restored.length} ملف${res.removed.length ? `، وحُذف ${res.removed.length} ملف أُضيف بعدها` : ''}.`,
-            rebuilt ? `   ✅ وأُعيد البناء فيطابق dist ما تراه في المصدر.` : `   ⚠️ لكن البناء لم يكتمل: ${buildNote}`,
+            !rebuild.built ? '' : rebuilt ? `   ✅ وأُعيد البناء فيطابق dist ما تراه في المصدر.` : `   ⚠️ لكن البناء لم يكتمل: ${buildNote}`,
             ``,
             res.undoOf
                 ? `💡 وهذا التراجع نفسه محفوظ — قل «تراجع» مرة أخرى للعودة إلى ما قبله.`
                 : '',
             `📜 قل «اعرض النسخ» لرؤية كل النسخ المحفوظة.`,
-        ].filter(Boolean).join('\n');
+        ] : [
+            `↩️ Rolled the project back to the version of ${when(res.version!.at)}${label}.`,
+            ``,
+            `   📄 Restored ${res.restored.length} file(s)${res.removed.length ? `, and removed ${res.removed.length} added after it` : ''}.`,
+            !rebuild.built ? '' : rebuilt ? `   ✅ Rebuilt, so dist matches the restored source.` : `   ⚠️ But the build did not complete: ${buildNote}`,
+            ``,
+            res.undoOf
+                ? `💡 This undo is kept too: say "undo" again to go back to what came before it.`
+                : '',
+            `📜 Say "show versions" to see every kept version.`,
+        ]).filter(Boolean).join('\n');
 
         return {
             ok: true,
@@ -223,9 +239,9 @@ export class ProjectUndoTool extends BaseTool {
         sessionId: string | undefined,
         isAr: boolean,
         term: (line: string) => void,
-    ): Promise<{ ok: boolean; note: string }> {
-        if (!fs.existsSync(path.join(dir, 'node_modules')) || !fs.existsSync(path.join(dir, 'package.json'))) {
-            return { ok: true, note: '' };
+    ): Promise<{ ok: boolean; note: string; built: boolean }> {
+        if (!fs.existsSync(path.join(dir, 'node_modules')) || !hasBuildScript(dir)) {
+            return { ok: true, note: '', built: false };
         }
         if (sessionId) broadcastThinkingDetail(sessionId, say(isAr, '🏗️ وأعيد البناء ليطابق ما رجعنا إليه…', '🏗️ …and rebuilding so the output matches what we rolled back to'));
         const { runDoctored } = require('../../../core/quality/log-doctor');
@@ -237,8 +253,19 @@ export class ProjectUndoTool extends BaseTool {
         });
         return {
             ok: result.ok === true,
-            note: result.ok === true ? '' : String(result.diagnosis?.ar || `رمز الخروج ${result.exitCode}`),
+            note: result.ok === true ? '' : isAr ? String(result.diagnosis?.ar || `رمز الخروج ${result.exitCode}`) : `exit code ${result.exitCode}`,
+            built: true,
         };
+    }
+}
+
+/** A project whose package.json names a build script (a server-only project has none to run). */
+function hasBuildScript(dir: string): boolean {
+    try {
+        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf8'));
+        return typeof pkg?.scripts?.build === 'string' && pkg.scripts.build.trim().length > 0;
+    } catch {
+        return false;
     }
 }
 

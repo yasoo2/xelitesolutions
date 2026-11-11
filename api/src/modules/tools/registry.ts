@@ -13,7 +13,6 @@ import { TerminalManagerTool, SafeReadFileTool, AskUserTool } from './definition
 
 import { VisualQATool } from './definitions/VisualQATool';
 import { ImageGenerationTool } from './definitions/ImageGenerationTool';
-import { CodebaseNavigatorTool } from './definitions/CodebaseNavigatorTool';
 import { ArchitectTool } from './definitions/ArchitectTool';
 import { BulkFileGeneratorTool } from './definitions/BulkFileGeneratorTool';
 import { CentralAnswerTool } from './definitions/CentralAnswerTool';
@@ -346,9 +345,49 @@ const baseTools: ToolDefinition[] = [
   new SafeReadFileTool(),
   new AskUserTool(),
 
+  // ── engine: shell ──
+  // The agent engine's shell and background-process tools (core/engine/tools/shell.ts
+  // calls them through executeTool). Loaded here so this block is the whole edit.
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineShellTools').ENGINE_SHELL_TOOLS as ToolDefinition[]),
+  // ── end engine: shell ──
+
+  // ── engine: device ──
+  // Joe's hands on this computer (core/engine/tools/devices.ts calls it).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineDeviceTools').ENGINE_DEVICE_TOOLS as ToolDefinition[]),
+  // The owner's Android phone, through adb (core/engine/tools/android.ts calls it).
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  ...(require('./definitions/EngineAndroidTool').ENGINE_ANDROID_TOOLS as ToolDefinition[]),
+  // ── end engine: device ──
+
   // Revived tools (defensively instantiated above)
   ...revivedTools
 ].filter(Boolean) as any as ToolDefinition[];
+
+// ── engine: browser ──
+// The agent engine's browser (core/engine/tools/browser.ts reaches these
+// through executeTool). They are not named browser_*: ToolService rewrites
+// browser_open into browser_run and sends every browser_* name through the
+// one global heavy lane it shares with model calls.
+import { engineBrowserTools } from './definitions/EngineBrowserTools';
+baseTools.push(...engineBrowserTools);
+
+// ── engine: web ──
+// The agent engine's reader of public pages (core/engine/tools/web.ts reaches
+// it through executeTool); private, local and internal addresses are refused.
+import { ENGINE_WEB_TOOLS } from './definitions/EngineWebTools';
+baseTools.push(...ENGINE_WEB_TOOLS);
+// ── end engine: web ──
+// ── end engine: browser ──
+
+// ── engine: agent ──
+// The general agent engine's entry. AgentOrchestrator hands a build node
+// here when the run asks for the agent engine (core/engine/select.ts); the
+// tool assembles one run of core/engine/loop.ts over the engine_* tools.
+import { AgentEngineTool } from './definitions/AgentEngineTool';
+baseTools.push(AgentEngineTool);
+// ── end engine: agent ──
 
 /* ============================================================
    THE CONTRACT IS ENFORCED HERE, NOT HOPED FOR.
@@ -404,6 +443,14 @@ function enforceContract(t: any): void {
     t.rateLimitPerMinute = DEFAULT_RATE_LIMIT;
   }
 }
+
+// ── engine: files ──
+// The agent engine's file tools: core/engine/tools/files.ts reaches them
+// through executeTool, and they act only inside the run's project folder.
+// The first planner never offers or routes to them (modules/tools/engine-tools.ts).
+import { engineFileTools } from './definitions/EngineFileTools';
+baseTools.push(...engineFileTools);
+// ── end engine: files ──
 
 // Duplicate registrations are architecture errors. Fail during startup and in
 // registry tests instead of silently hiding an ambiguous execution path.

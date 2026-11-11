@@ -25,6 +25,7 @@ import { applyAccent } from '../accents';
 import { belongsToActiveSession, shouldOpenPreviewOnReady } from '../lib/preview-routing';
 import { isEngineeringReport, summarizeEngineeringReport } from '../lib/engineeringReportSummary';
 import { RunHistoryRecovery } from '../lib/run-history-recovery';
+import { isEngineStepEvent } from '../lib/activity-feed';
 
 interface Message {
     id: string;
@@ -32,6 +33,8 @@ interface Message {
     content: string;
     timestamp?: Date;
     files?: Array<{ id?: string; name?: string; mimeType?: string; size?: number }>;
+    /** The run that wrote this reply (the chat draws its activity under it). */
+    runId?: string;
 }
 
 export default function Joe() {
@@ -100,6 +103,10 @@ export default function Joe() {
      * tab a build streams into, and showing it starts no process at all.
      */
     const [workspaceTab, setWorkspaceTab] = useState<'browser' | 'terminal' | 'preview' | 'logs' | 'problems'>('logs');
+    //  What Joe works on now, shown live in the Preview: the phone or this computer (LiveDevicePanel).
+    const [liveSource, setLiveSource] = useState<'phone' | 'computer' | 'browser' | null>(null);
+    //  Another chat starts on its own page preview, not on the last chat's device.
+    useEffect(() => { setLiveSource(null); }, [activeSessionId]);
     // The theme was hardcoded to 'dark' on every mount, so switching to light
     // lasted exactly until the next reload. Remember the choice, and fall back to
     // the operating system's preference the first time.
@@ -315,12 +322,16 @@ export default function Joe() {
             const triggerUncollapse = () => {
                 window.dispatchEvent(new CustomEvent('joe:workspace-uncollapse'));
             };
+            //  Joe's browser, in the Preview: the same browser the Browser tab holds.
+            const showBrowser = () => { setLiveSource('browser'); setWorkspaceTab('preview'); };
             if (msg.type === 'panel_focus' && msg.data?.panel === 'browser' && msg.data?.reason === 'self_qa') {
                 keepBrowserVisibleRef.current = true;
                 // QA is only trustworthy when its browser is actually on screen.
                 // Keeping the panel mounted in the background is not enough: the
                 // focus event is the server's explicit instruction to reveal it.
-                setWorkspaceTab('browser');
+                // Revealed in the PREVIEW: the owner, 2026-11-08, «the preview
+                // shows everything Joe does», the browser included (showBrowser).
+                showBrowser();
                 triggerUncollapse();
             }
             const maySwitchAwayFromBrowser = !keepBrowserVisibleRef.current;
@@ -358,14 +369,29 @@ export default function Joe() {
              * the user actually wants to watch it.
              */
 
-            // Auto switch to browser for browser actions
-            if (isToolStart && (toolName.startsWith('browser_') || toolName === 'open_page' || toolName === 'click_element')) {
-                setWorkspaceTab('browser');
+            //  Joe works the owner's phone or this computer: the PREVIEW shows that
+            //  screen live (the owner, 2026-11-08: «why doesn't Joe's preview show
+            //  live what Joe is doing?… on the same preview, no more menus»). The
+            //  engine's steps are named engine:android_… and engine:device_…; the
+            //  device_ steps that list or link computers show no screen.
+            if (isToolStart && belongsToActiveSession(msg as any, activeSessionId)) {
+                const live = /^(?:engine:)?android_(?!devices|pair|connect|apps)/.test(toolName) ? 'phone'
+                    : /^(?:engine:)?device_(?:look|read|windows|focus|click|press|type|keys|scroll|open|drag)/.test(toolName) ? 'computer' : null;
+                if (live) {
+                    setLiveSource(live);
+                    setWorkspaceTab('preview');
+                    triggerUncollapse();
+                }
+            }
+
+            // Joe browses: the Preview shows his browser (the engine's steps are engine:browser_…).
+            if (isToolStart && (/^(?:engine:)?browser_/.test(toolName) || toolName === 'open_page' || toolName === 'click_element')) {
+                showBrowser();
                 triggerUncollapse();
             }
             // Only the names the server actually broadcasts.
             if (msg.type === 'browser_screenshot' || msg.type === 'stream_frame' || msg.type === 'browser_needs_user') {
-                setWorkspaceTab('browser');
+                showBrowser();
                 triggerUncollapse();
             }
 
@@ -443,6 +469,8 @@ export default function Joe() {
                          * page flips the tab to Preview.
                          */
                         if (shouldOpenPreviewOnReady(msg as any) && maySwitchAwayFromBrowser) {
+                            //  A finished page is what Joe works on now: the preview shows it, not a device.
+                            setLiveSource(null);
                             setWorkspaceTab('preview');
                             triggerUncollapse();
                         }
@@ -489,8 +517,11 @@ export default function Joe() {
                 setDepartmentStatus(msg.data);
             }
 
-            // Handle message finishing
-            if (msg.type === 'run_finished' || msg.type === 'step_failed') {
+            // Handle message finishing. A failed call of the agent engine is
+            // one step of its write, run, look and fix loop, not the end of
+            // the run: treating it as one reloaded the whole conversation on
+            // every failed command while the run went on.
+            if (msg.type === 'run_finished' || (msg.type === 'step_failed' && !isEngineStepEvent(msg))) {
                 setIsLoading(false);
                 keepBrowserVisibleRef.current = false;
                 // The final assistant answer is persisted before the closing
@@ -603,6 +634,26 @@ export default function Joe() {
         return () => window.removeEventListener('joe:workspace-tab-switch', handler);
     }, []);
 
+    // A REPLY TO JOE'S EMAIL ARRIVED (MailWatchService, 2026-11-08). Joe kept
+    // his message in the chat the email came from: when that chat is open it is
+    // read again at once (its live frame is dropped by the finished run's gate),
+    // and «open the chat» in the header's notice (JoeNoticeBanner) goes there.
+    useEffect(() => SocketService.subscribeNotices(n => {
+        if (n?.chatId && n.chatId === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+    }), []);
+    useEffect(() => {
+        const open = (e: Event) => {
+            const id = String((e as CustomEvent)?.detail?.id || '').trim();
+            if (!id) return;
+            if (agentSessions.some(s => s.id === id)) { setAgentSelected(id); setSelected(null); }
+            else { setSelected(id); setAgentSelected(null); }
+            try { localStorage.setItem(ACTIVE_SESSION_STORAGE_KEY, id); } catch { /* storage unavailable */ }
+            if (id === activeSessionIdRef.current) setHistoryRefreshTick(value => value + 1);
+        };
+        window.addEventListener('joe:open-session', open);
+        return () => window.removeEventListener('joe:open-session', open);
+    }, [agentSessions, setAgentSelected, setSelected]);
+
     // Load messages when the session changes. CRITICAL: clear the previous
     // session's messages immediately so a NEW/empty session never shows the old
     // conversation. A cancel flag prevents a late-resolving load from a previous
@@ -660,17 +711,15 @@ export default function Joe() {
                             content: isEngineeringReport(e.data?.text || '')
                                 ? summarizeEngineeringReport(e.data?.text || '', i18n.language)
                                 : e.data?.text || '',
-                            timestamp: new Date(e.ts || Date.now())
+                            timestamp: new Date(e.ts || Date.now()),
+                            ...(typeof e.runId === 'string' && e.runId ? { runId: e.runId } : {}),
                         }];
                     }
                     if (e.type === 'run_interrupted') {
-                        const arabic = String(i18n.language || '').toLowerCase().startsWith('ar');
                         return [{
                             id: e.id || `interrupted-${e.runId || e.ts}`,
                             role: 'assistant',
-                            content: arabic
-                                ? 'توقف التنفيذ لأن خدمة جو أُعيد تشغيلها قبل اكتماله. أرسل «أكمل» للمتابعة من آخر حالة محفوظة.'
-                                : 'The run was interrupted because Joe restarted before it finished. Send “Continue” to resume from the last saved state.',
+                            content: t('joe_runInterrupted'),
                             timestamp: new Date(e.ts || Date.now())
                         }];
                     }
@@ -769,15 +818,18 @@ export default function Joe() {
         // GUARD: this effect re-runs when workspaceId resolves (null -> id); without
         // this one-time flag the second run would create a SECOND session before the
         // first was committed, so two sessions appeared on first launch.
+        // Keep a reload on the conversation the user was actually reading.
+        // Zustand is in-memory, so without this a refresh silently opened
+        // the first/default session while the old run continued elsewhere.
+        // Read BEFORE the list loads: the load commits a default at once, and
+        // the effect that remembers the open session used to write the newest
+        // id over this one before it was read (2026-11-05, lib/session-selection).
+        const savedId = (() => {
+            try { return String(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || '').trim(); } catch { return ''; }
+        })();
         loadAllSessions().then(() => {
             if (didInitSessionRef.current) return;
-            // Keep a reload on the conversation the user was actually reading.
-            // Zustand is in-memory, so without this a refresh silently opened
-            // the first/default session while the old run continued elsewhere.
             const st = useSessionStore.getState();
-            const savedId = (() => {
-                try { return String(localStorage.getItem(ACTIVE_SESSION_STORAGE_KEY) || '').trim(); } catch { return ''; }
-            })();
             const savedAgent = savedId && st.agentSessions.some(s => s.id === savedId);
             const savedChat = savedId && st.sessions.some(s => s.id === savedId);
             if (savedAgent) {
@@ -1134,6 +1186,31 @@ export default function Joe() {
         return subscribeRunningSessions((sessions, runIds) => setRunningSnapshot({ sessions, runIds }));
     }, []);
 
+    /**
+     * A CONVERSATION OPENED WHILE JOE WORKS SHOWS WHAT JOE HAS DONE SO FAR.
+     *
+     * The live card, the plan and the terminal were fed only by socket frames
+     * this page had received, so a reload mid-run showed «Joe is working ·
+     * Understand» forty-eight steps into a build (UI/UX check, 2026-11-05).
+     * The run's record has every frame: ask it once per run, and rebuild the
+     * picture (SocketService.seedRun → lib/run-replay).
+     */
+    const seededRunRef = useRef<string>('');
+    const activeRunningId = activeSessionId ? (runningSnapshot.runIds.get(activeSessionId) || '') : '';
+    useEffect(() => {
+        const sid = activeSessionId;
+        const runId = activeRunningId;
+        if (!sid || !runId || seededRunRef.current === `${sid}:${runId}`) return;
+        seededRunRef.current = `${sid}:${runId}`;
+        api.get(`/runs/${encodeURIComponent(runId)}/receipt`)
+            .then((receipt: any) => {
+                if (activeSessionIdRef.current !== sid) return;
+                if (String(receipt?.status || '') !== 'running') return;
+                SocketService.seedRun(sid, runId, Array.isArray(receipt?.events) ? receipt.events : []);
+            })
+            .catch(() => { seededRunRef.current = ''; });
+    }, [activeSessionId, activeRunningId]);
+
     useEffect(() => {
         const finished = runHistoryRecoveryRef.current.observe(activeSessionId, runningSnapshot.sessions, runningSnapshot.runIds);
         // An early cancellation/failure may precede the persisted final reply.
@@ -1168,7 +1245,7 @@ export default function Joe() {
     }));
 
     return (
-        <ErrorBoundary fallbackTitle="تعذر تحميل Joe IDE بالكامل">
+        <ErrorBoundary fallbackTitle={t('joe_ideLoadFailed')}>
             <JoeIDELayout
                 // ... props ...
                 userAvatar={userInfo.avatar}
@@ -1184,6 +1261,8 @@ export default function Joe() {
                 isLoading={isLoading || isRunning(activeSessionId || '')}
                 workspaceTab={workspaceTab}
                 onWorkspaceTabChange={setWorkspaceTab}
+                liveSource={liveSource}
+                onLiveClose={() => setLiveSource(null)}
                 onDeploymentsClick={() => nav('/super-admin/deployments')}
                 onSystemClick={() => nav('/super-admin/system')}
                 browserSessionId={browserSessionId || undefined}

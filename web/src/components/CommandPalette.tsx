@@ -1,4 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useUiDir } from './NeuralTraceView';
 
 /**
  * CommandPalette — a ⌘K / Ctrl+K quick launcher (Linear/Raycast/VS Code style).
@@ -11,8 +13,8 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 
 export interface Command {
     id: string;
-    label: string;      // Arabic label (primary)
-    hint?: string;      // small right-side hint (English/shortcut)
+    label: string;      // in the interface language
+    hint?: string;      // small side hint (a short word or a shortcut)
     icon?: React.ReactNode;
     keywords?: string;  // extra search terms
     run: () => void;
@@ -22,10 +24,12 @@ interface Props {
     open: boolean;
     onClose: () => void;
     commands: Command[];
-    isArabic?: boolean;
 }
 
-export const CommandPalette: React.FC<Props> = ({ open, onClose, commands, isArabic = true }) => {
+export const CommandPalette: React.FC<Props> = ({ open, onClose, commands }) => {
+    // Words and direction both follow the language the user chose.
+    const { t } = useTranslation();
+    const uiDir = useUiDir();
     const [query, setQuery] = useState('');
     const [active, setActive] = useState(0);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -46,8 +50,8 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, commands, isAra
             setQuery('');
             setActive(0);
             // focus after the panel mounts
-            const t = setTimeout(() => inputRef.current?.focus(), 30);
-            return () => clearTimeout(t);
+            const timer = setTimeout(() => inputRef.current?.focus(), 30);
+            return () => clearTimeout(timer);
         }
     }, [open]);
 
@@ -80,7 +84,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, commands, isAra
             }}
         >
             <div
-                dir={isArabic ? 'rtl' : 'ltr'}
+                dir={uiDir}
                 onMouseDown={(e) => e.stopPropagation()}
                 onKeyDown={onKeyDown}
                 style={{
@@ -98,7 +102,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, commands, isAra
                         ref={inputRef}
                         value={query}
                         onChange={(e) => setQuery(e.target.value)}
-                        placeholder={isArabic ? 'ابحث أو نفّذ أمراً…' : 'Search or run a command…'}
+                        placeholder={t('palette_placeholder')}
                         style={{
                             flex: 1, background: 'transparent', border: 'none', outline: 'none',
                             color: 'var(--joe-text-primary, #eceef0)', fontSize: 15, fontFamily: 'inherit',
@@ -110,7 +114,7 @@ export const CommandPalette: React.FC<Props> = ({ open, onClose, commands, isAra
                 <div ref={listRef} style={{ overflowY: 'auto', padding: 6 }}>
                     {filtered.length === 0 ? (
                         <div style={{ padding: '26px 16px', textAlign: 'center', color: 'var(--joe-text-muted, #6e7178)', fontSize: 13.5 }}>
-                            {isArabic ? 'لا نتائج' : 'No results'}
+                            {t('palette_noResults')}
                         </div>
                     ) : filtered.map((c, i) => (
                         <button

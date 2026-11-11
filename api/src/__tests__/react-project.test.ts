@@ -853,7 +853,10 @@ describe('the hero archetypes and the sections that came with them', () => {
         });
         it('an EMPTY gallery renders nothing at all — never a section made of holes', () => {
             const gal = fs.readFileSync(path.join(out.output.path, 'src', 'components', 'Gallery.jsx'), 'utf-8');
-            expect(gal).toContain('if (!shots.length) return null;');
+            // An empty gallery he did not name renders nothing; only a gallery
+            // named in his navigation renders without photos (and says so).
+            expect(gal).toMatch(/if \(!shots\.length\) \{\s*if \(!content\.galleryRequested\) return null;/);
+            expect(fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8')).toContain('galleryRequested: false');
             expect(syntaxOk('Gallery.jsx', gal).ok).toBe(true);
             expect(fs.readFileSync(path.join(out.output.path, 'src', 'content.js'), 'utf-8')).toMatch(/gallery: \[\s*\]/);
         });

@@ -110,7 +110,12 @@ describe('the key the router reads is the key every caller writes', () => {
         //  The two that were wrong, named, so a regression says which.
         const round = fs.readFileSync(api('core', 'quality', 'model-round.ts'), 'utf-8');
         const code = stripComments(round);
-        expect(code).toContain("{ purpose: 'internal' },");
-        expect(code).toContain("{ ...(opts.context || {}), purpose: 'internal' },");
+        //  2026-10-25: both rounds now go through askToAuthor, which hands each
+        //  call the run's context with its own signal — so both spread that
+        //  context (the CSS round used to pass none, i.e. not his provider) and
+        //  both are still marked internal. The claim is unchanged.
+        expect(code.split("{ ...(context || {}), purpose: 'internal' },").length - 1).toBe(2);
+        expect(code).toContain('opts.context || {}, Math.max(5000, opts.timeoutMs || 45_000)');
+        expect(code).toContain('opts.context || {}, Math.max(5000, opts.timeoutMs || 90_000)');
     });
 });

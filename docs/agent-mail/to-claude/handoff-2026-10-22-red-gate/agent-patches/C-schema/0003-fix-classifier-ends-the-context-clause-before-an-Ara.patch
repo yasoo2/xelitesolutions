@@ -1,0 +1,95 @@
+From 9ba4d057558187fb1845bbc9e605996bbe096b47 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:11:05 +0000
+Subject: [PATCH 3/4] =?UTF-8?q?fix(classifier):=20=C2=AB=D8=8C=C2=BB=20end?=
+ =?UTF-8?q?s=20the=20context=20clause=20before=20an=20Arabic=20build=20ver?=
+ =?UTF-8?q?b?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e (a-verb-phrase-read-as-a-column):
+  "NEGATIVE — TWO columns still outrank the noun, exactly as before"
+  "NEGATIVE — and the archetype that a column list SHOULD override still is"
+  detectAppKind('عندي عيادة أسنان، أريد جدولاً فيه اسم المريض ورقم تلفونه ووقت الموعد')
+    Expected: "generic"  Received: "booking"
+
+Culprit (bisected): 81e8913c. detectAppKind's "a list he wrote outranks a
+noun he happened to use" rule now goes through hasExplicitRecordSchema,
+which also requires a build clause. 76f66a5d then made that gate
+deliberate - it reads a build verb at a clause start ("I run a camel farm.
+I want a register…") and pins detectAppKind(<camel description with no
+build verb>) === null. So the gate stays.
+Root cause: the clause boundary was read only at [.؟!\n]. The owner closes
+the context clause with «،» just as often; his request «أريد جدولاً …»
+stood after a comma, went unread, and the clinic noun won the classifier.
+Decision: R, inside 76f66a5d's own design: «،» also starts a clause for the
+Arabic build words (first-person wants / imperatives). English keeps its
+sentence marks: there the comma separates list items and «make»/«design»
+after it may be a column. 76f66a5d's camel test, the planner's "a noun
+phrase is a specification, not a request" test and engineering-discovery
+stay green. Added the negative: the same clinic sentence with the verb
+removed («، جدولها فيه …») is not promoted.
+
+Mutation evidence (mutate.py, sha256 identical after each):
+  M1c «،» removed from the Arabic clause start:
+    ✕ NEGATIVE — TWO columns still outrank the noun  Expected: "generic" Received: "booking"
+    ✕ NEGATIVE — and the archetype that a column list SHOULD override still is
+      Expected: "generic" Received: "booking"
+  M2c any «،» counts as a request (verb no longer required):
+    ✕ NEGATIVE — the «،» opens his request only through his verb
+      Expected: not "generic"
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../__tests__/a-verb-phrase-read-as-a-column.test.ts  |  8 ++++++++
+ api/src/core/design/app-blueprints.ts                 | 11 ++++++++++-
+ 2 files changed, 18 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/a-verb-phrase-read-as-a-column.test.ts b/api/src/__tests__/a-verb-phrase-read-as-a-column.test.ts
+index ef24e27c..ccfa5b53 100644
+--- a/api/src/__tests__/a-verb-phrase-read-as-a-column.test.ts
++++ b/api/src/__tests__/a-verb-phrase-read-as-a-column.test.ts
+@@ -100,6 +100,14 @@ describe('a column is named by a noun, never by a verb', () => {
+         expect(detectAppKind('عندي عيادة أسنان، أريد جدولاً فيه اسم المريض ورقم تلفونه ووقت الموعد')).toBe('generic');
+     });
+ 
++    it('NEGATIVE — the «،» opens his request only through his verb: the same sentence without one is not promoted', () => {
++        //  The two tests above pass because «،» now ends the context clause
++        //  and «أريد» opens the request. The comma is not the request: take
++        //  the verb out of the very same sentence and the list stays a
++        //  description, which the planner contract refuses to build from.
++        expect(detectAppKind('عندي عيادة أسنان، جدولها فيه اسم المريض ورقم تلفونه ووقت الموعد')).not.toBe('generic');
++    });
++
+     it('NEGATIVE — a noun that OPENS with a verb letter is still a column', () => {
+         //  The case chosen to hurt: «يوم التسليم» opens with ي and is a
+         //  noun. It stands here so no future widening of the behaviour-verb
+diff --git a/api/src/core/design/app-blueprints.ts b/api/src/core/design/app-blueprints.ts
+index 579491a2..de721295 100644
+--- a/api/src/core/design/app-blueprints.ts
++++ b/api/src/core/design/app-blueprints.ts
+@@ -3278,9 +3278,18 @@ export function hasExplicitRecordSchema(requestRaw: string): boolean {
+     // camel farm. I want a register...". The build verb begins the second
+     // sentence, not the whole message. Read a clause boundary, while still
+     // refusing a mere description that never asks Joe to create anything.
++    //
++    // Arabic closes that context with «،» just as often: «عندي عيادة أسنان،
++    // أريد جدولاً فيه …» is the same two clauses, and a boundary read only at
++    // «.» left his request unread, so the clinic noun won the classifier and
++    // his three columns lost to a stock booking table. The Arabic words below
++    // are a first-person want or an imperative, so one standing after «،»
++    // opens his request. English keeps its sentence marks: there the comma
++    // separates list items, and «make» or «design» after it may be a column.
+     const clauseStart = '(?:^|[.؟!\\n]\\s*)';
++    const arabicClauseStart = '(?:^|[.؟!\\n،]\\s*)';
+     const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
+-        || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
++        || new RegExp(`${arabicClauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
+     if (!isBuildRequest) return false;
+     const columns = columnsAnywhereInHisRequest(requestRaw);
+     return Array.isArray(columns) && columns.length >= 2;
+-- 
+2.43.0
+

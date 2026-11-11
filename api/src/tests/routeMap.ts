@@ -108,6 +108,14 @@ export function uiPaths(): Array<{ path: string; file: string }> {
         for (const m of body.matchAll(/\$\{[A-Za-z_]*(?:API|BASE)[A-Za-z_]*\}(\/[a-zA-Z0-9/_.:$%{}()-]*)/g)) {
             const p = '/api' + m[1]
                 .replace(/\$\{[^}]*\}/g, 'x')
+                // A hole left open is an expression this reader cannot follow (a
+                // space, a quote or a `?` stopped it). After a slash it is one
+                // segment chosen at run time, so one id; glued to a segment it
+                // is a suffix built at run time — `/project/import${chat ? `?…` : ''}`
+                // was reported as «/api/project/import${chat», a path nothing
+                // serves, while POST /api/project/import exists (2026-11-08).
+                .replace(/\/\$\{.*$/, '/x')
+                .replace(/\$\{.*$/, '')
                 .replace(/\?.*$/, '')
                 .replace(/\/+$/, '');
             if (!p || p.includes('..') || p === '/api') continue;

@@ -1,10 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
+import { LOCAL_INFERENCE_HARD_MAX_MS, noteLocalThroughput } from '../local-throughput';
+import { localInferenceFetch } from './loopback-fetch';
+import { CONTEXT_HARD_MAX_TOKENS, localContextCeilingTokens } from '../../resources/context-ceiling';
 
 // Pinned contract: Ollama v0.35.1 api/types.go (research observation 2026-10-14).
 // Estimates below are admission policy, not exact tokenizer or image accounting.
-const MAX_CONTEXT = 8192;
-const DEFAULT_CONTEXT = 4096;
+const MAX_CONTEXT = CONTEXT_HARD_MAX_TOKENS;
+/** The largest window a managed local call asks for on this deployment (operator ceiling). */
+export function managedContextCeilingTokens(): number { return localContextCeilingTokens(); }
+const MIN_FITTED_OUTPUT_TOKENS = 256;
 const MAX_REQUEST_BYTES = 8 * 1024 * 1024;
 const MAX_RECORD_BYTES = 256 * 1024;
 const MAX_RESPONSE_BYTES = 8 * 1024 * 1024;
@@ -14,14 +19,28 @@ const MAX_MESSAGES = 256;
 const MAX_TOOLS = 128;
 
 export class ManagedOllamaError extends Error {
-    constructor(public readonly code: string, message: string) {
+    constructor(public readonly code: string, message: string,
+        /** The numbers behind the code (a queue wait, a deadline), shown with his sentence. */
+        public readonly details: Record<string, number | string> = {}) {
         super(message);
         this.name = 'ManagedOllamaError';
     }
 }
 
-function fail(code: string, message: string): never {
-    throw new ManagedOllamaError(code, message);
+function fail(code: string, message: string, details?: Record<string, number | string>): never {
+    throw new ManagedOllamaError(code, message, details);
+}
+
+/** A closed vocabulary for a local server's error body: the text itself may hold prompt or secret fragments. */
+export function serverErrorClass(body: string): string {
+    if (!body.trim()) return 'empty';
+    if (/out of memory|insufficient memory|requires more system memory|\balloc/i.test(body)) return 'memory';
+    if (/context (?:length|window|size)|num_ctx|exceeds?|too long|truncat/i.test(body)) return 'context';
+    if (/cancel/i.test(body)) return 'cancelled';
+    if (/time(?:d)?\s*out|deadline/i.test(body)) return 'timeout';
+    if (/llama.?server|runner|exit status|terminated|unexpected EOF|connection (?:reset|refused)|EOF\b|model (?:failed|not) (?:to )?load/i.test(body)) return 'runner';
+    if (/not found|no such model|pull/i.test(body)) return 'model-missing';
+    return 'unclassified';
 }
 
 export function isManagedOllamaEndpoint(baseURL: string): boolean {
@@ -45,6 +64,8 @@ export interface ManagedOllamaChatOptions {
     tools?: readonly unknown[];
     onDelta?: (delta: string) => void;
     signal?: AbortSignal;
+    /** Called once, when the resource lane admits this call and the model starts on it. */
+    onAdmitted?: () => void;
     timeoutMs: number;
     maxCompletionTokens?: number;
     // Trusted server policy; never derive this from a user's prompt or tool args.
@@ -401,19 +422,35 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
     if (typeof options.model !== 'string' || options.model.length > 128
         || !/^[a-z0-9][a-z0-9._-]*(?:\/[a-z0-9][a-z0-9._-]*)?(?::[a-z0-9][a-z0-9._-]*)?$/i.test(options.model)
         || /(?:^|[/:._-])(?:cloud|auto)(?:$|[/:._-])/i.test(options.model)) fail('OLLAMA_MODEL', 'Managed inference requires an explicit local model name.');
-    if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > 30 * 60 * 1000) {
-        fail('OLLAMA_TIMEOUT_INPUT', 'Local inference timeout must be between 1 ms and 30 minutes.');
+    if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1 || options.timeoutMs > LOCAL_INFERENCE_HARD_MAX_MS) {
+        fail('OLLAMA_TIMEOUT_INPUT', 'Local inference timeout must be between 1 ms and the local inference hard maximum.');
     }
-    const maxContextTokens = options.maxContextTokens ?? DEFAULT_CONTEXT;
-    if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 and 8192 tokens.');
-    const outputTokens = options.maxCompletionTokens ?? 512;
-    if (!Number.isInteger(outputTokens) || outputTokens < 1 || outputTokens >= maxContextTokens) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be positive and below the managed context ceiling.');
+    // Requested ceiling (the operator's); the resource manager admits a window that fits memory.
+    const maxContextTokens = options.maxContextTokens ?? managedContextCeilingTokens();
+    if (!Number.isInteger(maxContextTokens) || maxContextTokens < 1 || maxContextTokens > MAX_CONTEXT) fail('OLLAMA_CONTEXT_INPUT', 'Managed context policy must be between 1 token and the context hard maximum.');
+    // A caller that set no cap gets the room the window leaves (fitted below),
+    // not 512 tokens. Eval round 7 (2026-10-23): every page section asked for
+    // no cap, got 512, and ended after 21 min as LOCAL_COMPLETION_LIMIT — one
+    // HTML section is longer than 512 tokens on any machine.
+    const requestedOutputTokens = options.maxCompletionTokens ?? maxContextTokens;
+    if (!Number.isInteger(requestedOutputTokens) || requestedOutputTokens < 1) fail('OLLAMA_OUTPUT_INPUT', 'Output tokens must be a positive integer.');
+    // Fitted to the room the prompt leaves once it is measured (below).
+    let outputTokens = requestedOutputTokens;
     if (options.reasoningEffort !== undefined && options.reasoningEffort !== 'none') fail('OLLAMA_UNSUPPORTED_INPUT', 'Unsupported local reasoning effort.');
     if (options.temperature !== undefined && (!Number.isFinite(options.temperature) || options.temperature < 0 || options.temperature > 2)) fail('OLLAMA_UNSUPPORTED_INPUT', 'Temperature must be finite and between 0 and 2.');
     if (options.format !== undefined && options.format !== 'json' && !object(options.format)) fail('OLLAMA_FORMAT_INPUT', 'Native format must be json or a JSON-schema object.');
     const deadline = new AbortController();
-    const deadlineAt = Date.now() + options.timeoutMs;
+    const startedAt = Date.now();
+    const deadlineAt = startedAt + options.timeoutMs;
     let timedOut = false;
+    // ⛔ Second review of round 21: a call whose deadline passed while it WAITED
+    // for its turn (no request sent, nothing admitted) was reported as a model
+    // call that «ran past its deadline … part of the work may have run» — all
+    // false. These two instants say which it was: before the request reaches
+    // the server, the deadline ends a wait (RESOURCE_QUEUE_TIMEOUT, an
+    // admission refusal); after it, a run (RESOURCE_TIMEOUT).
+    let queuedAt = 0;
+    let sentAt = 0;
     const timer = setTimeout(() => { timedOut = true; deadline.abort(); }, options.timeoutMs);
     timer.unref?.();
     const outer = linkedSignals([options.signal, deadline.signal]);
@@ -428,6 +465,16 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         const tools = mapTools(options.tools);
         if (tools?.length) mapped.promptEstimatedTokens += Math.ceil(Buffer.byteLength(json(tools), 'utf8') / 3) + 64;
         if (options.format !== undefined) mapped.promptEstimatedTokens += Math.ceil(Buffer.byteLength(json(options.format), 'utf8') / 3);
+        // ⛔ A wish for more output than the context can hold is not a reason to
+        // produce nothing. Eval 2026-10-22: ai_write_file asked 6000 output tokens
+        // of a 4096 context and EVERY non-frontend file failed before inference.
+        // The output gets the room the measured prompt leaves; only when even a
+        // minimal answer cannot fit is it a real overflow.
+        const room = maxContextTokens - mapped.promptEstimatedTokens - 1;
+        if (requestedOutputTokens > room) {
+            if (room < MIN_FITTED_OUTPUT_TOKENS) fail('RESOURCE_CONTEXT_OVERFLOW', 'The prompt leaves no room for an answer inside the managed context.');
+            outputTokens = room;
+        }
         const basePayload = {
             model: options.model, messages: mapped.messages, stream: !!options.onDelta,
             keep_alive: '5m', truncate: false, shift: false,
@@ -437,8 +484,10 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
         if (Buffer.byteLength(json(basePayload), 'utf8') > MAX_REQUEST_BYTES) fail('OLLAMA_INPUT_LIMIT', 'Local inference request exceeded the byte limit.');
         checkDeadline();
         const manager = dependencies.resourceManager ?? requestResourceManager;
+        queuedAt = Date.now();
         const result = await manager.withInference(async budget => {
             checkDeadline();
+            try { options.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
             if (!Number.isInteger(budget.contextTokens) || budget.contextTokens < 1 || budget.contextTokens > maxContextTokens
                 || !Number.isInteger(budget.outputTokens) || budget.outputTokens < 1 || budget.outputTokens > outputTokens
                 || mapped.promptEstimatedTokens + budget.outputTokens > budget.contextTokens) {
@@ -452,16 +501,37 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 if (Buffer.byteLength(body, 'utf8') > MAX_REQUEST_BYTES) fail('OLLAMA_INPUT_LIMIT', 'Local inference request exceeded the byte limit.');
                 const endpoint = new URL(options.baseURL);
                 endpoint.pathname = '/api/chat';
-                const response = await (dependencies.fetch ?? globalThis.fetch)(endpoint.toString(), {
-                    method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
-                    redirect: 'error',
-                });
+                let response: Response;
+                checkDeadline();
+                sentAt = Date.now();
+                try {
+                    response = await (dependencies.fetch ?? localInferenceFetch())(endpoint.toString(), {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal: run.signal,
+                        redirect: 'error',
+                    });
+                } catch (error) {
+                    assertActive(run.signal);
+                    // Eval round 6 (2026-10-23): plans failed at 311-414 s with no code at
+                    // all — the raw fetch rejection. Log its class and the transport's
+                    // own code (e.g. UND_ERR_HEADERS_TIMEOUT), never its message.
+                    const cause = (error as any)?.cause;
+                    const safe = (value: unknown) => /^[A-Za-z][A-Za-z0-9_]{1,63}$/.test(String(value ?? '')) ? String(value) : undefined;
+                    console.warn('[LocalCall] transport-error', JSON.stringify({ name: safe((error as any)?.name),
+                        code: safe((error as any)?.code), causeName: safe(cause?.name), causeCode: safe(cause?.code),
+                        afterMs: Date.now() - (deadlineAt - options.timeoutMs) }));
+                    fail('OLLAMA_TRANSPORT_ERROR', 'Local inference transport failed; no retry was started.');
+                }
                 if (run.signal.aborted) {
                     try { await response.body?.cancel(); } catch { /* Only this aborted request's response. */ }
                 }
                 assertActive(run.signal);
                 if (!response.ok) {
-                    try { await response.body?.cancel(); } catch { /* Do not echo server bodies or secrets. */ }
+                    // The loopback server's reason is CLASSIFIED for the operator log;
+                    // its text is never echoed anywhere. Eval round 6 (2026-10-23):
+                    // five plans failed at 311-414 s as a bare HTTP 500, no reason.
+                    let reason = '';
+                    try { reason = (await response.text()).slice(0, 4096); } catch { /* The status alone is still logged. */ }
+                    console.warn('[LocalCall] server-error', JSON.stringify({ status: response.status, reason: serverErrorClass(reason) }));
                     fail('OLLAMA_HTTP_ERROR', `Local inference returned HTTP ${response.status}.`);
                 }
                 const completion = await consume(response, !!options.onDelta, run.signal, budget, mapped.promptEstimatedTokens, options.onDelta);
@@ -469,12 +539,28 @@ export async function managedOllamaChat(options: ManagedOllamaChatOptions,
                 return completion;
             } finally { run.close(); }
         }, { promptEstimatedTokens: mapped.promptEstimatedTokens, requestedOutputTokens: outputTokens,
-            requestedContextTokens: maxContextTokens, signal: outer.signal,
-            queueTimeoutMs: Math.min(options.timeoutMs, 300_000) });
+            requestedContextTokens: maxContextTokens, fitOutputToContext: true, signal: outer.signal,
+            // The caller's deadline already covers queue wait (RESOURCE_QUEUE_TIMEOUT
+            // below, with the wait it measured); a second, fixed 300 s queue cap
+            // failed every call queued behind one CPU plan (eval round 6:
+            // RESOURCE_QUEUE_TIMEOUT at 300 013 ms, deadline 30 min).
+            queueTimeoutMs: options.timeoutMs });
         checkDeadline();
+        // Every successful receipt teaches the deadlines what this machine really does.
+        noteLocalThroughput(result.metrics);
+        // The numbers behind every sized deadline, for calibrating long calls.
+        console.info('[LocalThroughput]', JSON.stringify({ promptTokens: result.metrics?.prompt_eval_count, promptMs: Math.round((result.metrics?.prompt_eval_duration || 0) / 1e6),
+            outputTokens: result.metrics?.eval_count, outputMs: Math.round((result.metrics?.eval_duration || 0) / 1e6), contextTokens: result.metrics?.contextTokens }));
         return result;
     } catch (error) {
-        if (timedOut) fail('RESOURCE_TIMEOUT', 'Local inference exceeded its request deadline, including queue wait.');
+        if (timedOut) {
+            const now = Date.now();
+            const queueWaitMs = Math.max(0, (sentAt || now) - (queuedAt || startedAt));
+            if (!sentAt) fail('RESOURCE_QUEUE_TIMEOUT', 'Local inference did not start before its request deadline: it was still waiting for its turn.',
+                { queueWaitMs, deadlineMs: options.timeoutMs });
+            fail('RESOURCE_TIMEOUT', 'Local inference ran past its request deadline after the local server received it.',
+                { deadlineMs: options.timeoutMs, queueWaitMs, runMs: Math.max(0, now - sentAt) });
+        }
         if (outer.signal.aborted) fail('RESOURCE_CANCELLED', 'Local inference was cancelled.');
         if (error instanceof ManagedOllamaError) throw error;
         if (typeof (error as any)?.code === 'string' && /^(?:RESOURCE_|HEAVY_)/.test((error as any).code)) throw error;

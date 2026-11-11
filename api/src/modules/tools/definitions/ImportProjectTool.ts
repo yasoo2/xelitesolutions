@@ -15,6 +15,7 @@ import { ToolPermission, ToolExecutionResult } from '../types';
 import { analyzeProject, formatAnalysis } from '../../../core/project/analyze';
 import { broadcast, broadcastThinkingDetail, broadcastTerminalLine } from '../../../api/ws';
 import { persistJoeProjects, writeJoeProject } from '../../../api/page-store';
+import { isRunnerSummaryLine, judgeTestRun } from '../../../core/quality/test-run-evidence';
 
 export function githubUrlFrom(text: string): string | null {
     const m = String(text || '').match(/https?:\/\/(?:www\.)?github\.com\/([\w.-]+)\/([\w.-]+?)(?:\.git)?(?:[\/#?\s]|$)/i)
@@ -31,7 +32,8 @@ export type RepositoryFinding = {
 };
 
 export type RepositoryVerification = {
-    status: 'passed' | 'failed' | 'not_configured' | 'skipped_dependencies_missing' | 'skipped_unsafe_script' | 'timed_out' | 'unavailable';
+    /** 'ran_no_tests': the command exited 0 while its runner's own summary says no test ran — not a pass. */
+    status: 'passed' | 'failed' | 'ran_no_tests' | 'not_configured' | 'skipped_dependencies_missing' | 'skipped_unsafe_script' | 'timed_out' | 'unavailable';
     packagePath?: string;
     command?: string;
     exitCode?: number | null;
@@ -196,18 +198,29 @@ export async function auditImportedProject(
             opts.onLine?.(`verification: ${testCommand} (bounded to 120s)`);
             const { executionEngine } = require('../../../kernel/ExecutionEngine');
             const command = manager === 'pnpm' ? 'pnpm' : manager === 'yarn' ? 'yarn' : 'npm';
+            // The runner's own summary lines — all a test-run verdict reads — kept
+            // beside the bounded display, so exit 0 with «ℹ tests 0» is not a pass (Q1).
+            const summary: string[] = [];
             const handle = executionEngine.runArgvStreaming(command, ['test'], {
                 cwd: testCandidate.dir,
                 timeout: 120_000,
-                onLine: (line: string, stream: 'stdout' | 'stderr') => opts.onLine?.(`  [test:${stream}] ${line.slice(0, 360)}`),
+                onLine: (line: string, stream: 'stdout' | 'stderr') => {
+                    if (isRunnerSummaryLine(line)) summary.push(line);
+                    opts.onLine?.(`  [test:${stream}] ${line.slice(0, 360)}`);
+                },
             });
             const result = await handle.done;
-            verification = result.ok
+            const judged = judgeTestRun(result.ok === true, summary.join('\n'));
+            verification = judged.passed
                 ? { status: 'passed', packagePath: testCandidate.relativePath, command: testCommand, exitCode: result.exitCode, message: opts.isAr ? 'نجح الاختبار الحتمي المحدود.' : 'The bounded deterministic test passed.' }
+                : judged.ranNothing
+                    ? { status: 'ran_no_tests', packagePath: testCandidate.relativePath, command: testCommand, exitCode: result.exitCode, message: opts.isAr ? `انتهى أمر الاختبار بنجاح لكنه لم يشغّل أي اختبار (${judged.ranNothing.runner}: ${judged.ranNothing.evidence})؛ هذا ليس نجاحاً.` : `The test command exited 0 but ran no test (${judged.ranNothing.runner}: ${judged.ranNothing.evidence}); that is not a pass.` }
                 : result.exitCode === 124
                     ? { status: 'timed_out', packagePath: testCandidate.relativePath, command: testCommand, exitCode: result.exitCode, message: opts.isAr ? 'توقف الاختبار عند حد 120 ثانية.' : 'The test reached the 120-second limit.' }
                     : { status: 'failed', packagePath: testCandidate.relativePath, command: testCommand, exitCode: result.exitCode, message: opts.isAr ? 'فشل الاختبار؛ راجع مخرجات الطرفية الظاهرة.' : 'The test failed; review the visible terminal output.' };
-            if (!result.ok) {
+            if (judged.ranNothing) {
+                findings.push({ severity: 'medium', code: 'test-ran-nothing', message: opts.isAr ? 'أمر الاختبار المعلن لا يشغّل أي اختبار.' : 'The declared test command runs no test.', evidence: `${testCommand} exit=${result.exitCode}; ${judged.ranNothing.evidence}`.slice(0, 300) });
+            } else if (!result.ok) {
                 findings.push({ severity: 'high', code: verification.status === 'timed_out' ? 'test-timeout' : 'test-failure', message: verification.status === 'timed_out' ? (opts.isAr ? 'تجاوز الاختبار المهلة المسموح بها.' : 'The test exceeded the permitted time limit.') : (opts.isAr ? 'فشل اختبار موجود في المشروع.' : 'A project test failed.'), evidence: `${testCommand} exit=${result.exitCode === null ? 'unavailable' : result.exitCode}` });
             }
         }

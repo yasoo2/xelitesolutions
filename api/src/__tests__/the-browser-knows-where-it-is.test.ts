@@ -87,7 +87,9 @@ describe('the browser asks where it landed before it grades anything', () => {
 
     it('a page with no control and no form is that finding, not a typography review', () => {
         const a = AUDIT();
-        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length && !auditErrors\.length\) \{/);
+        //  …and no link to another of the app's own pages (inAppRoutes, the 500
+        //  exam P071, 2026-11-06): a page of such links is judged by the pages it opens.
+        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length && !auditErrors\.length && !routes\.length\) \{/);
         expect(a).toMatch(/id: 'empty_page', severity: 'high'/);
         expect(a).toContain('هذه ليست واجهة تطبيق');
     });

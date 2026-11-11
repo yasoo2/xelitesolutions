@@ -1,0 +1,124 @@
+From 8c62b64d58e5c78f4204a013818778c67e3c700e Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:05:07 +0000
+Subject: [PATCH 4/9] test(panel): hold the warm-up and the watch invitation to
+ the current flow
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e:
+  panel-shows-the-audit › and the build wakes it BEFORE npm install, not when the audit starts   (culprit 76f66a5d)
+  panel-shows-the-audit › and «أصلح ما تبقّى» warms it too — it audits within seconds of starting (culprit 30f07853)
+  panel-shows-the-audit › and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie (culprit c219da21)
+
+Root causes and decisions (all P — the invariant still holds in the new code):
+- 76f66a5d rewrote the install: `run('npm', [\n 'install', …` plus an exact
+  offline cache (`npm ci`), a clean reinstall and a native-tool repair whose
+  helpers are DEFINED above the warm-up but run inside the install after it.
+  `indexOf("run('npm', ['install'")` became -1. The case now takes every
+  install whose exit the build waits on (`inst = await …`: ci, install, clean
+  reinstall) and requires the warm-up before each and each before the audit.
+- 30f07853 warms `watchSessionId` (the session the audit borrows; the panel's
+  own by default) instead of PANEL_BROWSER_SID. The case asserts the fallback
+  to PANEL_BROWSER_SID, the warmed session, and that the audit borrows the
+  same one — a mismatch the culprit had fixed — and still warm-before-audit.
+- c219da21 renamed the audit's post-choice step 'pressing' -> 'discovering'
+  and forwards the probe's own steps ('forms', 'exploring', 'state:…'). The
+  case now requires every speaking branch of the build's handler (all but
+  'watching'/'private') to be gated on auditVisible, so a new event without
+  the gate fails, not only one named event.
+
+Mutations (restored, sha256 identical each time):
+  pan1 warm-up moved after `installExit = inst`  -> ✕ Expected: < 395084  Received: 401289
+  pan2 repair warm-up moved after the first audit -> ✕ Expected: < 11208  Received: 12508
+  pan3 repair warms PANEL_BROWSER_SID again        -> ✕ Expected pattern /warmBrowserSession\(watchSessionId\)/
+  pan4 'discovering' branch ungated                -> ✕ Expected / && auditVisible$/ Received "where === 'discovering'"
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../__tests__/panel-shows-the-audit.test.ts   | 43 ++++++++++++++++---
+ 1 file changed, 37 insertions(+), 6 deletions(-)
+
+diff --git a/api/src/__tests__/panel-shows-the-audit.test.ts b/api/src/__tests__/panel-shows-the-audit.test.ts
+index 155eed0d..d7cc8df1 100644
+--- a/api/src/__tests__/panel-shows-the-audit.test.ts
++++ b/api/src/__tests__/panel-shows-the-audit.test.ts
+@@ -38,15 +38,24 @@ describe('the browser is awake before the audit needs it', () => {
+     it('and the build wakes it BEFORE npm install, not when the audit starts', () => {
+         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+         const warmAt = r.indexOf('warmBrowserSession(');
+-        const installAt = r.indexOf("run('npm', ['install'");
++        //  THE INSTALL IS WHERE ITS EXIT CODE IS TAKEN, NOT THE FIRST `'install'`
++        //  IN THE FILE. The install grew an exact-offline-cache path (`npm ci`),
++        //  a clean bounded reinstall and a native-tool repair. The last two are
++        //  helpers DEFINED above the warm-up and only RUN inside the install
++        //  that follows it, so the first textual `'install'` is not when npm
++        //  starts. Every install the build waits on assigns `inst`.
++        const installs = [...r.matchAll(/inst = await (?:run\('npm', \[\s*'(install|ci)'|cleanReinstallReactDependencies\()/g)];
+         const auditAt = r.indexOf('audit = await auditBuiltApp');
+         expect(warmAt).toBeGreaterThan(0);
+         expect(r).toContain('browserSessionId');
+         expect(r).toContain('const auditSid = String(context?.browserSessionId || \'\').trim() || PANEL_BROWSER_SID;');
+         expect(r).toContain('waitForPanelWatcher(auditSid, 15_000)');
+         expect(r).toContain('watchSessionId: auditSid');
+-        expect(warmAt).toBeLessThan(installAt);
+-        expect(installAt).toBeLessThan(auditAt);
++        expect(installs.map(m => m[1] || 'clean-reinstall').sort()).toEqual(['ci', 'clean-reinstall', 'install']);
++        for (const install of installs) {
++            expect(warmAt).toBeLessThan(install.index!);
++            expect(install.index!).toBeLessThan(auditAt);
++        }
+     });
+ 
+     it('and a build that was told to skip the audit does not open a browser at all', () => {
+@@ -60,7 +69,13 @@ describe('the browser is awake before the audit needs it', () => {
+ 
+     it('and «أصلح ما تبقّى» warms it too — it audits within seconds of starting', () => {
+         const p = read('modules', 'tools', 'definitions', 'ProjectRepairTool.ts');
+-        expect(p).toMatch(/warmBrowserSession\(PANEL_BROWSER_SID\)/);
++        //  It warms the session the panel WATCHES, which is the very session
++        //  the audit then borrows — the panel's own unless the repair was
++        //  started for another one (30f07853). Warming one session and
++        //  measuring in another would be the white rectangle again.
++        expect(p).toContain("const watchSessionId = String(input?.watchSessionId || context?.browserSessionId || PANEL_BROWSER_SID || '').trim();");
++        expect(p).toMatch(/warmBrowserSession\(watchSessionId\)/);
++        expect(p).toMatch(/watchSessionId: watchSessionId \|\| undefined/);
+         // …before the first MEASUREMENT (the import above it is not the audit).
+         // The directory the audit is handed was once called `dist` and is now
+         // `auditDir`. The guarantee was never the NAME of that variable — it is
+@@ -162,12 +177,28 @@ describe('and he is never invited to watch a browser he cannot see', () => {
+ 
+     it('and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie', () => {
+         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+-        // The audit emits 'pressing' as well as 'watching' / 'private'.
+         expect(r).toMatch(/if \(where === 'watching'\) \{\s*\n\s*auditVisible = true;/);
+         expect(r).toMatch(/if \(where === 'pressing' && auditVisible\)/);
+         expect(r).toMatch(/auditVisible = false;/);
++        //  The audit's step after choosing its browser was 'pressing'; it is
++        //  'discovering' now, and the control probe reports its own steps
++        //  ('forms', 'exploring', 'state:…') through the same callback.
+         const a = read('core', 'quality', 'app-audit.ts');
+-        expect(a).toMatch(/onProgress\?\.\('pressing'\)/);
++        expect(a).toMatch(/onProgress\?\.\('discovering'\)/);
++        expect(a).toContain('onProgress: opts?.onProgress');
++        //  So the rule is held for EVERY event, not for one name: in the
++        //  build's handler, each branch other than the two that set the
++        //  state ('watching', 'private') speaks only while auditVisible. An
++        //  event added later without the gate fails here.
++        const from = r.indexOf('onProgress: (where: string) => {', r.indexOf('audit = await auditBuiltApp'));
++        const handler = r.slice(from, r.indexOf('\n            });', from));
++        const branches = [...handler.matchAll(/if \((where(?: === '[^']+'|\.startsWith\('[^']+'\))[^)]*)\)/g)].map(m => m[1]);
++        const speaking = branches.filter(b => b !== "where === 'watching'" && b !== "where.startsWith('private')");
++        expect(branches.length - speaking.length).toBe(2);
++        for (const event of ["where === 'discovering'", "where === 'forms'", "where === 'exploring'", "where.startsWith('state:')"]) {
++            expect(speaking.map(b => b.replace(/ && auditVisible$/, ''))).toContain(event);
++        }
++        for (const branch of speaking) expect(branch).toMatch(/ && auditVisible$/);
+     });
+ 
+     it('never calls a borrowed-but-unwatched browser visible', () => {
+-- 
+2.43.0
+

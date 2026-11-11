@@ -1,0 +1,11 @@
+{
+  "name": "travel-agency-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "لوحة تحكم لإدارة وكالة سفر: الرحلات والحجوزات والمسافرون والملخص",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/api.test.js"
+  }
+}

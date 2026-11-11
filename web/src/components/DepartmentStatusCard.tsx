@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUiDir } from './NeuralTraceView';
 
 /**
  * DepartmentStatusCard — the live "engineering company" pipeline strip.
@@ -33,17 +34,29 @@ interface Props {
     isArabic?: boolean;
 }
 
+/** The five departments the server names (api/src/orchestration/departments.ts),
+ *  by their stable key: the strip says them in the interface language. A key
+ *  this map does not know is shown as the server labelled it. */
+const DEPARTMENT_LABEL: Record<string, { labelKey: string }> = {
+    analyst: { labelKey: 'dept_analyst' },
+    architect: { labelKey: 'dept_architect' },
+    developer: { labelKey: 'dept_developer' },
+    reviewer: { labelKey: 'dept_reviewer' },
+    delivered: { labelKey: 'dept_delivered' },
+};
+
 export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
     const { t } = useTranslation();
+    const uiDir = useUiDir();
     if (!status || !Array.isArray(status.stages) || status.stages.length === 0) return null;
 
     const doneSet = new Set(status.done || []);
 
     return (
         <div
-            dir={isArabic ? 'rtl' : 'ltr'}
+            dir={uiDir}
             className="joe-department-card"
-            aria-label="engineering-departments"
+            aria-label={t('dept_ariaLabel')}
             style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -60,12 +73,13 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
             }}
         >
             <span style={{ opacity: 0.75, fontWeight: 600, color: 'var(--joe-text-muted, #6b7280)' }}>
-                {isArabic ? t('departments') : 'Team:'}
+                {t('departments')}
             </span>
             {status.stages.map((stage, i) => {
                 const isActive = stage.key === status.active;
                 const isDone = doneSet.has(stage.key);
-                const label = isArabic ? stage.labelAr : stage.label;
+                const known = DEPARTMENT_LABEL[stage.key];
+                const label = known ? t(known.labelKey) : (isArabic ? stage.labelAr : stage.label);
                 const color = isActive
                     ? 'var(--joe-gold-primary, #34c48b)'
                     : isDone
@@ -102,7 +116,7 @@ export const DepartmentStatusCard: React.FC<Props> = ({ status, isArabic }) => {
                         </span>
                         {i < status.stages.length - 1 && (
                             <span style={{ opacity: 0.35, color: 'var(--joe-text-muted, #6b7280)' }}>
-                                {isArabic ? '←' : '→'}
+                                {uiDir === 'rtl' ? '←' : '→'}
                             </span>
                         )}
                     </React.Fragment>

@@ -100,11 +100,16 @@ describe('and the builder wires them without breaking what was there', () => {
         // interface asked the running server for `/api/suppliers` from a
         // stocked domain, and three 404s failed the delivery gate. The comment
         // above says these two must not disagree; now they read alike.
-        expect(r).toMatch(/named-entities'\)\.namedEntities\(request\)/);
-        expect(r).toMatch(/entity-inference'\)\.inferModel\(request\)\.entities/);
-        expect(r).toMatch(/deriveDataModel\(request\)/);
-        const chain = r.slice(r.indexOf('const tableModel = apiLink'));
-        expect(chain.indexOf('namedEntities(request)')).toBeLessThan(chain.indexOf('deriveDataModel(request)'));
+        //
+        // Round 22 (R4): the copy of that order voted by count and drifted from
+        // the server's designer; the fallback now IS the designer's reading
+        // (readDataModel, everything but the model call), in its order.
+        expect(r).toMatch(/schema-designer'\)\.readDataModel\(request\)/);
+        const designer = read('core', 'design', 'schema-designer.ts');
+        const chain = designer.slice(designer.indexOf('export function readDataModel'));
+        expect(chain.indexOf('listedRecords(request')).toBeGreaterThan(0);
+        expect(chain.indexOf('listedRecords(request')).toBeLessThan(chain.indexOf('deriveDataModel(request)'));
+        expect(chain.indexOf('inferModel(request)')).toBeLessThan(chain.indexOf('deriveDataModel(request)'));
         // Small systems keep the first entity in their domain engine. Systems
         // with three or more first-class entities use one unified table surface.
         expect(r).toMatch(/model: adminModel,/);

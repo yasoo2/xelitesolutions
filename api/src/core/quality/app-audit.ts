@@ -17,17 +17,22 @@
  * Playwright browsers), the audit reports itself SKIPPED — it never invents
  * a score.
  */
+import crypto from 'crypto';
 import fs from 'fs';
 import http from 'http';
 import path from 'path';
 import { getChromiumLaunchOptions } from '../../modules/browser/manager';
 import { probeControls, judgeBehaviour, FormResult, ControlResult } from './behaviour-audit';
-import { AuditEyes } from './audit-eyes';
+import { HANDOFF_SCHEME, isExpectedRefusal, sameDocumentUrl } from './behaviour-audit';
+import { productProfile, proveJourneys } from './qa-product-profile';
+import { AuditEyes, evalInPage } from './audit-eyes';
 import { inspectUi, applyViewportSize } from './ui-inspection';
 import { isWithinRoot } from '../../modules/tools/path-containment';
 import { WEATHER_API_ROUTE_PATTERN } from './weather-qa-route';
 import { isMediaReviewRequest, runMediaReviewQa } from './media-review-qa';
 import { handleMaintainedPreviewApiRequest } from '../api-discovery/preview-proxy';
+import { reloadKeepsSession, showsSignInForm, signInThroughPage } from './sign-in';
+import { readRtl, rtlFindings, type RtlReading } from './rtl-audit';
 
 export interface AppAuditFinding {
     id: string;
@@ -89,6 +94,8 @@ export interface AppAudit {
      *  A claim about a PLACE must carry its place.
      */
     visible?: boolean;
+    /** Parts of this walk measured by the walk before it, on the same unchanged code (codeFingerprint). */
+    carried?: number;
     pressed?: number;
     dead?: string[];
     /** …how many forms were really filled in and sent, and at how many widths. */
@@ -101,6 +108,17 @@ export interface AppAudit {
     qaRecordsNotDeleted?: number;
     /** Semantic fields challenged with invalid and valid values. */
     semanticFieldsTested?: number;
+    /** Wrong and valid values tried in the fields (qa-field-cases.ts), and those sent with their form. */
+    fieldCasesTried?: number;
+    fieldCasesSubmitted?: number;
+    /** Controls asked whether they did their own job, and those that did (qa-control-intent.ts). */
+    intentsJudged?: number;
+    intentsMet?: number;
+    /** What was built, and each journey its request named, proven or not (qa-product-profile.ts). */
+    product?: { kind: string; ar: string; en: string };
+    journeys?: Array<{ id: string; ar: string; en: string; proven: boolean; why: string }>;
+    /** Controls pressed on the desktop and found reachable at the tablet and phone widths. */
+    reachedAtOtherWidths?: number;
     semanticValidationFailures?: number;
     semanticValidationEvidence?: Array<{
         field: string;
@@ -148,6 +166,15 @@ export interface AppAudit {
     }>;
     /** Named browser passes, so a score cannot hide which kinds of QA ran. */
     passes?: AppAuditPass[];
+    /**
+     * The page as a visitor first sees it, captured when the caller asked for
+     * it (`lookPath`): what a requirement about how the page LOOKS is judged on
+     * (core/quality/appearance.ts). A path, never the image, so the record
+     * that keeps this audit stays small.
+     */
+    look?: { path: string; url: string };
+    /** Why the look was not captured, when it was asked for. */
+    lookProblem?: string;
     /** Positive evidence for a maintained external integration, never inferred from silence. */
     externalApiRuntime?: {
         capability: 'weather' | 'currency' | 'ip';
@@ -270,6 +297,16 @@ export function scoreOf(findings: AppAuditFinding[]): number {
  * Route-heavy apps need more time for real navigation and responsive checks,
  * but the hard ceiling prevents a broken page from holding the agent forever.
  */
+/**
+ * One responsive pass's time: an equal share of what is left of the sweep's
+ * pace for the passes still to run — never under 6 s, never past the walk's
+ * own budget (P069: the first pass took the whole sweep and starved the rest).
+ */
+export function responsivePassBudget(sweepDeadline: number, now: number, passesLeft: number, walkLeftMs: number): number {
+    const share = Math.max(0, sweepDeadline - now) / Math.max(1, passesLeft);
+    return Math.max(0, Math.min(Math.max(6_000, share), walkLeftMs));
+}
+
 export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): number {
     const routes = Math.max(0, Math.min(20, Math.floor(Number(routeCount) || 0)));
     // `timeoutMs` is the audit's stated wall-clock budget, not a multiplier for
@@ -281,18 +318,257 @@ export function browserWalkBudgetMs(timeoutMs: number, routeCount: number): numb
     // paths, state discovery, and three responsive measurements. A 120s
     // ceiling repeatedly exhausted on a single records page, reporting a
     // coverage defect before the audit had actually finished its job.
+    //  ⛔ AND A RETRY «WITH A LARGER BUDGET» MUST GET ONE. The 500-prompt exam,
+    //  2026-11-03 (P053): a four-page dashboard with 47 controls ran out of
+    //  walk on a loaded machine; the engine and the pipeline both audited
+    //  again «larger» with 90 s — and this formula turned 45 s and 90 s into
+    //  the same 150 s + 6 s a route, so the retry was the first walk again and
+    //  the builder was refused six times for Joe's own clock. A request above
+    //  the first walk's ceiling is now honoured (up to ten minutes).
+    if (requested > 240_000) return Math.min(600_000, requested);
     const base = Math.min(180_000, Math.max(150_000, requested));
     return Math.min(240_000, base + routes * 6_000);
+}
+
+/** The walk a coverage retry asks for: a real step past the first walk's ceiling. */
+export const COVERAGE_RETRY_TIMEOUT_MS = 360_000;
+
+/** Screens a walk walks at most, the first page's links and the ones learned on the way (learnRoutes). */
+export const MAX_WALKED_ROUTES = 24;
+/** What a screen learned on the way adds to the walk's clock. */
+export const LEARNED_ROUTE_MS = 12_000;
+
+/**
+ * ⛔ A WALK THAT RAN OUT OF TIME GOES ON FROM WHERE IT STOPPED — ON THE SAME CODE.
+ *
+ * The hard sample, 2026-11-09 (L382, a municipal complaints CRM: eight pages
+ * behind a sign-in, 165 controls, on a machine busy rendering video): every
+ * task_finish walked the whole product from its first page — the first walk,
+ * then the retry «larger» — ran out of time in the same place, and refused the
+ * delivery as «qa_budget_exhausted». The last four refusals measured code that
+ * had not changed by a byte: 44 minutes of the same walk ending on the same
+ * page, and a correct system refused for Joe's own clock. A tester who is
+ * stopped halfway does not start again from the door; he goes on from the page
+ * he reached.
+ *
+ * So each finished part of a walk — one page's controls on the desktop, one
+ * page at one width — is kept with everything it heard (console errors,
+ * failed requests, forms filled). When a walk runs out of time, the next walk
+ * over the SAME code (every file of the project the same size, written at the
+ * same moment) takes those parts as measured and walks only the rest.
+ *   - A part is kept only when it ended on its own, never one the walk's
+ *     deadline cut short, and never a page that failed to open.
+ *   - A walk that covered everything leaves nothing behind.
+ *   - A change to any file of the project starts the walk again from the door.
+ * Its data (a database, logs, uploads) is not its code: the walk itself writes
+ * records, and that must not make its own parts look stale.
+ */
+const UNWALKED_DIRS = new Set(['node_modules', '.git', '.joe', '.cache', '.next', '.venv', 'venv', '__pycache__', 'coverage', 'data', 'db', 'storage', 'uploads', 'logs', 'tmp']);
+const DATA_FILE = /\.(?:sqlite3?|db|log)(?:-journal|-wal|-shm)?$/i;
+export function codeFingerprint(root: string, maxFiles = 4000): string {
+    const base = path.resolve(root);
+    const parts: string[] = [];
+    const dirs = [base];
+    while (dirs.length) {
+        const dir = dirs.pop() as string;
+        let entries: fs.Dirent[];
+        try { entries = fs.readdirSync(dir, { withFileTypes: true }); } catch { continue; }
+        for (const e of entries) {
+            const full = path.join(dir, e.name);
+            //  A link is never followed: a junction to a shared folder is not this project's code.
+            if (e.isDirectory()) { if (!UNWALKED_DIRS.has(e.name.toLowerCase())) dirs.push(full); continue; }
+            if (!e.isFile() || DATA_FILE.test(e.name)) continue;
+            try {
+                const s = fs.statSync(full);
+                parts.push(`${path.relative(base, full)}|${s.size}|${Math.round(s.mtimeMs)}`);
+            } catch { continue; }
+            //  Too large a folder to know cheaply: no walk is carried over it.
+            if (parts.length > maxFiles) return '';
+        }
+    }
+    if (!parts.length) return '';
+    parts.sort();
+    return crypto.createHash('sha1').update(parts.join('\n')).digest('hex');
+}
+interface KeptWalk { at: number; parts: Map<string, any> }
+/**
+ * Keyed by the place and the code together: Joe's own repair measures the
+ * page on code it changed, and puts every file back when the page was not
+ * better (browser-mend.ts) — the original code's walk must still be there.
+ */
+const keptWalks = new Map<string, KeptWalk>();
+const KEPT_WALKS_MAX = 24;
+/** A kept walk older than this is walked again, whatever the code. */
+const KEPT_WALK_FRESH_MS = 2 * 60 * 60_000;
+/** Forget every kept walk (tests). */
+export function forgetKeptWalks(): void { keptWalks.clear(); }
+
+/**
+ * The audited origin as a first visitor meets it: its cookies, local and
+ * session storage, IndexedDB, caches and service workers cleared (Chromium's
+ * own per-origin clear), or — on a browser without it — its storage cleared
+ * in the page and the host's cookies dropped. Only that origin: the rest of
+ * the browser is not the product's. See auditBuiltApp («every walk meets the
+ * product as a first visitor does»).
+ */
+export async function meetAsFirstVisitor(page: any, url: string, land: () => Promise<unknown>): Promise<'origin' | 'page' | 'none'> {
+    let origin = '';
+    try { origin = new URL(url).origin; } catch { return 'none'; }
+    try {
+        const cdp = await page.context().newCDPSession(page);
+        await cdp.send('Storage.clearDataForOrigin', { origin, storageTypes: 'cookies,local_storage,session_storage,indexeddb,cache_storage,service_workers' });
+        //  A tab's own session storage is not in that clear (measured): cleared by name.
+        await cdp.send('DOMStorage.enable').catch(() => { });
+        await cdp.send('DOMStorage.clear', { storageId: { securityOrigin: origin, isLocalStorage: false } }).catch(() => { });
+        await cdp.detach().catch(() => { });
+        if (await page.evaluate(() => location.origin).catch(() => '') === origin) {
+            await page.evaluate(() => { try { sessionStorage.clear(); } catch { /* blocked */ } }).catch(() => { });
+        }
+        return 'origin';
+    } catch { /* not Chromium: cleared in the page */ }
+    try {
+        await land().catch(() => null);
+        await page.evaluate(() => { try { localStorage.clear(); } catch { /* blocked */ } try { sessionStorage.clear(); } catch { /* blocked */ } });
+        try { await page.context().clearCookies({ domain: new URL(url).hostname }); } catch { /* an adapter without cookies */ }
+        return 'page';
+    } catch { return 'none'; }
+}
+
+/**
+ * How much larger this walk is than an ordinary first walk over the same
+ * routes. The walk's inner passes (one page's controls, the tablet and phone
+ * pass) had fixed budgets of their own, so a retry with six minutes still gave
+ * the phone pass its 28–90 s and ran out there again (P053, 2026-11-03: the
+ * first walk ended after 85 s, its overall budget barely touched). They scale
+ * with the walk now; an ordinary walk keeps exactly the budgets it had.
+ */
+export function walkScale(timeoutMs: number, routeCount: number): number {
+    return Math.max(1, browserWalkBudgetMs(timeoutMs, routeCount) / browserWalkBudgetMs(45_000, routeCount));
 }
 
 // A slow control must not consume the whole walk before responsive and visual
 // evidence runs. The shared deadline still governs the complete audit.
 export const CONTROL_PASS_BUDGET_MS = 45_000;
 
+/**
+ * The address of one of the app's pages, resolved against the app's own — not
+ * glued to it. The phone and tablet pass walks «/» when the app has no other
+ * route, and «http://127.0.0.1:4312/» + «/» asked the server for «//». The
+ * 500-prompt exam, 2026-11-04 (P456): a correct chatbot server read it with
+ * `new URL(req.url, base)`, which throws on «//»; the server fell over and the
+ * delivery was refused four times for a request no browser ever sends.
+ */
+export interface AppLink { href: string; abs: string; download?: boolean }
+
+/**
+ * THE APP'S OTHER PAGES, HOWEVER IT ADDRESSES THEM.
+ *
+ * The walk visited «#/x» routes and «x.html» files only. A kindergarten admin
+ * (the 500 exam, P071, 2026-11-06) moves between /children, /parents and
+ * /activities — real addresses its server answers, the way every History-API
+ * router and every server-rendered app does. None was walked, the control
+ * probe counts only «#» links, and a dashboard with seven working links, a
+ * search form and an Add button was refused four times as «Not one button,
+ * link or form on the page». A same-origin page address is a route: walked,
+ * probed and judged like any other. Not a route: the page itself and home,
+ * the API, a file to download, and a sign-out (it would end the session the
+ * rest of the walk needs).
+ */
+export function inAppRoutes(links: AppLink[], pageUrl: string): string[] {
+    const out = new Set<string>();
+    let here: URL | null = null;
+    try { here = new URL(pageUrl); } catch { here = null; }
+    const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+    for (const link of links || []) {
+        const h = String(link?.href || '').trim();
+        if (/^#\/.+/.test(h)) { out.add(h); continue; }                                   // hash router
+        if (/^\/?[\w-]+\.html$/i.test(h)) {                                                // multi-file
+            if (!/^\/?index\.html$/i.test(h)) out.add(h.replace(/^\//, ''));                // home is walked first
+            continue;
+        }
+        if (!here || link?.download || !h || h.startsWith('#') || /^(?:mailto|tel|javascript|data|blob):/i.test(h)) continue;
+        let to: URL;
+        try { to = new URL(String(link.abs || h), here); } catch { continue; }
+        if (to.origin !== here.origin || !/^https?:$/.test(to.protocol)) continue;
+        const pathOnly = bare(to.pathname);
+        if (pathOnly === '/' || /^\/index\.html?$/i.test(pathOnly) || pathOnly === bare(here.pathname)) continue;
+        if (/^\/api(?:\/|$)/i.test(pathOnly)) continue;
+        if (/\.(?!html?$)[a-z0-9]{1,5}$/i.test(pathOnly)) continue;                         // a file, not a page
+        if (/(?:^|\/)(?:log-?out|sign-?out)(?:\/|$)/i.test(pathOnly)) continue;
+        out.add(`${pathOnly}${to.search}`);
+    }
+    // Do not silently turn a large application into a five-page smoke
+    // test. Keep the walk bounded, but preserve every route the product
+    // exposes up to the explicit browser budget.
+    return [...out].slice(0, 20);
+}
+
+/**
+ * The screen a press landed on, as the walk names its screens: «#cars» for a
+ * view a button set after the «#» (with or without a slash), «/cars» for
+ * another page of the product; '' for the same screen, another site, a file.
+ */
+export function routeOfLanding(abs: string, pageUrl: string): string {
+    let to: URL, here: URL;
+    try { to = new URL(String(abs || '')); here = new URL(String(pageUrl || '')); } catch { return ''; }
+    if (to.origin !== here.origin || !/^https?:$/.test(to.protocol)) return '';
+    const bare = (p: string) => p.replace(/\/+$/, '') || '/';
+    if (bare(to.pathname) === bare(here.pathname) && to.search === here.search) return to.hash.length > 1 ? to.hash : '';
+    return inAppRoutes([{ href: `${to.pathname}${to.search}`, abs: to.href, download: false }], pageUrl)[0] || '';
+}
+
+export function routeUrl(base: string, route: string): string {
+    const r = String(route || '');
+    try {
+        return new URL(r.startsWith('#') ? r : r.replace(/^\/+/, ''), base).href;
+    } catch {
+        return base;
+    }
+}
+
+/**
+ * A PAGE THAT SHOWS WHAT ANOTHER ALREADY SHOWED IS NOT WALKED TWICE.
+ *
+ * The ladder, 2026-11-09 (L155, a photo studio's admin): «/» rendered the
+ * summary, and «/summary» was walked again in full — every control pressed,
+ * every tab explored, at desktop, tablet and phone width. The verification
+ * took seven minutes, twice. A view is known by what a person works with on
+ * it: its headings, its fields, its table columns and its buttons (rows of
+ * data aside). A page with no heading is not known by its look and is always
+ * walked; one that matches the home page or a page already walked is opened,
+ * its status and heading checked, and not pressed again.
+ */
+export interface ViewParts { headings?: string[]; fields?: string[]; columns?: string[]; actions?: string[] }
+export function viewKey(v: ViewParts | null | undefined): string {
+    if (!v) return '';
+    const norm = (xs?: string[]) => [...new Set((xs || []).map(x => String(x ?? '').replace(/\s+/g, ' ').trim().toLowerCase()).filter(Boolean))].sort();
+    const headings = norm(v.headings);
+    if (!headings.length) return '';
+    return JSON.stringify([headings, norm(v.fields), norm(v.columns), norm(v.actions)]);
+}
+/** Read in the page: what is visible to work with, never the data rows. */
+export function readViewParts(): ViewParts {
+    const seen = (el: Element) => {
+        const r = (el as HTMLElement).getBoundingClientRect();
+        const st = getComputedStyle(el as HTMLElement);
+        return r.width > 0 && r.height > 0 && st.visibility !== 'hidden' && st.display !== 'none';
+    };
+    const text = (el: Element) => String((el as HTMLElement).innerText || el.textContent || '').trim().slice(0, 80);
+    const all = (sel: string) => Array.from(document.querySelectorAll(sel)).filter(seen);
+    return {
+        headings: all('h1,h2,h3').map(text),
+        fields: all('input,select,textarea').map(e => e.getAttribute('name') || e.id || e.getAttribute('placeholder') || e.getAttribute('aria-label') || (e as HTMLInputElement).type || ''),
+        columns: all('th').map(text),
+        actions: all('button,[role="button"]').filter(b => !b.closest('tbody,li')).map(text),
+    };
+}
+
 export async function auditBuiltApp(
     distDir: string,
     opts?: {
         timeoutMs?: number; watchSessionId?: string; onProgress?: (m: string) => void;
+        /** The walk's whole budget, when the caller measures it; otherwise browserWalkBudgetMs decides from timeoutMs. */
+        walkMs?: number;
         /** Refuse invisible fallback: every QA action must stay in the open Browser panel. */
         requireVisibleBrowser?: boolean;
         /**
@@ -325,6 +601,12 @@ export async function auditBuiltApp(
         credentials?: {
             email?: string;
             password?: string;
+            /**
+             * The account the builder seeded (task_finish `sign_in`): typed
+             * into the product's own sign-in form, whatever its API is
+             * (sign-in.ts). Used when no token is given.
+             */
+            identity?: string;
             /** A short-lived token minted locally from the packaged project. */
             token?: string;
             role?: string;
@@ -348,6 +630,10 @@ export async function auditBuiltApp(
         offline?: boolean;
         /** Original user request, used only for request-specific observable QA scenarios. */
         request?: string;
+        /** Where to save a screenshot of the landing view, as a visitor first sees it (see AppAudit.look). */
+        lookPath?: string;
+        /** Where to save the same landing view on a phone, as the phone pass first loads it: the delivery's proof. */
+        phoneLookPath?: string;
         /** Trusted maintained profile expected to produce observable live data. */
         externalApi?: {
             capability: 'weather' | 'currency' | 'ip';
@@ -686,6 +972,11 @@ export async function auditBuiltApp(
              * 404 and 500 still count in full: those are real.
              */
             if (/\b40[13]\b|Unauthorized|Forbidden/i.test(String(m.text()))) return;
+            //  The product refusing a wrong value the QA sent on purpose (behaviour-audit expectRefusal).
+            const refusedStatus = Number((String(m.text()).match(/status of (\d{3})/) || [])[1] || 0);
+            if (refusedStatus && isExpectedRefusal(page, refusedStatus, consoleLocationUrl)) return;
+            //  A call or a mail handed to the system's own app (behaviour-audit.ts HANDOFF_SCHEME): the browser has none, the page is right.
+            if (HANDOFF_SCHEME.test(String(m.text()))) return;
             consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));
         };
         page.on('console', onConsole);
@@ -697,7 +988,7 @@ export async function auditBuiltApp(
             }
             // 401/403: the audit is signed out on purpose — see onConsole above.
             if (r.status() >= 400 && r.status() !== 401 && r.status() !== 403
-                && !/favicon\.ico/i.test(r.url())) {
+                && !/favicon\.ico/i.test(r.url()) && !isExpectedRefusal(page, r.status(), r.url(), String(r.request?.()?.method?.() || ''))) {
                 // No live server behind the page → any /api/… it asks for is
                 // its own backend, which is not running. Unverified, not broken.
                 if (!givenUrl && /\/api\//.test(r.url())) unverifiedLiveData.push(r.url().slice(-60));
@@ -784,10 +1075,32 @@ export async function auditBuiltApp(
             await page.route(WEATHER_API_ROUTE_PATTERN, initialWeatherFixture);
             initialWeatherFixtureForCleanup = initialWeatherFixture;
         }
+        /**
+         * ⛔ EVERY WALK MEETS THE PRODUCT AS A FIRST VISITOR DOES.
+         *
+         * The hard sample, 2026-11-10 (L452, an e-learning platform «بواجهة
+         * عربية وإنجليزية»): the first walk pressed «English», the product kept
+         * the choice in its storage, and the borrowed panel page — alive for the
+         * whole conversation — kept that storage too. Every walk after it landed
+         * on the English interface still signed in: «7 of 7 Arabic text blocks
+         * are ltr» (course names and the «العربية» switch, inside an English
+         * page), «the page shows no sign-in form», controls renamed under the
+         * catalogue. Four refusals in a row, the run stopped. A private browser
+         * is born empty; a borrowed one has the audited origin's cookies and
+         * storage cleared before the walk lands, so both measure the same thing.
+         */
+        if (borrowed) {
+            await meetAsFirstVisitor(page, url, () => openAuditTarget(url));
+            opts?.onProgress?.('fresh visitor: the product\'s cookies and storage in the panel were cleared before the walk');
+        }
         const landing = await openAuditTarget(url);
         const doorStatus = Number(landing?.status?.() || 0);
         let authenticated = false;
         let authError = '';
+        /** The account the audit signed in with, so a walk thrown back to the sign-in form signs in again. */
+        let signInAccount: { identity: string; password: string } | undefined;
+        /** Set when a reload of the signed-in page showed the sign-in form: the requests the server refused on the way. */
+        let sessionLostOnReload: string[] | undefined;
         if (doorStatus >= 400) {
             frontDoor = { url, status: doorStatus, recovered: false };
             // The running system refused its own root. Measure the interface
@@ -810,6 +1123,20 @@ export async function auditBuiltApp(
                 } catch { /* the folder could not be served either — reported below */ }
             }
         }
+        //  The landing view, before any control is pressed: what a visitor
+        //  sees first, and what a requirement about the look is judged on.
+        let look: AppAudit['look'];
+        let lookProblem = '';
+        if (opts?.lookPath) {
+            try {
+                await fs.promises.mkdir(path.dirname(opts.lookPath), { recursive: true });
+                await page.waitForTimeout(400).catch(() => { });
+                await page.screenshot({ path: opts.lookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                look = { path: opts.lookPath, url: page.url() };
+            } catch (e: any) {
+                lookProblem = String(e?.message || e).split('\n')[0].slice(0, 200);
+            }
+        }
         /**
          * Authenticated QA is explicit, never guessed. A generic form filler
          * must not invent credentials; when the caller hands us the account
@@ -830,7 +1157,19 @@ export async function auditBuiltApp(
         if (opts?.credentials && !frontDoor?.recovered) {
             const c = opts.credentials;
             try {
-                if (c.token) {
+                if (!c.token && c.identity && c.password) {
+                    opts?.onProgress?.('signing in');
+                    const account = { identity: c.identity, password: c.password };
+                    const signed = await signInThroughPage(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                    if (signed.ok) {
+                        authenticated = true;
+                        signInAccount = account;
+                        //  A reload keeps the user signed in (sign-in.ts reloadKeepsSession).
+                        const reload = await reloadKeepsSession(page, account, { timeoutMs: Math.min(timeoutMs, 12_000) });
+                        if (!reload.kept) sessionLostOnReload = reload.refused;
+                        if (!reload.kept && !reload.signedInAgain) { authenticated = false; authError = 'the session was lost on a reload, and signing in again failed'; }
+                    } else authError = signed.why;
+                } else if (c.token) {
                     await page.evaluate(({ token, role, tokenStorageKey }: any) => {
                         localStorage.setItem(tokenStorageKey, token);
                         if (role) localStorage.setItem(tokenStorageKey + ':role', role);
@@ -952,6 +1291,39 @@ export async function auditBuiltApp(
                 }).length,
                 small,
                 smallSel,
+                /**
+                 * A CALL, A MAIL, A MAP: THE WAYS A CARD LETS ITS VISITOR ACT.
+                 *
+                 * The ladder, 2026-11-07, L002 (a vet clinic's welcome card): its
+                 * one control was «اتصل بنا الآن» → tel:, correct and visible, and
+                 * the page was refused five times as «not one button, link or
+                 * form», because the control walk presses only buttons and in-app
+                 * routes. A visible link that hands the visitor to his phone, his
+                 * mail or another site is a control of the page.
+                 */
+                actionLinks: Array.from(document.querySelectorAll('a[href]')).filter((a: any) => {
+                    const href = String(a.getAttribute('href') || '').trim();
+                    if (!/^(?:tel|mailto|sms|whatsapp|geo|maps):|^https?:\/\//i.test(href)) return false;
+                    const rect = a.getBoundingClientRect();
+                    const style = getComputedStyle(a);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
+                /**
+                 * FIELDS ARE CONTROLS TOO.
+                 *
+                 * The ladder, 2026-11-08, L061: «a price calculator: quantity,
+                 * unit price, discount percent and tax, with the total updating
+                 * as you type» — four number fields, no button (the total
+                 * follows the typing), no <form> — was refused as «not one
+                 * button, link or form on the page». A visible field the
+                 * visitor types in or chooses from is a control of the page.
+                 */
+                fields: Array.from(document.querySelectorAll('input, select, textarea, [contenteditable="true"]')).filter((el: any) => {
+                    if (el.tagName === 'INPUT' && /^(?:hidden|submit|reset|button|image)$/i.test(String(el.getAttribute('type') || ''))) return false;
+                    const rect = el.getBoundingClientRect();
+                    const style = getComputedStyle(el);
+                    return rect.width > 2 && rect.height > 2 && style.display !== 'none' && style.visibility !== 'hidden';
+                }).length,
                 h1s: Array.from(document.querySelectorAll('h1')).filter((el: any) => {
                     const rect = el.getBoundingClientRect();
                     const style = getComputedStyle(el);
@@ -968,6 +1340,8 @@ export async function auditBuiltApp(
             };
         });
         const dom = await inspect();
+        //  Arabic that reads from the right, measured on the landing view as it is shown (rtl-audit.ts).
+        const rtl: RtlReading | null = await page.evaluate(readRtl).catch(() => null);
 
         let toggleWorks = true;
         if (dom.hasToggle) {
@@ -1009,18 +1383,14 @@ export async function auditBuiltApp(
          * It uses the SAME probe now, so «this button does nothing» has one
          * definition in the system rather than two.
          */
-        const routes: string[] = await page.evaluate(() => {
-            const out = new Set<string>();
-            document.querySelectorAll('a[href]').forEach(a => {
-                const h = (a.getAttribute('href') || '').trim();
-                if (/^#\/.+/.test(h)) out.add(h);                       // hash router
-                else if (/^\/?[\w-]+\.html$/i.test(h)) out.add(h.replace(/^\//, ''));   // multi-file
-            });
-            // Do not silently turn a large application into a five-page smoke
-            // test. Keep the walk bounded, but preserve every route the product
-            // exposes up to the explicit browser budget.
-            return [...out].slice(0, 20);
-        }).catch(() => []);
+        const routes: string[] = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '',
+                download: a.hasAttribute('download'),
+            })),
+        ).then((links: AppLink[]) => inAppRoutes(links, String(page.url() || url))).catch(() => []);
+        /** The addresses the landing page's presses reached (probeControls metrics.landedOn): screens to walk (learnPresses). */
+        let homeLandings: string[] = [];
 
         const allControls: any[] = [];
         const allForms: FormResult[] = [];
@@ -1033,6 +1403,10 @@ export async function auditBuiltApp(
             disclosureEvidence: [],
             calculatorEvidence: [],
             statesVisited: 0, exploratoryActions: 0, controlsDiscovered: 0,
+            //  The case matrix of every form (qa-field-cases.ts): judged by judgeBehaviour once the walk is done.
+            fieldCasesTried: 0, fieldCasesSubmitted: 0, fieldCasesFailed: 0, fieldCaseFailures: [], markupTried: 0, formsRevealed: 0,
+            //  Each control asked whether it did its own job (qa-control-intent.ts).
+            intentsJudged: 0, intentsMet: 0, intentFailures: [],
         };
         const mergeProbe = (p: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }, route: string) => {
             //  `bare` is the control's own name; `label` is the name plus where
@@ -1045,12 +1419,27 @@ export async function auditBuiltApp(
             behaviourMetrics.statesVisited += p.metrics.statesVisited || 0;
             behaviourMetrics.exploratoryActions += p.metrics.exploratoryActions || 0;
             behaviourMetrics.controlsDiscovered += p.metrics.controlsDiscovered || 0;
-            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures']) {
+            for (const k of ['formsFilled', 'fieldsFilled', 'formsDeadSubmit', 'formsValidated', 'formsReloaded', 'formsPersisted', 'formsPersistenceUnproven', 'qaRecordsDeleted', 'qaRecordsNotDeleted', 'semanticFieldsTested', 'semanticValidationFailures', 'fieldCasesTried', 'fieldCasesSubmitted', 'fieldCasesFailed', 'markupTried', 'formsRevealed', 'intentsJudged', 'intentsMet']) {
                 behaviourMetrics[k] += p.metrics[k] || 0;
             }
             behaviourMetrics.semanticValidationEvidence.push(...(p.metrics.semanticValidationEvidence || []));
+            behaviourMetrics.fieldCaseFailures.push(...(p.metrics.fieldCaseFailures || []).map((x: any) => ({ ...x, route })));
+            behaviourMetrics.intentFailures = [...(behaviourMetrics.intentFailures || []), ...(p.metrics.intentFailures || []).map((x: any) => ({ ...x, route }))];
+            for (const [k, v] of Object.entries(p.metrics.intentsMetBy || {})) behaviourMetrics.intentsMetBy = { ...(behaviourMetrics.intentsMetBy || {}), [k]: Number(behaviourMetrics.intentsMetBy?.[k] || 0) + Number(v || 0) };
+            behaviourMetrics.formsPersistenceEvidence = [...(behaviourMetrics.formsPersistenceEvidence || []), ...(p.metrics.formsPersistenceEvidence || []).map((x: any) => ({ ...x, route }))];
+            behaviourMetrics.ordersNotKept = Number(behaviourMetrics.ordersNotKept || 0) + Number(p.metrics.ordersNotKept || 0);
+            behaviourMetrics.ordersNotKeptEvidence = [...(behaviourMetrics.ordersNotKeptEvidence || []), ...(p.metrics.ordersNotKeptEvidence || []).map((x: any) => ({ ...x, route }))];
             behaviourMetrics.formsDeadSubmitEvidence.push(...(p.metrics.formsDeadSubmitEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.formsNotReached += p.metrics.formsNotReached || 0;
+            //  An id held twice, on any screen: kept with its largest count (behaviour-audit duplicateControlIds).
+            for (const d of (p.metrics.duplicateIds || []) as Array<{ id: string; count: number; labels?: string[] }>) {
+                const list: Array<{ id: string; count: number; labels?: string[] }> = (behaviourMetrics.duplicateIds = behaviourMetrics.duplicateIds || []);
+                const seen = list.find(x => x.id === d.id);
+                if (seen) {
+                    seen.count = Math.max(seen.count, d.count);
+                    seen.labels = [...new Set([...(seen.labels || []), ...(d.labels || [])])].slice(0, 8);
+                } else if (list.length < 6) list.push({ ...d, labels: [...(d.labels || [])] });
+            }
             behaviourMetrics.formsNotReachedEvidence.push(...(p.metrics.formsNotReachedEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.disclosureEvidence.push(...(p.metrics.disclosureEvidence || []).map((evidence: any) => ({ ...evidence, route })));
             behaviourMetrics.calculatorEvidence.push(...(p.metrics.calculatorEvidence || []).map((evidence: any) => ({ ...evidence, route })));
@@ -1096,16 +1485,26 @@ export async function auditBuiltApp(
         // Exploration needs room for route discovery, state changes, and the
         // responsive passes. Keep one shared deadline so it cannot loop
         // forever, but do not let the old 60s floor truncate real QA runs.
-        const walkUntil = Date.now() + browserWalkBudgetMs(timeoutMs, routes.length);
+        const walkStarted = Date.now();
+        let walkUntil = walkStarted + (opts?.walkMs && opts.walkMs > 0 ? opts.walkMs : browserWalkBudgetMs(timeoutMs, routes.length));
+        //  Screens learned on the way add their share (learnRoutes), never past this — a test's walkMs is its whole clock.
+        const walkCeiling = opts?.walkMs && opts.walkMs > 0 ? walkUntil : walkStarted + Math.max(browserWalkBudgetMs(timeoutMs, routes.length), Math.min(600_000, Number(timeoutMs) || 0));
+        const scale = walkScale(timeoutMs, routes.length);
         const seenForms = new Set<string>();
+        /** The link destinations this walk reached by a press: checked within reach on other screens, not travelled again. */
+        const pressedHrefs = new Set<string>();
+        /** The buttons whose press took the walk to another screen: checked within reach on the others (probeControls travelled). */
+        const travelled = new Set<string>();
         // One deadline governs the entire visible walk. Do not reset a small
         // per-page minimum after the deadline: on a route-heavy app that made
         // the browser appear frozen for minutes after "pressing" had started.
         const remainingWalkMs = () => Math.max(0, walkUntil - Date.now());
         const probeOpts = (formScope = 'desktop:/', formContext = '/') => ({
             eyes,
-            budgetMs: Math.min(CONTROL_PASS_BUDGET_MS, remainingWalkMs()),
+            budgetMs: Math.min(CONTROL_PASS_BUDGET_MS * scale, remainingWalkMs()),
             seenForms,
+            pressedHrefs,
+            travelled,
             formScope,
             formContext,
             isEyeOpen: eyeIsOpen,
@@ -1114,7 +1513,67 @@ export async function auditBuiltApp(
             // Preserve that evidence at the caller instead of replacing it
             // with a generic "pressing controls" status.
             onProgress: opts?.onProgress,
+            //  A walk thrown back to the sign-in form signs in again (sign-in.ts).
+            ...(signInAccount ? { signIn: signInAccount } : {}),
         });
+        /** The views already walked, and each page that only showed one of them again (viewKey). */
+        const seenViews = new Map<string, string>();
+        const sameViewAs = new Map<string, string>();
+        /**
+         * The parts the walk before this one finished, on this same code, and
+         * the parts this walk finishes (codeFingerprint, keptWalks). A part
+         * keeps what it heard, so a carried part says exactly what it said.
+         */
+        const code = codeFingerprint(opts?.artifactRootDir ? artifactRoot : path.dirname(path.resolve(distDir)));
+        const walkKey = (() => {
+            let where = '';
+            try { where = givenUrl ? new URL(givenUrl).pathname : ''; } catch { /* the folder is enough */ }
+            const who = opts?.credentials?.identity || opts?.credentials?.email || opts?.credentials?.role || '';
+            return `${path.resolve(distDir)}|${where}|${who}|${code}`;
+        })();
+        const kept = code ? keptWalks.get(walkKey) : undefined;
+        const carried: Map<string, any> = kept && Date.now() - kept.at < KEPT_WALK_FRESH_MS ? kept.parts : new Map();
+        const walked = new Map<string, any>();
+        let carriedCount = 0;
+        if (carried.size) opts?.onProgress?.(`resumed: ${carried.size} part(s) were finished by the walk before this one, on the same unchanged code; only the rest is walked`);
+        const streams: Record<string, any[]> = { pageErrors, consoleErrors, failedRequests, unverifiedLiveData, heavyImages };
+        const mark = (): Record<string, number> => {
+            const m: Record<string, number> = { forms: seenForms.size };
+            for (const k of Object.keys(streams)) m[k] = streams[k].length;
+            return m;
+        };
+        const heardSince = (m: Record<string, number>) => {
+            const out: Record<string, any[]> = {};
+            for (const k of Object.keys(streams)) out[k] = streams[k].slice(m[k]);
+            return { streams: out, forms: [...seenForms].slice(m.forms) };
+        };
+        /** A carried part: what it heard is heard again, and it counts in the next kept walk too. */
+        const carry = (unit: string, part: any) => {
+            for (const k of Object.keys(part.heard?.streams || {})) streams[k]?.push(...part.heard.streams[k]);
+            for (const f of part.heard?.forms || []) seenForms.add(f);
+            walked.set(unit, part);
+            carriedCount++;
+        };
+        /** What one page's own inspection adds to the walk, walked or carried. */
+        const addInspection = (r: string, d2: any) => {
+            if (d2.deadImgs) dom.deadImgs += d2.deadImgs;
+            if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
+            if (d2.small.length) dom.small.push(...d2.small.map((s: string) => `${r} ${s}`));
+            // The selectors merge too — a target that is small on page two
+            // is still a target this repair can aim at.
+            if (Array.isArray(d2.smallSel) && d2.smallSel.length) {
+                dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
+            }
+            //  A screen with two main headings opened and rendered: a remark about its headings, never «broken».
+            //  A screen of the app's own router with none may not have rendered at all: that is still broken.
+            if (d2.h1s !== 1) (r.startsWith('/') || d2.h1s > 1 ? headingRoutes : brokenRoutes).push(`${r} (h1=${d2.h1s})`);
+        };
+        /** After a fresh load of a page, a product that lost its session is signed in to again. */
+        const reenter = async () => {
+            if (!signInAccount) return;
+            await page.waitForTimeout(300).catch(() => { });
+            if (await showsSignInForm(page)) await signInThroughPage(page, signInAccount, { timeoutMs: 8_000 }).catch(() => undefined);
+        };
         const budgetFinding = () => ({
             id: 'qa_budget_exhausted', severity: 'medium' as const,
             detail: 'انتهت ميزانية فحص المتصفح قبل اكتمال كل المسارات والحالات — النتيجة غير مكتملة ولا أعتبر ما لم يُختبر ناجحًا',
@@ -1122,8 +1581,22 @@ export async function auditBuiltApp(
         });
         try {
             if (!remainingWalkMs()) return eyeRequiredResult('Browser QA budget ended before the first page');
-            const homeProbe = await probeControls(page, probeOpts('desktop:/', '/'));
+            const homeKept = carried.get('desktop:/');
+            let homeProbe: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] };
+            if (homeKept) {
+                if (homeKept.view) seenViews.set(homeKept.view, '/');
+                carry('desktop:/', homeKept);
+                homeProbe = homeKept.probe;
+            } else {
+                const homeView = viewKey(await evalInPage(page, readViewParts).catch(() => null));
+                if (homeView) seenViews.set(homeView, '/');
+                const heard = mark();
+                homeProbe = await probeControls(page, probeOpts('desktop:/', '/'));
+                const cut = (homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs();
+                if (!cut && !homeProbe.metrics.eyeLost) walked.set('desktop:/', { view: homeView, probe: homeProbe, heard: heardSince(heard) });
+            }
             mergeProbe(homeProbe, '/');
+            homeLandings = Array.isArray(homeProbe?.metrics?.landedOn) ? homeProbe.metrics.landedOn : [];
             if (opts?.externalApi) {
                 opts?.onProgress?.(`external-api:${opts.externalApi.capability}: validating live request, loading, failure, and recovery`);
                 const scenarioStart = successfulExternalRequests.length;
@@ -1277,7 +1750,7 @@ export async function auditBuiltApp(
             }
             // A local control-pass cap preserves time for responsive and visual
             // checks. It is not proof that the shared browser-walk budget ended.
-            if ((homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
+            if (!homeKept && (homeProbe.metrics.budgetExhausted || homeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
             if (homeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
         } catch (e: any) {
             if (isAuditInfrastructureError(e)) auditErrors.push(String(e?.message || e).slice(0, 160));
@@ -1285,34 +1758,119 @@ export async function auditBuiltApp(
 
         // Every other page the app offers, audited as a page in its own right.
         const brokenRoutes: string[] = [];
+        //  A page address (inAppRoutes, «/children») whose page has no main
+        //  heading, or two, still opened: an admin sign-in page without an
+        //  <h1>, a blog post titled under the site's own <h1>. On these pages
+        //  that is a remark about the page, never a page that is broken; a
+        //  page that fails to open or answers an HTTP error is broken.
+        const headingRoutes: string[] = [];
+        /*
+         * ⛔ EVERY SCREEN IS FOUND, NOT ONLY THE ONES THE FIRST PAGE LINKS TO.
+         *
+         * The owner, 2026-11-10, watching the QA of a project tracker (L451):
+         * the routes were read once, from the landing page — «/», «#/projects»,
+         * «#/account», «#/p/1/board» — and the project's own pages (Epics,
+         * Sprints, Wiki, Settings, an issue) were never walked. Each walked
+         * screen now adds the screens it links to; one screen per pattern
+         * («#/p/1/issue/5» and «#/p/1/issue/9» are one screen), at most
+         * MAX_WALKED_ROUTES, and the walk's clock grows by a screen's share for
+         * each screen it learns (never past the walk's own ceiling).
+         */
+        const routePattern = (r: string) => r.replace(/\/[^/?#]*\d[^/?#]*/g, '/:id');
+        const knownPatterns = new Set(routes.map(routePattern));
+        /** One screen learned: once per pattern, at most MAX_WALKED_ROUTES, the walk's clock grown by its share. */
+        const learnRoute = (found: string, from: string, how: string) => {
+            if (!found || routes.length >= MAX_WALKED_ROUTES || routes.includes(found)) return;
+            const pattern = routePattern(found);
+            if (knownPatterns.has(pattern)) return;
+            knownPatterns.add(pattern);
+            routes.push(found);
+            walkUntil = Math.min(walkCeiling, walkUntil + LEARNED_ROUTE_MS);
+            opts?.onProgress?.(`screen found ${how} on ${from}: ${found}`);
+        };
+        /*
+         * ⛔ …AND THE SCREENS ITS BUTTONS OPEN.
+         *
+         * L160 (2026-11-10, a car rental admin): its four views were buttons that
+         * set «#cars», «#bookings», «#customers» — no link — and the walk walked
+         * only «/», its summary: three screens and every form of the admin
+         * unwalked. An address a press landed on (probeControls metrics.landedOn)
+         * is a screen like a link's; one that shows a screen already walked is
+         * met as «same view» and costs a look.
+         */
+        const learnPresses = (from: string, landed: unknown) => {
+            for (const at of Array.isArray(landed) ? landed : []) learnRoute(routeOfLanding(String(at), url), from, 'by a press');
+        };
+        const learnRoutes = async (from: string, probe?: { metrics?: Record<string, any> }) => {
+            if (routes.length >= MAX_WALKED_ROUTES) return;
+            const links: AppLink[] = await page.evaluate(() =>
+                Array.from(document.querySelectorAll('a[href]')).map(a => ({
+                    href: a.getAttribute('href') || '', abs: (a as HTMLAnchorElement).href || '', download: a.hasAttribute('download'),
+                })),
+            ).catch(() => []);
+            for (const found of inAppRoutes(links, String(page.url() || url))) learnRoute(found, from, 'by a link');
+            learnPresses(from, probe?.metrics?.landedOn);
+        };
+        learnPresses('/', homeLandings);
         for (const r of routes) {
-            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; break; }
+            const unit = `desktop:${r}`;
+            const routeKept = carried.get(unit);
+            //  A carried page that only showed another's view is carried only while that view is still known.
+            if (routeKept && (routeKept.probe || (routeKept.view && seenViews.has(routeKept.view)))) {
+                carry(unit, routeKept);
+                addInspection(r, routeKept.d2);
+                const shownBefore = routeKept.view ? seenViews.get(routeKept.view) : undefined;
+                if (shownBefore !== undefined) { sameViewAs.set(r, shownBefore); continue; }
+                if (routeKept.view) seenViews.set(routeKept.view, r);
+                mergeProbe(routeKept.probe, r);
+                continue;
+            }
+            //  Not a break: a part the walk before finished is still carried after this one.
+            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; continue; }
             if (!eyeIsOpen()) return eyeRequiredResult();
-            const target = r.startsWith('#') ? url + r : url + r;
+            const target = routeUrl(url, r);
+            const pageAddress = r.startsWith('/');
+            const heard = mark();
             try {
-                await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
-                await page.waitForTimeout(500);
-                const d2 = await inspect();
-                if (d2.deadImgs) dom.deadImgs += d2.deadImgs;
-                if (d2.deadLinks) dom.deadLinks += d2.deadLinks;
-                if (d2.small.length) dom.small.push(...d2.small.map((s: string) => `${r} ${s}`));
-                // The selectors merge too — a target that is small on page two
-                // is still a target this repair can aim at.
-                if (Array.isArray(d2.smallSel) && d2.smallSel.length) {
-                    dom.smallSel = [...(dom.smallSel || []), ...d2.smallSel];
+                //  A jump inside one document («/#summary» → «/#cars») loads nothing: a product that reads its #view on load is loaded again.
+                const jumpFrom = sameDocumentUrl(String(page.url() || ''), target)
+                    ? viewKey(await evalInPage(page, readViewParts).catch(() => null)) : '';
+                let opened = await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) });
+                if (jumpFrom) {
+                    await page.waitForTimeout(300);
+                    if (viewKey(await evalInPage(page, readViewParts).catch(() => null)) === jumpFrom) {
+                        opened = await page.reload({ waitUntil: 'load', timeout: Math.min(timeoutMs, 20_000) }).catch(() => opened);
+                    }
                 }
-                if (d2.h1s !== 1) brokenRoutes.push(`${r} (h1=${d2.h1s})`);
+                const status = Number(opened?.status?.() || 0);
+                if (pageAddress && status >= 400) { brokenRoutes.push(`${r} (HTTP ${status})`); continue; }
+                await page.waitForTimeout(500);
+                await reenter();
+                const d2 = await inspect();
+                addInspection(r, d2);
+                const view = viewKey(await evalInPage(page, readViewParts).catch(() => null));
+                const shownBefore = view ? seenViews.get(view) : undefined;
+                if (shownBefore !== undefined) {
+                    sameViewAs.set(r, shownBefore);
+                    opts?.onProgress?.(`same view as ${shownBefore}: ${r}`);
+                    walked.set(unit, { d2, view, heard: heardSince(heard) });
+                    continue;
+                }
+                if (view) seenViews.set(view, r);
                 const routeProbe = await probeControls(page, probeOpts(`desktop:${r}`, r));
                 mergeProbe(routeProbe, r);
-                if ((routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
+                await learnRoutes(r, routeProbe);
+                const cut = (routeProbe.metrics.budgetExhausted || routeProbe.metrics.explorationBudgetExhausted) && !remainingWalkMs();
+                if (cut) behaviourMetrics.budgetExhausted = true;
                 if (routeProbe.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+                if (!cut) walked.set(unit, { d2, view, probe: routeProbe, heard: heardSince(heard) });
             } catch (e: any) {
                 const detail = String(e?.message || e).slice(0, 80);
                 if (isAuditInfrastructureError(e)) auditErrors.push(`${r}: ${detail}`);
                 else brokenRoutes.push(`${r} (${detail.slice(0, 40)})`);
             }
         }
-        if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); } catch { /* home is optional now */ } }
+        if (routes.length) { try { await page.goto(url, { waitUntil: 'load', timeout: 15_000 }); await reenter(); } catch { /* home is optional now */ } }
 
         /**
          *  ⛔ AND THE MENU THAT ONLY EXISTS ON A PHONE — «ولا القوائم».
@@ -1336,30 +1894,17 @@ export async function auditBuiltApp(
          *  the walk above and the whole point is what desktop CANNOT show.
          */
         const seenLabels = new Set(allControls.map((c: any) => String(c.label || '')));
+        /** What the desktop walk pressed: at a narrower width it is reached, not pressed again (probeControls reachOnly). */
+        const pressedOnDesktop = new Set(allControls
+            .filter((c: any) => String(c.context || '').startsWith('desktop:') && !['not found', 'declined', 'consumed', 'reached'].includes(String(c.effect || '')))
+            .map((c: any) => String(c.bare || c.label || '')));
         // Track completed route/viewport pairs independently from the shared
         // deadline. The dedicated phone pass below is real responsive evidence;
         // rerunning the same route at the same width cannot turn that proof into
         // a coverage failure merely because the optional duplicate ran last.
         const completedResponsiveEvidence = new Set<string>();
-        try {
-            if (!eyeIsOpen()) return eyeRequiredResult();
-            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
-            await applyViewportSize(page, 390, 844);
-            await page.waitForTimeout(420);
-            await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
-            const phone = await probeControls(page, {
-                eyes,
-                budgetMs: Math.min(20_000, remainingWalkMs()),
-                seenForms,
-                formScope: 'جوّال:/',
-                formContext: '/',
-                isEyeOpen: eyeIsOpen,
-                maxControls: 12,
-                isolateBaselineControls: true,
-                baselineViewport: { width: 390, height: 844 },
-            });
-            if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
-            if ((phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
+        /** What the phone pass adds to the walk, walked or carried. */
+        const addPhone = (phone: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }) => {
             const phoneEvidence = (phone.controls || []).filter((c: any) =>
                 c.kind === 'anchor' || !seenLabels.has(String(c.label || '')),
             );
@@ -1368,6 +1913,55 @@ export async function auditBuiltApp(
             // specialized evidence even if the later responsive sweep expires.
             mergeProbe({ ...phone, controls: [] }, '/');
             completedResponsiveEvidence.add('جوّال:/');
+        };
+        const phoneKept = carried.get('جوّال:/');
+        if (phoneKept) {
+            carry('جوّال:/', phoneKept);
+            addPhone(phoneKept.probe);
+        } else try {
+            if (!eyeIsOpen()) return eyeRequiredResult();
+            if (!remainingWalkMs()) { behaviourMetrics.budgetExhausted = true; throw new Error('browser QA budget ended before mobile discovery'); }
+            const heard = mark();
+            /**
+             * ⛔ THE PHONE PASS STARTS FROM THE HOME PAGE, FRESHLY LOADED.
+             *
+             * It isolates each control by reloading, so it must list them from
+             * the state a reload restores — as the per-route passes below do.
+             * The exam, 2026-11-03 (P051, a React admin whose tabs live in
+             * memory): begun on the Treatments tab the desktop walk left open,
+             * it listed «+ Add treatment», reloaded onto the default tab, and
+             * called a working button «gone before I could press it» four
+             * refusals in a row.
+             */
+            await page.goto(url, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) }).catch(() => { });
+            await reenter();
+            await applyViewportSize(page, 390, 844);
+            await page.waitForTimeout(420);
+            if (opts?.phoneLookPath) {
+                // The proof he keeps, never a measurement: a failed shot changes no verdict.
+                try {
+                    await fs.promises.mkdir(path.dirname(opts.phoneLookPath), { recursive: true });
+                    await page.screenshot({ path: opts.phoneLookPath, type: 'jpeg', quality: 75, fullPage: false, timeout: 10_000 });
+                } catch { /* no phone picture; the pass goes on */ }
+            }
+            await eyes.say(page, 'فحص ما لا يظهر إلا على الجوّال — القوائم والأزرار المخفية');
+            const phone = await probeControls(page, {
+                eyes,
+                budgetMs: Math.min(20_000, remainingWalkMs()),
+                seenForms,
+                formScope: 'جوّال:/',
+                formContext: '/',
+                isEyeOpen: eyeIsOpen,
+                maxControls: 40,
+                isolateBaselineControls: true,
+                reachOnly: pressedOnDesktop,
+                baselineViewport: { width: 390, height: 844 },
+            });
+            if (phone.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
+            const cut = (phone.metrics.budgetExhausted || phone.metrics.explorationBudgetExhausted) && !remainingWalkMs();
+            if (cut) behaviourMetrics.budgetExhausted = true;
+            addPhone(phone);
+            if (!cut) walked.set('جوّال:/', { probe: phone, heard: heardSince(heard) });
             await applyViewportSize(page, deliveryViewport.width, deliveryViewport.height);
             await page.waitForTimeout(200);
         } catch { /* one width failing must not lose the desktop walk */ }
@@ -1384,43 +1978,75 @@ export async function auditBuiltApp(
         // A single-page app still needs desktop, tablet, and phone evidence.
         // Without this fallback, route-less generated tools never ran the
         // responsive control pass beyond their initial desktop page.
-        const responsiveRoutes = (routes.length ? routes : ['/']).slice(0, 20);
-        const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000));
+        //  A page that showed another's view again is measured as that view, once (viewKey).
+        const responsiveRoutes = [...new Set((routes.length ? routes : ['/']).map(r => sameViewAs.get(r) ?? r))].slice(0, 20);
+        const responsiveBudget = Math.min(90_000, Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;
         const responsiveDeadline = Math.min(walkUntil, Date.now() + responsiveBudget);
+        /**
+         * ⛔ EACH WIDTH OF EACH ROUTE GETS ITS SHARE, AND ONLY THE WALK'S OWN
+         * BUDGET ENDS THE WALK.
+         *
+         * The 500-prompt exam, 2026-11-05 (P069, a garage's four-page admin):
+         * the first responsive pass was handed everything left of the sweep's
+         * 32 s, spent it, and every later route at tablet and phone width was
+         * skipped as «qa_budget_exhausted» — at 145 s of a 360 s walk, on the
+         * retry «with a larger budget» too. The sweep's time is a pace, not a
+         * wall: each pass gets an equal share of it, and the walk stops only
+         * when the walk's own budget is spent.
+         */
+        const SIZES = [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }];
+        let passesLeft = responsiveRoutes.reduce((n, r) => n + SIZES.filter(s => !completedResponsiveEvidence.has(`${s.name}:${r}`) && !carried.has(`${s.name}:${r}`)).length, 0);
+        /** What one width of one page adds to the walk, walked or carried. */
+        const addResponsive = (r: string, size: { name: string }, responsive: { controls: any[]; metrics: Record<string, any>; forms?: FormResult[] }) => {
+            const prefix = `${size.name} ${r}`;
+            for (const c of responsive.controls || []) {
+                const label = `${prefix} ${c.label}`;
+                allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name });
+            }
+            mergeProbe({ ...responsive, controls: [] }, r);
+            completedResponsiveEvidence.add(`${size.name}:${r}`);
+        };
         for (const r of responsiveRoutes) {
-            for (const size of [{ name: 'لوحي', w: 820, h: 1180 }, { name: 'جوّال', w: 390, h: 844 }]) {
+            for (const size of SIZES) {
                 const evidenceKey = `${size.name}:${r}`;
                 // The home-phone pass above already exercised this exact state,
                 // including controls hidden at desktop width. Do not spend the
                 // bounded responsive budget replaying it.
                 if (completedResponsiveEvidence.has(evidenceKey)) continue;
-                if (Date.now() >= responsiveDeadline || !remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; break; }
+                const sizeKept = carried.get(evidenceKey);
+                if (sizeKept) { carry(evidenceKey, sizeKept); addResponsive(r, size, sizeKept.probe); continue; }
+                //  Not a break: a part the walk before finished is still carried after this one.
+                if (!remainingWalkMs() || !eyeIsOpen()) { behaviourMetrics.budgetExhausted = true; continue; }
+                const passBudget = responsivePassBudget(responsiveDeadline, Date.now(), passesLeft--, remainingWalkMs());
+                const heard = mark();
                 try {
-                    const target = r.startsWith('#') ? url + r : url + r;
+                    const target = routeUrl(url, r);
                     await page.goto(target, { waitUntil: 'load', timeout: Math.min(timeoutMs, 12_000) });
+                    await reenter();
                     await applyViewportSize(page, size.w, size.h);
                     await page.waitForTimeout(260);
                     await eyes.say(page, `فحص ${size.name}: ${r === '/' ? 'الصفحة الرئيسية' : r}`);
+                    const passStarted = Date.now();
                     const responsive = await probeControls(page, {
                         eyes,
-                        budgetMs: Math.min(responsiveDeadline - Date.now(), remainingWalkMs()),
+                        budgetMs: passBudget,
                         seenForms,
                         formScope: `${size.name}:${r}`,
                         formContext: r,
                         isEyeOpen: eyeIsOpen,
-                        maxControls: 12,
+                        maxControls: 40,
                         isolateBaselineControls: true,
+                        reachOnly: pressedOnDesktop,
                         baselineViewport: { width: size.w, height: size.h },
+                        ...(signInAccount ? { signIn: signInAccount } : {}),
                     });
                     if (responsive.metrics.eyeLost || !eyeIsOpen()) return eyeRequiredResult();
-                    if ((responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) && !remainingWalkMs()) behaviourMetrics.budgetExhausted = true;
-                    const prefix = `${size.name} ${r}`;
-                    for (const c of responsive.controls || []) {
-                        const label = `${prefix} ${c.label}`;
-                        allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name });
-                    }
-                    mergeProbe({ ...responsive, controls: [] }, r);
-                    completedResponsiveEvidence.add(evidenceKey);
+                    //  Each width of each screen said, with what it checked and how long it took.
+                    opts?.onProgress?.(`width ${size.name} ${r}: ${Number(responsive.metrics.reachedOnly || 0)} reached, ${responsive.controls.filter((x: any) => x.effect && x.effect !== 'reached' && x.effect !== 'not found').length} pressed, ${((Date.now() - passStarted) / 1000).toFixed(1)} s (${Object.entries(responsive.metrics.phaseMs || {}).map(([k, v]) => `${k} ${(Number(v) / 1000).toFixed(1)}`).join(', ')})`);
+                    const cut = (responsive.metrics.budgetExhausted || responsive.metrics.explorationBudgetExhausted) && !remainingWalkMs();
+                    if (cut) behaviourMetrics.budgetExhausted = true;
+                    addResponsive(r, size, responsive);
+                    if (!cut) walked.set(evidenceKey, { probe: responsive, heard: heardSince(heard) });
                 } catch (e: any) {
                     // Keep the baseline proof, but do not erase a responsive
                     // failure: an unreachable route at one viewport is itself
@@ -1642,6 +2268,27 @@ export async function auditBuiltApp(
         behaviourMetrics.pressed = allControls.filter(c => c.kind !== 'anchor').length;
         behaviourMetrics.dead = allControls.filter(c => c.kind !== 'anchor' && !c.worked).length;
         const behaviour = judgeBehaviour(allControls, behaviourMetrics, [], allForms);
+        /*
+         * ⛔ THE JOURNEY OF WHAT WAS BUILT (qa-product-profile.ts).
+         *
+         * A store's cart, a clinic's booking, a feed's post: each journey his
+         * request named is proven, or said not proven, on what this walk
+         * measured. Told with the delivery for now (journey_not_proven, low):
+         * a control that was pressed and missed its job already refuses it.
+         */
+        const profile = productProfile(String(opts?.request || ''));
+        const journeys = proveJourneys(profile, {
+            forms: allForms, intentsMetBy: behaviourMetrics.intentsMetBy || {}, intentFailures: behaviourMetrics.intentFailures || [],
+            formsPersisted: behaviourMetrics.formsPersisted, qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
+        });
+        const unproven = journeys.filter(j => !j.proven);
+        if (unproven.length) behaviour.findings.push({
+            code: 'journey_not_proven', severity: 'minor',
+            ar: `لم تثبت ${unproven.length} من رحلات ${profile.ar} التي طلبتها: ${unproven.map(j => `${j.ar} (${j.why})`).join('، ')}`,
+            en: `${unproven.length} journey(s) of ${profile.en} the request named were not proven: ${unproven.map(j => `${j.en} (${j.why})`).join('; ')}`,
+            hint: 'make the journey the request named work end to end in the page: the control that starts it, the form that completes it, and the result kept after a reload',
+            evidence: unproven,
+        } as any);
         behaviour.findings.push(...ui.findings);
 
         const findings: AppAuditFinding[] = [];
@@ -1672,7 +2319,23 @@ export async function auditBuiltApp(
          * control and no form at all, that IS the finding — grading contrast
          * on such a page is how an error page scored 41/100.
          */
-        if (!allControls.length && !allForms.length && !auditErrors.length) {
+        //  Links to the app's own pages are links (inAppRoutes): a page of them
+        //  is a way in, judged by the pages it opens, not an empty page.
+        /*
+         * ⛔ A DOOR WALKED THROUGH IS AN INTERFACE.
+         *
+         * The hard sample, 2026-11-09 (L282, «a secure sign-in system for a
+         * cinema's staff»: hashed passwords, attempt limits, a reset by mail):
+         * the audit signed in through the product's own form with the builder's
+         * account and landed on the staff page, whose one control is «sign
+         * out», never pressed (it would end the walk's session). «Not one
+         * button, link or form» — four refusals of a correct product whose
+         * product IS the door. A walk that signed in through the page's form
+         * used a form of the product; what the signed-in page must offer is
+         * the judge's to measure against the request, not «an empty page».
+         */
+        const walkedThroughTheDoor = authenticated && !!signInAccount;
+        if (!allControls.length && !allForms.length && !auditErrors.length && !routes.length && !dom.actionLinks && !dom.fields && !walkedThroughTheDoor) {
             findings.push({
                 id: 'empty_page', severity: 'high',
                 detail: 'لا زر ولا رابط ولا نموذج على الصفحة — هذه ليست واجهة تطبيق، ولم أقِس شكلها لأن لا شيء فيها ليُقاس',
@@ -1708,11 +2371,17 @@ export async function auditBuiltApp(
         if (dom.hasToggle && !toggleWorks) findings.push({ id: 'theme_toggle_dead', severity: 'medium', detail: 'زر الوضع الليلي لا يغيّر الألوان فعلياً', detailEn: 'The dark-mode toggle does not actually change any colour' });
         if (dom.fontLoaded === false) findings.push({ id: 'webfont_missing', severity: 'medium', detail: `الخط المعلن «${dom.declaredFont}» لم يُحمَّل فعلياً — ملفاته غائبة`, detailEn: `The declared webfont "${dom.declaredFont}" never loaded — its files are missing` });
         if (heavyImages.length) findings.push({ id: 'heavy_images', severity: 'low', detail: `${heavyImages.length} صورة ثقيلة (>400KB): ${heavyImages[0]}`, detailEn: `${heavyImages.length} heavy image(s) (>400KB): ${heavyImages[0]}` });
+        if (headingRoutes.length) findings.push({ id: 'route_headings', severity: 'low', detail: `${headingRoutes.length} صفحة بلا عنوان رئيسي واحد: ${headingRoutes[0]}`, detailEn: `${headingRoutes.length} page(s) without exactly one main heading: ${headingRoutes[0]}` });
+        findings.push(...rtlFindings(rtl, opts?.request));
         if (brokenRoutes.length) findings.push({ id: 'broken_routes', severity: 'high', detail: `${brokenRoutes.length} صفحة لم تُفتح أو بلا عنوان رئيسي: ${brokenRoutes[0]}`, detailEn: `${brokenRoutes.length} page(s) did not open or have no main heading: ${brokenRoutes[0]}` });
         // Behaviour speaks in its own vocabulary; it is translated here rather
         // than re-judged, so the two audits never disagree about a dead button.
         const asSeverity = { critical: 'high', major: 'medium', minor: 'low' } as const;
         for (const f of behaviour.findings) {
+            //  A product that signs its user out on every reload hides controls
+            //  from a walk that restores by reloading: that is said once, as
+            //  `session_lost_on_reload`, not again as controls «gone».
+            if (sessionLostOnReload && f.code === 'controls_not_reached') continue;
             findings.push({
                 id: f.code, severity: asSeverity[f.severity], detail: f.ar, detailEn: f.en,
                 ...(Array.isArray((f as any).evidence) && (f as any).evidence.length
@@ -1736,6 +2405,15 @@ export async function auditBuiltApp(
             findings.length = 0;
             findings.push(...door);
         }
+        if (sessionLostOnReload) {
+            //  Said once, as what it is — not as the controls a lost session hid.
+            const said = sessionLostOnReload.slice(0, 4).join(', ');
+            findings.push({
+                id: 'session_lost_on_reload', severity: 'high',
+                detail: `بعد تسجيل الدخول، أعدتُ تحميل الصفحة فرجعت إلى نموذج الدخول: من يحدّث الصفحة يخرج من حسابه${said ? `. رفض الخادم هذه الطلبات قبل أن تُستعمل الجلسة المحفوظة: ${said}` : ''}`,
+                detailEn: `After signing in, a reload of the page showed the sign-in form again: whoever refreshes the page is signed out${said ? `. The server refused these requests, sent before the saved session was put back: ${said}` : ''}. Restore the saved session before the first request a screen sends (set the token when the app starts, not in an effect that runs after its children's), and never sign the user out on a 401 sent without it`,
+            });
+        }
         if (opts?.credentials && !frontDoor?.recovered && !authenticated) {
             findings.push({
                 id: 'auth_failed', severity: 'high',
@@ -1756,9 +2434,22 @@ export async function auditBuiltApp(
         // outlines and the single panel cursor remain visible during the run.
         unhook();
 
+        //  A walk that ran out of time leaves its finished parts for the next walk over this code; a whole walk leaves none.
+        if (code) {
+            keptWalks.delete(walkKey);
+            if (behaviourMetrics.budgetExhausted && walked.size) {
+                keptWalks.set(walkKey, { at: Date.now(), parts: walked });
+                //  The oldest go first (a Map keeps the order things were put in).
+                while (keptWalks.size > KEPT_WALKS_MAX) keptWalks.delete(keptWalks.keys().next().value as string);
+            }
+        }
+
         return {
             score: scoreOf(findings), findings,
+            ...(look ? { look } : {}),
+            ...(lookProblem ? { lookProblem } : {}),
             visible: borrowed,
+            ...(carriedCount ? { carried: carriedCount } : {}),
             authenticated,
             ...(authError ? { authError } : {}),
             routes: ['/', ...routes],
@@ -1771,6 +2462,15 @@ export async function auditBuiltApp(
             qaRecordsDeleted: behaviourMetrics.qaRecordsDeleted,
             qaRecordsNotDeleted: behaviourMetrics.qaRecordsNotDeleted,
             semanticFieldsTested: behaviourMetrics.semanticFieldsTested,
+            //  The case matrix and the widths, counted for the owner (certificate.ts qaCoverageLine).
+            fieldCasesTried: behaviourMetrics.fieldCasesTried,
+            fieldCasesSubmitted: behaviourMetrics.fieldCasesSubmitted,
+            intentsJudged: behaviourMetrics.intentsJudged,
+            intentsMet: behaviourMetrics.intentsMet,
+            //  What was built and whether its own journeys were proven (qa-product-profile.ts).
+            product: { kind: profile.kind, ar: profile.ar, en: profile.en },
+            journeys,
+            reachedAtOtherWidths: allControls.filter((c: any) => c.effect === 'reached').length,
             semanticValidationFailures: behaviourMetrics.semanticValidationFailures,
             semanticValidationEvidence: behaviourMetrics.semanticValidationEvidence,
             disclosureEvidence: behaviourMetrics.disclosureEvidence,

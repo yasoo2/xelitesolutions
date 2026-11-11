@@ -3,6 +3,9 @@ import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-bluep
 import { routeToModel } from '../llm/intelligent-router';
 import { hasRequestedAction, unquotedIntentText } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
+import { hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact } from '../design/requested-artifact';
+import { words } from '../language/arabic';
+import { readModelJsonObject } from '../../shared/utils/json';
 
 export interface IntentClassification {
     isBuild: boolean;
@@ -58,8 +61,19 @@ function maskResultativeMakeForBuild(raw: string): string {
     return String(raw || '').replace(RESULTATIVE_MAKE_STATE_PATTERN, '$1 $2');
 }
 
-const ENGINEERING_VERB_PATTERN = /\b(build|create|develop|implement|refactor|repair|debug|test|deploy|code|modify|build\s+out|بناء|ابن(?:ِ|ي|ى)|انش(?:ئ|ء|ي)|تطوير|طو[ّ]?ر|برمج|اختبر|اختبار|اصلح|إصلح|عد[ّ]?ل|نف[ّ]?ذ|تنفيذ)\b/i;
-const ENGINEERING_NOUN_PATTERN = /\b(repository|repo|codebase|project|system|platform|application|app|api|backend|frontend|database|software|code|tests?|نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعدة\s+بيانات|واجهة|اختبارات?)\b/i;
+const ENGINEERING_VERB_PATTERN = /\b(?:build|create|develop|implement|refactor|repair|debug|test|deploy|code|modify|build\s+out)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(?:بناء|ابن(?:ِ|ي|ى)|[اأإ]نش(?:ئ|ء|ي)|تطوير|طو[ّ]?ر|برمج|[اأ]ختبر|اختبار|[اأإ]صلح|عد[ّ]?ل|نف[ّ]?ذ|تنفيذ)(?![\p{L}\p{N}_])/iu;
+const ENGINEERING_NOUN_PATTERN = /\b(?:repository|repo|codebase|project|system|platform|application|app|api|backend|frontend|database|software|code|tests?)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?(?:ال)?)(?:نظام|منص(?:ة|ه)|تطبيق|مشروع|مستودع|كود|برنامج|خادم|قاعد[ةه]\s+(?:ال)?بيانات|واجه[ةه]|اختبار(?:ات)?)(?![\p{L}\p{N}_])/iu;
+
+/**
+ * Desire verbs in folded spelling — «أبي», «بدي», «ودي», «أريد» … — and the
+ * second-person verbs that turn one into a request to be TOLD something:
+ * «أبي تشرح لي كود الموقع» asks for an explanation, «أبي تعدّل صفحة النادي»
+ * for an edit (eval round 19: the gate read the first as a build and the
+ * talk-only guard replaced the answer with a page build).
+ */
+const DESIRE_OPENERS = new Set(['اريد', 'ابغي', 'ابغا', 'ابي', 'بدي', 'ودي', 'عايز', 'عاوز', 'محتاج', 'احتاج', 'نبي']);
+const TELL_VERBS = new Set(['تشرح', 'تشرحلي', 'تشرحي', 'تفهمني', 'تفهم', 'توضح', 'توضحلي', 'تقول', 'تقولي', 'تخبرني', 'تعلمني', 'تعرفني', 'اعرف', 'افهم', 'اسال', 'اتعلم']);
+const DOING_VERBS = new Set(['تبني', 'تسوي', 'تعدل', 'تضيف', 'تصمم', 'تنشي', 'تنشئ', 'تشيل', 'تحط', 'تكتب', 'تطور', 'تعمل', 'تبرمج', 'تغير', 'تصلح', 'تحذف']);
 
 function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: number; reason: string } {
     const classificationGoal = maskResultativeMakeForBuild(String(goalRaw || ''));
@@ -69,6 +83,21 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
     const bareProbe = stripArabicDiacritics(probe);
 
+    // An Arabic information question is answered, not built — unless it asks
+    // politely for the work («هل يمكنك تصميم صفحة…؟»). The verbal noun in «هل
+    // تصميم موقع جديد مكلف؟» is a topic, not an order (same rule as buildIntent).
+    const informationQuestion = /^\s*(?:ما|ماذا|لماذا|ليش|كيف|متى|اين|أين|كم|ايهما|أيهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(bare)
+        || /^\s*هل(?=$|[\s،:؛])/u.test(bare);
+    const politeActionRequest = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/u.test(bare);
+    // «كيف حالك؟ ابني لي موقع لمطعمي»: a question, then an order. The order
+    // after the first sentence still counts — as «How are you? Build me …»
+    // always did (eval round 19). A verbal noun after it is still a topic.
+    const afterFirstSentence = bare.split(/[؟?.!]/u).slice(1).join(' ');
+    const laterOrder = afterFirstSentence.trim().length > 0 && hasArabicOrderVerb(afterFirstSentence);
+    if (informationQuestion && !politeActionRequest && !laterOrder) {
+        return { isBuild: false, confidence: 0.9, reason: 'information question' };
+    }
+
     // Delegate to canonical hasRequestedAction predicate
     const requestedAction = hasRequestedAction(classificationGoal);
     if (requestedAction.hasAffirmativeAction) {
@@ -76,6 +105,34 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     }
     if (requestedAction.hasDenial) {
         return { isBuild: false, confidence: requestedAction.confidence, reason: requestedAction.reason };
+    }
+
+    // A request that OPENS with an Arabic order — «أبي تعدّل صفحة النادي…»,
+    // «سوّي لي متجر قهوة» — is an order even when a later clause carries a word
+    // the question reader knows: in «ولا تشيل أي قسم», «أي» is «any», not
+    // «which» (P14). Not when the order is to know: «أبي أعرف …» is a question.
+    const opening = words(bare);
+    const opener = opening[0] || '';
+    const second = opening[1] || '';
+    // A desire verb that asks to be told something is a question, unless a
+    // later word asks for the work itself.
+    if (DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second) && !opening.slice(2).some(w => DOING_VERBS.has(w))) {
+        return { isBuild: false, confidence: 0.85, reason: 'information question' };
+    }
+    // A true imperative («سوّي», «ابن», «اعمل») opens an order with any
+    // container. A desire verb opens one only when its own object is a
+    // deliverable («بدي موقع …») or the next word is a doing verb («أبي
+    // تعدّل …») — a container word elsewhere («… كود الموقع») is the topic.
+    const artifact = requestedArtifact(g);
+    const desireOrder = DESIRE_OPENERS.has(opener)
+        ? (!!artifact.kind && artifact.evidence.verb === opener) || DOING_VERBS.has(second)
+        : CONTAINER_PATTERN.test(probe) || !!artifact.kind;
+    const opensWithOrder = !/[؟?]\s*$/u.test(g)
+        && hasArabicBuildVerb(opener)
+        && !TELL_VERBS.has(second)
+        && desireOrder;
+    if (opensWithOrder) {
+        return { isBuild: true, confidence: 0.75, reason: 'opens with an order + container' };
     }
 
     if (isKnowledgeQuestionStructural(g)) {
@@ -89,7 +146,11 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
 
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(bareProbe);
     const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe)
-        || /^\s*اعمل(?=[\s،:؛])/u.test(bare); // Unaccented leading imperative; questions and negations do not borrow it.
+        || /^\s*اعمل(?=[\s،:؛])/u.test(bare) // Unaccented leading imperative; questions and negations do not borrow it.
+        // The owner writes Gulf and Levantine imperatives — «أبي», «سوّي», «خلّ»,
+        // «حط», «شيل», «بنِ» — read from the verb class requestedArtifact uses,
+        // so the gate and the object reader agree on what a build verb is.
+        || hasArabicBuildVerb(maskNegatedSpans(bare));
     const hasContainer = CONTAINER_PATTERN.test(probe);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
     const describesContents = !!columnsAnywhereInHisRequest(g);
@@ -111,12 +172,11 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     if (hasDesireVerb && hasContainer) {
         return { isBuild: true, confidence: 0.7, reason: 'desire verb + container' };
     }
-
-    const infoQuestion = /^\s*(?:ما|ماذا|لماذا|ليش|كيف|متى|اين|أين|كم|ايهما|أيهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(bare)
-        || /^\s*هل(?=$|[\s،:؛])/i.test(bare);
-    const politeAction = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/i.test(bare);
-    if (infoQuestion && !politeAction) {
-        return { isBuild: false, confidence: 0.9, reason: 'information question' };
+    // The verb's object is a deliverable the shared lexicon knows, in either
+    // script: «اعمل لعبة أسئلة» reads like «Make a quiz game» («لعبة» was in no
+    // container list).
+    if (hasDesireVerb && requestedArtifact(g).kind) {
+        return { isBuild: true, confidence: 0.7, reason: 'desire verb + requested artifact' };
     }
 
     return { isBuild: false, confidence: 0, reason: 'no build structure detected' };
@@ -403,9 +463,9 @@ Examples:
             { role: 'user', content: goalRaw }
         ];
         const responseText = await routeToModel(messages, undefined, undefined, undefined, undefined, undefined, undefined, { purpose: 'internal' });
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            const parsed = JSON.parse(jsonMatch[0]);
+        // The shared reader (round 22, W7), not a greedy first-to-last brace.
+        const parsed: any = readModelJsonObject(String(responseText || ''));
+        if (parsed) {
             return {
                 isBuild: !!parsed.isBuild,
                 isBrowser: !!parsed.isBrowser,

@@ -4,6 +4,7 @@ import { Bot, MessageSquare, Settings, Moon, Sun, PanelLeft, PanelRight, Columns
 import { resolveIdentity, nameFromEmail, initialsFrom, gravatarUrlFor, ROLE_KEY, isPrivileged, type UserRole } from '../lib/userIdentity';
 import JoeMark from './JoeMark';
 import UpdateJoeItem, { SelfUpdateOverlay, UpdateAutoPilot, useUpdateAvailable } from './UpdateJoeItem';
+import JoeNoticeBanner from './JoeNoticeBanner';
 
 interface JoeHeaderProps {
     userAvatar?: string;
@@ -53,8 +54,9 @@ export default function JoeHeader({
     const role = (id.role || String(userRole || '').toUpperCase()) as UserRole | '';
     // Photo precedence: a locally-known picture (Google claim / cached avatar)
     // first; otherwise the email's own Gravatar — resolved async because the
-    // hash is computed with WebCrypto. `d=404` + the broken-image fallback
-    // below mean an account with no photo anywhere still gets clean initials.
+    // hash is computed with WebCrypto. The initials are always drawn, and the
+    // picture over them: an address with no Gravatar answers a transparent
+    // picture (`d=blank`), so its initials show through — and nothing fails.
     const [gravatar, setGravatar] = useState('');
     useEffect(() => {
         let alive = true;
@@ -105,8 +107,14 @@ export default function JoeHeader({
                 </div>
             </div>
 
-            {/* Center: System Status - Removed as requested */}
+            {/* Center: the waiting-update notice, IN the header's own flow.
+                It used to float fixed over the header: on a phone it covered
+                five of its controls, and on a desktop its sentence was cut
+                (UI/UX check, 2026-11-05). In flow it can only take free space. */}
             <div className="joe-header-center">
+                {/* A reply to an email Joe sent arrived (MailWatchService), from any chat. */}
+                <JoeNoticeBanner />
+                <UpdateAutoPilot inline />
             </div>
 
             {/* Right: Settings & Profile - Reordered to have Profile in Corner */}
@@ -138,7 +146,7 @@ export default function JoeHeader({
                     <button
                         className={`joe-header-btn sidebar-toggle ${isExplorerCollapsed ? 'inactive' : 'active'}`}
                         onClick={onToggleExplorer}
-                        title="Toggle Explorer"
+                        title={t('hdr_toggleExplorer')}
                     >
                         <PanelRight size={18} />
                     </button>
@@ -162,15 +170,7 @@ export default function JoeHeader({
                         aria-haspopup="menu"
                         aria-expanded={menuOpen}
                     >
-                        {photo && !photoBroken ? (
-                            <img
-                                src={photo}
-                                alt={displayName}
-                                className="joe-avatar"
-                                referrerPolicy="no-referrer"
-                                onError={() => setPhotoBroken(true)}
-                            />
-                        ) : (
+                        <span className="joe-avatar-stack">
                             <div
                                 className="joe-avatar-placeholder"
                                 aria-label={displayName}
@@ -178,11 +178,20 @@ export default function JoeHeader({
                             >
                                 {initials || '—'}
                             </div>
-                        )}
+                            {photo && !photoBroken && (
+                                <img
+                                    src={photo}
+                                    alt={displayName}
+                                    className="joe-avatar joe-avatar-over"
+                                    referrerPolicy="no-referrer"
+                                    onError={() => setPhotoBroken(true)}
+                                />
+                            )}
+                        </span>
                         <ChevronDown size={14} className="joe-user-chevron" />
                         {/* Visible without opening anything: there is a newer
                             Joe waiting. */}
-                        {updateAvailable ? <span className="joe-update-dot" aria-label="تحديث متاح" /> : null}
+                        {updateAvailable ? <span className="joe-update-dot" aria-label={t('upd_available')} /> : null}
                     </button>
 
                     {menuOpen && (
@@ -211,7 +220,7 @@ export default function JoeHeader({
                                 <button className="joe-user-menu-item" role="menuitem"
                                     onClick={() => { setMenuOpen(false); onThemeToggle(); }}>
                                     {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
-                                    <span>{theme === 'dark' ? t('themeLight', 'الوضع النهاري') : t('themeDark', 'الوضع الليلي')}</span>
+                                    <span>{theme === 'dark' ? t('themeLight') : t('themeDark')}</span>
                                 </button>
                             )}
 
@@ -219,7 +228,7 @@ export default function JoeHeader({
                                 <button className="joe-user-menu-item" role="menuitem"
                                     onClick={() => { setMenuOpen(false); onSystemClick?.(); }}>
                                     <Shield size={16} />
-                                    <span>{t('systemManagement', 'إدارة النظام')}</span>
+                                    <span>{t('systemManagement')}</span>
                                 </button>
                             )}
 
@@ -234,10 +243,10 @@ export default function JoeHeader({
                 {/* Outside the dropdown on purpose: the update must survive the
                     menu closing. */}
                 <SelfUpdateOverlay />
-                {/* The automatic half: announces a waiting update on its own and
-                    starts it when Joe is idle — the dropdown row stays as the
+                {/* The automatic half (UpdateAutoPilot) announces a waiting
+                    update on its own and starts it when Joe is idle — it lives
+                    in the header's centre above; the dropdown row stays as the
                     manual door. */}
-                <UpdateAutoPilot />
             </div>
         </header>
     );

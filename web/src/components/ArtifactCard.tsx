@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
+import { useUiDir } from './NeuralTraceView';
 
 /**
  * ArtifactCard — an elegant card for a file/site Joe generated (Claude-artifacts
@@ -26,6 +27,7 @@ const iconFor = (name = '') => {
 
 export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> = ({ meta }) => {
     const { t } = useTranslation();
+    const uiDir = useUiDir();
     const url = meta.previewUrl || meta.url || '';
     const files = (meta.files && meta.files.length ? meta.files : (meta.filename ? [meta.filename] : []));
     const title = meta.filename || files[0] || t('artifactFile');
@@ -61,10 +63,11 @@ export const ArtifactCard: React.FC<{ meta: ArtifactMeta; isArabic?: boolean }> 
                     </div>
                 </div>
                 <span style={{
-                    fontSize: 10.5, fontWeight: 700, letterSpacing: '0.06em',
+                    // letter spacing breaks the joining of Arabic letters
+                    fontSize: 10.5, fontWeight: 700, letterSpacing: uiDir === 'rtl' ? 0 : '0.06em',
                     color: 'var(--joe-gold-primary, #34c48b)', border: '1px solid var(--joe-gold-border, rgba(52,196,139,0.35))',
                     background: 'var(--joe-gold-subtle, rgba(52,196,139,0.12))', borderRadius: 999, padding: '3px 9px',
-                }}>ARTIFACT</span>
+                }}>{t('artifact_badge')}</span>
             </div>
 
             {/* multi-file list */}

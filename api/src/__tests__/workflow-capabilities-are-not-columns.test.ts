@@ -50,8 +50,11 @@ describe('workflow capability lists', () => {
             { id: 'privacy', text: 'private issue lists', quote: 'private issue lists' },
             { id: 'comments', text: 'comments', quote: 'comments' },
         ], source, false, async () => '{"verdicts":[]}');
-        expect(verdicts.map(verdict => verdict.verdict)).toEqual(['unmet', 'unmet', 'unmet']);
-        expect(verdicts.every(verdict => verdict.why.includes('generic records form'))).toBe(true);
+        //  Still refused — none is met. Since 2026-11-03 (P155) what the source
+        //  shapes cannot prove goes to the judge, which must quote a line; the
+        //  old sentence about the template's component is no longer the reason.
+        expect(verdicts.map(verdict => verdict.verdict).every(v => v !== 'met')).toBe(true);
+        expect(verdicts.some(verdict => verdict.why.includes('generic records form'))).toBe(false);
     });
 
     it('measures stateful workflow behaviour rather than words alone', () => {
@@ -180,6 +183,7 @@ describe('workflow capability lists', () => {
         expect(reactTool).toContain('/\\btraffic\\b|road\\s*closures?|\\btransit\\b|public\\s*transport');
         expect(reactTool).toContain("took over immediately");
         expect(reactTool).toContain('provider-independent workflow engine passed the request API contract');
-        expect(reactTool).toContain('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables)');
+        // Multi-entity systems never author RecordsApp; verification (eval round 15) authors nothing.
+        expect(reactTool).toContain('if (generatedEnginePath && !requestDerivedEngineReady && !unifiedTables && !verifyExisting) {');
     });
 });

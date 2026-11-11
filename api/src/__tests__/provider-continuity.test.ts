@@ -63,22 +63,22 @@ afterAll(() => {
 
 describe('free-only provider continuity through routeToModel', () => {
     it('recovers an authenticated custom route with only one probe after its auth cooldown', async () => {
+        //  2026-11-02, the owner: Joe runs on the provider he chose. A refused
+        //  key is said (PROVIDER_AUTH); the free mesh no longer answers under
+        //  the chosen provider's name.
         let now = Date.now();
         const clock = jest.spyOn(Date, 'now').mockImplementation(() => now);
         try {
             const context = { workspaceId: 'auth-recovery', modelConfig: { provider: 'groq', apiKey: 'test-auth-recovery-key' } };
             mockCreate.mockRejectedValueOnce(Object.assign(new Error('401 invalid api key'), { status: 401 }));
-            await route(context);
-            await route(context);
+            await expect(route(context)).rejects.toMatchObject({ code: 'PROVIDER_AUTH' });
+            await expect(route(context)).rejects.toMatchObject({ code: 'PROVIDER_AUTH' });
             expect(mockCreate).toHaveBeenCalledTimes(1);
             now += 5 * 60_000 + 1;
-            let resolveProbe!: (value: any) => void;
-            mockCreate.mockImplementationOnce(() => new Promise(resolve => { resolveProbe = resolve; }));
-            const pendingProbe = route(context);
-            await expect(route(context)).resolves.toBe('Continued the same accepted plan.');
+            mockCreate.mockResolvedValueOnce({ choices: [{ message: { content: 'Provider recovered.' } }] });
+            await expect(route(context)).resolves.toBe('Provider recovered.');
             expect(mockCreate).toHaveBeenCalledTimes(2);
-            resolveProbe({ choices: [{ message: { content: 'Provider recovered.' } }] });
-            await expect(pendingProbe).resolves.toBe('Provider recovered.');
+            expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
         } finally { clock.mockRestore(); }
     });
 
@@ -146,33 +146,41 @@ describe('free-only provider continuity through routeToModel', () => {
         const key = 'test-private-key-never-in-evidence';
         mockCreate.mockRejectedValue(Object.assign(new Error('429 rate limit for ' + key), { status: 429 }));
         const context: any = { modelConfig: { provider: 'groq', apiKey: key }, workspaceId: 'redaction' };
-        await routeToModel(messages, undefined, undefined, undefined, undefined, undefined, tools, context);
+        const failure = await routeToModel(messages, undefined, undefined, undefined, undefined, undefined, tools, context).catch(e => e);
+        expect(failure).toMatchObject({ code: 'PROVIDER_QUOTA' });
+        expect(String(failure.message)).not.toContain(key);
         expect(JSON.stringify(context.providerAttempts)).not.toContain(key);
         expect(context.providerAttempts).toEqual(expect.arrayContaining([expect.objectContaining({ provider: 'groq', success: false })]));
     });
 
-    it('fails over a custom 429 without reusing the same environment credential via another model or mesh', async () => {
+    it('a spent daily limit is said, and neither another model nor the mesh answers in its place', async () => {
         process.env.GROQ_API_KEY = 'test-shared-environment-key';
         mockCreate.mockRejectedValue(Object.assign(new Error('429 tokens per day; retry-after: 600 seconds'), { status: 429 }));
         const context = { userId: 'owner', workspaceId: 'project', sessionId: 'first',
             modelConfig: { provider: 'groq', model: 'first-model', apiKey: process.env.GROQ_API_KEY } };
-        await expect(route(context)).resolves.toBe('Continued the same accepted plan.');
+        const first = await route(context).catch(e => e);
+        expect(first).toMatchObject({ code: 'PROVIDER_QUOTA', provider: 'groq' });
+        expect(first.retryAfterMs).toBeGreaterThan(500_000);
         await expect(route({ ...context, sessionId: 'second', modelConfig: { ...context.modelConfig, model: 'other-model' } }))
-            .resolves.toBe('Continued the same accepted plan.');
+            .rejects.toMatchObject({ code: 'PROVIDER_QUOTA' });
         expect(mockCreate).toHaveBeenCalledTimes(1);
         expect(global.fetch).not.toHaveBeenCalled();
         expect(registry.openAIProvider.chatComplete).not.toHaveBeenCalled();
-        expect(registry.llm7Provider.chatComplete).toHaveBeenCalledTimes(2);
-        expect(registry.llm7Provider.chatComplete.mock.calls[0][0]).toEqual(expect.arrayContaining(messages));
-        expect(registry.llm7Provider.chatComplete.mock.calls[0][2]).toBe(tools);
+        expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
         expect(mockOpenAI).toHaveBeenCalledWith(expect.objectContaining({ maxRetries: 0 }));
     });
 
-    it('does not send a paid custom selection or automatic paid fallback under the default policy', async () => {
-        await expect(route({ modelConfig: { provider: 'openai', model: 'gpt-4o', apiKey: 'test-paid-key' } }))
-            .resolves.toBe('Continued the same accepted plan.');
+    it("does not spend the server's paid key, or fall back to a paid provider, under the default policy", async () => {
+        //  The server's own key (the environment) is the operator's money:
+        //  free_only refuses it, honestly, and the mesh does not answer instead.
+        process.env.OPENAI_API_KEY = 'test-server-paid-key';
+        try {
+            await expect(route({ modelConfig: { provider: 'openai', model: 'gpt-4o', apiKey: 'test-server-paid-key' } }))
+                .rejects.toMatchObject({ code: 'PROVIDER_UNSUPPORTED' });
+        } finally { delete process.env.OPENAI_API_KEY; }
         expect(mockCreate).not.toHaveBeenCalled();
         expect(registry.openAIProvider.chatComplete).not.toHaveBeenCalled();
+        expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
         expect(aiCostPolicy()).toBe('free_only');
         expect(providerAllowedByCost('openrouter', 'paid-model')).toBe(false);
         expect(providerAllowedByCost('groq', 'model', 'https://unknown.example/v1')).toBe(false);
@@ -181,22 +189,44 @@ describe('free-only provider continuity through routeToModel', () => {
         expect(providerAllowedByCost('openrouter', 'vendor/model:free')).toBe(true);
     });
 
-    it('only operator allow_paid enables the explicitly configured paid route', async () => {
+    it("only operator allow_paid spends the server's paid key; a request cannot grant it", async () => {
         mockCreate.mockResolvedValue({ choices: [{ message: { content: 'Paid route explicitly approved.' } }] });
-        await route({ aiCostPolicy: 'allow_paid', modelConfig: { provider: 'openai', apiKey: 'test-paid-key' } });
+        process.env.OPENAI_API_KEY = 'test-server-paid-key';
+        try {
+            await route({ aiCostPolicy: 'allow_paid', modelConfig: { provider: 'openai', apiKey: 'test-server-paid-key' } }).catch(() => undefined);
+            expect(mockCreate).not.toHaveBeenCalled();
+            process.env.AI_COST_POLICY = 'allow_paid';
+            await expect(route({ modelConfig: { provider: 'openai', apiKey: 'test-server-paid-key' } }))
+                .resolves.toBe('Paid route explicitly approved.');
+            expect(mockCreate).toHaveBeenCalledTimes(1);
+        } finally { delete process.env.OPENAI_API_KEY; }
+    });
+
+    it("a key the user typed is his consent: it runs on that vendor, at that vendor's own address", async () => {
+        //  2026-11-02, the owner: «إذا غير مجاني أو لازم يستخدم API key حطّ API key».
+        //  free_only refused DeepSeek, OpenAI and xAI on his own key and the
+        //  mesh answered under their names.
+        mockCreate.mockResolvedValue({ choices: [{ message: { content: 'Answered on his own key.' } }] });
+        for (const [provider, base] of [['deepseek', 'https://api.deepseek.com'], ['openai', 'https://api.openai.com/v1'], ['grok', 'https://api.x.ai/v1'], ['mistral', 'https://api.mistral.ai/v1']]) {
+            mockOpenAI.mockClear();
+            await expect(route({ modelConfig: { provider, model: 'his-model', apiKey: `test-${provider}-typed-key` } }))
+                .resolves.toBe('Answered on his own key.');
+            expect(mockOpenAI).toHaveBeenCalledWith(expect.objectContaining({ baseURL: base, apiKey: `test-${provider}-typed-key` }));
+        }
+        expect(registry.llm7Provider.chatComplete).not.toHaveBeenCalled();
+        //  ...and never to an address that is not the vendor's.
+        mockCreate.mockClear();
+        await expect(route({ modelConfig: { provider: 'deepseek', apiKey: 'test-typed-key', baseUrl: 'https://collector.example/v1' } }))
+            .rejects.toMatchObject({ code: 'PROVIDER_UNSUPPORTED' });
         expect(mockCreate).not.toHaveBeenCalled();
-        process.env.AI_COST_POLICY = 'allow_paid';
-        await expect(route({ modelConfig: { provider: 'openai', apiKey: 'test-paid-key' } }))
-            .resolves.toBe('Paid route explicitly approved.');
-        expect(mockCreate).toHaveBeenCalledTimes(1);
     });
 
     it('isolates custom credentials between workspaces while preserving cooldown across sessions in one workspace', async () => {
         mockCreate.mockRejectedValueOnce(Object.assign(new Error('429 rate limited'), { status: 429 }));
         mockCreate.mockResolvedValue({ choices: [{ message: { content: 'Independent workspace answered.' } }] });
         const config = { provider: 'groq', model: 'test-model', apiKey: 'test-private-key' };
-        await route({ workspaceId: 'A', userId: 'owner', sessionId: 'one', modelConfig: config });
-        await route({ workspaceId: 'A', userId: 'owner', sessionId: 'two', modelConfig: config });
+        await expect(route({ workspaceId: 'A', userId: 'owner', sessionId: 'one', modelConfig: config })).rejects.toMatchObject({ code: 'PROVIDER_QUOTA' });
+        await expect(route({ workspaceId: 'A', userId: 'owner', sessionId: 'two', modelConfig: config })).rejects.toMatchObject({ code: 'PROVIDER_QUOTA' });
         await expect(route({ workspaceId: 'B', userId: 'owner', sessionId: 'one', modelConfig: config }))
             .resolves.toBe('Independent workspace answered.');
         expect(mockCreate).toHaveBeenCalledTimes(2);

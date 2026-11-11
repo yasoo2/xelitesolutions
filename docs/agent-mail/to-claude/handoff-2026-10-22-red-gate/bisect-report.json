@@ -1,0 +1,1122 @@
+[
+ {
+  "suite": "src/__tests__/import-project.test.ts",
+  "test": "routing: URL + intent verb, and only that a clone-and-local-commit contract wins over a negated “do not open a PR” clause",
+  "culprit": "9c91d6a7",
+  "parent_state": "pass",
+  "parent": "d1b0cdf9"
+ },
+ {
+  "suite": "src/__tests__/media-review-contract.test.ts",
+  "test": "request-driven media review contract classifies the workflow as an application instead of a marketing page",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/media-review-contract.test.ts",
+  "test": "request-driven media review contract builds the fields and behavior the request names",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/media-review-contract.test.ts",
+  "test": "request-driven media review contract emits an original-image path and visible invalid-file rejection",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/project-pipeline.test.ts",
+  "test": "the bridge tool — plan, execute phases, report honestly provider preflight does not treat the router failure apology as a healthy answer",
+  "culprit": "97fa9f0d",
+  "parent_state": "pass",
+  "parent": "a9b88495"
+ },
+ {
+  "suite": "src/__tests__/project-pipeline.test.ts",
+  "test": "the bridge tool — plan, execute phases, report honestly Auto preflight gives a measured local Ollama brain enough time before fallback",
+  "culprit": "97fa9f0d",
+  "parent_state": "pass",
+  "parent": "a9b88495"
+ },
+ {
+  "suite": "src/__tests__/he-asked-for-six-and-got-an-empty-shelf.test.ts",
+  "test": "the seed reaches the shelf, not just a variable NEGATIVE — and the catalogue stands down with the other authors",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/npm-quarantine-integration.test.ts",
+  "test": "generated-project npm quarantine boundary runs the held install script through scoped approval plus rebuild in a fresh project",
+  "culprit": "82179eeb",
+  "parent_state": "absent",
+  "parent": "5d2cac0e"
+ },
+ {
+  "suite": "src/__tests__/people-ask-they-do-not-command.test.ts",
+  "test": "INVARIANT: a wish for a page is a build request and the imperatives that already worked still do",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/one-reader-for-one-security-question.test.ts",
+  "test": "and there is exactly one of it — by what it ASKS, not what it is called no file outside utils answers «is this path inside that root?»",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/honest-delivery.test.ts",
+  "test": "what blocks delivery is an open finding, not a flattering score the builder collects them AFTER the self-repair, from the final audit",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint accepts a signed current proof and identifies JSON without claiming SQLite",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint keeps evidence valid when npm uses the generated project-local cache",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint rejects tampering: signature",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint rejects tampering: backend",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint rejects tampering: receipt",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint does not ask a model to fill missing storage evidence or call JSON a real database",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint uses backend proof for a short database label grounded in a full request quote",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint reads a real SQLite database as one locally provable backend requirement",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint uses backend proof when the requirement reader retains a list connector",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/local-backend-evidence.test.ts",
+  "test": "local backend evidence uses the existing verification fingerprint keeps every part of a proven compound backend inventory",
+  "culprit": "46712be6",
+  "parent_state": "pass",
+  "parent": "130dbca7"
+ },
+ {
+  "suite": "src/__tests__/panel-shows-the-audit.test.ts",
+  "test": "the browser is awake before the audit needs it and the build wakes it BEFORE npm install, not when the audit starts",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/panel-shows-the-audit.test.ts",
+  "test": "the browser is awake before the audit needs it and «أصلح ما تبقّى» warms it too — it audits within seconds of starting",
+  "culprit": "30f07853",
+  "parent_state": "pass",
+  "parent": "09f1fe7a"
+ },
+ {
+  "suite": "src/__tests__/panel-shows-the-audit.test.ts",
+  "test": "and he is never invited to watch a browser he cannot see and nothing AFTER it invites him to watch — «👁️» three seconds later was a lie",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/no-brain-no-recovery.test.ts",
+  "test": "the orchestrator refuses to plan its way out of an outage ends the run rather than injecting repair nodes",
+  "culprit": "902b9686",
+  "parent_state": "pass",
+  "parent": "db95bf12"
+ },
+ {
+  "suite": "src/__tests__/nothing-is-done-until-it-is-proven.test.ts",
+  "test": "the ledger is published, in his language the rejected English branch also discloses the judge boundary",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/the-planner-asks-the-tools.test.ts",
+  "test": "the planner uses it — after its own routes, before the model does not let an Arabic no-new-project constraint negate later edit clauses",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/the-planner-asks-the-tools.test.ts",
+  "test": "the planner uses it — after its own routes, before the model routes a selected workspace project to the editor even in a fresh chat",
+  "culprit": "a9b88495",
+  "parent_state": "pass",
+  "parent": "76f66a5d"
+ },
+ {
+  "suite": "src/__tests__/the-planner-asks-the-tools.test.ts",
+  "test": "the planner uses it — after its own routes, before the model lets the selected workspace override a stale project remembered by the chat",
+  "culprit": "a9b88495",
+  "parent_state": "pass",
+  "parent": "76f66a5d"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger invalidates query and fragment changes without persisting target secrets",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger frames file boundaries so redistributed content cannot reuse stale proof",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger invalidates inherited environment changes without retaining their names or values",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger retains failed-attempt cost and freezes savings at the reuse decision",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger reuses one passing check only while every relevant input matches",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger invalidates when relevant source or the dependency lock changes",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger resolves planner workspace-relative paths against a nested project without stale reuse",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger never reuses a cancelled result",
+  "culprit": "27ef9406",
+  "parent_state": "pass",
+  "parent": "a839804d"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger falls back to the whole project when an explicit scope escapes the root",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger rejects a junction used as a scope without reading its target",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger rejects a junction used as a ancestor without reading its target",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger rejects a junction used as a directory without reading its target",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger does not turn an unreadable source into reusable evidence",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger uses generic dependency boundaries and makes final checks cover the whole project",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger includes deep dependency chains even when explicit paths are supplied",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger disables reuse for incomplete missing metadata, including after compaction",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger disables reuse for incomplete paths metadata, including after compaction",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger disables reuse for incomplete dependencies metadata, including after compaction",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger disables reuse for incomplete boundaries metadata, including after compaction",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger disables reuse for incomplete long-path metadata, including after compaction",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/verification-ledger.test.ts",
+  "test": "change-aware verification ledger requires an explicit browser-state revision before visual evidence can be reused",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/the-run-opens-the-system.test.ts",
+  "test": "readiness does not adopt a stranger's server an unconfirmed server yields an explicit verification failure, never a dead URL",
+  "culprit": "75e32c75",
+  "parent_state": "pass",
+  "parent": "da8dd6ed"
+ },
+ {
+  "suite": "src/__tests__/the-run-opens-the-system.test.ts",
+  "test": "an already-running system is adopted, not raced project_run probes the remembered address before starting anything",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/the-run-opens-the-system.test.ts",
+  "test": "an already-running system is adopted, not raced adoption needs a real HTTP answer, not just an open port",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/the-run-opens-the-system.test.ts",
+  "test": "an already-running system is adopted, not raced an explicit cwd or command still starts fresh — adoption is the default only",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/what-orion-got-wrong.test.ts",
+  "test": "a missing interpreter is a skipped check, never a manufactured failure the shared pipeline discovers first and propagates verification evidence",
+  "culprit": "3d0b0be6",
+  "parent_state": "pass",
+  "parent": "bc157a3a"
+ },
+ {
+  "suite": "src/__tests__/three-features.test.ts",
+  "test": "(2) a thin build prompt starts a dialogue, not a build «ابن لي موقع» is vague; a described request is not",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/what-you-built-and-what-you-did-not.test.ts",
+  "test": "the builder's own words survive the phase a FAILED task still reports its error, not a message",
+  "culprit": "0f866ad2",
+  "parent_state": "pass",
+  "parent": "95e51bc3"
+ },
+ {
+  "suite": "src/__tests__/what-you-built-and-what-you-did-not.test.ts",
+  "test": "the delivery report relays what was measured it collects every message the phases carried",
+  "culprit": "3e3ea28f",
+  "parent_state": "pass",
+  "parent": "f8cf0852"
+ },
+ {
+  "suite": "src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts",
+  "test": "a control that only exists on a phone is pressed too ⛔ POSITIVE — there is a pass at 390px, after the desktop walk",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts",
+  "test": "a control that only exists on a phone is pressed too ⛔ POSITIVE — only controls the desktop walk never saw",
+  "culprit": "7b3111ab",
+  "parent_state": "pass",
+  "parent": "71ca1da6"
+ },
+ {
+  "suite": "src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts",
+  "test": "the decorated name and the real name are both kept ⛔ POSITIVE — every writer sets `bare`, and there are two of them",
+  "culprit": "7b3111ab",
+  "parent_state": "pass",
+  "parent": "71ca1da6"
+ },
+ {
+  "suite": "src/__tests__/the-schema-reader-was-blind-in-english.test.ts",
+  "test": "…and a list of values is still not a schema a shopping list holds things, not columns",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/the-schema-reader-was-blind-in-english.test.ts",
+  "test": "…and a list of values is still not a schema a list after a field noun holds that field’s values",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/the-terminal-is-where-the-work-happens.test.ts",
+  "test": "THE WIRING: both builders work in the visible shell the server build does the same, and announces its long-running process",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the planner is offered the whole toolbox, not a frozen list of seven an event with no address of its own inherits the run it came from",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "an application build ships a program, not a brochure the app templates carry real behaviour, and the scaffolder reaches them",
+  "culprit": "38d84ffc",
+  "parent_state": "pass",
+  "parent": "8d1f97ce"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "what was not built is said out loud a bug report or an enhancement edits the app instead of rebuilding it",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "a feed ships with a feed server the feed branch is the one that actually gets written to disk",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the full-stack claim matches the server that was built a feed is not told it has an orders table",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the React head is publish-ready a console error names the resource it came from",
+  "culprit": "862ba27b",
+  "parent_state": "pass",
+  "parent": "81e8913c"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "a run keeps going while you read another conversation persists a fatal answer before releasing the run",
+  "culprit": "49af37f2",
+  "parent_state": "pass",
+  "parent": "902b9686"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "a run keeps going while you read another conversation serves persisted chat history in explicit offline mode",
+  "culprit": "32db3692",
+  "parent_state": "pass",
+  "parent": "bdf667d4"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "a run keeps going while you read another conversation the stop control clears its session immediately after a confirmed stop",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "a plan may only name tools that exist the executor checks again, because a phase can arrive from anywhere",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the biggest request gets the strongest route the pipeline discovers evidence, plans phases, then executes verification",
+  "culprit": "3d0b0be6",
+  "parent_state": "pass",
+  "parent": "bc157a3a"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the server stores what the app sends the schema comes from the same blueprint the interface renders",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the server stores what the app sends a declared parent table reaches the database, the routes and the interface",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the generated app can sign in to its own server and one Joe-built system never borrows another's session",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the team reaches the roles the accounts screen is written into the project whenever a server exists",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the team reaches the roles and the shell imports it and renders it",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/wiring-policy.test.ts",
+  "test": "the built system is ready for a domain and the interface is packaged INTO the server when both exist",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-question-is-not-an-order.test.ts",
+  "test": "INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: هل يمكنك بناء موقع لي؟",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/a-question-is-not-an-order.test.ts",
+  "test": "INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: كيف أنشر المشروع؟ انشره الآن",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/a-question-is-not-an-order.test.ts",
+  "test": "INVARIANT: the guard refuses questions WITHOUT swallowing orders not a question, because it names a deed: can you build me a website?",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/a-substitution-is-declared-not-silent.test.ts",
+  "test": "a substitution is declared, not performed in silence the build gate the call site uses is a real gate: his request is a build, a question is not",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/a-server-that-outlives-its-round.test.ts",
+  "test": "the previous server is retired before a new one is born a retirement exists and runs before the launch",
+  "culprit": "aa64954a",
+  "parent_state": "pass",
+  "parent": "32f66e04"
+ },
+ {
+  "suite": "src/__tests__/a-pattern-written-with-the-article-routes-half.test.ts",
+  "test": "and the same prefix, one line down: publishing …and publishing an ARTICLE is still not publishing a site",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-pattern-written-with-the-article-routes-half.test.ts",
+  "test": "…and nothing else became a project publishing an article is still not deploying a site",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/app-is-used.test.ts",
+  "test": "one definition of a dead control the React audit borrows the probe instead of growing its own",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-team-not-a-person.test.ts",
+  "test": "the generated server decides nothing twice the roles are COMPILED from one definition, not retyped",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/a-team-not-a-person.test.ts",
+  "test": "the accounts routes, and the ways they can be abused and the build message tells the owner the roles exist at all",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/attachments.test.ts",
+  "test": "attachments — visible in the chat, and after a reload, with real names the server echo and the stored message both carry the chips (meta only)",
+  "culprit": "862ba27b",
+  "parent_state": "pass",
+  "parent": "81e8913c"
+ },
+ {
+  "suite": "src/__tests__/ai-schema.test.ts",
+  "test": "and the builder prefers what is already known the api builder awaits the design and says who answered",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/ai-schema.test.ts",
+  "test": "and the builder prefers what is already known and the interface builds its screens from the SAME design, not a second guess",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/an-export-that-exports-nothing.test.ts",
+  "test": "the export button is guarded on what the export reads reads visible.length, which is what leaves with him",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/an-export-that-exports-nothing.test.ts",
+  "test": "the export button is guarded on what the export reads hands that same visible list to toCsv",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-short-order-is-still-an-order.test.ts",
+  "test": "and the thing in front of him decides what his word means a column order with a project open is routed to that project",
+  "culprit": "601644e1",
+  "parent_state": "pass",
+  "parent": "594d871c"
+ },
+ {
+  "suite": "src/__tests__/a-rename-is-neither-an-add-nor-a-remove.test.ts",
+  "test": "a rename is read, in either language the column keeps its key and its type — the rows under it are his",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/a-verb-phrase-read-as-a-column.test.ts",
+  "test": "a column is named by a noun, never by a verb NEGATIVE — TWO columns still outrank the noun, exactly as before",
+  "culprit": "81e8913c",
+  "parent_state": "pass",
+  "parent": "601644e1"
+ },
+ {
+  "suite": "src/__tests__/a-verb-phrase-read-as-a-column.test.ts",
+  "test": "a column is named by a noun, never by a verb NEGATIVE — and the archetype that a column list SHOULD override still is",
+  "culprit": "81e8913c",
+  "parent_state": "pass",
+  "parent": "601644e1"
+ },
+ {
+  "suite": "src/__tests__/routing-immunity.test.ts",
+  "test": "ambiguous verbs do not collide across intents \"انشر مقالاً عن القهوة\" (publish CONTENT) is NOT deploy",
+  "culprit": "97fa9f0d",
+  "parent_state": "pass",
+  "parent": "a9b88495"
+ },
+ {
+  "suite": "src/__tests__/schema-from-blueprint.test.ts",
+  "test": "the schema follows the app, not a fixed guess Prompt 01 keeps the recognized expenses resource and its five blueprint columns",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/scheduling-system-contract.test.ts",
+  "test": "multi-entity scheduling systems does not spend a provider call authoring the dormant single-table component",
+  "culprit": "38d84ffc",
+  "parent_state": "pass",
+  "parent": "8d1f97ce"
+ },
+ {
+  "suite": "src/__tests__/repair-remaining.test.ts",
+  "test": "the phrase routes to it, and nothing else does the route is deterministic and comes before the surgical editor",
+  "culprit": "601644e1",
+  "parent_state": "pass",
+  "parent": "594d871c"
+ },
+ {
+  "suite": "src/__tests__/project-text-edit.test.ts",
+  "test": "named-row text edits — deterministic, no model an explicit value is used verbatim, and ONLY the named row changes",
+  "culprit": "38d84ffc",
+  "parent_state": "pass",
+  "parent": "8d1f97ce"
+ },
+ {
+  "suite": "src/__tests__/run-start-browser-fallback.test.ts",
+  "test": "run/start preserves browser ownership on the first message resolves a new chat session before it can touch attachment memory or persistence",
+  "culprit": "862ba27b",
+  "parent_state": "pass",
+  "parent": "81e8913c"
+ },
+ {
+  "suite": "src/__tests__/relations.test.ts",
+  "test": "the interface reaches the second table the records engine renders the picker, the filter and the parent panel",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/relations.test.ts",
+  "test": "the interface reaches the second table an app with no parent still renders — the picker is simply absent",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/relations.test.ts",
+  "test": "the interface reaches the second table and an edit now reaches the server instead of only this browser",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/the-app-is-the-system.test.ts",
+  "test": "the app can actually read and write that table a generated table answers «row» where the catalogue answers «item»",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/project-preview.test.ts",
+  "test": "the preview loop is WIRED, end to end the local Joe UI proxies durable previews to the API instead of serving its own SPA",
+  "culprit": "a9b88495",
+  "parent_state": "pass",
+  "parent": "76f66a5d"
+ },
+ {
+  "suite": "src/__tests__/terminal-wiring.test.ts",
+  "test": "the stream is live, not a post-hoc flood a tool that streamed live is not flushed a second time",
+  "culprit": "3917fe1d",
+  "parent_state": "pass",
+  "parent": "154e231d"
+ },
+ {
+  "suite": "src/__tests__/qa-work-is-reported.test.ts",
+  "test": "the self-QA reaches the user in whatever language he asked in does not let an optional theme probe cancel the behavioural audit",
+  "culprit": "c219da21",
+  "parent_state": "absent",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/react-project.test.ts",
+  "test": "dependency reuse only trusts a complete Vite tree identifies Rollup when esbuild starts but the Rollup native binding cannot load",
+  "culprit": "5d2cac0e",
+  "parent_state": "absent",
+  "parent": "64373b4c"
+ },
+ {
+  "suite": "src/__tests__/react-project.test.ts",
+  "test": "dependency reuse only trusts a complete Vite tree keeps dependencies untouched when the native executable probe times out",
+  "culprit": "76f66a5d",
+  "parent_state": "absent",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-capability-is-not-a-column.test.ts",
+  "test": "the boundary of the English cut, declared and not hidden a bare English capability with no introducer IS still read as a column",
+  "culprit": "75e32c75",
+  "parent_state": "pass",
+  "parent": "da8dd6ed"
+ },
+ {
+  "suite": "src/__tests__/a-cosmetic-layer-that-starved-the-planner.test.ts",
+  "test": "the stand-down knows what it is protecting POSITIVE — with the local brain leading, the section author does not stand down",
+  "culprit": "154e231d",
+  "parent_state": "pass",
+  "parent": "ccb2539d"
+ },
+ {
+  "suite": "src/__tests__/a-container-he-named-is-not-a-website.test.ts",
+  "test": "the question is about the thing he named the exact live round: a bare table",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-container-he-named-is-not-a-website.test.ts",
+  "test": "the question is about the thing he named …and it echoes HIS word, not the one we would have picked",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-container-he-named-is-not-a-website.test.ts",
+  "test": "the question is about the thing he named …in English too",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-palette-the-app-never-reads.test.ts",
+  "test": "the palette the app is painted with is the palette Joe derived POSITIVE — every token the app reads is one the palette defines",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/a-palette-the-app-never-reads.test.ts",
+  "test": "the palette the app is painted with is the palette Joe derived POSITIVE — a token read with no fallback is one the palette guarantees",
+  "culprit": "f8cf0852",
+  "parent_state": "pass",
+  "parent": "862ba27b"
+ },
+ {
+  "suite": "src/__tests__/a-page-he-named-is-a-criterion-not-a-column.test.ts",
+  "test": "and a page he named is not a column in a table a real column list is untouched — this is a boundary, not a ban on «فيه»",
+  "culprit": "81e8913c",
+  "parent_state": "pass",
+  "parent": "601644e1"
+ },
+ {
+  "suite": "src/__tests__/a-page-he-named-is-a-criterion-not-a-column.test.ts",
+  "test": "and a page he named is not a column in a table a page AND columns in one sentence keeps the columns",
+  "culprit": "81e8913c",
+  "parent_state": "pass",
+  "parent": "601644e1"
+ },
+ {
+  "suite": "src/__tests__/a-flag-nothing-reads-is-a-flag-that-was-never-set.test.ts",
+  "test": "the key the router reads is the key every caller writes ⛔ NEGATIVE — no production file passes a key the router does not read",
+  "culprit": "a8ebf2e0",
+  "parent_state": "pass",
+  "parent": "f9f3c399"
+ },
+ {
+  "suite": "src/__tests__/a-bracket-is-his-answers.test.ts",
+  "test": "a bracket after a column names its answers a single value in brackets is a note, not a list of options",
+  "culprit": "75e32c75",
+  "parent_state": "pass",
+  "parent": "da8dd6ed"
+ },
+ {
+  "suite": "src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts",
+  "test": "a silent fallback is announced where he reads ⛔ POSITIVE — and it reaches the delivery message itself",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-page-he-never-chose-delivered-as-a-choice.test.ts",
+  "test": "a silent fallback is announced where he reads ⛔ NEGATIVE — the stand-down itself is untouched",
+  "culprit": "82179eeb",
+  "parent_state": "pass",
+  "parent": "5d2cac0e"
+ },
+ {
+  "suite": "src/__tests__/a-floor-that-hears-the-compiler-but-not-the-browser.test.ts",
+  "test": "the authored interface is rolled back by the browser, not only by the bundler ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed",
+  "culprit": "0e2ff096",
+  "parent_state": "pass",
+  "parent": "3917fe1d"
+ },
+ {
+  "suite": "src/__tests__/a-column-called-fih.test.ts",
+  "test": "the English half of the same cleaner still runs a list of values is still refused",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/a-grey-box-where-the-product-should-be.test.ts",
+  "test": "a product with no photo is drawn, not left blank NEGATIVE — the records grid keeps the caller it already had",
+  "culprit": "f8cf0852",
+  "parent_state": "pass",
+  "parent": "862ba27b"
+ },
+ {
+  "suite": "src/__tests__/a-noun-is-not-a-command.test.ts",
+  "test": "a verb he wants inside his app is not a command to Joe بحث حقيقي is still a browser task",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-noun-is-not-a-command.test.ts",
+  "test": "a verb he wants inside his app is not a command to Joe موقع معروف is still a browser task",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-noun-is-not-a-command.test.ts",
+  "test": "a verb he wants inside his app is not a command to Joe تصفّح is still a browser task",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/a-noun-is-not-a-command.test.ts",
+  "test": "a request that says what it will hold is a build, whatever he calls it محتوى بلا طلب — شكوى is not a build",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/a-noun-is-not-a-command.test.ts",
+  "test": "a request that says what it will hold is a build, whatever he calls it محتوى بلا طلب — حكاية is not a build",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/change-aware-phase-verification.test.ts",
+  "test": "change-aware verification through the canonical phase path carries passing receipts across AgentLoop phases and invalidates them after a relevant edit",
+  "culprit": "130dbca7",
+  "parent_state": "pass",
+  "parent": "1f394087"
+ },
+ {
+  "suite": "src/__tests__/change-aware-phase-verification.test.ts",
+  "test": "change-aware verification through the canonical phase path does not let a focused receipt satisfy the final whole-project gate",
+  "culprit": "0f866ad2",
+  "parent_state": "pass",
+  "parent": "95e51bc3"
+ },
+ {
+  "suite": "src/__tests__/build-without-a-brain.test.ts",
+  "test": "«بنِ» is the same verb as «ابنِ» his sentence, exactly as he typed it",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/build-without-a-brain.test.ts",
+  "test": "«بنِ» is the same verb as «ابنِ» and the other imperatives people actually use",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/build-without-a-brain.test.ts",
+  "test": "a build does not die because a planner ran out of quota an unreachable planner hands a build to the real builders",
+  "culprit": "1f94c928",
+  "parent_state": "pass",
+  "parent": "fa810595"
+ },
+ {
+  "suite": "src/__tests__/build-without-a-brain.test.ts",
+  "test": "a build does not die because a planner ran out of quota with the same scope rule as any other build",
+  "culprit": "1f94c928",
+  "parent_state": "pass",
+  "parent": "fa810595"
+ },
+ {
+  "suite": "src/__tests__/browser-explicit-url-routing.test.ts",
+  "test": "active live preview browser routing does not reduce a browser e-commerce flow to a search-only action",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/browser-explicit-url-routing.test.ts",
+  "test": "active live preview browser routing routes an explicit repair of the active project to the same project",
+  "culprit": "c51f14e6",
+  "parent_state": "absent",
+  "parent": "45be219b"
+ },
+ {
+  "suite": "src/__tests__/browser-explicit-url-routing.test.ts",
+  "test": "active live preview browser routing uses an explicit project path when the session registry was restarted",
+  "culprit": "c51f14e6",
+  "parent_state": "absent",
+  "parent": "45be219b"
+ },
+ {
+  "suite": "src/__tests__/deep-self-qa.test.ts",
+  "test": "a measurement it cannot make honestly, it does not make and a click that hands over a FILE counts as an effect",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/every-loop-is-connected.test.ts",
+  "test": "renaming the site never needed a model it needs BOTH a site word and a name word — «غيّر اسم المنتج» is not this",
+  "culprit": "32db3692",
+  "parent_state": "pass",
+  "parent": "bdf667d4"
+ },
+ {
+  "suite": "src/__tests__/every-loop-is-connected.test.ts",
+  "test": "renaming the site never needed a model and it only runs when nothing else already handled the request",
+  "culprit": "32db3692",
+  "parent_state": "pass",
+  "parent": "bdf667d4"
+ },
+ {
+  "suite": "src/__tests__/every-loop-is-connected.test.ts",
+  "test": "renaming the site never needed a model and in the tab title too, so the rename is not half done",
+  "culprit": "32db3692",
+  "parent_state": "pass",
+  "parent": "bdf667d4"
+ },
+ {
+  "suite": "src/__tests__/capability-decision-tool.test.ts",
+  "test": "capability decision tool returns a local no-setup receipt for an offline OCR request",
+  "culprit": "a9b88495",
+  "parent_state": "absent",
+  "parent": "76f66a5d"
+ },
+ {
+  "suite": "src/__tests__/explicit-file-contract.test.ts",
+  "test": "explicit filesystem contracts returns a deterministic file intent instead of deep analysis",
+  "culprit": "fa810595",
+  "parent_state": "pass",
+  "parent": "97fa9f0d"
+ },
+ {
+  "suite": "src/__tests__/audit-measures-the-system.test.ts",
+  "test": "the build audits the system it just packaged packaging is reusable, because the repair rebuilds the interface",
+  "culprit": "76f66a5d",
+  "parent_state": "pass",
+  "parent": "82179eeb"
+ },
+ {
+  "suite": "src/__tests__/error-recovery.test.ts",
+  "test": "2. recovery goals bypass every fast-path the dynamic planner gets recovery-specific rules: diagnose before retry",
+  "culprit": "1f94c928",
+  "parent_state": "pass",
+  "parent": "fa810595"
+ },
+ {
+  "suite": "src/__tests__/error-recovery.test.ts",
+  "test": "the retry ceiling still ends a hopeless loop two retries, then the REAL error surfaces",
+  "culprit": "902b9686",
+  "parent_state": "pass",
+  "parent": "db95bf12"
+ },
+ {
+  "suite": "src/__tests__/deadline.test.ts",
+  "test": "deadline wiring — the guards are actually in the pipeline every node execution branch in the orchestrator runs under a deadline",
+  "culprit": "862ba27b",
+  "parent_state": "pass",
+  "parent": "81e8913c"
+ },
+ {
+  "suite": "src/__tests__/command-composer-browser-session.test.ts",
+  "test": "each Joe run carries the browser of its chat session derives the browser session before any text-specific browser detection",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/command-composer-browser-session.test.ts",
+  "test": "each Joe run carries the browser of its chat session sends that effective session in the run payload",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/command-composer-browser-session.test.ts",
+  "test": "each Joe run carries the browser of its chat session preserves an explicitly supplied browser session over the derived fallback",
+  "culprit": "c219da21",
+  "parent_state": "pass",
+  "parent": "3fbef896"
+ },
+ {
+  "suite": "src/__tests__/capability-decision-profiles.test.ts",
+  "test": "capability decision profiles does not select a lower-setup route that violates safety, privacy, or reliability",
+  "culprit": "a9b88495",
+  "parent_state": "absent",
+  "parent": "76f66a5d"
+ },
+ {
+  "suite": "src/__tests__/capability-decision-profiles.test.ts",
+  "test": "capability decision profiles downgrades stale or missing evidence and makes the reason inspectable",
+  "culprit": "a9b88495",
+  "parent_state": "absent",
+  "parent": "76f66a5d"
+ }
+]

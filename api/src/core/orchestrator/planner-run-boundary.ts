@@ -66,11 +66,52 @@ function isNativePromise(value: unknown): value is Promise<unknown> {
 }
 
 /** Bounded trusted planner budget -> one total finite deadline. Never NaN/Infinite. */
-export function clampPlannerTotalMs(raw: unknown): number {
+export function clampPlannerTotalMs(raw: unknown, maxMs: number = MAX_TOTAL_MS): number {
   const num = typeof raw === 'string' && raw.trim() !== '' ? Number(raw) : (raw as number);
   if (typeof num !== 'number' || !Number.isFinite(num) || num <= 0) return DEFAULT_TOTAL_MS;
-  return Math.max(MIN_TOTAL_MS, Math.min(MAX_TOTAL_MS, Math.floor(num)));
+  const ceiling = Number.isFinite(maxMs) && maxMs > 0 ? Math.floor(maxMs) : MAX_TOTAL_MS;
+  return Math.max(MIN_TOTAL_MS, Math.min(ceiling, Math.floor(num)));
 }
+
+/**
+ * The ceiling for a plan the LOCAL model serves: the operator's local leash
+ * (LOCAL_BRAIN_LEASH_MAX), never less than the general five minutes, never
+ * past the local inference hard maximum. A CPU model reads ~6 tokens/s (2026-10-23); five minutes
+ * is not a plan on that hardware, and a fixed cut made every build a stock app.
+ */
+export function localPlannerCeilingMs(): number {
+  const configured = Number.parseInt(String(process.env.LOCAL_BRAIN_LEASH_MAX || '').trim(), 10);
+  return Math.min(require('../llm/local-throughput').LOCAL_INFERENCE_HARD_MAX_MS, Math.max(MAX_TOTAL_MS, Number.isFinite(configured) && configured > 0 ? configured : 0));
+}
+
+/** Estimated tokens of the compact local brief (fixed text + evidence cap) and of a compact plan. */
+export const LOCAL_COMPACT_BRIEF_TOKENS = Math.ceil((4500 + 3000) / 3);
+/**
+ * Estimated tokens of the FULL planning brief a local plan now gets (measured
+ * 2026-10-23: 15.6k bytes of fixed text) plus the evidence a plan may carry.
+ */
+export const LOCAL_PLAN_BRIEF_TOKENS = Math.ceil((15_600 + 3000) / 3);
+export const LOCAL_PLAN_OUTPUT_TOKENS = 1500;
+
+/**
+ * The DEFAULT deadline for a plan the local model serves: its size over this
+ * machine's measured speed, never below the general 180 s default, never past
+ * the local ceiling. A deadline a caller set explicitly is not replaced.
+ *
+ * The output it is sized for is everything the plan may write — the room the
+ * window leaves the brief — not a typical plan. Round 8 (2026-10-23): the full
+ * brief was armed for 51 min on a 1500-token guess while the call allowed
+ * 12000; a longer plan would have been cut mid-JSON. A deadline is a ceiling:
+ * a plan that finishes early returns early, on a GPU in seconds.
+ */
+export function localPlanDeadlineMs(requestText: string): number {
+  const { estimatePromptTokens, localDeadlineMs } = require('../llm/local-throughput');
+  const { managedContextCeilingTokens } = require('../llm/providers/managed-ollama-chat');
+  const promptTokens = estimatePromptTokens(String(requestText || '')) + LOCAL_PLAN_BRIEF_TOKENS;
+  const outputTokens = Math.max(LOCAL_PLAN_OUTPUT_TOKENS, managedContextCeilingTokens() - promptTokens);
+  return Math.min(localPlannerCeilingMs(), Math.max(180_000, localDeadlineMs(promptTokens, outputTokens)));
+}
+
 
 export function resolvePlannerTotalMs(context?: any): number {
   if (!context || typeof context !== 'object') return DEFAULT_TOTAL_MS;
@@ -103,11 +144,11 @@ export class PlannerRunBoundary {
   private readonly pendingTimers = new Set<ReturnType<typeof setTimeout>>();
   private cleaned = false;
 
-  constructor(context?: any, totalMsOverride?: number) {
+  constructor(context?: any, totalMsOverride?: number, maxMs: number = MAX_TOTAL_MS) {
     this.signal = this.controller.signal;
     this.totalMs =
       typeof totalMsOverride === 'number' && Number.isFinite(totalMsOverride)
-        ? clampPlannerTotalMs(totalMsOverride)
+        ? clampPlannerTotalMs(totalMsOverride, maxMs)
         : resolvePlannerTotalMs(context);
     this.deadlineAt = Date.now() + this.totalMs;
     this.bridge(context);
@@ -560,8 +601,8 @@ export class PlannerRunBoundary {
   }
 }
 
-export function createPlannerRunBoundary(context?: any, totalMsOverride?: number): PlannerRunBoundary {
-  return new PlannerRunBoundary(context, totalMsOverride);
+export function createPlannerRunBoundary(context?: any, totalMsOverride?: number, maxMs?: number): PlannerRunBoundary {
+  return new PlannerRunBoundary(context, totalMsOverride, maxMs);
 }
 
 export function isPlannerBoundaryError(error: unknown): boolean {

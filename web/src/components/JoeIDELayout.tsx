@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect, useLayoutEffect, useRef, Suspense, lazy } from 'react';
 import { logStamp, logTextFor } from '../lib/plainText';
+import { mergeRestoredLogs } from '../lib/log-restore';
 import { api } from '../services/apiClient';
 import { useTranslation } from 'react-i18next';
 import JoeHeader from './JoeHeader';
@@ -56,6 +57,9 @@ interface JoeIDELayoutProps {
     // Workspace
     workspaceTab?: WorkspaceTab;
     onWorkspaceTabChange?: (tab: WorkspaceTab) => void;
+    /** What Joe works on now, live in the Preview (the phone or this computer). */
+    liveSource?: 'phone' | 'computer' | 'browser' | null;
+    onLiveClose?: () => void;
     onDeploymentsClick?: () => void;
     onSystemClick?: () => void;
     browserSessionId?: string;
@@ -124,6 +128,8 @@ export default function JoeIDELayout({
     // Workspace
     workspaceTab,
     onWorkspaceTabChange,
+    liveSource,
+    onLiveClose,
     onDeploymentsClick,
     onSystemClick,
     browserSessionId,
@@ -275,9 +281,19 @@ export default function JoeIDELayout({
         return () => clearTimeout(t);
     }, []);
 
+    /**
+     *  ON A PHONE THE CONVERSATION COMES FIRST.
+     *
+     *  On a phone the canvas does not sit beside the chat, it covers it. Every
+     *  agent session has a browser id, and a reopened one has its preview URL
+     *  restored, so both rules below opened the canvas the moment a session was
+     *  opened — and a phone showed the Logs, never Joe's answer (UI/UX check,
+     *  2026-11-05). There, the canvas opens for live work only (preview:ready,
+     *  a tool that starts, a tab the work asks for), or when the user taps it.
+     */
     // When a live preview URL arrives, reveal the canvas so the user sees the result.
     useEffect(() => {
-        if (previewUrl) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
+        if (previewUrl && !isMobile) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
     }, [previewUrl]);
 
     // A real browser session is a direct visibility contract: the live stream must
@@ -285,7 +301,7 @@ export default function JoeIDELayout({
     // not run on close, so a user's manual collapse is respected until a new session
     // or a new browser-tab selection arrives.
     useEffect(() => {
-        if (browserSessionId || workspaceTab === 'browser') {
+        if ((browserSessionId && !isMobile) || workspaceTab === 'browser') {
             autoOpenedRef.current = true;
             setIsWorkspaceCollapsed(false);
         }
@@ -345,7 +361,10 @@ export default function JoeIDELayout({
         const handleOpenLogsTab = () => {
             //  A stated intent outranks a streamed file.
             if (explicitPanel.current && explicitPanel.current !== 'logs') return;
-            if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
+            //  A canvas it opened by itself is one it folds away when the run
+            //  ends. With Logs already the tab, no tab change marked it so,
+            //  and the canvas stayed open over the chat after the run.
+            if (canAutoOpen.current) { autoOpenedRef.current = true; setIsWorkspaceCollapsed(false); }
             if (onWorkspaceTabChange) onWorkspaceTabChange('logs');
             else setInternalWorkspaceTab('logs');
         };
@@ -364,8 +383,10 @@ export default function JoeIDELayout({
     // settles into idle, a canvas that opened itself over a TRANSIENT work view
     // (logs/problems/terminal) folds away after a short grace period, giving
     // the chat back its full page. Result views (preview/browser) stay open:
-    // closing what Joe just delivered would hide the deliverable. Any resumed
-    // activity, tab change or manual collapse cancels the pending close.
+    // closing what Joe just delivered would hide the deliverable. (The
+    // engine's activity and its verdict are in the chat, inside the reply.)
+    // Any resumed activity, tab change or manual collapse cancels the pending
+    // close.
     useEffect(() => {
         if (runBusy) return;
         if (isWorkspaceCollapsed) return;
@@ -471,8 +492,14 @@ export default function JoeIDELayout({
                 cur.liveFiles = next;
             }
         } else if (event.type === 'terminal_output' || event.type === 'log') {
-            const line = String(event.data?.line ?? event.data?.text ?? event.data?.chunk ?? '');
-            if (line) cur.logs = [...cur.logs, line].slice(-500);
+            //  The same rule as the visible panel (logTextFor): a terminal_output
+            //  carries its text as a plain string, which `data.line` never was,
+            //  so a background session's log froze the moment he left it.
+            const lines = logTextFor(event as any);
+            if (lines.length) {
+                const stamp = logStamp();
+                cur.logs = [...cur.logs, ...lines.map(l => `[${stamp}] ${l}`)].slice(-500);
+            }
         } else if (event.type === 'build_status' && event.data) {
             cur.buildStatus = event.data;
         } else if (event.type === 'problems' && Array.isArray(event.data?.problems)) {
@@ -509,17 +536,26 @@ export default function JoeIDELayout({
          */
         if (sessionId && !(saved?.logs || []).length) {
             const asked = sessionId;
-            api.get(`/sessions/${asked}/workspace`)
+            const restore = (attempt: number) => api.get(`/sessions/${asked}/workspace`)
                 .then((data: any) => {
+                    //  The terminal's record too, for a Terminal tab opened later.
+                    if (typeof data?.terminal === 'string' && data.terminal) {
+                        void import('../services/socket').then(({ SocketService }) => SocketService.seedTerminalHistory(asked, data.terminal));
+                    }
                     const lines: string[] = Array.isArray(data?.logs) ? data.logs : [];
                     if (!lines.length) return;
                     //  He may have moved on while the request was in flight;
                     //  writing another session's log into this panel would be
                     //  worse than showing nothing.
                     if (sessionRef.current !== asked) return;
-                    setLogs(prev => (prev.length ? prev : capLogs(lines)));
+                    //  The record first, then the live lines it does not hold
+                    //  (lib/log-restore): a live line that beat the request
+                    //  used to throw the whole record away.
+                    setLogs(prev => capLogs(mergeRestoredLogs(lines, prev)));
                 })
-                .catch(() => { /* an unreachable server is an empty panel, not a crash */ });
+                //  One more try: a busy server is not an empty log.
+                .catch(() => { if (attempt < 2 && sessionRef.current === asked) window.setTimeout(() => void restore(attempt + 1), 3000); });
+            void restore(1);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [sessionId]);
@@ -570,12 +606,16 @@ export default function JoeIDELayout({
                 // When a BROWSER tool runs, reveal the canvas AND switch to the
                 // browser tab so the user actually sees the live stream (otherwise it
                 // opens on the terminal and the browser work stays hidden).
+                //  The agent engine's own calls (`engine:<tool>`) are shown one by
+                //  one in the Activity tab its run opened; a word in a tool's
+                //  name is a guess, and it must not pull the tab away from them.
                 const toolName = String(
                     event?.data?.tool?.name || event?.data?.name || event?.tool || event?.data?.toolName || ''
                 ).toLowerCase();
                 if ((event.type === 'step_started' || event.type === 'tool_started'
                     || event.type === 'browser_screenshot' || event.type === 'stream_frame')
-                    && (toolName.includes('browser') || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
+                    && ((toolName.includes('browser') && !toolName.startsWith('engine:'))
+                        || event.type === 'browser_screenshot' || event.type === 'stream_frame')) {
                     window.dispatchEvent(new Event('joe:open-browser-tab'));
                 }
 
@@ -618,10 +658,13 @@ export default function JoeIDELayout({
                 }
 
                 // A fresh run starts with a clean slate — files from the last
-                // build would otherwise sit above the new ones forever.
+                // build would otherwise sit above the new ones forever. So does
+                // the panel the server asked for: a stated intent belongs to
+                // the run that stated it, and the next run states its own.
                 if (event.type === 'run_started' || event.type === 'user_input') {
                     setLiveFiles([]);
                     setBuildStatus(null);
+                    explicitPanel.current = null;
                 }
 
                 // The build's stage strip: each event is the structured form of
@@ -660,19 +703,19 @@ export default function JoeIDELayout({
 
                 // Problems
                 if (event.type === 'step_failed') {
-                    let errorMsg = 'Unknown error';
+                    let errorMsg = t('ide_unknownError');
                     if (typeof event.data === 'string') errorMsg = event.data;
                     else if (event.data) {
-                        errorMsg = event.data.result?.error || event.data.result?.message || event.data.error || event.data.message || 'Unknown error';
+                        errorMsg = event.data.result?.error || event.data.result?.message || event.data.error || event.data.message || t('ide_unknownError');
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
                     //  The log line for this event is written once, above, by the shared table.
                 } else if (event.type === 'error') {
-                    let errorMsg = 'System error';
+                    let errorMsg = t('ide_systemError');
                     if (typeof event.data === 'string') errorMsg = event.data;
                     else if (event.data) {
-                        errorMsg = event.data.message || event.data.error || 'System error';
+                        errorMsg = event.data.message || event.data.error || t('ide_systemError');
                         if (typeof errorMsg === 'object') errorMsg = JSON.stringify(errorMsg);
                     }
                     setProblems(prev => [...prev, { type: 'error', message: errorMsg, time: new Date() }]);
@@ -760,10 +803,13 @@ export default function JoeIDELayout({
     // the canvas ONLY after the initial settle window (so it doesn't fight the
     // full-page-chat default on load).
     const handleAutoOpen = useCallback((panel: PanelType, data?: any) => {
+        //  The engine's activity is drawn in the chat, inside Joe's reply; no
+        //  panel opens for it.
+        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser'
+            : panel === 'terminal' ? 'terminal' : null;
+        if (!tab) return;
         //  `panel_focus` always carries a reason; a tool-name guess does not.
         if (data?.reason) explicitPanel.current = (panel as WorkspaceTab);
-        const tab: WorkspaceTab | null = panel === 'preview' ? 'preview' : panel === 'browser' ? 'browser' : panel === 'terminal' ? 'terminal' : null;
-        if (!tab) return;
         if (onWorkspaceTabChange) onWorkspaceTabChange(tab); else setInternalWorkspaceTab(tab);
         if (canAutoOpen.current) setIsWorkspaceCollapsed(false);
     }, [onWorkspaceTabChange]);
@@ -786,16 +832,16 @@ export default function JoeIDELayout({
 
     // Command Palette actions — wired to the real app actions in scope.
     const paletteCommands: Command[] = React.useMemo(() => [
-        { id: 'new-chat', label: 'محادثة جديدة', hint: 'New chat', icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
-        { id: 'tab-preview', label: 'فتح المعاينة', hint: 'Preview', icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
-        { id: 'tab-terminal', label: 'فتح الطرفية', hint: 'Terminal', icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
-        { id: 'tab-browser', label: 'فتح المتصفح', hint: 'Browser', icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
-        { id: 'toggle-canvas', label: 'إظهار/إخفاء مساحة العمل', hint: 'Canvas', icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
-        { id: 'toggle-files', label: 'مستكشف الملفات', hint: 'Files', icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
-        { id: 'git', label: 'تغييرات Git', hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
-        { id: 'theme', label: 'تبديل المظهر (فاتح/داكن)', hint: 'Theme', icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
-        { id: 'settings', label: 'الإعدادات', hint: 'Settings', icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
-    ], [onNewSession, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
+        { id: 'new-chat', label: t('ide_cmdNewChat'), hint: t('ide_hintChat'), icon: '＋', keywords: 'session جلسة جديد', run: () => onNewSession && onNewSession() },
+        { id: 'tab-preview', label: t('ide_cmdOpenPreview'), hint: t('panelPreview'), icon: '👁', keywords: 'preview معاينة', run: () => handleWorkspaceTabChange('preview') },
+        { id: 'tab-terminal', label: t('ide_cmdOpenTerminal'), hint: t('panelTerminal'), icon: '⌘', keywords: 'terminal طرفية shell', run: () => handleWorkspaceTabChange('terminal') },
+        { id: 'tab-browser', label: t('ide_cmdOpenBrowser'), hint: t('panelBrowser'), icon: '🌐', keywords: 'browser متصفح', run: () => handleWorkspaceTabChange('browser') },
+        { id: 'toggle-canvas', label: t('ide_cmdToggleWorkspace'), hint: t('ide_hintCanvas'), icon: '▣', keywords: 'workspace canvas كانفاس', run: () => toggleWorkspace() },
+        { id: 'toggle-files', label: t('ide_cmdFileExplorer'), hint: t('ide_hintFiles'), icon: '🗂', keywords: 'files explorer ملفات', run: () => toggleExplorer() },
+        { id: 'git', label: t('ide_cmdGitChanges'), hint: 'Git', icon: '⎇', keywords: 'git github changes', run: () => handleGitChanges() },
+        { id: 'theme', label: t('ide_cmdToggleTheme'), hint: t('ide_hintTheme'), icon: '◐', keywords: 'theme dark light مظهر', run: () => onThemeToggle && onThemeToggle() },
+        { id: 'settings', label: t('settings'), hint: t('ide_hintSettings'), icon: '⚙', keywords: 'settings إعدادات', run: () => onSettingsClick && onSettingsClick() },
+    ], [t, onNewSession, handleWorkspaceTabChange, toggleWorkspace, toggleExplorer, handleGitChanges, onThemeToggle, onSettingsClick]);
 
     // For CommandComposer, we need an active session ID and browser session ID
     const activeSessionId = sessionId; // Assuming sessionId is the active one
@@ -833,7 +879,7 @@ export default function JoeIDELayout({
                 it. Neither state was what the button promised. */}
             <div className={`joe-main ${isChatCollapsed ? 'chat-collapsed' : ''}`}>
                 {/* Left: Chat Panel */}
-                <ErrorBoundary fallbackTitle="تعذّر تحميل المحادثة">
+                <ErrorBoundary fallbackTitle={t('ide_chatLoadFailed')}>
                     <ChatPanel
                         messages={messages}
                         inputValue={inputValue}
@@ -849,14 +895,14 @@ export default function JoeIDELayout({
                 </ErrorBoundary>
 
                 {/* Center: Workspace CANVAS (collapsible, overlay on mobile) */}
-                <ErrorBoundary fallbackTitle="تعذّر تحميل منطقة العمل">
+                <ErrorBoundary fallbackTitle={t('ide_workspaceLoadFailed')}>
                     <div className={`joe-workspace-container relative h-full ${isWorkspaceCollapsed ? 'canvas-collapsed' : ''}`}>
                         {/* Manual close button (always available while the canvas is open) */}
                         <button
                             className="joe-canvas-close"
                             onClick={toggleWorkspace}
-                            title="إغلاق مساحة العمل"
-                            aria-label="close workspace canvas"
+                            title={t('ide_closeWorkspace')}
+                            aria-label={t('ide_closeWorkspace')}
                         >✕</button>
                         {/*  A BOOLEAN THAT MEANS TWO THINGS CANNOT BE GUARDED.
 
@@ -895,6 +941,8 @@ export default function JoeIDELayout({
                             problems={problems}
                             mobileCollapsed={isWorkspaceCollapsed}
                             onMobileToggle={toggleWorkspace}
+                            liveSource={liveSource}
+                            onLiveClose={onLiveClose}
                         >
                             {workspaceChildren}
                         </WorkspacePanel>
@@ -910,7 +958,7 @@ export default function JoeIDELayout({
                     className={`joe-files-drawer ${isExplorerCollapsed ? 'collapsed' : 'open'} ${isMobile ? 'mobile' : 'desktop'}`}
                     aria-hidden={isExplorerCollapsed}
                 >
-                    <ErrorBoundary fallbackTitle="تعذّر تحميل الشريط الجانبي">
+                    <ErrorBoundary fallbackTitle={t('ide_sidebarLoadFailed')}>
                         {sidebarView === 'explorer' ? (
                             <FileExplorerPanel
                                 sessionId={sessionId}
@@ -1013,7 +1061,6 @@ export default function JoeIDELayout({
                 open={isPaletteOpen}
                 onClose={() => setIsPaletteOpen(false)}
                 commands={paletteCommands}
-                isArabic
             />
         </div>
     );

@@ -1,9 +1,8 @@
 /**
  * WIRE PROOF — the three features, live:
  *
- *   1. CLARIFY: AgentLoopService.execute('ابن لي موقع') returns the questions
- *      WITHOUT touching any model/provider, broadcasts them as the assistant
- *      reply, and persists them to the JSON chat store.
+ *   1. CLARIFY: «ابن لي موقع» is decided (Joe chooses and says so), never
+ *      stopped on a question; the next message is its own request.
  *   2. MOBILE APP: a project written with the REAL pwa functions is loaded in
  *      the REAL browser — the service worker registers and activates, the
  *      manifest and both PNG icons fetch, and the page STILL RENDERS OFFLINE
@@ -30,20 +29,14 @@ async function main() {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'joe-three-'));
     process.env.JOE_CHAT_STORE_DIR = tmp;
 
-    // ── 1. the clarify dialogue through the real service ────────────────
-    console.log('\n[1] «ابن لي موقع» → أسئلة فورية بلا أي استدعاء نموذج');
-    const { AgentLoopService } = await import('../../modules/services/AgentLoopService');
-    const g: any = global as any;
-    g.mockMessages = [];
-    const t0 = Date.now();
-    const res: any = await AgentLoopService.execute('ابن لي موقع', { sessionId: 'clar-live', language: 'ar' });
-    const took = Date.now() - t0;
-    check('the reply is the clarify questions', !!res?.result?.clarify && /^\s*1\.\s+\S/m.test(String(res?.result?.answer)), JSON.stringify(res).slice(0, 120));
-    check('…answered instantly (no provider walk)', took < 2000, `${took}ms`);
-    check('…in Arabic, ending with the bypass hint', /ابدأ مباشرة/.test(String(res?.result?.answer)));
-    check('…persisted as an assistant message', (g.mockMessages || []).some((m: any) => m.role === 'assistant' && /^\s*1\.\s+\S/m.test(m.content)));
-    const merged = (await import('../../core/orchestrator/clarify')).clarifyGate('مطعم مأكولات بحرية بألوان زرقاء', 'clar-live', 'ar');
-    check('the NEXT message merges into the original request', merged.kind === 'merge' && /ابن لي موقع/.test((merged as any).goal) && /بحرية/.test((merged as any).goal));
+    // ── 1. a thin request is decided, never stopped on a question ───────
+    //  Since 2026-11-03 («بدون تدخل بشري») Joe builds a thin request with his
+    //  own choices and says so up front (core/orchestrator/clarify.ts).
+    console.log('\n[1] «ابن لي موقع» → قرار يُعلن، ثم البناء — بلا سؤال');
+    const { clarifyGate } = await import('../../core/orchestrator/clarify');
+    const decided = clarifyGate('ابن لي موقع', 'ar');
+    check('a thin request is decided, not questioned', decided.kind === 'decide' && /أختار بنفسي/.test((decided as any).note), JSON.stringify(decided).slice(0, 160));
+    check('…and the next message is its own request', clarifyGate('مطعم مأكولات بحرية بألوان زرقاء', 'ar').kind === 'pass');
 
     // ── 2. the installable app, in the real browser ─────────────────────
     console.log('\n[2] تطبيق قابل للتثبيت: عامل الخدمة يسجّل، والصفحة تعمل بلا إنترنت');
@@ -118,7 +111,6 @@ async function main() {
 
     await browser.close();
     server.close();
-    g.mockMessages = [];
     fs.rmSync(tmp, { recursive: true, force: true });
     console.log(`\n===== ${pass} passed, ${fail} failed =====`);
     process.exit(fail ? 1 : 0);

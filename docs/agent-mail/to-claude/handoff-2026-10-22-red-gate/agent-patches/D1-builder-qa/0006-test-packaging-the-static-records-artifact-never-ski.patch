@@ -1,0 +1,76 @@
+From dedff1c5155fb1c60a48c2695557ec102f161690 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:14 +0000
+Subject: [PATCH 6/9] test(packaging): the static records artifact never skips
+ a system
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: audit-measures-the-system (culprit 76f66a5d)
+  packaging is reusable, because the repair rebuilds the interface
+    pinned `const packaged = built ? packageIntoApi(true) : false;`
+
+Decision: P, verified on the new artifact mode. 76f66a5d does not package
+the dependency-free static_records artifact:
+  const packaged = built && artifactMode !== 'static_records' ? packageIntoApi(true) : false;
+That can never leave a system audited as a folder: the static path is
+gated by canBuildDependencyFreeRecordsApp(runBp, { hasBackend:
+Boolean(apiEntry), ... }), which refuses whenever there is a backend, and
+apiDir is read from that same apiEntry — so in static_records mode apiDir
+is '' and packageIntoApi would return false anyway.
+
+The test now pins the new line AND the reason it is harmless: the gate is
+fed the same apiEntry the API directory comes from, and (behaviour, not
+spelling) canBuildDependencyFreeRecordsApp is true for a plain records
+blueprint and false for the same blueprint beside a backend.
+
+Non-vacuity:
+  static-beside-api: canBuildDependencyFreeRecordsApp stops refusing a backend
+    ✕ packaging is reusable, because the repair rebuilds the interface
+    Expected: false  Received: true   RESTORED: sha256 identical
+  static-gate-blind: the gate is fed `hasBackend: false`
+    ✕ packaging is reusable, because the repair rebuilds the interface
+    Expected pattern: /canBuildDependencyFreeRecordsApp\(runBp, \{\s*hasBackend: Boolean\(apiEntry\),/
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ api/src/__tests__/audit-measures-the-system.test.ts | 13 ++++++++++++-
+ 1 file changed, 12 insertions(+), 1 deletion(-)
+
+diff --git a/api/src/__tests__/audit-measures-the-system.test.ts b/api/src/__tests__/audit-measures-the-system.test.ts
+index 406e51ce..8a678eb7 100644
+--- a/api/src/__tests__/audit-measures-the-system.test.ts
++++ b/api/src/__tests__/audit-measures-the-system.test.ts
+@@ -13,6 +13,7 @@
+  */
+ import fs from 'fs';
+ import path from 'path';
++import { canBuildDependencyFreeRecordsApp } from '../modules/tools/definitions/ReactProjectTool';
+ 
+ const SRC = path.join(__dirname, '..');
+ const read = (...p: string[]) => fs.readFileSync(path.join(SRC, ...p), 'utf-8');
+@@ -110,7 +111,17 @@ describe('the build audits the system it just packaged', () => {
+     it('packaging is reusable, because the repair rebuilds the interface', () => {
+         const r = R();
+         expect(r).toMatch(/const packageIntoApi = \(announce: boolean\) => \{/);
+-        expect(r).toMatch(/const packaged = built \? packageIntoApi\(true\) : false;/);
++        //  76f66a5d does not package the dependency-free static records
++        //  artifact. That can never leave a SYSTEM measured as a folder: the
++        //  static path is only taken when there is no API to package into —
++        //  its gate is fed `hasBackend: Boolean(apiEntry)`, the same apiEntry
++        //  the API directory is read from — and with a backend it is refused.
++        expect(r).toMatch(/const packaged = built && artifactMode !== 'static_records' \? packageIntoApi\(true\) : false;/);
++        expect(r).toMatch(/canBuildDependencyFreeRecordsApp\(runBp, \{\s*hasBackend: Boolean\(apiEntry\),/);
++        expect(r).toMatch(/const apiDir = \(apiEntry\?\.dir && fs\.existsSync\(apiEntry\.dir\)\) \? String\(apiEntry\.dir\) : '';/);
++        const records = { engine: 'records', fields: [{ key: 'name', label: 'Name', type: 'text' }] } as any;
++        expect(canBuildDependencyFreeRecordsApp(records)).toBe(true);                        // the path exists…
++        expect(canBuildDependencyFreeRecordsApp(records, { hasBackend: true })).toBe(false);  // …never beside an API
+         // After a repair the packaged copy is the OLD build until this runs.
+         expect(r).toMatch(/if \(packaged\) packageIntoApi\(false\);/);
+         // Inside the loop's rebuild(), so EVERY round measures the page it
+-- 
+2.43.0
+

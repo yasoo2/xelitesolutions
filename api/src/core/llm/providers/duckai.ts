@@ -22,7 +22,7 @@ const DUCKAI_MODELS = [
 export class DuckAIProvider {
     private vqd: string | null = null;
     private vqdAt = 0;
-    private cooldownUntil = 0; // set on 429 (rate limit)
+    private cooldownUntil = 0; // set on 429 (rate limit), and for a day on a bot challenge
 
     isAvailable(): boolean {
         if (String(process.env.DUCKAI_DISABLE || '').trim() === '1') return false;
@@ -38,8 +38,24 @@ export class DuckAIProvider {
             headers: { 'x-vqd-accept': '1', 'User-Agent': UA, 'Accept': 'text/event-stream', 'Cache-Control': 'no-store' },
         } as any);
         if (!res.ok) throw new Error(`DuckAI status ${res.status}`);
-        const vqd = res.headers.get('x-vqd-4') || res.headers.get('x-vqd-hash-1');
-        if (!vqd) throw new Error('DuckAI: no vqd token (anonymous handshake unavailable)');
+        /**
+         *  ⛔ A BOT CHALLENGE IS A CLOSED DOOR, NOT A TOKEN.
+         *
+         *  Measured 2026-11-02: the handshake no longer returns x-vqd-4; it
+         *  returns x-vqd-hash-1, an obfuscated JavaScript challenge meant to
+         *  tell a browser from a program. This line used to send that
+         *  challenge back as the token, so every request failed. Joe does not
+         *  solve bot challenges: the gateway is closed for a day and the mesh
+         *  goes on without it.
+         */
+        const vqd = res.headers.get('x-vqd-4');
+        if (!vqd) {
+            if (res.headers.get('x-vqd-hash-1')) {
+                this.cooldownUntil = Date.now() + 24 * 3600_000;
+                throw new Error('DuckAI: the gateway now answers with a browser challenge; it is not used');
+            }
+            throw new Error('DuckAI: no vqd token (anonymous handshake unavailable)');
+        }
         this.vqd = vqd;
         this.vqdAt = now;
         return vqd;

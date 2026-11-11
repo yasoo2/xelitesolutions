@@ -18,12 +18,16 @@
  *  A bare noun has no verb, so every such request fell to a questionnaire
  *  that assumes a website. That is the fourth law broken inside the one
  *  function whose entire job is to ask about the request.
+ *
+ *  Since 2026-11-03 Joe no longer asks — the owner wants him to build alone
+ *  (core/orchestrator/clarify.ts) — and the same rule holds for what he says
+ *  he is choosing: about HIS container, in HIS word, never a website.
  */
-import { clarifyQuestions } from '../core/orchestrator/clarify';
+import { decisionNote } from '../core/orchestrator/clarify';
 
-describe('the question is about the thing he named', () => {
+describe('what Joe chooses is about the thing he named', () => {
     it('the exact live round: a bare table', () => {
-        const q = clarifyQuestions('بدي جدول', 'ar');
+        const q = decisionNote('بدي جدول', 'ar');
         expect(q).toContain('جدول');
         expect(q).not.toMatch(/موقع|الأقسام|ألوان|صفحة واحدة/);
     });
@@ -31,42 +35,42 @@ describe('the question is about the thing he named', () => {
     it('…and it echoes HIS word, not the one we would have picked', () => {
         //  «كشف» is a ledger. Answering with «جدول» would be Joe correcting
         //  his Arabic instead of reading it.
-        const q = clarifyQuestions('بدي كشف', 'ar');
+        const q = decisionNote('بدي كشف', 'ar');
         expect(q).toContain('كشف');
         expect(q).not.toContain('جدول');
     });
 
     it('…in English too', () => {
-        const q = clarifyQuestions('I want a ledger', 'en');
+        const q = decisionNote('I want a ledger', 'en');
         expect(q).toContain('ledger');
         expect(q).not.toMatch(/site|sections|colours|One page/);
     });
 
     it('…and a tracking verb still wins, because it names the subject', () => {
         //  The older branch is more specific: it knows WHAT is tracked.
-        const q = clarifyQuestions('بدي أسجل زبائني', 'ar');
+        const q = decisionNote('بدي أسجل زبائني', 'ar');
         expect(q).toContain('زبائن');
     });
 });
 
-describe('…and a request that really is a site still gets the site questions', () => {
-    it('a bare site keeps the four questions', () => {
+describe('…and a request that really is a site is decided as a site', () => {
+    it('a bare site is about its subject, sections and colours', () => {
         //  The negative. Widening the container branch until it swallows this
         //  would trade one wrong questionnaire for another.
-        const q = clarifyQuestions('بدي موقع', 'ar');
+        const q = decisionNote('بدي موقع', 'ar');
         expect(q).toMatch(/موضوع|الأقسام/);
         expect(q).toContain('ألوان');
     });
 
-    it('a bare app is asked about the app', () => {
-        const q = clarifyQuestions('I want an app', 'en');
+    it('a bare app is decided as an app', () => {
+        const q = decisionNote('I want an app', 'en');
         expect(q).toMatch(/app|sections/i);
     });
 
     it('a word this file has never heard of is not a container', () => {
         //  «زُرقمونية» is not a table, a list or a ledger, and nothing here
         //  pretends it is.
-        const q = clarifyQuestions('بدي زُرقمونية', 'ar');
+        const q = decisionNote('بدي زُرقمونية', 'ar');
         expect(q).toMatch(/موضوع|الأقسام/);
     });
 });

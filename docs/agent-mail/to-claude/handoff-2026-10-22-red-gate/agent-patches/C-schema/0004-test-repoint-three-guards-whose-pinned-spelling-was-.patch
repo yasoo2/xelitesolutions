@@ -1,0 +1,155 @@
+From 57f2f3dfbac22c7ba52f53706d39ab5f4399a03d Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:11:20 +0000
+Subject: [PATCH 4/4] test: repoint three guards whose pinned spelling was
+ refactored (invariant intact)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Decision for all three: P - the guard pinned an output or a source line
+that a later commit refactored; the invariant it protects was verified to
+still hold by reading the new code path, so the guard now asserts that
+invariant (behaviour where cheap) instead of the old spelling.
+
+a-rename-is-neither-an-add-nor-a-remove "the column keeps its key and its
+type" - culprit c219da21 (canonicalFieldKey: a column he names exactly
+«المبلغ» / «التاريخ» gets the stable key amount / date, was money1 / date1).
+Measured: before rename [text1:text, amount:number, date:date], after
+[text1:text, amount:number, date:date] with the label now «القيمة». The test
+now reads the keys from the build and asserts the rename keeps every key
+AND type (the old pin never checked type).
+  M8  rename assigns a new key  -> ✕  -   "amount:number",  +   "text4:number"
+  M8b rename retypes the column -> ✕  -   "amount:number",  +   "amount:text"
+
+schema-from-blueprint "Prompt 01 keeps the recognized expenses resource…"
+- culprit c219da21, which taught the blueprint to read "a form to add an
+expense with description, category, amount, and date" and moved the two
+sibling Prompt 01 checks in api-project.test.ts to those four fields; this
+third copy kept the stock five (title, amount, category, date, note).
+apiColumnsForRequest is columnsFromFields(blueprintFor(...).fields), so the
+test now asserts stored keys == rendered blueprint keys AND == his four.
+  M9  server drops a rendered column (bp.fields.slice(1)) -> ✕  -   "description",
+  M10 blueprint stops reading his form -> ✕ (received amount, category, date, note)
+
+ai-schema "awaits the design" / "the interface builds its screens from the
+SAME design" - culprits 3917fe1d (workflow apps skip the designer:
+`designed = workflowApplication ? [] : await designDataModel(...)`) and
+c219da21 (a non-promoted primary with its own columns also rides at the
+head: `[...primaryModel, ...model]`); the third pin, masked behind the
+first failure, was renamed by 76f66a5d (prevEntry -> apiEntry, the API
+entry or the contract carried on a linked scaffold). The pins now name
+the single exception and the wider head rule.
+  M11 designer notes silenced -> ✕ Expected pattern: /const designed = workflowApplication…/
+  M12 un-promoted primary dropped from the handoff -> ✕ Expected pattern: /const handedModel = …/
+  M13 interface ignores the API model -> ✕ Expected pattern: /Array\.isArray\(apiEntry\?\.model\)…/
+All restores: sha256 identical.
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...ame-is-neither-an-add-nor-a-remove.test.ts | 16 +++++++++-----
+ api/src/__tests__/ai-schema.test.ts           | 21 ++++++++++++++++---
+ .../__tests__/schema-from-blueprint.test.ts   | 16 +++++++++++---
+ 3 files changed, 42 insertions(+), 11 deletions(-)
+
+diff --git a/api/src/__tests__/a-rename-is-neither-an-add-nor-a-remove.test.ts b/api/src/__tests__/a-rename-is-neither-an-add-nor-a-remove.test.ts
+index 2c43062d..9ad0be62 100644
+--- a/api/src/__tests__/a-rename-is-neither-an-add-nor-a-remove.test.ts
++++ b/api/src/__tests__/a-rename-is-neither-an-add-nor-a-remove.test.ts
+@@ -47,12 +47,18 @@ describe('a rename is read, in either language', () => {
+     });
+ 
+     it('the column keeps its key and its type — the rows under it are his', () => {
+-        const bp = blueprintFor(detectAppKind('بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ') as never,
+-            'بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ', true);
+-        const before = bp.fields.map(f => `${f.label}:${f.key}`);
+-        expect(before).toEqual(['رقم الفاتورة:text1', 'المبلغ:money1', 'التاريخ:date1']);
++        //  The keys are READ from the build, not spelled here. They were
++        //  pinned as money1/date1, and the day a column he names exactly
++        //  «المبلغ» got the stable key `amount` this line went red with the
++        //  rename still keeping every key it had. What it guards is the
++        //  rename, so that is what it compares: same keys, same types, one
++        //  new label.
++        const request = 'بدي جدول للفواتير فيه رقم الفاتورة والمبلغ والتاريخ';
++        const bp = blueprintFor(detectAppKind(request) as never, request, true);
++        expect(bp.fields.map(f => f.label)).toEqual(['رقم الفاتورة', 'المبلغ', 'التاريخ']);
+         const after = applyColumnEdit(bp.fields, columnEdit('غيّر اسم عمود المبلغ إلى القيمة'), true);
+-        expect(after.map(f => `${f.label}:${f.key}`)).toEqual(['رقم الفاتورة:text1', 'القيمة:money1', 'التاريخ:date1']);
++        expect(after.map(f => f.label)).toEqual(['رقم الفاتورة', 'القيمة', 'التاريخ']);
++        expect(after.map(f => `${f.key}:${f.type}`)).toEqual(bp.fields.map(f => `${f.key}:${f.type}`));
+     });
+ });
+ 
+diff --git a/api/src/__tests__/ai-schema.test.ts b/api/src/__tests__/ai-schema.test.ts
+index 0b2d28b0..36a2d5e2 100644
+--- a/api/src/__tests__/ai-schema.test.ts
++++ b/api/src/__tests__/ai-schema.test.ts
+@@ -125,7 +125,12 @@ describe('and the builder prefers what is already known', () => {
+ 
+     it('the api builder awaits the design and says who answered', () => {
+         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
+-        expect(a).toMatch(/const designed = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
++        //  Repointed: a coordinated workflow app (sign-in, roles, assignment…)
++        //  owns its data shape, so it skips the designer by name. That is
++        //  the ONE exception, and it is spelled out here — every other request
++        //  still awaits the design and hands its notes to the terminal.
++        expect(a).toMatch(/const designed = workflowApplication\s*\?\s*\[\]\s*:\s*await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
++        expect(a).toMatch(/const workflowApplication = hasWorkflowApplicationContract\(requestForReading\);/);
+     });
+ 
+     it('and the interface builds its screens from the SAME design, not a second guess', () => {
+@@ -133,10 +138,20 @@ describe('and the builder prefers what is already known', () => {
+         // The handed model is now the WHOLE system: the promoted primary rides
+         // at the head, because a primary absent from this entry was a table
+         // the server served that no screen anywhere let anyone touch.
+-        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : model;/);
++        //  Repointed: a primary that was NOT promoted but stores its own
++        //  columns rides at the head too, built from the same `columns` the
++        //  server's table is created from — the same rule, one case wider.
++        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : \[\.\.\.primaryModel, \.\.\.model\];/);
++        expect(a).toMatch(/const primaryModel = !promoted && columns !== CATALOGUE_COLUMNS\s*\?\s*\[\{\s*key: resource,[\s\S]{0,120}?fields: columns\.map\(/);
+         expect(a).toMatch(/\.\.\.\(handedModel\.length \? \{ model: handedModel \} : \{\}\),/);
+         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
+-        expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
++        //  Repointed: the interface now reads the API entry by its own name —
++        //  the session's entry when the API was built last, or the same
++        //  contract carried on a linked scaffold — and its screens come from
++        //  that entry's model, never from a second design.
++        expect(r).toMatch(/let apiEntry = prevEntry\?\.type === 'api' \? prevEntry : null;/);
++        expect(r).toMatch(/model: scaffoldEntry\.linkedApiModel,/);
++        expect(r).toMatch(/Array\.isArray\(apiEntry\?\.model\) && apiEntry\.model\.length\s*\?\s*apiEntry\.model/);
+     });
+ 
+     it('a build is never blocked on a model', () => {
+diff --git a/api/src/__tests__/schema-from-blueprint.test.ts b/api/src/__tests__/schema-from-blueprint.test.ts
+index f88b4c27..30f848be 100644
+--- a/api/src/__tests__/schema-from-blueprint.test.ts
++++ b/api/src/__tests__/schema-from-blueprint.test.ts
+@@ -21,10 +21,20 @@ import { transform } from 'esbuild';
+ describe('the schema follows the app, not a fixed guess', () => {
+     const PROMPT_01 = 'Build a polished React project called SpendWise, a personal expense tracker for one user. Create a responsive dashboard with a clear title, a form to add an expense with description, category, amount, and date, validation that rejects empty descriptions and non-positive amounts, a list of saved expenses with edit and delete actions, category filtering, text search, a running total that updates from the actual rows, and a CSV export button. Keep the data durable across reloads with localStorage. Use a clean light theme with accessible contrast and helpful empty, loading, and error states. Run the real production build and open the live preview. Do not modify existing projects.';
+ 
+-    it('Prompt 01 keeps the recognized expenses resource and its five blueprint columns', () => {
++    it('Prompt 01 keeps the recognized expenses resource and stores exactly the columns its blueprint renders', () => {
++        //  This pinned the stock five — title, amount, category, date, note —
++        //  until the blueprint learned to read the form he describes: «a form
++        //  to add an expense with description, category, amount, and date».
++        //  The commit that taught it moved the two sibling Prompt 01 checks
++        //  in api-project.test.ts to his four and missed this one. What it
++        //  guards is unchanged, so it is asserted directly: the recognized
++        //  kind stays, the server stores what the interface renders, and that
++        //  is what he wrote rather than a fixed guess.
+         expect(detectAppKind(PROMPT_01)).toBe('expenses');
+-        expect(apiColumnsForRequest(PROMPT_01).map(column => column.key))
+-            .toEqual(['title', 'amount', 'category', 'date', 'note']);
++        const rendered = blueprintFor('expenses', PROMPT_01, false).fields.map(field => field.key);
++        const stored = apiColumnsForRequest(PROMPT_01).map(column => column.key);
++        expect(stored).toEqual(rendered);
++        expect(stored).toEqual(['description', 'category', 'amount', 'date']);
+     });
+ 
+     it('generic multi-table promotion follows an explicit user list, not inferred count', () => {
+-- 
+2.43.0
+

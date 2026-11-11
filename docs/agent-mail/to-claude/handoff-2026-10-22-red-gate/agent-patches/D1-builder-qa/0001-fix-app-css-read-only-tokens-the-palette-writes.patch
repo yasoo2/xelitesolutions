@@ -1,0 +1,110 @@
+From c8bc1b441dd9bb4c7af234c8f156f60c41947039 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:05:18 +0000
+Subject: [PATCH 1/9] fix(app-css): read only tokens the palette writes
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: a-palette-the-app-never-reads
+  POSITIVE every token the app reads is one the palette defines
+    (culprit c219da21) -> missing ["--danger", "--media-warm"]
+  POSITIVE a token read with no fallback is one the palette guarantees
+    (culprit f8cf0852) -> bare ["--media-warm"]
+
+Decision: R. The guard is the owner's class-level fix for "two parties
+that must agree on a vocabulary"; two new reads drifted past it.
+
+  c219da21  the ledger error read var(--danger,#c44). No palette and no
+            generated stylesheet defines --danger, so it could only ever
+            resolve to #c44 while claiming to follow a token.
+  f8cf0852  the media stats read var(--media-warm) with no fallback. It is
+            defined under .kind-media only, but read under .media-workspace,
+            which every image-led collection gets: outside the media kind
+            the declaration had no value and was dropped in silence.
+
+Fix: the ledger error is a literal #c44, like every other error colour in
+the file (.err, .calc-error, .btn.danger). The media kind names its warm
+as its own --secondary (both themes), and the even-figure rule is scoped
+to .kind-media, the only place that value exists. It is NOT widened to the
+derived --secondary for other collections: that token has no dark value
+and measured as low as 1.92:1 on dark grounds (#2f34c6, "real estate
+listings with images").
+
+Live, computed in chromium from fileAppCss()+fileLedgerCss() over
+paletteCss(buildPalette('اعمل لي متجر قهوة مختصة')), before -> after:
+  media light      even rgb(189, 89, 56)  -> rgb(189, 89, 56)
+  media dark       even rgb(240, 138, 102) -> rgb(240, 138, 102)
+  inventory light  even rgb(65, 47, 37)   -> rgb(65, 47, 37)
+  inventory dark   even rgb(65, 47, 37)   -> rgb(65, 47, 37)
+  ledger error     rgb(204, 68, 68)       -> rgb(204, 68, 68)
+No computed colour changes; only the reads of unwritten tokens go.
+
+Non-vacuity (mutate the fix back, guard goes red, restore):
+  palette-danger: ledger reads var(--danger,#c44) again
+    ✕ POSITIVE — every token the app reads is one the palette defines
+    + Array [ "--danger" ]   RESTORED: sha256 identical
+  palette-media-warm: even figure reads var(--media-warm) again
+    ✕ POSITIVE — every token the app reads is one the palette defines
+    ✕ POSITIVE — a token read with no fallback is one the palette guarantees
+    + Array [ "--media-warm" ] (both)   RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../tools/definitions/react-app-templates.ts  | 23 +++++++++++++++----
+ 1 file changed, 18 insertions(+), 5 deletions(-)
+
+diff --git a/api/src/modules/tools/definitions/react-app-templates.ts b/api/src/modules/tools/definitions/react-app-templates.ts
+index 19b40788..0c3259fb 100644
+--- a/api/src/modules/tools/definitions/react-app-templates.ts
++++ b/api/src/modules/tools/definitions/react-app-templates.ts
+@@ -1340,8 +1340,12 @@ export default function LedgerApp({ content }) {
+ `;
+ }
+ 
++// The error line is a literal red, like every other error colour in this file
++// (.err, .calc-error, .btn.danger): the palette defines no danger token, so
++// the --danger read this line used to carry could only ever resolve to its
++// #c44 fallback, while claiming to follow a token nobody writes.
+ export function fileLedgerCss(): string {
+-  return `.ledger-shell{width:min(1120px,100%);margin:0 auto;padding:34px 22px 56px}.ledger-header{display:flex;justify-content:space-between;gap:24px;align-items:end;padding:0 0 28px;border-bottom:1px solid var(--line)}.ledger-header p,.ledger-history-head p{margin:0;color:var(--muted);font-size:.75rem;font-weight:700;letter-spacing:0}.ledger-header h2{margin:7px 0;font-size:2.75rem;line-height:1}.ledger-header span{color:var(--muted)}.ledger-header>strong{font-size:2rem;white-space:nowrap}.ledger-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(230px,.75fr);gap:38px;padding:30px 0;border-bottom:1px solid var(--line)}.ledger-entry-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.ledger-entry h2,.ledger-summary h2,.ledger-history h2{font-size:1.1rem;margin:0}.ledger-entry-head span{color:var(--muted);font-size:.82rem}.ledger-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.ledger-fields label{display:grid;gap:7px;font-size:.82rem;font-weight:700}.ledger-fields textarea{min-height:86px;resize:vertical}.ledger-fields label:has(textarea){grid-column:1/-1}.ledger-entry button{min-height:46px;padding:0 18px;border:0;border-radius:7px;background:var(--brand);color:var(--on-brand,#fff);font:inherit;font-weight:700;cursor:pointer}.ledger-form-actions{display:flex;gap:8px;flex-wrap:wrap}.ledger-entry .ledger-secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.ledger-error{margin:0 0 12px;color:var(--danger,#c44);font-weight:700}.ledger-summary{border-inline-start:1px solid var(--line);padding-inline-start:28px}.ledger-summary h2{margin-bottom:15px}.ledger-summary p{display:flex;justify-content:space-between;gap:12px;margin:0;padding:11px 0;border-bottom:1px solid var(--line)}.ledger-summary span,.ledger-history span{color:var(--muted)}.ledger-history{padding-top:30px}.ledger-history-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:14px}.ledger-filters{display:flex;gap:10px;flex-wrap:wrap}.ledger-filters label{display:grid;gap:4px;color:var(--muted);font-size:.75rem}.ledger-filters select,.ledger-filters input{min-width:150px}.ledger-history ol{list-style:none;margin:0;padding:0}.ledger-history li{display:flex;justify-content:space-between;gap:18px;padding:15px 0;border-top:1px solid var(--line)}.ledger-history li>div{display:grid;gap:4px}.ledger-history li>div:last-child{text-align:end}.ledger-row-actions{display:flex;justify-content:flex-end;gap:10px}.ledger-history button{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:.78rem;text-decoration:underline;cursor:pointer;padding:0 6px}.ledger-empty{margin:0;color:var(--muted);padding:28px 0;border-top:1px solid var(--line)}@media(max-width:720px){.ledger-shell{padding:22px 14px 38px}.ledger-header,.ledger-workspace{grid-template-columns:1fr;display:grid}.ledger-header{align-items:start}.ledger-header h2{font-size:2rem}.ledger-header>strong{font-size:1.6rem}.ledger-workspace{gap:24px}.ledger-summary{border-inline-start:0;border-top:1px solid var(--line);padding:20px 0 0}.ledger-fields{grid-template-columns:1fr}.ledger-history-head,.ledger-history li{align-items:start;display:grid}.ledger-filters{width:100%}.ledger-filters label{flex:1 1 140px}.ledger-filters select,.ledger-filters input{min-width:0;width:100%}.ledger-header>strong{white-space:normal}}`;
++  return `.ledger-shell{width:min(1120px,100%);margin:0 auto;padding:34px 22px 56px}.ledger-header{display:flex;justify-content:space-between;gap:24px;align-items:end;padding:0 0 28px;border-bottom:1px solid var(--line)}.ledger-header p,.ledger-history-head p{margin:0;color:var(--muted);font-size:.75rem;font-weight:700;letter-spacing:0}.ledger-header h2{margin:7px 0;font-size:2.75rem;line-height:1}.ledger-header span{color:var(--muted)}.ledger-header>strong{font-size:2rem;white-space:nowrap}.ledger-workspace{display:grid;grid-template-columns:minmax(0,1.7fr) minmax(230px,.75fr);gap:38px;padding:30px 0;border-bottom:1px solid var(--line)}.ledger-entry-head{display:flex;justify-content:space-between;gap:12px;align-items:baseline}.ledger-entry h2,.ledger-summary h2,.ledger-history h2{font-size:1.1rem;margin:0}.ledger-entry-head span{color:var(--muted);font-size:.82rem}.ledger-fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px;margin:20px 0}.ledger-fields label{display:grid;gap:7px;font-size:.82rem;font-weight:700}.ledger-fields textarea{min-height:86px;resize:vertical}.ledger-fields label:has(textarea){grid-column:1/-1}.ledger-entry button{min-height:46px;padding:0 18px;border:0;border-radius:7px;background:var(--brand);color:var(--on-brand,#fff);font:inherit;font-weight:700;cursor:pointer}.ledger-form-actions{display:flex;gap:8px;flex-wrap:wrap}.ledger-entry .ledger-secondary{background:transparent;color:var(--text);border:1px solid var(--line)}.ledger-error{margin:0 0 12px;color:#c44;font-weight:700}.ledger-summary{border-inline-start:1px solid var(--line);padding-inline-start:28px}.ledger-summary h2{margin-bottom:15px}.ledger-summary p{display:flex;justify-content:space-between;gap:12px;margin:0;padding:11px 0;border-bottom:1px solid var(--line)}.ledger-summary span,.ledger-history span{color:var(--muted)}.ledger-history{padding-top:30px}.ledger-history-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin-bottom:14px}.ledger-filters{display:flex;gap:10px;flex-wrap:wrap}.ledger-filters label{display:grid;gap:4px;color:var(--muted);font-size:.75rem}.ledger-filters select,.ledger-filters input{min-width:150px}.ledger-history ol{list-style:none;margin:0;padding:0}.ledger-history li{display:flex;justify-content:space-between;gap:18px;padding:15px 0;border-top:1px solid var(--line)}.ledger-history li>div{display:grid;gap:4px}.ledger-history li>div:last-child{text-align:end}.ledger-row-actions{display:flex;justify-content:flex-end;gap:10px}.ledger-history button{min-width:44px;min-height:44px;border:0;background:transparent;color:var(--muted);font:inherit;font-size:.78rem;text-decoration:underline;cursor:pointer;padding:0 6px}.ledger-empty{margin:0;color:var(--muted);padding:28px 0;border-top:1px solid var(--line)}@media(max-width:720px){.ledger-shell{padding:22px 14px 38px}.ledger-header,.ledger-workspace{grid-template-columns:1fr;display:grid}.ledger-header{align-items:start}.ledger-header h2{font-size:2rem}.ledger-header>strong{font-size:1.6rem}.ledger-workspace{gap:24px}.ledger-summary{border-inline-start:0;border-top:1px solid var(--line);padding:20px 0 0}.ledger-fields{grid-template-columns:1fr}.ledger-history-head,.ledger-history li{align-items:start;display:grid}.ledger-filters{width:100%}.ledger-filters label{flex:1 1 140px}.ledger-filters select,.ledger-filters input{min-width:0;width:100%}.ledger-header>strong{white-space:normal}}`;
+ }
+ 
+ /* ── engine 1: records — create, edit, delete, search, filter, totals ────── */
+@@ -3351,10 +3355,19 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
+ /* Image-led collections are a studio, not the generic records stack with a
+    thumbnail bolted onto every row. The same data engine remains reliable,
+    while composition follows the material: a restrained editor beside a
+-   gallery whose images carry the hierarchy. */
++   gallery whose images carry the hierarchy.
++
++   The warm second figure belongs to the media kind, which names it for both
++   themes as its --secondary. It used to be a --media-warm that no palette
++   writes, defined under .kind-media alone but read under .media-workspace,
++   which every image-led collection gets: outside the media kind the read had
++   no value and the browser dropped the declaration in silence. The rule now
++   stands only where its value is defined. It is not widened to the derived
++   --secondary, because that token has no dark value: measured on dark
++   grounds it falls to 1.92:1 for a blue subject. */
+ .media-workspace{display:grid;grid-template-columns:minmax(260px,.72fr) minmax(0,1.55fr);gap:22px;align-items:start;max-width:1380px}
+-.kind-media{--brand:#087f73;--accent:#087f73;--tint:#f1f7f5;--panel:#fff;--media-warm:#bd5938;background:#f7f8f6}
+-[data-theme="dark"] .kind-media{--brand:#45c4b5;--accent:#5fd2c5;--tint:#182522;--panel:#131817;--media-warm:#f08a66;background:#0e1211}
++.kind-media{--brand:#087f73;--accent:#087f73;--tint:#f1f7f5;--panel:#fff;--secondary:#bd5938;background:#f7f8f6}
++[data-theme="dark"] .kind-media{--brand:#45c4b5;--accent:#5fd2c5;--tint:#182522;--panel:#131817;--secondary:#f08a66;background:#0e1211}
+ .kind-media .app-bar{background:color-mix(in srgb,var(--panel) 94%,var(--brand));border-bottom-color:color-mix(in srgb,var(--brand) 24%,var(--border))}
+ .kind-media .app-name{color:var(--text);font-weight:760}
+ .kind-media .app-sub{color:var(--brand)}
+@@ -3364,7 +3377,7 @@ input:focus,select:focus,textarea:focus{outline:2px solid var(--accent,#06c);out
+ .media-workspace>.stats .stat+.stat{border-inline-start:1px solid var(--border);padding-inline-start:24px}
+ .media-workspace>.stats .stat-ico{display:none}
+ .media-workspace>.stats .stat b{font-size:2rem;line-height:1;color:var(--text)}
+-.media-workspace>.stats .stat:nth-child(even) b{color:var(--media-warm)}
++.kind-media .media-workspace>.stats .stat:nth-child(even) b{color:var(--secondary)}
+ .media-composer{position:sticky;top:92px;border:0;border-top:3px solid var(--brand);border-radius:0;background:transparent;padding:20px 0;box-shadow:none}
+ .media-composer .form{grid-template-columns:minmax(0,1fr)}
+ .media-composer .pic-pick{display:grid;grid-template-columns:minmax(0,1fr)}
+-- 
+2.43.0
+

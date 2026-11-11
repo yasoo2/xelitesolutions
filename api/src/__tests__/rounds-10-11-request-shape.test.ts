@@ -10,33 +10,27 @@ import {
 const TRACKING = /(أتابع|اتابع|أسجل|اسجل|أدوّن|ادون|أحفظ|احفظ|أنظم|انظم|أرتب|ارتب|أدير|ادير|\btrack\b|\bmanage\b|\brecord\b|\blog\b|\bkeep\s+track\b|\borgani[sz]e\b)/i;
 
 describe('rounds 10/11: request shape is the contract', () => {
-    beforeEach(() => {
-        (global as any).joeClarify = {};
-    });
-
     it.each([
-        ['Arabic', 'بدي شي أتابع فيه ديوني', 'ar', 'ديوني', 'ما الذي تريد تسجيله لكل واحد من'],
-        ['English', 'I want something to track my debts', 'en', 'debts', 'what do you want to record for each of your'],
-    ])('%s tracking request asks exactly for row contents and echoes the object', (_label, request, language, object, question) => {
+        ['Arabic', 'بدي شي أتابع فيه ديوني', 'ar', 'ديوني', 'لم تذكر ما يُسجَّل لكل واحد من'],
+        ['English', 'I want something to track my debts', 'en', 'debts', 'You did not say what each of your'],
+    ])('%s tracking request is decided about its row contents and echoes the object', (_label, request, language, object, question) => {
         expect(asksForSomething(request)).toBe(true);
         expect(tracksSomethingOfHis(request, TRACKING)).toBe(true);
         expect(describesItsContents(request)).toBe(false);
         expect(looksLikeBuild(request)).toBe(false);
 
-        const decision = clarifyGate(request, `round10-${_label}`, language);
-        expect(decision.kind).toBe('ask');
-        expect((decision as any).text).toContain(question);
-        expect((decision as any).text).toContain(object);
-        expect((decision as any).text).not.toMatch(/sections|colou?r|one page|multi-page|الأقسام|الألوان|صفحة واحدة|موقع متعدد الصفحات/i);
+        const decision = clarifyGate(request, language);
+        expect(decision.kind).toBe('decide');
+        expect((decision as any).note).toContain(question);
+        expect((decision as any).note).toContain(object);
+        expect((decision as any).note).not.toMatch(/sections|colou?r|one page|multi-page|أقسامه|ألوانه|صفحة واحدة|موقع متعدد الصفحات/i);
     });
 
-    it('merges the one answer and preserves both request and answer', () => {
-        const first = clarifyGate('بدي شي أتابع فيه ديوني', 'round10-merge', 'ar');
-        expect(first.kind).toBe('ask');
-        const second = clarifyGate('اسم المدين، المبلغ، تاريخ الدين', 'round10-merge', 'ar');
-        expect(second.kind).toBe('merge');
-        expect((second as any).goal).toContain('بدي شي أتابع فيه ديوني');
-        expect((second as any).goal).toContain('اسم المدين، المبلغ، تاريخ الدين');
+    it('a thin request waits for nothing: the next message is its own request', () => {
+        //  Until 2026-11-03 the answer to the question was merged into the
+        //  remembered brief. Nothing is asked now, so nothing is remembered.
+        expect(clarifyGate('بدي شي أتابع فيه ديوني', 'ar').kind).toBe('decide');
+        expect(clarifyGate('اسم المدين، المبلغ، تاريخ الدين', 'ar')).toEqual({ kind: 'pass' });
     });
 
     it('derives a tracking subject and a request-shaped schema without a domain catalogue', () => {

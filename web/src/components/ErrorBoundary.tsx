@@ -12,6 +12,18 @@ interface State {
     error: Error | null;
 }
 
+/** The boundary is a class, and a class cannot ask for the language: the
+ *  fallback's own words come from this function component. */
+function FallbackTitle({ title }: { title?: string }) {
+    const { t } = useTranslation();
+    return <>{title || t('eb_failedToLoad')}</>;
+}
+
+function RetryLabel() {
+    const { t } = useTranslation();
+    return <>{t('eb_retry')}</>;
+}
+
 export class ErrorBoundary extends Component<Props, State> {
     public state: State = {
         hasError: false,
@@ -50,7 +62,7 @@ export class ErrorBoundary extends Component<Props, State> {
                 }}>
                     <AlertTriangle size={32} color="#ef4444" />
                     <div style={{ fontSize: 14, fontWeight: 600 }}>
-                        {this.props.fallbackTitle || 'This component failed to load'}
+                        <FallbackTitle title={this.props.fallbackTitle} />
                     </div>
                     {this.state.error && (
                         <div style={{
@@ -80,7 +92,7 @@ export class ErrorBoundary extends Component<Props, State> {
                         }}
                     >
                         <RefreshCw size={14} />
-                        إعادة المحاولة
+                        <RetryLabel />
                     </button>
                 </div>
             );

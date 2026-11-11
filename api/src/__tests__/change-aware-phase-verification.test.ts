@@ -2,6 +2,7 @@ jest.mock('../modules/services/ToolService', () => ({
     executeTool: jest.fn(),
 }));
 jest.mock('../shared/run-evidence-store', () => ({
+    closeRunEvidenceIfOpen: jest.fn(async () => {}),
     appendRunEvidenceEvent: jest.fn().mockResolvedValue(undefined),
     createRunEvidence: jest.fn().mockResolvedValue(undefined),
     saveRunReceipt: jest.fn().mockResolvedValue(undefined),

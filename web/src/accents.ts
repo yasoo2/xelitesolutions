@@ -13,8 +13,8 @@ export type ThemeMode = 'dark' | 'light';
 
 export interface AccentOption {
     id: AccentId;
-    /** Arabic label — the Settings dialog shows it via i18n fallback. */
-    label: string;
+    /** The colour's name, as a dictionary key: Settings shows it in the interface language. */
+    labelKey: string;
     /** Swatch colour as shown in Settings for each mode. */
     dark: string;
     light: string;
@@ -22,11 +22,11 @@ export interface AccentOption {
 
 /** The palette. Emerald is Joe's signature and the default. */
 export const ACCENTS: AccentOption[] = [
-    { id: 'emerald', label: 'الزمردي', dark: '#34C48B', light: '#0E7A5F' },
-    { id: 'gold', label: 'ذهب إكسلايت', dark: '#E3B65A', light: '#A87E22' },
-    { id: 'turquoise', label: 'التركوازي', dark: '#3BC8C2', light: '#0F7E79' },
-    { id: 'mono', label: 'الأحادي الفاخر', dark: '#ECF2EE', light: '#1B2620' },
-    { id: 'ice', label: 'الأزرق الجليدي', dark: '#8FBFEA', light: '#2D6FA8' },
+    { id: 'emerald', labelKey: 'accent_emerald', dark: '#34C48B', light: '#0E7A5F' },
+    { id: 'gold', labelKey: 'accent_gold', dark: '#E3B65A', light: '#A87E22' },
+    { id: 'turquoise', labelKey: 'accent_turquoise', dark: '#3BC8C2', light: '#0F7E79' },
+    { id: 'mono', labelKey: 'accent_mono', dark: '#ECF2EE', light: '#1B2620' },
+    { id: 'ice', labelKey: 'accent_ice', dark: '#8FBFEA', light: '#2D6FA8' },
 ];
 
 const KEY: Record<ThemeMode, string> = { dark: 'joe-accent-dark', light: 'joe-accent-light' };

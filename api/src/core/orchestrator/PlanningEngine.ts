@@ -10,7 +10,7 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { compactHistoryForPrompt } from './history-compact';
 import { enrichWorkspaceToolInput } from './workspace-evidence';
 import { findActiveBuiltProject } from './active-built-project';
-import { isBoundedTerminalDiagnosticRequest } from './buildIntent';
+import { isBoundedTerminalDiagnosticRequest, isReadOnlyRequest } from './buildIntent';
 import { capabilityFromRequest } from '../api-discovery/integration';
 import { saysAny } from '../language/arabic';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseExplicitDirectoryInspectionRequest, parseExplicitReadFilesRequest, parseExpectedReadMarkers, hasGlobalExplicitReadDenial } from './file-intent';
@@ -18,9 +18,11 @@ import { workspaceService } from '../../modules/services/WorkspaceService';
 import { tools as registeredTools } from '../../modules/tools/registry';
 import { isBuildRequest, isKnowledgeQuestionStructural, isReadOnlyStructural } from '../intelligence/intent-classifier';
 import { hasRequestedAction } from '../intelligence/requested-action';
-import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan } from './adaptive-dag-planner';
+import { diagnoseFailure, detectParallelGroups, generatePlanAttempts, selectBestPlan, validatePlan, FAILURE_RECOVERY_RULES } from './adaptive-dag-planner';
 import fs from 'fs';
 import path from 'path';
+import { mentionsCommandLine, readsCsvInput, requestedArtifact, statesManagingPurpose } from '../design/requested-artifact';
+import { parseModelJsonArray, readModelJsonObject } from '../../shared/utils/json';
 
 export interface ExecutionStep {
     id: string;
@@ -34,6 +36,22 @@ export interface ExecutionStep {
     parallel?: boolean;
     /** Adaptive planner: why this step was chosen and positioned here */
     reasoning?: string;
+}
+
+/**
+ * A no-file-changes request that also says it may only read («read-only
+ * checks», «only read project files», «للقراءة فقط») asks Joe to inspect, so it
+ * belongs at the read-only boundary, not in an answer-only reply. A bare
+ * prohibition («Explain hooks. Do not create any files.») stays a question.
+ */
+const READ_ONLY_PERMISSION = /\bread[-\s]?only\b|\breadonly\b|\bonly\s+(?:read|inspect|analy[sz]e|review|verify)\b|(?:^|[\s،:؛])(?:قراءة|للقراءة)\s+فقط(?=$|[\s،:؛.!؟])/iu;
+function isReadOnlyInspectionRequest(goal: string): boolean {
+    // Both readers: the planner's boundary below asks isReadOnlyStructural, the
+    // pipeline's stop before planning asks isReadOnlyRequest.
+    return READ_ONLY_PERMISSION.test(String(goal || ''))
+        && !hasRequestedAction(goal).isAnswerOnly
+        && isReadOnlyStructural(goal) && isReadOnlyRequest(goal)
+        && !isBoundedTerminalDiagnosticRequest(goal);
 }
 
 /** Does this string actually look like a web address? Free classifier models
@@ -195,8 +213,11 @@ export interface ExecutionPlan {
  *  بحسابات» — because none of those is a noun wearing a widget.
  */
 function stripPageElements(text: string): string {
-    const ELEMENT_EN = '(?:form|button|link|field|input|section|panel|widget|cta|list|page|banner|badge|icon|label)';
-    const ELEMENT_AR = '(?:نموذج|استمارة|زر|رابط|حقل|قسم|قائمة|صفحة|لوحة|بطاقة|أيقونة)';
+    //  Content sections ABOUT people are page elements too: «آراء العملاء» on a
+    //  clinic landing page is testimonials, not a customer table — it made a
+    //  brochure a SYSTEM with a database phase (eval run500 P001, 2026-10-23).
+    const ELEMENT_EN = '(?:form|button|link|field|input|section|panel|widget|cta|list|page|banner|badge|icon|label|testimonials?|reviews?|stories|quotes|logos)';
+    const ELEMENT_AR = '(?:نموذج|استمارة|زر|رابط|حقل|قسم|قائمة|صفحة|لوحة|بطاقة|أيقونة|آراء|اراء|تقييمات|شهادات|قصص|تجارب|انطباعات)';
     return String(text || '')
         //  English is head-final: «booking form», «order button».
         .replace(new RegExp('\\b[\\w-]+\\s+' + ELEMENT_EN + '\\b', 'gi'), ' ')
@@ -366,14 +387,12 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
          * with nowhere to put a supplier.
          */
         const dataSignals = /(تسجيل\s*دخول|تسجيل\s*الدخول|حسابات?|مستخدمين|صلاحيات|أدوار\s*(?:المستخدمين|الأعضاء|الاعضاء)?|قاعدة\s*بيانات|قواعد\s*بيانات|حجوزات?|حجز|طلبات|طلبيّ?ات|مخزون|جرد|فواتير|فاتورة|تقارير|إحصائيات|احصائيات|نقاط\s*بيع|كاشير|رواتب|موظفين|عملاء|زبائن|مورّ?دي?ن|مورّ?دون|اشتراكات|مدفوعات|دفع\s*إلكتروني|قاعدة\s*البيانات|\bsign[- ]?in\b|\blogin\b|\bauth(?:entication)?\b|\bdatabase\b|\b(?:member|manager|user)\s+roles?\b|\brole[- ]?based\s+access\b|(?:registered|authenticated|multiple|admin|end)\s+users?\b|users?\s+(?:accounts?|roles?|permissions?|can\s+sign\s+in)|orders?|suppliers?|vendors?|inventory|invoices?|reports?|bookings?|payments?|subscriptions?|crm|erp\b)/i;
-        // Explicit CLI/utility/script recognition — these are NOT web systems
-        const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
         // Consuming a public or third-party API is not the same as asking Joe
         // to own a backend.  Keep explicit API-building requests as systems,
         // while allowing browser apps to call services such as Open-Meteo.
         const ownedApiSignals = /(?:\b(?:build|create|make|develop|implement|design|provide|expose)\s+(?:an?\s+)?(?:rest\s+|graphql\s+)?api\b|\b(?:build|create|make|develop|implement|design|provide|expose|own|internal|private)\s+(?:an?\s+)?backend\b|\b(?:api|backend)\s+(?:server|service|endpoint)\b|(?:ابنِ|ابني|أنشئ|انشئ|طوّر|طور|اصنع|أنشئ)\s+(?:لي\s+)?(?:واجهة\s+)?(?:برمجية|api|backend))/i;
         // Screens and behaviour rather than a single scroll.
-        const appSignals = /(تطبيق|نظام|منصّ?ة|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|platform|system|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
+        const appSignals = /(تطبيق|برنامج|لوحة\s*تحكم|داشبورد|محرّ?ر|أداة\s*ويب|لعبة|محادثة|دردشة|شات|خرائط|خريطة|تتبّ?ع|حاسبة|مخطّ?ط|جدولة|مهامّ?|شبيه\s*ب|مثل\s*تطبيق|clone|dashboard|applications?\b|app\b|editor|tracker|chat|map|game|planner|scheduler|calculator|todo|to-do|tasks?|(?:web\s+)?console|background\s+(?:jobs?|workers?)|worker\s+(?:queue|process))/i;
         // A functional request can describe its shape without saying "app".
         // "Create a customer directory with fields, search and filtering" is
         // an interactive application, while a brochure with one contact form
@@ -384,13 +403,41 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
             /\bfields?\b|\bcolumns?\b|\binputs?\b|حقول|أعمدة|سجلات/i,
             /\bsearch\b|\bfilter(?:ing)?\b|\bsort(?:ing)?\b|بحث|فلترة|تصفية|فرز/i,
             /\bvalidation\b|\bempty\b|\brequired\b|تحقّ?ق|تحقق|فارغ|إلزامي/i,
-            /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة/i,
+            // «create» is counted in English, so «أنشئ / إنشاء» is counted in Arabic.
+            /\b(add|create|edit|delete|remove)\b|إضافة|أضف|تعديل|حذف|إزالة|[أا]نشئ|[إا]نشاء/i,
         ];
         const structuredInteraction = structuredSignals.filter(signal => signal.test(g)).length >= 2;
+        /**
+         * ⛔ THE OBJECT OF THE VERB DECIDES THE KIND; WHAT IT CLAIMS DECIDES THE SERVER.
+         *
+         * Eval round 15: this function matched data nouns, domain words and the
+         * build verb anywhere in the sentence, with word lists whose English and
+         * Arabic halves had drifted. «اكتب أداة سطر أوامر … فيه الزبائن» was a
+         * SYSTEM and its English twin a CLI; every English API an 'app', every
+         * Arabic one a 'system'. requestedArtifact reads the deliverable from the
+         * build verb's object and the server need from declared claims, in both
+         * scripts. A CLI keeps the legacy 'page' encoding (file-level, no web
+         * server). A page head is promoted by BEHAVIOUR — records he adds, edits,
+         * deletes or searches, «لإدارة …», «to manage …» — never skipped by an
+         * early return. The body below is the fallback for an object the lexicon
+         * does not know («a repair-shop customer directory», «بدي جدول …»).
+         */
+        const artifact = requestedArtifact(String(goalRaw || ''));
+        if (artifact.kind === 'cli') return 'page';
+        if (artifact.kind) {
+            if (artifact.needsServer) return 'system';
+            if (artifact.kind !== 'page') return 'app';
+            // A presentation page is a document about its subject: «موقع تعريفي
+            // لـإدارة المصاريف الشخصية» presents the service, it does not run it.
+            if (artifact.evidence.presentation) return 'page';
+            // The build verb itself is not a capability: «Create a page …» adds nothing.
+            const capabilities = g.replace(/^\s*(?:please\s+)?(?:create|build|make|develop|design|write|generate)\b/i, ' ')
+                .replace(/^\s*(?:من\s+فضلك\s+)?(?:[أا]نشئ|اعمل|ابن[يِى]?|اصنع|صمم|صمّم|طور|طوّر|اكتب)(?![\p{L}\p{N}_])/u, ' ');
+            const behaviour = structuredSignals.filter(signal => signal.test(capabilities)).length >= 2 || statesManagingPurpose(goalRaw);
+            return behaviour ? 'app' : 'page';
+        }
         // A single document, said outright.
-        const pageSignals = /(صفحة\s*(هبوط|واحدة)?|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
+        const pageSignals = /(صفحة\s*(هبوط|واحدة)?|موقع\s*تعريفي|تعريفي|لاندنج|بورتفوليو|معرض\s*أعمال|سيرة\s*ذاتية|بروشور|قائمة\s*طعام|منيو|landing|portfolio|brochure|one[- ]?pager|resume|cv)/i;
         
         // A browser application may deliberately consume a public or third-party API and
         // explicitly forbid an owned backend. A conditional "if authentication
@@ -402,10 +449,11 @@ static classifyBuildScope(goalRaw: string): 'page' | 'app' | 'system' {
         const conditionalDemoAuth = /\bif\s+authentication\s+is\s+needed\b[^.!?\n]{0,160}\b(?:local|demo)\b[^.!?\n]{0,80}\bpersistence\b/i.test(g);
         const ownsBackend = ownedApiSignals.test(g) && !publicApiWithoutBackend;
         const data = ownsBackend || (dataSignals.test(g) && !(publicApiWithoutBackend && conditionalDemoAuth));
-        // CLI/utility/script requests are NOT web systems
-        const cli = cliSignals.test(g);
-        // CSV/TSV input with columns is input data, not a persistent record schema
-        const csvInput = csvInputSignals.test(g);
+        // CLI/utility/script requests are NOT web systems; CSV/TSV input with
+        // columns is input data, not a persistent record schema. The fallback
+        // readers of requested-artifact, in both scripts.
+        const cli = mentionsCommandLine(g);
+        const csvInput = readsCsvInput(g);
         const app = appSignals.test(g) || structuredInteraction;
         const page = pageSignals.test(g);
         const publicApi = publicApiWithoutBackend && conditionalDemoAuth;
@@ -530,10 +578,10 @@ Rules:
         finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
         }
-        const m = raw && raw.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        let obj: any;
-        try { obj = JSON.parse(m[0]); } catch { return null; }
+        // The shared reader: a sentence with a brace after the answer, or a raw
+        // line break inside a string, no longer turns the router's answer into null.
+        const obj: any = readModelJsonObject(raw);
+        if (!obj) return null;
         const intent = String(obj?.intent || '').toLowerCase().trim();
         const allowed = ['build_page', 'edit_page', 'analyze_repo', 'answer', 'other'];
         if (!allowed.includes(intent) || intent === 'other') return null;
@@ -583,10 +631,8 @@ Rules:
         finally {
             if (timeoutHandle) clearTimeout(timeoutHandle);
         }
-        const m = raw && raw.match(/\{[\s\S]*\}/);
-        if (!m) return null;
-        let obj: any;
-        try { obj = JSON.parse(m[0]); } catch { return null; }
+        const obj: any = readModelJsonObject(raw);
+        if (!obj) return null;
         const action = String(obj?.action || '').toLowerCase().trim();
         if (!action || action === 'none') return null;
         const tool = PlanningEngine.browserToolForAction(action);
@@ -727,6 +773,18 @@ Rules:
                     : [];
                 const fields = [...new Set([...requiredAny, ...required])];
                 if (!fields.length) return null;
+                /*
+                 * A TOOL'S OWN FIELD NAMES ARE NEVER HIS QUESTION. The exams, 2026-11-09:
+                 * \u00AB\u062D\u062F\u0651\u062F \u0647\u062F\u0641 ai_write_file \u0642\u0628\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630: path \u0623\u0648 description\u00BB and \u00AB\u062D\u062F\u0651\u062F \u0647\u062F\u0641
+                 * project_planner \u0642\u0628\u0644 \u0627\u0644\u062A\u0646\u0641\u064A\u0630: projectDescription\u00BB were asked of the owner,
+                 * who wrote a speed fix and a trip plan, and the runs ended \u00ABdone\u00BB with
+                 * nothing done. The matcher has no plan here: the request goes on to the
+                 * planners after it, which read it whole.
+                 */
+                if (process.env.JOE_ASK_TOOL_FIELDS !== 'on') {
+                    console.log(`[PlanningEngine] capability ${selected[0].name} needs ${fields.join('/')} it cannot derive: no plan from the matcher`);
+                    return null;
+                }
                 const arabic = /[\u0600-\u06FF]/.test(goal);
                 const question = arabic
                     ? `حدّد هدف ${selected[0].name} قبل التنفيذ: ${fields.join(' أو ')}.`
@@ -888,6 +946,12 @@ Rules:
         if (requestedAction.isNoFileChanges && !boundedExplicitRead) {
             if (boundedReadNavigationUnderFileConstraint(userGoal)) {
                 console.log('[PlanningEngine] ⚡ No file changes constraint with browser target — preserving constraint, allowing browser navigation.');
+            } else if (isReadOnlyInspectionRequest(userGoal)) {
+                // An audit that says it may only read is an inspection, not a
+                // question: it continues to the read-only safety boundary below,
+                // as it did before this guard arrived (b906f3bc8). The pipeline
+                // stops it before planning through the same isReadOnlyRequest.
+                console.log('[PlanningEngine] ⚡ No file changes constraint on a read-only inspection — routing to the read-only boundary.');
             } else {
                 console.log('[PlanningEngine] ⚡ No file changes contract detected — returning answer-only plan.');
                 return {
@@ -1087,7 +1151,20 @@ Rules:
         // reinterpreted as a local file or project audit.
         const earlyUrlMatch = userGoal.match(/https?:\/\/[^\s<>'\"]+/i)
             || userGoal.match(/\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s<>'\"]*)?/i);
-        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(probe);
+        /**
+         *  A PROHIBITION IS NOT AN ORDER.
+         *
+         *  «…أنشئ commit محلياً، لكن لا تنفذ git push ولا تفتح Pull Request»
+         *  — a clone-and-commit contract that ends by FORBIDDING a PR. The
+         *  verb «فتح» sits inside «تفتح», so that clause read as an intent to
+         *  open the repository's URL, and the whole contract became one
+         *  browser_launch. Negated clauses are removed before the open intent
+         *  is read, the same way a negated build verb already is.
+         */
+        const openProbe = probe
+            .replace(/(^|[\s،؛,:.!?])و?(?:لا|ليس|بدون|دون|عدم)\s+(?:أن\s+)?ت?(?:فتح|ذهب|نتقل|زور|دخل)\S*/gu, '$1')
+            .replace(/\b(?:do\s+not|don't|never|without)\s+(?:open(?:ing)?|visit(?:ing)?|navigat\w*|go(?:ing)?\s*to)\b/gi, ' ');
+        const earlyOpenIntent = /(افتح|لفتح|فتح|اذهب|انتقل|زر|ادخل|go\s*to|open|visit|navigate)/i.test(openProbe);
         const earlyTitleOnly = /(عنوان\s*(ال)?صفحة|title\s*(of\s*(the\s*)?)?page|page\s*title)/i.test(probe);
         // Test the CANONICAL multilingual verbs too. The normalizer maps
         // «опиши», «decris», «descrivi» and similar forms to `describe`; if this
@@ -1851,7 +1928,7 @@ Rules:
         // (pipeline or react) — this serves the backend-alone ask.
         {
             const apiNoun = /\b(api|backend|rest)\b|باك\s?[إا]ند|واجهة برمجية|قاعدة بيانات|خادم بيانات/i.test(probe);
-            const frontendNoun = /\b(react|vite|spa|landing|site|website|page)\b|ريأكت|رياكت|موقع|صفحة|فيت\b/i.test(probe);
+            const frontendNoun = /\b(react|vite|spa|landing|site|website|page)\b|ريأكت|رياكت|موقع|صفح[ةه]|فيت(?![\p{L}\p{N}_])/iu.test(probe);
             const fullish = /(متكامل|كامل|full[-\s]?stack|complete)/i.test(probe);
             const apiBuildVerb = /\b(build|create|make|develop|scaffold|generate)\b/.test(goalLower)
                 || /(ابن|ابني|انشئ|أنشئ|اصنع|طور|اعمل|سو)/.test(probe);
@@ -2001,7 +2078,7 @@ Rules:
             || /(^|\s)بنِ?\s/.test(probe)
             || /قم\s*ب?(بناء|عمل|انشاء|إنشاء|تصميم|تطوير|صنع)/.test(probe)
             || /(اريد|أريد|ابغى|أبغى|بدي|ودي)\s*(ب?بناء|عمل|انشاء|إنشاء|تصميم|موقع|صفحة|تطبيق|متجر|نظام|منصّ?ة|لوحة|أداة|اداة)/.test(probe)
-            || /\b(بناء|تصميم|إنشاء|انشاء)\s+(موقع|صفحة|تطبيق|متجر|واجهة|لوحة)/.test(probe)
+            || /(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(بناء|تصميم|[إا]نشاء)\s+(?:ال)?(موقع|صفح[ةه]|تطبيق|متجر|واجه[ةه]|لوح[ةه])/u.test(probe)
             /**
              *  …AND A THIRD COPY OF THE SAME QUESTION.
              *
@@ -2174,7 +2251,7 @@ Rules:
         // verified build, not a static page. Explicit only: a plain «ابن لي
         // موقع» keeps the page builder that serves it best.
         {
-            const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت\b|سبا\b/i.test(probe);
+            const reactNoun = /\b(react|vite|jsx|spa)\b|ريأكت|رياكت|ري أكت|فيت(?![\p{L}\p{N}_])|سبا(?![\p{L}\p{N}_])/iu.test(probe);
             if (buildVerb && reactNoun) {
                 return {
                     id: `engineering_react_${Date.now()}`,
@@ -2376,7 +2453,7 @@ Rules:
             //   system → app + its own data: a backend, and the app wired to it
             const externalDataCapability = buildVerb ? capabilityFromRequest(intent.goal) : null;
             const scope = PlanningEngine.classifyBuildScope(probe);
-            if ((scope !== 'page' || externalDataCapability) && !(hasActivePage && editIntent)) {
+            if ((scope !== 'page' || externalDataCapability || requestedArtifact(probe).kind === 'cli') && !(hasActivePage && editIntent)) {
                 console.log(`[PlanningEngine] build scope = ${scope} -> evidence-first project_pipeline`);
                 return {
                     id: `engineering_${scope}_${Date.now()}`,
@@ -2588,7 +2665,7 @@ Rules:
         // inspected its workspace and planned from evidence.
         {
             const scope = PlanningEngine.classifyBuildScope(probe);
-            if (buildVerb && scope !== 'page') {
+            if (buildVerb && (scope !== 'page' || requestedArtifact(probe).kind === 'cli')) {
                 console.log(`[PlanningEngine] engineering scope = ${scope} -> evidence-first project_pipeline before browser routing`);
                 return {
                     id: `engineering_${scope}_${Date.now()}`,
@@ -3025,13 +3102,13 @@ Rules:
                 // pull the search term: quoted text, or the words after "find"/"ابحث عن"
                 const qm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
                     || goalRaw.match(/(?:ابحث\s*عن|جد|find|search\s*for)\s+([^\s].{0,60})/i);
-                if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفحة|in|on)\b.*$/i, '').trim();
+                if (qm) smartInput.query = String(qm[1]).replace(/\s+(في|على|بالصفح[ةه]|in|on)(?![\p{L}\p{N}_]).*$/iu, '').trim();
             }
             if (tool === 'browser_click') {
                 // pull the button/link label: quoted text, or the words after "click"/"انقر"
                 const cm = goalRaw.match(/[«"'"]([^«»"'"]+)[»"'"]/)
                     || goalRaw.match(/(?:انقر\s*(?:على)?|اضغط\s*(?:على)?|click|press)\s+([^\s].{0,50})/i);
-                if (cm) smartInput.text = String(cm[1]).replace(/\s+(في|على\s*الصفحة|زر|in|on|the\s*button)\b.*$/i, '').trim();
+                if (cm) smartInput.text = String(cm[1]).replace(/\s+(في|على\s*الصفح[ةه]|زر|in|on|the\s*button)(?![\p{L}\p{N}_]).*$/iu, '').trim();
             }
             return {
                 id: `browser_${Date.now()}`,
@@ -3102,8 +3179,8 @@ Rules:
         // to browser_open, which navigates the LIVE-streamed session so the user
         // actually watches the page load.
         const openBrowserIntent = /(افتح|شغّ?ل|شغل|ادخل|روح|اذهب|استخدم|جرّ?ب|شوف|اعرض)\s*(لي\s*)?(ال)?(متصفح|براوزر|المتصفّح)|open\s*(the\s*)?browser|launch\s*browser|use\s*(the\s*)?browser|شغّ?ل\s*المتصفح/i.test(probe);
-        const navigateIntent = /(اذهب\s*(إلى|الى|ل)|روح\s*(إلى|الى|ل)|افتح\s+(موقع|رابط|صفحة|الموقع)?|زر\s+(الموقع|الرابط)|ادخل\s+(موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع|go\s*to|navigate\s*(to)?|visit|browse|open)\b/i.test(probe);
-        const browserWord = /(متصفح|براوزر|browser|الويب\b|صفحة\s*الويب|الموقع|website|web\s*page)/i.test(probe);
+        const navigateIntent = /(?:(?:اذهب|روح)\s*(?:(?:إلى|الى)(?![\p{L}\p{N}_])|ل(?=\p{L}))|(?:افتح(?:\s+(?:موقع|رابط|صفح[ةه]|الموقع))?|زر\s+(?:الموقع|الرابط)|ادخل\s+(?:موقع|على)|تصفّ?ح|عايِ?ن|افحص\s+الموقع)(?![\p{L}\p{N}_])|(?:go\s*to|navigate\s*(?:to)?|visit|browse|open)\b)/iu.test(probe);
+        const browserWord = /(متصفح|براوزر|browser|الويب(?![\p{L}\p{N}_])|صفح[ةه]\s*الويب|الموقع|website|web\s*page)/iu.test(probe);
         // Route to the live browser when: an explicit open/use-browser phrasing is
         // present; OR a URL is mentioned with any navigate/browser cue; OR the
         // intent analyser already decided this is a Browser task. Deterministic so
@@ -3159,7 +3236,7 @@ Rules:
                     // keyword paths missed it.
                     if (routed.intent === 'build_page') {
                         const scope = PlanningEngine.classifyBuildScope(probe);
-                        if (scope !== 'page') {
+                        if (scope !== 'page' || requestedArtifact(probe).kind === 'cli') {
                             // A semantic classification can identify that this is
                             // more than a page, but it cannot prescribe a stack.
                             // The evidence-first pipeline chooses and proves the
@@ -3385,6 +3462,13 @@ Rules:
 
         // Fallback to single-attempt if adaptive planner fails
         console.warn('[PlanningEngine] Adaptive planner failed, falling back to single attempt');
+        // Compacted, never raw: one completed page-builder node used to drag an
+        // entire HTML page into this prompt and the planning call itself died on
+        // free-tier token limits — turning every recovery into the failover node.
+        const historyContext = memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : "";
+        // A recovery that reaches this fallback is still a recovery: the same
+        // rules as the adaptive prompt, from the same text.
+        const recoveryRules = isRecovery ? `\n${FAILURE_RECOVERY_RULES}` : '';
         const fallbackEntropySeed = Math.random().toString(36).substring(7);
         const fallbackSystemPrompt = `You are a Professional Software Architecture Planner.
 Generate a dynamic Execution DAG (Directed Acyclic Graph) for the given goal.
@@ -3400,11 +3484,11 @@ ${catalogueFor(intent.goal)}
 - Any id you write inside {{FROM:...}} MUST also appear in that step's dependsOn.
 - Assign an agent to each node: Dev, Security, Browser, General.
 - DO NOT use static templates. Analyze the specific goal from a fresh perspective.
-- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.
+- Provide a brief "reasoning" field for EACH step explaining why this path was chosen.${recoveryRules}
 
 Goal: ${intent.goal}
 Complexity: ${intent.complexity}
-Risk: ${intent.riskLevel}${memory ? `\nPrevious Execution History:\n${JSON.stringify(compactHistoryForPrompt(memory))}` : ""}
+Risk: ${intent.riskLevel}${historyContext}
 
 Return ONLY a JSON array of steps:
 [
@@ -3440,12 +3524,32 @@ Return ONLY a JSON array of steps:
                     reasoning: step.reasoning || ''
                 })), String(intent.goal || ''), context);
 
+                /**
+                 * A REQUEST TO BUILD IS NOT ANSWERED BY TALKING ABOUT BUILDING.
+                 *
+                 * His run, verbatim, against «Build a world-class e-commerce
+                 * platform … Generate complete production-ready code»:
+                 *
+                 *     Executing node: define_project_structure   → central_answer
+                 *     Executing node: generate_auth_system       → central_answer
+                 *     Executing node: create_multi_vendor_marketplace → central_answer
+                 *     «Good evening, Younes. As we embark on building …»
+                 *
+                 * Fifteen nodes, six essays, and not one file on disk. Worse,
+                 * an essay always "succeeds", so the failed step's repair got
+                 * stamped as a PROVEN cure and replayed on the next unrelated
+                 * error («proven 2x» in his log).
+                 *
+                 * A plan that answers a BUILD with nothing but answering tools
+                 * is not a plan. It is refused here, and the deterministic
+                 * builders take the request instead.
+                 */
                 const talkOnly = steps.length > 0 && steps.every((st: any) =>
                     ANSWER_ONLY_TOOLS.has(String(st.tool || '')));
                 if (talkOnly && looksLikeBuildRequest(String(intent.goal || ''))) {
                     console.warn(`[PlanningEngine] the model planned ${steps.length} talking step(s) for a BUILD — refusing invented construction.`);
                     const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-                    if (scope === 'page') {
+                    if (scope === 'page' && requestedArtifact(String(intent.goal || '')).kind !== 'cli') {
                         return {
                             id: `build_page_rescue_${Date.now()}`,
                             goal: intent.goal,
@@ -3479,10 +3583,25 @@ Return ONLY a JSON array of steps:
             console.error('[PlanningEngine] Dynamic DAG generation failed:', err);
         }
 
+        /**
+         * A BUILD MUST NOT DIE BECAUSE A PLANNER RAN OUT OF QUOTA.
+         *
+         * From his log, in full: the DAG planner reached Groq, Groq answered
+         * «429 … tokens per day (TPD): Limit 100000, Used 100000», every
+         * keyless provider was dead (401/418/402), the local brain had timed
+         * out — and a request to BUILD A SYSTEM ended with «تعذّر الوصول إلى
+         * محرّك الذكاء». Nothing in that build needed a model: the scaffolder,
+         * the database, the CRUD, the screens and the self-QA are all
+         * deterministic. Only the ROUTE to them went through an LLM.
+         *
+         * So when planning fails and the goal is a build, the builders take it.
+         * This is the same rescue the talk-only plan already gets — it just has
+         * to survive the planner being unreachable, not merely wrong.
+         */
         if (looksLikeBuildRequest(String(intent.goal || ''))) {
             console.warn('[PlanningEngine] the planner was unreachable for a BUILD — routing systems to evidence-first planning, never an invented stack.');
             const scope = PlanningEngine.classifyBuildScope(String(intent.goal || ''));
-            if (scope === 'page') {
+            if (scope === 'page' && requestedArtifact(String(intent.goal || '')).kind !== 'cli') {
                 return {
                     id: `build_page_offline_${Date.now()}`,
                     goal: intent.goal,
@@ -3502,14 +3621,22 @@ Return ONLY a JSON array of steps:
             };
         }
 
+        // Emergency Fallback (Dynamic but minimal)
         console.warn(`[PlanningEngine] Using failover node for: ${intent.goal}`);
         const fallbackUrl = String(intent.goal || '').match(/https?:\/\/[^\s]+|\b[a-z0-9-]+\.(?:com|org|net|io|dev|ai|co|app|sa|eg|me)(?:\/[^\s]*)?/i);
+        // A planner failure must not reinterpret an engineering build as a browser
+        // visit just because upstream intent analysis was unavailable or imprecise.
+        // URLs remain explicit browser evidence; otherwise a browser fallback is
+        // permitted only for a non-build request.
         const isBrowserFallback = !!fallbackUrl || (
             !looksLikeBuildRequest(String(intent.goal || '')) && (
                 intent.suggestedAgent === 'Browser'
                 || Boolean(intent.requiredTools && intent.requiredTools.includes('browser_run'))
             )
         );
+        // For browser intents, open the live browser deterministically instead of
+        // the generic browser_run (which needs explicit actions and otherwise dies
+        // with "actions_or_instruction_required" -> "Recovery failed").
         return {
             id: `failover_${Date.now()}`,
             goal: intent.goal,
@@ -3529,41 +3656,14 @@ Return ONLY a JSON array of steps:
      * TOLERANT JSON. The field log: «Dynamic DAG generation failed:
      * SyntaxError: Expected ',' or '}' after property value at position
      * 1306» — one bad character from a weak model threw away an otherwise
-     * valid 5-node plan and dropped the run into the failover node. Broken
-     * JSON is repaired in stages (fences, trailing commas, smart quotes),
-     * and as the last resort every individually-valid object is salvaged —
-     * four good nodes beat zero.
+     * valid 5-node plan and dropped the run into the failover node. The
+     * repairs and the salvage live in the shared reader (shared/utils/json),
+     * which the adaptive planner reads through too: one reader, so a reply
+     * one planner can read the other can as well.
      */
     static parseJsonArrayLoose(text: string): any[] | null {
-        const cleaned = String(text || '').replace(/```(?:json)?/gi, '');
-        const m = cleaned.match(/\[[\s\S]*\]/);
-        if (!m) return null;
-        const raw = m[0];
-        const attempts = [
-            raw,
-            raw.replace(/,\s*([}\]])/g, '$1'),
-            raw.replace(/[“”«»]/g, '"').replace(/[‘’]/g, "'").replace(/,\s*([}\]])/g, '$1'),
-            raw.replace(/\}\s*\{/g, '},{').replace(/,\s*([}\]])/g, '$1'),
-        ];
-        for (const a of attempts) {
-            try { const v = JSON.parse(a); if (Array.isArray(v)) return v; } catch { /* next repair */ }
-        }
-        // Salvage: extract each balanced {...} object and keep the valid ones.
-        const objs: any[] = [];
-        let depth = 0, start = -1;
-        for (let i = 0; i < raw.length; i++) {
-            const c = raw[i];
-            if (c === '{') { if (depth === 0) start = i; depth++; }
-            else if (c === '}') {
-                depth--;
-                if (depth === 0 && start >= 0) {
-                    try { objs.push(JSON.parse(raw.slice(start, i + 1).replace(/,\s*([}\]])/g, '$1'))); } catch { /* skip the broken one */ }
-                    start = -1;
-                }
-            }
-        }
-        if (objs.length) console.warn(`[PlanningEngine] JSON was broken — salvaged ${objs.length} valid node(s) instead of failing over.`);
-        return objs.length ? objs : null;
+        return parseModelJsonArray(text, kept =>
+            console.warn(`[PlanningEngine] JSON was broken — salvaged ${kept} valid node(s) instead of failing over.`));
     }
 
     /**
@@ -4318,19 +4418,3 @@ Return ONLY a JSON array of steps:
     }
 }
 
-/**
- * Detects if the request is a CLI/utility/script request (not a web system).
- * Uses the same signals as classifyBuildScope for consistency.
- */
-export function isCliRequest(goalRaw: string): boolean {
-    const cliSignals = /\b(?:cli|command[- ]?line|utility|script|tool|utility\s+script|command[- ]?line\s+tool|console\s+app|terminal\s+app|standalone\s+(?:tool|script|utility)|runnable\s+(?:script|tool|utility)|exit\s+code|stdin|stdout|stderr|argument\s+parsing|flag\s+parsing)\b/i;
-    return cliSignals.test(goalRaw || '');
-}
-
-/**
- * Detects if the request is a CSV/TSV input with columns (input data, not a persistent record schema).
- */
-export function isCsvInputRequest(goalRaw: string): boolean {
-    const csvInputSignals = /\b(?:csv|tsv)\b.*\b(?:column|field|header)\b|\bcolumn\b.*\b(?:csv|tsv)\b|(?:\binput\b|\bfile\b).*\b(?:csv|tsv)\b|\b(?:csv|tsv)\b.*\b(?:input|file)\b/i;
-    return csvInputSignals.test(goalRaw || '');
-}

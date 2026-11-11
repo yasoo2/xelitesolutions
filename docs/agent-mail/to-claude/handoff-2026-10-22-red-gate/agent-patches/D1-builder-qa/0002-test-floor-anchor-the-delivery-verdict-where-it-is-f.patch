@@ -1,0 +1,78 @@
+From 400df9eb6a1e1749bc96043ccd059e8eaaae3a8a Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:05:29 +0000
+Subject: [PATCH 2/9] test(floor): anchor the delivery verdict where it is
+ formed now
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red: a-floor-that-hears-the-compiler-but-not-the-browser
+  ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed
+  (culprit 0e2ff096) -> { rollbackComesFirst: false, verdictFound: false }
+
+Decision: P. 0e2ff096 widened the verdict from high findings to every open
+finding: `const blockers = ((audit?.findings ...` became
+`const openQualityFindings = ((audit?.findings ...` (blockers derived from
+it) and the decision `const qualityDeliveryBlocked = ...`. Read the code
+path: the runtime rollback (const runtimeBlockers) still sits inside the
+self-QA block, before both; there is no return between them, and the
+static_records mode (76f66a5d) runs the same audit -> rollback -> verdict
+order (its records presentation sets no authored fallback, so the rollback
+cannot misfire on it).
+
+The test now anchors BOTH halves of the verdict — where the final audit's
+findings are collected and where they decide delivery — and requires the
+rollback before each.
+
+Non-vacuity (move the verdict before the rollback, guard goes red, restore):
+  floor-collect: `const openQualityFindings = ((audit?.findings ...` moved
+  above AUTHORED_RENDER_FAULTS
+    ✕ ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed
+    -   "rollbackComesFirst": true,  +   "rollbackComesFirst": false,
+    RESTORED: sha256 identical
+  floor-decide: a `const qualityDeliveryBlocked` formed above the rollback
+    ✕ ⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed
+    -   "rollbackComesFirst": true,  +   "rollbackComesFirst": false,
+    RESTORED: sha256 identical
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ ...ears-the-compiler-but-not-the-browser.test.ts | 16 ++++++++++++----
+ 1 file changed, 12 insertions(+), 4 deletions(-)
+
+diff --git a/api/src/__tests__/a-floor-that-hears-the-compiler-but-not-the-browser.test.ts b/api/src/__tests__/a-floor-that-hears-the-compiler-but-not-the-browser.test.ts
+index a5d000b8..1a753d5a 100644
+--- a/api/src/__tests__/a-floor-that-hears-the-compiler-but-not-the-browser.test.ts
++++ b/api/src/__tests__/a-floor-that-hears-the-compiler-but-not-the-browser.test.ts
+@@ -69,14 +69,22 @@ describe('the authored interface is rolled back by the browser, not only by the
+ 
+     it('⛔ ORDERING — the rollback happens BEFORE the delivery verdict is formed', () => {
+         //  This is the actual defect, and it is invisible to every other
+-        //  assertion here. A rollback written after `blockers` is computed
++        //  assertion here. A rollback written after the verdict is computed
+         //  would be perfectly correct code that nothing ever reaches in time.
++        //
++        //  The verdict is two lines now, and BOTH are anchored: the point where
++        //  the final audit's findings are collected, and the point where they
++        //  decide delivery. (Until 0e2ff096 it was one line,
++        //  `const blockers = ((audit?.findings`, reading high findings only;
++        //  every open finding blocks now, and `blockers` is derived from them.)
+         const rollbackAt = SRC.indexOf('const runtimeBlockers');
+-        const verdictAt = SRC.indexOf("const blockers = ((audit?.findings");
++        const collectedAt = SRC.indexOf('const openQualityFindings = ((audit?.findings');
++        const decidedAt = SRC.indexOf('const qualityDeliveryBlocked =');
+         expect({
+             rollbackFound: rollbackAt > 0,
+-            verdictFound: verdictAt > 0,
+-            rollbackComesFirst: rollbackAt > 0 && verdictAt > 0 && rollbackAt < verdictAt,
++            verdictFound: collectedAt > 0 && decidedAt > 0,
++            rollbackComesFirst: rollbackAt > 0 && collectedAt > 0 && decidedAt > 0
++                && rollbackAt < collectedAt && rollbackAt < decidedAt,
+         }).toEqual({ rollbackFound: true, verdictFound: true, rollbackComesFirst: true });
+     });
+ 
+-- 
+2.43.0
+

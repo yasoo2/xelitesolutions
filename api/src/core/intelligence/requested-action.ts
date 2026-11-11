@@ -64,7 +64,10 @@ const ENGLISH_IMPERATIVE_PATTERN = /^\s*(build|create|make|develop|generate|scaf
 // CONTAINER patterns - works for both English and Arabic with Unicode support
 // English: app, website, webapp, site, page, form, component, module, plugin, extension, tool, utility, script, dashboard, panel, interface, UI, frontend, backend, API, service, microservice, database, db, store, cache, queue, worker, job, task, report, document, template, layout, design, view, screen, dialog, modal, popup, menu, navigation, sidebar, header, footer, banner, card, list, table, grid, chart, graph, map, calendar, timeline, feed, stream, wall, gallery, carousel, slider, accordion, tab, panel, section, article, blog, post, comment, review, rating, search, filter, sort, pagination, breadcrumb, toolbar, button, link, input, textarea, select, checkbox, radio, switch, toggle, dropdown, contextmenu, tooltip, popover, alert, notification, badge, tag, avatar, icon, image, video, audio, player, canvas, svg, calculator, houses, login, page, message, note, label, heading
 // Arabic: تطبيق / موقع / صفحة / نموذج / مكون / وحدة / إضافة / أداة / سكربت / لوحة / واجهة / خلفية / خدمة / قاعدة بيانات / مخزن / طابور / عامل / مهمة / تقرير / مستند / قالب / تخطيط / تصميم / عرض / شاشة / حوار / نافذة منبثقة / قائمة / تنقل / شريط جانبي / رأس / تذييل / لافتة / بطاقة / قائمة / جدول / شبكة / رسم بياني / رسم بياني / خريطة / تقويم / خط زمني / تغذية / تدفق / جدار / معرض / عرض دوار / شريط تمرير / طي / علامة تبويب / لوحة / قسم / مقال / مدونة / مشاركة / تعليق / مراجعة / تقييم / بحث / تصفية / ترتيب / ترقيم / مسار تنقل / شريط أدوات / زر / رابط / إدخال / منطقة نص / اختيار / خانة اختيار / راديو / مفتاح / تبديل / قائمة منسدلة / قائمة سياقية / تلميح / نافذة منبثقة / تنبيه / إشعار / شارة / وسم / صورة رمزية / أيقونة / صورة / فيديو / صوت / مشغل / كانفاس / SVG / حاسبة / منازل / تسجيل دخول / صفحة / رسالة / ملاحظة / تسمية / عنوان
-const CONTAINER_PATTERN = /(?:application|system|platform|game|converter|previewer|app|website|webapp|site|page|form|component|module|plugin|extension|tool|utility|script|dashboard|panel|interface|ui|frontend|backend|api|service|microservice|database|db|store|cache|queue|worker|job|task|report|document|template|layout|design|view|screen|dialog|modal|popup|menu|navigation|sidebar|header|footer|banner|card|list|table|grid|chart|graph|map|calendar|timeline|feed|stream|wall|gallery|carousel|slider|accordion|tab|panel|section|article|blog|post|comment|review|rating|search|filter|sort|pagination|breadcrumb|toolbar|button|link|input|textarea|select|checkbox|radio|switch|toggle|dropdown|contextmenu|tooltip|popover|alert|notification|badge|tag|avatar|icon|image|video|audio|player|canvas|svg|calculator|houses|login|page|message|note|label|heading|تطبيق|موقع|صفحة|نموذج|مكون|وحدة|إضافة|أداة|سكربت|لوحة|واجهة|خلفية|خدمة|قاعدة\s+بيانات|مخزن|طابور|عامل|مهمة|تقرير|مستند|نظام|متجر|برنامج|محول|قالب|تخطيط|تصميم|عرض|شاشة|حوار|نافذة\s+منبثقة|قائمة|تنقل|شريط\s+جانبي|رأس|تذييل|لافتة|بطاقة|قائمة|جدول|شبكة|رسم\s+بياني|رسم\s+بياني|خريطة|تقويم|خط\s+زمني|تغذية|تدفق|جدار|معرض|عرض\s+دوار|شريط\s+تمرير|طي|علامة\s+تبويب|لوحة|قسم|مقال|مدونة|مشاركة|تعليق|مراجعة|تقييم|بحث|تصفية|ترتيب|ترقيم|مسار\s+تنقل|شريط\s+أدوات|زر|رابط|إدخال|منطقة\s+نص|اختيار|خانة\s+اختيار|راديو|مفتاح|تبديل|قائمة\s+منسدلة|قائمة\s+سياقية|تلميح|نافذة\s+منبثقة|تنبيه|إشعار|شارة|وسم|صورة\s+رمزية|أيقونة|صورة|فيديو|صوت|مشغل|كانفاس|SVG|حاسبة|منازل|تسجيل\s+دخول|صفحة|رسالة|ملاحظة|تسمية|عنوان)/iu;
+// «Write a Python CLI that reads invoices …» named no container the list
+// knew, so it was never a build (eval round 19); «cli» is bounded because the
+// alternation below is not.
+const CONTAINER_PATTERN = /(?:\bcli\b|command[\s-]?line|application|system|platform|game|converter|previewer|app|website|webapp|site|page|form|component|module|plugin|extension|tool|utility|script|dashboard|panel|interface|ui|frontend|backend|api|service|microservice|database|db|store|cache|queue|worker|job|task|report|document|template|layout|design|view|screen|dialog|modal|popup|menu|navigation|sidebar|header|footer|banner|card|list|table|grid|chart|graph|map|calendar|timeline|feed|stream|wall|gallery|carousel|slider|accordion|tab|panel|section|article|blog|post|comment|review|rating|search|filter|sort|pagination|breadcrumb|toolbar|button|link|input|textarea|select|checkbox|radio|switch|toggle|dropdown|contextmenu|tooltip|popover|alert|notification|badge|tag|avatar|icon|image|video|audio|player|canvas|svg|calculator|houses|login|page|message|note|label|heading|تطبيق|موقع|صفحة|نموذج|مكون|وحدة|إضافة|أداة|سكربت|لوحة|واجهة|خلفية|خدمة|قاعدة\s+بيانات|مخزن|طابور|عامل|مهمة|تقرير|مستند|نظام|متجر|برنامج|محول|قالب|تخطيط|تصميم|عرض|شاشة|حوار|نافذة\s+منبثقة|قائمة|تنقل|شريط\s+جانبي|رأس|تذييل|لافتة|بطاقة|قائمة|جدول|شبكة|رسم\s+بياني|رسم\s+بياني|خريطة|تقويم|خط\s+زمني|تغذية|تدفق|جدار|معرض|عرض\s+دوار|شريط\s+تمرير|طي|علامة\s+تبويب|لوحة|قسم|مقال|مدونة|مشاركة|تعليق|مراجعة|تقييم|بحث|تصفية|ترتيب|ترقيم|مسار\s+تنقل|شريط\s+أدوات|زر|رابط|إدخال|منطقة\s+نص|اختيار|خانة\s+اختيار|راديو|مفتاح|تبديل|قائمة\s+منسدلة|قائمة\s+سياقية|تلميح|نافذة\s+منبثقة|تنبيه|إشعار|شارة|وسم|صورة\s+رمزية|أيقونة|صورة|فيديو|صوت|مشغل|كانفاس|SVG|حاسبة|منازل|تسجيل\s+دخول|صفحة|رسالة|ملاحظة|تسمية|عنوان)/iu;
 
 // READ_ONLY patterns
 const READ_ONLY_EN = `(?:read[-\\s]?only|readonly|only\\s+(?:read|inspect|analy[sz]e|review|verify)|read\\s+(?:the\\s+)?(?:files?|file)\\s+only|without\\s+(?:changing|modifying|writing|creating|editing)|without\\s+(?:making|any)\\s+(?:file\\s+)?(?:changes?|modifications?)|no\\s+(?:file\\s+)?(?:changes?|writes?|modifications?))`;
@@ -82,7 +85,7 @@ const KNOWLEDGE_QUESTION_END = `(?:[??]\\s*$)`;
 const KNOWLEDGE_QUESTION_PATTERN = new RegExp(`${KNOWLEDGE_QUESTION_START}|${KNOWLEDGE_QUESTION_EN}|${KNOWLEDGE_QUESTION_END}`, 'i');
 
 // Negative constraints on builds
-const NEGATIVE_CONSTRAINTS_PATTERN = /\b(?:do\s+not|don't|never|without|no|لا|دون|بدون)\b.*\b(?:database|login|auth|db|قاعدة\s+بيانات|تسجيل\s+دخول|مصادقة)\b/i;
+const NEGATIVE_CONSTRAINTS_PATTERN = /(?:\b(?:do\s+not|don't|never|without|no)\b|(?<=(?:^|[^\p{L}\p{N}_])[وف]?)(?:لا|دون|بدون)(?![\p{L}\p{N}_])).*(?:\b(?:database|login|auth|db)\b|(?<=(?:^|[^\p{L}\p{N}_])(?:ال)?)(?:قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول|مصادق[ةه])(?![\p{L}\p{N}_]))/iu;
 
 export interface RequestedActionResult {
     hasAffirmativeAction: boolean;
@@ -101,6 +104,29 @@ export function unquotedIntentText(raw: string): string {
     return String(raw || '').replace(/[\u201C\u201D«»]/g, '"')
         .replace(/[\u2018\u2019`´]/g, "'")
         .replace(/"[^"]*"|(?<!\w)'[^']*'(?!\w)/g, '');
+}
+
+/**
+ * ⛔ AN EXCLUSION OF ONE THING IS NOT A REFUSAL TO BUILD.
+ *
+ * «Build a REST API for todos. Do not create a frontend.», «Write a Python CLI …
+ * Do not create a web app.», «Don't build a website. Write a Python script …»
+ * were read as global execution denials, while «… No UI.» built (eval round
+ * 19). A «do not <make> <a part>» clause scopes the denial to that part —
+ * a database, a login, an interface, a page, a website — and is removed before
+ * the denial readers run. With no object, or «anything / code / files», it
+ * stays a global denial.
+ *
+ * A backend is a part too: «Build a real weather web application … do not
+ * build a project-owned backend» was refused as a whole build once the global
+ * «do not build» reader arrived (b906f3bc8); the WeatherGo pins (093082cb3)
+ * caught it.
+ */
+const EXCLUDED_PART = String.raw`(?:(?:a|an|the|any)\s+)?(?:(?:separate|react|web|mobile|graphical|user|admin|front[- ]?end|login|project[- ]owned)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth|web\s*app(?:lication)?|website|web\s*site|front[- ]?end|back[- ]?end|ui|gui|user\s+interface|interface|pages?|dashboard|screens?)`;
+const SCOPED_EXCLUSION_EN = new RegExp(String.raw`\b(?:do\s+not|don['’]?t|never)\s+(?:create|build|generate|write|make|add|include|use)\s+${EXCLUDED_PART}(?:\s*,?\s*(?:or|and|nor)\s+${EXCLUDED_PART})*\s*(?=[.!?;,]|$)`, 'gi');
+const SCOPED_EXCLUSION_AR = /(?:^|(?<=[\s،:؛.!?]))و?لا\s+(?:تنشئ|تنشي|تبني|تبن|تعمل|تصمم|تضيف|تسوي)\s+(?:أي\s+|اي\s+)?(?:واجه[ةه](?:\s+(?:مستخدم|المستخدم|أمامية|امامية|ويب|رسومية))?|موقع|صفح[ةه]|صفحات|تطبيق\s+ويب|لوح[ةه]\s+(?:تحكم|إدارة|ادارة)|قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول)(?=$|[\s،:؛.!?])/gu;
+export function stripScopedExclusions(text: string): string {
+    return String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' ');
 }
 
 export function hasRequestedAction(goalRaw: string): RequestedActionResult {
@@ -138,8 +164,9 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     // This prevents quoted denial phrases (e.g., "Do not execute" inside a label) from
     // triggering a global execution denial. The original text may contain quoted denial
     // phrases that are part of the build request, not actual user instructions.
+    const gScoped = stripScopedExclusions(gStripped);
     const hasGlobalExecutionDenial = globalExecutionDenialPhrases.some(phrase => 
-        gStripped.toLowerCase().indexOf(phrase.toLowerCase()) >= 0
+        gScoped.toLowerCase().indexOf(phrase.toLowerCase()) >= 0
     );
 
     const bare = stripArabicDiacritics(gNormalized);
@@ -150,7 +177,7 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     // false positives from quoted denial phrases (e.g., "Do not execute" in a label)
     const probeStripped = stripArabicDiacritics(unquotedIntentText(probe));
     // A feature exclusion is scoped to that feature, never to other execution denials.
-    const denialProbe = probeStripped.replace(/\b(?:do\s+not|don't|never)\s+(?:create|build|generate|write)\s+(?:(?:a|an|the|any)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth)(?:\s+(?:or|and)\s+(?:(?:a|an|the|any)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth))*\s*(?=[.!?;,]|$)/gi, '');
+    const denialProbe = stripScopedExclusions(probeStripped);
 
 
     // Check DENIAL patterns first on stripped probe (without quoted content)

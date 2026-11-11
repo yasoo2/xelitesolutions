@@ -50,14 +50,16 @@ describe('smoke verification without a checker contract', () => {
         },
     ]);
 
-    it('rewrites a runtime smoke verification into an output-existence observation', () => {
+    // Eval round 9 (2026-10-23): the read_file observation written here was itself
+    // refused by the phase gate (a read is admitted only for prose-origin
+    // verifications), so the rewrite never let execution continue. The smoke
+    // verification is now removed, named, and the phase stands on its receipts.
+    it('removes a runtime smoke verification the gate would refuse, naming the dropped command', () => {
         const { phases, notes } = sanitisePlanPhases(smokePhases('node index.js < sample.txt'), 'taglines', {
             mode: 'greenfield',
             candidateCheckCommands: [],
         });
-        const verification = phases[1].verificationTask;
-        expect(verification.tool).toBe('read_file');
-        expect(verification.task).toMatch(/^Verify phase output exists: /);
+        expect(phases[1].verificationTask).toBeUndefined();
         expect(notes.join('\n')).toContain('الأمر المسقط');
         expect(notes.join('\n')).toContain('node index.js < sample.txt');
     });
@@ -68,7 +70,7 @@ describe('smoke verification without a checker contract', () => {
                 mode: 'greenfield',
                 candidateCheckCommands: [],
             });
-            expect(phases[1].verificationTask.tool).not.toBe('shell_execute');
+            expect(phases[1].verificationTask?.tool).not.toBe('shell_execute');
         }
     });
 
@@ -81,24 +83,24 @@ describe('smoke verification without a checker contract', () => {
         expect(phases[1].verificationTask).toMatchObject({ args: { command: 'npm test' } });
     });
 
-    it('keeps the unproven package-script path on project_detect (no manifest produced)', () => {
+    it('removes an unproven package-script check the gate would refuse (no manifest produced)', () => {
         const { phases } = sanitisePlanPhases([{
             phaseNumber: 1,
             name: 'Docs only',
             tasks: [{ task: 'Write doc', tool: 'write_file', args: { path: 'taglines/README.md', content: '# hi' } }],
             verificationTask: { task: 'Run tests', tool: 'shell_execute', args: { command: 'npm test' } },
         }], 'taglines', { mode: 'greenfield', candidateCheckCommands: [] });
-        expect(phases[0].verificationTask.tool).toBe('project_detect');
+        // Formerly project_detect, which the phase gate never accepts (eval round 9).
+        expect(phases[0].verificationTask).toBeUndefined();
     });
 
-    it('observes the generated doc when a non-file phase is documented', () => {
+    it('removes the smoke verification of a non-file phase too', () => {
         const { phases } = sanitisePlanPhases([{
             phaseNumber: 1,
             name: 'Research',
             tasks: [{ task: 'Think', tool: 'central_answer', args: { question: 'x' } }],
             verificationTask: { task: 'Verify', tool: 'shell_execute', args: { command: 'node app.js < in.txt' } },
         }], 'taglines', { mode: 'greenfield', candidateCheckCommands: [] });
-        expect(phases[0].verificationTask.tool).toBe('read_file');
-        expect(phases[0].verificationTask.task).toMatch(new RegExp("^Verify phase output exists: "));
+        expect(phases[0].verificationTask).toBeUndefined();
     });
 });

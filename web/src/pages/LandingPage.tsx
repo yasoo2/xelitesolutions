@@ -1,35 +1,24 @@
 import React from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { useTranslation } from 'react-i18next';
+import { useUiDir } from '../components/NeuralTraceView';
+
+const SERVICES = [
+    { titleKey: 'land_svcWebTitle', descKey: 'land_svcWebDesc', icon: '🌐' },
+    { titleKey: 'land_svcMobileTitle', descKey: 'land_svcMobileDesc', icon: '📱' },
+    { titleKey: 'land_svcAiTitle', descKey: 'land_svcAiDesc', icon: '🤖' },
+    { titleKey: 'land_svcEnterpriseTitle', descKey: 'land_svcEnterpriseDesc', icon: '🏢' },
+];
+const FOUNDED = 2024;
 
 export default function LandingPage() {
     const navigate = useNavigate();
-
-    const services = [
-        {
-            title: 'Web Development',
-            desc: 'High-performance React & Next.js applications tailored for scale.',
-            icon: '🌐'
-        },
-        {
-            title: 'Mobile Apps',
-            desc: 'Seamless iOS and Android experiences with React Native.',
-            icon: '📱'
-        },
-        {
-            title: 'AI Solutions',
-            desc: 'Custom LLM integrations and autonomous agent architectures.',
-            icon: '🤖'
-        },
-        {
-            title: 'Enterprise IT',
-            desc: 'Robust cloud infrastructure and scalable backend systems.',
-            icon: '🏢'
-        }
-    ];
+    const { t } = useTranslation();
+    const uiDir = useUiDir();
 
     return (
-        <div className="landing-page" style={{
+        <div className="landing-page" dir={uiDir} style={{
             backgroundColor: 'var(--bg-dark)',
             color: 'var(--text-primary)',
             minHeight: '100vh',
@@ -84,10 +73,10 @@ export default function LandingPage() {
                         XELITE
                     </h1>
                     <h2 style={{ fontSize: '1.5rem', color: 'var(--accent-secondary)', fontWeight: 400, opacity: 0.8 }}>
-                        SOFTWARE SOLUTIONS & AI EXCELLENCE
+                        {t('land_tagline')}
                     </h2>
                     <p style={{ maxWidth: '600px', margin: '40px auto', fontSize: '1.2rem', color: 'var(--text-secondary)' }}>
-                        Empowering businesses in the digital landscape with customized IT services, high-end design, and autonomous intelligence.
+                        {t('land_heroText')}
                     </p>
                     <div style={{ display: 'flex', gap: '20px', justifyContent: 'center' }}>
                         <motion.button
@@ -105,7 +94,7 @@ export default function LandingPage() {
                                 fontSize: '1.1rem',
                                 boxShadow: '0 0 20px var(--accent-glow)'
                             }}>
-                            Launch Joe
+                            {t('land_launchJoe')}
                         </motion.button>
                         <motion.button
                             whileHover={{ scale: 1.05, border: '1px solid var(--accent-primary)' }}
@@ -119,7 +108,7 @@ export default function LandingPage() {
                                 cursor: 'pointer',
                                 fontSize: '1.1rem'
                             }}>
-                            Our Services
+                            {t('land_ourServices')}
                         </motion.button>
                     </div>
                 </motion.div>
@@ -127,13 +116,13 @@ export default function LandingPage() {
 
             {/* Services Grid */}
             <section className="services" style={{ padding: '100px 20px', maxWidth: '1200px', margin: '0 auto' }}>
-                <h3 style={{ fontSize: '2.5rem', marginBottom: '60px', textAlign: 'center' }}>Expertise That Defines XElite</h3>
+                <h3 style={{ fontSize: '2.5rem', marginBottom: '60px', textAlign: 'center' }}>{t('land_expertise')}</h3>
                 <div style={{
                     display: 'grid',
                     gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))',
                     gap: '30px'
                 }}>
-                    {services.map((s, i) => (
+                    {SERVICES.map((s, i) => (
                         <motion.div
                             key={i}
                             whileHover={{ y: -10 }}
@@ -145,8 +134,8 @@ export default function LandingPage() {
                                 transition: 'border-color 0.3s ease'
                             }}>
                             <div style={{ fontSize: '3rem', marginBottom: '20px' }}>{s.icon}</div>
-                            <h4 style={{ fontSize: '1.5rem', marginBottom: '15px', color: 'var(--accent-primary)' }}>{s.title}</h4>
-                            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{s.desc}</p>
+                            <h4 style={{ fontSize: '1.5rem', marginBottom: '15px', color: 'var(--accent-primary)' }}>{t(s.titleKey)}</h4>
+                            <p style={{ color: 'var(--text-secondary)', lineHeight: 1.6 }}>{t(s.descKey)}</p>
                         </motion.div>
                     ))}
                 </div>
@@ -159,15 +148,15 @@ export default function LandingPage() {
                 background: 'linear-gradient(to bottom, transparent, rgba(52, 196, 139, 0.02))'
             }}>
                 <div style={{ maxWidth: '1200px', margin: '0 auto', textAlign: 'center' }}>
-                    <h2 style={{ fontSize: '2rem', marginBottom: '20px' }}>Ready to Scale?</h2>
+                    <h2 style={{ fontSize: '2rem', marginBottom: '20px' }}>{t('land_readyToScale')}</h2>
                     <p style={{ color: 'var(--text-secondary)', marginBottom: '40px' }}>
-                        Founded in 2024, XElite continues to push the boundaries of IT automation.
+                        {t('land_founded', { year: FOUNDED })}
                     </p>
-                    <div style={{ color: 'var(--text-muted)' }}>
+                    <div dir="ltr" style={{ color: 'var(--text-muted)' }}>
                         info@xelitesoftwaresolutions.com | +94 76 844 9758
                     </div>
                     <div style={{ marginTop: '60px', opacity: 0.5, fontSize: '0.9rem' }}>
-                        &copy; 2024 XElite Software Solutions. All rights reserved.
+                        {t('land_copyright', { year: FOUNDED })}
                     </div>
                 </div>
             </footer>

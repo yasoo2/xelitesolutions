@@ -1,4 +1,6 @@
 import OpenAI from 'openai';
+import { localInferenceFetch } from './loopback-fetch';
+import { admitLocalModelCall, isLocalModelEndpoint } from '../../resources/local-model-call';
 import { isManagedOllamaEndpoint, managedOllamaChat } from './managed-ollama-chat';
 import { requestResourceManager } from '../../resources/RequestResourceManager';
 
@@ -59,18 +61,23 @@ export class LocalProvider {
         return !!this.baseUrl();
     }
 
+    /** The configured local endpoint, for a check that reads it without generating. */
+    endpoint(): string | null {
+        return this.baseUrl();
+    }
+
     async chatComplete(
         messages: any[],
         model?: string,
         onDelta?: (delta: string) => void,
         signal?: AbortSignal,
-        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none' },
+        options?: { maxCompletionTokens?: number; reasoningEffort?: 'none'; onAdmitted?: () => void },
     ): Promise<string> {
         const baseURL = this.baseUrl();
         if (!baseURL) throw new Error('LOCAL_LLM_BASE_URL not configured');
         if (isManagedOllamaEndpoint(baseURL)) {
             const result = await managedOllamaChat({
-                baseURL, model: model || this.model(), messages, onDelta, signal,
+                baseURL, model: model || this.model(), messages, onDelta, signal, onAdmitted: options?.onAdmitted,
                 timeoutMs: this.timeoutMs(), maxCompletionTokens: options?.maxCompletionTokens,
                 reasoningEffort: options?.reasoningEffort === 'none'
                     || (options?.reasoningEffort === undefined && String(process.env.LOCAL_LLM_REASONING_EFFORT || '').trim() === 'none') ? 'none' : undefined,
@@ -78,16 +85,31 @@ export class LocalProvider {
             return result.content;
         }
         // Generic compatible servers have no portable context-size parameter.
-        // Admission serializes their work without pretending to resize the model.
-        return requestResourceManager.withHeavy(
-            () => this.chatCompleteCompatible(messages, model, onDelta, requestResourceManager.currentSignal() || signal, options),
+        // Admission serializes their work without pretending to resize the model,
+        // as a model call: the model the server holds is this call's own. A
+        // compatible server on ANOTHER machine is not this machine's memory, so
+        // its calls are not admitted here (round 22).
+        return admitLocalModelCall(baseURL,
+            admission => {
+                try { options?.onAdmitted?.(); } catch { /* the caller's clock is its own concern */ }
+                return this.chatCompleteCompatible(messages, model, onDelta, admission || signal, options);
+            },
             { kind: 'compatible-local-inference', signal },
         );
     }
 
+    /**
+     * The transport's own backstop. The router arms the real, call-sized deadline
+     * through the signal; this must never be SHORTER than it. Eval round 6,
+     * 2026-10-23: a compact local plan armed for 30 min ended at exactly 300 s
+     * (aborted: false) — LOCAL_LLM_TIMEOUT=1800000 was clamped to 300 000 here.
+     * Now: the configured value up to 30 min (the managed transport's limit);
+     * unset, at least the operator's local ceiling.
+     */
     private timeoutMs(): number {
         const timeout = Number.parseInt(String(process.env.LOCAL_LLM_TIMEOUT || '').trim(), 10);
-        return Number.isFinite(timeout) && timeout > 0 ? Math.min(timeout, 300_000) : 180_000;
+        if (Number.isFinite(timeout) && timeout > 0) return Math.min(timeout, require('../local-throughput').LOCAL_INFERENCE_HARD_MAX_MS);
+        return Math.max(180_000, require('../../orchestrator/planner-run-boundary').localPlannerCeilingMs());
     }
 
     private async chatCompleteCompatible(
@@ -110,6 +132,10 @@ export class LocalProvider {
             baseURL,
             timeout: timeoutMs,
             maxRetries: 0,
+            // A server on this machine is reached without undici's 300 s header
+            // timer, which cut every non-streamed answer longer than five minutes
+            // (eval round 6) — vLLM and LM Studio come through here (round 22).
+            ...(isLocalModelEndpoint(baseURL) ? { fetch: localInferenceFetch() } : {}),
         });
 
         const mapped = messages.map(m => ({ role: m.role, content: m.content })) as any;

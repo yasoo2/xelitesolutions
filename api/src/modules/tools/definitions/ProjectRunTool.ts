@@ -1,13 +1,20 @@
 import { ToolDefinition, ToolPermission } from '../types';
 import { isWithinRoot } from '../path-containment';
+import { listsProjectFiles, staticSiteRoot } from '../preview-site';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
+import { executionFirewall } from '../../../orchestration/AgentExecutionFirewall';
+import { checkJavaScriptFile } from '../../../core/quality/js-syntax-check';
 import { NpmManagerTool } from './SystemTools';
+import { findImportedPackageForScriptBinary, scriptBinaryInstallInput } from '../script-binary-provider';
 import { workspaceService } from '../../services/WorkspaceService';
 import { isPortOpen } from '../../../shared/utils/network';
 import { isArabicReply, say as pick } from '../../../shared/reply-language';
+import { isMachineStateDirectory } from '../../../shared/utils/project-tree';
 import * as fs from 'fs';
 import * as http from 'http';
+import * as os from 'os';
 import * as path from 'path';
+import { isRunning } from '../../../core/session/attended-run';
 import { builtinModules } from 'module';
 import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../../../api/page-store';
 
@@ -28,7 +35,17 @@ import { persistJoeProjects, readJoeProjectForRun, writeJoeProject } from '../..
 
 // Live processes, keyed by the workspace (or session) so one project owns one
 // server: starting again stops the previous one instead of leaking ports.
-interface RunningServer { pid: number; port: number; cwd: string; command: string; startedAt: number; }
+export interface RunningServer {
+    pid: number; port: number; cwd: string; command: string; startedAt: number;
+    /** The session whose record names this server, so a stop can forget it there too. */
+    sessionKey?: string;
+    /** That session's id as runs register it, to tell whether it is running now. */
+    sessionId?: string;
+    /** The pid's start time when it was launched: a reused pid never matches it. */
+    identity?: string;
+    /** The process listening on the port, when it is not the launched pid: what outlives a launcher. */
+    listener?: { pid: number; identity: string };
+}
 const RUNNING: Map<string, RunningServer> = new Map();
 
 /** Tokenize the already-selected launcher without giving it a second shell. */
@@ -61,22 +78,35 @@ const COMMON_DEV_PORTS = [5173, 5174, 3000, 3001, 4173, 8080, 8000];
  * can still be inspected in the browser without depending on `serve`, npx, or
  * another package that may be unavailable in an offline workspace.
  */
-const STATIC_PREVIEW_SERVER_SOURCE = [
+export const STATIC_PREVIEW_SERVER_SOURCE = [
     "const fs=require('fs'),http=require('http'),path=require('path');",
     `const isWithinRoot=${isWithinRoot.toString()};`,
     "const root=process.cwd(),port=Number(process.env.PORT);",
-    "const types={'.html':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.webp':'image/webp','.woff2':'font/woff2'};",
+    // Strict mode serves a build-free site's SOURCE folder: no dot segments and
+    // an honest 404 for a missing file (a fallback page would hide a broken
+    // asset from browser QA). A build output keeps its SPA fallback.
+    "const strict=process.env.JOE_STATIC_STRICT==='1';",
+    "const types={'.html':'text/html; charset=utf-8','.htm':'text/html; charset=utf-8','.js':'text/javascript; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.css':'text/css; charset=utf-8','.json':'application/json; charset=utf-8','.svg':'image/svg+xml','.png':'image/png','.jpg':'image/jpeg','.jpeg':'image/jpeg','.gif':'image/gif','.webp':'image/webp','.avif':'image/avif','.ico':'image/x-icon','.woff':'font/woff','.woff2':'font/woff2','.ttf':'font/ttf','.otf':'font/otf','.webmanifest':'application/manifest+json','.mp4':'video/mp4','.webm':'video/webm','.mp3':'audio/mpeg','.ogg':'audio/ogg','.wav':'audio/wav','.txt':'text/plain; charset=utf-8','.pdf':'application/pdf'};",
+    // A loopback server can still be reached from a hostile page through DNS
+    // rebinding; strict mode answers only requests addressed to loopback.
+    "const loopbackHost=(h)=>/^(?:127\\.0\\.0\\.1|localhost|\\[::1\\])(?::\\d+)?$/i.test(String(h||''));",
     "const index=path.join(root,'index.html');",
     "const safe=(pathname)=>{try{return decodeURIComponent(pathname)}catch{return null}};",
     "http.createServer((req,res)=>{",
     "  const pathname=safe(String(req.url||'/').split('?')[0]);",
     "  if(!pathname){res.statusCode=400;return res.end('bad request')}",
+    "  if(strict&&!loopbackHost(req.headers.host)){res.statusCode=421;return res.end('misdirected request')}",
+    "  if(strict&&pathname.split(/[\\\\/]+/).some(s=>s.startsWith('.')||s.includes('~'))){res.statusCode=404;return res.end('not found')}",
     "  const candidate=path.resolve(root,'.'+pathname);",
     "  if(!isWithinRoot(candidate,root)){res.statusCode=403;return res.end('forbidden')}",
     "  let file=candidate;",
     "  try{if(fs.statSync(file).isDirectory())file=path.join(file,'index.html')}catch{}",
-    "  if(!fs.existsSync(file)||!fs.statSync(file).isFile())file=index;",
+    // A page asked for by its name opens its .html, as static hosts do.
+    "  if(!fs.existsSync(file)&&!path.extname(file)&&fs.existsSync(file+'.html'))file+='.html';",
+    "  if(!fs.existsSync(file)||!fs.statSync(file).isFile()){if(strict){res.statusCode=404;return res.end('not found')}file=index}",
     "  if(!fs.existsSync(file)){res.statusCode=404;return res.end('not found')}",
+    "  if(strict&&!types[path.extname(file).toLowerCase()]){res.statusCode=404;return res.end('not found')}",
+    "  if(strict){try{if(!isWithinRoot(fs.realpathSync(file),fs.realpathSync(root))){res.statusCode=404;return res.end('not found')}}catch{res.statusCode=404;return res.end('not found')}}",
     "  res.setHeader('Content-Type',types[path.extname(file).toLowerCase()]||'application/octet-stream');",
     "  fs.createReadStream(file).on('error',()=>{if(!res.headersSent)res.statusCode=500;res.end('read error')}).pipe(res);",
     "}).listen(port,'127.0.0.1');",
@@ -126,7 +156,10 @@ async function findFreePort(start = 4300): Promise<number> {
  * is listening; an HTTP answer proves it is a web server, and that is the
  * least we should know before calling it «your system».
  */
-async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
+/** The bound for one HTTP answer from a local project server; delivery probes reuse it. */
+export const HTTP_ANSWER_TIMEOUT_MS = 2500;
+
+async function answersHttp(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS): Promise<boolean> {
     return new Promise(resolve => {
         let settled = false;
         const finish = (value: boolean) => {
@@ -146,6 +179,37 @@ async function answersHttp(url: string, timeoutMs = 2500): Promise<boolean> {
             req.on('error', () => finish(false));
         } catch {
             finish(false);
+        }
+    });
+}
+
+/** The first bytes of a loopback page's body, or '' when it does not answer. */
+async function loopbackPageText(url: string, timeoutMs = HTTP_ANSWER_TIMEOUT_MS, limit = 256 * 1024): Promise<string> {
+    return new Promise(resolve => {
+        let settled = false;
+        let body = '';
+        const finish = (value: string) => {
+            if (settled) return;
+            settled = true;
+            resolve(value);
+        };
+        try {
+            const req = http.get(url, res => {
+                res.setEncoding('utf8');
+                res.on('data', (chunk: string) => {
+                    body += chunk;
+                    if (body.length >= limit) { finish(body); req.destroy(); }
+                });
+                res.on('end', () => finish(body));
+                res.on('error', () => finish(body));
+            });
+            req.setTimeout(timeoutMs, () => {
+                req.destroy();
+                finish(body);
+            });
+            req.on('error', () => finish(body));
+        } catch {
+            finish('');
         }
     });
 }
@@ -184,10 +248,10 @@ export function dependencyFreeRecordsBundleRoot(cwd: string): string | null {
     }
 }
 
-async function startStaticBuildPreview(root: string, port: number): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
+async function startStaticBuildPreview(root: string, port: number, strict = false): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
     const result = await ExecutionGateway.execute(process.execPath, ['-e', STATIC_PREVIEW_SERVER_SOURCE], {
         cwd: root,
-        env: { ...process.env, PORT: String(port) },
+        env: { ...process.env, PORT: String(port), JOE_STATIC_STRICT: strict ? '1' : '' },
         background: true,
         shell: false,
         stdio: 'ignore',
@@ -204,6 +268,42 @@ async function startStaticBuildPreview(root: string, port: number): Promise<{ re
         await new Promise(resolve => setTimeout(resolve, 250));
     }
     return { ready: false, pid, error: 'static production preview did not answer within 10s' };
+}
+
+/**
+ * Serve a build-free static site on loopback: the fallback when the project's
+ * own start command cannot run or never answers (eval round 14, P001: «node
+ * src/index.js» named a file that never existed, so the site Joe had just
+ * written had no address). Strict mode — 127.0.0.1 only, loopback Host header
+ * only, no dot or short-name segments, an extension allowlist, realpath
+ * containment, honest 404s. Records the live URL for every later reader.
+ * Returns the URL, or '' when the project is not such a site or would not start.
+ */
+export async function startStaticSitePreview(context: any, projectDir: string, logs: string[] = []): Promise<string> {
+    const root = staticSiteRoot(projectDir, { servedAtRoot: true });
+    return root ? serveStaticFolder(context, root, projectDir, logs) : '';
+}
+
+/** Serve `root` for the session's project with the strict server on loopback; the URL, or ''. */
+async function serveStaticFolder(context: any, root: string, projectDir: string, logs: string[], port = 0): Promise<string> {
+    const key = runKey(context);
+    await stopServer(key, logs).catch(() => {});
+    await retireRecordedServer(context, projectDir, logs);
+    port = port || await findFreePort();
+    const served = await startStaticBuildPreview(root, port, true);
+    if (!(served.ready && served.url && served.pid)) {
+        if (served.pid) await killTree(Number(served.pid)).catch(() => {});
+        logs.push(`project_run: the static site did not start: ${served.error || 'no answer'}`);
+        return '';
+    }
+    await trackRunning(key, context, { pid: served.pid, port, cwd: root, command: 'node static-preview' });
+    rememberLiveProject(context, root, { url: served.url, port, pid: served.pid }, projectDir);
+    try {
+        const { broadcast } = require('../../../api/ws');
+        broadcast({ type: 'preview_ready', sessionId: context?.sessionId, data: { url: served.url, previewUrl: served.url, port, live: true, mode: 'static-site' } });
+    } catch { /* panel optional */ }
+    logs.push(`project_run: serving the build-free static site (${root}) at ${served.url}`);
+    return served.url;
 }
 
 function sameExistingPath(a: string, b: string): boolean {
@@ -246,7 +346,7 @@ function runKey(context?: any): string {
     return String(context?.workspaceId || context?.sessionId || 'default');
 }
 
-export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number }, at = Date.now()): Record<string, any> {
+export function liveProjectRecord(previous: Record<string, any>, projectCwd: string, live: { url: string; port: number; pid: number; identity?: string }, at = Date.now()): Record<string, any> {
     return {
         ...previous,
         // The live preview belongs to the project this run just verified.
@@ -256,20 +356,26 @@ export function liveProjectRecord(previous: Record<string, any>, projectCwd: str
         // with the verified live process rather than preserving stale state.
         dir: projectCwd,
         type: previous.type || 'runtime',
-        live: { url: live.url, port: live.port, pid: live.pid, cwd: projectCwd, projectCwd, at },
+        live: { url: live.url, port: live.port, pid: live.pid, cwd: projectCwd, projectCwd, at, ...(live.identity ? { identity: live.identity } : {}) },
         updatedAt: at,
     };
 }
 
 /** Keep the verified server address attached to the session's active project. */
-function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number }, projectCwd = cwd): void {
+function rememberLiveProject(context: any, cwd: string, live: { url: string; port: number; pid: number; identity?: string }, projectCwd = cwd): void {
     const sessionId = String(context?.sessionId || '').trim();
     if (!sessionId || !cwd || !live.url || !live.port) return;
     const sessionKey = sessionId.replace(/[^a-zA-Z0-9._-]/g, '_');
     const projects: Record<string, any> = (global as any).joeProjects || ((global as any).joeProjects = {});
     const previous = projects[sessionKey] || {};
+    // The pid's identity from the launch that tracked it, so a later retirement
+    // can tell this server from a process that reused its pid.
+    const tracked = RUNNING.get(runKey(context));
+    if (!live.identity && tracked?.identity && tracked.pid === live.pid) live = { ...live, identity: tracked.identity };
     const record = liveProjectRecord(previous, projectCwd, live);
     record.live.cwd = cwd;
+    // …and the server that listens on its port, which a restart can still find.
+    if (tracked?.listener && tracked.pid === live.pid) record.live.listener = tracked.listener;
     writeJoeProject(sessionKey, record, context?.runId ?? null);
     persistJoeProjects();
 }
@@ -393,9 +499,9 @@ function isFrontendStartScript(script: string): boolean {
  * and it is under a conventional backend directory. A frontend-only project is
  * left on its declared start script, and ambiguous layouts are never guessed.
  */
-function backendEntrypointForFrontendScript(cwd: string, script: string): string | null {
+async function backendEntrypointForFrontendScript(cwd: string, script: string): Promise<string | null> {
     if (!isFrontendStartScript(script)) return null;
-    const candidates = serverEntrypointCandidates(cwd);
+    const candidates = await serverEntrypointCandidates(cwd);
     if (candidates.length !== 1) return null;
     const candidate = candidates[0].replace(/\\/g, '/');
     const parts = candidate.split('/');
@@ -412,7 +518,7 @@ function backendEntrypointForFrontendScript(cwd: string, script: string): string
  * framework must obey, or a static server we point ourselves. It decides
  * whether readiness may go looking on other ports (see below).
  */
-export function detectStart(cwd: string, port: number): { command: string; kind: string; expectPort: number; forced: boolean } {
+export async function detectStart(cwd: string, port: number): Promise<{ command: string; kind: string; expectPort: number; forced: boolean }> {
     const pkgPath = path.join(cwd, 'package.json');
     if (fs.existsSync(pkgPath)) {
         let manifest: Record<string, any> = {};
@@ -435,7 +541,7 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
         // visibly a frontend-only command but the project also contains exactly
         // one proven backend entrypoint, use that observed server instead of
         // launching a missing/irrelevant frontend dependency and hiding stderr.
-        const backendEntrypoint = backendEntrypointForFrontendScript(cwd, String(scripts.start || ''));
+        const backendEntrypoint = await backendEntrypointForFrontendScript(cwd, String(scripts.start || ''));
         if (backendEntrypoint) {
             return { command: `node ${backendEntrypoint}`, kind: 'node-entry', expectPort: port, forced: false };
         }
@@ -479,9 +585,10 @@ export function detectStart(cwd: string, port: number): { command: string; kind:
             }
         }
     }
-    // A static site — serve the folder deterministically on our port.
+    // A static site — served by Joe's own strict server on our port (see the
+    // static branch of project_run), never by a launcher Joe does not control.
     if (fs.existsSync(path.join(cwd, 'index.html'))) {
-        return { command: `npx -y serve -l ${port} -s . --no-clipboard`, kind: 'static', expectPort: port, forced: true };
+        return { command: 'node static-preview', kind: 'static', expectPort: port, forced: true };
     }
     // Last resort: try npm start and let readiness probing sort it out.
     return { command: 'npm start', kind: 'unknown', expectPort: port, forced: false };
@@ -510,12 +617,54 @@ const TYPESCRIPT_ENTRYPOINTS = [
     'src/index.tsx', 'src/main.tsx', 'src/server.tsx', 'src/app.tsx',
     'index.ts', 'main.ts', 'server.ts', 'app.ts',
 ];
-const IGNORED_PROJECT_DIRS = new Set(['node_modules', '.git', 'dist', 'build', 'coverage', '.next']);
+// Machine state (node_modules, caches, virtualenvs, Joe's own state) is the
+// shared list in shared/utils/project-tree.ts; build output is this walker's
+// own decision: a built folder is not a project to run.
+const BUILD_OUTPUT_DIRS = new Set(['dist', 'build']);
+const isIgnoredProjectDir = (name: string): boolean => isMachineStateDirectory(name) || BUILD_OUTPUT_DIRS.has(name);
 
-function hasProjectMarker(dir: string): boolean {
-    if (PROJECT_MARKERS.some(marker => fs.existsSync(path.join(dir, marker)))) return true;
-    return fs.existsSync(path.join(dir, 'tsconfig.json'))
-        && TYPESCRIPT_ENTRYPOINTS.some(entry => fs.existsSync(path.join(dir, entry)));
+/**
+ * ⛔ A PROJECT IS READ WITHOUT HOLDING THE EVENT LOOP (second review of round
+ * 21). project_run's preflight walked the project synchronously — the
+ * workspace's children, every source file to depth 3 for a server entry, the
+ * whole import graph for missing modules and packages — and while it read,
+ * nothing else in the process ran: no other user's request, no stream, no
+ * timer. Every walk below awaits its reads; folders are listed, and files
+ * read, side by side a bounded number at a time (as request-coverage does).
+ */
+const WALK_CONCURRENCY = 32;
+const fsp = fs.promises;
+
+async function pathExists(target: string): Promise<boolean> {
+    try { await fsp.access(target); return true; } catch { return false; }
+}
+
+async function statOf(target: string): Promise<fs.Stats | null> {
+    try { return await fsp.stat(target); } catch { return null; }
+}
+
+async function readTextFile(target: string): Promise<string | null> {
+    try { return await fsp.readFile(target, 'utf-8'); } catch { return null; }
+}
+
+async function listEntries(directory: string): Promise<fs.Dirent[] | null> {
+    try { return await fsp.readdir(directory, { withFileTypes: true }); } catch { return null; }
+}
+
+/** `work` over `items`, WALK_CONCURRENCY at a time, results in order. */
+async function mapBounded<T, R>(items: readonly T[], work: (item: T) => Promise<R>): Promise<R[]> {
+    const results: R[] = [];
+    for (let i = 0; i < items.length; i += WALK_CONCURRENCY) {
+        results.push(...await Promise.all(items.slice(i, i + WALK_CONCURRENCY).map(work)));
+    }
+    return results;
+}
+
+async function hasProjectMarker(dir: string): Promise<boolean> {
+    for (const marker of PROJECT_MARKERS) if (await pathExists(path.join(dir, marker))) return true;
+    if (!await pathExists(path.join(dir, 'tsconfig.json'))) return false;
+    for (const entry of TYPESCRIPT_ENTRYPOINTS) if (await pathExists(path.join(dir, entry))) return true;
+    return false;
 }
 
 /**
@@ -524,9 +673,9 @@ function hasProjectMarker(dir: string): boolean {
  * session project. A named request must be resolved against the workspace when
  * the active directory is still an incomplete scaffold.
  */
-export function shouldUseActiveProjectDirectly(activeProjectDir: string, projectQuery?: unknown): boolean {
+export async function shouldUseActiveProjectDirectly(activeProjectDir: string, projectQuery?: unknown): Promise<boolean> {
     const named = requestedProjectLabel(projectQuery);
-    return !!activeProjectDir && (hasProjectMarker(activeProjectDir) || !named);
+    return !!activeProjectDir && (!named || await hasProjectMarker(activeProjectDir));
 }
 
 function normalizeProjectLabel(value: unknown): string {
@@ -544,17 +693,17 @@ function projectLabel(dir: string): string {
     return normalizeProjectLabel(path.basename(dir));
 }
 
-function projectPackageLabel(dir: string): string {
+async function projectPackageLabel(dir: string): Promise<string> {
     try {
-        const pkg = JSON.parse(fs.readFileSync(path.join(dir, 'package.json'), 'utf-8'));
+        const pkg = JSON.parse(String(await readTextFile(path.join(dir, 'package.json'))));
         return normalizeProjectLabel(pkg?.name || '');
     } catch {
         return '';
     }
 }
 
-function projectLabels(dir: string): string[] {
-    return Array.from(new Set([projectLabel(dir), projectPackageLabel(dir)].filter(Boolean)));
+async function projectLabels(dir: string): Promise<string[]> {
+    return Array.from(new Set([projectLabel(dir), await projectPackageLabel(dir)].filter(Boolean)));
 }
 
 function requestedProjectLabel(query: unknown): string {
@@ -573,28 +722,26 @@ function requestedProjectLabel(query: unknown): string {
 }
 
 /** Exported for direct regression tests; this function never starts a process. */
-export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): RunnableProjectResolution {
-    if (!workspaceRoot || !fs.existsSync(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
+export async function resolveRunnableProject(workspaceRoot: string, projectQuery?: unknown): Promise<RunnableProjectResolution> {
+    if (!workspaceRoot || !await pathExists(workspaceRoot)) return { cwd: null, candidates: [], matched: false };
 
     // A workspace may itself be runnable (for example Joe's own repository),
     // but an explicit project name is stronger evidence than that root marker.
     // Resolve the named child first; otherwise a request for a newly scaffolded
     // project silently started the agent repository that contains it.
     const requested = requestedProjectLabel(projectQuery);
-    const rootIsRunnable = hasProjectMarker(workspaceRoot);
+    const rootIsRunnable = await hasProjectMarker(workspaceRoot);
     if (!requested && rootIsRunnable) return { cwd: workspaceRoot, candidates: [workspaceRoot], matched: true };
 
     const candidates: string[] = [];
     if (rootIsRunnable) candidates.push(workspaceRoot);
-    try {
-        for (const entry of fs.readdirSync(workspaceRoot, { withFileTypes: true })) {
-            if (!entry.isDirectory() || entry.name.startsWith('.') || IGNORED_PROJECT_DIRS.has(entry.name)) continue;
-            const candidate = path.join(workspaceRoot, entry.name);
-            if (hasProjectMarker(candidate)) candidates.push(candidate);
-        }
-    } catch {
-        return { cwd: null, candidates: [], matched: false };
-    }
+    const entries = await listEntries(workspaceRoot);
+    if (!entries) return { cwd: null, candidates: [], matched: false };
+    const children = entries
+        .filter(entry => entry.isDirectory() && !entry.name.startsWith('.') && !isIgnoredProjectDir(entry.name))
+        .map(entry => path.join(workspaceRoot, entry.name));
+    const runnable = await mapBounded(children, hasProjectMarker);
+    children.forEach((candidate, index) => { if (runnable[index]) candidates.push(candidate); });
 
     candidates.sort((a, b) => a.localeCompare(b));
     if (!requested) {
@@ -616,7 +763,8 @@ export function resolveRunnableProject(workspaceRoot: string, projectQuery?: unk
      * accepted — and only when the label is long enough to identify something.
      */
     const TRUNCATION_FLOOR = 8;
-    const matches = candidates.filter(candidate => projectLabels(candidate).some(label =>
+    const labels = await mapBounded(candidates, projectLabels);
+    const matches = candidates.filter((_candidate, index) => labels[index].some(label =>
         label === requested
         || label.includes(requested)
         || (label.length >= TRUNCATION_FLOOR && requested.startsWith(label))));
@@ -674,7 +822,7 @@ export function placeholderLifecycleScriptError(cwd: string): string | null {
  * JavaScript/TypeScript server with observable listen evidence. This stays
  * generic: it does not prescribe a framework or a project template.
  */
-export function launchabilityError(cwd: string, detected: { command: string; kind: string }): string | null {
+export async function launchabilityError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
 
     const placeholderError = placeholderLifecycleScriptError(cwd);
@@ -715,7 +863,7 @@ export function launchabilityError(cwd: string, detected: { command: string; kin
     } catch {
         return `launchability: runtime target cannot be read (${target})`;
     }
-    const missingLocal = missingLocalRuntimeImports(cwd, detected);
+    const missingLocal = await missingLocalRuntimeImports(cwd, detected);
     if (missingLocal.length) {
         return `launchability: local runtime imports missing (${missingLocal.join('; ')})`;
     }
@@ -731,31 +879,33 @@ function serverEntrypointScore(value: string): number {
     return 4;
 }
 
-function serverEntrypointCandidates(cwd: string): string[] {
+/** Source files to depth 3 that start a server, best-ranked first. Read level by level, never holding the event loop. */
+async function serverEntrypointCandidates(cwd: string): Promise<string[]> {
     const candidates: string[] = [];
-    const ignored = new Set(['.git', 'node_modules', 'coverage', 'dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
+    // Machine state comes from the shared list; the rest is this walker's own choice.
+    const ignored = new Set(['dist', 'build', 'public', 'docs', 'test', 'tests', 'data']);
     const extensions = /\.(?:js|mjs|cjs|ts|tsx)$/iu;
-    const walk = (directory: string, depth: number): void => {
-        if (depth > 3) return;
-        let entries: fs.Dirent[] = [];
-        try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return; }
-        for (const entry of entries) {
-            if (entry.name.startsWith('.') || ignored.has(entry.name)) continue;
-            const absolute = path.join(directory, entry.name);
-            if (entry.isDirectory()) {
-                walk(absolute, depth + 1);
-                continue;
+    let level = [cwd];
+    for (let depth = 0; depth <= 3 && level.length; depth++) {
+        const listed = await mapBounded(level, listEntries);
+        const next: string[] = [];
+        const files: string[] = [];
+        level.forEach((directory, index) => {
+            for (const entry of listed[index] || []) {
+                if (entry.name.startsWith('.') || ignored.has(entry.name) || (entry.isDirectory() && isMachineStateDirectory(entry.name))) continue;
+                const absolute = path.join(directory, entry.name);
+                if (entry.isDirectory()) next.push(absolute);
+                else if (entry.isFile() && extensions.test(entry.name)) files.push(absolute);
             }
-            if (!entry.isFile() || !extensions.test(entry.name)) continue;
-            try {
-                const source = fs.readFileSync(absolute, 'utf-8');
-                if (hasServerStartEvidence(source)) {
-                    candidates.push(path.relative(cwd, absolute).replace(/\\/g, '/'));
-                }
-            } catch { /* unreadable files are not evidence */ }
-        }
-    };
-    walk(cwd, 0);
+        });
+        // Unreadable files are not evidence; a source is let go as soon as it is judged.
+        const starts = await mapBounded(files, async file => {
+            const source = await readTextFile(file);
+            return source !== null && hasServerStartEvidence(source);
+        });
+        files.forEach((file, index) => { if (starts[index]) candidates.push(path.relative(cwd, file).replace(/\\/g, '/')); });
+        level = next;
+    }
     return candidates.sort((a, b) => serverEntrypointScore(a) - serverEntrypointScore(b) || a.localeCompare(b));
 }
 
@@ -766,7 +916,7 @@ function serverEntrypointCandidates(cwd: string): string[] {
  * entrypoint already exists on disk. The implementation remains the user's
  * existing artifact; Joe merely reconciles the manifest with observed evidence.
  */
-export function reconcileMissingRuntimeTarget(cwd: string, failureText: string): { repaired: boolean; message: string } {
+export async function reconcileMissingRuntimeTarget(cwd: string, failureText: string): Promise<{ repaired: boolean; message: string }> {
     if (!/runtime target is missing/iu.test(String(failureText || ''))) {
         return { repaired: false, message: 'not an evidenced missing-runtime-target failure' };
     }
@@ -782,7 +932,7 @@ export function reconcileMissingRuntimeTarget(cwd: string, failureText: string):
         if (fs.existsSync(path.resolve(cwd, declaredTarget))) {
             return { repaired: false, message: `declared target already exists (${declaredTarget})` };
         }
-        const candidates = serverEntrypointCandidates(cwd);
+        const candidates = await serverEntrypointCandidates(cwd);
         if (!candidates.length) return { repaired: false, message: 'no existing server entrypoint evidence found' };
         const best = candidates[0];
         const bestScore = serverEntrypointScore(best);
@@ -807,13 +957,13 @@ function normalizedRuntimeStem(value: string): string {
     return stem.replace(/(?:routes?|controllers?|handlers?|services?|routers?|modules?)$/u, '');
 }
 
-function uniqueSiblingRuntimeCandidate(importerFile: string, specifier: string): string | null {
+async function uniqueSiblingRuntimeCandidate(importerFile: string, specifier: string): Promise<string | null> {
     if (!specifier.startsWith('.')) return null;
     const specifierPath = path.resolve(path.dirname(importerFile), specifier);
     const directory = path.dirname(specifierPath);
     const requestedStem = path.basename(specifierPath).replace(/\.(?:js|mjs|cjs|ts|tsx|jsx)$/iu, '');
-    let entries: fs.Dirent[] = [];
-    try { entries = fs.readdirSync(directory, { withFileTypes: true }); } catch { return null; }
+    const entries = await listEntries(directory);
+    if (!entries) return null;
 
     const sourceFiles = entries
         .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name))
@@ -843,44 +993,42 @@ function replaceQuotedRuntimeSpecifier(source: string, specifier: string, replac
  * reachable, the replacement must be a single sibling source file, and the
  * normalized stem may differ only by a conventional suffix such as Routes.
  */
-export function reconcileMissingRuntimeImports(
+export async function reconcileMissingRuntimeImports(
     cwd: string,
     detected: { command: string; kind: string },
-): { repaired: boolean; message: string; changes: string[] } {
+): Promise<{ repaired: boolean; message: string; changes: string[] }> {
     if (detected.kind === 'static' || detected.kind === 'override') {
         return { repaired: false, message: 'local-import reconciliation is not applicable', changes: [] };
     }
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     const entrypoint = target ? path.resolve(cwd, target) : '';
-    if (!entrypoint || !fs.existsSync(entrypoint)) {
+    if (!entrypoint || !await pathExists(entrypoint)) {
         return { repaired: false, message: 'runtime entrypoint is unavailable for local-import reconciliation', changes: [] };
     }
 
+    // The whole reachable graph: the visited set ends the walk, not a depth.
     const visited = new Set<string>();
     const changes: string[] = [];
     const ambiguous: string[] = [];
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
         if (relative.split('/').some(part => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        if (source === null) return;
         let updated = source;
         for (const specifier of runtimeImportSpecifiers(source)) {
-            if (!specifier.startsWith('.') || resolveLocalRuntimeImport(file, specifier)) {
-                const local = resolveLocalRuntimeImport(file, specifier);
-                if (local) visit(local, depth + 1);
+            const local = specifier.startsWith('.') ? await resolveLocalRuntimeImport(file, specifier) : null;
+            if (!specifier.startsWith('.') || local) {
+                if (local) await visit(local);
                 continue;
             }
-            const candidate = uniqueSiblingRuntimeCandidate(file, specifier);
+            const candidate = await uniqueSiblingRuntimeCandidate(file, specifier);
             if (!candidate) {
                 const candidateDirectory = path.dirname(path.resolve(path.dirname(file), specifier));
-                let siblingCount = 0;
-                try {
-                    siblingCount = fs.readdirSync(candidateDirectory, { withFileTypes: true })
-                        .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name)).length;
-                } catch { /* no evidence */ }
+                const siblingCount = ((await listEntries(candidateDirectory)) || [])
+                    .filter(entry => entry.isFile() && RUNTIME_SOURCE_EXTENSIONS.test(entry.name)).length;
                 if (siblingCount > 1) ambiguous.push(`${relative} -> ${specifier}`);
                 continue;
             }
@@ -889,13 +1037,13 @@ export function reconcileMissingRuntimeImports(
             if (next === updated) continue;
             updated = next;
             changes.push(`${relative}: ${specifier} -> ${replacement}`);
-            visit(candidate, depth + 1);
+            await visit(candidate);
         }
         if (updated !== source) {
-            try { fs.writeFileSync(file, updated, 'utf-8'); } catch { /* leave the evidence for self-fix */ }
+            try { await fsp.writeFile(file, updated, 'utf-8'); } catch { /* leave the evidence for self-fix */ }
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
 
     if (changes.length) {
         return {
@@ -926,7 +1074,14 @@ const RUNTIME_SOURCE_IGNORES = new Set(['.git', 'node_modules', 'dist', 'build',
  * not. Check every path segment against the directory's literal entry names so
  * an import of `./styles/app.css` cannot silently accept `styles/App.css`.
  */
-export function localFileExistsWithExactCase(filePath: string): boolean {
+type ExactCaseRequest = { op: 'realpath' | 'readdir' | 'stat'; at: string };
+
+/**
+ * The check written once, as the filesystem questions it asks; two drivers
+ * answer them (below). project_run's import walk awaits it; the synchronous
+ * callers elsewhere (the file writer, self-fix) keep their own driver.
+ */
+function* exactCaseSteps(filePath: string): Generator<ExactCaseRequest, boolean, any> {
     const absolute = path.resolve(filePath);
     const root = path.parse(absolute).root;
     const relative = path.relative(root, absolute);
@@ -936,24 +1091,51 @@ export function localFileExistsWithExactCase(filePath: string): boolean {
     // even when the file itself is readable. realpath.native gives us the
     // filesystem's actual spelling without walking each parent directory.
     if (process.platform === 'win32') {
-        try {
-            const actual = path.relative(root, fs.realpathSync.native(absolute)).split(path.sep).filter(Boolean);
-            return actual.length === segments.length && actual.every((segment, index) => segment === segments[index]);
-        } catch { return false; }
+        const real = yield { op: 'realpath', at: absolute };
+        if (typeof real !== 'string') return false;
+        const actual = path.relative(root, real).split(path.sep).filter(Boolean);
+        return actual.length === segments.length && actual.every((segment, index) => segment === segments[index]);
     }
     let current = root;
-    try {
-        for (let index = 0; index < segments.length; index += 1) {
-            const segment = segments[index];
-            const entries = fs.readdirSync(current);
-            if (!entries.includes(segment)) return false;
-            current = path.join(current, segment);
-            if (index < segments.length - 1 && !fs.statSync(current).isDirectory()) return false;
-        }
-        return fs.statSync(current).isFile();
-    } catch {
-        return false;
+    for (let index = 0; index < segments.length; index += 1) {
+        const segment = segments[index];
+        const entries = yield { op: 'readdir', at: current };
+        if (!Array.isArray(entries) || !entries.includes(segment)) return false;
+        current = path.join(current, segment);
+        if (index < segments.length - 1 && !(yield { op: 'stat', at: current })?.isDirectory()) return false;
     }
+    return !!(yield { op: 'stat', at: current })?.isFile();
+}
+
+function answerExactCaseSync(request: ExactCaseRequest): unknown {
+    try {
+        if (request.op === 'realpath') return fs.realpathSync.native(request.at);
+        if (request.op === 'readdir') return fs.readdirSync(request.at);
+        return fs.statSync(request.at);
+    } catch { return null; }
+}
+
+async function answerExactCase(request: ExactCaseRequest): Promise<unknown> {
+    try {
+        if (request.op === 'realpath') return await fsp.realpath(request.at);
+        if (request.op === 'readdir') return await fsp.readdir(request.at);
+        return await fsp.stat(request.at);
+    } catch { return null; }
+}
+
+export function localFileExistsWithExactCase(filePath: string): boolean {
+    const steps = exactCaseSteps(filePath);
+    let step = steps.next();
+    while (!step.done) step = steps.next(answerExactCaseSync(step.value));
+    return step.value;
+}
+
+/** The same check, awaiting each answer: for walks on a request path. */
+export async function localFileExistsWithExactCaseAsync(filePath: string): Promise<boolean> {
+    const steps = exactCaseSteps(filePath);
+    let step = steps.next();
+    while (!step.done) step = steps.next(await answerExactCase(step.value));
+    return step.value;
 }
 
 function packageNameFromSpecifier(specifier: string): string {
@@ -978,7 +1160,7 @@ function runtimeImportSpecifiers(source: string): string[] {
     return [...found];
 }
 
-function resolveLocalRuntimeImport(fromFile: string, specifier: string): string | null {
+async function resolveLocalRuntimeImport(fromFile: string, specifier: string): Promise<string | null> {
     if (!specifier.startsWith('.')) return null;
     const base = path.resolve(path.dirname(fromFile), specifier);
     const candidates = [
@@ -986,10 +1168,13 @@ function resolveLocalRuntimeImport(fromFile: string, specifier: string): string 
         ...['.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'].map((extension) => `${base}${extension}`),
         ...['index.js', 'index.mjs', 'index.cjs', 'index.ts', 'index.tsx', 'index.jsx'].map((entry) => path.join(base, entry)),
     ];
-    return candidates.find((candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile() && RUNTIME_SOURCE_EXTENSIONS.test(candidate)) || null;
+    for (const candidate of candidates) {
+        if (RUNTIME_SOURCE_EXTENSIONS.test(candidate) && (await statOf(candidate))?.isFile()) return candidate;
+    }
+    return null;
 }
 
-function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
+async function isRuntimePackageAvailable(cwd: string, packageName: string): Promise<boolean> {
     try {
         require.resolve(packageName, { paths: [cwd] });
         return true;
@@ -1003,16 +1188,18 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
     for (let depth = 0; depth < 12; depth += 1) {
         const candidate = path.join(probe, 'node_modules', packageName);
         try {
-            if (fs.existsSync(candidate) && fs.statSync(candidate).isDirectory()) {
+            if ((await statOf(candidate))?.isDirectory()) {
                 let packageManifest: any = {};
-                try { packageManifest = JSON.parse(fs.readFileSync(path.join(candidate, 'package.json'), 'utf-8')); } catch { }
+                try { packageManifest = JSON.parse(String(await readTextFile(path.join(candidate, 'package.json')))) || {}; } catch { }
                 const entryCandidates = [packageManifest.main, packageManifest.module, 'index.js', 'index.mjs', 'index.cjs', 'index.json']
                     .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
                     .map((entry) => path.resolve(candidate, entry));
                 //  `a || b && c` bound the existence check to the prefix branch alone:
                 //  an entry EQUAL to the directory returned true without ever being
                 //  looked for on disk. One reader, one precedence, one answer.
-                if (entryCandidates.some((entry) => isWithinRoot(entry, candidate) && fs.existsSync(entry) && fs.statSync(entry).isFile())) return true;
+                for (const entry of entryCandidates) {
+                    if (isWithinRoot(entry, candidate) && (await statOf(entry))?.isFile()) return true;
+                }
             }
         } catch { /* continue to the next trusted ancestor */ }
         const parent = path.dirname(probe);
@@ -1022,23 +1209,25 @@ function isRuntimePackageAvailable(cwd: string, packageName: string): boolean {
     return false;
 }
 
-function collectRuntimeSourceFiles(entrypoint: string): string[] {
+/** Every source file reachable from the entrypoint, each with the text it was read with (null: unreadable). */
+async function collectRuntimeSourceFiles(entrypoint: string): Promise<Array<{ file: string; source: string | null }>> {
+    // The whole reachable graph: the visited set ends the walk, not a depth.
     const visited = new Set<string>();
-    const files: string[] = [];
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const files: Array<{ file: string; source: string | null }> = [];
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(path.dirname(entrypoint), file);
         if (relative.split(path.sep).some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        files.push(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        files.push({ file, source });
+        if (source === null) return;
         for (const specifier of runtimeImportSpecifiers(source)) {
-            const local = resolveLocalRuntimeImport(file, specifier);
-            if (local) visit(local, depth + 1);
+            const local = await resolveLocalRuntimeImport(file, specifier);
+            if (local) await visit(local);
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
     return files;
 }
 
@@ -1050,22 +1239,24 @@ function collectRuntimeSourceFiles(entrypoint: string): string[] {
  * specifier. The bounded repair planner can then inspect the real layout rather
  * than inventing a route folder or copying a product-specific template.
  */
-export function missingLocalRuntimeImports(cwd: string, detected: { command: string; kind: string }): string[] {
+export async function missingLocalRuntimeImports(cwd: string, detected: { command: string; kind: string }): Promise<string[]> {
     if (detected.kind === 'static' || detected.kind === 'override') return [];
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target) return [];
     const entrypoint = path.resolve(cwd, target);
-    if (!fs.existsSync(entrypoint)) return [];
+    if (!await pathExists(entrypoint)) return [];
 
+    // The whole reachable graph: the visited set ends the walk, not a depth —
+    // a module missing ten imports deep fails the launch as surely as one at the top.
     const visited = new Set<string>();
     const missing = new Set<string>();
-    const visit = (file: string, depth: number): void => {
-        if (depth > 8 || visited.has(file) || !fs.existsSync(file)) return;
+    const visit = async (file: string): Promise<void> => {
+        if (visited.has(file) || !await pathExists(file)) return;
         const relative = path.relative(cwd, file).replace(/\\/g, '/') || path.basename(file);
         if (relative.split('/').some((part) => RUNTIME_SOURCE_IGNORES.has(part))) return;
         visited.add(file);
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { return; }
+        const source = await readTextFile(file);
+        if (source === null) return;
         for (const specifier of runtimeImportSpecifiers(source)) {
             if (!specifier.startsWith('.')) continue;
             // Frontend bundlers intentionally import local assets that are not
@@ -1073,17 +1264,17 @@ export function missingLocalRuntimeImports(cwd: string, detected: { command: str
             // report the edge when the declared asset is absent on disk.
             if (RUNTIME_ASSET_IMPORT_EXTENSIONS.test(specifier)) {
                 const assetPath = path.resolve(path.dirname(file), specifier);
-                if (localFileExistsWithExactCase(assetPath)) continue;
+                if (await localFileExistsWithExactCaseAsync(assetPath)) continue;
             }
-            const local = resolveLocalRuntimeImport(file, specifier);
+            const local = await resolveLocalRuntimeImport(file, specifier);
             if (local) {
-                visit(local, depth + 1);
+                await visit(local);
                 continue;
             }
             missing.add(`${relative} -> ${specifier}`);
         }
     };
-    visit(entrypoint, 0);
+    await visit(entrypoint);
     return [...missing].sort().slice(0, 24);
 }
 
@@ -1108,12 +1299,12 @@ function runtimeEntrypoint(cwd: string, detected: { command: string; kind: strin
  * after project_run discarded stderr. This is evidence, not a package guess;
  * the bounded repair planner still decides how to reconcile the manifest.
  */
-export function missingRuntimeDependencies(cwd: string, detected: { command: string; kind: string }): string[] {
+export async function missingRuntimeDependencies(cwd: string, detected: { command: string; kind: string }): Promise<string[]> {
     if (detected.kind === 'static' || detected.kind === 'override') return [];
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target) return [];
     const entrypoint = path.resolve(cwd, target);
-    if (!fs.existsSync(entrypoint)) return [];
+    if (!await pathExists(entrypoint)) return [];
     let pkg: any = {};
     try { pkg = JSON.parse(fs.readFileSync(path.join(cwd, 'package.json'), 'utf-8')); } catch { return []; }
     const declared = new Set<string>([
@@ -1122,9 +1313,10 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
         ...Object.keys(pkg?.optionalDependencies || {}),
     ]);
     const missing = new Set<string>();
-    for (const file of collectRuntimeSourceFiles(entrypoint)) {
-        let source = '';
-        try { source = fs.readFileSync(file, 'utf-8'); } catch { continue; }
+    // Each package is looked for once, however many files import it.
+    const available = new Map<string, Promise<boolean>>();
+    for (const { source } of await collectRuntimeSourceFiles(entrypoint)) {
+        if (source === null) continue;
         for (const specifier of runtimeImportSpecifiers(source)) {
             /**
              * `node:` IS the evidence. npm forbids «:» in package names, so a
@@ -1140,7 +1332,8 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
                 || specifier.startsWith('node:') || NODE_BUILTIN_MODULES.has(specifier)) continue;
             const packageName = packageNameFromSpecifier(specifier);
             if (!packageName || NODE_BUILTIN_MODULES.has(packageName)) continue;
-            const resolved = isRuntimePackageAvailable(cwd, packageName);
+            if (!available.has(packageName)) available.set(packageName, isRuntimePackageAvailable(cwd, packageName));
+            const resolved = await available.get(packageName)!;
             if (!declared.has(packageName) || !resolved) missing.add(packageName);
         }
     }
@@ -1149,30 +1342,36 @@ export function missingRuntimeDependencies(cwd: string, detected: { command: str
 
 /**
  * Syntax is a cheap foreground fact to collect before a detached process hides
- * its stderr. `node --check` is intentionally limited to JavaScript-family
- * targets; TypeScript must be checked by its project toolchain instead.
+ * its stderr. It is limited to JavaScript-family targets; TypeScript must be
+ * checked by its project toolchain instead.
+ *
+ * This ran plain `node --check server.js`. On Node 24.18 that exits ZERO for
+ * `import express from "express";\nconst = 1;` in a `.js` file of a package
+ * with no `"type": "module"` — the script parse fails, the module retry
+ * swallows the error — so a broken ESM entry passed the gate and died in the
+ * detached child, where its stderr is not in front of him. The shared checker
+ * parses the entry under the goal Node will run it with, as lint does.
+ *
+ * Only the parser's own rejection blocks the launch (round 21). A check that
+ * could not run — a full probe queue, a timeout on a busy machine, a file it
+ * could not read — measured nothing: it is said in the log, and the launch
+ * goes on, because readiness is still proven by the probe afterwards and a
+ * working project is never refused on a measurement that did not happen.
  */
-async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
+async function runtimeSyntaxError(cwd: string, detected: { command: string; kind: string }, logs: string[]): Promise<string | null> {
     if (detected.kind === 'static' || detected.kind === 'override') return null;
     const target = runtimeEntrypoint(cwd, detected).replace(/^\.\//u, '');
     if (!target || !/\.(?:js|mjs|cjs)$/iu.test(target)) return null;
-    const result = await ExecutionGateway.execute({
-        id: `project-run-syntax-${Date.now()}`,
-        type: 'shell',
-        payload: {
-            command: 'node',
-            args: ['--check', target],
-            options: { cwd, timeout: 8000, shell: false, stdio: 'pipe' },
-        },
-        priority: 'high',
-    });
-    const data = result.data || {};
-    if (result.success && data.ok !== false && data.exitCode === 0) return null;
-    const detail = String(data.error || result.error || data.output || 'node --check failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
-    return `launchability: runtime syntax check failed (${target}): ${detail}`;
+    const failure = await checkJavaScriptFile(cwd, target, 8000);
+    if (!failure) return null;
+    if (failure.kind === 'unchecked') {
+        logs.push(`launchability: runtime syntax check not measured (${failure.file}): ${failure.error}`);
+        return null;
+    }
+    return `launchability: runtime syntax check failed (${failure.file}): ${failure.error}`;
 }
 
-export function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): string | null {
+export async function launchPrerequisiteError(cwd: string, detected: { command: string; kind: string }): Promise<string | null> {
     const pkgPath = path.join(cwd, 'package.json');
     //  THE GATE READS THE KIND, NOT THE SPELLING.
     //
@@ -1197,7 +1396,7 @@ export function launchPrerequisiteError(cwd: string, detected: { command: string
             || fs.existsSync(path.join(cwd, 'vite.config.js')) || fs.existsSync(path.join(cwd, 'vite.config.ts'));
         const viteInstalled = fs.existsSync(path.join(cwd, 'node_modules', '.bin', process.platform === 'win32' ? 'vite.cmd' : 'vite'));
         if (needsVite && !viteInstalled) return 'vite';
-        const missingRuntime = missingRuntimeDependencies(cwd, detected);
+        const missingRuntime = await missingRuntimeDependencies(cwd, detected);
         if (missingRuntime.length) return `runtime dependencies missing or undeclared: ${missingRuntime.join(', ')}`;
     } catch { /* The actual launcher will surface malformed package errors. */ }
     return null;
@@ -1242,6 +1441,7 @@ export class ProjectRunTool implements ToolDefinition {
             command: { type: 'string' as const, description: 'Override the start command (auto-detected otherwise).' },
             port: { type: 'number' as const, description: 'Preferred port (a free one is chosen otherwise).' },
             projectQuery: { type: 'string' as const, description: 'Original user request, used only to select a named project within a workspace.' },
+            restart: { type: 'boolean' as const, description: 'Stop the recorded server for this project and start it again instead of adopting it — after a repair the running process still holds the old code.' },
         },
     };
     outputSchema = { type: 'object' as const, properties: { url: { type: 'string' as const }, port: { type: 'number' as const }, ready: { type: 'boolean' as const } } };
@@ -1314,7 +1514,7 @@ export class ProjectRunTool implements ToolDefinition {
          * match the runnable marker/package name there. Explicit cwd and a
          * packaged whole-system directory remain authoritative.
          */
-        const useActiveProjectDirectly = shouldUseActiveProjectDirectly(activeProjectDir, input?.projectQuery);
+        const useActiveProjectDirectly = await shouldUseActiveProjectDirectly(activeProjectDir, input?.projectQuery);
         const baseCwd = explicitCwd
             || (packagedIsWhole ? packagedInto : '')
             || (useActiveProjectDirectly ? activeProjectDir : '')
@@ -1323,7 +1523,7 @@ export class ProjectRunTool implements ToolDefinition {
         // authoritative. An incomplete active scaffold is a container lookup
         // case, not a runnable project, when the request names an artifact.
         const discovered = !explicitCwd && !packagedIsWhole && !useActiveProjectDirectly
-            ? resolveRunnableProject(workspaceRoot, input?.projectQuery)
+            ? await resolveRunnableProject(workspaceRoot, input?.projectQuery)
             : { cwd: baseCwd, candidates: [baseCwd], matched: true };
         // A quoted project identity is an assertion, not a hint. Never fall
         // through to the workspace root (which may be Joe itself) when that
@@ -1363,7 +1563,7 @@ export class ProjectRunTool implements ToolDefinition {
         // holds no project at all is not a project: without this, an empty
         // call spawned `npm start` in a folder with nothing to start, and
         // waited 45s for a server that was never coming.
-        if (!input?.command && !hasProjectMarker(cwd)) {
+        if (!input?.command && !await hasProjectMarker(cwd)) {
             return { ok: false, error: `لا يوجد مشروع قابل للتشغيل في ${cwd} — ابنِ مشروعاً أولاً أو مرّر cwd.`, logs };
         }
 
@@ -1380,7 +1580,7 @@ export class ProjectRunTool implements ToolDefinition {
         // It must not disable adoption when the recorded server belongs to that
         // exact cwd; doing so starts a second server and can collide with an
         // older listener on the other loopback address family.
-        if (!input?.command && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
+        if (adoptionAllowed(input) && liveUrl && canAdoptRecordedLive(live, cwd) && await answersHttp(liveUrl)) {
             rememberLiveProject(context, cwd, {
                 url: liveUrl, port: Number(live.port), pid: Number(live.pid),
             });
@@ -1403,7 +1603,9 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        if (!input?.command && liveUrl) {
+        if (input?.restart === true && liveUrl) {
+            logs.push(`project_run: restart requested — the recorded server is stopped and started again, never adopted (${liveUrl})`);
+        } else if (!input?.command && liveUrl) {
             logs.push(`project_run: ignored stale or unowned live record (${liveUrl})`);
         }
 
@@ -1412,12 +1614,31 @@ export class ProjectRunTool implements ToolDefinition {
         await stopServer(key, logs).catch(() => {});
 
         const port = Number(input?.port) || await findFreePort();
+        // When the project's own start cannot run or never answers, a build-free
+        // static site is still served — on loopback, never instead of a server.
+        const staticSiteFallback = async (why: string) => {
+            const url = await startStaticSitePreview(context, cwd, logs);
+            if (!url) return null;
+            say(pick(isAr,
+                `✅ لم يبدأ أمر التشغيل (${why.slice(0, 80)})، لكن الموقع ثابت فعرضته محلياً — المعاينة: ${url}`,
+                `✅ The start command could not run (${why.slice(0, 80)}), but this is a static site, so it is served locally — preview: ${url}`));
+            let livePortNumber = 0;
+            try { livePortNumber = Number(new URL(url).port) || 0; } catch { /* keep 0 */ }
+            return {
+                ok: true,
+                output: {
+                    url, previewUrl: url, port: livePortNumber, ready: true, cwd, command: 'node static-preview', kind: 'static-site',
+                    devServerConfirmed: false, productionBundleConfirmed: false, fallbackFrom: why.slice(0, 200),
+                },
+                logs,
+            };
+        };
         const dependencyFreeBundle = !input?.command ? dependencyFreeRecordsBundleRoot(cwd) : null;
         if (dependencyFreeBundle) {
             logs.push(`project_run: serving dependency-free records bundle (${dependencyFreeBundle})`);
             const fallback = await startStaticBuildPreview(dependencyFreeBundle, port);
             if (fallback.ready && fallback.url && fallback.pid) {
-                RUNNING.set(key, { pid: fallback.pid, port, cwd: dependencyFreeBundle, command: 'node static-preview', startedAt: Date.now() });
+                await trackRunning(key, context, { pid: fallback.pid, port, cwd: dependencyFreeBundle, command: 'node static-preview' });
                 rememberLiveProject(context, dependencyFreeBundle, { url: fallback.url, port, pid: fallback.pid }, cwd);
                 say(pick(isAr,
                     `✅ تطبيق السجلات المحلي يعمل الآن — المعاينة: ${fallback.url}`,
@@ -1441,30 +1662,66 @@ export class ProjectRunTool implements ToolDefinition {
         }
         let detected = input?.command
             ? { command: String(input.command), kind: 'override', expectPort: port, forced: false }
-            : detectStart(cwd, port);
-        let launchability = launchabilityError(cwd, detected);
+            : await detectStart(cwd, port);
+        /**
+         * ⛔ A SITE WITH NO START OF ITS OWN IS SERVED BY JOE, ON THIS MACHINE ONLY.
+         *
+         * 2026-11-05: the launcher named here for such a site was
+         * «npx -y serve -l <port> -s .». serve does not read HOST and listens
+         * on every interface, so the machine's Wi-Fi address answered the page
+         * — and .joe/history.json, the requests he typed. It answers a missing
+         * file with the page (-s), which browser QA cannot tell from a working
+         * link. And it is five processes deep, so the pid Joe recorded was
+         * never the server: ten were left running after one day's restarts.
+         * The strict server the fallback already uses is one process on
+         * 127.0.0.1, with honest 404s.
+         */
+        if (detected.kind === 'static') {
+            const url = await serveStaticFolder(context, cwd, cwd, logs, port);
+            if (!url) {
+                const why = logs[logs.length - 1] || 'no answer';
+                const message = pick(isAr,
+                    `تعذّر تشغيل معاينة الموقع على هذا الجهاز: ${why}`,
+                    `The site's preview did not start on this machine: ${why}`);
+                return { ok: false, error: message, output: { cwd, command: detected.command, ready: false, verificationFailed: true, message }, logs };
+            }
+            say(pick(isAr,
+                `✅ الموقع يعمل الآن — المعاينة الحية: ${url}`,
+                `✅ The site is running — live preview: ${url}`));
+            return {
+                ok: true,
+                output: {
+                    url, previewUrl: url, port, ready: true, pid: RUNNING.get(key)?.pid, cwd,
+                    command: detected.command, startedAt: Date.now(), kind: detected.kind,
+                },
+                logs,
+            };
+        }
+        let launchability = await launchabilityError(cwd, detected);
         if (launchability && !input?.command && /runtime target is missing/iu.test(launchability)) {
-            const reconciliation = reconcileMissingRuntimeTarget(cwd, launchability);
+            const reconciliation = await reconcileMissingRuntimeTarget(cwd, launchability);
             logs.push(`project_run: ${reconciliation.message}`);
             if (reconciliation.repaired) {
                 say(pick(isAr,
                     `🔧 أصلحتُ target التشغيل من entrypoint مثبت على القرص قبل الإطلاق: ${reconciliation.message}`,
                     `🔧 Reconciled the missing runtime target from a verified on-disk entrypoint before launch: ${reconciliation.message}`));
-                detected = detectStart(cwd, port);
-                launchability = launchabilityError(cwd, detected);
+                detected = await detectStart(cwd, port);
+                launchability = await launchabilityError(cwd, detected);
             }
         }
         if (launchability && /local runtime imports missing/iu.test(launchability)) {
-            const reconciliation = reconcileMissingRuntimeImports(cwd, detected);
+            const reconciliation = await reconcileMissingRuntimeImports(cwd, detected);
             logs.push(`project_run: ${reconciliation.message}`);
             if (reconciliation.repaired) {
                 say(pick(isAr,
                     `🔧 وجدتُ ملفاً محلياً مطابقاً وأصلحتُ الاستيراد قبل التشغيل: ${reconciliation.changes.join('؛ ')}`,
                     `🔧 I found a unique matching local file and repaired the import before launch: ${reconciliation.changes.join('; ')}`));
-                launchability = launchabilityError(cwd, detected);
+                launchability = await launchabilityError(cwd, detected);
             }
         }
         if (launchability) {
+            const servedStatically = await staticSiteFallback(launchability);
+            if (servedStatically) return servedStatically;
             const launchabilityMessage = pick(isAr,
                 `تعذّر تشغيل المشروع بأمان: ${launchability}. أصلح target الخادم أو manifest أولاً؛ لم أنتظر على منفذ غير قابل للتشغيل.`,
                 `Cannot start the project safely: ${launchability}. Fix the server target or manifest first; I will not wait on a project that cannot be launched.`,
@@ -1484,7 +1741,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        let missingPrerequisite = launchPrerequisiteError(cwd, detected);
+        let missingPrerequisite = await launchPrerequisiteError(cwd, detected);
         let prerequisiteRecovery = '';
         const installablePackages = missingPrerequisite
             ? declaredLaunchPrerequisitePackages(cwd, missingPrerequisite)
@@ -1500,7 +1757,7 @@ export class ProjectRunTool implements ToolDefinition {
                 installResult = { ok: false, error: String(error?.message || error) };
             }
             if (installResult?.ok) {
-                const missingAfterInstall = launchPrerequisiteError(cwd, detected);
+                const missingAfterInstall = await launchPrerequisiteError(cwd, detected);
                 if (!missingAfterInstall) {
                     missingPrerequisite = null;
                     logs.push(`project_run: auto npm install succeeded (${installablePackages.join(', ')})`);
@@ -1516,6 +1773,47 @@ export class ProjectRunTool implements ToolDefinition {
                 const installError = String(installResult?.error || 'npm install failed').trim().replace(/\s+/gu, ' ').slice(0, 700);
                 prerequisiteRecovery = `npm install failed: ${installError}`;
                 logs.push(`project_run: auto npm install failed (${installError})`);
+            }
+        }
+        // The script's program is declared nowhere, but a project file imports
+        // the package of that exact name: that import is the evidence, and
+        // npm_manager installs only a release whose manifest declares the program.
+        const binaryProvider = missingPrerequisite === 'vite' && !prerequisiteRecovery
+            ? await findImportedPackageForScriptBinary(cwd, missingPrerequisite)
+            : null;
+        if (missingPrerequisite && binaryProvider) {
+            const binary = missingPrerequisite;
+            say(pick(isAr,
+                `📦 السكربت يشغّل ${binary} والملف ${binaryProvider.importedBy[0]} يستورد ${binaryProvider.packageName}، لكنه غير معلن في manifest؛ أثبّته من الإصدار الذي يعلن هذا البرنامج…`,
+                `📦 The script runs ${binary} and ${binaryProvider.importedBy[0]} imports ${binaryProvider.packageName}, which the manifest does not declare; installing it from the release that declares that program…`));
+            let installResult: any;
+            try {
+                installResult = await new NpmManagerTool().execute(scriptBinaryInstallInput(cwd, binary, binaryProvider), context);
+            } catch (error: any) {
+                installResult = { ok: false, error: String(error?.message || error) };
+            }
+            const missingAfterInstall = installResult?.ok ? await launchPrerequisiteError(cwd, detected) : missingPrerequisite;
+            if (installResult?.ok && !missingAfterInstall) {
+                missingPrerequisite = null;
+                logs.push(`project_run: installed imported ${binaryProvider.packageName} for ${binary} (${binaryProvider.importedBy.join(', ')})`);
+                // Which release, and which major, was pinned is his to see — never silent.
+                const chosen = installResult?.output?.binProvider;
+                if (chosen?.version) {
+                    logs.push(`project_run: ${chosen.reason || `${binaryProvider.packageName}@${chosen.version}`}`);
+                    // «Non-deprecated» only when the registry said so: a failed read is
+                    // said as one (second review of round 21).
+                    const known = chosen.deprecationKnown === true;
+                    say(pick(isAr,
+                        `✅ ثبّتُّ ${binaryProvider.packageName}@${chosen.version} (الإصدار الرئيسي ${chosen.major}): ${known ? 'أحدث إصدار مستقرّ غير مُهمَل يعلن البرنامج' : 'أحدث إصدار مستقرّ يعلن البرنامج'} ${binary}${known ? '' : '؛ تعذّرت قراءة ما إذا كان مُهمَلًا'}.${chosen.skippedDeprecated?.length ? ` تخطّيتُ الإصدارات المُهمَلة: ${chosen.skippedDeprecated.join('، ')}.` : ''}`,
+                        `✅ Installed ${binaryProvider.packageName}@${chosen.version} (major ${chosen.major}): the newest stable${known ? ', non-deprecated' : ''} release that declares ${binary}${known ? '' : '; whether it is deprecated could not be read'}.${chosen.skippedDeprecated?.length ? ` Skipped deprecated: ${chosen.skippedDeprecated.join(', ')}.` : ''}`));
+                }
+            } else {
+                missingPrerequisite = missingAfterInstall;
+                const installError = String(installResult?.error || '').trim().replace(/\s+/gu, ' ').slice(0, 700);
+                prerequisiteRecovery = installResult?.ok
+                    ? `npm install ${binaryProvider.packageName} completed but preflight still reports ${missingAfterInstall}`
+                    : `npm install ${binaryProvider.packageName} failed: ${installError || 'npm install failed'}`;
+                logs.push(`project_run: ${prerequisiteRecovery}`);
             }
         }
         if (missingPrerequisite) {
@@ -1538,7 +1836,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs,
             };
         }
-        const syntaxFailure = await runtimeSyntaxError(cwd, detected);
+        const syntaxFailure = await runtimeSyntaxError(cwd, detected, logs);
         if (syntaxFailure) {
             const syntaxMessage = pick(isAr,
                 `تعذّر تشغيل المشروع بأمان قبل الإطلاق المنفصل: ${syntaxFailure}`,
@@ -1618,6 +1916,9 @@ export class ProjectRunTool implements ToolDefinition {
             cwd,
             env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
             windowsHide: true,
+            //  The preview is recorded with the project and adopted by the next
+            //  Joe (adoptRecordedPreviews): the process ledger leaves it alone.
+            outlivesJoe: true,
         });
         const pid = managed.pid;
         if (!pid) {
@@ -1641,23 +1942,63 @@ export class ProjectRunTool implements ToolDefinition {
         const probeList = buildProbeList(port, detected.forced, preExistingCommonPorts);
         let livePort = 0;
         let confirmedLiveUrl = '';
-        const deadline = Date.now() + 45000; // weak machines + npm cold start
+        /*
+         * ⛔ …AND A PORT IT DID NOT CHOOSE IS ITS OWN ONLY WHEN ITS OWN PROCESS HOLDS IT.
+         *
+         * The fourth live check, 2026-11-10 (L162, an Arabic store): a «vite preview»
+         * of another project had held 4173 for two days. The snapshot above gave each
+         * common port 250 ms on a loaded machine and saw 4173 free; the store was
+         * started on 4300, and the first port that answered was 4173 — «live preview:
+         * http://127.0.0.1:4173/», the store's own server never heard. The coverage
+         * probe then asked that other project for /api/products, got its page, and
+         * refused the store «products not served»; Joe rebuilt a server that worked,
+         * eleven minutes. A port other than the one this launch chose answers for
+         * this project only when the process listening on it descends from the
+         * process it launched; any other is somebody else's, and is never «the
+         * project is running».
+         */
+        const foreignPorts = new Set<number>();
+        /*
+         * Asking whose a port is takes its time on a loaded machine (the port table ~10 s, the
+         * process chain more): that time is the search's, not the server's, so it is added to the
+         * wait (at most a minute more), and after each such question the port this launch chose is
+         * heard first — a server that came up meanwhile is never lost to a pass spent on others
+         * (the review of 2026-11-10).
+         */
+        let deadline = Date.now() + 45000; // weak machines + npm cold start
+        let askedForMs = 0;
+        const ownPortAnswers = async (): Promise<string> => port > 0 && await isLoopbackPortOpen(port, 750) ? answeringLoopbackUrl(port, 1500) : '';
         while (Date.now() < deadline && !livePort) {
             await new Promise(r => setTimeout(r, 700));
             for (const p of probeList) {
+                if (foreignPorts.has(p)) continue;
                 if (!await isLoopbackPortOpen(p, 750)) continue;
+                if (p !== port) {
+                    const askedAt = Date.now();
+                    const held = await heldByLaunched(p, Number(pid));
+                    const grace = Math.min(Date.now() - askedAt, 60000 - askedForMs);
+                    if (grace > 0) { deadline += grace; askedForMs += grace; }
+                    if (held === false) {
+                        foreignPorts.add(p);
+                        logs.push(`project_run: port ${p} answers, but not from the process this launch started — somebody else's server, ignored`);
+                        const own = await ownPortAnswers();
+                        if (own) { livePort = port; confirmedLiveUrl = own; break; }
+                        continue;
+                    }
+                }
                 const answeringUrl = await answeringLoopbackUrl(p, 1500);
                 if (answeringUrl) { livePort = p; confirmedLiveUrl = answeringUrl; break; }
             }
         }
 
         if (pid) {
-            RUNNING.set(key, { pid, port: livePort || port, cwd, command: detected.command, startedAt: Date.now() });
+            await trackRunning(key, context, { pid, port: livePort || port, cwd, command: detected.command });
             // A preview that exits after readiness must not remain adoptable.
             void managed.done.then((result) => {
                 const current = RUNNING.get(key);
                 if (current?.pid !== pid) return;
                 RUNNING.delete(key);
+                forgetRecordedLive(current.sessionKey, pid);
                 logs.push(`project_run: managed preview exited (${result.exitCode ?? 'no code'})`);
                 context?.onProgress?.(pick(isAr,
                     `⚠️ توقفت المعاينة بعد التشغيل؛ رمز الخروج ${result.exitCode ?? 'غير متاح'}.`,
@@ -1679,7 +2020,7 @@ export class ProjectRunTool implements ToolDefinition {
                 logs.push(`project_run: dev server unconfirmed; trying verified static bundle (${builtRoot})`);
                 const fallback = await startStaticBuildPreview(builtRoot, port);
                 if (fallback.ready && fallback.url && fallback.pid) {
-                    RUNNING.set(key, { pid: fallback.pid, port, cwd: builtRoot, command: 'node static-preview', startedAt: Date.now() });
+                    await trackRunning(key, context, { pid: fallback.pid, port, cwd: builtRoot, command: 'node static-preview' });
                     rememberLiveProject(context, builtRoot, { url: fallback.url, port, pid: fallback.pid }, cwd);
                     say(pick(isAr,
                         `✅ الخادم التطويري لم يبدأ، لكن نسخة الإنتاج المبنية تعمل الآن — المعاينة: ${fallback.url}`,
@@ -1701,6 +2042,8 @@ export class ProjectRunTool implements ToolDefinition {
                 logs.push(`project_run: static bundle fallback failed (${fallback.error || 'unconfirmed'})`);
                 if (fallback.pid) await killTree(Number(fallback.pid)).catch(() => {});
             }
+            const servedStatically = await staticSiteFallback('the start command answered on no port');
+            if (servedStatically) return servedStatically;
             /**
              * AND WHEN NOTHING ANSWERED, SAY SO — DO NOT HAND OVER AN ADDRESS.
              *
@@ -1739,6 +2082,32 @@ export class ProjectRunTool implements ToolDefinition {
         // `localhost` can resolve to ::1 while the new process owns 127.0.0.1;
         // an old IPv6 listener on the same port would then display the wrong app.
         const url = confirmedLiveUrl;
+        // A server that answers with the folder's file list is not serving the
+        // site (see listsProjectFiles): the build-free page it failed to find
+        // is served instead, or the start is reported as the failure it is.
+        if (await listsProjectFiles(await loopbackPageText(url), cwd, url)) {
+            if (pid) await killTree(Number(pid)).catch(() => {});
+            if (RUNNING.get(key)?.pid === pid) RUNNING.delete(key);
+            const why = 'the start command served a list of the project files, not its page';
+            logs.push(`project_run: ${url} answered with a listing of ${cwd}; ${why}`);
+            const servedStatically = await staticSiteFallback(why);
+            if (servedStatically) return servedStatically;
+            const listingMessage = pick(isAr,
+                `أمر التشغيل «${detected.command}» أجاب بقائمة ملفات المشروع بدل صفحته — لا يوجد index.html في المجلد الذي يخدمه. لن أسمّي قائمة الملفات تطبيقاً يعمل.`,
+                `The start command «${detected.command}» answered with a list of the project's files instead of its page — the folder it serves has no index.html. A file listing is not a running app.`);
+            say(`⛔ ${listingMessage}`);
+            return {
+                ok: false,
+                error: listingMessage,
+                output: {
+                    port: livePort, ready: false, cwd, command: detected.command,
+                    note: 'served_file_listing',
+                    verificationFailed: true,
+                    message: listingMessage,
+                },
+                logs,
+            };
+        }
         rememberLiveProject(context, cwd, { url, port: livePort, pid: Number(pid) });
         say(pick(isAr,
             `✅ المشروع يعمل الآن — المعاينة الحية: ${url}`,
@@ -1839,7 +2208,17 @@ export function theServerThisSessionLeftRunning(record: any, workspaceRoot: stri
     return true;
 }
 
-async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
+/**
+ * May project_run adopt a recorded live server instead of starting one?
+ * Not for an explicit start command, and never on a restart: after a repair
+ * the running process still holds the pre-repair code, and adopting it made
+ * the post-repair probe measure the old server (round 15 review).
+ */
+export function adoptionAllowed(input: any): boolean {
+    return !input?.command && input?.restart !== true;
+}
+
+export async function retireRecordedServer(context: any, cwd: string, logs: string[]): Promise<void> {
     try {
         const sessionId = String(context?.sessionId || '').trim();
         if (!sessionId || !cwd) return;
@@ -1850,8 +2229,10 @@ async function retireRecordedServer(context: any, cwd: string, logs: string[]): 
         const root = String(context?.workspaceRoot || '').trim()
             || path.resolve(cwd, '..');
         if (!canAdoptRecordedLive(live, cwd) && !theServerThisSessionLeftRunning(live, root)) return;
-        await killTree(Number(live.pid));
-        logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
+        const killed = await killRecorded(Number(live.pid), live.identity, logs);
+        // Either way the record no longer names a server this session owns.
+        forgetRecordedLive(sessionKey, Number(live.pid));
+        if (killed) logs.push(`retired previous server pid=${live.pid} port=${live.port}`);
     } catch (e: any) {
         //  A server that will not die is not a reason to refuse to start.
         logs.push(`retire_failed: ${e?.message || e}`);
@@ -1863,13 +2244,345 @@ async function stopServer(key: string, logs: string[]): Promise<boolean> {
     if (!server?.pid) return false;
     const pid = server.pid;
     try {
-        await killTree(pid);
-        logs.push(`stopped pid=${pid} port=${server.port}`);
+        if (await killRecorded(pid, server.identity, logs)) logs.push(`stopped pid=${pid} port=${server.port}`);
     } catch (e: any) {
         logs.push(`stop_failed pid=${pid}: ${e?.message || e}`);
     }
     RUNNING.delete(key);
+    // The session's record must not keep naming a pid that is gone: a later
+    // retirement would otherwise kill whatever process reused it (finding 39).
+    forgetRecordedLive(server.sessionKey, pid);
     return true;
+}
+
+/**
+ * A PID IS NOT AN IDENTITY.
+ *
+ * Windows reuses a freed pid within seconds, and Joe itself spawns npm, cmd
+ * and node children in that window: a record that still said pid P0 after
+ * its server died made the next retirement run `taskkill /F /T /PID P0` on
+ * whatever process had taken it (round 15 review, finding 39). A server is
+ * now recorded with its start time, and is killed only while the pid still
+ * belongs to a process that started at that moment.
+ */
+export const pidIdentity = {
+    async read(pid: number): Promise<string> {
+        if (!Number.isInteger(pid) || pid <= 0) return '';
+        try {
+            if (process.platform === 'linux') {
+                // /proc/<pid>/stat field 22: start time in clock ticks since boot.
+                const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+                const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                return fields[19] ? `linux:${fields[19]}` : '';
+            }
+            const probe = process.platform === 'win32'
+                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-Process -Id ${pid} -ErrorAction Stop).StartTime.ToUniversalTime().Ticks`] }
+                : { command: 'ps', args: ['-o', 'lstart=', '-p', String(pid)] };
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-pid-identity-${pid}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 10000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const data = result?.data || {};
+            const out = String(data.output || data.stdout || '').trim().split(/\r?\n/)[0].trim();
+            return result?.success && data.exitCode === 0 && out ? `${process.platform}:${out}` : '';
+        } catch {
+            return '';
+        }
+    },
+};
+
+/** Kill a recorded pid only while it is still the process that was recorded. */
+async function killRecorded(pid: number, identity: string | undefined, logs: string[]): Promise<boolean> {
+    if (identity) {
+        const now = await pidIdentity.read(pid);
+        if (now !== identity) {
+            logs.push(now
+                ? `pid ${pid} now belongs to another process (started ${now}, recorded ${identity}); not killed`
+                : `pid ${pid} is no longer running; nothing to kill`);
+            return false;
+        }
+    }
+    await killTree(pid);
+    return true;
+}
+
+/**
+ * The process listening on a loopback port: the server itself, whatever
+ * launched it. 2026-11-04: Joe records the pid it launched — on Windows a
+ * cmd that dies with Joe — while the server it started (npx → cmd → serve)
+ * keeps the port; after a restart only the listener can be found again.
+ * A listening socket is the one with no remote end: on his machine Windows
+ * reports such a socket with an empty State, so `-State Listen` found
+ * nothing. A miss is asked again, briefly.
+ */
+export const portListener = {
+    async read(port: number, attempts = 3): Promise<number> {
+        for (let i = 0; i < attempts; i++) {
+            if (i) await new Promise(resolve => setTimeout(resolve, 700));
+            const pid = await this.once(port);
+            if (pid) return pid;
+        }
+        return 0;
+    },
+    async once(port: number): Promise<number> {
+        if (!Number.isInteger(port) || port <= 0) return 0;
+        const probe = process.platform === 'win32'
+            ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `(Get-NetTCPConnection -LocalPort ${port} -ErrorAction Stop | Where-Object { $_.RemotePort -eq 0 } | Select-Object -First 1).OwningProcess`] }
+            : process.platform === 'linux'
+                ? { command: 'ss', args: ['-ltnpH', `sport = :${port}`] }
+                : { command: 'lsof', args: ['-nP', `-iTCP:${port}`, '-sTCP:LISTEN', '-t'] };
+        try {
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-port-listener-${port}-${Date.now()}`,
+                type: 'shell',
+                //  The machine's whole table takes ~10 s on his laptop (10.4 s measured, 2026-11-10); 10 s timed out
+                //  three attempts in a row — thirty seconds spent to read «no listener». Given the time it needs.
+                payload: { command: probe.command, args: probe.args, options: { timeout: 25000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const out = String(result?.data?.output || result?.data?.stdout || '');
+            const pid = Number((process.platform === 'linux' ? out.match(/pid=(\d+)/u)?.[1] : out.trim().split(/\s+/u)[0]) || 0);
+            return result?.success && Number.isInteger(pid) && pid > 0 ? pid : 0;
+        } catch {
+            return 0;
+        }
+    },
+};
+
+/**
+ * A process and the processes it descends from, nearest first (at most twelve):
+ * whether a port's listener is the server this launch started, or another's.
+ *
+ * A parent that started after its child is not its parent: the real one died and
+ * the system gave its number to a newer process — perhaps the very launch being
+ * asked about, which would make somebody else's long-running server look like
+ * this project's (the review of 2026-11-10). The chain stops there.
+ */
+export const processAncestry = {
+    async read(pid: number): Promise<number[]> {
+        if (!Number.isInteger(pid) || pid <= 0) return [];
+        try {
+            if (process.platform === 'linux') {
+                const chain: number[] = [];
+                let childStarted = Infinity;
+                for (let p = pid, i = 0; p > 1 && i < 12; i++) {
+                    let stat = '';
+                    try { stat = fs.readFileSync(`/proc/${p}/stat`, 'utf8'); } catch { break; }
+                    //  After «(name) »: state, ppid, … field 22 (starttime, in clock ticks since boot) is index 19.
+                    const fields = stat.slice(stat.lastIndexOf(')') + 2).split(' ');
+                    const started = Number(fields[19]);
+                    if (Number.isFinite(started) && started > childStarted) break;
+                    chain.push(p);
+                    if (Number.isFinite(started)) childStarted = started;
+                    p = Number(fields[1]) || 0;
+                }
+                return chain;
+            }
+            const probe = process.platform === 'win32'
+                ? { command: 'powershell', args: ['-NoProfile', '-NonInteractive', '-Command', `$p=${pid}; $c=@(); $t=$null; for($i=0; $i -lt 12 -and $p -gt 0; $i++){ $x=Get-CimInstance Win32_Process -Filter "ProcessId=$p" -ErrorAction SilentlyContinue; if(-not $x){break}; if($t -and $x.CreationDate -and $x.CreationDate -gt $t){break}; $c+=$p; $t=$x.CreationDate; $p=[int]$x.ParentProcessId }; $c -join ','`] }
+                : { command: 'ps', args: ['-A', '-o', 'pid=,ppid='] };
+            const result: any = await ExecutionGateway.execute({
+                id: `project-run-ancestry-${pid}-${Date.now()}`,
+                type: 'shell',
+                payload: { command: probe.command, args: probe.args, options: { timeout: 30000, shell: false, stdio: 'pipe', windowsHide: true } },
+                priority: 'high',
+            } as any);
+            const out = String(result?.data?.output || result?.data?.stdout || '').trim();
+            if (!result?.success) return [];
+            if (process.platform === 'win32') return out.split(/[\s,]+/u).map(Number).filter(n => Number.isInteger(n) && n > 0);
+            const parent = new Map<number, number>();
+            for (const line of out.split(/\r?\n/u)) {
+                const [a, b] = line.trim().split(/\s+/u).map(Number);
+                if (a > 0) parent.set(a, b || 0);
+            }
+            const chain: number[] = [];
+            for (let p = pid, i = 0; p > 1 && i < 12; i++) { chain.push(p); p = parent.get(p) || 0; }
+            return chain;
+        } catch {
+            return [];
+        }
+    },
+};
+
+/**
+ * Whether the process listening on a port is the one this launch started, or
+ * descends from it: true, false — or null when the machine's tables could not
+ * be read (a loaded machine times the query out), which proves neither.
+ */
+export async function heldByLaunched(port: number, launched: number): Promise<boolean | null> {
+    if (!Number.isInteger(launched) || launched <= 0) return null;
+    const listener = await portListener.read(port, 1);
+    if (!listener) return null;
+    if (listener === launched) return true;
+    const chain = await processAncestry.read(listener);
+    if (!chain.length) return null;
+    return chain.includes(launched);
+}
+
+/** The listener of a server's port when it is not the launched pid itself, with its identity. */
+async function listenerOf(port: number, launched: number): Promise<{ listener?: { pid: number; identity: string } }> {
+    const pid = await portListener.read(port);
+    if (!pid || pid === launched) return {};
+    const identity = await pidIdentity.read(pid);
+    return identity ? { listener: { pid, identity } } : {};
+}
+
+/** Track a server this run started, with its session, its pid's identity, and its port's listener. */
+async function trackRunning(key: string, context: any, server: { pid: number; port: number; cwd: string; command: string }): Promise<void> {
+    const sessionId = String(context?.sessionId || '').trim();
+    RUNNING.set(key, {
+        ...server,
+        startedAt: Date.now(),
+        ...(sessionId ? { sessionKey: sessionId.replace(/[^a-zA-Z0-9._-]/g, '_'), sessionId } : {}),
+        identity: await pidIdentity.read(Number(server.pid)),
+        ...(await listenerOf(Number(server.port), Number(server.pid))),
+    });
+    const logs: string[] = [];
+    for (const old of previewsToRetire(Array.from(RUNNING), key, livePreviewCap(), isRunning)) await stopServer(old, logs);
+    if (logs.length) console.log(`[project_run] live previews over the machine's bound: ${logs.join('; ')}`);
+}
+
+/**
+ * LIVE PREVIEWS ARE BOUNDED BY THE MACHINE, NOT BY HOW MANY SESSIONS EVER RAN.
+ *
+ * The 500-prompt exam, 2026-11-03: after forty prompts, twenty-odd preview
+ * servers of finished sessions were still serving — one per session, kept on
+ * purpose, because the delivery hands him its live address. One per session
+ * stops a project from leaking ports; nothing stopped the sessions from
+ * adding up, and on a server with thousands of users they only grow until the
+ * machine runs out of memory or ports.
+ *
+ * So the previews kept are bounded by the machine: one per 512 MiB of memory,
+ * never fewer than eight (JOE_MAX_LIVE_PREVIEWS overrides it). Starting one
+ * past the bound stops the oldest previews whose session is not running now;
+ * a running session's server is never taken from under it, and the new one
+ * is never the one stopped. A stopped preview is forgotten in its session's
+ * record, so the next project_run there starts it again.
+ */
+export function livePreviewCap(totalMemBytes = os.totalmem(), env: NodeJS.ProcessEnv = process.env): number {
+    const set = Number(env.JOE_MAX_LIVE_PREVIEWS);
+    if (Number.isFinite(set) && set >= 1) return Math.floor(set);
+    return Math.max(8, Math.floor(Number(totalMemBytes || 0) / (512 * 1024 * 1024)));
+}
+
+/** The previews to stop so at most `cap` remain: oldest first, never `keep`, never a running session's. */
+export function previewsToRetire(
+    servers: Array<[string, Pick<RunningServer, 'startedAt' | 'sessionId'>]>,
+    keep: string,
+    cap: number,
+    sessionRunning: (sessionId: string) => boolean,
+): string[] {
+    let excess = servers.length - Math.max(1, cap);
+    if (excess <= 0) return [];
+    const retire: string[] = [];
+    for (const [key, server] of servers.slice().sort((a, b) => a[1].startedAt - b[1].startedAt)) {
+        if (excess <= 0) break;
+        if (key === keep || (server.sessionId && sessionRunning(server.sessionId))) continue;
+        retire.push(key);
+        excess--;
+    }
+    return retire;
+}
+
+/**
+ * A PREVIEW OUTLIVES THE JOE THAT STARTED IT.
+ *
+ * 2026-11-04: each time the exam's Joe was stopped and started again, the
+ * previews it had started kept serving with no owner — nine of them, 27
+ * processes, after a morning of restarts. A killed parent's children live on
+ * (Windows never kills them; Linux reparents them), and RUNNING is memory: the
+ * new Joe neither counted them against the live-preview bound nor could
+ * project_stop them. On a server Joe restarts at every deploy they only add up.
+ *
+ * At start, a session record's live server that is still the process recorded
+ * (its pid AND the start time it was recorded with) is adopted into RUNNING —
+ * counted, stoppable, retired like any other, oldest first past the bound. A
+ * record whose process is gone, or whose pid now belongs to another process,
+ * is forgotten. A record without an identity cannot be told from a reused
+ * pid: it is left as it was, and never killed from here.
+ *
+ * On Windows the launched pid is often a cmd that dies with Joe while the
+ * server it started keeps the port (two such were left after the first
+ * adoption measured «18 forgotten, 0 adopted»). The record also names the
+ * port's listener with its own start time; when the launcher is gone and the
+ * listener is still that process, the listener is what is adopted, and the
+ * record is moved onto it.
+ */
+export async function adoptRecordedPreviews(
+    projects: Record<string, any> = (global as any).joeProjects || {},
+    opts: { read?: (pid: number) => Promise<string>; cap?: number } = {},
+): Promise<{ adopted: string[]; forgotten: string[]; retired: string[] }> {
+    const read = opts.read || ((pid: number) => pidIdentity.read(pid));
+    const adopted: string[] = [];
+    const forgotten: string[] = [];
+    for (const [sessionKey, entry] of Object.entries(projects || {})) {
+        const live = entry?.live;
+        const pid = Number(live?.pid);
+        if (!live || !Number.isInteger(pid) || pid <= 0 || !live.identity) continue;
+        const listener = live.listener && Number(live.listener.pid) > 0 && live.listener.identity ? { pid: Number(live.listener.pid), identity: String(live.listener.identity) } : null;
+        if (Array.from(RUNNING.values()).some(server => server.pid === pid || (listener && server.pid === listener.pid))) continue;
+        let owner = { pid, identity: String(live.identity) };
+        if (await read(pid) !== live.identity) {
+            if (!listener || await read(listener.pid) !== listener.identity) {
+                forgetRecordedLive(sessionKey, pid);
+                forgotten.push(sessionKey);
+                continue;
+            }
+            //  The launcher is gone; the server it started is not.
+            owner = listener;
+            writeJoeProject(sessionKey, { ...entry, live: { ...live, pid: listener.pid, identity: listener.identity } }, entry.pipelineRunId ?? null);
+            try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
+        }
+        RUNNING.set(sessionKey, {
+            pid: owner.pid,
+            port: Number(live.port) || 0,
+            cwd: String(live.cwd || live.projectCwd || entry.dir || ''),
+            command: 'adopted at start',
+            startedAt: Number(live.at) || 0,
+            sessionKey,
+            sessionId: sessionKey,
+            identity: owner.identity,
+        });
+        adopted.push(sessionKey);
+    }
+    const retired: string[] = [];
+    const logs: string[] = [];
+    for (const old of previewsToRetire(Array.from(RUNNING), '', opts.cap ?? livePreviewCap(), isRunning)) {
+        if (await stopServer(old, logs)) retired.push(old);
+    }
+    return { adopted, forgotten, retired };
+}
+
+/**
+ * THE BOOT'S ADOPTION, AS THE TRUSTED SYSTEM TASK IT IS.
+ *
+ * app.ts ran adoptRecordedPreviews in a setImmediate, outside any execution
+ * context. On Windows a pid's identity is read through ExecutionGateway, and
+ * the firewall refused every read there: «[FIREWALL] [BLOCKED]
+ * ExecutionGateway:execute», four lines at every boot of 2026-11-06. An
+ * identity that could not be read is not the recorded one, so every preview
+ * the previous Joe left serving was FORGOTTEN while it kept serving — an
+ * orphan nothing counted or stopped, one more at every restart (the
+ * `python -m http.server 5173` found seven hours later was one). Run as a
+ * system task, the read is allowed and the preview is adopted, as written.
+ */
+export function adoptPreviewsAtStart(
+    projects?: Record<string, any>,
+    opts?: { read?: (pid: number) => Promise<string>; cap?: number },
+): Promise<{ adopted: string[]; forgotten: string[]; retired: string[] }> {
+    return executionFirewall.runAsSystem(() => adoptRecordedPreviews(projects, opts));
+}
+
+/** Forget the session's recorded live server when it names this pid. */
+export function forgetRecordedLive(sessionKey: string | undefined, pid: number): void {
+    if (!sessionKey || !pid) return;
+    const entry = (global as any).joeProjects?.[sessionKey];
+    if (!entry?.live || Number(entry.live.pid) !== Number(pid)) return;
+    const { live: _gone, ...rest } = entry;
+    writeJoeProject(sessionKey, rest, entry.pipelineRunId ?? null);
+    try { persistJoeProjects(); } catch { /* the in-memory record is already right */ }
 }
 
 export class ProjectStopTool implements ToolDefinition {

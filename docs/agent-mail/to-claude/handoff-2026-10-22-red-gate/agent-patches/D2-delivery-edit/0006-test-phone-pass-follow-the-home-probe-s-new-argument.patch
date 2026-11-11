@@ -1,0 +1,69 @@
+From 4d857e958061809e2d28ccfce9db4ffc03433fcd Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Thu, 22 Oct 2026 18:06:48 +0000
+Subject: [PATCH 6/9] test(phone-pass): follow the home probe's new arguments
+ and the phone context name
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Red at 917c70e:
+  the-menu-that-only-exists-on-a-phone › ⛔ POSITIVE — there is a pass at 390px, after the desktop walk (culprit 76f66a5d)
+  the-menu-that-only-exists-on-a-phone › ⛔ POSITIVE — every writer sets `bare`, and there are two of them (culprit 7b3111ab)
+
+Root causes and decisions (both P):
+- 76f66a5d gave the home probe a form scope and context:
+  `probeControls(page, probeOpts('desktop:/', '/'))`; the anchor
+  `probeOpts());` became -1. The 390px pass still follows the desktop walk
+  (app-audit.ts 1125 -> 1347). The anchor is now the call's prefix.
+- 7b3111ab renamed the phone writer's context 'phone:/' -> 'جوّال:/', the
+  responsive sweep's own `${size.name}:${r}` key, so a completed phone pass
+  owns that evidence and the duplicate sweep of '/' is skipped (P19).
+  ProjectEditTool's FAQ check accepts both spellings. All three writers still
+  set `bare: c.label`.
+
+NOT changed: «⛔ POSITIVE — only controls the desktop walk never saw» stays
+red. 7b3111ab deliberately records every ANCHOR in the phone pass even when
+the desktop walk saw its label (live P19: the FAQ link was lost from phone
+evidence). That contradicts the case's «only»; reported as a conflict.
+
+Mutations (app-audit.ts, restored, sha256 identical each time):
+  menu1 390px viewport set before the desktop walk -> ✕ Expected: > 62923  Received: 62870
+  menu2 phone writer without `bare`                -> ✕ Expected substring "allControls.push({ ...c, bare: c.label, context: 'جوّال:/', …"
+
+Co-Authored-By: Claude <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01CSeapUrWatvdumdAwyPuqV
+---
+ .../the-menu-that-only-exists-on-a-phone.test.ts         | 9 +++++++--
+ 1 file changed, 7 insertions(+), 2 deletions(-)
+
+diff --git a/api/src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts b/api/src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts
+index 708e7faf..ec3e5f3c 100644
+--- a/api/src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts
++++ b/api/src/__tests__/the-menu-that-only-exists-on-a-phone.test.ts
+@@ -46,7 +46,9 @@ describe('a control that only exists on a phone is pressed too', () => {
+         //  After, not instead: the desktop walk is the main measurement and
+         //  this pass exists for what desktop CANNOT show.
+         expect(APP).toContain('await applyViewportSize(page, 390, 844);');
+-        const walkAt = APP.indexOf('const homeProbe = await probeControls(page, probeOpts());');
++        //  The desktop walk is the home probe, whatever form scope it is
++        //  handed — `probeOpts()` grew a scope and a context for its forms.
++        const walkAt = APP.indexOf('const homeProbe = await probeControls(page, probeOpts(');
+         const phoneAt = APP.indexOf('await applyViewportSize(page, 390, 844);');
+         expect(walkAt).toBeGreaterThan(0);
+         expect(phoneAt).toBeGreaterThan(walkAt);
+@@ -93,7 +95,10 @@ describe('the decorated name and the real name are both kept', () => {
+         //  same thing, one taught the rule and the other not. Both are asserted
+         //  here because fixing either alone looks exactly like fixing both.
+         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `desktop:${route}`, label: route === \'/\' ? c.label : `${route} ${c.label}` })');
+-        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` })");
++        //  The phone writer's context is named like the responsive sweep's
++        //  own (`${size.name}:${r}`, «جوّال:/»), so the two share one evidence
++        //  key; ProjectEditTool still accepts the older «phone:» spelling.
++        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'جوّال:/', label: `الجوّال ${c.label}` })");
+         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name })');
+         //  …and nothing pushes a control without it.
+         const pushes = APP.match(/allControls\.push\(\{[^}]*\}/g) || [];
+-- 
+2.43.0
+

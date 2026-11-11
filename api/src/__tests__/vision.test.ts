@@ -16,6 +16,7 @@ jest.mock('../shared/ocr', () => ({ extractImageText: jest.fn(async () => '') })
 jest.mock('../core/resources/RequestResourceManager', () => ({ requestResourceManager: {
     withInference: async (work: any, admission: any) => work({ signal: admission.signal, contextTokens: 4096, outputTokens: admission.requestedOutputTokens }),
     withHeavy: async (work: any) => work(),
+    withLocalModelCall: async (work: any) => work(),
     currentSignal: () => undefined,
 } }));
 

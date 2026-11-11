@@ -2,6 +2,9 @@ import fs from 'fs';
 import path from 'path';
 
 import { syntaxFileKind } from '../../../shared/syntax-contract';
+import { checkJavaScriptFiles, describeGoalPlan } from '../../../core/quality/js-syntax-check';
+import { judgeTestRun } from '../../../core/quality/test-run-evidence';
+import { parserDiagnosis } from '../../../shared/utils/parser-diagnosis';
 import { ToolDefinition, ToolPermission } from '../types';
 import { executeTool } from '../../services/ToolService';
 import { resolveToolPath } from '../utils';
@@ -205,15 +208,33 @@ export class AutoTesterTool implements ToolDefinition {
             .filter(item => item.kind === 'javascript' && ['.js', '.mjs', '.cjs'].includes(item.extension))
             .map(item => item.file);
         if (javascriptFiles.length > 0) {
-            const quote = (value: string) => `'${String(value).replace(/'/g, "'\\''")}'`;
-            const command = javascriptFiles
-                .map(file => `node --check ${quote(path.relative(projectPath, file) || file)}`)
-                .join(' && ');
-            const result = await executeTool('shell_execute', { command, cwd: projectPath }, ctx);
-            const passed = Boolean(result.ok) && !String((result as any).output || '').includes('SyntaxError');
-            if (!passed) {
-                return this.failure(String((result as any).error || (result as any).output || 'Syntax errors found'), logs, 'syntax');
+            /**
+             *  THE SAME CHECKER LINT AND THE LAUNCH GATE USE (round 21 review).
+             *
+             *  This built a shell line per file: `node --input-type=module
+             *  --check < 'f'` when an `import` led a line, else `node --check
+             *  'f'`. Three faults: the goal was guessed from the project root
+             *  («"type": "commonjs"» — npm init -y's default — still got the
+             *  module goal, so an ES-module server Node will crash on passed);
+             *  the single quotes are not quotes to cmd.exe, so on Windows node
+             *  was handed `'src/app.js'` and every JavaScript file «failed»;
+             *  and any non-zero exit — a full queue, a timeout — was reported
+             *  as a syntax error in his file. The shared checker parses a copy
+             *  of each file under the goal it is really run with, through the
+             *  execution gateway, and says «the check could not run» when no
+             *  parser answered.
+             */
+            const syntax = await checkJavaScriptFiles(projectPath, javascriptFiles);
+            for (const entry of syntax.planned) {
+                logs.push(entry.plan
+                    ? `Parsing ${entry.file} as ${describeGoalPlan(entry.plan)}`
+                    : `Not parsed: ${entry.file} — ${entry.notParsed}`);
             }
+            if (syntax.failure?.kind === 'syntax') {
+                return this.failure(`Syntax error in ${syntax.failure.file}: ${syntax.failure.error}`, logs, 'syntax');
+            }
+            if (syntax.failure) return this.failure(syntax.failure.error, logs, 'unavailable');
+            if (syntax.files.length) logs.push(`node --check passed: ${syntax.files.join(', ')}`);
         }
 
         // Node's parser cannot parse JSX or TypeScript and would report a false
@@ -226,7 +247,7 @@ export class AutoTesterTool implements ToolDefinition {
             try {
                 esbuild = require('esbuild');
             } catch (error: any) {
-                return this.failure(`JSX/TypeScript syntax checker unavailable: ${String(error?.message || error)}`, logs, 'syntax');
+                return this.failure(`the check could not run: no JSX/TypeScript parser is available (${String(error?.message || error)})`, logs, 'unavailable');
             }
             for (const item of transpileFiles) {
                 /**
@@ -252,7 +273,11 @@ export class AutoTesterTool implements ToolDefinition {
                     });
                     logs.push(`esbuild syntax passed: ${name}`);
                 } catch (error: any) {
-                    const detail = String(error?.errors?.[0]?.text || error?.message || error).split('\n')[0].slice(0, 300);
+                    // Only a located parser error is a rejection of his file.
+                    if (!Array.isArray(error?.errors) || !error.errors.some((entry: any) => entry?.text)) {
+                        return this.failure(`the check could not run: ${String(error?.message || error).split(/\r?\n/u)[0]}`, logs, 'unavailable');
+                    }
+                    const detail = parserDiagnosis(error);
                     return this.failure(`Syntax error in ${name}: ${detail}`, logs, 'syntax');
                 }
             }
@@ -336,6 +361,12 @@ export class AutoTesterTool implements ToolDefinition {
 
         try {
             const result = await executeTool('shell_execute', { command: `npm run ${script}`, cwd: projectPath }, ctx);
+            // A test script that ran no test proved nothing (round 21): `node --test`
+            // with no test file, unittest before 3.12 and `go test` all exit 0 on
+            // an empty run. The runner's own summary says so, as quality_run reads it.
+            const output = (result as any).output || {};
+            const ranNothing = kind !== 'build' ? judgeTestRun(result.ok, `${String(output.stdout ?? '')}\n${String(output.stderr ?? '')}`).ranNothing : null;
+            if (ranNothing) return this.failure(`the ${kind} script ran no tests (${ranNothing.runner}: ${ranNothing.evidence})`, logs, kind);
             return result.ok
                 ? {
                     ok: true,

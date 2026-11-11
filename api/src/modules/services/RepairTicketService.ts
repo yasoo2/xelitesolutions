@@ -73,8 +73,16 @@ function repairEvidence(value: unknown, max = 5000) {
     .replace(/(gh[pousr]_[A-Za-z0-9_-]{16,})/gu, '[REDACTED]');
 }
 
+/**
+ * Codes whose payload is the user's own record names. A requested record
+ * called «permissions», «tokens» or «credentials» is data the request named,
+ * not security evidence: only the code itself is classified (round 15).
+ */
+const RECORD_PAYLOAD_CODES = /^((?:requested_entities_not_delivered|requested_entities_not_served|requested_entity_tests_missing)\s*:)[\s\S]*$/iu;
+
 function inferSeverity(status: string, error: string): RepairTicketSeverity {
-  const s = `${status} ${error}`.toLowerCase();
+  const classified = String(error || '').trim().replace(RECORD_PAYLOAD_CODES, '$1');
+  const s = `${status} ${classified}`.toLowerCase();
   const isLocalImportContext = /unresolved_local_import/i.test(s);
   const explicitSecurityEvidence = /\bunauthorized\b|\bforbidden\b|\bsecret\b|\btoken\b|\bcredential\b|\boutside_workspace\b|\bpath_outside\b/i.test(s);
   const permissionEvidence = /permission/i.test(s);

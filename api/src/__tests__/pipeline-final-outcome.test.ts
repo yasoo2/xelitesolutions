@@ -67,6 +67,14 @@ describe('canonical engineering pipeline terminal outcomes', () => {
     expect(isFinalPipelineOutcome('project_edit', { visualVerificationBlocked: true })).toBe(true);
     expect(isFinalPipelineOutcome('project_edit', { acceptance: { unmet: 0 } })).toBe(false);
   });
+  it('the verdict of the agent engine is final under the build name it took over', () => {
+    const engine = { pipelineFinal: true, engineStatus: 'failed', verificationFailed: true };
+    expect(isFinalPipelineOutcome('react_project', engine)).toBe(true);
+    expect(isFinalPipelineOutcome('api_project', engine)).toBe(true);
+    // The first engine's own tools keep their own rule.
+    expect(isFinalPipelineOutcome('react_project', { pipelineFinal: true })).toBe(false);
+    expect(isFinalPipelineOutcome('shell_execute', engine)).toBe(false);
+  });
 
   it('marks every outward failure state of the canonical pipeline as final evidence', () => {
     const src = fs.readFileSync(

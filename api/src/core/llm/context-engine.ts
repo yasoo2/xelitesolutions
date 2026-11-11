@@ -2,6 +2,26 @@
  * Context-Aware Pattern Matching Engine
  * Understands conversation context and multi-turn interactions
  */
+import { AR_START, AR_START_NOUN, wordsPattern, wordsRegex } from '../../shared/arabic-word-boundary';
+
+// Every Arabic alternative below sat behind ASCII `\b` and never matched
+// (eval round 15). English keeps `\b`; Arabic gets Unicode boundaries.
+const TRAILING_JOIN = new RegExp(`${wordsPattern(['and', 'then'], ['و', 'ثم'], AR_START)}.*$`, 'iu');
+const DEPENDENCY = new RegExp(`(${wordsPattern(['install', 'add', 'package', 'library'], ['مكتب[ةه]', 'تثبيت'], AR_START_NOUN)})\\s+([\\w@/-]+)`, 'giu');
+const ARABIC_LANGUAGE = wordsRegex([], ['جافا\\s*سكر[يِ]?بت', 'بايثون', 'تايب\\s*سكر[يِ]?بت', 'ري?[اأإآ]كت'], 'gi');
+const WEB_PROJECT = wordsRegex(['website', 'web\\s*app', 'landing\\s*page'], ['موقع', 'تطبيق\\s*ويب', 'صفح[ةه]', 'سايت'], 'i', AR_START_NOUN);
+const API_PROJECT = wordsRegex(['api', 'endpoint', 'rest', 'graphql'], ['واجه[ةه]\\s*برمجي[ةه]'], 'i', AR_START_NOUN);
+const MOBILE_PROJECT = wordsRegex(['mobile\\s*app', 'android', 'ios', 'react\\s*native', 'flutter'], ['تطبيق\\s*جوال', 'موبايل'], 'i', AR_START_NOUN);
+const CORRECTION = wordsRegex(['i mean', 'actually'], ['[اأ]قصد', 'بالعكس', 'العكس']);
+const CLICK = wordsRegex(['click'], ['انقر', 'اضغط', 'دوس']);
+const TYPE = wordsRegex(['type'], ['[اأ]كتب', '[اأ]مل[أا]', '[اأ]دخل']);
+const SCROLL = wordsRegex(['scroll'], ['مرر', '[اأ]نزل', 'طلع']);
+const EXTRACT = wordsRegex(['extract'], ['استخرج', '[اأ]نسخ', 'خذ']);
+const ADD_MORE = wordsRegex(['add', 'also need', 'also want'], ['[اأ]ضف', 'زيد', 'كمان', 'بعد']);
+const REFERENCE = wordsRegex(['that', 'this', 'it', 'the one'], ['هذا', 'هذه', 'هاذا', 'اللي', 'الذي', 'ذاك', 'ذلك']);
+const SEQUENCE = wordsRegex(['then', 'after\\s*that', 'and\\s*then', 'and', 'followed by'], ['ثم', 'بعد\\s*ذلك', 'و', 'كمان', 'يليه']);
+const CAPABILITY = wordsRegex(['can you', 'you able'], ['هل\\s*تستطيع', 'تقدر', 'قادر', 'ممكن']);
+const PREFERENCE = wordsRegex(['prefer', 'better', 'best', 'which'], ['[اأ]فضل', '[اأ]حسن', 'الأفضل', 'الأحسن', 'أي', 'ايه']);
 
 export interface SpecificationContext {
     specificationId: string;
@@ -85,7 +105,7 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
         if (first?.[1]) {
             const raw = first[1].trim();
             const cleaned = raw
-                .replace(/\b(and|then|و|ثم)\b.*$/i, '')
+                .replace(TRAILING_JOIN, '')
                 .replace(/[^\p{L}\s-]/gu, '')
                 .trim();
             entities.userName = cleaned;
@@ -106,7 +126,7 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
     }
 
     // Dependencies (npm/python)
-    const depPatterns = /\b(install|add|package|library|مكتبة|تثبيت)\s+([\w@/-]+)/gi;
+    const depPatterns = DEPENDENCY;
     const deps = [...text.matchAll(depPatterns)].map(m => m[2]);
     if (deps.length > 0) {
         entities.dependencies = deps;
@@ -115,7 +135,7 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
     // Programming languages
     const langPatterns = [
         /\b(javascript|typescript|python|java|golang|rust|c\+\+|react|vue|angular|node|express|django|flask|spring)\b/gi,
-        /\b(جافا\s*سكريبت|بايثون|تايب\s*سكريبت|ري?اكت)\b/gi
+        ARABIC_LANGUAGE
     ];
 
     for (const pattern of langPatterns) {
@@ -126,11 +146,11 @@ export function extractEntities(text: string, history?: any[]): Record<string, a
     }
 
     // Project types
-    if (/\b(website|web\s*app|landing\s*page|موقع|تطبيق\s*ويب|صفحة|سايت)\b/i.test(text)) {
+    if (WEB_PROJECT.test(text)) {
         entities.projectType = 'web';
-    } else if (/\b(api|endpoint|rest|graphql|واجهة\s*برمجية)\b/i.test(text)) {
+    } else if (API_PROJECT.test(text)) {
         entities.projectType = 'api';
-    } else if (/\b(mobile\s*app|android|ios|react\s*native|flutter|تطبيق\s*جوال|موبايل)\b/i.test(text)) {
+    } else if (MOBILE_PROJECT.test(text)) {
         entities.projectType = 'mobile';
     }
 
@@ -155,7 +175,7 @@ export function analyzeContextualIntent(
 
     // Check for clarification/correction
     const isCorrection = /^(no|لا|مش|ليس|not|نعم\s*لكن|yes\s*but)/.test(msg) ||
-        /\b(اقصد|أقصد|i mean|actually|بالعكس|العكس)\b/i.test(msg);
+        CORRECTION.test(msg);
 
     // Contextual intent detection
     let primary = 'unknown';
@@ -172,20 +192,20 @@ export function analyzeContextualIntent(
         suggestedAction = 'Continue with current browser session';
 
         // Detect specific actions
-        if (/\b(click|انقر|اضغط|دوس)\b/i.test(msg)) {
+        if (CLICK.test(msg)) {
             secondary = 'browser_click';
-        } else if (/\b(type|اكتب|املأ|ادخل)\b/i.test(msg)) {
+        } else if (TYPE.test(msg)) {
             secondary = 'browser_type';
-        } else if (/\b(scroll|مرر|انزل|طلع)\b/i.test(msg)) {
+        } else if (SCROLL.test(msg)) {
             secondary = 'browser_scroll';
-        } else if (/\b(extract|استخرج|انسخ|خذ)\b/i.test(msg)) {
+        } else if (EXTRACT.test(msg)) {
             secondary = 'browser_extract';
         }
     }
 
     // 2. Code generation context
     else if (context.lastToolUsed === 'file_write' || context.projectContext?.type) {
-        if (isContinuation || /\b(add|اضف|زيد|also need|also want|كمان|بعد)\b/i.test(msg)) {
+        if (isContinuation || ADD_MORE.test(msg)) {
             primary = 'code_continuation';
             confidence = 0.85;
             suggestedAction = `Continue building ${context.projectContext?.type || 'project'}`;
@@ -201,7 +221,7 @@ export function analyzeContextualIntent(
     }
 
     // 4. Reference to previous conversation
-    else if (/\b(that|this|it|the one|هذا|هذه|هاذا|اللي|الذي|ذاك|ذلك)\b/i.test(msg) && history.length > 0) {
+    else if (REFERENCE.test(msg) && history.length > 0) {
         primary = 'reference_previous';
         confidence = 0.7;
         requiresClarification = true;
@@ -220,7 +240,7 @@ export function analyzeContextualIntent(
     }
 
     // 6. Multi-step requests
-    else if (/\b(then|ثم|بعد\s*ذلك|after\s*that|and\s*then|and|و|كمان|followed by|يليه)\b/i.test(msg) && msg.length > 30) {
+    else if (SEQUENCE.test(msg) && msg.length > 30) {
         primary = 'multi_step';
         confidence = 0.8;
         suggestedAction = 'Break down into sequential steps';
@@ -231,14 +251,14 @@ export function analyzeContextualIntent(
     }
 
     // 7. Question about capabilities
-    else if (/\b(can you|هل\s*تستطيع|تقدر|you able|قادر|ممكن)\b/i.test(msg)) {
+    else if (CAPABILITY.test(msg)) {
         primary = 'capability_question';
         confidence = 0.9;
         suggestedAction = 'Explain capabilities and confirm if possible';
     }
 
     // 8. Preference/opinion
-    else if (/\b(prefer|افضل|احسن|better|best|الأفضل|الأحسن|which|أي|ايه)\b/i.test(msg)) {
+    else if (PREFERENCE.test(msg)) {
         primary = 'preference_question';
         confidence = 0.8;
         suggestedAction = 'Provide recommendation based on context';

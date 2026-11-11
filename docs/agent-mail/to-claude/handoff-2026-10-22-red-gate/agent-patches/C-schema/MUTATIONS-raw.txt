@@ -1,0 +1,372 @@
+##### M1.out
+=== MUTATION M1-build-gate-back-in-classifier (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ POSITIVE — his expenses sentence reaches its own engine (26 ms)
+   ✓ POSITIVE — the behaviour is not read as a column (7 ms)
+   ✓ POSITIVE — and the same shape in other sentences (36 ms)
+   ✓ NEGATIVE — a two-word column is still a column (12 ms)
+   ✓ NEGATIVE — a yes-or-no column is still a column (7 ms)
+   ✓ NEGATIVE — the two columns a LETTER rule ate (23 ms)
+   ✓ POSITIVE — one column is not a list, and does not short-circuit the engine (7 ms)
+   ✕ NEGATIVE — TWO columns still outrank the noun, exactly as before (4 ms)
+   ✓ NEGATIVE — a noun that OPENS with a verb letter is still a column (12 ms)
+   ✓ NEGATIVE — a plain column list is untouched (1 ms)
+   ✕ NEGATIVE — and the archetype that a column list SHOULD override still is (1 ms)
+   ● a column is named by a noun, never by a verb › NEGATIVE — TWO columns still outrank the noun, exactly as before
+   Expected: "generic"
+   Received: "booking"
+   ● a column is named by a noun, never by a verb › NEGATIVE — and the archetype that a column list SHOULD override still is
+   Expected: "generic"
+   Received: "booking"
+   ✓ اعمل لي صفحة هبوط وصفحة تواصل لشركة تنظيف (91 ms)
+   ✓ ابني موقع شركة فيه صفحة من نحن وصفحة خدمات وصفحة اتصل بنا (97 ms)
+   ✓ Build a site with a pricing page and a docs page (80 ms)
+   ✓ the criterion carries HIS words, not a slug (72 ms)
+   ✓ ONE named page is not a criterion — it would be one that cannot fail (41 ms)
+   ✓ «صفحة المنتجات» produces no column criteria at all (108 ms)
+   ✕ a real column list is untouched — this is a boundary, not a ban on «فيه» (96 ms)
+   ✕ a page AND columns in one sentence keeps the columns (88 ms)
+   ✓ the slug the reader returns is the file the plan builds (1 ms)
+   ✓ met when the page is a file on disk (2 ms)
+   ✓ unmet when the page was asked for and never written (1 ms)
+   ● and a page he named is not a column in a table › a real column list is untouched — this is a boundary, not a ban on «فيه»
+   Expected: 3
+   Received: 0
+   ● and a page he named is not a column in a table › a page AND columns in one sentence keeps the columns
+   Expected: 2
+   Received: 0
+   Test Suites: 2 failed, 2 total
+   Tests:       4 failed, 18 passed, 22 total
+=== RESTORED M1-build-gate-back-in-classifier: sha256 identical
+
+##### M1c.out
+=== MUTATION M1c-arabic-comma-not-a-clause-boundary (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ POSITIVE — his expenses sentence reaches its own engine (23 ms)
+   ✓ POSITIVE — the behaviour is not read as a column (6 ms)
+   ✓ POSITIVE — and the same shape in other sentences (29 ms)
+   ✓ NEGATIVE — a two-word column is still a column (8 ms)
+   ✓ NEGATIVE — a yes-or-no column is still a column (7 ms)
+   ✓ NEGATIVE — the two columns a LETTER rule ate (25 ms)
+   ✓ POSITIVE — one column is not a list, and does not short-circuit the engine (7 ms)
+   ✕ NEGATIVE — TWO columns still outrank the noun, exactly as before (4 ms)
+   ✓ NEGATIVE — the «،» opens his request only through his verb: the same sentence without one is not promoted (1 ms)
+   ✓ NEGATIVE — a noun that OPENS with a verb letter is still a column (12 ms)
+   ✓ NEGATIVE — a plain column list is untouched
+   ✕ NEGATIVE — and the archetype that a column list SHOULD override still is
+   ● a column is named by a noun, never by a verb › NEGATIVE — TWO columns still outrank the noun, exactly as before
+   Expected: "generic"
+   Received: "booking"
+   ● a column is named by a noun, never by a verb › NEGATIVE — and the archetype that a column list SHOULD override still is
+   Expected: "generic"
+   Received: "booking"
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 10 passed, 12 total
+=== RESTORED M1c-arabic-comma-not-a-clause-boundary: sha256 identical
+
+##### M2.out
+=== MUTATION M2-planner-loses-its-build-gate (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ بدي جدول للفواتير فيه رقم الفاتورة والمبلغ وال (29 ms)
+   ✓ بدي جدول للموظفين فيه الاسم والراتب والقسم (3 ms)
+   ✓ بدي برنامج يحفظ لي زبائني وارقام تلفوناتهم وعن (10 ms)
+   ✓ Build a clients table with name, phone and add (5 ms)
+   ✓ Create an expense tracker. It must provide amo (2 ms)
+   ✓ Create an expense tracker. It needs an amount
+   ✓ a trade this repository has never heard of
+   ✓ and the phases it builds are Joe’s own generators (41 ms)
+   ✓ the wiring itself is proved live, not here (1 ms)
+   ✓ no schema, only a wish (1 ms)
+   ✓ a shop with no columns named
+   ✓ a question (1 ms)
+   ✓ a greeting
+   ✓ English prose with no list
+   ✓ a page, not a record store (1 ms)
+   ✓ runtime states, not a record schema (7 ms)
+   ✕ a noun phrase is a specification, not a request — measured, not assumed (2 ms)
+   ✓ keeps the weather engine when a product brief enumerates runtime states (25 ms)
+   ✓ one named column is not a declaration (1 ms)
+   ✓ a column list without a request to build anything is not a build
+   ● …and when it does not, the planner keeps its job › a noun phrase is a specification, not a request — measured, not assumed
+   Expected: false
+   Received: true
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 19 passed, 20 total
+=== RESTORED M2-planner-loses-its-build-gate: sha256 identical
+
+##### M2c.out
+=== MUTATION M2c-any-comma-counts-as-a-request (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ POSITIVE — his expenses sentence reaches its own engine (25 ms)
+   ✓ POSITIVE — the behaviour is not read as a column (7 ms)
+   ✓ POSITIVE — and the same shape in other sentences (34 ms)
+   ✓ NEGATIVE — a two-word column is still a column (13 ms)
+   ✓ NEGATIVE — a yes-or-no column is still a column (14 ms)
+   ✓ NEGATIVE — the two columns a LETTER rule ate (36 ms)
+   ✓ POSITIVE — one column is not a list, and does not short-circuit the engine (10 ms)
+   ✓ NEGATIVE — TWO columns still outrank the noun, exactly as before (25 ms)
+   ✕ NEGATIVE — the «،» opens his request only through his verb: the same sentence without one is not promoted (24 ms)
+   ✓ NEGATIVE — a noun that OPENS with a verb letter is still a column (13 ms)
+   ✓ NEGATIVE — a plain column list is untouched (1 ms)
+   ✓ NEGATIVE — and the archetype that a column list SHOULD override still is (21 ms)
+   ● a column is named by a noun, never by a verb › NEGATIVE — the «،» opens his request only through his verb: the same sentence without one is not promoted
+   Expected: not "generic"
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 11 passed, 12 total
+=== RESTORED M2c-any-comma-counts-as-a-request: sha256 identical
+
+##### M3.out
+=== MUTATION M3-introducer-forgets-the-list-rule (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ «فيه» left standing after «اسجل» is stripped, not labelled (24 ms)
+   ✓ a run of function words is stripped, not just one (2 ms)
+   ✓ a verb before a possessive name is not the name (9 ms)
+   ✓ a word this repository never saw is stripped the same way (1 ms)
+   ✓ an idafa he wrote after a colon survives whole (21 ms)
+   ✓ the container’s own subject is still cut away (1 ms)
+   ✓ a first item that needs nothing stripped is returned untouched (1 ms)
+   ✓ a two-word label with no function word in front survives (7 ms)
+   ✓ «with» is stripped and the columns are read (4 ms)
+   ✕ a list of values is still refused (3 ms)
+   ● the English half of the same cleaner still runs › a list of values is still refused
+   Received: [{"key": "text1", "label": "milk", "options": undefined, "role": "text", "type": "text"}, {"key": "text2", "label": "bread", "options": undefined, "role": "text", "type": "text"}, {"key": "text3", "label": "egg
+   ✓ a table with three attributes gives three columns (1 ms)
+   ✓ «of» reads the same as «with» — the preposition is not the signal
+   ✓ a tracker reads like a table
+   ✓ a word this repository has never seen reads the same way (1 ms)
+   ✕ a shopping list holds things, not columns (1 ms)
+   ✓ a list after a field noun holds that field’s values (1 ms)
+   ✓ prose with no container is prose (3 ms)
+   ✓ the Arabic table still gives its columns (1 ms)
+   ✓ the Arabic list of values is still refused (1 ms)
+   ✓ a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only
+   ● …and a list of values is still not a schema › a shopping list holds things, not columns
+   Received: [{"key": "text1", "label": "milk", "options": undefined, "role": "text", "type": "text"}, {"key": "text2", "label": "bread", "options": undefined, "role": "text", "type": "text"}, {"key": "text3", "label": "egg
+   Test Suites: 2 failed, 2 total
+   Tests:       2 failed, 18 passed, 20 total
+=== RESTORED M3-introducer-forgets-the-list-rule: sha256 identical
+
+##### M4.out
+=== MUTATION M4-container-asks-the-lost-capture-group (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ «فيه» left standing after «اسجل» is stripped, not labelled (23 ms)
+   ✓ a run of function words is stripped, not just one (2 ms)
+   ✓ a verb before a possessive name is not the name (9 ms)
+   ✓ a word this repository never saw is stripped the same way (1 ms)
+   ✓ an idafa he wrote after a colon survives whole (20 ms)
+   ✓ the container’s own subject is still cut away
+   ✓ a first item that needs nothing stripped is returned untouched
+   ✓ a two-word label with no function word in front survives (7 ms)
+   ✓ «with» is stripped and the columns are read (5 ms)
+   ✕ a list of values is still refused (3 ms)
+   ● the English half of the same cleaner still runs › a list of values is still refused
+   Received: [{"key": "text1", "label": "milk", "options": undefined, "role": "text", "type": "text"}, {"key": "text2", "label": "bread", "options": undefined, "role": "text", "type": "text"}, {"key": "text3", "label": "egg
+   ✓ a table with three attributes gives three columns (2 ms)
+   ✓ «of» reads the same as «with» — the preposition is not the signal (1 ms)
+   ✓ a tracker reads like a table
+   ✓ a word this repository has never seen reads the same way
+   ✕ a shopping list holds things, not columns (1 ms)
+   ✕ a list after a field noun holds that field’s values (1 ms)
+   ✓ prose with no container is prose (1 ms)
+   ✓ the Arabic table still gives its columns
+   ✓ the Arabic list of values is still refused
+   ✓ a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only (1 ms)
+   ● …and a list of values is still not a schema › a shopping list holds things, not columns
+   Received: [{"key": "text1", "label": "milk", "options": undefined, "role": "text", "type": "text"}, {"key": "text2", "label": "bread", "options": undefined, "role": "text", "type": "text"}, {"key": "text3", "label": "egg
+   ● …and a list of values is still not a schema › a list after a field noun holds that field’s values
+   Received: [{"key": "text1", "label": "coffee", "options": undefined, "role": "text", "type": "text"}, {"key": "text2", "label": "tools", "options": undefined, "role": "text", "type": "text"}, {"key": "text3", "label": "s
+   Test Suites: 2 failed, 2 total
+   Tests:       3 failed, 17 passed, 20 total
+=== RESTORED M4-container-asks-the-lost-capture-group: sha256 identical
+
+##### M5.out
+=== MUTATION M5-list-rule-applied-to-arabic-names-too (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ «فيه» left standing after «اسجل» is stripped, not labelled (28 ms)
+   ✓ a run of function words is stripped, not just one (2 ms)
+   ✓ a verb before a possessive name is not the name (12 ms)
+   ✓ a word this repository never saw is stripped the same way (1 ms)
+   ✓ an idafa he wrote after a colon survives whole (22 ms)
+   ✓ the container’s own subject is still cut away (1 ms)
+   ✓ a first item that needs nothing stripped is returned untouched (1 ms)
+   ✓ a two-word label with no function word in front survives (6 ms)
+   ✓ «with» is stripped and the columns are read (6 ms)
+   ✓ a list of values is still refused (1 ms)
+   ✓ a table with three attributes gives three columns (2 ms)
+   ✓ «of» reads the same as «with» — the preposition is not the signal (1 ms)
+   ✓ a tracker reads like a table
+   ✓ a word this repository has never seen reads the same way (1 ms)
+   ✓ a shopping list holds things, not columns
+   ✓ a list after a field noun holds that field’s values
+   ✓ prose with no container is prose (1 ms)
+   ✓ the Arabic table still gives its columns (3 ms)
+   ✓ the Arabic list of values is still refused
+   ✕ a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only (4 ms)
+   ● Arabic is untouched — the fix did not move the other half › a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only
+   Test Suites: 1 failed, 1 passed, 2 total
+   Tests:       1 failed, 19 passed, 20 total
+=== RESTORED M5-list-rule-applied-to-arabic-names-too: sha256 identical
+
+##### M5v.out
+=== MUTATION M5-list-rule-applied-to-arabic-names-too (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✕ a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only (11 ms)
+   ● Arabic is untouched — the fix did not move the other half › a bare «قائمة» of definite names is still his columns — the list rule is for Latin items only
+   - Expected  - 5
+   + Received  + 1
+   -   "الاسم",
+   -   "الصف",
+   -   "الدرجة",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 9 skipped, 10 total
+=== RESTORED M5-list-rule-applied-to-arabic-names-too: sha256 identical
+
+##### M6.out
+=== MUTATION M6-default-lifecycle-overrides-his-note (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ his four columns are four (35 ms)
+   ✓ and the bracket becomes the column’s options, not part of its name (13 ms)
+   ✓ the separator inside it does not matter: أو (10 ms)
+   ✓ the separator inside it does not matter: او (12 ms)
+   ✓ the separator inside it does not matter: slash (13 ms)
+   ✓ the separator inside it does not matter: comma (8 ms)
+   ✓ and the English side of this is a STATED limit, not a claim (26 ms)
+   ✕ a single value in brackets is a note, not a list of options (12 ms)
+   ✕ …and the note keeps the column, as his free text — not a default lifecycle put in its place (11 ms)
+   ✓ NEGATIVE — a state he left open still gets its default lifecycle; only his note turns it off (7 ms)
+   ✓ «وصورة» is kept, and «والصورة» still is (13 ms)
+   ✓ but prose is still refused (1 ms)
+   ✓ and a bare noun at the HEAD of a list still has to prove itself (1 ms)
+   ● a bracket after a column names its answers › a single value in brackets is a note, not a list of options
+   Received: ["قيد الانتظار", "قيد الإصلاح", "تم الإصلاح"]
+   ● a bracket after a column names its answers › …and the note keeps the column, as his free text — not a default lifecycle put in its place
+   Expected: "text"
+   Received: "select"
+   Test Suites: 1 failed, 1 total
+   Tests:       2 failed, 11 passed, 13 total
+=== RESTORED M6-default-lifecycle-overrides-his-note: sha256 identical
+
+##### M7.out
+=== MUTATION M7-note-rule-widened-to-every-state-column (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ his four columns are four (27 ms)
+   ✓ and the bracket becomes the column’s options, not part of its name (11 ms)
+   ✓ the separator inside it does not matter: أو (12 ms)
+   ✓ the separator inside it does not matter: او (7 ms)
+   ✓ the separator inside it does not matter: slash (7 ms)
+   ✓ the separator inside it does not matter: comma (7 ms)
+   ✓ and the English side of this is a STATED limit, not a claim (19 ms)
+   ✓ a single value in brackets is a note, not a list of options (6 ms)
+   ✓ …and the note keeps the column, as his free text — not a default lifecycle put in its place (6 ms)
+   ✕ NEGATIVE — a state he left open still gets its default lifecycle; only his note turns it off (9 ms)
+   ✓ «وصورة» is kept, and «والصورة» still is (12 ms)
+   ✓ but prose is still refused (2 ms)
+   ✓ and a bare noun at the HEAD of a list still has to prove itself
+   ● a bracket after a column names its answers › NEGATIVE — a state he left open still gets its default lifecycle; only his note turns it off
+   Expected: "select"
+   Received: "text"
+   ✓ recognises a directory as a records application and keeps only data fields (39 ms)
+   ✕ turns the named status into a real filter contract (68 ms)
+   ✓ does not mark a field or action covered without source evidence (5 ms)
+   ✓ accepts declared fields and actions when the provider is unavailable (13 ms)
+   ✓ proves list-introduced fields without asking the provider (2 ms)
+   ● a natural-language directory request keeps fields and behaviours separate › turns the named status into a real filter contract
+   Expected: "flag1"
+   Received: "text3"
+   Test Suites: 2 failed, 2 total
+   Tests:       2 failed, 16 passed, 18 total
+=== RESTORED M7-note-rule-widened-to-every-state-column: sha256 identical
+
+##### M8.out
+=== MUTATION M8-rename-becomes-remove-plus-add (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ غيّر اسم عمود المبلغ إلى القيمة (4 ms)
+   ✓ غيّر عمود المبلغ إلى القيمة (2 ms)
+   ✓ بدّل اسم عمود التاريخ الى تاريخ الإصدار (5 ms)
+   ✓ rename the amount column to value (1 ms)
+   ✓ a word this repository has never seen renames the same way (1 ms)
+   ✕ the column keeps its key and its type — the rows under it are his (80 ms)
+   ✓ an add carries no rename (2 ms)
+   ✓ a remove carries no rename (1 ms)
+   ✓ renaming the SITE is not renaming a column
+   ✓ a colour is not a column (1 ms)
+   ✓ a rename to the same name is no rename (3 ms)
+   ✓ the doubled request from the live round
+   ✓ and a two-word name he really wrote survives whole (1 ms)
+   ● a rename is read, in either language › the column keeps its key and its type — the rows under it are his
+   - Expected  - 1
+   + Received  + 1
+   -   "amount:number",
+   +   "text4:number",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 passed, 13 total
+=== RESTORED M8-rename-becomes-remove-plus-add: sha256 identical
+
+##### M8b.out
+=== MUTATION M8b-rename-retypes-the-column (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✓ غيّر اسم عمود المبلغ إلى القيمة (5 ms)
+   ✓ غيّر عمود المبلغ إلى القيمة (1 ms)
+   ✓ بدّل اسم عمود التاريخ الى تاريخ الإصدار
+   ✓ rename the amount column to value (2 ms)
+   ✓ a word this repository has never seen renames the same way (1 ms)
+   ✕ the column keeps its key and its type — the rows under it are his (101 ms)
+   ✓ an add carries no rename (2 ms)
+   ✓ a remove carries no rename (1 ms)
+   ✓ renaming the SITE is not renaming a column
+   ✓ a colour is not a column (2 ms)
+   ✓ a rename to the same name is no rename (3 ms)
+   ✓ the doubled request from the live round (1 ms)
+   ✓ and a two-word name he really wrote survives whole (4 ms)
+   ● a rename is read, in either language › the column keeps its key and its type — the rows under it are his
+   - Expected  - 1
+   + Received  + 1
+   -   "amount:number",
+   +   "amount:text",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 12 passed, 13 total
+=== RESTORED M8b-rename-retypes-the-column: sha256 identical
+
+##### M9.out
+=== MUTATION M9-server-drops-a-rendered-column (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ Prompt 01 keeps the recognized expenses resource and stores exactly the columns its blueprint renders (33 ms)
+   ● the schema follows the app, not a fixed guess › Prompt 01 keeps the recognized expenses resource and stores exactly the columns its blueprint renders
+   - Expected  - 1
+   + Received  + 0
+   -   "description",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 26 skipped, 27 total
+=== RESTORED M9-server-drops-a-rendered-column: sha256 identical
+
+##### M10.out
+=== MUTATION M10-blueprint-stops-reading-his-form (api/src/core/design/app-blueprints.ts) — jest exit 1
+   ✕ Prompt 01 keeps the recognized expenses resource and stores exactly the columns its blueprint renders (184 ms)
+   ● the schema follows the app, not a fixed guess › Prompt 01 keeps the recognized expenses resource and stores exactly the columns its blueprint renders
+   - Expected  - 2
+   + Received  + 2
+   -   "description",
+   -   "category",
+   +   "category",
+   +   "note",
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 26 skipped, 27 total
+=== RESTORED M10-blueprint-stops-reading-his-form: sha256 identical
+
+##### M11.out
+=== MUTATION M11-designer-notes-silenced (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ the api builder awaits the design and says who answered (10 ms)
+   ● and the builder prefers what is already known › the api builder awaits the design and says who answered
+   Expected pattern: /const designed = workflowApplication\s*\?\s*\[\]\s*:\s*await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 14 skipped, 15 total
+=== RESTORED M11-designer-notes-silenced: sha256 identical
+
+##### M12.out
+=== MUTATION M12-unpromoted-primary-dropped-from-handoff (api/src/modules/tools/definitions/ApiProjectTool.ts) — jest exit 1
+   ✕ and the interface builds its screens from the SAME design, not a second guess (10 ms)
+   ● and the builder prefers what is already known › and the interface builds its screens from the SAME design, not a second guess
+   Expected pattern: /const handedModel = promoted \? \[promoted, \.\.\.model\] : \[\.\.\.primaryModel, \.\.\.model\];/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 14 skipped, 15 total
+=== RESTORED M12-unpromoted-primary-dropped-from-handoff: sha256 identical
+
+##### M13.out
+=== MUTATION M13-interface-ignores-the-api-model (api/src/modules/tools/definitions/ReactProjectTool.ts) — jest exit 1
+   ✕ and the interface builds its screens from the SAME design, not a second guess (26 ms)
+   ● and the builder prefers what is already known › and the interface builds its screens from the SAME design, not a second guess
+   Expected pattern: /Array\.isArray\(apiEntry\?\.model\) && apiEntry\.model\.length\s*\?\s*apiEntry\.model/
+   Received string:  "/**
+   Test Suites: 1 failed, 1 total
+   Tests:       1 failed, 14 skipped, 15 total
+=== RESTORED M13-interface-ignores-the-api-model: sha256 identical
+

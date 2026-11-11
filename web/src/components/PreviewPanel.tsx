@@ -17,6 +17,7 @@ import {
     Code
 } from 'lucide-react';
 import Editor from '@monaco-editor/react';
+import { api } from '../services/apiClient';
 import { useMonacoReady } from '../monaco-setup';
 
 type DeviceType = 'desktop' | 'tablet' | 'mobile';
@@ -39,6 +40,8 @@ const DEVICES: DeviceConfig[] = [
 interface PreviewPanelProps {
     url?: string;
     onReady?: () => void;
+    /** The conversation whose preview this is: Joe is asked whether its address answers. */
+    sessionId?: string;
 }
 
 /**
@@ -74,7 +77,8 @@ function onTheHostHeIsAlreadyUsing(url: string): string {
 
 export default function PreviewPanel({
     url: initialUrl,
-    onReady
+    onReady,
+    sessionId
 }: PreviewPanelProps) {
     const { t } = useTranslation();
     const [mode, setMode] = useState<PreviewMode>('web');
@@ -98,6 +102,56 @@ export default function PreviewPanel({
     } | null>(null);
     const iframeRef = useRef<HTMLIFrameElement>(null);
 
+    /**
+     * A PREVIEW WHOSE SERVER HAS ENDED SAYS SO.
+     *
+     * The exam's watcher, 2026-11-07: after a run its preview server was
+     * stopped, and the Preview tab kept pointing at it, so he saw a blank frame
+     * (or the browser's own error page) with nothing saying why. The address is
+     * asked every 15 s; one that answers nothing is shown as stopped, with a way
+     * to try again.
+     */
+    const [stopped, setStopped] = useState(false);
+    /**
+     * ⛔ AND THE FRAME OPENS AN ADDRESS ONLY ONCE IT IS KNOWN TO ANSWER.
+     *
+     * The hard sample's UI/UX check of Joe's own page, 2026-11-09 (L422): the
+     * page was opened after the run, the Preview tab restored the run's last
+     * address — a project server task_finish had already stopped — and the
+     * frame loaded it before the first question was answered: «ERR_CONNECTION_
+     * REFUSED @ 127.0.0.1:4300» in Joe's console. An address the build just
+     * announced, or one he typed, is opened at once; one restored from before
+     * waits for Joe's answer.
+     */
+    const [answersAt, setAnswersAt] = useState('');
+    const sameOrigin = (raw: string) => {
+        try { return new URL(raw, window.location.origin).origin === window.location.origin; } catch { return false; }
+    };
+    const checkAlive = useCallback(async () => {
+        if (!previewUrl || mode !== 'web') { setStopped(false); return; }
+        let u: URL;
+        try { u = new URL(previewUrl, window.location.origin); } catch { return; }
+        const answer = (alive: boolean) => { setStopped(!alive); setAnswersAt(alive ? previewUrl : ''); };
+        //  A page Joe serves itself is alive while this page is.
+        if (u.origin === window.location.origin) { answer(true); return; }
+        //  Joe is asked, not the port: a refused knock from this page is an error
+        //  in its console every 15 s (the ladder's UI/UX check, 2026-11-09), and
+        //  on Joe's server the browser cannot reach that machine's loopback at all.
+        if (sessionId) {
+            try {
+                const r: any = await api.get(`/sessions/${encodeURIComponent(sessionId)}/preview-alive`, { url: u.toString() });
+                if (r && typeof r.alive === 'boolean') { answer(r.alive); return; }
+            } catch { /* an older Joe without the question: ask the address as before */ }
+        }
+        try { await fetch(u.toString(), { mode: 'no-cors', cache: 'no-store' }); answer(true); }
+        catch { answer(false); }
+    }, [previewUrl, mode, sessionId]);
+    useEffect(() => {
+        void checkAlive();
+        const every = window.setInterval(() => { void checkAlive(); }, 15000);
+        return () => window.clearInterval(every);
+    }, [checkAlive]);
+
     // Listen for preview events
     useEffect(() => {
         const handlePreviewReady = (e: CustomEvent) => {
@@ -107,6 +161,9 @@ export default function PreviewPanel({
                 const reachable = onTheHostHeIsAlreadyUsing(detail.url);
                 setPreviewUrl(reachable);
                 setInputUrl(reachable);
+                //  The build just said it answers: opened at once.
+                setAnswersAt(reachable);
+                setStopped(false);
                 setError(null);
                 setBuildProgress(null); // Clear build progress when ready
                 // Force a HARD iframe reload so edits (e.g. "add a button") always
@@ -198,6 +255,9 @@ export default function PreviewPanel({
 
         setPreviewUrl(targetUrl);
         setInputUrl(targetUrl);
+        //  He typed it: opened at once, as he asked.
+        setAnswersAt(targetUrl);
+        setStopped(false);
         setError(null);
         setKey(k => k + 1);
     }, []);
@@ -319,7 +379,7 @@ export default function PreviewPanel({
                                 marginRight: 8,
                             }}>
                                 <RefreshCw size={10} style={{ color: '#38bdf8', animation: 'spin 2s linear infinite' }} />
-                                <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>جاري البناء...</span>
+                                <span style={{ fontSize: 10, color: '#38bdf8', fontWeight: 600 }}>{t('pv_building')}</span>
                             </div>
                         )}
                         
@@ -436,7 +496,7 @@ export default function PreviewPanel({
                                 </div>
                                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, color: 'var(--text-muted)' }}>
                                     <span>{Math.round(buildProgress.progress)}%</span>
-                                    <span>التقدم الإجمالي</span>
+                                    <span>{t('pv_overallProgress')}</span>
                                 </div>
                             </div>
                         </div>
@@ -474,7 +534,26 @@ export default function PreviewPanel({
                         />
                     )
                 ) : (
-                    previewUrl ? (
+                    previewUrl && stopped ? (
+                        <div role="status" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, height: '100%', width: '100%', padding: 24, color: 'var(--text-muted)', textAlign: 'center' }}>
+                            <Eye size={44} style={{ opacity: 0.3 }} />
+                            <div style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary, inherit)' }}>{t('previewStopped')}</div>
+                            <div style={{ fontSize: 12.5, opacity: 0.8, maxWidth: 360, lineHeight: 1.7 }}>{t('previewStoppedHint')}</div>
+                            <button
+                                type="button"
+                                onClick={() => { void checkAlive().then(() => setKey(k => k + 1)); }}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minHeight: 40, padding: '0 16px', borderRadius: 10, border: '1px solid var(--joe-border, rgba(52,196,139,0.25))', background: 'transparent', color: 'inherit', cursor: 'pointer' }}
+                            >
+                                <RefreshCw size={14} />
+                                <span>{t('previewRetry')}</span>
+                            </button>
+                        </div>
+                    ) : previewUrl && answersAt !== previewUrl && !sameOrigin(previewUrl) ? (
+                        //  Asking Joe whether the address answers: a moment, with nothing loaded yet.
+                        <div role="status" aria-busy="true" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', width: '100%', color: 'var(--text-muted)' }}>
+                            <RefreshCw size={20} style={{ opacity: 0.35 }} />
+                        </div>
+                    ) : previewUrl ? (
                         <div style={{
                             width: currentDevice.width,
                             height: '100%',

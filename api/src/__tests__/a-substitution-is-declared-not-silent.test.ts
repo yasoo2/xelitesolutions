@@ -216,8 +216,8 @@ describe('a substitution is declared, not performed in silence', () => {
         const execution = source.indexOf('AgentOrchestrator');
         expect(clarify).toBeGreaterThan(-1);
         expect(declaration).toBeGreaterThan(-1);
-        // Positive: it is inside execute(), after the gate that may end the
-        // run with questions, so a clarify turn never carries this notice.
+        // Positive: it is inside execute(), after the gate that says what Joe
+        // is choosing for a thin request, so the two notices keep their order.
         expect(declaration).toBeGreaterThan(clarify);
         // Negative: it must not have drifted below the point where the run
         // starts. «Stop me now» is only true while nothing has been written.

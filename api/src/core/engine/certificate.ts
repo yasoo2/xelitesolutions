@@ -1,0 +1,302 @@
+/**
+ * THE DELIVERY, SAID IN HIS WORDS: WHAT WAS CHECKED, HOW TO RUN IT, WHAT IT COST.
+ *
+ * Read on 2026-11-05: a verified delivery ended with «✅ تحقّقت فحوص جو من
+ * التسليم (live، acceptance، browser)» — instrument ids a reader of Arabic
+ * cannot read — and nothing else: the `how_to_run` the model handed
+ * task_finish was dropped, the run's time and cost stayed in `.joe/result.json`,
+ * and nothing in the project said how it was proven. So:
+ *   - every instrument has a name in the interface's language, short for the
+ *     reply's verdict line and whole for the certificate;
+ *   - the reply carries how to run the project and the run's time and cost;
+ *   - a verified project gets JOE-DELIVERY.md: the request, what was built,
+ *     each check that proved it, what is not proven, how to run it, its live
+ *     address, the time, the cost, and how to take a later change back.
+ * Only measured facts are written: a check that did not run is never named
+ * as passed, and an unknown cost is left out rather than guessed.
+ */
+import fs from 'fs';
+import path from 'path';
+
+type Words = { short: string; whole: string };
+const INSTRUMENTS: Record<'ar' | 'en', Record<string, Words>> = {
+    ar: {
+        live: { short: 'التشغيل الحي', whole: 'شُغّل المشروع فعلاً وأجاب على عنوانه الحي.' },
+        quality: { short: 'عقد الجودة', whole: 'أوامر المشروع (التثبيت والتشغيل والبناء) صادقة وتعمل كما تقول.' },
+        scope: { short: 'اكتمال الأقسام', whole: 'كل قسم أو صفحة ذكرتها في طلبك موجودة في المشروع.' },
+        coverage: { short: 'تغطية طلبك', whole: 'كل سجل أو ميزة سمّيتها موجودة، وما يحتاج خادماً يُخدم منه.' },
+        tests: { short: 'الاختبارات', whole: 'اختبارات المشروع شُغّلت ونجحت.' },
+        browser: { short: 'التجربة في المتصفح', whole: 'فُتح المشروع في متصفح حقيقي وجُرّبت أزراره ونماذجه على شاشة الحاسوب والجوال.' },
+        spec: { short: 'المواصفات', whole: 'طابق المشروع المواصفات التي قرأها جو من طلبك.' },
+        program: { short: 'تشغيل البرنامج', whole: 'شُغّل البرنامج وأعطى النتيجة المطلوبة.' },
+        service: { short: 'الخادم', whole: 'طلبك يحتاج خادماً، والمشروع يسجّل مسارات خادم حقيقية.' },
+        source: { short: 'سلامة الشيفرة', whole: 'قُرئت الشيفرة كلها: لا خطأ في صياغتها ولا اسم يُستعمل دون تعريف.' },
+        build: { short: 'البناء', whole: 'بُني المشروع دون أخطاء.' },
+        acceptance: { short: 'حكم مستقل', whole: 'قرأ حَكَم مستقل الشيفرة ونتائج التجربة، وطابق كل متطلب بكلماتك.' },
+        roles: { short: 'الصلاحيات', whole: 'دخل جو بحساب كل دور، وطلب من الخادم بحساب كل دور بيانات الشاشات المخفية عنه، فرفضها الخادم كلها.' },
+    },
+    en: {
+        live: { short: 'live run', whole: 'The project was started for real and answered at its live address.' },
+        quality: { short: 'quality contract', whole: 'The project\'s install, start and build commands are truthful and work as they say.' },
+        scope: { short: 'scope', whole: 'Every section or page your request named is in the project.' },
+        coverage: { short: 'request coverage', whole: 'Every record or feature you named exists, and what needs a server is served by it.' },
+        tests: { short: 'tests', whole: 'The project\'s tests were run and passed.' },
+        browser: { short: 'browser test', whole: 'The project was opened in a real browser and its buttons and forms were used, at desktop and phone sizes.' },
+        spec: { short: 'spec', whole: 'The project matches the specification Joe read from your request.' },
+        program: { short: 'program run', whole: 'The program was run and gave the result asked for.' },
+        service: { short: 'server', whole: 'Your request needs a server, and the project registers real server routes.' },
+        source: { short: 'source check', whole: 'All the source was read: it parses, and it uses no name it never declares.' },
+        build: { short: 'build', whole: 'The project builds without errors.' },
+        acceptance: { short: 'independent review', whole: 'An independent judge read the code and the test results and matched every requirement to your words.' },
+        roles: { short: 'permissions', whole: 'Joe signed in as every role, asked the server — as each role — for the data of the screens hidden from it, and the server refused all of it.' },
+    },
+};
+
+const wordsFor = (language: string) => INSTRUMENTS[String(language || '').toLowerCase().startsWith('ar') ? 'ar' : 'en'];
+
+/** The instrument's short name in the interface's language («live» → «التشغيل الحي»); an unknown one keeps its id. */
+export function instrumentName(id: string, language: string): string {
+    return wordsFor(language)[id]?.short || id;
+}
+
+/** «4 دقائق» / "4 min"; under a minute in seconds. */
+export function durationText(ms: number | undefined, language: string): string {
+    if (!Number.isFinite(ms) || (ms as number) <= 0) return '';
+    const ar = wordsFor(language) === INSTRUMENTS.ar;
+    const seconds = Math.round((ms as number) / 1000);
+    if (seconds < 60) return ar ? `${seconds} ثانية` : `${seconds} s`;
+    const minutes = Math.round(seconds / 60);
+    return ar ? `${minutes} ${minutes >= 3 && minutes <= 10 ? 'دقائق' : 'دقيقة'}` : `${minutes} min`;
+}
+
+export function costText(usd: number | undefined): string {
+    return Number.isFinite(usd) && (usd as number) >= 0 ? `$${(usd as number).toFixed((usd as number) < 1 ? 3 : 2)}` : '';
+}
+
+/** The reply's lines after its verdict: how to run it, and what the run took. */
+export function deliveryFooter(input: { howToRun?: string; durationMs?: number; costUsd?: number; language: string }): string[] {
+    const ar = wordsFor(input.language) === INSTRUMENTS.ar;
+    const lines: string[] = [];
+    const run = String(input.howToRun || '').trim();
+    if (run) lines.push(`${ar ? '▶️ طريقة التشغيل:' : '▶️ How to run it:'}\n${run}`);
+    const took = durationText(input.durationMs, input.language);
+    const cost = costText(input.costUsd);
+    if (took || cost) {
+        lines.push(ar
+            ? `⏱️ ${[took && `استغرق ${took}`, cost && `وكلّف ${cost}`].filter(Boolean).join(' ')}`
+            : `⏱️ ${[took && `Took ${took}`, cost && `cost ${cost}`].filter(Boolean).join(', ')}`);
+    }
+    return lines;
+}
+
+export interface CertificateInput {
+    request: string;
+    /** For a change: the requests the project was delivered for before it, oldest first. */
+    earlier?: string[];
+    summary: string;
+    language: string;
+    /** Instruments that measured and passed, in the verdict's order. */
+    passed: string[];
+    /** Requirements the run could not prove, in the run's words. */
+    unproven?: string[];
+    howToRun?: string;
+    liveUrl?: string;
+    durationMs?: number;
+    costUsd?: number;
+    model?: string;
+    at?: number;
+    /** The landing view the browser check saw, relative to the project (deliveryProof). */
+    screenshots?: { desktop?: string; phone?: string };
+    /** The account the browser check signed in with (its name only). */
+    signedInAs?: string;
+    /** What each role's menu offered, when the permissions were measured (role-probe.ts). */
+    roles?: Array<{ role: string; screens: string[] }>;
+    /** What the browser check tried, counted (qaCoverageOf). */
+    qaCoverage?: QaCoverage;
+}
+
+/**
+ * ⛔ WHAT THE BROWSER CHECK TRIED, SAID IN NUMBERS.
+ *
+ * The owner, 2026-11-10, after watching it: «حاسس انه فحص فاشل». «فُتح المشروع في
+ * متصفح حقيقي وجُرّبت أزراره ونماذجه» says nothing a reader can weigh. The
+ * certificate now says how many screens were walked, how many controls were
+ * pressed one by one, how many forms and fields were filled and how many
+ * wrong and valid values were tried in them, and how many controls were
+ * checked within reach at the tablet and phone widths. Only measured counts;
+ * a count of zero is not said.
+ */
+export interface QaCoverage { screens: number; pressed: number; formsFilled: number; fieldsFilled: number; cases: number; casesSent: number; reached: number; jobs?: number; product?: { ar: string; en: string }; journeys?: Array<{ ar: string; en: string; proven: boolean }> }
+
+/** The counts of a browser audit (app-audit AppAudit), or nothing when it walked nothing. */
+export function qaCoverageOf(audit: any): QaCoverage | undefined {
+    if (!audit || audit.skipped) return undefined;
+    const n = (v: unknown) => Math.max(0, Math.floor(Number(v) || 0));
+    const c: QaCoverage = {
+        screens: Array.isArray(audit.routes) ? new Set(audit.routes).size : 0,
+        pressed: n(audit.pressed), formsFilled: n(audit.formsFilled), fieldsFilled: n(audit.fieldsFilled),
+        cases: n(audit.fieldCasesTried), casesSent: n(audit.fieldCasesSubmitted), reached: n(audit.reachedAtOtherWidths),
+        ...(n(audit.intentsMet) ? { jobs: n(audit.intentsMet) } : {}),
+        ...(audit.product && audit.product.kind !== 'other' ? { product: { ar: String(audit.product.ar), en: String(audit.product.en) } } : {}),
+        ...(Array.isArray(audit.journeys) && audit.journeys.length ? { journeys: audit.journeys.map((j: any) => ({ ar: String(j.ar), en: String(j.en), proven: !!j.proven })) } : {}),
+    };
+    return c.screens || c.pressed || c.formsFilled ? c : undefined;
+}
+
+/** One sentence of what was tried, in the interface's language. */
+/**
+ * A number and what it counts, as Arabic counts them: «شاشة واحدة», «شاشتين»,
+ * «3 شاشات» (3–10 take the plural), «12 شاشة» (11–99 the singular), «100 شاشة».
+ * The live check, 2026-11-10: «مرّ على 1 شاشة، وضغط 7 زراً، وملأ 1 نموذجاً (4 حقلاً)»
+ * — the owner reads Arabic, and a sentence that counts wrongly reads as careless.
+ */
+export function arabicCount(n: number, w: { one: string; two: string; plural: string; single: string; hundred?: string }): string {
+    if (n === 1) return w.one;
+    if (n === 2) return w.two;
+    const r = n % 100;
+    if (n >= 100 && r <= 2) return `${n} ${w.hundred || w.single}`;
+    const k = n >= 100 ? r : n;
+    return k >= 3 && k <= 10 ? `${n} ${w.plural}` : `${n} ${w.single}`;
+}
+
+const AR_SCREEN = { one: 'شاشة واحدة', two: 'شاشتين', plural: 'شاشات', single: 'شاشة', hundred: 'شاشة' };
+const AR_ELEMENT = { one: 'عنصراً واحداً', two: 'عنصرين', plural: 'عناصر', single: 'عنصراً', hundred: 'عنصر' };
+const AR_FORM = { one: 'نموذجاً واحداً', two: 'نموذجين', plural: 'نماذج', single: 'نموذجاً', hundred: 'نموذج' };
+const AR_FIELD = { one: 'حقل واحد', two: 'حقلان', plural: 'حقول', single: 'حقلاً', hundred: 'حقل' };
+const AR_VALUE = { one: 'قيمة واحدة', two: 'قيمتين', plural: 'قيم', single: 'قيمة', hundred: 'قيمة' };
+const AR_BUTTON = { one: 'زراً واحداً', two: 'زرّين', plural: 'أزرار', single: 'زراً', hundred: 'زر' };
+
+export function qaCoverageLine(c: QaCoverage | undefined, language: string): string {
+    if (!c) return '';
+    const ar = wordsFor(language) === INSTRUMENTS.ar;
+    const parts: string[] = [];
+    if (ar) {
+        if (c.screens) parts.push(`مرّ على ${arabicCount(c.screens, AR_SCREEN)}`);
+        if (c.pressed) parts.push(`وضغط ${arabicCount(c.pressed, AR_ELEMENT)} واحداً تلو الآخر`);
+        if (c.formsFilled) parts.push(`وملأ ${arabicCount(c.formsFilled, AR_FORM)} (${arabicCount(c.fieldsFilled, AR_FIELD)})`);
+        const sent = c.casesSent === 1 ? 'واحدة' : c.casesSent === 2 ? 'اثنتين' : String(c.casesSent);
+        if (c.cases) parts.push(`وجرّب فيها ${arabicCount(c.cases, AR_VALUE)} بين خاطئة وصحيحة${c.casesSent ? `، وأرسل ${sent} منها مع النموذج ليرى ردّ الخادم` : ''}`);
+        if (c.reached) parts.push(`وتحقّق من أن ${arabicCount(c.reached, AR_BUTTON)} في متناول اليد على شاشتي اللوحي والجوال`);
+        if (c.jobs) parts.push(c.jobs === 1 ? 'وتأكّد أن زراً واحداً أدّى عمله بالضبط' : `وتأكّد أن كلاً من ${arabicCount(c.jobs, AR_BUTTON)} أدّى عمله بالضبط`);
+        const journeys = (c.journeys || []).map(j => `${j.proven ? '✓' : '✗'} ${j.ar}`).join('، ');
+        const tail = c.product && journeys ? ` ورحلات ${c.product.ar}: ${journeys}.` : '';
+        return parts.length ? `جرّب جو في المتصفح: ${parts.join('، ')}.${tail}` : '';
+    }
+    if (c.screens) parts.push(`walked ${c.screens} screen(s)`);
+    if (c.pressed) parts.push(`pressed ${c.pressed} control(s) one by one`);
+    if (c.formsFilled) parts.push(`filled ${c.formsFilled} form(s) (${c.fieldsFilled} field(s))`);
+    if (c.cases) parts.push(`tried ${c.cases} wrong and valid value(s) in them${c.casesSent ? `, ${c.casesSent} sent with the form to hear the server` : ''}`);
+    if (c.reached) parts.push(`checked ${c.reached} control(s) within reach at tablet and phone width`);
+    if (c.jobs) parts.push(`confirmed ${c.jobs} control(s) did exactly their job`);
+    const journeys = (c.journeys || []).map(j => `${j.proven ? '✓' : '✗'} ${j.en}`).join(', ');
+    const tail = c.product && journeys ? ` Journeys of ${c.product.en}: ${journeys}.` : '';
+    return parts.length ? `In the browser Joe ${parts.join(', ')}.${tail}` : '';
+}
+
+export const CERTIFICATE_FILE = 'JOE-DELIVERY.md';
+
+/**
+ * Where the browser check keeps the landing view it saw, on a desktop and on
+ * a phone. Cleared when a run starts (clearDeliveryProof), so a picture in
+ * the certificate is always one this run's check took.
+ */
+export function deliveryProofPaths(stateDir: string): { desktop: string; phone: string } {
+    const dir = path.join(stateDir, 'delivery');
+    return { desktop: path.join(dir, 'desktop.jpg'), phone: path.join(dir, 'phone.jpg') };
+}
+
+/**
+ * …and the last certificate goes with them: once a run starts changing the
+ * project it no longer describes it, and a judge reading the project must
+ * never take Joe's own earlier «✅» for evidence. A verified run writes it
+ * anew; «تراجع» puts back the version it described, certificate included.
+ */
+export function clearDeliveryProof(projectDir: string): void {
+    try { fs.rmSync(path.join(projectDir, '.joe', 'delivery'), { recursive: true, force: true }); } catch { /* nothing kept */ }
+    try { fs.rmSync(path.join(projectDir, CERTIFICATE_FILE), { force: true }); } catch { /* none written */ }
+}
+
+/** The proof pictures this run's check took, relative to the project, when they exist. */
+export function deliveryProof(projectDir: string): { desktop?: string; phone?: string } {
+    const kept = deliveryProofPaths(path.join(projectDir, '.joe'));
+    const rel = (file: string) => path.relative(projectDir, file).split(path.sep).join('/');
+    return {
+        ...(fs.existsSync(kept.desktop) ? { desktop: rel(kept.desktop) } : {}),
+        ...(fs.existsSync(kept.phone) ? { phone: rel(kept.phone) } : {}),
+    };
+}
+
+export function deliveryCertificate(input: CertificateInput): string {
+    const ar = wordsFor(input.language) === INSTRUMENTS.ar;
+    const words = wordsFor(input.language);
+    const when = new Date(input.at ?? Date.now()).toISOString().replace('T', ' ').slice(0, 16);
+    const out: string[] = [];
+    if (ar) out.push('<div dir="rtl">', '');
+    out.push(ar ? '# شهادة تسليم من جو' : '# Joe delivery certificate', '');
+    // After a change the project is still what was first asked for: say that,
+    // then each change since, this one last (2026-11-05: the certificate of
+    // «أضف وضعاً ليلياً» no longer said the project was a counter page).
+    const said = (text: string) => String(text || '').trim().replace(/\s*\n+\s*/g, ' ');
+    const earlier = (input.earlier || []).map(said).filter(Boolean);
+    const first = earlier.length ? earlier[0] : String(input.request || '').trim();
+    out.push(ar ? '## ما طلبتَه' : '## What you asked for', '', `> ${first.replace(/\n+/g, '\n> ')}`, '');
+    if (earlier.length) {
+        const changes = [...earlier.slice(1), `**${said(input.request)}** ${ar ? '← هذا التسليم' : '← this delivery'}`];
+        out.push(ar ? '## التعديلات بعده' : '## Changes since', '', ...changes.map((c, i) => `${i + 1}. ${c}`), '');
+    }
+    const summary = String(input.summary || '').trim();
+    if (summary) out.push(ar ? '## ما بُني' : '## What was built', '', summary, '');
+    out.push(ar ? '## كيف تحقّق جو منه' : '## How Joe proved it', '');
+    for (const id of input.passed) out.push(`- ✅ **${words[id]?.short || id}**: ${words[id]?.whole || id}`);
+    const who = String(input.signedInAs || '').trim();
+    if (who && input.passed.includes('browser')) {
+        out.push(ar
+            ? `- ✅ **الدخول**: سجّل جو الدخول بحساب التجربة «${who}» من نموذج الدخول نفسه، وجرّب الشاشات التي خلفه.`
+            : `- ✅ **sign-in**: Joe signed in with the demo account "${who}" through the product's own sign-in form, and tested the screens behind it.`);
+    }
+    const tried = input.passed.includes('browser') ? qaCoverageLine(input.qaCoverage, input.language) : '';
+    if (tried) out.push(`- 🔎 ${tried}`);
+    if (input.passed.includes('roles') && (input.roles || []).length) {
+        out.push('', ar ? 'ما يراه كل دور:' : 'What each role sees:');
+        for (const r of input.roles || []) out.push(`  - **${r.role}**: ${r.screens.join(ar ? '، ' : ', ') || (ar ? 'لا شاشات' : 'no screens')}`);
+    }
+    out.push('');
+    const unproven = (input.unproven || []).filter(Boolean);
+    if (unproven.length) {
+        out.push(ar ? '## ما لم يثبت بعد' : '## Not proven yet', '');
+        for (const u of unproven) out.push(`- ⚠️ ${u}`);
+        out.push('');
+    }
+    const shots = input.screenshots || {};
+    if (shots.desktop || shots.phone) {
+        out.push(ar ? '## كما رآه جو في المتصفح' : '## As Joe saw it in the browser', '');
+        if (shots.desktop) out.push(`![${ar ? 'على الحاسوب' : 'desktop'}](${shots.desktop})`, '');
+        if (shots.phone) out.push(`![${ar ? 'على الجوال' : 'phone'}](${shots.phone})`, '');
+    }
+    const run = String(input.howToRun || '').trim();
+    if (run) out.push(ar ? '## طريقة التشغيل' : '## How to run it', '', '```', run, '```', '');
+    const facts = [
+        input.liveUrl && (ar ? `- المعاينة الحية: ${input.liveUrl}` : `- Live preview: ${input.liveUrl}`),
+        durationText(input.durationMs, input.language) && (ar ? `- المدة: ${durationText(input.durationMs, input.language)}` : `- Time: ${durationText(input.durationMs, input.language)}`),
+        costText(input.costUsd) && (ar ? `- التكلفة: ${costText(input.costUsd)}` : `- Cost: ${costText(input.costUsd)}`),
+        input.model && (ar ? `- النموذج: ${input.model}` : `- Model: ${input.model}`),
+        ar ? `- التاريخ: ${when}` : `- Date: ${when}`,
+    ].filter(Boolean) as string[];
+    out.push(ar ? '## تفاصيل التشغيل' : '## Run details', '', ...facts, '');
+    out.push(ar
+        ? '> إن طلبتَ تعديلاً لاحقاً، يحفظ جو نسخة من المشروع قبل أن يلمسه: قل «تراجع» لتعيده كما كان.'
+        : '> If you ask for a change later, Joe keeps a copy of the project before touching it: say "undo" to put it back.');
+    if (ar) out.push('', '</div>');
+    return out.join('\n') + '\n';
+}
+
+/** Write the certificate into the project. Never throws: the delivery stands without it. */
+export function writeDeliveryCertificate(projectDir: string, input: CertificateInput): string | null {
+    try {
+        const file = path.join(projectDir, CERTIFICATE_FILE);
+        fs.writeFileSync(file, deliveryCertificate(input), 'utf8');
+        return file;
+    } catch {
+        return null;
+    }
+}
