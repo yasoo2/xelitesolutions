@@ -183,7 +183,12 @@ const FUZZY_ACTION_TARGETS = new Set([
 ].map(foldChars));
 
 function fuzzyActionContext(tokens: string[], index: number): boolean {
-    const before = tokens.slice(0, index).join('').trim();
+    //  Only the end of what comes before is read: back to ~40 visible characters,
+    //  never the whole text — one join per word made a long message quadratic
+    //  (2 s at 20 KB, on every request).
+    let before = '';
+    for (let i = index - 1; i >= 0 && before.replace(/\s+/gu, '').length < 40; i--) before = tokens[i] + before;
+    before = before.trim();
     if (!before || /[.,،;:!؟?]$/.test(before)) return true;
     return /(?:^|[\s،:؛])(?:اريد|بدي|ابي|ابغي|ابغى|عايز|عاوز|ممكن|ثم|وبعدها|بعد ذلك)$/u.test(before);
 }
