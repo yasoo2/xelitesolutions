@@ -2899,20 +2899,31 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 return '';
             } catch { return ''; }
         };
-        for (const quiet of pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3)) {
-            const quietItem = catalogued(quiet);
-            if (!quietItem || !eyeIsOpen()) continue;
+        /*
+         * ⛔ EVERY QUIET CONTROL GETS ITS FIRST SECOND LOOK BEFORE ANY GETS ITS THIRD.
+         *
+         * P204's own test, 2026-11-11 (failing on main too, at 100% CPU): «Wishlist», wired to
+         * nothing, took the whole 12 s — three movers, a reload each — and «Clear filters», the reset
+         * the second look exists for, was never pressed on a changed page: «Unresponsive». The movers
+         * are taken in rounds: each quiet control after its best mover first, then the next.
+         */
+        const quietOnes = pressedQuiet.filter(q => !answered.has(`${q.kind}|${q.label}|${q.instance ?? 0}`)).slice(0, 3).map(quiet => {
             /*
              * A nav item undoes another nav item: «المتجر» (setView('shop')) after «السلة», not after
              * «أضف إلى السلة», which leaves the shop where it was (L162, the fifth live check: «Unresponsive
              * controls: "المتجر"» three times; Joe made it focus the search box, then a link, to quiet it).
              */
-            /** Pressed again on a view another control had moved to, and still quiet: tried where it had somewhere to go. */
-            let testedElsewhere = false;
             const moverRank = (m: ControlResult) => (nav(quiet.kind) && nav(m.kind) ? 0 : 2) + (['dom', 'open', 'state'].includes(String(m.effect)) ? 0 : 1);
             const tried = movers.filter(m => m.label !== quiet.label).map((m, i) => ({ m, i })).sort((a, b) => moverRank(a.m) - moverRank(b.m) || a.i - b.i).map(x => x.m);
-            for (const mover of tried.slice(0, 3)) {
-                if (Date.now() >= secondLookUntil || !eyeIsOpen()) break;
+            /** Pressed again on a view another control had moved to, and still quiet: tried where it had somewhere to go. */
+            return { quiet, quietItem: catalogued(quiet), tried: tried.slice(0, 3), testedElsewhere: false, answered: false };
+        }).filter(q => !!q.quietItem);
+        for (let round = 0; round < 3; round++) {
+            for (const q of quietOnes) {
+                if (q.answered || Date.now() >= secondLookUntil || !eyeIsOpen()) continue;
+                const { quiet, quietItem } = q;
+                const mover = q.tried[round];
+                if (!mover) continue;
                 const moverItem = catalogued(mover);
                 if (!moverItem) continue;
                 try {
@@ -2944,11 +2955,13 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                         effect = page.url() !== probeStartUrl ? 'navigation' : changed(before, await page.evaluate(snapshot).catch(() => null));
                     } while (!effect && Date.now() < settleDeadline && eyeIsOpen());
                     metrics.secondLook.push({ label: quiet.label, after: mover.label, effect });
-                    if (!effect && left) testedElsewhere = true;
+                    if (!effect && left) q.testedElsewhere = true;
                     if (effect) controls.push({ label: quiet.label, kind: quiet.kind, worked: true, effect, instance: quiet.instance, href: quiet.href });
-                    if (effect) break;
+                    if (effect) q.answered = true;
                 } catch { /* the control under test keeps its first verdict */ }
             }
+        }
+        for (const { quiet, quietItem, testedElsewhere } of quietOnes) {
             //  Still quiet, never tried from another view, and with evidence it is the open view's own link.
             const stillQuiet = !controls.some(r => r.worked && r.kind === quiet.kind && r.label === quiet.label);
             const why = stillQuiet && !testedElsewhere && eyeIsOpen() ? await currentPageEvidence(quiet, quietItem) : '';
