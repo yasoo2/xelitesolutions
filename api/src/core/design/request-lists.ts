@@ -168,6 +168,57 @@ const INTERFACE_HEAD = new FoldedRegExp(
  */
 const OPENER = new FoldedRegExp(`${WORD_START}و?(?:يشمل|تشمل|يحتوي(?: على)?|تحتوي(?: على)?|فيه|فيها|به|بها|مكوّ?ن من|يتكوّ?ن من|including|includes?|containing|contains?|with)\\s+(.+)$`, 'iu');
 
+/**
+ * ⛔ A SERVER THAT STORES X, Y AND Z HOLDS X, Y AND Z.
+ *
+ * The thirteenth live check, 2026-11-11 (L232): «a laundry service with a Node server that stores
+ * orders, items, pickups in a real database and a clean interface to manage them, with server
+ * tests». The plain opener took the first «with» — «a Node server that stores orders» became one
+ * clause and «pickups in a real database» another — and of his three records the gate read one;
+ * «a library API that stores books, members, loans in a database, with tests» read none at all,
+ * its list taken from «with tests». A keeping verb («stores», «keeps», «saves», «persists»,
+ * «يخزّن», «يحفظ») followed by a list names what the system holds, up to where it is kept («in a
+ * real database», «في قاعدة بيانات») or the sentence's end. One thing kept («يحفظ سجلها») is no list.
+ */
+const KEEPS = new FoldedRegExp(`${WORD_START}(?:stores?|storing|keeps?|keeping|saves?|saving|persists?|persisting|و?(?:ي|ت)(?:خزن|حفظ))\\s+(?:(?:the|its|their|all|all\\s+the)\\s+)?`, 'iu');
+const KEPT_IN = new FoldedRegExp(`\\s+(?:in|into|inside|on|to|using|via|with|across)\\s+(?:(?:a|an|the|its|their|one|his|her)\\s+)?(?:[\\w-]+\\s+){0,2}?(?:database|databases|db|sqlite|sqlite3|postgres|postgresql|mysql|mongo|mongodb|redis|storage|store|files?|json|disk|localstorage|tables?)\\b|\\s+(?:في|ب|داخل|على)\\s*(?:ال)?(?:قاعدة|قواعد|ملف|ملفات|الذاكرة|ذاكرة|المتصفح|جدول|جداول|تخزين)|[.!?؟;؛:]`, 'iu');
+
+/*
+ * What a keeping verb keeps that is no record: «saves you time and money», «keeps it simple», «keeps
+ * track of …» (its records follow «of»). The fourth review, 2026-11-11.
+ */
+const KEPT_NOT_RECORDS = /^(?:you|your|yourself|us|our|me|my|them|him|her|it|its|this|that|everything|anything|nothing|time|money|things)\b/iu;
+
+function keptList(req: string): { region: string; at: number; end: number } | null {
+    const verb = KEEPS.exec(req);
+    if (!verb || verb.index === undefined) return null;
+    let from = verb.index + verb[0].length;
+    const trackOf = req.slice(from).match(/^track\s+of\s+(?:(?:the|all|all\s+the|their|its)\s+)?/iu);
+    if (trackOf) from += trackOf[0].length;
+    const after = req.slice(from);
+    if (KEPT_NOT_RECORDS.test(after)) return null;
+    const end = KEPT_IN.exec(after);
+    const cut = end && end.index !== undefined ? end.index : after.length;
+    const region = after.slice(0, cut).trim();
+    return region && splitListItems(region).length >= 2 ? { region, at: verb.index, end: from + cut } : null;
+}
+
+/**
+ * The list a plain opener («with», «فيه») introduces, taken from `text` on, up to the sentence's end
+ * or the keeping clause that follows it (`stopAt`): «with patients, doctors and appointments that
+ * stores …» lists the three before «that».
+ */
+function openerListIn(text: string, stopAt = -1): string {
+    const m = OPENER.exec(text);
+    if (!m || m.index === undefined || m[1] === undefined) return '';
+    const start = m.index + m[0].length - m[1].length;
+    if (stopAt >= 0 && start >= stopAt) return '';
+    let part = text.slice(start, stopAt >= 0 ? stopAt : text.length).split(/[.!?؟;؛:]/u)[0];
+    //  …and the relative word that opens the keeping clause («… a Node server that» → «… a Node server»).
+    part = part.replace(/(?:\s*[,،])?\s+(?:that|which|who|where)\s*$/iu, '').replace(/[\s,،و]+$/u, '');
+    return part.trim();
+}
+
 export type ListMarker = 'head' | 'colon' | 'opener';
 
 /**
@@ -197,6 +248,19 @@ export function listRegion(text: string): { region: string; marker: ListMarker; 
     }
     const colon = req.match(/[:：]\s*(.+)$/);
     if (colon) return { region: colon[1], marker: 'colon' };
+    /*
+     * What a keeping verb lists is what the system holds (keptList) — read WITH the plain opener's
+     * list, before and after it, never instead of it. The fourth review (2026-11-11): «a clinic
+     * system with patients, doctors and appointments that stores invoices and payments in a
+     * database» lost its first three when the kept list replaced the «with» list.
+     */
+    const kept = keptList(req);
+    if (kept) {
+        const before = openerListIn(req, kept.at);
+        const later = openerListIn(req.slice(kept.end));
+        const region = [before, kept.region, later].filter(Boolean).join(', ');
+        return { region, marker: 'opener' };
+    }
     const opener = req.match(OPENER);
     return opener ? { region: opener[1], marker: 'opener' } : null;
 }

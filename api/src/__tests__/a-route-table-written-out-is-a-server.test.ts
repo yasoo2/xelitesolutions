@@ -10,7 +10,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { collectServerEvidence } from '../core/quality/request-coverage';
+import { collectServerEvidence, judgeRequestCoverage, requestedRecords } from '../core/quality/request-coverage';
 import { missingRequestedServer } from '../modules/tools/definitions/ProjectPipelineTool';
 
 const LAUNDRY = 'Build a web app for a laundry service with a Node server that stores orders, items, pickups in a real database and a clean interface to manage them, with server tests.';
@@ -88,5 +88,126 @@ test('a browser-only build still has no server', async () => {
     const root = project({ 'public/index.html': '<!doctype html><title>Laundry</title>', 'public/app.js': "const orders = JSON.parse(localStorage.getItem('orders') || '[]');" });
     try {
         expect(await missingRequestedServer(LAUNDRY, [root], [])).toMatch(/no delivered part registers server routes/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+/*
+ * The third review, 2026-11-11: a pattern is read whole — a character class may hold a slash, an
+ * optional part is left out, an escape reads as what it escapes — a method may be written in lower
+ * case, and a service worker's table of what it caches serves nothing.
+ */
+const PATTERNS_SERVER = `const http = require('http');
+const routes = [
+  ['GET', /^\\/api\\/files\\/([^/]+)$/, sendFile],
+  ['get', '/api/notes', listNotes],
+  ['GET', /^\\/api\\/orders(?:\\/)?$/, listOrders],
+  ['DELETE', /^\\/api\\/pickups(?:\\/(\\d+))?$/, dropPickup],
+  ['GET', /^\\/api\\/health\\-check$/, health],
+  ['PUT', /^\\/api\\/items\\/(?<id>[^/]+)\\/?$/, putItem],
+];
+http.createServer((req, res) => {
+  for (const [m, p, h] of routes) if (m.toUpperCase() === req.method && (p instanceof RegExp ? p.test(req.url) : p === req.url)) return h(req, res);
+  res.writeHead(404); res.end();
+}).listen(3000);
+`;
+
+test('a pattern with a slash in its character class, an optional part and an escape is read whole; a lower-case method is a method', async () => {
+    const root = project({ 'server.js': PATTERNS_SERVER });
+    try {
+        const seen = (await collectServerEvidence([root], [])).routes.map((r: any) => `${r.method} ${r.path}`);
+        expect(seen).toEqual(expect.arrayContaining(['get /api/files/:id', 'get /api/notes', 'get /api/orders', 'delete /api/pickups', 'get /api/health-check', 'put /api/items/:id']));
+        expect(seen.filter((s: string) => /[[\]()\\]/.test(s))).toEqual([]);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test('a service worker caching by a table of [method, path] is no server', async () => {
+    const SW = `const RULES = [['GET', '/api/orders', 'network-first'], ['GET', '/api/items', 'cache-first']];
+self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+  const rule = RULES.find(([m, p]) => event.request.method === m && url.pathname === p);
+  if (rule) event.respondWith(fetch(event.request));
+});
+`;
+    const root = project({ 'public/index.html': '<!doctype html><title>Laundry</title>', 'public/sw.js': SW, 'public/app.js': "const orders = JSON.parse(localStorage.getItem('orders') || '[]');" });
+    try {
+        expect(await missingRequestedServer(LAUNDRY, [root], [])).toMatch(/no delivered part registers server routes/);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+/*
+ * The thirteenth live check, 2026-11-11 (L232, the laundry again): the table wrote its paths without
+ * their first slash, as its dispatcher compares them segment by segment — read as no route at all,
+ * «items (not served)» refused it four times.
+ */
+const SEGMENT_TABLE_SERVER = `'use strict';
+const http = require('node:http');
+const store = require('./store');
+const ALLOWED = ['GET', 'POST', 'PATCH', 'DELETE'];
+const TYPES = [['GET', 'application/json', 'json']];
+const ROUTES = [
+  ['GET', 'api/orders', (db) => [200, store.listOrders(db)]],
+  ['POST', 'api/orders', (db, p, b) => [201, store.createOrder(db, b)]],
+  ['PATCH', 'api/orders/:id', (db, p, b) => [200, store.updateOrder(db, p.id, b)]],
+  ['POST', 'api/orders/:id/items', (db, p, b) => [201, store.addItem(db, p.id, b)]],
+  ['GET', 'api/items', (db) => [200, store.listItems(db)]],
+  ['GET', 'api/pickups', (db) => [200, store.listPickups(db)]],
+];
+function matchRoute(method, pathname) {
+  const want = pathname.split('/').filter(Boolean);
+  for (const [m, pattern, handler] of ROUTES) {
+    if (m !== method) continue;
+    const have = pattern.split('/');
+    if (have.length !== want.length) continue;
+    if (have.every((h, i) => h.startsWith(':') || h === want[i])) return handler;
+  }
+  return null;
+}
+module.exports = (db) => http.createServer((req, res) => {
+  const h = matchRoute(req.method, new URL(req.url, 'http://x').pathname);
+  if (!h) { res.writeHead(404); return res.end(); }
+  const [status, body] = h(db, {}, {});
+  res.writeHead(status, { 'content-type': 'application/json' }); res.end(JSON.stringify(body));
+});
+`;
+
+test('a table of paths written without their first slash registers its routes, and his items are served', async () => {
+    const root = project({ 'src/app.js': SEGMENT_TABLE_SERVER, 'public/index.html': '<!doctype html><title>Laundry</title>' });
+    try {
+        const evidence = await collectServerEvidence([root], []);
+        const seen = evidence.routes.map((r: any) => `${r.method} ${r.path}`);
+        expect(seen).toEqual(expect.arrayContaining(['get /api/orders', 'post /api/orders', 'patch /api/orders/:id', 'post /api/orders/:id/items', 'get /api/items', 'get /api/pickups']));
+        //  An allowed-methods list and a media-type table are no routes.
+        expect(seen.filter((s: string) => /\/(?:post|patch|delete|application)\b/i.test(s))).toEqual([]);
+        const records = requestedRecords(LAUNDRY, { backendRequested: true });
+        const report = judgeRequestCoverage({ records, evidence, backendRequested: true, testsRun: { root, ran: true, passed: true } as any });
+        expect(report.missing.filter(r => r.served === false).map(r => r.key)).toEqual([]);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+/*
+ * The fourth review, 2026-11-11: a filter list and a list of verbs are no routes; a server that also
+ * sends its service worker's source is still a server; an optional trailing slash is no parameter.
+ */
+test('a filter list, a list of verbs and an optional slash read no phantom route; a server holding its worker is still read', async () => {
+    const SERVER = `const http = require('http');
+const FILTERS = ['all', 'active', 'done'];
+const VERBS = ['get', 'list', 'count'];
+const SHOUT = ['ALL', 'ACTIVE', 'DONE'];
+const SW = "self.addEventListener('fetch', e => e.respondWith(fetch(e.request)));";
+const routes = [
+  ['GET', /^\\/api\\/todos(\\/)?$/, listTodos],
+  ['GET', 'todos', listTodos],
+];
+http.createServer((req, res) => {
+  if (req.url === '/sw.js') { res.writeHead(200, { 'content-type': 'text/javascript' }); return res.end(SW); }
+  for (const [m, p, h] of routes) if (m === req.method && (p instanceof RegExp ? p.test(req.url) : '/' + p === req.url)) return h(req, res);
+  res.writeHead(404); res.end();
+}).listen(3000);
+`;
+    const root = project({ 'server.js': SERVER });
+    try {
+        const seen = (await collectServerEvidence([root], [])).routes.map((r: any) => `${r.method} ${r.path}`);
+        expect(seen).toEqual(expect.arrayContaining(['get /api/todos', 'get /todos']));
+        expect(seen.filter((s: string) => /\/(?:active|done|list|count|ACTIVE|DONE)$|todos:id/u.test(s))).toEqual([]);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });

@@ -248,7 +248,8 @@ describe('the forms are filled in and sent, not counted', () => {
 
     it('waits for an observable async submit effect within a bounded window', () => {
         const b = B();
-        expect(b).toContain('const effectDeadline = Math.min(deadline, Date.now() + 2500);');
+        //  A disabled submit sends nothing and has no answer to wait for; every other waits a bounded 2.5 s.
+        expect(b).toContain('const effectDeadline = submitDisabled ? Date.now() : Math.min(deadline, Date.now() + 2500);');
         expect(b).toContain('while (!effect && Date.now() < effectDeadline && eyeIsOpen())');
         expect(b).toContain("effect = await pending() ? '' : changed(before, after);");
     });
