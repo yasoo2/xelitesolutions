@@ -45,7 +45,7 @@ import { checkJavaScriptSyntax } from '../quality/js-syntax-check';
 import { undefinedJsxComponentMismatch, undefinedSourceReferenceMismatch } from '../quality/source-contract';
 import { runPython } from '../quality/python-runtime';
 import { auditBuiltApp, COVERAGE_RETRY_TIMEOUT_MS, type AppAudit } from '../quality/app-audit';
-import { appDataChanges, restoreAppData, restoreLine, snapshotAppData, type AppDataSnapshot } from '../quality/qa-leaves-no-trace';
+import { addressIsFree, appDataChanges, discardSnapshot, restoreAppData, restoreLine, snapshotAppData, type AppDataSnapshot } from '../quality/qa-leaves-no-trace';
 import { listProjectFiles, MACHINE_STATE_DIRECTORIES } from '../../shared/utils/project-tree';
 import { isArabicReply, replyLanguageCode, say as pick } from '../../shared/reply-language';
 import { isWithinRoot } from '../../modules/tools/path-containment';
@@ -576,22 +576,41 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
     let qaAuditsTaken = 0;
     const keptOnPurpose: string[] = [];
     const livePort = (() => { try { const p = Number(new URL(String(liveUrl)).port); return p > 0 ? p : 0; } catch { return 0; } })();
-    const putQaRecordsBack = async (startAgain: boolean): Promise<void> => {
-        if (!dataBefore || !qaAuditsTaken) return;
+    /** Why the server Joe stopped to put the records back did not come back, when it did not (the live check is then failed). */
+    let liveLostBy = '';
+    /**
+     * «nothing» — the app's records are as they were; «left» — not put back, the
+     * server still answers (it would not stop, or something kept its port);
+     * «restored» — put back, and started again when asked; «down» — put back, and
+     * the server did not come back where it was: what is measured next is not the app.
+     */
+    const putQaRecordsBack = async (startAgain: boolean): Promise<'nothing' | 'left' | 'restored' | 'down'> => {
+        if (!dataBefore || !qaAuditsTaken) return 'nothing';
         let changes: string[] = [];
-        try { changes = await appDataChanges(dataBefore, keptOnPurpose); } catch { return; }
-        if (!changes.length) return;
+        try { changes = await appDataChanges(dataBefore, keptOnPurpose); } catch { return 'nothing'; }
+        if (!changes.length) return 'nothing';
         const stop = await runTool('project_stop', {}).catch((e: unknown) => ({ ok: false, error: message(e) }));
         if (stop?.ok !== true) {
-            note(`browser QA: the records its forms left could not be put back, because the server did not stop: ${String(stop?.error || 'project_stop failed')}`);
-            return;
+            note(`browser QA: the records its forms left could not be put back, because the server did not stop: ${String((stop as any)?.error || 'project_stop failed')}`);
+            return 'left';
+        }
+        //  Said stopped is not stopped: a file written back under a live server is written over again by it.
+        if ((stop as any)?.output?.released === false || (liveUrl && !(await addressIsFree(liveUrl)))) {
+            note(`browser QA: the records its forms left were not put back: something still answers at ${liveUrl || 'its address'} after the server was stopped, and a running server keeps its own copy of them`);
+            return 'left';
         }
         note(`browser QA: ${restoreLine(await restoreAppData(dataBefore, keptOnPurpose))}`);
-        if (startAgain && liveInput) {
-            const again = await runTool('project_run', { ...liveInput, ...(livePort ? { port: livePort } : {}) })
-                .catch((e: unknown) => ({ ok: false, error: message(e) }));
-            if (again?.ok !== true) note(`live: the server could not be started again after the QA's records were put back: ${String(again?.error || 'project_run failed')}`);
-        }
+        if (!startAgain || !liveInput) return 'restored';
+        const again: any = await runTool('project_run', { ...liveInput, ...(livePort ? { port: livePort } : {}) })
+            .catch((e: unknown) => ({ ok: false, error: message(e) }));
+        const at = String(again?.output?.url || '').trim();
+        const sameAddress = !at || !liveUrl || (() => { try { return new URL(at).origin === new URL(liveUrl).origin; } catch { return false; } })();
+        if (again?.ok === true && sameAddress) return 'restored';
+        liveLostBy = again?.ok === true
+            ? `it came back at ${at}, not at ${liveUrl}`
+            : String(again?.error || 'project_run failed').slice(0, 300);
+        note(`live: the server was stopped to put the QA's records back and did not come back where it was: ${liveLostBy}`);
+        return 'down';
     };
 
     const interfaceRoots = deliveredRoots([...auditRoots, String(liveRun?.output?.cwd || '').trim()]);
@@ -681,7 +700,10 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
              */
             /** One walk of the page, on the records the app had before the QA's first one. */
             const walk = async (timeoutMs: number): Promise<AppAudit> => {
-                if (qaAuditsTaken > 0) await putQaRecordsBack(true);
+                //  A walk of a server that did not come back measures Joe's restart, not the app: not taken.
+                if (qaAuditsTaken > 0 && await putQaRecordsBack(true) === 'down') {
+                    return { score: 0, findings: [], skipped: `the server was stopped to put the QA's records back and did not come back: ${liveLostBy}` } as AppAudit;
+                }
                 qaAuditsTaken++;
                 return browserQa.audit(auditDir, options(timeoutMs));
             };
@@ -808,13 +830,34 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
 
     //  C14 — one verdict, from every measurement. The agent called
     //  task_finish; phaseVerified holds when every owed build passed.
-    const verdict = deliveryVerdict({
+    const judge = () => deliveryVerdict({
         phaseVerified: buildsPassed,
         requestFidelityBlocked: false,
         measurements: ledger.all(),
         required: [...required],
         primary,
     });
+    let verdict = judge();
+    /*
+     * The app he receives starts from his records, never the QA's — and a delivery
+     * says it is live only while its server answers. The records are put back before
+     * the verdict is final: a server stopped for it that does not come back is a
+     * failed live check, never a delivered address nothing answers at.
+     */
+    if (liveStarted && verdict.verified) {
+        let back = await putQaRecordsBack(true);
+        if (back !== 'down' && liveLostBy) {
+            //  Lost earlier, before a walk that was then not taken: started once more.
+            const again: any = await runTool('project_run', { ...liveInput, ...(livePort ? { port: livePort } : {}) })
+                .catch((e: unknown) => ({ ok: false, error: message(e) }));
+            back = again?.ok === true ? 'restored' : 'down';
+            if (again?.ok !== true) liveLostBy = String(again?.error || 'project_run failed').slice(0, 300);
+        }
+        if (back === 'down') {
+            ledger.record({ instrument: 'live', ok: false, error: `the server was stopped to put the Browser QA's own records back, and it could not be started again where it was: ${liveLostBy}; start it again with project_run` });
+            verdict = judge();
+        }
+    }
 
     //  A delivered project keeps the server project_run started: it is the
     //  live preview. A refused one does not — the model goes on fixing, and a
@@ -827,8 +870,10 @@ async function verifyDelivery(ctx: ToolContext, deps: VerifierDeps, browserQa: B
             note(`live: the server project_run started could not be stopped: ${String(stop?.error || 'project_stop failed')}`);
         }
     }
-    //  The app he receives, and the next check, start from his records, never the QA's.
-    await putQaRecordsBack(liveStarted && verdict.verified);
+    //  A refused one is put back with its server stopped: the next check opens on his records.
+    if (!verdict.verified) await putQaRecordsBack(false);
+    //  The copies were for this check only.
+    await discardSnapshot(dataBefore);
 
     const testsAsked = testsRequestedIn(request);
     const reasons = skipReasons({

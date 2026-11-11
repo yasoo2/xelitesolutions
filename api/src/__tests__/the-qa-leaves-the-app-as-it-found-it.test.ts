@@ -17,7 +17,7 @@ import fs from 'fs';
 import http from 'http';
 import os from 'os';
 import path from 'path';
-import { appDataChanges, restoreAppData, restoreLine, snapshotAppData } from '../core/quality/qa-leaves-no-trace';
+import { addressIsFree, appDataChanges, discardSnapshot, restoreAppData, restoreLine, snapshotAppData } from '../core/quality/qa-leaves-no-trace';
 import { createVerifier, type BrowserQa, type DeliveryVerification } from '../core/engine/verify';
 import { seedRequirementsFromRequest } from '../core/engine/seed';
 import { newPlan, seededRequirements } from '../core/engine/plan';
@@ -99,6 +99,39 @@ describe('the files an app keeps its records in', () => {
         expect(fs.readFileSync(path.join(root, 'src/store/index.ts'), 'utf8')).toContain('mended: true');
         expect(restoreLine(r)).toMatch(/^the QA's own records are gone from the app: 3 data file\(s\) put back .*; 2 file\(s\) it made the app create removed/u);
         expect(await appDataChanges(s, ['server/storage/sessions.json'])).toEqual([]);
+    });
+
+    it('the copies are kept on disk, a database whole or not at all, and are gone once discarded', async () => {
+        const big = Buffer.alloc(65 * 1024 * 1024, 1);
+        const root = project({ 'data/app.db': big, 'data/app.db-wal': 'the log of the big one', 'data/notes.json': '[]' });
+        const s = await snapshotAppData(root);
+        //  Too large to copy, so its log is not copied either: put back alone, it would replay over a newer file.
+        expect([...s.files.keys()].map(f => path.basename(f))).toEqual(['notes.json']);
+        expect(s.tooLarge.map(f => path.basename(f)).sort()).toEqual(['app.db', 'app.db-wal']);
+        fs.writeFileSync(path.join(root, 'data/app.db-wal'), 'the log the QA left');
+        fs.writeFileSync(path.join(root, 'data/app.db-shm'), 'made while the QA pressed');
+        expect(await appDataChanges(s)).toEqual([]);
+        //  Its times come back with its bytes.
+        const when = new Date('2026-01-02T03:04:05Z');
+        fs.utimesSync(path.join(root, 'data/notes.json'), when, when);
+        const s2 = await snapshotAppData(root);
+        fs.writeFileSync(path.join(root, 'data/notes.json'), '[{"id":1}]');
+        await restoreAppData(s2);
+        expect(fs.statSync(path.join(root, 'data/notes.json')).mtime.toISOString()).toBe(when.toISOString());
+        expect(fs.existsSync(s.dir)).toBe(true);
+        await discardSnapshot(s);
+        await discardSnapshot(s2);
+        expect(fs.existsSync(s.dir)).toBe(false);
+        expect(fs.existsSync(s2.dir)).toBe(false);
+    });
+
+    it('an address is free only when nothing answers there any more', async () => {
+        const server = http.createServer((_q, r) => r.end('still here'));
+        await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+        const url = `http://127.0.0.1:${(server.address() as any).port}/`;
+        expect(await addressIsFree(url, 600)).toBe(false);
+        await new Promise<void>(r => server.close(() => r()));
+        expect(await addressIsFree(url, 600)).toBe(true);
     });
 
     it('a link inside the project is never followed: what it points at is neither read nor removed', async () => {
@@ -195,13 +228,16 @@ const TOOLS: Record<string, () => { execute(input: any, context?: any): Promise<
     quality_run: () => new QualityRunTool(),
     shell_execute: () => new ShellExecuteTool(),
 };
+/** A stop that says it stopped and did not (qa-live16: its process check timed out on a loaded machine). */
+let stopSaysStoppedAndIsNot = false;
 const runTool = async (tool: string, input: any) => {
     const make = TOOLS[tool];
     if (!make) throw new Error(`the verifier asked for a tool this test does not provide: ${tool}`);
     calls.push({ tool, input });
+    if (tool === 'project_stop' && stopSaysStoppedAndIsNot) return { ok: true, output: { stopped: false, message: 'pid 23180 is no longer running; nothing to kill' } };
     return executionFirewall.runInContext(`joe-qa-trace-${tool}`, () => make().execute(input, TOOL_CONTEXT));
 };
-beforeEach(() => { calls.length = 0; });
+beforeEach(() => { calls.length = 0; stopSaysStoppedAndIsNot = false; });
 
 /** The request reader and the source judge, answered the way Joe's parsers read them. */
 async function ask(prompt: string): Promise<string> {
@@ -275,6 +311,19 @@ describe('a delivery the Browser QA wrote into', () => {
         expect(calls.filter(c => c.tool === 'project_run')).toHaveLength(1);
         const again = await verify(dir, writingPanel([[]]));
         expect(again.passed).toBe(true);
+    });
+
+    it('a stop that did not stop the server leaves the file as it is, and the live server is not started a second time', async () => {
+        const dir = notesApp();
+        stopSaysStoppedAndIsNot = true;
+        const report = await verify(dir, writingPanel([[]]));
+        expect(report.passed).toBe(true);
+        //  Never written under a server that still runs, and keeps its own copy.
+        expect(fs.readFileSync(path.join(dir, 'data', 'notes.json'), 'utf8')).toContain('walk-1');
+        expect(calls.filter(c => c.tool === 'project_run')).toHaveLength(1);
+        expect(report.delivery.log.join('\n')).toMatch(/the records its forms left were not put back: something still answers at http:\/\/127\.0\.0\.1:\d+\/? after the server was stopped/u);
+        const live = String(report.delivery.liveUrl).replace(/\/$/u, '');
+        expect((await request(`${live}/api/notes`)).status).toBe(200);
     });
 
     it('an app whose records did not change is not stopped or started again for nothing', async () => {
