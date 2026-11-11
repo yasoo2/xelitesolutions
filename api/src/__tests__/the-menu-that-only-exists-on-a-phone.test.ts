@@ -46,7 +46,8 @@ describe('a control that only exists on a phone is pressed too', () => {
         //  After, not instead: the desktop walk is the main measurement and
         //  this pass exists for what desktop CANNOT show.
         expect(APP).toContain('await applyViewportSize(page, 390, 844);');
-        const walkAt = APP.indexOf('const homeProbe = await probeControls(page, probeOpts());');
+        // Repointed (76f66a5d3): the home walk is a named desktop pass now.
+        const walkAt = APP.indexOf("homeProbe = await probeControls(page, probeOpts('desktop:/', '/'));");
         const phoneAt = APP.indexOf('await applyViewportSize(page, 390, 844);');
         expect(walkAt).toBeGreaterThan(0);
         expect(phoneAt).toBeGreaterThan(walkAt);
@@ -56,7 +57,12 @@ describe('a control that only exists on a phone is pressed too', () => {
         //  Re-pressing forty controls at a second width would spend the whole
         //  budget to learn what was already known, and the budget is shared.
         expect(APP).toContain('const seenLabels = new Set(allControls.map((c: any) => String(c.label || \'\')));');
-        expect(APP).toContain('const fresh = (phone.controls || []).filter((c: any) => !seenLabels.has(String(c.label || \'\')));');
+        // Repointed (7b3111ab4): `fresh` is `phoneEvidence`. Links are kept as
+        // reach evidence; what the desktop walk already pressed is only
+        // reached at 390px (reachOnly), never pressed a second time.
+        expect(APP).toMatch(/const phoneEvidence = \(phone\.controls \|\| \[\]\)\.filter\(\(c: any\) =>\s*c\.kind === 'anchor' \|\| !seenLabels\.has\(String\(c\.label \|\| ''\)\),?\s*\);/);
+        const phoneCall = APP.slice(APP.indexOf('const phone = await probeControls(page, {'), APP.indexOf('addPhone(phone);'));
+        expect(phoneCall).toContain('reachOnly: pressedOnDesktop,');
     });
 
     it('isolates responsive controls without replacing real phone presses with desktop proof', () => {
@@ -93,7 +99,9 @@ describe('the decorated name and the real name are both kept', () => {
         //  same thing, one taught the rule and the other not. Both are asserted
         //  here because fixing either alone looks exactly like fixing both.
         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `desktop:${route}`, label: route === \'/\' ? c.label : `${route} ${c.label}` })');
-        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'phone:/', label: `الجوّال ${c.label}` })");
+        // Repointed (7b3111ab4): the phone context is named «جوّال:/» like the
+        // responsive passes' «جوّال:<route>».
+        expect(APP).toContain("allControls.push({ ...c, bare: c.label, context: 'جوّال:/', label: `الجوّال ${c.label}` })");
         expect(APP).toContain('allControls.push({ ...c, bare: c.label, context: `${size.name}:${r}`, label, responsive: size.name })');
         //  …and nothing pushes a control without it.
         const pushes = APP.match(/allControls\.push\(\{[^}]*\}/g) || [];

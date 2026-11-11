@@ -44,7 +44,9 @@ describe('what blocks delivery is an open finding, not a flattering score', () =
         expect(blockers).toBeGreaterThan(0);
         expect(blockers).toBeGreaterThan(repair);   // the surviving ones, not the original ones
         expect(src).toContain('const openQualityFindings = ((audit?.findings || []) as any[])');
-        expect(src).toMatch(/qualityDeliveryBlocked = openQualityFindings\.length > 0/);
+        // Repointed (76f66a5d3): a build with no bundle now blocks first, and an
+        // open finding still blocks on its own inside the same expression.
+        expect(src).toMatch(/qualityDeliveryBlocked = buildVerificationBlocked \|\| openQualityFindings\.length > 0/);
     });
 });
 

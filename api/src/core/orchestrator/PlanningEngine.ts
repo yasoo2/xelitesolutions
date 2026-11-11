@@ -2428,8 +2428,29 @@ Rules:
                 };
             }
 
+            /*
+             * ⛔ «TRANSFORM IT INTO …» NAMES THE WORK HE HAS.
+             *
+             * The analysis of 2026-11-11: since fa810595d (2026-09-26) the build reader calls «I want
+             * to transform it into a real turn-by-turn navigation system» a build — «system» is a web
+             * noun — and the enhancement rebuilt the app from scratch again, the very failure the
+             * line above was written for. A request whose own words point at what exists («it», «the
+             * current …», «حوّله», «طوّره», «حسّنه») is an edit, unless it asks for something new.
+             */
+            /*
+             * …and only when nothing before those words builds: «Create a todo app …, then turn it
+             * into a PWA», «اصنع تطبيق مهام ثم طوّره» are new builds whose «it» is the app they ask
+             * for (the fifth review, 2026-11-11). «New» may stand a few words before its noun («a
+             * new chat application», «تطبيق حجز جديد»).
+             */
+            const POINTS_AT_CURRENT = /\b(?:transform|turn|convert|improve|upgrade|extend|rework|expand)\s+it\b|\bthe\s+(?:current|existing)\s+(?:[\w-]+\s+){0,2}(?:system|app|application|site|page|project|feature|engine|flow)\b|حوّ?له\s*(?:إلى|الى|ل)|طوّ?ره|حسّ?نه|(?:ال)?(?:نظام|تطبيق|موقع|مشروع)\s+(?:الحالي|الموجود)/iu;
+            const pointedAt = probe.search(POINTS_AT_CURRENT);
+            const buildsFirst = pointedAt > 0 && /\b(?:build|create|make|develop|design|generate|scaffold|code|write)\b|(?:^|\s)(?:ابن[يِ]?|إبن[ي]?|اصنع|إصنع|أنشئ|انشئ|اعمل|سوّ?ي|صمّ?م|طوّ?ر\s+(?:لي\s+)?(?:تطبيق|موقع|نظام))(?=\s|$)/iu.test(probe.slice(0, pointedAt));
+            const pointsAtCurrentWork = pointedAt >= 0 && !buildsFirst;
+            const asksForSomethingNew = /\b(?:a|another|brand)\s+new\s+(?:[\w-]+\s+){0,3}?(?:project|app|application|site|website|system|page|tool|platform)\b|\bfrom\s+scratch\b|(?:مشروع|تطبيق|موقع|نظام|صفحة|منصة|أداة)(?:\s+\S+){0,3}?\s+جديد(?:ة)?|من\s+الصفر/iu.test(probe);
             if (projectNewer && (editIntent || fixOrGrow || explicitlyTargetsCurrentProject)
-                && (!(buildVerb && webNoun) || explicitlyTargetsCurrentProject || explicitlyForbidsNewProject)) {
+                && (!(buildVerb && webNoun) || explicitlyTargetsCurrentProject || explicitlyForbidsNewProject
+                    || (fixOrGrow && pointsAtCurrentWork && !asksForSomethingNew))) {
                 return PlanningEngine.projectEditPlan(intent, context);
             }
         }

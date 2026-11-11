@@ -118,8 +118,10 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * teachers and tests») is a table of exams, and «a quiz app that tests kids» is
  * a verb — neither asks for automated tests.
  */
-//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too.
-const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional|server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
+//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too —
+//  as a noun only: «the server tests each answer», «whose UI tests your speed», «a browser testing dashboard» ask
+//  for none (the fifth review).
+const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\b(?:server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests|specs?)\b(?!\s+(?:each|every|your|the|a|an|whether|if|how|its|their|his|her|our|my|that|this|them|it|what|which|who)\b)|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
 //  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
 //  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
 //  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
@@ -765,6 +767,83 @@ const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.spl
 const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
 const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
 
+/**
+ * Where a regular-expression literal that opens at `at` (a «/» where an expression begins) ends,
+ * or -1 when the «/» divides. A quote or a brace inside `/^[a-z']+$/` is the pattern's, not code
+ * (the fifth review, 2026-11-11: `{ products: { check: /^[a-z']+$/ }, orders: … }` read no key).
+ */
+function regexLiteralEnd(text: string, at: number): number {
+    let p = at - 1;
+    while (p >= 0 && /\s/u.test(text[p])) p--;
+    const before = p >= 0 ? text[p] : '';
+    const word = /([A-Za-z_$][\w$]*)$/u.exec(text.slice(Math.max(0, p - 12), p + 1));
+    if (!(before === '' || /[(,=:[!&|?{};+\-*%<>~^]/u.test(before) || (word && /^(?:return|typeof|case|in|of|void|delete|throw)$/u.test(word[1])))) return -1;
+    let inClass = false;
+    for (let i = at + 1; i < text.length && i < at + 2000; i++) {
+        const ch = text[i];
+        if (ch === '\\') { i++; continue; }
+        if (ch === '\n') return -1;
+        if (inClass) { if (ch === ']') inClass = false; continue; }
+        if (ch === '[') { inClass = true; continue; }
+        if (ch === '/') return i;
+    }
+    return -1;
+}
+
+/** From the brace at `open` to the one that closes it (strings, comments and patterns skipped), or '' when it never closes. */
+function balancedFrom(text: string, open: number): string {
+    const pairs: Record<string, string> = { '{': '}', '[': ']', '(': ')' };
+    const stack: string[] = [];
+    for (let i = open; i < text.length && i < open + 200_000; i++) {
+        const ch = text[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            for (i++; i < text.length && text[i] !== ch; i++) if (text[i] === '\\') i++;
+            continue;
+        }
+        if (ch === '/' && text[i + 1] === '/') { i = text.indexOf('\n', i); if (i < 0) return ''; continue; }
+        if (ch === '/' && text[i + 1] === '*') { i = text.indexOf('*/', i + 2); if (i < 0) return ''; i++; continue; }
+        if (ch === '/') { const end = regexLiteralEnd(text, i); if (end > i) { i = end; continue; } }
+        if (pairs[ch]) stack.push(pairs[ch]);
+        else if (ch === '}' || ch === ']' || ch === ')') {
+            if (stack.pop() !== ch) return '';
+            if (!stack.length) return text.slice(open, i + 1);
+        }
+    }
+    return '';
+}
+
+/** The keys an object literal (`{ products: …, 'orders': …, warranties }`) names at its own top level. */
+function objectLiteralKeys(literal: string): string[] {
+    const keys: string[] = [];
+    let depth = 0;
+    let expectKey = false;
+    for (let i = 0; i < literal.length; i++) {
+        const ch = literal[i];
+        if (ch === '"' || ch === "'" || ch === '`') {
+            const start = i;
+            for (i++; i < literal.length && literal[i] !== ch; i++) if (literal[i] === '\\') i++;
+            if (depth === 1 && expectKey && /^\s*:/u.test(literal.slice(i + 1))) keys.push(literal.slice(start + 1, i));
+            expectKey = false;
+            continue;
+        }
+        if (ch === '/') { const end = regexLiteralEnd(literal, i); if (end > i) { i = end; expectKey = false; continue; } }
+        if (ch === '{' || ch === '[' || ch === '(') { depth++; if (depth === 1) expectKey = true; continue; }
+        if (ch === '}' || ch === ']' || ch === ')') { depth--; continue; }
+        if (depth === 1 && ch === ',') { expectKey = true; continue; }
+        if (depth === 1 && expectKey && /[A-Za-z_$]/u.test(ch)) {
+            const word = /^[A-Za-z_$][\w$-]*/u.exec(literal.slice(i));
+            const name = word ? word[0] : '';
+            const rest = literal.slice(i + name.length);
+            if (name && /^\s*[:,}(]/u.test(rest)) keys.push(name);
+            i += Math.max(0, name.length - 1);
+            expectKey = false;
+            continue;
+        }
+        if (depth === 1 && !/\s/u.test(ch)) expectKey = false;
+    }
+    return keys;
+}
+
 function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRoute[]): void {
     if (!READS_REQUEST.test(text)) return;
     const esc = (s: string) => s.replace(/[$]/gu, '\\$');
@@ -793,9 +872,49 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
         for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
             add(Number(m[1]) - shift, m[3]);
         }
+        /*
+         * ⛔ A SEGMENT LOOKED UP IN A TABLE OF HANDLERS SERVES EVERY KEY OF THE TABLE.
+         *
+         * The fourteenth live check, 2026-11-11 (L236, an electronics store): `const [, resource,
+         * rawId] = parts`, then `const c = collections[resource]` with `collections = { products:
+         * {…}, orders: {…}, warranties: {…} }` — read as no route at all, «orders, warranties (not
+         * served)» refused it four times. So do `v === 'orders'`, `case 'orders':` in a `switch (v)`,
+         * `v in TABLE` and `Object.hasOwn(TABLE, v)`.
+         */
+        for (const [v, index] of segmentVars) {
+            if (index < 0) continue;
+            /*
+             * …unless a list gates the segment first (`if (!COLLECTIONS.includes(coll)) return 404`):
+             * then the list decides (below), and `data[coll]` is its data, `coll === 'travelers'` a
+             * validator's branch — never routes (P070 holds a collection its list does not serve).
+             */
+            if (new RegExp(`\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'u').test(text)) continue;
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s*===?\\s*(['"])([^'"]+)\\1|(['"])([^'"]+)\\3\\s*===?\\s*${esc(v)}\\b`, 'gu'))) add(index, String(m[2] ?? m[4]));
+            for (const sw of text.matchAll(new RegExp(`\\bswitch\\s*\\(\\s*${esc(v)}\\s*\\)\\s*\\{`, 'gu'))) {
+                const body = balancedFrom(text, (sw.index || 0) + sw[0].length - 1);
+                for (const c of body.matchAll(/\bcase\s*(['"])([^'"]+)\1\s*:/gu)) add(index, c[2]);
+            }
+            const tables = new Set<string>();
+            for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*(?:\\?\\.)?\\[\\s*${esc(v)}\\s*\\]`, 'gu'))) tables.add(m[1]);
+            for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s+in\\s+([A-Za-z_$][\\w$]*)\\b|\\bObject\\s*\\.\\s*(?:hasOwn|prototype\\s*\\.\\s*hasOwnProperty\\s*\\.\\s*call)\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*${esc(v)}\\s*\\)|\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*hasOwnProperty\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) tables.add(String(m[1] || m[2] || m[3]));
+            for (const table of tables) {
+                if (table === esc(parts) || table === parts) continue;
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(table)}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
+        }
         //  LIST.includes(v), with LIST a literal list of names.
         for (const [v, index] of segmentVars) {
             if (index < 0) continue;
+            //  …or the keys of a table of handlers: `Object.keys(collections).includes(resource)` (the fifth review).
+            for (const m of text.matchAll(new RegExp(`\\bObject\\s*\\.\\s*keys\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
             for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
                 const list = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(text);
                 if (!list) continue;
@@ -1449,7 +1568,10 @@ async function runRequestedTestsNow(root: string, runTool: (tool: string, input:
             const empty = judged.passed ? null : judged.ranNothing ?? emptyTestRun(printed);
             // A failure's own words are at the END of what the runner printed (the
             // assertion, «FAILED (failures=1)»): keep the end, not the first lines.
-            const said = String(run?.output?.stderr || run?.error || 'the tests did not pass').trim();
+            //  unittest prints them to stderr, pytest to stdout: what either printed, its end kept. The
+            //  analysis of 2026-11-11: with pytest installed, a failing test was told only as «command_failed».
+            const streams = [String(run?.output?.stderr ?? ''), String(run?.output?.stdout ?? '')].map(s => s.trim()).filter(Boolean);
+            const said = (streams.find(s => /\bFAIL(?:ED|URES?)?\b|Error\b|\bassert/u.test(s)) || streams[0] || String(run?.error || '') || 'the tests did not pass').trim();
             const error = judged.passed ? undefined
                 : empty ? `the test command ran no tests (${empty.runner}: ${empty.evidence})`
                     : said.length > 400 ? `…${said.slice(-399)}` : said;

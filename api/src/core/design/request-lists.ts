@@ -181,26 +181,39 @@ const OPENER = new FoldedRegExp(`${WORD_START}و?(?:يشمل|تشمل|يحتوي
  * real database», «في قاعدة بيانات») or the sentence's end. One thing kept («يحفظ سجلها») is no list.
  */
 const KEEPS = new FoldedRegExp(`${WORD_START}(?:stores?|storing|keeps?|keeping|saves?|saving|persists?|persisting|و?(?:ي|ت)(?:خزن|حفظ))\\s+(?:(?:the|its|their|all|all\\s+the)\\s+)?`, 'iu');
-const KEPT_IN = new FoldedRegExp(`\\s+(?:in|into|inside|on|to|using|via|with|across)\\s+(?:(?:a|an|the|its|their|one|his|her)\\s+)?(?:[\\w-]+\\s+){0,2}?(?:database|databases|db|sqlite|sqlite3|postgres|postgresql|mysql|mongo|mongodb|redis|storage|store|files?|json|disk|localstorage|tables?)\\b|\\s+(?:في|ب|داخل|على)\\s*(?:ال)?(?:قاعدة|قواعد|ملف|ملفات|الذاكرة|ذاكرة|المتصفح|جدول|جداول|تخزين)|[.!?؟;؛:]`, 'iu');
+//  …or where another clause begins: «, with …» (its own list), «and sends reminders» (another verb),
+//  «that …», «ويرسل …» (the fifth review, 2026-11-11: «keeps favourites offline, with recipes …» read «offlines»).
+const KEPT_IN = new FoldedRegExp(`\\s+(?:in|into|inside|on|to|using|via|with|across)\\s+(?:(?:a|an|the|its|their|one|his|her)\\s+)?(?:[\\w-]+\\s+){0,2}?(?:database|databases|db|sqlite|sqlite3|postgres|postgresql|mysql|mongo|mongodb|redis|storage|store|files?|json|disk|localstorage|tables?)\\b|\\s+(?:في|ب|داخل|على)\\s*(?:ال)?(?:قاعدة|قواعد|ملف|ملفات|الذاكرة|ذاكرة|المتصفح|جدول|جداول|تخزين)|\\s*,?\\s+(?:with|which|that|where|while|so\\s+that|and\\s+(?:sends?|shows?|lets?|has|have|provides?|offers?|allows?|supports?|displays?|tracks?|gives?|includes?|notifies|emails?|exports?|prints?|generates?|calculates?|reminds?))\\b|\\s+و(?:ي|ت)(?:رسل|عرض|سمح|تيح|دعم|نبه|طبع|صدر|حسب|ذكر)|[.!?؟;؛:]`, 'iu');
 
 /*
  * What a keeping verb keeps that is no record: «saves you time and money», «keeps it simple», «keeps
  * track of …» (its records follow «of»). The fourth review, 2026-11-11.
  */
-const KEPT_NOT_RECORDS = /^(?:you|your|yourself|us|our|me|my|them|him|her|it|its|this|that|everything|anything|nothing|time|money|things)\b/iu;
+//  …nor a word that is no object at all: «a marketplace that connects stores with customers» (the noun «stores»).
+const KEPT_NOT_RECORDS = /^(?:you|your|yourself|us|our|me|my|them|him|her|it|its|this|that|everything|anything|nothing|time|money|things|with|for|from|to|in|on|at|by|of|and|or|which|who|offline|online|locally|safe|secure|up\s+to\s+date)\b/iu;
 
 function keptList(req: string): { region: string; at: number; end: number } | null {
-    const verb = KEEPS.exec(req);
-    if (!verb || verb.index === undefined) return null;
-    let from = verb.index + verb[0].length;
-    const trackOf = req.slice(from).match(/^track\s+of\s+(?:(?:the|all|all\s+the|their|its)\s+)?/iu);
-    if (trackOf) from += trackOf[0].length;
-    const after = req.slice(from);
-    if (KEPT_NOT_RECORDS.test(after)) return null;
-    const end = KEPT_IN.exec(after);
-    const cut = end && end.index !== undefined ? end.index : after.length;
-    const region = after.slice(0, cut).trim();
-    return region && splitListItems(region).length >= 2 ? { region, at: verb.index, end: from + cut } : null;
+    /*
+     * Each keeping word in turn: «an electronics store with a Node server that stores products,
+     * orders, warranties» — the noun «store» first, which keeps nothing, then the verb, which keeps
+     * the three (the fifth review's own measurement, 2026-11-11, lost «warranties» on the first).
+     */
+    for (let offset = 0, guard = 0; offset < req.length && guard < 6; guard++) {
+        const verb = KEEPS.exec(req.slice(offset));
+        if (!verb || verb.index === undefined) return null;
+        const at = offset + verb.index;
+        offset = at + verb[0].length;
+        let from = offset;
+        const trackOf = req.slice(from).match(/^track\s+of\s+(?:(?:the|all|all\s+the|their|its)\s+)?/iu);
+        if (trackOf) from += trackOf[0].length;
+        const after = req.slice(from);
+        if (KEPT_NOT_RECORDS.test(after)) continue;
+        const end = KEPT_IN.exec(after);
+        const cut = end && end.index !== undefined ? end.index : after.length;
+        const region = after.slice(0, cut).trim();
+        if (region && splitListItems(region).length >= 2) return { region, at, end: from + cut };
+    }
+    return null;
 }
 
 /**
