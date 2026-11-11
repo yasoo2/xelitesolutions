@@ -89,7 +89,10 @@ describe('the browser asks where it landed before it grades anything', () => {
         const a = AUDIT();
         //  …and no link to another of the app's own pages (inAppRoutes, the 500
         //  exam P071, 2026-11-06): a page of such links is judged by the pages it opens.
-        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length && !auditErrors\.length && !routes\.length\) \{/);
+        //  Repointed (feec12329, 2026-11-07; L282, 2026-11-09): a page with action
+        //  links or fields, or one the walk signed in through, is not empty either.
+        expect(a).toMatch(/if \(!allControls\.length && !allForms\.length && !auditErrors\.length && !routes\.length && !dom\.actionLinks && !dom\.fields && !walkedThroughTheDoor\) \{/);
+        expect(a).toMatch(/const walkedThroughTheDoor = authenticated && !!signInAccount;/);
         expect(a).toMatch(/id: 'empty_page', severity: 'high'/);
         expect(a).toContain('هذه ليست واجهة تطبيق');
     });

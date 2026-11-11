@@ -1271,8 +1271,10 @@ describe('an application build ships a program, not a brochure', () => {
         expect(R).toMatch(/detectAppKind\(request\)/);
         expect(R).toMatch(/buildAppFiles\(runBp/);
         // an app build must not emit one brochure component
-        expect(R).toMatch(/for \(const c of appBp \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
-        expect(R).toMatch(/if \(!appBp\) files\['src\/components\/AdminPanel\.jsx'\]/);
+        // Repointed (46e6d5d1f): an external-API build is not a brochure either.
+        expect(R).toMatch(/for \(const c of \(appBp \|\| externalIntegration\) \? \[\] : \['Navbar', \.\.\.sections, 'Footer'\]\)/);
+        // Repointed: the brochure admin panel is also written only when asked for.
+        expect(R).toMatch(/if \(!appBp && admin\) files\['src\/components\/AdminPanel\.jsx'\]/);
     });
 
     it('no fabricated person, dish or pricing tier can reach an application', () => {
@@ -1558,8 +1560,10 @@ describe('a feed ships with a feed server', () => {
         // …and a feed is no longer a feed ALONE: groups, pages, messages and
         // ads are real tables, and the system has real accounts instead of
         // «identity here is a name with no password».
-        expect(t).toMatch(/'auth\.js': fileAuthJs\(\),\n\s*'seed\.js': fileSeedJs\(\[\]/);
-        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model\) \} : \{\}\),\n\s*'auth\.js'/);
+        // Repointed (0e2ff0962): the accounts carry the request's roles, and the
+        // feed's empty seed now also creates the owner account.
+        expect(t).toMatch(/'auth\.js': fileAuthJs\(roleSpecs\),\r?\n\s*'seed\.js': fileSeedJs\(\[\], \{ email: ownerEmail/);
+        expect(t).toMatch(/\.\.\.\(model\.length \? \{ 'entities\.js': fileEntitiesJs\(model, requestForReading\) \} : \{\}\),\r?\n\s*'auth\.js'/);
         expect(t).toMatch(/'db\.js': filePostsDbJs\(\)/);
     });
 });
@@ -1669,7 +1673,8 @@ describe('the full-stack claim matches the server that was built', () => {
     it('a feed is not told it has an orders table', () => {
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(R).toMatch(/const feedApi = \/\\\/api\\\/posts\$\/\.test\(apiLink\)/);
-        expect(R).toMatch(/apiLink && !feedApi \? apiLink\.replace/);
+        // Repointed (3917fe1d7): a workflow application has no orders table either.
+        expect(R).toMatch(/apiLink && !feedApi && !workflowApi\s*\? apiLink\.replace/);
         expect(R).toMatch(/reads and writes the LIVE feed at/);
     });
 });
@@ -1700,7 +1705,10 @@ describe('the React head is publish-ready', () => {
     it('a console error names the resource it came from', () => {
         const A = SRC('core', 'quality', 'app-audit.ts');
         expect(A).toMatch(/m\.location\(\)/);
-        expect(A).toMatch(/l\?\.url \? ` ← \$\{String\(l\.url\)\.slice\(-60\)\}` : ''/);
+        // Repointed (862ba27b3): the location is read once into
+        // consoleLocationUrl, and the finding text carries it.
+        expect(A).toMatch(/const where = consoleLocationUrl \? ` ← \$\{consoleLocationUrl\.slice\(-60\)\}` : ''/);
+        expect(A).toContain('consoleErrors.push((String(m.text()).slice(0, 120) + where).slice(0, 180));');
     });
 });
 
@@ -2295,10 +2303,18 @@ describe('a plan may only name tools that exist', () => {
         const E = SRC('modules', 'tools', 'definitions', 'PhaseExecutorTool.ts');
         expect(E).toMatch(/resolvePlannedTool\(askedFor\)/);
         // an unrunnable name is skipped, never counted as executed completion
-        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}continue;/);
+        // Repointed (0f866ad25): one task is a function now, so `continue;` is
+        // a return that hands completedCount back unchanged.
+        expect(E).toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}execution:\s*['"]skipped['"][\s\S]{0,40}return \{ results, completedCount,[^}]*shouldBreak: false \};/);
         expect(E).not.toMatch(/if \(!resolved\.tool\)[\s\S]{0,400}completedCount\+\+/);
         // and the verification step cannot name a ghost either
-        expect(E).toMatch(/resolvePlannedTool\(String\(vTask\.tool[\s\S]{0,60}\|\| 'project_detect'/);
+        // Repointed (76f66a5d3): a ghost is no longer swapped for project_detect
+        // (detection is not acceptance evidence). It keeps its name, fails the
+        // verification-tool contract, and the phase records a failed check
+        // instead of running anything.
+        expect(E).toMatch(/const vToolName = resolvePlannedTool\(requestedVerificationTool\)\.tool \|\| requestedVerificationTool;/);
+        expect(E).toMatch(/!isVerificationTool\(requestedVerificationTool, verificationArgs, false, allowExistenceObs\)\s*\|\| !isVerificationTool\(vToolName, verificationArgs, false, allowExistenceObs\)\s*\? 'verification_unavailable: unsupported verification tool contract'/);
+        expect(E).toMatch(/if \(verificationArgsIssue\) \{[\s\S]{0,900}ok: false, execution: 'ran', error: checkerError \}\);\s*verificationFailed = true;/);
     });
 
     it('the arguments are translated too, not just the name', () => {
@@ -2362,7 +2378,8 @@ describe('the biggest request gets the strongest route', () => {
         // supply, so the literal call text changed. The guarantee is unchanged —
         // discovery is still the first thing that runs.
         expect(P).toContain("executeTool('engineering_discovery',");
-        expect(P).toContain('projectPath ? { request: productRequest, path: projectPath } : { request: productRequest }');
+        // Repointed (3d0b0be64): the root is resolved to the runnable project first.
+        expect(P).toContain('discoveryPath ? { request: productRequest, path: discoveryPath } : { request: productRequest }');
         // Repointed: the call now passes a prepared request and prepared
         // evidence rather than the raw two. What is guaranteed — and what this
         // measures — is that the pipeline plans through project_planner and
@@ -2439,8 +2456,11 @@ describe('the server stores what the app sends', () => {
          * from — both halves reading one answer.
          */
         expect(A).toMatch(/const requestColumns = apiColumnsForRequest\(request\)/);
-        expect(A).toMatch(/const columns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
-        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation\)/);
+        // Repointed (76f66a5d3): the derivation is `selectedColumns`; `columns`
+        // adds only a requested status column the chosen source left out.
+        expect(A).toMatch(/const selectedColumns = isProductivity[\s\S]{0,240}primaryDesignedColumns[\s\S]{0,240}promotedColumns[\s\S]{0,120}requestColumns/);
+        expect(A).toMatch(/const columns = requestedStatusColumn && !selectedColumns\.some\([\s\S]{0,160}\? \[\.\.\.selectedColumns, requestedStatusColumn\]\s*: selectedColumns;/);
+        expect(A).toMatch(/'db\.js': fileDbJs\(resource, columns, relation, !workflowApplication\)/);
     });
 
     /**
@@ -2464,7 +2484,8 @@ describe('the server stores what the app sends', () => {
         // The guarantee is the same and now covers both ways of naming them.
         expect(A).toMatch(/const relation = \(declaredForRelation \|\| designed\.length >= 3\)/);
         expect(A).toMatch(/: apiRelationForRequest\(request\);/);
-        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model\)/);
+        // Repointed (3917fe1d7): the server also learns the workflow it serves.
+        expect(A).toMatch(/'server\.js': fileServerJs\(resource, brand, path\.basename\(proj\), relation, model, privateWorkflow, workflowApplication\)/);
         // the link is checked, never trusted
         expect(A).toMatch(/return \{ error: 'unknown_' \+ c\.key \}/);
         expect(A).toMatch(/error: 'has_children'/);
@@ -2543,7 +2564,13 @@ describe('the generated app can sign in to its own server', () => {
     });
 
     it('and one Joe-built system never borrows another\'s session', () => {
-        expect(T()).toMatch(/const TOKEN_KEY = 'joe:auth:' \+/);
+        // Repointed (0e2ff0962): localStorage already belongs to one origin, and
+        // a pathname-scoped key signed the same app out between its own routes.
+        // The key is the one fixed name, never a route-scoped one.
+        const t = T();
+        expect(t).toMatch(/const TOKEN_KEY = 'joe:auth';/);
+        expect(t).not.toMatch(/TOKEN_KEY = 'joe:auth:' \+/);
+        expect(t).toMatch(/localStorage\.setItem\(TOKEN_KEY, t\)/);
     });
 });
 
@@ -2558,7 +2585,8 @@ describe('the team reaches the roles', () => {
     const T = () => SRC('modules', 'tools', 'definitions', 'react-app-templates.ts');
 
     it('the accounts screen is written into the project whenever a server exists', () => {
-        expect(T()).toMatch(/\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic\) \} : \{\}\)/);
+        // Repointed (0e2ff0962): the screen is handed the request's roles too.
+        expect(T()).toMatch(/\.\.\.\(o\.api \? \{ 'src\/components\/Accounts\.jsx': fileAccountsJsx\(o\.isArabic, roleSpecs\) \} : \{\}\)/);
         expect(T()).toMatch(/\+ \(o\.api \? fileAccountsCss\(\) : ''\)/);
     });
 
@@ -2573,7 +2601,8 @@ describe('the team reaches the roles', () => {
         //  render -- was never touched. A guard that fails on a difference
         //  nobody can see is a guard somebody deletes.
         expect(t).toMatch(/\$\{hasApi \? '\s*<Accounts api=\{content\.api\} \/>/);
-        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(bp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api\)/);
+        // Repointed (0e2ff0962): the shell gets the built blueprint, roles and tables.
+        expect(t).toMatch(/'src\/App\.jsx': fileAppShellJsx\(builtBp, o\.isArabic, !!\(o\.model && o\.model\.length\), !!o\.api, roleSpecs, !!o\.unifiedTables\)/);
     });
 
     it('the screen refuses to render for anybody but the owner', () => {
@@ -2612,7 +2641,11 @@ describe('the built system is ready for a domain', () => {
         const R = SRC('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
         expect(R).toMatch(/fs\.cpSync\(path\.join\(proj, 'dist'\), target, \{ recursive: true \}\)/);
         // only when this session really built an API — never inventing a target
-        expect(R).toMatch(/prevEntry\?\.type === 'api' && prevEntry\?\.dir && fs\.existsSync\(prevEntry\.dir\)/);
+        // Repointed (76f66a5d3): the API entry is this session's, or a linked
+        // backend checked inside the workspace; its folder must still exist.
+        expect(R).toMatch(/let apiEntry = prevEntry\?\.type === 'api' \? prevEntry : null;/);
+        expect(R).toMatch(/const apiDir = \(apiEntry\?\.dir && fs\.existsSync\(apiEntry\.dir\)\) \? String\(apiEntry\.dir\) : '';/);
+        expect(R).toMatch(/const packageIntoApi = \(announce: boolean\) => \{\s*if \(!apiDir\) return false;/);
     });
 });
 
