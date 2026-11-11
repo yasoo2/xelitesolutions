@@ -6,7 +6,9 @@ const mockBuilding = jest.fn(() => true);
 const mockOrchestrator = jest.fn(() => { throw new Error('orchestration must remain closed'); });
 jest.mock('../shared/models/run', () => ({ Run: { create: () => { throw new Error('no DB'); } } }));
 jest.mock('../orchestration/AgentOrchestrator', () => ({ AgentOrchestrator: mockOrchestrator }));
+//  The real module's other functions (run and session owners), its broadcasts watched.
 jest.mock('../api/ws', () => ({
+    ...jest.requireActual('../api/ws'),
     broadcastThinkingDetail: (_sid: string, message: string) => mockMessages.push(message),
     broadcast: jest.fn(), registerRunSession: jest.fn(), unregisterRunSession: jest.fn(),
     addRunEventListener: jest.fn(), removeRunEventListener: jest.fn(),
@@ -30,8 +32,10 @@ jest.mock('../core/orchestrator/answerComposer', () => ({}));
 jest.mock('../core/orchestrator/ExecutionMemory', () => ({}));
 jest.mock('../modules/tools/definitions/ProjectPipelineTool', () => ({}));
 jest.mock('../shared/run-evidence-store', () => ({
+    ...jest.requireActual('../shared/run-evidence-store'),
     closeRunEvidenceIfOpen: jest.fn(async () => {}), createRunEvidence: async () => undefined }));
-jest.mock('../core/session/attended-run', () => ({ releaseHandle: jest.fn() }));
+//  ToolService now binds each run's cancellation (bindRunCancellation): the real function, as the sibling suites have.
+jest.mock('../core/session/attended-run', () => ({ releaseHandle: jest.fn(), bindRunCancellation: jest.requireActual('../core/session/attended-run').bindRunCancellation }));
 jest.mock('../core/orchestrator/PlanningEngine', () => ({ PlanningEngine: { looksLikeBuild: mockBuilding } }));
 // Controlled generic classifier facts; existing scaffold suites separately cover real classifier outcomes.
 jest.mock('../core/design/blueprints', () => ({ detectPageKind: () => 'generic' }));

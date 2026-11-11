@@ -3381,8 +3381,23 @@ export async function probeForms(
             }
         }
         if (submitCandidates.length) {
-            await settleAfterSubmit();
-            await refillValid(page, validValues);
+            /*
+             * …and what was typed is still there a moment later. The laundry's own test, under load
+             * (2026-11-11): the page reloaded the record 600 ms after answering a refused case, the
+             * page had been still for 250 ms, so the walk typed the valid values — and the redraw
+             * wiped them: the last submit sent the stored «call-me». Typed again until they hold.
+             */
+            const valuesHeld = () => page.evaluate((entries: Array<[string, { kind: string; value: string }]>) => entries.every(([s, v]) => {
+                const el = document.querySelector(s) as HTMLInputElement | null;
+                if (!el) return false;
+                return v.kind === 'check' ? el.checked === true : String(el.value) === String(v.value);
+            }), Array.from(validValues.entries())).catch(() => true);
+            for (let attempt = 0; attempt < 3 && Date.now() < deadline; attempt++) {
+                await settleAfterSubmit();
+                await refillValid(page, validValues);
+                await page.waitForTimeout(700).catch(() => { });
+                if (await valuesHeld()) break;
+            }
         }
         if (markupSel) await page.evaluate(() => { (window as any).__joeQaXss = 0; }).catch(() => { });
 
