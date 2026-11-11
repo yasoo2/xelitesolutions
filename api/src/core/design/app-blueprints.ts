@@ -26,7 +26,7 @@
 //  The one folder of Arabic diacritics this repository owns. A second
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
-import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+import { foldChars, stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { saysWord, words, normalise } from '../language/arabic';
 import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact, stripDeclaredOptions } from './requested-artifact';
 import { hisWordsOnly } from './page-head';
@@ -2378,22 +2378,77 @@ export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|
  *  difference on the container because its nouns carry no «ال»; an Arabic
  *  item answers for itself by being definite or not, so only a Latin item
  *  is held to the container's word here.
+ *
+ *  …AND THE WORD «LIST» ONLY ASKS. THE ITEMS ANSWER.
+ *
+ *  Measured by the pre-merge review, the day the rule above first ran:
+ *
+ *      «Build a contact list with name, phone and email»          → nothing
+ *      «Create an employee list: name, department, salary»         → nothing
+ *      «Create a todo list with title, due date and priority»      → tasks, his columns gone
+ *      «Make a guest list app with name, RSVP status and table number» → custom
+ *
+ *  Before it ran, every one of them was his table. English has one word
+ *  for both containers — a shopping list holds milk, a contact list holds a
+ *  name, a phone and an email for every contact — so the word cannot
+ *  decide, and making it decide alone traded one wrong reading for another.
+ *
+ *  What tells them apart is in the items, and this file already reads it:
+ *  a COLUMN HAS A KIND OF VALUE. The type marks that type every derived
+ *  column read «phone» as a tel, «due date» as a date, «salary» as money,
+ *  «RSVP status» as a select; canonicalFieldKey knows «title». A VALUE has
+ *  no kind of value — milk, bread and eggs ARE the values — and not one of
+ *  them is read by any mark. One more is not a type and is named outright:
+ *  the record's own NAME, the field every stock blueprint here keys as
+ *  `name` and marks primary. A list of things never lists the word «name».
+ *
+ *  Two readings of a mark are not evidence of a column here:
+ *    · a single word the yes/no mark reads as a state — «done», «paid»,
+ *      «shipped». «pending, done, cancelled» are the answers of one status
+ *      column, not three columns; «is paid?» still asks, and still counts;
+ *    · an item that opens with an article — «The Time Machine» is a thing
+ *      he names, not a column (OPENS_WITH_AN_ARTICLE, the rule the
+ *      introducer reader keeps for «a home page, a contact form»).
+ *
+ *  The limit, stated: a list of things whose item happens to name a kind of
+ *  value — «rent, phone, internet» as expense categories — reads as columns,
+ *  exactly as every list did before the rule above ran. The marks are the
+ *  closed vocabulary; widening them for this would be the disease again.
  */
 const A_BARE_LIST = new FoldedRegExp('^(?:list|قائمة)(?:ا)?$', 'iu');
+const THE_RECORDS_OWN_NAME = /\bname\b|(?:^|\s)(?:ال)?اسم(?=$|\s)/iu;
+
+function namesAFieldOfARecord(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t || OPENS_WITH_AN_ARTICLE.test(t)) return false;
+    if (THE_RECORDS_OWN_NAME.test(t) || canonicalFieldKey(t)) return true;
+    const mark = TYPE_MARKS.find(([pattern]) => pattern.test(t));
+    if (!mark) return false;
+    return !(mark[0] === ASKS_YES_OR_NO && !/[\s?؟]/u.test(t));
+}
 
 function aListHoldsValues(container: string | null | undefined, items: string[]): boolean {
     return A_BARE_LIST.test(String(container || '').trim())
-        && items.some(item => !/[؀-ۿ]/u.test(String(item || '')));
+        && items.some(item => !/[؀-ۿ]/u.test(String(item || '')))
+        && !items.some(namesAFieldOfARecord);
 }
 
-/** The container named last before a point — the one the list after it hangs from. */
+/**
+ *  The container named last before a point — the one the list after it hangs from.
+ *
+ *  FOLDED ONCE, NOT ONCE PER CONTAINER. The first version called
+ *  RECORD_CONTAINER on what was left after each hit, and a FoldedRegExp
+ *  folds its whole input on every call — so a request naming a container
+ *  n times was folded n times. Measured on 5 KB of «list list list …»:
+ *  derivedColumns took 16–20 s; now 2–5 ms. One fold, then one global walk of the same
+ *  folded pattern over it; the word returned is folded, and the only
+ *  reader of it (A_BARE_LIST) is folded too.
+ */
+const EVERY_RECORD_CONTAINER = new RegExp(RECORD_CONTAINER.source, `${RECORD_CONTAINER.flags.replace(/[dgy]/gu, '')}g`);
+
 function theContainerNearest(text: string): string | null {
-    let rest = String(text || '');
     let last: string | null = null;
-    for (let hit = RECORD_CONTAINER.exec(rest); hit; hit = RECORD_CONTAINER.exec(rest)) {
-        last = hit[0];
-        rest = rest.slice((hit.index || 0) + Math.max(1, hit[0].length));
-    }
+    for (const hit of foldChars(String(text || '')).matchAll(EVERY_RECORD_CONTAINER)) last = hit[0];
     return last;
 }
 
@@ -2983,9 +3038,30 @@ export function hisSentence(request: string): string {
     return his.length >= 4 ? his : raw;
 }
 
+/**
+ *  ONE RUN OF WHITE SPACE IS ONE SPACE — BEFORE ANY LIST IS SPLIT.
+ *
+ *  Measured on 5 KB of adversarial input: «Build a list», five thousand
+ *  spaces, «with name, phone and email» — derivedColumns took 0.6–1.4 s
+ *  (now under 1 ms), and the profile put it on one pattern, the list separator
+ *  «\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+». A separator that may open
+ *  with white space is tried again from every position inside a run, and
+ *  every try walks the rest of the run before it fails: quadratic in the
+ *  run, in every reader below that splits a list.
+ *
+ *  So the run is made one character before any of them reads it. What the
+ *  readers read does not change: every item is trimmed, the separators ask
+ *  whether there is white space and not how much, and a run holding a line
+ *  break stays a line break — which is where a sentence ends. A label he
+ *  typed with two spaces reads as the same label with one. The runs are
+ *  matched greedily from where they start, so the collapse itself is linear.
+ */
+const oneSpaceEach = (text: string): string => String(text || '')
+    .replace(/\s+/gu, run => (run.includes('\n') ? '\n' : ' '));
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     requestRaw = hisSentence(requestRaw);
-    const request = String(requestRaw || '');
+    const request = oneSpaceEach(String(requestRaw || ''));
     // A nested form schema is more specific than the surrounding tracker or
     // dashboard container. Read it before the broad container reader can
     // mistake a later visual-quality list for record fields.
@@ -3439,7 +3515,9 @@ export function isCliRequest(requestRaw: string): boolean {
 
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
-    const request = stripArabicDiacritics(String(requestRaw || '')).trim();
+    //  Collapsed for the reason derivedColumns is: «\s+(?:and\s+|و)» below
+    //  would otherwise retry a long run of spaces from every position in it.
+    const request = oneSpaceEach(stripArabicDiacritics(String(requestRaw || ''))).trim();
     /**
      *  A CLAUSE ALSO OPENS AFTER A COMMA.
      *
