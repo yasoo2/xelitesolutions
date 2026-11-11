@@ -7,7 +7,7 @@ export const CAPTURE_INQUIRY_CLASSIFICATION_LIMIT = 4000;
 /** Classify a question about saved capture metadata, never execute or grant access. */
 export function isCaptureResultInquiry(value: unknown): boolean {
     if (typeof value !== 'string' || !value.trim() || value.length > CAPTURE_INQUIRY_CLASSIFICATION_LIMIT) return false;
-    const boundary = value.search(/\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|RESPONSE LANGUAGE|ENGINEERING DISCIPLINE)/i);
+    const boundary = value.search(/(?<!\n)\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|RESPONSE LANGUAGE|ENGINEERING DISCIPLINE)/i);
     const request = stripArabicDiacritics((boundary >= 0 ? value.slice(0, boundary) : value).normalize('NFKC'))
         .replace(/```[\s\S]*?```|```[\s\S]*$|`[^`]*`|"(?:\\.|[^"\\\n])*"|'(?:\\.|[^'\\\n])*'|“[^”\n]*”|‘[^’\n]*’|«[^»\n]*»/g, ' ');
     if (/https?:\/\//i.test(request)) return false;

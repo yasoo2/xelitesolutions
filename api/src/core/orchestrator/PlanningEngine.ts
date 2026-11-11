@@ -61,7 +61,7 @@ function isReadOnlyInspectionRequest(goal: string): boolean {
  * (deploy, launch, server, publish), so every reader of intent reads only what
  * precedes them. One definition, used by generatePlan and readDeployIntent.
  */
-const INJECTED_BLOCK_START = /\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)/i;
+const INJECTED_BLOCK_START = /(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)/i;
 function userPartOf(rawGoal: string): string {
     const raw = String(rawGoal || '');
     const injectedAt = raw.search(INJECTED_BLOCK_START);
@@ -81,7 +81,41 @@ function userPartOf(rawGoal: string): string {
  * way. A word keeps its own inflections and Arabic clitics — «وراجعه»,
  * «المراجعة», «الاختبارات», "reviewed", "inspection" — and nothing longer.
  */
-const QUALITY_REVIEW_VERB = /(?<![\p{L}\p{N}_])(?:[وف]?(?:راجع|افحص|دقّ?ق|اختبر)(?:ي|وا|ه|ها|هم)?|[وف]?(?:[بل]?ال|لل|[بل])?(?:مراجع(?:ة|ه|ات)|فحص|تدقيق|اختبار)(?:ا|ات|ه|ها)?|(?:re-?)?(?:review(?:s|ed|ing|ers?)?|audit(?:s|ed|ing|ors?)?|inspect(?:s|ed|ing|ions?)?|check(?:s|ed|ing)?|verif(?:y|ies|ied|ying|ication)))(?![\p{L}\p{N}_])/iu;
+/*
+ * «انشر الموقع ولا تنشر صفحة الأدمن», «ارفع التطبيق على السيرفر ولا ترفع ملف .env»,
+ * «اختبر الموقع وبعدين انشره، لا تنشره قبل الاختبار», "Deploy the site but don't
+ * publish the drafts": a denial of a PART, or of a time or a place, beside an order to
+ * publish. Read as a denial of the whole publish it vetoed every deploy tool on every
+ * road, and nothing was deployed (the second review, 2026-11-12). The publish itself
+ * is denied when nothing else orders one («لا تنشر الموقع», «ابنِ الموقع ولا تنشره»),
+ * or when the denial names the same site, or its pronoun, with nothing qualifying it.
+ */
+const PUBLISH_DENIAL = /(?:^|[\s،؛,:.!?])(?:[وف]?(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)([تن]?نشر(?:ه|ها|هم|وا|ي)?|انشر|أنشر|ت?رفع(?:ه|ها)?|استضافة|deploy(?:ing)?|publish(?:ing)?|host(?:ing)?|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])([^\n.!?؟؛;،,]{0,80})/giu;
+const PUBLISH_ORDER = /(?:^|[\s،؛,:.!?])[وف]?(?:انشر|أنشر|ارفع|استضف)(?:ه|ها)?(?=$|[\s،؛,:.!?])|\b(?:deploy|publish|host|go\s*live)\b/iu;
+const THE_SITE_ITSELF = /^(?:(?:ال)?(?:موقع|مشروع|تطبيق|متجر|نظام|صفحات)|it|this|them|(?:the|my|our|this)\s+(?:site|website|app|application|project|store))$/iu;
+const QUALIFIES_A_DENIAL = /^(?:قبل|حتى|[إا]لا|لحد|لين|لما|على|في|[إا]لى|الان|الآن|حاليا|before|until|unless|till|on|to|yet|now|while|externally)$/iu;
+function deniesThePublishItself(userGoal: string): boolean {
+    const denials = [...String(userGoal || '').matchAll(PUBLISH_DENIAL)];
+    if (!denials.length) return false;
+    if (!PUBLISH_ORDER.test(String(userGoal || '').replace(PUBLISH_DENIAL, ' '))) return true;
+    return denials.some(m => {
+        const verb = m[1];
+        const words = (m[2] || '').trim().split(/\s+/u).filter(Boolean);
+        //  «لا تنشره»: the pronoun is the site. «لا تنشر الموقع»: the site named, one or two words.
+        const carriesPronoun = /(?:نشر|رفع)(?:ه|ها|هم)$/u.test(verb);
+        let rest = words;
+        if (!carriesPronoun) {
+            const two = words.slice(0, 2).join(' '), one = words[0] || '';
+            if (THE_SITE_ITSELF.test(two)) rest = words.slice(2);
+            else if (THE_SITE_ITSELF.test(one)) rest = words.slice(1);
+            else return words.length === 0;         // a part, a file, the drafts: scoped
+        }
+        return !rest.length || !QUALIFIES_A_DENIAL.test(rest[0]);
+    });
+}
+
+//  «راجعلي», «افحصلي», «دققلي»: the dialect's «لي» glued to the order is the same order.
+const QUALITY_REVIEW_VERB = /(?<![\p{L}\p{N}_])(?:[وف]?(?:راجع|افحص|دقّ?ق|اختبر)(?:ي|وا|و|ه|ها|هم)?(?:لي|لنا)?|[وف]?(?:[بل]?ال|لل|[بل])?(?:مراجع(?:ة|ه|ات)|فحص|تدقيق|اختبار)(?:ا|ات|ه|ها)?|(?:re-?)?(?:review(?:s|ed|ing|ers?)?|audit(?:s|ed|ing|ors?)?|inspect(?:s|ed|ing|ions?)?|check(?:s|ed|ing)?|verif(?:y|ies|ied|ying|ication)))(?![\p{L}\p{N}_])/iu;
 /** A request whose first word (after a courtesy) orders that review. Read on diacritic-free text. */
 const OPENS_WITH_REVIEW = new RegExp(`^\\s*(?:(?:please|kindly|من\\s+فضلك|لو\\s+سمحت|رجاء[ًا]?)[\\s،,]+)?${QUALITY_REVIEW_VERB.source}`, 'iu');
 
@@ -184,7 +218,7 @@ const CONSTRUCTION_VERB_TOKEN = /^(?:build|create|scaffold|develop|generate|desi
 const IMPERATIVE_LEAD = /^(?:and|then|please|also|now|just|so|ثم|ايضا|الان|رجاء|فضلك|سمحت|كمان|بعدين)$/u;
 const OBJECT_LEAD = /^(?:a|an|the|some|new|missing|my|our|its|their|all|another|me|us|لي|لنا|له|لها)$/u;
 /** What a review's own verb makes: the review, its report, the fixes — never a new deliverable. */
-const NOT_A_DELIVERABLE = /^(?:sure|it|them|this|that|these|those|again|and|or|with|for|of|to|in|on|by|from|report|reports|summary|summaries|fix|fixes|repair|repairs|changes?|patch(?:es)?|notes?|backups?|commits?|pr|[وف]?(?:ال)?(?:اصلاح|اصلاحات|تقرير|تقارير|ملخص|تعديل|تعديلات|ملاحظات|ملاحظه|فحص|مراجعه|لازم|مطلوب)|علي|في|من|الي|مع|عن)$/u;
+const NOT_A_DELIVERABLE = /^(?:sure|it|them|this|that|these|those|again|and|or|with|for|of|to|in|on|by|from|report|reports|summary|summaries|fix|fixes|repair|repairs|changes?|improvements?|corrections?|adjustments?|tweaks?|edits?|updates?|enhancements?|patch(?:es)?|notes?|backups?|commits?|pr|[وف]?(?:ال)?(?:اصلاح|اصلاحات|تحسين|تحسينات|تصحيح|تصحيحات|تقرير|تقارير|ملخص|تعديل|تعديلات|ملاحظات|ملاحظه|فحص|مراجعه|لازم|مطلوب)|علي|في|من|الي|مع|عن)$/u;
 
 /**
  * A CREATION VERB WITH AN OBJECT IS A CONSTRUCTION, WHATEVER THE OBJECT.
@@ -548,7 +582,7 @@ export class PlanningEngine {
         // «لا تنشر الموقع» and «…ولا تنشره» are denials too: the second person
         // («تنشر/ترفع», with its object pronoun) and the conjunction on «ولا»
         // were missing, and the capability matcher chose deploy_pages for both.
-        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:[وف]?(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:[تن]?نشر(?:ه|ها|هم|وا|ي)?|انشر|أنشر|ت?رفع(?:ه|ها)?|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
+        const deniesExternalPublish = deniesThePublishItself(userGoal);
 
         // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
         // a topic; it does NOT command run/stop/deploy — those must yield to it.
@@ -4005,7 +4039,7 @@ Return ONLY a JSON array of steps:
      * tool cannot run without.
      */
     static sanitizeSteps<T extends { tool: string; description: string; input: any }>(steps: T[], goal: string, context?: any): T[] {
-        const userGoal = goal.split(/\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)/)[0].trim();
+        const userGoal = goal.split(/(?<!\n)\n+\[(?:ATTACHED FILES|STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|RESPONSE LANGUAGE)/)[0].trim();
         // A planner is now shown a REAL catalogue, so a name outside it is a
         // hallucination rather than a gap. An unknown name used to travel all
         // the way to the executor and come back as «tool not found», which the

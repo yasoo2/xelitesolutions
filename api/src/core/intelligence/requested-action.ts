@@ -428,14 +428,22 @@ export function stripScopedExclusions(text: string): string {
  * left, the exclusion stays what it always was: a denial of the whole build.
  * Describing, explaining, suggesting and planning are not orders here.
  */
-const ACTION_ORDER_EN = /(?:^|[.!?;:,\n]\s*|\b(?:and|then|please|just|now)\s+)(?:run|start|launch|open|fix|repair|debug|add|edit|modify|update|change|remove|delete|deploy|publish|install|test|refactor|commit|push|clone|import|serve|restart|stop|move|rename|copy|save|upload|download|search|browse|visit|go|check|review|inspect|analy[sz]e|audit|read|list|scan|verify|validate|migrate|upgrade|convert|set\s+up|configure|connect|continue|resume|proceed|finish|complete|keep|use|work|improve|optimi[sz]e|clean|replace|merge|extend|integrate)\b/i;
-// Imperatives only — never a word that is also a common noun or particle
-// («حول» about, «غير» other than, «روح» soul, «عطل» fault, «حدث» event).
-const ACTION_ORDER_AR = /(?:^|[^\p{L}\p{N}_])[وف]?(?:شغل|[اأإ]صلح|صلح|[اأ]ضف|ضيف|عدل|افتح|انشر|ارفع|ثبت|اختبر|افحص|راجع|حلل|احذف|امسح|انقل|انسخ|احفظ|استنسخ|ادمج|شيك|نظف|[اأ]وقف|ركب|ابحث|ادخل|اذهب|كمل|[اأ]كمل|ابد[أاء]|تابع|واصل|استخرج|استورد|اربط|ارجع|خلي|اجعل)(?:ه|ها|هم|هما|وه|يه|ني|لي|لنا)?(?=$|[^\p{L}\p{N}_])/u;
-function ordersSomething(text: string): boolean {
-    const t = maskNegatedSpans(text);
-    return AFFIRMATIVE_BUILD_PATTERN.test(t) || ENGLISH_DESIRE_PATTERN.test(t) || POLITE_BUILD_PATTERN.test(t)
-        || hasArabicOrderVerb(t) || ACTION_ORDER_EN.test(t) || ACTION_ORDER_AR.test(t);
+/*
+ * …and the test is what is LEFT, never a list of verbs that count as orders. The
+ * second review, 2026-11-12: with a closed list, «غيّر لون الزر للأحمر ولا تنشئ صفحة
+ * جديدة», «كبّر الخط بدون إنشاء صفحة جديدة», «ممكن تضيف زر واتساب بدون إنشاء صفحة
+ * جديدة», "Polish the homepage. Do not create a new project.", "Could you add a
+ * footer without creating a new page?" were all «nothing ordered» — answered with
+ * words, the change never made. Orders are an open class; what asks for words only
+ * is small: nothing left at all, a telling verb at the head (describe, explain,
+ * suggest, plan — صف، اشرح، اقترح، خطط), or a question that is not a polite request.
+ */
+const WORDS_ONLY_LEAD = /^(?:(?:من\s+فضلك|لو\s+سمحت|رجاء|ممكن|please|kindly|can\s+you|could\s+you|would\s+you)\s+)?(?:(?:صف|[اأ]وصف|اشرح|وضح|اقترح|خطط|لخص|قل|قول|خبر|[اأ]خبر|احك|احكي|اذكر|عدد|قارن|فكر)(?:لي|ني|لنا|ي)?(?=$|[^\p{L}\p{N}_])|(?:describe|explain|suggest|propose|plan|outline|tell|summari[sz]e|brainstorm|compare|imagine)\b)/iu;
+const QUESTION_LEAD = /^(?:كيف|كيفية|لماذا|ليش|ليه|لي[هش]|وش|شو|[اإأ]يش|ما(?=\s)|ماذا|متى|[اأ]ين|وين|هل\s+(?!ممكن|يمكن|تقدر|تستطيع)|what\b|how\b|why\b|which\b|when\b|where\b|who\b|is\s+it\b|are\s+there\b|does\b|do\s+(?:i|we)\b)/iu;
+function asksForWordsOnly(text: string): boolean {
+    const left = String(text || '').replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '').replace(/[\s.،,;:؛!«»"'()-]+$/u, '');
+    if (!left) return true;
+    return WORDS_ONLY_LEAD.test(left) || QUESTION_LEAD.test(left);
 }
 
 /**
@@ -548,7 +556,7 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     // went to a registry guess, archive_files, once it was narrowed). With an
     // order beside it («Create a file … Do not change any other files.») it
     // stays narrowed.
-    if (!isNoFileChanges && stripNarrowedFileDenials(probeStripped) !== probeStripped && !ordersSomething(denialProbe)) {
+    if (!isNoFileChanges && stripNarrowedFileDenials(probeStripped) !== probeStripped && asksForWordsOnly(denialProbe)) {
         isNoFileChanges = true;
     }
     
@@ -572,7 +580,7 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
 
     
     // An exclusion whose request orders nothing else denies the whole build.
-    const exclusionIsTheOnlyDeed = stripPartExclusions(probeStripped) !== probeStripped && !ordersSomething(denialProbe);
+    const exclusionIsTheOnlyDeed = stripPartExclusions(probeStripped) !== probeStripped && asksForWordsOnly(denialProbe);
     const globalDenial = hasGlobalExecutionDenial || exclusionIsTheOnlyDeed || /(?:^|[\s،:؛.!?])(?:do\s+not\s+(?:execute|run|build)|don't\s+(?:execute|run|build)|without\s+(?:executing|running|building)|no\s+(?:execution|build)|answer[-\s]+only|only\s+answer|(?:بدون|دون)\s+(?:تنفيذ|بناء)|لا\s+(?:تنفيذ|بناء)|الرد\s+فقط|[أا]جب\s+فقط|اشرح\s+فقط)/i.test(denialProbe);
     if (isNoFileChanges && !globalDenial) isAnswerOnly = false;
     if (globalDenial) { isAnswerOnly = true; isNoFileChanges = false; }

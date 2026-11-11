@@ -4404,7 +4404,7 @@ export class ReactProjectTool extends BaseTool {
     async execute(input: any, context?: any): Promise<ToolExecutionResult> {
         const logs: string[] = [];
         const request = String(input?.request || '').trim()
-            .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
+            .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '').trim();
         if (!request) return { ok: false, error: 'no_request', logs };
         const sessionId = context?.sessionId;
         /**

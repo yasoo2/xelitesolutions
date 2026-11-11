@@ -198,7 +198,7 @@ function kindOfPhrase(np: Unit[]): { kind: ArtifactKind; presentation: boolean; 
     return { kind: narrowed || (family as ArtifactKind), presentation: !narrowed && presentation, head: head.text };
 }
 
-const INJECTED_BLOCK = /\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i;
+const INJECTED_BLOCK = /(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i;
 const CLAUSES = /[:：،,;؛!?\n()«»"]+|\.(?=\s|$)/u;
 
 /**

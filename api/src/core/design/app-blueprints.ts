@@ -468,7 +468,7 @@ function listIsTheArchetypeSchema(kind: AppKind, request: string): boolean {
 
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
     const intentRequest = maskNegatedSpans(request);
     // A command-line tool has no web engine, so no stock app kind applies
@@ -3845,7 +3845,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
  */
 export function requestedFeatures(requestRaw: string): string[] {
     const request = String(requestRaw || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     const out: string[] = [];
     const push = (raw: string) => {
         const s = raw.trim()
@@ -4243,7 +4243,7 @@ function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[
     const rules = engine ? FEATURE_RULES_BY_ENGINE[engine] : undefined;
     if (!rules) return [];
     const trimmedRequest = String(request || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     const out: string[] = [];
     for (const rule of rules) {
         const match = trimmedRequest.match(rule.asked);

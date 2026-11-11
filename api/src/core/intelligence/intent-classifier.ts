@@ -523,15 +523,34 @@ export function isReadOnlyStructural(goalRaw: string): boolean {
 //  the bug and fix it" went to the browser (2026-11-11). A definite or possessive
 //  error, log or app is his; «ابحث عن سعر الدولار» names nothing of his and stays the web.
 const LOCAL_WORK = new RegExp([
-    String.raw`\b(?:files?|folders?|director(?:y|ies)|code(?:base)?|source|repo(?:sitory)?|project|workspace|functions?|classes|modules?|logs?|todos?|comments?)\b`,
-    //  Not "the site/website": «search the website for…» may be any site; "my site" is below.
-    String.raw`\b(?:the|my|our|this|its)\s+(?:bugs?|errors?|exceptions?|crash(?:es)?|app|application|tests?)\b|\b(?:my|our)\s+(?:site|website|server)\b`,
-    String.raw`(?<![\p{L}\p{N}_])[وفب]?(?:ال)?(?:ملف|ملفات|مجلد|مجلدات|كود|مشروع|مستودع|مساح[ةه]\s+(?:ال)?عمل|دال[ةه]|سجلات|لوج|لوغ|تعليقات)(?![\p{L}\p{N}_])`,
+    String.raw`\b(?:files?|folders?|director(?:y|ies)|code(?:base)?|source|repo(?:sitory)?|project|workspace|functions?|classes|modules?|logs?)\b`,
+    String.raw`(?<![\p{L}\p{N}_])[وفب]?(?:ال)?(?:ملف|ملفات|مجلد|مجلدات|كود|مشروع|مستودع|مساح[ةه]\s+(?:ال)?عمل|دال[ةه]|سجلات|لوج|لوغ)(?![\p{L}\p{N}_])`,
+].join('|'), 'iu');
+/*
+ * What is probably his — an error, a bug, his app, a TODO comment — unless he names
+ * where on the web to look. The second review, 2026-11-12: with these as a hard veto,
+ * «ابحث في جوجل عن حل الخطأ ده», "Search Stack Overflow for the error TS2345",
+ * «ابحث عن موقعي في جوجل», "search online for the bug in React 18" stopped being web
+ * orders. A named venue (Google, the internet, YouTube, a domain) wins over them;
+ * bare «comments» and «tests» were dropped — "comments about the new iPhone" and
+ * "the test results of the new vaccine" are the world's, not his.
+ */
+const PROBABLY_HIS = new RegExp([
+    String.raw`\b(?:todo|fixme|code|inline)\s+(?:comments?|notes?|items?)\b|\bTODOs\b`,
+    //  Not "the site/website": «search the website for…» may be any site.
+    String.raw`\b(?:the|my|our|this|its)\s+(?:bugs?|errors?|exceptions?|crash(?:es)?|app|application)\b|\b(?:my|our)\s+(?:site|website|server)\b`,
     String.raw`(?<![\p{L}\p{N}_])[وفب]?ال(?:أخطاء|اخطاء|خطأ|خطا|مشكل[ةه]|مشاكل)(?![\p{L}\p{N}_])`,
     //  «في التطبيق/النظام/البرنامج» is his; «في موقع أمازون» is the web, so a site only as «موقعي».
     String.raw`(?<![\p{L}\p{N}_])(?:في|ب|من)\s*(?:ال)?(?:تطبيق|نظام|برنامج)(?:ي|نا)?(?![\p{L}\p{N}_])`,
     String.raw`(?<![\p{L}\p{N}_])(?:تطبيقي|موقعي|نظامي|برنامجي)(?![\p{L}\p{N}_])`,
 ].join('|'), 'iu');
+/** A place on the web named outright: it wins over every word that might be his ("Search Google for the error 'x is not a function'"). */
+const WEB_VENUE_NAMED = new RegExp([
+    String.raw`(?<![\p{L}\p{N}_])[وفب]?(?:ال)?(?:جوجل|قوقل|غوغل|[اإ]نترنت|نت|ويب|يوتيوب|تويتر|فيسبوك|[اإ]نستغرام|انستقرام|ويكيبيديا|ريديت|بينج|ستاك\s*[اأ]وفر\s*فلو|متجر\s+(?:جوجل|قوقل|[اأ]بل|التطبيقات)|جوجل\s+بلاي|[اأ]ب\s+ستور)(?![\p{L}\p{N}_])`,
+    String.raw`\b(?:google|bing|duckduckgo|online|the\s+(?:web|internet|net)|internet|stack\s*overflow|youtube|twitter|reddit|wikipedia|facebook|instagram|linkedin|github\s+issues|play\s+store|app\s+store)\b`,
+].join('|'), 'iu');
+/** …or an address: it wins over what is probably his, not over his files and code (a link inside a file search). */
+const WEB_ADDRESS = /\bhttps?:\/\/|\b[\w-]+\.(?:com|org|net|io|dev|app|co|ai|sa|ae|jo|eg|uk)\b/iu;
 /**
  * ⛔ AN ORDER TO THE BROWSER IS NOT A CAPABILITY GUESS.
  *
@@ -546,13 +565,19 @@ const LOCAL_WORK = new RegExp([
 //  The verbs of STRONG_WEB_VERB without its nouns: «تسجيل الدخول» and "login"
 //  name the login FEATURE — «أصلح خطأ تسجيل الدخول دون إنشاء مشروع جديد» is
 //  a fix to his app, and it went to the browser.
-const WEB_ORDER_VERB = /(تصف[حح]|سج[لّ]\s*(?:ال)?دخول|ادخل\s*(?:على|الى|إلى|ل|حساب|موقع)|اذهب\s*(?:الى|إلى|ل)|ابحث|دو[رّ]\s*(?:لي\s*)?عن|open\s*(?:the\s*)?browser|browse\b|visit\b|go\s*to\b|\blog\s+in(?:to)?\b|\bsign\s+in\b|search\b)/i;
+//  "login to my bank account" is the verb, one word or two.
+const WEB_ORDER_VERB = /(تصف[حح]|سج[لّ]\s*(?:ال)?دخول|ادخل\s*(?:على|الى|إلى|ل|حساب|موقع)|اذهب\s*(?:الى|إلى|ل)|ابحث|دو[رّ]\s*(?:لي\s*)?عن|open\s*(?:the\s*)?browser|browse\b|visit\b|go\s*to\b|\blog[\s-]?in\s*to\b|\blog\s+in\b|\bsign[\s-]?in\s+(?:to|into)\b|\bsign\s+in\b|search\b)/i;
 export function isWebOrder(goalRaw: string): boolean {
     const g = String(goalRaw || '');
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
     const bareProbe = stripArabicDiacritics(probe);
-    return WEB_ORDER_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' ')) && !LOCAL_WORK.test(bareProbe) && !hasBuildStructure(g).isBuild;
+    if (!WEB_ORDER_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' '))) return false;
+    const named = WEB_VENUE_NAMED.test(bareProbe);
+    if (LOCAL_WORK.test(bareProbe) && !named) return false;
+    //  An upper-case TODO is the code marker; "the best todo apps" are the world's.
+    if ((PROBABLY_HIS.test(bareProbe) || /\bTODO\b/u.test(g)) && !named && !WEB_ADDRESS.test(bareProbe)) return false;
+    return !hasBuildStructure(g).isBuild;
 }
 
 function isEngineeringBriefStructural(goalRaw: string): boolean {
