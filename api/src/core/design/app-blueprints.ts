@@ -296,7 +296,13 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
 /** The request asks for something to be MANAGED — a records app, not a poster. */
 // «سجل» ends where the Arabic word ends — `\b` is ASCII-only, so «سجل\b»
 // could match only before a Latin letter, i.e. never (eval round 15 sweep).
-const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
+//
+// «تتبّع» and «متابعة» were here and the English verb was not: «ابني تطبيقاً
+// صغيراً لمتابعة الباقات» was a records app and its twin «Build a small app to
+// track events» was not. The noun «tracker» never covered the verb. The verb
+// is read where grammar says it is one — after «to», a modal or a subject —
+// so a music «track» or a race «track» stays a noun.
+const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|\b(?:to|can|could|will|should|must|i|we|you|they|me|us|them)\s+track\b|organiz|registry|records?\b/i;
 /** …and it is an application, not a document about one. */
 const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|لوحة\s*تحكم|\bapp\b|application|system|platform|tool|dashboard/i;
 /**
@@ -2352,6 +2358,46 @@ function everyItemIsADefiniteName(items: string[]): boolean {
 export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|سجل)(?:ا)?|جداول|\\btable\\b|\\blist\\b|\\bsheet\\b|\\bboard\\b|\\bqueue\\b|\\bledger\\b|\\bregister\\b|\\btracker\\b|\\bdirectory\\b|\\bregistry\\b|\\bcatalog(?:ue)?\\b', 'iu');
 
 /**
+ *  A LIST HOLDS VALUES. A TABLE HOLDS COLUMNS — and the rule lives once.
+ *
+ *  Measured, after two commits that each looked harmless:
+ *
+ *      «A shopping list with milk, bread and eggs»   → milk · bread · eggs
+ *      «a list of categories: coffee, tools, sweets» → coffee · tools · sweets
+ *
+ *  The container reader carried the rule — «a bare list decides no» — and
+ *  read it as `holder[1]`, the first capture group. 76f66a5d3 rewrote
+ *  RECORD_CONTAINER with no capture group at all, so `holder[1]` was always
+ *  undefined and the rule could never fire. c219da214 then moved the
+ *  introducer reader above the container reader, and that reader had never
+ *  been given the rule: «with milk, bread and eggs» was a field list before
+ *  anyone asked what it hung from.
+ *
+ *  So the rule is one function, read from the MATCHED WORD (folded, so
+ *  «قايمه» is «قائمة»), and both readers call it. English marks the
+ *  difference on the container because its nouns carry no «ال»; an Arabic
+ *  item answers for itself by being definite or not, so only a Latin item
+ *  is held to the container's word here.
+ */
+const A_BARE_LIST = new FoldedRegExp('^(?:list|قائمة)(?:ا)?$', 'iu');
+
+function aListHoldsValues(container: string | null | undefined, items: string[]): boolean {
+    return A_BARE_LIST.test(String(container || '').trim())
+        && items.some(item => !/[؀-ۿ]/u.test(String(item || '')));
+}
+
+/** The container named last before a point — the one the list after it hangs from. */
+function theContainerNearest(text: string): string | null {
+    let rest = String(text || '');
+    let last: string | null = null;
+    for (let hit = RECORD_CONTAINER.exec(rest); hit; hit = RECORD_CONTAINER.exec(rest)) {
+        last = hit[0];
+        rest = rest.slice((hit.index || 0) + Math.max(1, hit[0].length));
+    }
+    return last;
+}
+
+/**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
  *
  *  Two branches read the same sentence — one when a recording verb opens
@@ -2517,6 +2563,51 @@ function opensAsABehaviour(word: string): boolean {
     } catch { return BEHAVIOUR_VERBS.includes(w); }
 }
 
+/**
+ *  ⛔ AN ACTION ON A RECORD IS NOT A COLUMN OF ONE — THE ENGLISH HALF.
+ *
+ *  Measured, once c219da214 taught the introducer reader the word «add»:
+ *
+ *      «Use the browser to validate an e-commerce flow: search, open a
+ *       product, add it to the cart, change quantity, remove it, and verify
+ *       the total.»
+ *      → columns: «it to the cart» · «change quantity» · «remove it»
+ *
+ *  Three columns from a QA walk through a shop, and the intent reader then
+ *  called it a build. The admin briefs had the same shape on the older
+ *  path — «manage patients, appointments, treatments: add, edit, delete and
+ *  search each one» gave the columns add · edit · delete.
+ *
+ *  A name is a noun phrase, and English grammar marks the difference with
+ *  closed classes alone — no catalogue of nouns:
+ *
+ *    - an OBJECT PRONOUN belongs to a verb, never to a name: «remove it»,
+ *      «it to the cart», «delete each one»;
+ *    - an ARTICLE in second place means the first word governs an object:
+ *      «open a product», «verify the total» (a name has its article first:
+ *      «the phone», or none: «date of birth»);
+ *    - and the record lifecycle itself — add, edit, delete, remove, create,
+ *      save, duplicate, rename — the verbs detectAppKind already reads as
+ *      the CRUD contract. None of them names a field; each is something the
+ *      app does to a row.
+ *
+ *  Latin only: the Arabic half of this rule is BEHAVIOUR_VERBS above and
+ *  the definiteness test, which «إضافة» and «حذف» already fail.
+ */
+const AN_OBJECT_PRONOUN = /(?:^|\s)(?:it|them|this|that|these|those|everything|each\s+one|each\s+of\s+them)(?=$|[\s,.;:!?])/iu;
+const A_RECORD_ACTION = /^(?:add|edit|delete|remove|create|save|duplicate|rename)(?=$|\s)/iu;
+const NOT_A_GOVERNING_WORD = /^(?:a|an|the|and|or|with|of|for|in|on|at|by|from|to|per|via|into|about|without|plus)$/iu;
+
+function namesAnActionNotAField(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t || /[؀-ۿ]/u.test(t)) return false;
+    if (AN_OBJECT_PRONOUN.test(t) || A_RECORD_ACTION.test(t)) return true;
+    //  The article is matched in lower case on purpose: «Vitamin A level» is
+    //  a name with a capital letter in it, not a verb and its object.
+    const governed = /^(\S+)\s+(?:a|an|the)\s+\S/u.exec(t);
+    return !!governed && !NOT_A_GOVERNING_WORD.test(governed[1]);
+}
+
 function isAColumnAndNotAClause(item: string, index: number): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
@@ -2531,6 +2622,10 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
     //  marked another way: a question about the row rather than a name of
     //  a thing, which is exactly what ASKS_YES_OR_NO already reads.
     if (ASKS_YES_OR_NO.test(t)) return true;
+    //  …and something the app DOES to a row is not a column of it, in any
+    //  position: at the head of the list it means there was no list of
+    //  fields at all («add, edit, delete»), later it is where the list ends.
+    if (namesAnActionNotAField(t)) return false;
     /**
      *  AND A BARE NOUN AMONG NAMED COLUMNS IS A COLUMN.
      *
@@ -2835,6 +2930,16 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
             && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
         if (run.length < (typedPair ? 2 : 3)) continue;
+        //  THIS READER RUNS FIRST NOW, SO IT ASKS WHAT THE LIST HANGS FROM.
+        //
+        //  c219da214 moved it above the container reader, so «Create an
+        //  expense tracker. Add amount, category, date, and note» is read
+        //  even though its container sits in another sentence. That move
+        //  also put it in front of the rule the container reader carries,
+        //  and «A shopping list with milk, bread and eggs» became a schema.
+        //  The container named before the introducer, in the same sentence,
+        //  decides here exactly as it decides there.
+        if (aListHoldsValues(theContainerNearest(containerPrefix), run)) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
         if (named.length !== run.length) continue;
         const built = fieldsFromLabels(named);
@@ -3042,12 +3147,13 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
          *  three attributes of each thing it holds. Reading the first as a
          *  schema would give him a two-row app about milk.
          */
-        const holdsColumns = !/^(?:list|قائمة)$/iu.test(holder[1] || '');
         const floor = holder ? 2 : 3;
         if (names.length < floor || names.length > 10) return null;
         //  Latin items carry no definiteness of their own, so the container
-        //  they hang from decides — and a bare «list» decides no.
-        if (names.some(n => !/[؀-ۿ]/u.test(n)) && !holdsColumns) return null;
+        //  they hang from decides — and a bare «list» decides no. Read from
+        //  the matched word: RECORD_CONTAINER has no capture group, and the
+        //  `holder[1]` this once read was undefined, so the rule never ran.
+        if (aListHoldsValues(holder[0], names)) return null;
         if (!everyItemIsADefiniteName(names)) return null;
         //  THE LINK THAT WAS NEVER JOINED.
         //
@@ -3334,8 +3440,29 @@ export function isCliRequest(requestRaw: string): boolean {
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
     const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    const clauseStart = '(?:^|[.؟!\\n]\\s*)';
-    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
+    /**
+     *  A CLAUSE ALSO OPENS AFTER A COMMA.
+     *
+     *      «عندي عيادة أسنان، أريد جدولاً فيه اسم المريض ورقم تلفونه ووقت الموعد»
+     *      → booking — his three columns lost to the word «عيادة»
+     *
+     *  He says who he is, then what he wants, and the order opens the SECOND
+     *  clause. A clause opens at a comma or a semicolon in either script, and
+     *  at «و» / «and» joining one («عندي عيادة أسنان وأريد جدولاً …»), as
+     *  surely as at a full stop; this gate knew only the full stop.
+     *
+     *  And the desire is read in both languages: «أريد» and «بدي» were on
+     *  the Arabic side, «I want» / «I need» were on neither, so «I have a
+     *  dental clinic, I want a table with patient name, phone and
+     *  appointment time» lost its columns where its Arabic twin kept them.
+     *
+     *  What it still refuses is a description that never asks for anything:
+     *  the verb must open a clause, and «make sure» is an instruction about
+     *  the work, not an order to build.
+     */
+    const clauseStart = '(?:(?:^|[.؟!\\n،,;؛])\\s*(?:and\\s+|و)?|\\s+(?:and\\s+|و))';
+    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make(?!\\s+sure\\b)|develop|design|scaffold|generate)\\b`, 'i').test(request)
+        || new RegExp(`${clauseStart}(?:i|we)\\s+(?:want|need|would\\s+like)\\b|${clauseStart}i\\s*['’]d\\s+like\\b`, 'i').test(request)
         || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;
     // CLI/utility/script requests are NOT persistent record schemas
