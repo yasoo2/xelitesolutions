@@ -16,11 +16,80 @@ const ANSWER_ONLY_AR = `(?:الرد\\s+فقط|إجابة\\s+فقط|بدون\\s+�
 const ANSWER_ONLY_PATTERN = new RegExp(`${START_BOUNDARY}(?:${ANSWER_ONLY_EN}|${ANSWER_ONLY_AR})`, 'i');
 
 // NO_FILE_CHANGES patterns
-const NO_FILE_CHANGES_EN = `(?:no\\s+file\\s+changes?|without\\s+file\\s+changes?|do\\s+not\\s+(?:create|write|modify|edit|change)\\b.*\\bfiles?|without\\s+(?:creating|writing|modifying|editing|making)\\s+(?:any\\s+)?(?:file\\s+)?changes?)`;
-// Arabic NO_FILE_CHANGES: لا تغييرات ملفات / دون تغييرات ملفات / لا تنشئ ملفات / دون إنشاء ملفات
-const NO_FILE_CHANGES_AR = `(?:(?:بدون|دون)\\s+(?:أي\\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\\s+(?:على\\s+)?(?:ال)?ملفات|لا\\s+تغييرات\\s+(?:ال)?ملفات|دون\\s+تغييرات\\s+(?:ال)?ملفات|لا\\s+تنشئ\\s+(?:ال)?ملفات|دون\\s+إنشاء\\s+(?:ال)?ملفات|لا\\s+تعدل\\s+(?:ال)?ملفات|دون\\s+تعديل\\s+(?:ال)?ملفات)`;
-// Use START_BOUNDARY but not END_BOUNDARY for denial phrases, as they can appear mid-sentence
-const NO_FILE_CHANGES_PATTERN = new RegExp(`${START_BOUNDARY}(?:${NO_FILE_CHANGES_EN}|${NO_FILE_CHANGES_AR})`, 'i');
+// A denial with no object to qualify: «no file changes», «without making any changes».
+const NO_FILE_CHANGES_UNQUALIFIED_EN = `(?:no\\s+file\\s+changes?|without\\s+file\\s+changes?|without\\s+(?:creating|writing|modifying|editing|making)\\s+(?:any\\s+)?(?:file\\s+)?changes?)`;
+const NO_FILE_CHANGES_UNQUALIFIED = new RegExp(`${START_BOUNDARY}${NO_FILE_CHANGES_UNQUALIFIED_EN}`, 'i');
+/**
+ * ⛔ «DO NOT CHANGE ANY OTHER FILES» IS NOT «DO NOT CHANGE FILES».
+ *
+ * «Create a file named joe-prompt-02.txt … Do not change any other files.» and
+ * a clone-and-commit brief that said «لا تعدل ملفات إنتاج أو إعدادات أو أسرار»
+ * were both answered with prose: the old reader matched «do not change … files»
+ * across the whole message and «لا تعدل ملفات» whatever followed it, so a
+ * denial about SOME files became a denial of every change — and the file he
+ * asked for, and the commit, never happened.
+ *
+ * A denial blocks every file change only when its object is unqualified: the
+ * files, any files, the project's files. A word that narrows the object —
+ * «other», «else», «existing», «new», a category such as production, config or
+ * secret files, «أخرى», «غير ذلك», «الإنتاج» — scopes it, the same way
+ * stripScopedExclusions scopes «do not build a database» to the database.
+ * The narrowing words are an open class; what keeps a denial whole is the
+ * closed class below: determiners and the names of the whole workspace.
+ */
+const FILE_DENIAL_EN = /(?:^|[\s،:؛.!?])do\s+not\s+((?:create|write|modify|edit|change)(?:\s*(?:,|\bor\b|\band\b|\bnor\b)\s*(?:create|write|modify|edit|change|delete|touch|remove))*)\s+([^.;!?\n]*?)\bfiles?\b([^.;!?\n]{0,40})/gi;
+const WHOLE_OBJECT_EN = new Set(['a', 'an', 'any', 'all', 'the', 'my', 'your', 'our', 'its', 'their', 'this', 'these', 'those', 'of', 'in', 'to', 'on', 'inside', 'within', 'anything', 'everything', 'single',
+    'project', 'workspace', 'repo', 'repository', 'source', 'code']);
+const NARROWING_TAIL_EN = /^\s*(?:other\s+than|except|besides|apart\s+from|aside\s+from|outside|beyond|else|but\b)/i;
+const FILE_DENIAL_AR = /(?:^|[\s،:؛.!?])(?:(?:بدون|دون)\s+(?:أي\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\s+(?:على\s+)?|لا\s+تغييرات\s+|دون\s+تغييرات\s+|لا\s+تنشئ\s+|دون\s+إنشاء\s+|لا\s+تعدل\s+|دون\s+تعديل\s+)(?:ال)?ملفات(?=$|[^\p{L}\p{N}_])([^.؛;!?؟\n]{0,40})/giu;
+/** After «الملفات»: what keeps the object whole — the whole workspace's names, a list, the clause's end. */
+const WHOLE_OBJECT_AR = new Set(['المشروع', 'مشروع', 'مساحة', 'مساحه', 'العمل', 'الكود', 'كود', 'المستودع', 'الموقع', 'التطبيق', 'النظام', 'أو', 'او', 'فقط', 'أبدا', 'ابدا', 'أبداً', 'إطلاقا', 'اطلاقا', 'إطلاقاً', 'نهائيا', 'نهائياً', 'بتاتا', 'بتاتاً', 'كلها', 'جميعها']);
+function fileDenialIsWhole(object: string, tail: string): boolean {
+    const words = object.trim().toLowerCase().split(/[\s,]+/).filter(Boolean);
+    if (words.some(w => !WHOLE_OBJECT_EN.has(w))) return false;
+    return !NARROWING_TAIL_EN.test(tail);
+}
+function arabicFileDenialIsWhole(tail: string): boolean {
+    const next = (tail.trim().split(/[\s،,:]+/u)[0] || '');
+    if (!next) return true;                                   // «لا تعدل الملفات.»
+    if (/^[وف]\S{2,}/u.test(next)) return true;               // «… الملفات واشرح لي» / «والإعدادات»
+    return WHOLE_OBJECT_AR.has(next);
+}
+/**
+ * «Do not create, edit, delete, move, install, publish, deploy, or commit anything»: a
+ * denial of every change is a denial of every file change too. The read-only audit in
+ * project-pipeline.test.ts said exactly that, and «You may only read project files»; the
+ * old greedy pattern reached «files» in that later sentence by accident, and when it was
+ * made exact the audit fell to «answer only» — no files read, no checks run.
+ */
+//  A LIST of changes denied together («create, edit, delete … anything»); one verb alone
+//  («Do not modify anything.») is left to the read-only reader, as it always was.
+const EVERY_CHANGE_DENIAL_EN = /(?:^|[\s،:؛.!?])do\s+not\s+(?:create|write|modify|edit|change|delete)(?:(?:\s*,\s*(?:(?:or|and|nor)\s+)?|\s+(?:or|and|nor)\s+)[a-z]+)+\s+(?:anything|everything)\b/i;
+const EVERY_CHANGE_DENIAL_AR = /(?:^|[\s،:؛.!?])لا\s+(?:تنشئ|تعدل|تغير|تحذف|تكتب)(?:\s*(?:،|,|أو|او|ولا|و)\s*\S+)+\s+(?:أي|اي)\s+شي/u;
+
+/** Does the request forbid every file change (not only some files)? */
+export function deniesEveryFileChange(text: string): boolean {
+    const t = String(text || '');
+    if (NO_FILE_CHANGES_UNQUALIFIED.test(t)) return true;
+    if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t)) return true;
+    for (const m of t.matchAll(FILE_DENIAL_EN)) if (fileDenialIsWhole(m[2] || '', m[3] || '')) return true;
+    for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m[1] || '')) return true;
+    return false;
+}
+
+/**
+ * A denial about SOME files is an exclusion, like «do not build a database»:
+ * «Do not change any other files» and «لا تعدل ملفات إنتاج أو إعدادات» leave
+ * the denial readers (answer-only, read-only) with nothing to read, so «Create
+ * a file … Do not change any other files.» is not taken for a read-only audit.
+ * What follows the narrowed object stays: «… ملفات أخرى، فقط أنشئ ملف» keeps
+ * its order.
+ */
+function stripNarrowedFileDenials(text: string): string {
+    return String(text || '')
+        .replace(FILE_DENIAL_EN, (whole, _verbs: string, object: string, tail: string) => fileDenialIsWhole(object, tail) ? whole : ` ${tail}`)
+        .replace(FILE_DENIAL_AR, (whole, tail: string) => arabicFileDenialIsWhole(tail) ? whole : ` ${tail.replace(/^\s*\S+/u, '')}`);
+}
 
 // POLITE_BUILD patterns
 const POLITE_BUILD_EN = `(?:could\\s+you\\s+please\\s+(?:make|build|create|design|implement|develop|code|write)|can\\s+you\\s+(?:make|build|create|design|implement|develop|code|write)|could\\s+you\\s+(?:make|build|create|design|implement|develop|code|write)|please\\s+(?:make|build|create|design|implement|develop|code|write)|would\\s+you\\s+(?:make|build|create|design|implement|develop|code|write))`;
@@ -99,6 +168,21 @@ export interface RequestedActionResult {
     reason: string;
 }
 
+/**
+ * ⛔ A WORD WITH THE ARTICLE IS A NOUN, NEVER THE ORDER.
+ *
+ * The normalizer turns a verbal noun into the imperative the fast paths match
+ * («تصميم موقع شركة» → «صمم …»), and it does so through the article too: in
+ * «شغّل مشروع لوحة مهامي … أثبت البناء والتشغيل» the canonical line read
+ * «أثبت ابن والتشغيل», and a request to RUN his project became an order to
+ * build one. «البناء», «التصميم», «التعديل» name the thing being talked about;
+ * an order is never definite. They are kept out of the canonical reading only.
+ */
+const DEFINITE_VERBAL_NOUN = /(?<![\p{L}\p{N}_])([وفبل]?)ال(?:بناء|تصميم|تطوير|برمجة|برمجه|[إا]نشاء|[إا]ضافة|[إا]ضافه|تغيير|تعديل|تبديل|تكبير|تصغير|تحسين|[إا]زالة|[إا]زاله|حذف)(?![\p{L}\p{N}_])/gu;
+export function withoutDefiniteVerbalNouns(text: string): string {
+    return stripArabicDiacritics(String(text || '')).replace(DEFINITE_VERBAL_NOUN, '$1');
+}
+
 /** Quoted examples and copy are data; share this boundary with structural build detection. */
 export function unquotedIntentText(raw: string): string {
     return String(raw || '').replace(/[\u201C\u201D«»]/g, '"')
@@ -121,12 +205,22 @@ export function unquotedIntentText(raw: string): string {
  * build a project-owned backend» was refused as a whole build once the global
  * «do not build» reader arrived (b906f3bc8); the WeatherGo pins (093082cb3)
  * caught it.
+ *
+ * …AND SO IS A NEW PROJECT. «شغّل مشروع لوحة مهامي القائم … لا تنشئ مشروعاً
+ * جديداً ولا تثبّت حزمًا» asked to RUN his project; the bare «لا تنشئ» made it
+ * a request to do nothing, and he got prose. «Do not create a new project»,
+ * «without creating a new project», «دون إنشاء مشروع جديد» name what is not to
+ * be made — the project he already has is what is to be worked on. The
+ * «without <making> <a part>» form is the same exclusion: «Build a todo app
+ * without creating a database» was refused as a whole build.
  */
-const EXCLUDED_PART = String.raw`(?:(?:a|an|the|any)\s+)?(?:(?:separate|react|web|mobile|graphical|user|admin|front[- ]?end|login|project[- ]owned)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth|web\s*app(?:lication)?|website|web\s*site|front[- ]?end|back[- ]?end|ui|gui|user\s+interface|interface|pages?|dashboard|screens?)`;
-const SCOPED_EXCLUSION_EN = new RegExp(String.raw`\b(?:do\s+not|don['’]?t|never)\s+(?:create|build|generate|write|make|add|include|use)\s+${EXCLUDED_PART}(?:\s*,?\s*(?:or|and|nor)\s+${EXCLUDED_PART})*\s*(?=[.!?;,]|$)`, 'gi');
-const SCOPED_EXCLUSION_AR = /(?:^|(?<=[\s،:؛.!?]))و?لا\s+(?:تنشئ|تنشي|تبني|تبن|تعمل|تصمم|تضيف|تسوي)\s+(?:أي\s+|اي\s+)?(?:واجه[ةه](?:\s+(?:مستخدم|المستخدم|أمامية|امامية|ويب|رسومية))?|موقع|صفح[ةه]|صفحات|تطبيق\s+ويب|لوح[ةه]\s+(?:تحكم|إدارة|ادارة)|قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول)(?=$|[\s،:؛.!?])/gu;
+const EXCLUDED_PART = String.raw`(?:(?:a|an|the|any)\s+)?(?:(?:new|another|second|separate|react|web|mobile|graphical|user|admin|front[- ]?end|login|project[- ]owned)\s+)?(?:database|db|login(?:\s+page)?|authentication|auth|web\s*app(?:lication)?|website|web\s*site|front[- ]?end|back[- ]?end|ui|gui|user\s+interface|interface|pages?|dashboard|screens?|project|repo(?:sitory)?)`;
+const SCOPED_EXCLUSION_EN = new RegExp(String.raw`\b(?:(?:do\s+not|don['’]?t|never)\s+(?:create|build|generate|write|make|add|include|use)|without\s+(?:creating|building|generating|writing|making|adding|including|using))\s+${EXCLUDED_PART}(?:\s*,?\s*(?:or|and|nor)\s+${EXCLUDED_PART})*\s*(?=[.!?;,:]|$|\s+(?:and|but|or|then)\b)`, 'gi');
+/** The parts in Arabic, as written and as folded («إدارة» → «اداره», «مشروعاً» → «مشروعا»). */
+const AR_EXCLUDED_PART = String.raw`(?:أي\s+|اي\s+)?(?:واجه[ةه](?:\s+(?:مستخدم|المستخدم|أمامية|امامية|اماميه|ويب|رسومية|رسوميه))?|موقع[اً]?|صفح[ةه]|صفحات|تطبيق[اً]?\s+ويب|لوح[ةه]\s+(?:تحكم|إدارة|ادارة|اداره)|قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول|(?:مشروع|مستودع)[اً]?(?:\s+(?:جديد[اً]?|آخر|اخر|ثاني[اً]?|ثان|منفصل[اً]?))?)`;
+const SCOPED_EXCLUSION_AR = new RegExp(String.raw`(?:^|(?<=[\s،:؛.!?]))(?:و?لا\s+(?:تنشئ|تنشي|تبني|تبن|تعمل|تصمم|تضيف|تسوي)|(?:ب?دون|من\s+غير)\s+(?:أي\s+|اي\s+)?(?:إنشاء|انشاء|انشا|بناء|بنا|عمل|تصميم|إضافة|اضافة|اضافه))\s+${AR_EXCLUDED_PART}(?=$|[\s،:؛.!?])`, 'gu');
 export function stripScopedExclusions(text: string): string {
-    return String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' ');
+    return stripNarrowedFileDenials(String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' '));
 }
 
 export function hasRequestedAction(goalRaw: string): RequestedActionResult {
@@ -170,7 +264,7 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     );
 
     const bare = stripArabicDiacritics(gNormalized);
-    const normalized = normalizeIntentText(gNormalized);
+    const normalized = normalizeIntentText(withoutDefiniteVerbalNouns(gNormalized));
     const probe = normalized && normalized !== gNormalized.toLowerCase() ? `${gNormalized}\n${normalized}` : gNormalized;
     const bareProbe = stripArabicDiacritics(probe);
     // Stripped probe (without quoted content) for DENIAL pattern matching to avoid
@@ -184,11 +278,13 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     const isExplainThenBuild = EXPLAIN_THEN_BUILD_PATTERN.test(probeStripped);
     const isAnswerOnlyInitial = ANSWER_ONLY_PATTERN.test(denialProbe);
     let isAnswerOnly = isAnswerOnlyInitial;
-    let isNoFileChanges = NO_FILE_CHANGES_PATTERN.test(probeStripped);
+    let isNoFileChanges = deniesEveryFileChange(probeStripped);
     
     // Check AFFIRMATIVE patterns on ORIGINAL probe (with quotes) to preserve
     // affirmative verbs that may be inside quoted content for quoted copy cases
-    const hasAffirmativeBuild = AFFIRMATIVE_BUILD_PATTERN.test(probeStripped);
+    // The verb of a scoped exclusion is not an order: «Run the existing app.
+    // Do not create a new project.» asks for no creation.
+    const hasAffirmativeBuild = AFFIRMATIVE_BUILD_PATTERN.test(denialProbe);
     const hasDesireVerb = DESIRE_VERB_PATTERN.test(probeStripped);
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(probeStripped);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
@@ -203,6 +299,8 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     const globalDenial = hasGlobalExecutionDenial || /(?:^|[\s،:؛.!?])(?:do\s+not\s+(?:execute|run|build)|don't\s+(?:execute|run|build)|without\s+(?:executing|running|building)|no\s+(?:execution|build)|answer[-\s]+only|only\s+answer|(?:بدون|دون)\s+(?:تنفيذ|بناء)|لا\s+(?:تنفيذ|بناء)|الرد\s+فقط|[أا]جب\s+فقط|اشرح\s+فقط)/i.test(denialProbe);
     if (isNoFileChanges && !globalDenial) isAnswerOnly = false;
     if (globalDenial) { isAnswerOnly = true; isNoFileChanges = false; }
+    // An exclusion of a part or of some files has been removed from denialProbe:
+    // «… دون إنشاء مشروع جديد: أضف …» is an edit. A declared «Read only.» stays.
     const explicitReadOnly = READ_ONLY_PATTERN.test(denialProbe);
     // Denials retain precedence regardless of position; quotation contents grant no authority.
     if (isAnswerOnly || isNoFileChanges || explicitReadOnly) {
