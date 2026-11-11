@@ -518,7 +518,20 @@ export function isReadOnlyStructural(goalRaw: string): boolean {
 }
 
 /** Words naming his own workspace: a search there is not a web search. */
-const LOCAL_WORK = /\b(?:files?|folders?|director(?:y|ies)|code(?:base)?|source|repo(?:sitory)?|project|workspace|functions?|classes|modules?|logs?)\b|(?<![\p{L}\p{N}_])[وفب]?(?:ال)?(?:ملف|ملفات|مجلد|مجلدات|كود|مشروع|مستودع|مساح[ةه]\s+(?:ال)?عمل|دال[ةه]|سجلات)(?![\p{L}\p{N}_])/iu;
+//  …and what lives in it, when it is HIS: «ابحث في اللوج عن الخطأ 500», «ابحث عن كل
+//  الأخطاء في التطبيق وأصلحها», "Search for TODO comments and list them", "search for
+//  the bug and fix it" went to the browser (2026-11-11). A definite or possessive
+//  error, log or app is his; «ابحث عن سعر الدولار» names nothing of his and stays the web.
+const LOCAL_WORK = new RegExp([
+    String.raw`\b(?:files?|folders?|director(?:y|ies)|code(?:base)?|source|repo(?:sitory)?|project|workspace|functions?|classes|modules?|logs?|todos?|comments?)\b`,
+    //  Not "the site/website": «search the website for…» may be any site; "my site" is below.
+    String.raw`\b(?:the|my|our|this|its)\s+(?:bugs?|errors?|exceptions?|crash(?:es)?|app|application|tests?)\b|\b(?:my|our)\s+(?:site|website|server)\b`,
+    String.raw`(?<![\p{L}\p{N}_])[وفب]?(?:ال)?(?:ملف|ملفات|مجلد|مجلدات|كود|مشروع|مستودع|مساح[ةه]\s+(?:ال)?عمل|دال[ةه]|سجلات|لوج|لوغ|تعليقات)(?![\p{L}\p{N}_])`,
+    String.raw`(?<![\p{L}\p{N}_])[وفب]?ال(?:أخطاء|اخطاء|خطأ|خطا|مشكل[ةه]|مشاكل)(?![\p{L}\p{N}_])`,
+    //  «في التطبيق/النظام/البرنامج» is his; «في موقع أمازون» is the web, so a site only as «موقعي».
+    String.raw`(?<![\p{L}\p{N}_])(?:في|ب|من)\s*(?:ال)?(?:تطبيق|نظام|برنامج)(?:ي|نا)?(?![\p{L}\p{N}_])`,
+    String.raw`(?<![\p{L}\p{N}_])(?:تطبيقي|موقعي|نظامي|برنامجي)(?![\p{L}\p{N}_])`,
+].join('|'), 'iu');
 /**
  * ⛔ AN ORDER TO THE BROWSER IS NOT A CAPABILITY GUESS.
  *
