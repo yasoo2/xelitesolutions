@@ -3750,9 +3750,12 @@ export async function probeForms(
                 await eyes.say(page, 'أتحقق من حفظ النتيجة بعد تحديث الصفحة');
                 //  What the server sends the reloaded page: a record it returns is kept, whichever view the page opens on.
                 const served: string[] = [];
+                /** When the reloaded page last heard from its server: while it is still being answered, it is still drawing. */
+                let lastServedAt = 0;
                 const onServed = async (response: any) => {
                     try {
                         if (served.length >= 40 || String(response.request().method()).toUpperCase() !== 'GET') return;
+                        lastServedAt = Date.now();
                         if (new URL(response.url()).origin !== new URL(page.url()).origin) return;
                         if (!/json|text|javascript/i.test(String(response.headers()['content-type'] || ''))) return;
                         served.push(String(await response.text()).slice(0, 400_000));
@@ -3761,13 +3764,19 @@ export async function probeForms(
                 try { page.on('response', onServed); } catch { /* a page without events */ }
                 const reloaded = await page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })
                     .then((response: any) => !!response && response.ok()).catch(() => false);
-                const persistenceDeadline = Math.min(deadline, Date.now() + 2500);
+                /*
+                 * 2.5 s, and longer while the page is still being answered (1.2 s after its last answer,
+                 * 6 s at most): under load the laundry's test page fetched its record, waited 600 ms and
+                 * drew it after the fixed window had closed — «never shown» for a record it kept.
+                 */
+                const reloadedAt = Date.now();
+                const persistenceUntil = () => Math.min(deadline, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));
                 let found = '';
                 do {
-                    if (!reloaded || Date.now() >= persistenceDeadline || !eyeIsOpen()) break;
+                    if (!reloaded || Date.now() >= persistenceUntil() || !eyeIsOpen()) break;
                     found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
-                } while (!found && Date.now() < persistenceDeadline && eyeIsOpen());
+                } while (!found && Date.now() < persistenceUntil() && eyeIsOpen());
                 let keptBy = found ? 'page' : '';
                 if (!found && reloaded) {
                     //  Kept by the browser: a form's own draft («draft», «autosave») is not a record.
