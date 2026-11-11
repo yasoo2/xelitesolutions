@@ -52,7 +52,9 @@ describe('the builder\'s own words survive the phase', () => {
         for (const block of failures) {
             if (/message:/.test(block)) expect(block.indexOf('error:')).toBeLessThan(block.indexOf('message:'));
         }
-        expect(PHASE).toMatch(/task:\s*taskDesc,\s*tool:\s*toolName,\s*ok:\s*false,\s*execution:\s*['"]ran['"],\s*error:\s*(?:errMsg|currentRunError),/);
+        //  Since 0f866ad25 (parallel task execution) the task's description
+        //  reaches the record through formatTaskDesc; the payload is the same.
+        expect(PHASE).toMatch(/task:\s*formatTaskDesc\(taskDesc\),\s*tool:\s*toolName,\s*ok:\s*false,\s*execution:\s*['"]ran['"],\s*error:\s*(?:errMsg|currentRunError),/);
         expect(PHASE).toMatch(/runId:\s*runEvidenceId/);
         expect(PHASE).toMatch(/projectRoot:\s*runEvidenceRoot/);
         expect(PHASE).toMatch(/evidenceStatus:\s*['"]stale_run_dropped['"]/);
@@ -63,7 +65,12 @@ describe('the builder\'s own words survive the phase', () => {
 describe('the delivery report relays what was measured', () => {
     it('it collects every message the phases carried', () => {
         expect(PIPE).toMatch(/const spoken: string\[\] = \[\];/);
-        expect(PIPE).toMatch(/const msg = String\(t\?\.message \|\| ''\)\.trim\(\);/);
+        //  Every result of every phase is read for its message. What is
+        //  relayed passes the unverified-claim guard (3e3ea28fa), the
+        //  credential redaction (76f66a5d3) and the stale-proof marker
+        //  (2b00b67e0) on its way, deliberately.
+        expect(PIPE).toMatch(/for \(const t of \(Array\.isArray\(p\?\.results\) \? p\.results : \[\]\)\) \{\s*const said = guardUnverifiedBuilderClaims\(String\(t\?\.message \|\| ''\)\.trim\(\), verified, ar\);/);
+        expect(PIPE).toMatch(/const msg = redactDeliveryCredentials\(staleBuilderProof[\s\S]{0,200}?: said\);/);
         expect(PIPE).toMatch(/if \(msg && !spoken\.includes\(msg\)\) spoken\.push\(msg\);/);
     });
 

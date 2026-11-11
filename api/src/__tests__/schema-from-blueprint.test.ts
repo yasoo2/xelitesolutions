@@ -23,8 +23,13 @@ describe('the schema follows the app, not a fixed guess', () => {
 
     it('Prompt 01 keeps the recognized expenses resource and its five blueprint columns', () => {
         expect(detectAppKind(PROMPT_01)).toBe('expenses');
+        //  Since c219da214 the form he declared («a form to add an expense with
+        //  description, category, amount, and date») IS the blueprint's column
+        //  list: an explicit schema owns its labels and its order, and the
+        //  expenses archetype keeps its resource, engine and native contracts.
+        //  The linked API/React handoff in api-project.test.ts pins the same.
         expect(apiColumnsForRequest(PROMPT_01).map(column => column.key))
-            .toEqual(['title', 'amount', 'category', 'date', 'note']);
+            .toEqual(['description', 'category', 'amount', 'date']);
     });
 
     it('generic multi-table promotion follows an explicit user list, not inferred count', () => {

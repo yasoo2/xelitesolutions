@@ -641,6 +641,41 @@ export function visibleHeadings(skipFormTitles?: boolean): string[] {
     return out;
 }
 
+/**
+ * Runs in the page: marks, best first, the tabs and navigation links named like the
+ * headings that a refresh took away — what a visitor presses to get back to the tab he
+ * was on. Returns how many were marked (data-joe-viewback="0", "1", …); the caller
+ * presses them one by one until the view is back. Words are compared whole, either way
+ * round («Stock» opens «Stock list», «📦 Stock (3)» opens «Stock»); a control holding a
+ * heading of its own (a brand link) and a form's button are never marked. Self-contained.
+ */
+export function markViewControls(missing: string[]): number {
+    document.querySelectorAll('[data-joe-viewback]').forEach(el => el.removeAttribute('data-joe-viewback'));
+    const words = (s: string) => String(s || '').normalize('NFKC').toLowerCase()
+        .replace(/[\p{Extended_Pictographic}\p{P}\p{S}\d#]+/gu, ' ').split(/\s+/u).filter(w => w.length >= 2);
+    const wanted = (Array.isArray(missing) ? missing : []).map(words).filter(w => w.some(x => x.length >= 3));
+    if (!wanted.length) return 0;
+    const contains = (big: string[], small: string[]) => small.length > 0 && small.every(w => big.includes(w));
+    //  Tabs before navigation, navigation before a page's header and its links.
+    const tiers = ['[role="tab"]', '[role="tablist"] button, [role="tablist"] a', 'nav a, nav button, aside a, aside button', 'a[href^="#"]', 'header a, header button'];
+    const seen = new Set<Element>();
+    let n = 0;
+    for (const sel of tiers) {
+        for (const node of Array.from(document.querySelectorAll(sel))) {
+            const el = node as HTMLElement;
+            if (seen.has(el)) continue;
+            seen.add(el);
+            if (el.closest('form') || el.querySelector('h1, h2, h3, [role="heading"]')) continue;
+            const r = el.getBoundingClientRect();
+            if (r.width <= 1 || r.height <= 1) continue;
+            const label = words(el.innerText || el.textContent || el.getAttribute('aria-label') || '');
+            if (!label.some(w => w.length >= 3)) continue;
+            if (wanted.some(h => contains(h, label) || contains(label, h))) el.setAttribute('data-joe-viewback', String(n++));
+        }
+    }
+    return n;
+}
+
 /** Runs in the page: what says a quiet nav item is the link to the view already open (probeControls). Self-contained. */
 export function currentLinkFacts(sel: string): { names: string; toggle: boolean; marked: boolean; first: boolean; brand: boolean } | null {
     const el = document.querySelector(sel) as HTMLElement | null;
@@ -3487,8 +3522,7 @@ export async function probeForms(
             const refusedBeforeSubmit = writes.refused();
             tokensBefore = f.expectsPersistence ? await evalInPage(page, pageTokens).catch(() => [] as string[]) : [];
             rowsBefore = f.expectsPersistence ? await page.evaluate(recordRowCount).catch(() => -1) : -1;
-            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];
-            await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
+            viewBeforeSubmit = f.expectsPersistence ? await page.evaluate(visibleHeadings, true).catch(() => [] as string[]) : [];            await page.evaluate((n: string) => { (window as any).__joeQaDoc = n; }, runNonce).catch(() => { });
             //  What the submit writes into the page's messages, the same words again included (watchFormAnswer);
             //  what writes itself while nothing is pressed is set aside first (markAnswerAmbient).
             await page.evaluate(watchFormAnswer).catch(() => false);
@@ -3731,11 +3765,27 @@ export async function probeForms(
              * on a dashboard of cards, raises the count without a record; a heading shown before that is
              * gone is another view, and proves nothing.
              */
-            const sameView = async () => {
-                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
-                return viewBeforeSubmit.every(h => now.includes(h));
+            const sameView = async (afterReload = false) => {
+                if (viewBeforeSubmit.length) {
+                    const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
+                    return viewBeforeSubmit.every(h => now.includes(h));
+                }
+                /*
+                 * Every heading was a form's own title, and a title that follows the form's mode or
+                 * what is typed says nothing about the view. Right after the submit it is the same
+                 * page; after a reload, the same view is one that still has no heading outside its
+                 * forms — a reload that opens on a dashboard with headings of its own is another.
+                 */
+                if (!afterReload) return true;
+                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => ['?'] as string[]);
+                return now.length === 0;
             };
-            const rowAdded = async () => !anchor && rowsBefore >= 0 && await sameView() && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
+            /** The headings of the view the form was sent from that are not on the page now. */
+            const missingHeadings = async (): Promise<string[]> => {
+                const now: string[] = await page.evaluate(visibleHeadings, true).catch(() => [] as string[]);
+                return viewBeforeSubmit.filter(h => !now.includes(h));
+            };
+            const rowAdded = async (afterReload = false) => !anchor && rowsBefore >= 0 && await sameView(afterReload) && await page.evaluate(recordRowCount).catch(() => -1) > rowsBefore;
             /*
              * …given the moment a list takes to come back. L160 (2026-11-10): «Create booking»
              * closed its form at once and drew the bookings table after its GET answered; looked
@@ -3793,9 +3843,34 @@ export async function probeForms(
                 let found = '';
                 do {
                     if (!reloaded || Date.now() >= persistenceUntil() || !eyeIsOpen()) break;
-                    found = byRows ? (await rowAdded() ? 'a new row' : '') : await visibleNeedle(needles);
+                    found = byRows ? (await rowAdded(true) ? 'a new row' : '') : await visibleNeedle(needles);
                     if (!found) await page.waitForTimeout(100);
                 } while (!found && Date.now() < persistenceUntil() && eyeIsOpen());
+                /*
+                 * …and on the view it was made on. A reload of a page whose tabs are state, not
+                 * addresses, opens on its first one; a tester goes back to the tab he was on and
+                 * counts again. Without it a record proven by its row is found nowhere — and an
+                 * app that loses it on every reload is not told from one that keeps it.
+                 */
+                let returnedToView = false;
+                if (!found && byRows && reloaded && eyeIsOpen() && !(await sameView(true))) {
+                    //  Named like what the refresh took away — never like the site's own heading, still on screen.
+                    const marked: number = await page.evaluate(markViewControls, await missingHeadings()).catch(() => 0);
+                    for (let i = 0; i < marked && !returnedToView && eyeIsOpen() && Date.now() < deadline; i++) {
+                        await page.evaluate((n: number) => {
+                            (document.querySelector(`[data-joe-viewback="${n}"]`) as HTMLElement | null)?.click();
+                        }, i).catch(() => { });
+                        //  A tab that fetches its list when opened is waited for while it is being answered.
+                        const pressedAt = Date.now();
+                        const backUntil = () => Math.min(deadline, pressedAt + 8000, Math.max(pressedAt + 3000, lastServedAt + 1200));
+                        await page.waitForTimeout(300).catch(() => { });
+                        while (!found && Date.now() < backUntil() && eyeIsOpen()) {
+                            if (await sameView(true)) { returnedToView = true; found = await rowAdded(true) ? 'a new row' : ''; }
+                            if (!found) await page.waitForTimeout(150).catch(() => { });
+                        }
+                    }
+                    await page.evaluate(() => document.querySelectorAll('[data-joe-viewback]').forEach(el => el.removeAttribute('data-joe-viewback'))).catch(() => { });
+                }
                 let keptBy = found ? 'page' : '';
                 if (!found && reloaded) {
                     //  Kept by the browser: a form's own draft («draft», «autosave») is not a record.
@@ -3852,16 +3927,15 @@ export async function probeForms(
                 }
                 try { page.off('response', onServed); } catch { /* the page may be gone */ }
                 /*
-                 * A record proven by the count of rows alone is counted again only on the view it was
-                 * made on. A reload that opens on another one leaves nothing to count, and nothing of
-                 * the record to look for: not measured, never «found nowhere» — which says the page,
-                 * the browser's storage and the server were searched, and none was.
+                 * Said as it was measured, never «found nowhere» for what was not searched: a reload
+                 * that failed; a row-counted record whose list could not be reached again after the
+                 * reload (the page opened elsewhere, and no tab led back); or a list counted again,
+                 * on its own view, with no row more than before the submit.
                  */
-                const elsewhere = !keptBy && byRows && reloaded && !(await sameView());
-                if (elsewhere) {
-                    metrics.formsPersistenceUnmeasured = Number(metrics.formsPersistenceUnmeasured || 0) + 1;
-                } else if (!keptBy) {
-                    unproven('after reload');
+                if (!keptBy) {
+                    unproven(!reloaded ? 'reload failed'
+                        : byRows && !returnedToView && !(await sameView(true)) ? 'opened elsewhere'
+                        : 'after reload');
                 } else {
                     metrics.formsPersisted++;
                     persistedThis = true;
@@ -4215,9 +4289,20 @@ export function judgeBehaviour(
         const evidence: any[] = Array.isArray(metrics.formsPersistenceEvidence) ? metrics.formsPersistenceEvidence : [];
         const neverShown = evidence.filter(x => x?.where === 'after submit');
         //  Counted, not searched: a record with nothing of its own to look for was a row more, and after the refresh it was not.
-        const counted = evidence.filter(x => x?.where !== 'after submit' && x?.by === 'rows');
-        const gone = evidence.filter(x => x?.where !== 'after submit' && x?.by !== 'rows');
+        const counted = evidence.filter(x => x?.where === 'after reload' && x?.by === 'rows');
+        const gone = evidence.filter(x => x?.where === 'after reload' && x?.by !== 'rows');
+        //  Not counted at all: the refresh opened on another view, and no tab or link led back to the list.
+        const elsewhere = evidence.filter(x => x?.where === 'opened elsewhere');
+        const unreloaded = evidence.filter(x => x?.where === 'reload failed');
         const parts = { ar: [] as string[], en: [] as string[] };
+        if (elsewhere.length) {
+            parts.ar.push(`أضاف ${elsewhere.map(x => `«${x.form}»`).join('، ')} صفاً، وبعد تحديث الصفحة فُتحت على عرض آخر ولم يوصل إليه أي تبويب أو رابط، فلم يُعدّ ما أُضيف`);
+            parts.en.push(`${elsewhere.map(x => `"${x.form}"`).join(', ')} added a row, and after a refresh the page opened on another view that no tab or link led back from, so what was added could not be counted`);
+        }
+        if (unreloaded.length) {
+            parts.ar.push(`أُرسل ${unreloaded.map(x => `«${x.form}»`).join('، ')}، ولم تُفتح الصفحة من جديد عند تحديثها، فلم يُتحقق من بقاء ما صنعه`);
+            parts.en.push(`${unreloaded.map(x => `"${x.form}"`).join(', ')} was sent, and the page did not open again when refreshed, so what it made could not be checked`);
+        }
         if (neverShown.length) {
             parts.ar.push(`أُرسل ${neverShown.map(x => `«${x.form}»`).join('، ')} وقَبِله، ولم يظهر خارج النموذج ما صنعه: لا ما كتبه الفحص (${neverShown.map(x => `«${x.anchor}»`).join('، ')}) ولا سجلّ جديد`);
             parts.en.push(`${neverShown.map(x => `"${x.form}"`).join(', ')} was sent and taken, and what it made never showed outside the form: neither what the QA typed (${neverShown.map(x => `"${x.anchor}"`).join(', ')}) nor a new record`);
@@ -4234,9 +4319,11 @@ export function judgeBehaviour(
             code: 'form_persistence_unproven', severity: 'major',
             ar: parts.ar.join('؛ ') || `${metrics.formsPersistenceUnproven} نتيجة نموذج لم يثبت بقاؤها بعد تحديث الصفحة`,
             en: parts.en.join('; ') || `${metrics.formsPersistenceUnproven} form result(s) could not be proven to survive a page refresh`,
-            hint: neverShown.length && !gone.length && !counted.length
-                ?'after a successful submit, show what it made outside the form — the new row, card or entry with what was entered — and keep it'
-                : 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
+            hint: neverShown.length && !gone.length && !counted.length && !elsewhere.length && !unreloaded.length
+                ? 'after a successful submit, show what it made outside the form — the new row, card or entry with what was entered — and keep it'
+                : elsewhere.length && !gone.length && !counted.length
+                    ? 'keep the view a visitor was on across a refresh (give each tab its own address, e.g. #orders, and open it from location.hash), and render the kept records there'
+                    : 'persist the created record and render it again after reload; do not treat a transient success message as saved work',
             ...(evidence.length ? { evidence: evidence.slice(0, 6) } : {}),
         });
     }

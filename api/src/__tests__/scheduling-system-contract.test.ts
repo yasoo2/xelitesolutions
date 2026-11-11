@@ -125,7 +125,14 @@ describe('multi-entity scheduling systems', () => {
     it('does not spend a provider call authoring the dormant single-table component', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
         const apiSource = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ApiProjectTool.ts'), 'utf8');
-        expect(source).toContain('!workflowSemanticContractPassed && !unifiedTables');
+        //  The engine-authoring call is gated by the unified-tables flag. Its
+        //  other condition moved from workflowSemanticContractPassed to
+        //  requestDerivedEngineReady in 38d84ffcc; the gate itself is what
+        //  keeps a provider off the dormant RecordsApp.
+        const authoring = source.indexOf("term(`ai_write_file: authoring ${generatedEnginePath} from the user's requirements`)");
+        expect(authoring).toBeGreaterThan(-1);
+        const gate = source.slice(source.lastIndexOf('if (generatedEnginePath', authoring), authoring);
+        expect(gate).toMatch(/^if \(generatedEnginePath && [^{]*!unifiedTables[^{]*\) \{/);
         expect(source).toContain('!modelUnavailableDuringBuild && !unifiedTables');
         expect(source).toContain('!modelUnavailableDuringBuild && !inheritedUnifiedTables');
         expect(apiSource).toContain("tokenStorageKey: workflowApplication ? 'joe:auth'");

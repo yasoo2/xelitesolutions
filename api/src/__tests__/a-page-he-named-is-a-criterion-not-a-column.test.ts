@@ -65,13 +65,17 @@ describe('and a page he named is not a column in a table', () => {
     });
 
     it('a real column list is untouched — this is a boundary, not a ban on «فيه»', () => {
-        const got = ids('جدول فواتير فيه اسم العميل والمبلغ والتاريخ');
+        //  «بدي» in front: since 81e8913c2 a bare noun phrase is a
+        //  specification, not a request (hasExplicitRecordSchema wants a
+        //  build verb), so without one there is no table to judge at all and
+        //  this boundary would never be reached.
+        const got = ids('بدي جدول فواتير فيه اسم العميل والمبلغ والتاريخ');
         expect(got.filter(i => i.startsWith('column:')).length).toBe(3);
     });
 
     it('a page AND columns in one sentence keeps the columns', () => {
         //  The page is REMOVED from the list rather than ending it, so what
-        //  follows a page mention is still read. Measured: «جدول فواتير فيه
+        //  follows a page mention is still read. Measured: «بدي جدول فواتير فيه
         //  صفحة المنتجات واسم العميل والمبلغ» → «اسم العميل», «المبلغ».
         //
         //  The container is a separate decision: «متجر» with a page mention
@@ -79,7 +83,7 @@ describe('and a page he named is not a column in a table', () => {
         //  is left above the two-item floor. That is the entity reader's
         //  judgement, not this boundary's, and it is right — a shop with
         //  pages is not a shop with a table.
-        const got = ids('جدول فواتير فيه صفحة المنتجات واسم العميل والمبلغ');
+        const got = ids('بدي جدول فواتير فيه صفحة المنتجات واسم العميل والمبلغ');
         expect(got.filter(i => i.startsWith('column:')).length).toBe(2);
     });
 });

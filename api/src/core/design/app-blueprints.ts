@@ -26,7 +26,7 @@
 //  The one folder of Arabic diacritics this repository owns. A second
 //  copy of that character set would drift the first time one of them
 //  learned a mark the other did not.
-import { stripArabicDiacritics } from '../orchestrator/promptNormalizer';
+import { foldChars, stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { saysWord, words, normalise } from '../language/arabic';
 import { maskNegatedSpans, mentionsCommandLine, readsCsvInput, requestedArtifact, stripDeclaredOptions } from './requested-artifact';
 import { hisWordsOnly } from './page-head';
@@ -296,7 +296,13 @@ export const APP_KIND_SIGNALS: Array<[AppKind, RegExp]> = [
 /** The request asks for something to be MANAGED — a records app, not a poster. */
 // «سجل» ends where the Arabic word ends — `\b` is ASCII-only, so «سجل\b»
 // could match only before a Latin letter, i.e. never (eval round 15 sweep).
-const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|organiz|registry|records?\b/i;
+//
+// «تتبّع» and «متابعة» were here and the English verb was not: «ابني تطبيقاً
+// صغيراً لمتابعة الباقات» was a records app and its twin «Build a small app to
+// track events» was not. The noun «tracker» never covered the verb. The verb
+// is read where grammar says it is one — after «to», a modal or a subject —
+// so a music «track» or a race «track» stays a noun.
+const MANAGE_SIGNAL = /إدارة|ادارة|تتبّع|تتبع|تنظيم|أرشفة|ارشفة|تسجيل|متابعة|سجلّ|سجل(?![\u0621-\u064A])|نظام|manage(ment)?|tracker|tracking|\b(?:to|can|could|will|should|must|i|we|you|they|me|us|them)\s+track\b|organiz|registry|records?\b/i;
 /** …and it is an application, not a document about one. */
 const APP_SIGNAL = /تطبيق|برنامج|نظام|منصّة|منصة|أداة|اداة|لوحة\s*تحكم|\bapp\b|application|system|platform|tool|dashboard/i;
 /**
@@ -462,7 +468,7 @@ function listIsTheArchetypeSchema(kind: AppKind, request: string): boolean {
 
 export function detectAppKind(requestRaw: string): AppKind | null {
     const request = String(requestRaw || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
     const intentRequest = maskNegatedSpans(request);
     // A command-line tool has no web engine, so no stock app kind applies
@@ -2352,6 +2358,101 @@ function everyItemIsADefiniteName(items: string[]): boolean {
 export const RECORD_CONTAINER = new FoldedRegExp('(?:جدول|قائمة|كشف|سجل)(?:ا)?|جداول|\\btable\\b|\\blist\\b|\\bsheet\\b|\\bboard\\b|\\bqueue\\b|\\bledger\\b|\\bregister\\b|\\btracker\\b|\\bdirectory\\b|\\bregistry\\b|\\bcatalog(?:ue)?\\b', 'iu');
 
 /**
+ *  A LIST HOLDS VALUES. A TABLE HOLDS COLUMNS — and the rule lives once.
+ *
+ *  Measured, after two commits that each looked harmless:
+ *
+ *      «A shopping list with milk, bread and eggs»   → milk · bread · eggs
+ *      «a list of categories: coffee, tools, sweets» → coffee · tools · sweets
+ *
+ *  The container reader carried the rule — «a bare list decides no» — and
+ *  read it as `holder[1]`, the first capture group. 76f66a5d3 rewrote
+ *  RECORD_CONTAINER with no capture group at all, so `holder[1]` was always
+ *  undefined and the rule could never fire. c219da214 then moved the
+ *  introducer reader above the container reader, and that reader had never
+ *  been given the rule: «with milk, bread and eggs» was a field list before
+ *  anyone asked what it hung from.
+ *
+ *  So the rule is one function, read from the MATCHED WORD (folded, so
+ *  «قايمه» is «قائمة»), and both readers call it. English marks the
+ *  difference on the container because its nouns carry no «ال»; an Arabic
+ *  item answers for itself by being definite or not, so only a Latin item
+ *  is held to the container's word here.
+ *
+ *  …AND THE WORD «LIST» ONLY ASKS. THE ITEMS ANSWER.
+ *
+ *  Measured by the pre-merge review, the day the rule above first ran:
+ *
+ *      «Build a contact list with name, phone and email»          → nothing
+ *      «Create an employee list: name, department, salary»         → nothing
+ *      «Create a todo list with title, due date and priority»      → tasks, his columns gone
+ *      «Make a guest list app with name, RSVP status and table number» → custom
+ *
+ *  Before it ran, every one of them was his table. English has one word
+ *  for both containers — a shopping list holds milk, a contact list holds a
+ *  name, a phone and an email for every contact — so the word cannot
+ *  decide, and making it decide alone traded one wrong reading for another.
+ *
+ *  What tells them apart is in the items, and this file already reads it:
+ *  a COLUMN HAS A KIND OF VALUE. The type marks that type every derived
+ *  column read «phone» as a tel, «due date» as a date, «salary» as money,
+ *  «RSVP status» as a select; canonicalFieldKey knows «title». A VALUE has
+ *  no kind of value — milk, bread and eggs ARE the values — and not one of
+ *  them is read by any mark. One more is not a type and is named outright:
+ *  the record's own NAME, the field every stock blueprint here keys as
+ *  `name` and marks primary. A list of things never lists the word «name».
+ *
+ *  Two readings of a mark are not evidence of a column here:
+ *    · a single word the yes/no mark reads as a state — «done», «paid»,
+ *      «shipped». «pending, done, cancelled» are the answers of one status
+ *      column, not three columns; «is paid?» still asks, and still counts;
+ *    · an item that opens with an article — «The Time Machine» is a thing
+ *      he names, not a column (OPENS_WITH_AN_ARTICLE, the rule the
+ *      introducer reader keeps for «a home page, a contact form»).
+ *
+ *  The limit, stated: a list of things whose item happens to name a kind of
+ *  value — «rent, phone, internet» as expense categories — reads as columns,
+ *  exactly as every list did before the rule above ran. The marks are the
+ *  closed vocabulary; widening them for this would be the disease again.
+ */
+const A_BARE_LIST = new FoldedRegExp('^(?:list|قائمة)(?:ا)?$', 'iu');
+const THE_RECORDS_OWN_NAME = /\bname\b|(?:^|\s)(?:ال)?اسم(?=$|\s)/iu;
+
+function namesAFieldOfARecord(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t || OPENS_WITH_AN_ARTICLE.test(t)) return false;
+    if (THE_RECORDS_OWN_NAME.test(t) || canonicalFieldKey(t)) return true;
+    const mark = TYPE_MARKS.find(([pattern]) => pattern.test(t));
+    if (!mark) return false;
+    return !(mark[0] === ASKS_YES_OR_NO && !/[\s?؟]/u.test(t));
+}
+
+function aListHoldsValues(container: string | null | undefined, items: string[]): boolean {
+    return A_BARE_LIST.test(String(container || '').trim())
+        && items.some(item => !/[؀-ۿ]/u.test(String(item || '')))
+        && !items.some(namesAFieldOfARecord);
+}
+
+/**
+ *  The container named last before a point — the one the list after it hangs from.
+ *
+ *  FOLDED ONCE, NOT ONCE PER CONTAINER. The first version called
+ *  RECORD_CONTAINER on what was left after each hit, and a FoldedRegExp
+ *  folds its whole input on every call — so a request naming a container
+ *  n times was folded n times. Measured on 5 KB of «list list list …»:
+ *  derivedColumns took 16–20 s; now 2–5 ms. One fold, then one global walk of the same
+ *  folded pattern over it; the word returned is folded, and the only
+ *  reader of it (A_BARE_LIST) is folded too.
+ */
+const EVERY_RECORD_CONTAINER = new RegExp(RECORD_CONTAINER.source, `${RECORD_CONTAINER.flags.replace(/[dgy]/gu, '')}g`);
+
+function theContainerNearest(text: string): string | null {
+    let last: string | null = null;
+    for (const hit of foldChars(String(text || '')).matchAll(EVERY_RECORD_CONTAINER)) last = hit[0];
+    return last;
+}
+
+/**
  *  WHERE THE SENTENCE ENDS AND THE FIRST COLUMN BEGINS.
  *
  *  Two branches read the same sentence — one when a recording verb opens
@@ -2517,6 +2618,51 @@ function opensAsABehaviour(word: string): boolean {
     } catch { return BEHAVIOUR_VERBS.includes(w); }
 }
 
+/**
+ *  ⛔ AN ACTION ON A RECORD IS NOT A COLUMN OF ONE — THE ENGLISH HALF.
+ *
+ *  Measured, once c219da214 taught the introducer reader the word «add»:
+ *
+ *      «Use the browser to validate an e-commerce flow: search, open a
+ *       product, add it to the cart, change quantity, remove it, and verify
+ *       the total.»
+ *      → columns: «it to the cart» · «change quantity» · «remove it»
+ *
+ *  Three columns from a QA walk through a shop, and the intent reader then
+ *  called it a build. The admin briefs had the same shape on the older
+ *  path — «manage patients, appointments, treatments: add, edit, delete and
+ *  search each one» gave the columns add · edit · delete.
+ *
+ *  A name is a noun phrase, and English grammar marks the difference with
+ *  closed classes alone — no catalogue of nouns:
+ *
+ *    - an OBJECT PRONOUN belongs to a verb, never to a name: «remove it»,
+ *      «it to the cart», «delete each one»;
+ *    - an ARTICLE in second place means the first word governs an object:
+ *      «open a product», «verify the total» (a name has its article first:
+ *      «the phone», or none: «date of birth»);
+ *    - and the record lifecycle itself — add, edit, delete, remove, create,
+ *      save, duplicate, rename — the verbs detectAppKind already reads as
+ *      the CRUD contract. None of them names a field; each is something the
+ *      app does to a row.
+ *
+ *  Latin only: the Arabic half of this rule is BEHAVIOUR_VERBS above and
+ *  the definiteness test, which «إضافة» and «حذف» already fail.
+ */
+const AN_OBJECT_PRONOUN = /(?:^|\s)(?:it|them|this|that|these|those|everything|each\s+one|each\s+of\s+them)(?=$|[\s,.;:!?])/iu;
+const A_RECORD_ACTION = /^(?:add|edit|delete|remove|create|save|duplicate|rename)(?=$|\s)/iu;
+const NOT_A_GOVERNING_WORD = /^(?:a|an|the|and|or|with|of|for|in|on|at|by|from|to|per|via|into|about|without|plus)$/iu;
+
+function namesAnActionNotAField(item: string): boolean {
+    const t = String(item || '').trim();
+    if (!t || /[؀-ۿ]/u.test(t)) return false;
+    if (AN_OBJECT_PRONOUN.test(t) || A_RECORD_ACTION.test(t)) return true;
+    //  The article is matched in lower case on purpose: «Vitamin A level» is
+    //  a name with a capital letter in it, not a verb and its object.
+    const governed = /^(\S+)\s+(?:a|an|the)\s+\S/u.exec(t);
+    return !!governed && !NOT_A_GOVERNING_WORD.test(governed[1]);
+}
+
 function isAColumnAndNotAClause(item: string, index: number): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
@@ -2531,6 +2677,10 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
     //  marked another way: a question about the row rather than a name of
     //  a thing, which is exactly what ASKS_YES_OR_NO already reads.
     if (ASKS_YES_OR_NO.test(t)) return true;
+    //  …and something the app DOES to a row is not a column of it, in any
+    //  position: at the head of the list it means there was no list of
+    //  fields at all («add, edit, delete»), later it is where the list ends.
+    if (namesAnActionNotAField(t)) return false;
     /**
      *  AND A BARE NOUN AMONG NAMED COLUMNS IS A COLUMN.
      *
@@ -2835,6 +2985,16 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
             && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
         if (run.length < (typedPair ? 2 : 3)) continue;
+        //  THIS READER RUNS FIRST NOW, SO IT ASKS WHAT THE LIST HANGS FROM.
+        //
+        //  c219da214 moved it above the container reader, so «Create an
+        //  expense tracker. Add amount, category, date, and note» is read
+        //  even though its container sits in another sentence. That move
+        //  also put it in front of the rule the container reader carries,
+        //  and «A shopping list with milk, bread and eggs» became a schema.
+        //  The container named before the introducer, in the same sentence,
+        //  decides here exactly as it decides there.
+        if (aListHoldsValues(theContainerNearest(containerPrefix), run)) continue;
         const named = run.filter(isAName).filter(notAContainerItself);
         if (named.length !== run.length) continue;
         const built = fieldsFromLabels(named);
@@ -2878,9 +3038,30 @@ export function hisSentence(request: string): string {
     return his.length >= 4 ? his : raw;
 }
 
+/**
+ *  ONE RUN OF WHITE SPACE IS ONE SPACE — BEFORE ANY LIST IS SPLIT.
+ *
+ *  Measured on 5 KB of adversarial input: «Build a list», five thousand
+ *  spaces, «with name, phone and email» — derivedColumns took 0.6–1.4 s
+ *  (now under 1 ms), and the profile put it on one pattern, the list separator
+ *  «\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+». A separator that may open
+ *  with white space is tried again from every position inside a run, and
+ *  every try walks the rest of the run before it fails: quadratic in the
+ *  run, in every reader below that splits a list.
+ *
+ *  So the run is made one character before any of them reads it. What the
+ *  readers read does not change: every item is trimmed, the separators ask
+ *  whether there is white space and not how much, and a run holding a line
+ *  break stays a line break — which is where a sentence ends. A label he
+ *  typed with two spaces reads as the same label with one. The runs are
+ *  matched greedily from where they start, so the collapse itself is linear.
+ */
+const oneSpaceEach = (text: string): string => String(text || '')
+    .replace(/\s+/gu, run => (run.includes('\n') ? '\n' : ' '));
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     requestRaw = hisSentence(requestRaw);
-    const request = String(requestRaw || '');
+    const request = oneSpaceEach(String(requestRaw || ''));
     // A nested form schema is more specific than the surrounding tracker or
     // dashboard container. Read it before the broad container reader can
     // mistake a later visual-quality list for record fields.
@@ -3042,12 +3223,13 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
          *  three attributes of each thing it holds. Reading the first as a
          *  schema would give him a two-row app about milk.
          */
-        const holdsColumns = !/^(?:list|قائمة)$/iu.test(holder[1] || '');
         const floor = holder ? 2 : 3;
         if (names.length < floor || names.length > 10) return null;
         //  Latin items carry no definiteness of their own, so the container
-        //  they hang from decides — and a bare «list» decides no.
-        if (names.some(n => !/[؀-ۿ]/u.test(n)) && !holdsColumns) return null;
+        //  they hang from decides — and a bare «list» decides no. Read from
+        //  the matched word: RECORD_CONTAINER has no capture group, and the
+        //  `holder[1]` this once read was undefined, so the rule never ran.
+        if (aListHoldsValues(holder[0], names)) return null;
         if (!everyItemIsADefiniteName(names)) return null;
         //  THE LINK THAT WAS NEVER JOINED.
         //
@@ -3333,9 +3515,32 @@ export function isCliRequest(requestRaw: string): boolean {
 
 export function hasExplicitRecordSchema(requestRaw: string): boolean {
     if (hasWorkflowApplicationContract(requestRaw)) return false;
-    const request = stripArabicDiacritics(String(requestRaw || '')).trim();
-    const clauseStart = '(?:^|[.؟!\\n]\\s*)';
-    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make|develop|design|scaffold|generate)\\b`, 'i').test(request)
+    //  Collapsed for the reason derivedColumns is: «\s+(?:and\s+|و)» below
+    //  would otherwise retry a long run of spaces from every position in it.
+    const request = oneSpaceEach(stripArabicDiacritics(String(requestRaw || ''))).trim();
+    /**
+     *  A CLAUSE ALSO OPENS AFTER A COMMA.
+     *
+     *      «عندي عيادة أسنان، أريد جدولاً فيه اسم المريض ورقم تلفونه ووقت الموعد»
+     *      → booking — his three columns lost to the word «عيادة»
+     *
+     *  He says who he is, then what he wants, and the order opens the SECOND
+     *  clause. A clause opens at a comma or a semicolon in either script, and
+     *  at «و» / «and» joining one («عندي عيادة أسنان وأريد جدولاً …»), as
+     *  surely as at a full stop; this gate knew only the full stop.
+     *
+     *  And the desire is read in both languages: «أريد» and «بدي» were on
+     *  the Arabic side, «I want» / «I need» were on neither, so «I have a
+     *  dental clinic, I want a table with patient name, phone and
+     *  appointment time» lost its columns where its Arabic twin kept them.
+     *
+     *  What it still refuses is a description that never asks for anything:
+     *  the verb must open a clause, and «make sure» is an instruction about
+     *  the work, not an order to build.
+     */
+    const clauseStart = '(?:(?:^|[.؟!\\n،,;؛])\\s*(?:and\\s+|و)?|\\s+(?:and\\s+|و))';
+    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make(?!\\s+sure\\b)|develop|design|scaffold|generate)\\b`, 'i').test(request)
+        || new RegExp(`${clauseStart}(?:i|we)\\s+(?:want|need|would\\s+like)\\b|${clauseStart}i\\s*['’]d\\s+like\\b`, 'i').test(request)
         || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
     if (!isBuildRequest) return false;
     // CLI/utility/script requests are NOT persistent record schemas
@@ -3640,7 +3845,7 @@ export function fieldsFromRequest(requestRaw: string, isAr: boolean): AppField[]
  */
 export function requestedFeatures(requestRaw: string): string[] {
     const request = String(requestRaw || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     const out: string[] = [];
     const push = (raw: string) => {
         const s = raw.trim()
@@ -4038,7 +4243,7 @@ function ruleDerivedFeatures(request: string, engine: AppEngine | null): string[
     const rules = engine ? FEATURE_RULES_BY_ENGINE[engine] : undefined;
     if (!rules) return [];
     const trimmedRequest = String(request || '')
-        .replace(/\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
+        .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     const out: string[] = [];
     for (const rule of rules) {
         const match = trimmedRequest.match(rule.asked);

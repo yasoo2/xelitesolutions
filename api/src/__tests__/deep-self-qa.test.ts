@@ -211,8 +211,11 @@ describe('every menu, every route — not fourteen buttons', () => {
         expect(walkScale(90_000, 4)).toBe(1);
         expect(walkScale(COVERAGE_RETRY_TIMEOUT_MS, 4)).toBeCloseTo(360_000 / 174_000, 5);
         expect(read('core', 'quality', 'app-audit.ts')).toContain('Math.max(28_000, responsiveRoutes.length * 8_000)) * scale;');
-        //  And both callers use it for their retry.
-        expect(read('core', 'engine', 'verify.ts')).toContain('options(COVERAGE_RETRY_TIMEOUT_MS)');
+        //  And both callers use it for their retry. verify.ts takes every walk
+        //  through `walk()`, which puts the QA's records back first (2d0e709ef).
+        const verify = read('core', 'engine', 'verify.ts');
+        expect(verify).toContain('const retry = await walk(COVERAGE_RETRY_TIMEOUT_MS);');
+        expect(verify).toContain('return browserQa.audit(auditDir, options(timeoutMs));');
         expect(read('modules', 'tools', 'definitions', 'ProjectPipelineTool.ts')).toContain('timeoutMs: COVERAGE_RETRY_TIMEOUT_MS,');
     });
 });
@@ -241,7 +244,10 @@ describe('the forms are filled in and sent, not counted', () => {
         const b = B();
         expect(b).toContain('أتحقق من حفظ النتيجة بعد تحديث الصفحة');
         expect(b).toContain("page.reload({ waitUntil: 'domcontentloaded', timeout: Math.min(6000, Math.max(1, deadline - Date.now())) })");
-        expect(b).toContain('Date.now() < persistenceDeadline && eyeIsOpen()');
+        //  The wait after the reload is bounded and stretches only while the
+        //  page is still being answered (38c6d8509): 2.5 s, 6 s at most.
+        expect(b).toContain('const persistenceUntil = () => Math.min(deadline, reloadedAt + 6000, Math.max(reloadedAt + 2500, lastServedAt + 1200));');
+        expect(b).toContain('Date.now() < persistenceUntil() && eyeIsOpen()');
         expect(b).toContain('data-joe-qa-delete-own-record');
         expect(b).toContain('qaRecordsDeleted');
     });

@@ -49,7 +49,8 @@ const PAGE = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>
   load();
 </script></body></html>`;
 
-async function walk() {
+async function walk(siteHeading = true) {
+    const html = siteHeading ? PAGE : PAGE.replace(/<h1>Pantry stock<\/h1>\s*/u, '');
     const stock = [{ category: 'Rice', qty: 3 }];
     const server = http.createServer((req, res) => {
         if (req.url === '/api/stock' && req.method === 'POST') {
@@ -64,7 +65,7 @@ async function walk() {
             return;
         }
         if (req.url === '/api/stock') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(stock)); return; }
-        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(PAGE);
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html);
     });
     await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
     const browser = await chromium.launch(getChromiumLaunchOptions());
@@ -72,12 +73,108 @@ async function walk() {
         const tab = await browser.newPage({ viewport: { width: 1280, height: 900 } });
         await tab.goto(`http://127.0.0.1:${(server.address() as any).port}/`, { waitUntil: 'networkidle' });
         const result = await probeForms(tab, { budgetMs: 90_000 });
-        return { result, stock, headings: { all: await tab.evaluate(visibleHeadings), outsideForms: await tab.evaluate(visibleHeadings, true) } };
+        return { result, stock, headings: { all: await tab.evaluate(visibleHeadings, false), outsideForms: await tab.evaluate(visibleHeadings, true) } };
     } finally {
         await browser.close();
         await new Promise<void>(r => server.close(() => r()));
     }
 }
+
+/*
+ * The review of this fix, 2026-11-11: with the view told apart more fairly, a reload that
+ * opened elsewhere was let through as «not measured» — and a tabbed app keeping its stock
+ * only in memory, whose tabs are state, lost every record on reload and was delivered with
+ * no finding at all. A tester goes back to the tab he was on and counts there.
+ */
+function tabbedPage(keptByServer: boolean, dressed = false): string {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Pantry</title>
+<style>body{font-family:sans-serif;margin:16px} button,input,select{min-height:44px;margin:4px}</style></head><body>
+${dressed
+    //  The second review: a brand link before the tabs, and a tab label with an emoji and a count.
+    ? `<header><a href="#" class="brand"><h1>Pantry</h1></a></header>
+<nav><button type="button" class="tab" data-tab="home">🏠 Home</button><button type="button" class="tab" data-tab="stock">📦 Stock <span class="badge">3</span></button></nav>`
+    : `<h1>Pantry</h1>
+<nav><button type="button" class="tab" data-tab="home">Home</button><button type="button" class="tab" data-tab="stock">Stock</button></nav>`}
+<section id="home"><h2>Welcome</h2><p>Your pantry at a glance.</p></section>
+<section id="stock" hidden><h2>Stock</h2><ul id="rows"></ul>
+<form id="add">
+  <label>Category <select name="category" required><option value="">Choose</option><option>Rice</option><option>Flour</option></select></label>
+  <label>Quantity <input name="qty" type="number" min="1" max="999" required></label>
+  <button type="submit">Save</button>
+</form></section>
+<script>
+  var memory = [{ category: 'Rice', qty: 3 }];
+  function show(name) { document.getElementById('home').hidden = name !== 'home'; document.getElementById('stock').hidden = name !== 'stock'; }
+  document.querySelectorAll('.tab').forEach(function (b) { b.addEventListener('click', function () { show(b.dataset.tab); }); });
+  function draw(list) { var rows = document.getElementById('rows'); rows.innerHTML = ''; list.forEach(function (r) { var li = document.createElement('li'); li.textContent = r.category + ' ' + r.qty; rows.appendChild(li); }); }
+  function load() { ${keptByServer ? "fetch('/api/stock').then(function (r) { return r.json(); }).then(draw);" : 'draw(memory);'} }
+  document.getElementById('add').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var item = { category: this.category.value, qty: Number(this.qty.value) };
+    if (!item.category || !(item.qty >= 1 && item.qty <= 999)) return;
+    ${keptByServer
+        ? "fetch('/api/stock', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(item) }).then(function (r) { if (r.ok) { document.getElementById('add').reset(); load(); } });"
+        : "memory.push(item); document.getElementById('add').reset(); load();"}
+  });
+  show('home'); load();
+</script></body></html>`;
+}
+
+async function walkTabbed(keptByServer: boolean, dressed = false) {
+    const stock = [{ category: 'Rice', qty: 3 }];
+    const html = tabbedPage(keptByServer, dressed);
+    const server = http.createServer((req, res) => {
+        if (req.url === '/api/stock' && req.method === 'POST') {
+            let body = '';
+            req.on('data', c => { body += c; });
+            req.on('end', () => { stock.push(JSON.parse(body || '{}')); res.writeHead(201, { 'content-type': 'application/json' }); res.end('{}'); });
+            return;
+        }
+        if (req.url === '/api/stock') { res.writeHead(200, { 'content-type': 'application/json' }); res.end(JSON.stringify(stock)); return; }
+        res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); res.end(html);
+    });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+    const browser = await chromium.launch(getChromiumLaunchOptions());
+    try {
+        const tab = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await tab.goto(`http://127.0.0.1:${(server.address() as any).port}/`, { waitUntil: 'networkidle' });
+        //  The visitor is on «Stock» when he saves; a refresh opens the page on «Home».
+        await tab.click('button[data-tab="stock"]');
+        const result = await probeForms(tab, { budgetMs: 90_000 });
+        return { result, codes: judgeBehaviour([], result.metrics as any, [], result.forms as any).findings };
+    } finally {
+        await browser.close();
+        await new Promise<void>(r => server.close(() => r()));
+    }
+}
+
+test('a record kept behind a tab is counted on that tab after the refresh, and proven kept', async () => {
+    const { result, codes } = await walkTabbed(true);
+    expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
+    expect(codes.map(f => f.code)).not.toContain('form_persistence_unproven');
+});
+
+test('the way back to the tab is the tab: not the brand link before it, and found under its emoji and its count', async () => {
+    const { result, codes } = await walkTabbed(true, true);
+    expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
+    expect(codes.map(f => f.code)).not.toContain('form_persistence_unproven');
+});
+
+//  The second review: with no heading outside the form, the form's title still never decides the view right after the submit.
+test("a page whose only heading is the form's own title still has its record proven kept", async () => {
+    const { result, stock } = await walk(false);
+    expect(stock.length).toBeGreaterThan(1);
+    expect(Number(result.metrics.formsPersistenceUnproven || 0)).toBe(0);
+    expect(Number(result.metrics.formsPersisted || 0)).toBeGreaterThanOrEqual(1);
+});
+
+test('a record an app loses on every refresh is never let through as «not measured»', async () => {
+    const { codes } = await walkTabbed(false);
+    const finding = codes.find(f => f.code === 'form_persistence_unproven');
+    expect(finding).toBeDefined();
+    //  Said as it was measured: the list on its own tab, counted again, back to its rows.
+    expect(finding!.en).toMatch(/added a row to the list, and after a refresh the same list was back to the rows it had before the submit/u);
+});
 
 test('a record proven by its row is proven kept, though the form\'s own title changed with what was typed', async () => {
     const { result, stock, headings } = await walk();

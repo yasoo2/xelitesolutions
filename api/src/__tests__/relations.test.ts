@@ -124,25 +124,41 @@ describe('the interface reaches the second table', () => {
         expect(content).toContain("labelKey: 'name'");
     });
 
+    //  The records engine ships as three modules (#90): RecordsApp.jsx wires
+    //  the controller (app/records-controller.js — state, the relation, every
+    //  server call) to the view (RecordsView.jsx — what is rendered). Each
+    //  assertion reads the module that now holds what it names.
+    const engine = (req: string) => {
+        const built = files(req);
+        const app = built['src/components/RecordsApp.jsx'];
+        const controller = built['src/app/records-controller.js'];
+        const view = built['src/components/RecordsView.jsx'];
+        expect(app).toContain('useRecordsController(content)');
+        expect(app).toContain('<RecordsView content={content} controller={controller} />');
+        return { controller, view };
+    };
+
     it('the records engine renders the picker, the filter and the parent panel', () => {
-        const app = files('نظام حجز مواعيد لعيادة أسنان')['src/components/RecordsApp.jsx'];
-        expect(app).toContain('const rel = content.relation');
-        expect(app).toContain('addParent');            // create a doctor without leaving
-        expect(app).toContain('parentFilter');         // «كل مواعيد هذا الطبيب»
-        expect(app).toContain('parent_label');         // …and read the name the server sent
-        expect(app).toContain('apiListOn');
+        const { controller, view } = engine('نظام حجز مواعيد لعيادة أسنان');
+        expect(controller).toContain('const rel = content.relation');
+        expect(controller).toContain('const addParent = async');   // create a doctor without leaving
+        expect(view).toContain('onSubmit={addParent}');
+        expect(view).toContain('parentFilter');         // «كل مواعيد هذا الطبيب»
+        expect(controller).toContain('parent_label');   // …and read the name the server sent
+        expect(controller).toContain('apiListOn');
     });
 
     it('an app with no parent still renders — the picker is simply absent', () => {
-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
+        const { controller, view } = engine('تطبيق ملاحظات');
         const content = files('تطبيق ملاحظات')['src/content.js'];
         expect(content).toContain('relation: null');
         // The same component serves both: the guard is `rel ? … : null`.
-        expect(app).toContain('const rel = content.relation');
+        expect(controller).toContain('const rel = content.relation');
+        expect(view).toContain('{rel ? (');
     });
 
     it('and an edit now reaches the server instead of only this browser', () => {
-        const app = files('تطبيق ملاحظات')['src/components/RecordsApp.jsx'];
-        expect(app).toContain('apiUpdate(content.api, editing, patch)');
+        const { controller } = engine('تطبيق ملاحظات');
+        expect(controller).toContain('apiUpdate(content.api, editing, patch)');
     });
 });

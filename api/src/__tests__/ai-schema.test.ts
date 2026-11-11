@@ -126,18 +126,26 @@ describe('and the builder prefers what is already known', () => {
 
     it('the api builder awaits the design and says who answered', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
-        expect(a).toMatch(/const designed = await designDataModel\(request, \{ onNote: \(n: string\) => term\(n\) \}\);/);
+        // 198ccc8f6: the designer reads the one listing of his records (and the
+        // normalised listed request); 3917fe1d7: a workflow application has its
+        // own contract and is not redesigned. Everything else awaits the design
+        // and its notes reach the terminal.
+        expect(a).toMatch(/const designed = workflowApplication\s*\?\s*\[\]\s*:\s*await designDataModel\(listedRequest, \{ onNote: \(n: string\) => term\(n\), listing \}\);/);
     });
 
     it('and the interface builds its screens from the SAME design, not a second guess', () => {
         const a = read('modules', 'tools', 'definitions', 'ApiProjectTool.ts');
         // The handed model is now the WHOLE system: the promoted primary rides
         // at the head, because a primary absent from this entry was a table
-        // the server served that no screen anywhere let anyone touch.
-        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : model;/);
+        // the server served that no screen anywhere let anyone touch. With no
+        // promoted table, the primary the server built from his columns rides
+        // at the head the same way (c219da214).
+        expect(a).toMatch(/const handedModel = promoted \? \[promoted, \.\.\.model\] : \[\.\.\.primaryModel, \.\.\.model\];/);
         expect(a).toMatch(/\.\.\.\(handedModel\.length \? \{ model: handedModel \} : \{\}\),/);
         const r = read('modules', 'tools', 'definitions', 'ReactProjectTool.ts');
-        expect(r).toMatch(/Array\.isArray\(prevEntry\?\.model\) && prevEntry\.model\.length/);
+        // 76f66a5d3: the interface reads the linked API's entry (apiEntry),
+        // not whatever entry the session happens to hold.
+        expect(r).toMatch(/Array\.isArray\(apiEntry\?\.model\) && apiEntry\.model\.length\s*\?\s*apiEntry\.model/);
     });
 
     it('a build is never blocked on a model', () => {

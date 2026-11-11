@@ -44,6 +44,12 @@ export interface Palette {
     darkBrandText: string;
     darkTint: string;
     onDarkTint: string;
+    /** An error/destructive colour as TEXT, AA on each scheme's surface. */
+    danger: string;
+    darkDanger: string;
+    /** A warm accent as TEXT, from this palette's own hue, AA on each scheme's surface. */
+    warmAccent: string;
+    darkWarmAccent: string;
     /** Dark-mode counterparts, so every page ships with both. */
     darkBg: string;
     darkSurface: string;
@@ -303,7 +309,34 @@ export function paletteForHue(hue: number): Palette {
     const brandText = fitContrast(hue, 68, 52, surface, 4.5, -1);
     const darkBrandText = fitContrast(hue, 68, 62, darkSurface, 4.5, 1);
 
+    /**
+     * TWO COLOURS THE APP READS AND NO PALETTE WROTE.
+     *
+     * The app generator paints its error line with `var(--danger,#c44)` and
+     * the even stats of every records app with an image field with
+     * `var(--media-warm)` — that one with no fallback, defined only under
+     * `.kind-media`, so everywhere else the declaration was invalid and the
+     * browser dropped it in silence. Both are TEXT colours, so both are fitted
+     * like the brand text: AA against each scheme's own surface, with the
+     * same headroom the muted copy takes (5:1), because they sit on cards a
+     * shade off that surface.
+     *
+     * An error is red whatever the brand is — a teal error line reads as a
+     * success — so --danger keeps the red hue. The warm accent is this
+     * palette's own: a hue in the warm arc chosen by the brand hue, so two
+     * subjects do not share it.
+     */
+    const DANGER_HUE = 356;
+    const danger = fitContrast(DANGER_HUE, 72, 46, surface, 5, -1);
+    const darkDanger = fitContrast(DANGER_HUE, 80, 66, darkSurface, 5, 1);
+    const warmHue = 10 + (((hue % 360) + 360) % 360) % 36;
+    // 5.5 against white: measured over all 360 hues, 5:1 left the warm accent
+    // at 4.44:1 on the subject-tinted card it is actually painted on.
+    const warmAccent = fitContrast(warmHue, 62, 46, surface, 5.5, -1);
+    const darkWarmAccent = fitContrast(warmHue, 72, 64, darkSurface, 5, 1);
+
     return {
+        danger, darkDanger, warmAccent, darkWarmAccent,
         hue, scheme, primary, primaryDark, primaryLight,
         tint, onTint: fitContrast(hue, 70, 34, tint, 4.5, -1),
         brandText, darkBrandText,
@@ -418,6 +451,7 @@ export function paletteCss(p: Palette, type: TypeTokens = NEUTRAL_TYPE): string 
    *  beside this file rather than by assurance.  */
   --card:${paperAt(p.hue, 0.962, 0.019, hslCss(p.hue, 44, 97))}; --panel:${paperAt(p.hue, 0.935, 0.028, hslCss(p.hue, 40, 94))}; --chip:${p.tint}; --line:${p.border};
   --muted:${p.textMuted};
+  --danger:${p.danger}; --media-warm:${p.warmAccent};
   --ring:${p.primary};
   --shadow-xs:0 1px 1px rgba(15,23,42,.05);
   --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.45)};
@@ -460,6 +494,7 @@ export function darkTokenBlock(p: Palette): string {
   --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
   --card:${p.darkSurface}; --panel:${p.darkBg}; --chip:${p.darkTint}; --line:${p.darkBorder};
   --muted:${p.darkTextMuted};
+  --danger:${p.darkDanger}; --media-warm:${p.darkWarmAccent};
   --shadow-xs:0 1px 1px rgba(0,0,0,.5);
   --shadow-brand:0 10px 30px -12px ${hexAlpha(p.primary, 0.55)};
   --shadow-sm:0 1px 2px rgba(0,0,0,.4); --shadow-md:0 8px 24px -8px rgba(0,0,0,.55);
@@ -474,6 +509,7 @@ export function lightTokenBlock(p: Palette): string {
   --tint:${p.tint}; --on-tint:${p.onTint}; --brand-text:${p.brandText};
   --card:${hslCss(p.hue, 44, 97)}; --panel:${hslCss(p.hue, 40, 94)}; --chip:${p.tint};
   --line:${p.border}; --muted:${p.textMuted};
+  --danger:${p.danger}; --media-warm:${p.warmAccent};
   --shadow-sm:0 1px 2px rgba(15,23,42,.06),0 1px 3px rgba(15,23,42,.08);
   --shadow-md:0 8px 24px -8px rgba(15,23,42,.18);
   --shadow-lg:0 24px 60px -16px rgba(15,23,42,.24);
@@ -501,6 +537,7 @@ export function darkFirstCss(p: Palette): string {
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
   --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
+  --danger:${p.darkDanger}; --media-warm:${p.darkWarmAccent};
   --shadow-sm:0 1px 2px rgba(0,0,0,.5); --shadow-md:0 10px 30px -8px rgba(0,0,0,.6);
   --shadow-lg:0 28px 70px -16px rgba(0,0,0,.72);
   color-scheme:dark;
@@ -509,6 +546,7 @@ export function darkFirstCss(p: Palette): string {
   --bg:${p.darkBg}; --surface:${p.darkSurface}; --text:${p.darkText};
   --text-muted:${p.darkTextMuted}; --border:${p.darkBorder};
   --tint:${p.darkTint}; --on-tint:${p.onDarkTint}; --brand-text:${p.darkBrandText};
+  --danger:${p.darkDanger}; --media-warm:${p.darkWarmAccent};
   color-scheme:dark;
 }}
 body{background:var(--bg);color:var(--text)}`;

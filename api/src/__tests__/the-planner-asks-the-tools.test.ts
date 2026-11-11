@@ -96,7 +96,11 @@ describe('the planner uses it — after its own routes, before the model', () =>
         const goal = 'List the top-level workspace files and summarize the README without making changes.';
         expect(isReadOnlyRequest(goal)).toBe(true);
         const plan: any = await PlanningEngine.generatePlan({ intent: { goal, complexity: 'low', riskLevel: 'low', rawIntent: {} } as any });
-        expect(plan.metadata.matchedBy).toBe('read-only-safety-boundary');
+        // b906f3bc8: a no-changes request that only lists the workspace root and
+        // reads its README now takes the dedicated read-only overview route —
+        // the same no-write pipeline, marked noFileChanges, with no project to choose.
+        expect(plan.metadata.matchedBy).toBe('readonly-workspace-overview');
+        expect(plan.metadata.noFileChanges).toBe(true);
         expect(plan.steps.map((step: any) => step.tool)).toEqual(['project_pipeline']);
     });
 

@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { redactSecretsFromString } from '../../shared/utils/redaction';
 import { editAlreadyApplied } from '../../shared/utils/edit-in-place';
+import { isWithinRoot } from '../tools/path-containment';
 
 /** Bounded text files only. Existing files allow one unique literal edit, never a blind overwrite. */
 export const AUTONOMOUS_FILE_BYTES = 128 * 1024;
@@ -126,9 +127,9 @@ export function snapshotAutonomousFileInput(name: string, input: unknown): Recor
     return Object.freeze(result);
 }
 
+/** STRICTLY inside: the shared containment reader, and never the root itself. */
 function within(root: string, target: string): boolean {
-    const relative = path.relative(root, target);
-    return !!relative && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+    return isWithinRoot(target, root) && !!path.relative(root, target);
 }
 
 /** Synchronous physical checks are repeated immediately before the synchronous leaf. */

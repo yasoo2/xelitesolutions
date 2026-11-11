@@ -169,8 +169,15 @@ describe('the boundary of the English cut, declared and not hidden', () => {
         //  borrowed here, because «date of birth» and «price per unit» are
         //  columns he might really write and they carry the same mark.
         //  Closing it needs a signal this function does not have.
+        //
+        //  75e32c750 narrowed it with a closed list of behaviours
+        //  (CAPABILITY_CLAUSE: search, filter, sort, export, validation), so
+        //  «sortable by grade» is now cut. The boundary is still there for
+        //  any capability outside that list, and that is what is declared.
         expect(labels('A students table with name, class and grade, sortable by grade'))
-            .toEqual(['name', 'class', 'grade', 'sortable by grade']);
+            .toEqual(['name', 'class', 'grade']);
+        expect(labels('A students table with name, class and grade, printable by class'))
+            .toEqual(['name', 'class', 'grade', 'printable by class']);
     });
 });
 
