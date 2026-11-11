@@ -68,10 +68,158 @@ function userPartOf(rawGoal: string): string {
     return injectedAt >= 0 ? raw.slice(0, injectedAt).trim() : raw;
 }
 
-/** The review verbs the quality-review fast path reads (and isConstructionBrief locates). */
-const QUALITY_REVIEW_VERB = /(راجع|مراجع(?:ة|ه)|افحص|فحص|دقّ?ق|تدقيق|اختبر|اختبار|review|audit|inspect|check|verify)/i;
-/** A request whose first word (after a courtesy) orders that review. */
-const OPENS_WITH_REVIEW = new RegExp(`^\\s*(?:(?:please|kindly|من\\s+فضلك|لو\\s+سمحت|رجاء[ًا]?)[\\s،,]+)?[وف]?${QUALITY_REVIEW_VERB.source}`, 'i');
+/**
+ * The review verbs the quality-review fast path reads (and isConstructionBrief
+ * locates) — AS WHOLE WORDS. The pre-merge review of f7a95c498, with a built
+ * project open:
+ *
+ *     Checkout flow with delivery options: build it with cart summary and payment
+ *         → project_repair   (parent: the build path)
+ *
+ * «check» was a substring, so «Checkout» opened the request with a review, and
+ * «delivery» counted as its quality target. «راجع» sat inside «تراجع» the same
+ * way. A word keeps its own inflections and Arabic clitics — «وراجعه»,
+ * «المراجعة», «الاختبارات», "reviewed", "inspection" — and nothing longer.
+ */
+const QUALITY_REVIEW_VERB = /(?<![\p{L}\p{N}_])(?:[وف]?(?:راجع|افحص|دقّ?ق|اختبر)(?:ي|وا|ه|ها|هم)?|[وف]?(?:[بل]?ال|لل|[بل])?(?:مراجع(?:ة|ه|ات)|فحص|تدقيق|اختبار)(?:ا|ات|ه|ها)?|(?:re-?)?(?:review(?:s|ed|ing|ers?)?|audit(?:s|ed|ing|ors?)?|inspect(?:s|ed|ing|ions?)?|check(?:s|ed|ing)?|verif(?:y|ies|ied|ying|ication)))(?![\p{L}\p{N}_])/iu;
+/** A request whose first word (after a courtesy) orders that review. Read on diacritic-free text. */
+const OPENS_WITH_REVIEW = new RegExp(`^\\s*(?:(?:please|kindly|من\\s+فضلك|لو\\s+سمحت|رجاء[ًا]?)[\\s،,]+)?${QUALITY_REVIEW_VERB.source}`, 'iu');
+
+/**
+ * Words and clause breaks of a folded request (foldChars: no harakat, أ/إ/آ→ا,
+ * ى→ي, ة→ه, lower case). Every reader below walks this list once.
+ */
+const WORD_OR_BREAK = /[\p{L}\p{M}\p{N}_]+|\n|[^\s\p{L}\p{M}\p{N}_]/gu;
+const CLAUSE_BREAK = /^(?:[\n.,;:!?،؛؟]|ثم|then|after|afterwards|بعد|بعدها)$/u;
+/** The Arabic clitics a noun carries in front: «و/ف», «ب/ك/ل», the article. */
+const AR_CLITICS = '(?:[وف])?(?:[بكل]?ال|لل|[بكل])?';
+/**
+ * Content «انشر/publish» also takes — whole tokens, each with only its own
+ * endings: «خبر» is «الخبر/خبراً/الأخبار», never «خبرني» or «خبراتي».
+ * "blog" alone is a site (a deployed blog is a deployed site); "blog post" is
+ * content through "post".
+ */
+const CONTENT_NOUN_TOKEN = new RegExp(`^(?:${AR_CLITICS}(?:مقال(?:ه|ا|ات|اتي|ي|تي|ته|نا|ك)?|منشور(?:ا|ات|اتي|ي|ه|نا)?|بوست(?:ات)?|تدوين(?:ه|ات|اتي|تي|ته)?|تغريد(?:ه|ات|اتي|تي|ته)?|خبرا?|اخبار|اعلان(?:ا|ات|ي|ه|نا)?|محتو(?:ي|يات|ياتي|اه|اها|انا)|قص(?:ه|ص|تي|ته))|articles?|posts?|tweets?|stor(?:y|ies)|content|newsletters?|announcements?)$`, 'u');
+/** A thing that is deployed: a site, a page, an app, a store, a project. */
+const SITE_NOUN_TOKEN = new RegExp(`^(?:${AR_CLITICS}(?:(?:موقع|مواقع|مشروع|مشاريع|نظام|خادم|سيرفر|تطبيق|متجر)(?:ي|نا|ه|ها|ك|كم|ا)?|(?:معاين|صفح|منص|مدون)(?:ه|ات|ت(?:ي|نا|ه|ها|ك|كم)))|sites?|websites?|webpages?|pages?|apps?|applications?|projects?|servers?|stores?|shops?|portfolios?|blogs?|platforms?|portals?|previews?)$`, 'u');
+/** «انشر/أنشر/تنشر/نشر…» with the object pronoun captured («انشره» publishes what came before). */
+const AR_PUBLISH_VERB_TOKEN = /^(?:[وف])?(?:ا|ت|ن|ي)?نشر(?:ي|وا|و)?(ه|ها|هم)?(?:لي|لنا)?$/u;
+const EN_PUBLISH_VERB_TOKEN = /^(?:re)?(?:publish(?:es|ed|ing)?|host)$/u;
+/** "post" orders a publication only where a clause starts with it. */
+const STARTS_A_CLAUSE = /^(?:and|then|please|also|now|just|و)$/u;
+const HTTP_TOKEN = /^(?:endpoints?|requests?|routes?|methods?|handlers?|body|calls?|api)$/u;
+
+/**
+ * WHAT «انشر» PUBLISHES IS ITS OBJECT, NOT A WORD SOMEWHERE IN THE SENTENCE.
+ *
+ * The content guard was a bare substring over the whole request, and
+ * f7a95c498 made it a veto over every road that can choose a deploy tool.
+ * The pre-merge review measured (the parent of that commit deployed each):
+ *
+ *     انشر الموقع وخبرني بالرابط      → no deploy anywhere («خبر» in «خبرني»)
+ *     انشره وأخبرني بالرابط           → no deploy anywhere («خبر» in «أخبرني»)
+ *     انشر موقع خبراتي                → no deploy anywhere («خبر» in «خبراتي»)
+ *     انشر الموقع بعد تحديث المحتوى   → no deploy anywhere («محتوى» anywhere)
+ *     Deploy my blog                   → no deploy anywhere ("blog")
+ *     Deploy the API; the POST endpoint must work → no deploy anywhere
+ *
+ * «وأخبرني بالرابط» is the most natural thing to say after «انشر الموقع».
+ * A content noun is now a whole word, and it is CONTENT BEING PUBLISHED only
+ * when it is what the publish verb publishes: the verb's first object
+ * («انشر مقالاً», «انشر تدوينة عن موقعي», "publish the article on my site"),
+ * or the antecedent of its pronoun («اكتب مقالاً ثم انشره», "… publish it").
+ * A content noun that only modifies a site («موقع المقالات», "the article
+ * page") is the site; a site word that modifies content ("a blog post") is
+ * the content. One walk over the words, a bounded look ahead: linear.
+ */
+function readPublishedContent(userGoal: string): { anywhere: boolean; asObject: boolean; siteNamed: boolean } {
+    // An upper-case HTTP method is not a social post: "the POST endpoint".
+    const folded = foldChars(String(userGoal || '').replace(/\b(?:GET|POST|PUT|PATCH|DELETE)\b/g, ' '));
+    const tokens = folded.match(WORD_OR_BREAK) || [];
+    const isArabic = (t: string) => /[؀-ۿ]/.test(t);
+    type Role = 'content' | 'site' | 'break' | '';
+    const roles: Role[] = tokens.map(t => CLAUSE_BREAK.test(t) ? 'break'
+        : CONTENT_NOUN_TOKEN.test(t) ? 'content'
+        : SITE_NOUN_TOKEN.test(t) ? 'site' : '');
+    for (let i = 0; i < tokens.length; i++) {
+        if (roles[i] !== 'content') continue;
+        // "the post endpoint", "a POST request": a method of an API.
+        if (/^posts?$/.test(tokens[i]) && HTTP_TOKEN.test(tokens[i + 1] || '')) roles[i] = '';
+        // A content noun that modifies a site is the site: «موقع المقالات», "the article page".
+        else if (isArabic(tokens[i]) ? roles[i - 1] === 'site' : roles[i + 1] === 'site') roles[i] = '';
+    }
+    // …and in English a site word before content modifies it: "a blog post" is a post.
+    for (let i = 0; i + 1 < tokens.length; i++) {
+        if (roles[i] === 'site' && roles[i + 1] === 'content' && !isArabic(tokens[i])) roles[i] = '';
+    }
+    let asObject = false;
+    let lastNoun: Role = '';
+    for (let i = 0; i < tokens.length && !asObject; i++) {
+        const t = tokens[i];
+        const ar = t.match(AR_PUBLISH_VERB_TOKEN);
+        const clauseStart = i === 0 || roles[i - 1] === 'break' || STARTS_A_CLAUSE.test(tokens[i - 1]);
+        const verb = !!ar || EN_PUBLISH_VERB_TOKEN.test(t) || (/^post$/.test(t) && clauseStart);
+        if (verb) {
+            const pronoun = !!(ar && ar[1]) || (!ar && /^(?:it|them)$/.test(tokens[i + 1] || ''));
+            if (pronoun) {
+                asObject = lastNoun === 'content';
+            } else {
+                // The first noun after the verb, inside its clause, is what it publishes.
+                for (let j = i + 1, words = 0; j < tokens.length && words < 8; j++) {
+                    if (roles[j] === 'break') break;
+                    if (roles[j] === 'content') { asObject = true; break; }
+                    if (roles[j] === 'site') break;
+                    if (/[\p{L}\p{N}]/u.test(tokens[j])) words++;
+                }
+            }
+        }
+        if (roles[i] === 'content' || roles[i] === 'site') lastNoun = roles[i];
+    }
+    return { anywhere: roles.includes('content'), asObject, siteNamed: roles.includes('site') };
+}
+
+/** An imperative creation verb (folded spelling) — not «نفّذ/implement/fix», whose object is the repairs. */
+const CONSTRUCTION_VERB_TOKEN = /^(?:build|create|scaffold|develop|generate|design|make|[وف]?(?:ابن|ابني|انشي|اصنع|اعمل|صمم|طور|برمج|سوي)(?:لي|لنا)?)$/u;
+/** Where an imperative stands: the start of a clause, or after a conjunction or courtesy. */
+const IMPERATIVE_LEAD = /^(?:and|then|please|also|now|just|so|ثم|ايضا|الان|رجاء|فضلك|سمحت|كمان|بعدين)$/u;
+const OBJECT_LEAD = /^(?:a|an|the|some|new|missing|my|our|its|their|all|another|me|us|لي|لنا|له|لها)$/u;
+/** What a review's own verb makes: the review, its report, the fixes — never a new deliverable. */
+const NOT_A_DELIVERABLE = /^(?:sure|it|them|this|that|these|those|again|and|or|with|for|of|to|in|on|by|from|report|reports|summary|summaries|fix|fixes|repair|repairs|changes?|patch(?:es)?|notes?|backups?|commits?|pr|[وف]?(?:ال)?(?:اصلاح|اصلاحات|تقرير|تقارير|ملخص|تعديل|تعديلات|ملاحظات|ملاحظه|فحص|مراجعه|لازم|مطلوب)|علي|في|من|الي|مع|عن)$/u;
+
+/**
+ * A CREATION VERB WITH AN OBJECT IS A CONSTRUCTION, WHATEVER THE OBJECT.
+ *
+ * isConstructionBrief asked the artifact lexicon for the deliverable, and
+ * treated any request that OPENS with a review verb and names no object the
+ * lexicon knows as the review itself. With a built project open, measured on
+ * the pre-merge review (parent: the build path for each):
+ *
+ *     Check the results and build a new chart for monthly sales     → project_repair
+ *     Audit the delivery module and create unit tests for it        → project_repair
+ *     Verify the delivery and build the missing invoice screen      → project_repair
+ *
+ * A chart, unit tests and an invoice screen are things to make; the lexicon
+ * not knowing their names does not make them a review. An imperative
+ * creation verb («build», «create», «ابنِ», «أنشئ», «اعمل»…) followed by an
+ * object is a construction — unless the object is the review's own product:
+ * its report, its fixes, «الإصلاحات», «اللازم», or a bare pronoun.
+ * «راجع تقرير الجودة … نفّذ الإصلاحات بنفسك» has no such verb: «نفّذ» is not
+ * one, and «أنشأتها» is a past tense in a relative clause.
+ */
+function ordersConstructionOfAnObject(goal: string): boolean {
+    const tokens = foldChars(goal).match(WORD_OR_BREAK) || [];
+    for (let i = 0; i < tokens.length; i++) {
+        if (!CONSTRUCTION_VERB_TOKEN.test(tokens[i])) continue;
+        const prev = tokens[i - 1];
+        const imperative = i === 0 || CLAUSE_BREAK.test(prev) || IMPERATIVE_LEAD.test(prev) || /^[وف]/.test(tokens[i]);
+        if (!imperative) continue;
+        let j = i + 1;
+        for (let k = 0; k < 3 && j < tokens.length && OBJECT_LEAD.test(tokens[j]); k++) j++;
+        const object = tokens[j] || '';
+        if (/[\p{L}\p{N}]/u.test(object) && !CLAUSE_BREAK.test(object) && !NOT_A_DELIVERABLE.test(object)) return true;
+    }
+    return false;
+}
 
 /** What readDeployIntent read from one request. */
 export interface DeployIntentReading {
@@ -80,7 +228,9 @@ export interface DeployIntentReading {
     /**
      * Why the words themselves rule a deploy out, or '' when nothing does:
      * he said not to publish, or what he publishes is content (an article, a
-     * post, a tweet) rather than a site. A question is not a veto here: the
+     * post, a tweet) rather than a site — the publish verb's own object, or
+     * content with no site named at all; «انشر الموقع وأخبرني بالرابط» and
+     * «انشر الموقع بعد تحديث المحتوى» publish the site. A question is not a veto here: the
      * fast path's `isQuestion` is a coarse reader (a trailing «؟», any «بحث»),
      * and «هل يمكنك نشر الموقع؟» is a polite order — capabilityPlan has its own
      * deed-first question reader for that.
@@ -395,7 +545,10 @@ export class PlanningEngine {
         const goalNorm = normalizeIntentText(userGoal);
         const probe = goalNorm && goalNorm !== userGoal.toLowerCase() ? `${userGoal}\n${goalNorm}` : userGoal;
 
-        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:نشر|انشر|أنشر|رفع|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
+        // «لا تنشر الموقع» and «…ولا تنشره» are denials too: the second person
+        // («تنشر/ترفع», with its object pronoun) and the conjunction on «ولا»
+        // were missing, and the capability matcher chose deploy_pages for both.
+        const deniesExternalPublish = /(?:^|[\s،؛,:.!?])(?:[وف]?(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)(?:[تن]?نشر(?:ه|ها|هم|وا|ي)?|انشر|أنشر|ت?رفع(?:ه|ها)?|استضافة|deploy|publish|host|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])/i.test(userGoal);
 
         // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
         // a topic; it does NOT command run/stop/deploy — those must yield to it.
@@ -455,9 +608,6 @@ export class PlanningEngine {
         //  The definite form was not more correct — it was accidentally
         //  protected, and «ال» is a prefix.
         const deployTarget = projectTarget || /((?:ال)?موقع|(?:ال)?صفحة|\bsite\b|\bwebsite\b|\bpage\b)/i.test(probe);
-        // Content that "انشر/publish" ALSO applies to — publishing an article is
-        // NOT deploying a site. This is the collision that sent "انشر مقالاً" to deploy.
-        const contentNoun = /(مقال|منشور|تدوينة|تغريدة|خبر|إعلان|محتوى|قصة|\barticle\b|\bpost\b|\bblog\b|\btweet\b|\bstory\b|\bcontent\b)/i.test(probe);
 
         // Deploy: the unambiguous words (deploy / go live / رابط دائم / استضف)
         // fire on their own; the ambiguous ones (انشر / publish / host) need a
@@ -465,8 +615,19 @@ export class PlanningEngine {
         const strongDeploy = /(\bdeploy\b|استضف|استضافة|go\s*live|رابط\s*دائم|github\s*pages|gh-pages)/i.test(probe);
         const softPublish = /(انشر|أنشر|\bpublish\b|\bhost\b)/i.test(probe);
 
+        // Content that "انشر/publish" ALSO applies to — publishing an article is
+        // NOT deploying a site («انشر مقالاً» once went to deploy). It vetoes a
+        // site deploy only when it is what is being published — the publish
+        // verb's object or its pronoun's antecedent — or when he names no site
+        // or project at all (readPublishedContent). An unambiguous deploy verb
+        // is never vetoed by its object: "Deploy my blog" deploys the blog.
+        const published = readPublishedContent(userGoal);
+        const deployVerb = /(\bdeploy\b|استضف|go\s*live)/i.test(probe);
+        const publishesContent = published.anywhere && !deployVerb
+            && (published.asObject || !(deployTarget || published.siteNamed));
+
         const veto: DeployIntentReading['veto'] = deniesExternalPublish ? 'denied'
-            : contentNoun ? 'content'
+            : publishesContent ? 'content'
             : '';
         const deploy = !veto && !isQuestion && !hasBuildVerb && (strongDeploy || (softPublish && deployTarget));
         return { deploy, veto, isQuestion, hasBuildVerb, projectTarget, deniesExternalPublish };
@@ -487,14 +648,21 @@ export class PlanningEngine {
      * ordering a review. «Build an ERP for a coffee shop … an audit log and
      * monthly reports» and «A compiler … type checker … a test suite» name
      * objects the lexicon does not know, and neither opens with «review» —
-     * their audit and check words describe the product. Only a request that
-     * OPENS with the review and names no deliverable is the review.
+     * their audit and check words describe the product. «Check the results
+     * and build a new chart» opens with one and still orders a chart: an
+     * imperative creation verb with an object is a construction whatever the
+     * object (ordersConstructionOfAnObject). Only a request that OPENS with
+     * the review and orders nothing made is the review.
      */
     static isConstructionBrief(goalRaw: string): boolean {
         const goal = userPartOf(goalRaw);
         if (!PlanningEngine.looksLikeBuild(goal)) return false;
-        if (requestedArtifact(goal).kind) return true;
-        return !OPENS_WITH_REVIEW.test(goal);
+        // Cheapest reader first; the artifact lexicon (super-linear on a long
+        // adversarial message, measured) is asked only of a review-led request
+        // that orders nothing made. The answer is the same OR in any order.
+        if (!OPENS_WITH_REVIEW.test(stripArabicDiacritics(goal))) return true;
+        if (ordersConstructionOfAnObject(goal)) return true;
+        return !!requestedArtifact(goal).kind;
     }
 
     /** A tool that puts a site or project on the internet, by its own declaration (name or `deploy` tag). */
@@ -1488,9 +1656,9 @@ Rules:
             // they must not hijack the construction request into repairing the
             // currently active (possibly unrelated) artifact. Only a request that
             // is not itself an explicit build should use this fast-path —
-            // and a build verb alone does not make one (isConstructionBrief).
-            const constructiveBuildRequest = PlanningEngine.isConstructionBrief(userGoal);
-            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built && !constructiveBuildRequest) {
+            // and a build verb alone does not make one (isConstructionBrief,
+            // asked only of a request that reads as a review, with a build open).
+            if ((explicitQualityReview || (reviewVerb && qualityTarget)) && built && !PlanningEngine.isConstructionBrief(userGoal)) {
                 return {
                     id: `quality_review_${Date.now()}`,
                     goal: intent.goal,
