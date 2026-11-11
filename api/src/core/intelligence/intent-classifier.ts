@@ -1,11 +1,20 @@
-import { stripArabicDiacritics, normalizeIntentText } from '../orchestrator/promptNormalizer';
-import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
+import { stripArabicDiacritics, normalizeIntentText as canonicalReading, foldChars } from '../orchestrator/promptNormalizer';
+import { derivedColumns as readDerivedColumns, columnsAnywhereInHisRequest as readColumnsAnywhere } from '../design/app-blueprints';
 import { routeToModel } from '../llm/intelligent-router';
-import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns } from './requested-action';
+import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, LATER_DEED_ORDER, OrderWords, rememberLastReadings } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
-import { hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact } from '../design/requested-artifact';
+import { BUILD_VERBS, hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact as readRequestedArtifact } from '../design/requested-artifact';
 import { words } from '../language/arabic';
 import { readModelJsonObject } from '../../shared/utils/json';
+
+// One message, read once (rememberLastReadings): the readers below ask these
+// pure readers about the same text several times each. Their answers are only
+// read here, never changed. Each is looked up when called, so a test that
+// holds one constant (jest.spyOn) still reaches it.
+const normalizeIntentText = rememberLastReadings((text: string) => canonicalReading(text));
+const derivedColumns = rememberLastReadings((text: string) => readDerivedColumns(text));
+const columnsAnywhereInHisRequest = rememberLastReadings((text: string) => readColumnsAnywhere(text));
+const requestedArtifact = rememberLastReadings((text: string) => readRequestedArtifact(text));
 
 export interface IntentClassification {
     isBuild: boolean;
@@ -31,6 +40,12 @@ const KNOWN_SITE_PATTERN = /(جيت\s*هاب|github|يوتيوب|youtube|فيس\
 const SITE_AS_MODEL = new RegExp(String.raw`(?:(?<![\p{L}\p{N}_])(?:مثل|متل|زي|شبيه(?:ة|ه)?|على\s+غرار|بأسلوب|باسلوب|بطريقة|بطريقه|بنمط|نسخة\s+من|نسخه\s+من|مستوحى\s+من)\s+(?:ب|ل)?(?:ال)?|\b(?:like|similar\s+to|inspired\s+by|in\s+the\s+style\s+of|clone\s+of|copy\s+of|modeled\s+on|modelled\s+on)\s+)${KNOWN_SITE_PATTERN.source}|${KNOWN_SITE_PATTERN.source}(?:-(?:style|like|clone)|\s+(?:clone|style|copy))\b`, 'giu');
 
 const STRONG_WEB_VERB = /(تصف[حح]|سج[لّ]\s*(ال)?دخول|تسجيل\s*(ال)?دخول|ادخل\s*(على|الى|إلى|ل|حساب|موقع)|اذهب\s*(الى|إلى|ل)|ابحث|دو[رّ]\s*(لي\s*)?عن|open\s*(the\s*)?browser|browse\b|visit\b|go\s*to\b|log\s*-?\s*in|sign\s*-?\s*in|search\b)/i;
+/**
+ * «خطأ تسجيل الدخول», «صفحة تسجيل الدخول», "the login bug", "the login page":
+ * the login FEATURE of his app, a noun in a phrase — not an order to sign in
+ * somewhere. «أصلح خطأ تسجيل الدخول دون إنشاء مشروع جديد» went to the browser.
+ */
+const LOGIN_FEATURE = /(?:خط[أا]|اخطاء|أخطاء|مشكل[ةه]|مشاكل|صفح[ةه]|شاش[ةه]|زر|نموذج|فورم|ميز[ةه]|خاصي[ةه]|نظام|واجه[ةه]|عملي[ةه]|قسم|بيانات|كود|منطق)\s+(?:ال)?تسجيل\s*(?:ال)?دخول|\blog[\s-]?in\s+(?:bug|page|screen|form|button|flow|feature|issue|error|problem|system|endpoint|api|logic|code|route|validation)s?\b|\b(?:the|a|my|our|its|his)\s+(?:log[\s-]?in|sign[\s-]?in)\b(?!\s+(?:to|into|with|as|using)\b)/giu;
 const WEAK_WEB_VERB = /(افتح|انظر|صِ?ف|وصف|لخ[صص]|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i;
 const WEB_NOUN = /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i;
 const UI_INTERACTION_VERB = /(اضغط|انقر|اختر|اكتب|أدخل|مر[رّ]|انزل|عب[ئئ]|املأ|حد[دّ])/i;
@@ -77,11 +92,84 @@ const DESIRE_OPENERS = new Set(['اريد', 'ابغي', 'ابغا', 'ابي', '�
 const TELL_VERBS = new Set(['تشرح', 'تشرحلي', 'تشرحي', 'تفهمني', 'تفهم', 'توضح', 'توضحلي', 'تقول', 'تقولي', 'تخبرني', 'تعلمني', 'تعرفني', 'اعرف', 'افهم', 'اسال', 'اتعلم']);
 const DOING_VERBS = new Set(['تبني', 'تسوي', 'تعدل', 'تضيف', 'تصمم', 'تنشي', 'تنشئ', 'تشيل', 'تحط', 'تكتب', 'تطور', 'تعمل', 'تبرمج', 'تغير', 'تصلح', 'تحذف']);
 
-/** A message that OPENS with an Arabic interrogative («كيف …», «هل …»). */
+/**
+ * A message that OPENS with an Arabic interrogative («كيف …», «هل …») — the
+ * dialects' too: «وش أفضل طريقة أسوي جدول…», «ايش الأعمدة…», «شو يعني API»
+ * ask as «ما» does (the review: «وش أفضل طريقة…» was built).
+ */
 function opensWithArabicQuestion(bare: string): boolean {
-    return /^\s*(?:ما|ماذا|لماذا|ليش|كيف|متى|اين|أين|كم|ايهما|أيهما|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(bare)
+    return /^\s*(?:ما|ماذا|لماذا|ليش|ليه|كيف|متى|اين|أين|كم|ايهما|أيهما|وش|ايش|إيش|شو|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(bare)
         || /^\s*هل(?=$|[\s،:؛])/u.test(bare);
 }
+
+/** The shared build and wish verbs, as a later sentence may open with them («كيف حالك؟ ابني لي موقع»). */
+const VERBAL_NOUNS_FOLDED = new Set(['بناء', 'انشاء', 'تصميم', 'تطوير', 'عمل'].map(w => foldChars(w)));
+const LATER_ARABIC_ORDER: OrderWords = {
+    ar: new Set(BUILD_VERBS.flatMap(pair => pair.ar).map(w => foldChars(w)).filter(w => !VERBAL_NOUNS_FOLDED.has(w))),
+    en: /(?!)/,
+};
+
+/**
+ * ⛔ «EXPLAIN HOW I MAKE A TABLE WITH NAME, SALARY AND DEPARTMENT» IS A LESSON.
+ *
+ * «اشرح لي كيف أعمل جدول في إكسل فيه الاسم والراتب والقسم», «علمني كيف أسوي
+ * جدول فيه الاسم والعمر والجنس», «ابغى اعرف كيف اسوي جدول فيه…», «بدي أفهم
+ * كيف أعمل جدول…» were built: the columns were there and «أعمل», «أسوي»,
+ * «ابغى» read as asking. A «how» or a verb of telling or knowing BEFORE the
+ * thing makes the thing the subject of the lesson; after it («بدي جدول … وبدي
+ * أعرف كم قبضت») it is what the thing is for.
+ */
+//  A verb of knowing counts only with its «how» («ابغى اعرف كيف…»): «عشان أعرف
+//  مين دفع، بدي جدول فيه…» says what the table is for.
+const HOW_OR_TELL = /(?<![\p{L}\p{N}_])[وف]?(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش|اشرح|اشرحلي|علمني|علمنى|وضح|وضحلي|فهمني|فهمنى|(?:[اأ]عرف|[اأ]فهم|[اأ]تعلم|نتعلم)\s+(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش))(?![\p{L}\p{N}_])|\bhow\s+(?:to|do|does|did|can|could|should|would|is|are|i|we)\b|\b(?:explain|teach)\b|\b(?:learn|understand|know)\s+how\b/iu;
+const THE_THING = /(?<![\p{L}\p{N}_])[وفب]?(?:ال|لل)?(?:جدول|قائم[ةه]|كشف|سجل|دفتر|كراس[ةه]|نموذج|استمار[ةه]|تطبيق|موقع|نظام|متجر|برنامج|صفح[ةه]|لوح[ةه]|منص[ةه]|قاعد[ةه])|\b(?:table|list|sheet|spreadsheet|form|log|register|ledger|roster|tracker|inventory|database|app|application|site|website|system|store|page|dashboard|program|tool)s?\b/iu;
+function asksHowBeforeTheThing(g: string): boolean {
+    const bare = stripArabicDiacritics(g);
+    const at = bare.search(THE_THING);
+    return HOW_OR_TELL.test(at < 0 ? bare : bare.slice(0, at));
+}
+
+/**
+ * ⛔ «جدول مصاريف فيه التاريخ والمبلغ والتصنيف» NAMES WHAT HE WANTS.
+ *
+ * A short noun phrase — an indefinite record container and what it holds —
+ * is how a man asks for a table: «جدول مصاريف: التاريخ، المبلغ، التصنيف»,
+ * «قائمة عملاء فيها الاسم والجوال والمدينة», «A table for expenses with date,
+ * amount and category», «Table of expenses: date, amount, category». They were
+ * builds before the columns needed an asking signal (de86f9f1d) and fell to a
+ * registry guess after it. The container must open the message, be
+ * indefinite («الجدول اللي عملته…», "The table I made…" narrate), and its
+ * title carry no verb of its own («A table I made yesterday has: …»).
+ */
+const RECORD_CONTAINER_AR = /^\s*(?:جدول|قائم[ةه]|كشف|سجل|دفتر|كراس[ةه]|كشكول|استمار[ةه]|نموذج)(?![\p{L}\p{N}_])/u;
+const RECORD_CONTAINER_EN = /^\s*(?:(?:a|an)\s+)?(?:[a-z-]+\s+){0,2}?(?:table|list|sheet|spreadsheet|log|register|ledger|roster|tracker|inventory|database|directory|form|logbook|catalog(?:ue)?)s?\b/i;
+const AR_CONTENTS_INTRODUCER = /[:：]|(?<![\p{L}\p{N}_])(?:فيه|فيها|يحتوي|يحتوى|تحتوي|تحتوى|يضم|تضم|يشمل|تشمل|مع)(?![\p{L}\p{N}_])/u;
+const AR_NARRATIVE = /(?<![\p{L}\p{N}_])(?:اللي|الي|الذي|التي|كان|كانت|صار|صارت|عندي|عندنا|قريت|قرأت|شفت|رأيت|حطيت|سجلت|عملت\S*|سويت\S*|سوّيت\S*)(?![\p{L}\p{N}_])/u;
+const EN_CONTENTS_INTRODUCER = /[:：]|\b(?:with|containing|including|having|holding|that\s+(?:has|holds|contains)|which\s+(?:has|holds|contains))\b/i;
+function opensWithARecordContainer(g: string): boolean {
+    const bare = stripArabicDiacritics(g);
+    if (RECORD_CONTAINER_AR.test(bare)) {
+        const second = bare.trim().split(/[\s،,:：]+/u)[1] || '';
+        if (/^ال/u.test(second)) return false;                          // «جدول المصاريف»: that table
+        // A title is a few words: its contents begin within the first 120 characters.
+        const at = bare.slice(0, 120).search(AR_CONTENTS_INTRODUCER);
+        return at > 0 && !AR_NARRATIVE.test(bare.slice(0, at));
+    }
+    if (RECORD_CONTAINER_EN.test(bare)) {
+        const at = bare.slice(0, 120).search(EN_CONTENTS_INTRODUCER);
+        return at > 0 && !ENGLISH_FINITE.test(bare.slice(0, at));
+    }
+    return false;
+}
+
+/**
+ * «A Flutter app vs a React Native app: performance, size, ecosystem» compares;
+ * «تطبيق البنك: بطيء وثقيل…», «موقع الوزارة: بطيء، ويتوقف…» complain about a
+ * thing that exists — a container with a definite noun after it («تطبيق
+ * البنك») is that bank's app, not one he asks for. Neither is a brief.
+ */
+const COMPARISON = /\b(?:vs\.?|versus|compared\s+(?:to|with))(?=\s|$)|(?<![\p{L}\p{N}_])(?:مقابل|ضد|مقارن[ةه])(?![\p{L}\p{N}_])/iu;
+const EXISTING_THING_AR = /^\s*(?:تطبيق|موقع|نظام|منص[ةه]|متجر|برنامج|صفح[ةه]|لوح[ةه]|خدم[ةه]|بواب[ةه]|جدول|قائم[ةه]|كشف)\s+ال(?!كتروني|إلكتروني|ويب|جوال|موبايل|هاتف|اندرويد|ايفون|آيفون)[\p{L}]{2,}/u;
 
 /** Recording verbs in the form a man uses for HIS OWN recording: «أسجل فيه», «where I record», «to track». */
 const RECORDING_ORDER_AR = /(?<![\p{L}\p{N}_])[وف]?(?:[اأ]سجل|نسجل|سجل|[اأ]دون|ندون|[اأ]تابع|نتابع|تابع|[اأ]قيد|نقيد)(?![\p{L}\p{N}_])/u;
@@ -98,6 +186,8 @@ const DEFINITE_OPENING = /^\s*(?:ال[\p{L}]{2,}|هذا|هذه|ذلك|تلك|the
 function namesADeliverableFirst(g: string): boolean {
     const bare = stripArabicDiacritics(g);
     if (DEFINITE_OPENING.test(bare) || /[؟?]\s*$/u.test(g) || opensWithArabicQuestion(bare)) return false;
+    if (COMPARISON.test(bare.split(/[:：]/u)[0] || bare) || EXISTING_THING_AR.test(bare)) return false;
+    if (opensWithARecordContainer(g)) return true;
     const artifact = requestedArtifact(g);
     if (artifact.kind && !artifact.evidence.verb) return true;
     // «A stock trading simulator: …», «A Kubernetes-style mini orchestrator: …»
@@ -150,16 +240,19 @@ function asksForSomething(g: string): boolean {
 export function asksForAThingThatHolds(goalRaw: string): boolean {
     return thingAskedForWithItsContents(goalRaw) !== null;
 }
-function thingAskedForWithItsContents(goalRaw: string): string | null {
+const thingAskedForWithItsContents = rememberLastReadings(readThingAskedFor);
+function readThingAskedFor(goalRaw: string): string | null {
     const g = unquotedIntentText(maskResultativeMakeForBuild(String(goalRaw || '')));
     if (!g.trim() || /[؟?]\s*$/u.test(g) || opensWithArabicQuestion(stripArabicDiacritics(g))) return null;
-    const columns = derivedColumns(g);
-    const hasColumns = !!columns && columns.length >= 2;
-    const titled = !hasColumns && isTitledBriefWithContents(g);
-    if (!hasColumns && !titled) return null;
+    if (asksHowBeforeTheThing(g)) return null;
     if (hasRequestedAction(g).hasDenial) return null;
-    if (titled) return 'titled brief + its contents';
-    return asksForSomething(g) ? `asks for a thing and lists ${columns!.length} columns` : null;
+    // Both readings need him to ask (a titled brief asks by its title, which
+    // asksForSomething reads), so the column reader — the costliest step,
+    // run on every message — is consulted only when he does.
+    if (!asksForSomething(g)) return null;
+    const columns = derivedColumns(g);
+    if (columns && columns.length >= 2) return `asks for a thing and lists ${columns.length} columns`;
+    return isTitledBriefWithContents(g) ? 'titled brief + its contents' : null;
 }
 
 /**
@@ -176,9 +269,10 @@ function isTitledBriefWithContents(g: string): boolean {
     const list = stripArabicDiacritics(g.slice(colon + 1));
     const items = list.split(/[،,؛;]|\s+و(?=[\p{L}])|\band\b/u).map(s => s.trim()).filter(s => s.length > 1);
     if (items.length < 3) return false;
-    // A fault opens with its negation, a set of questions with its question
-    // word; a list of what the thing holds does neither.
-    return !/^(?:لا|لم|لن|ليس|ليست|مش|ما|ماذا|لماذا|كيف|متى|هل|أين|اين|كم|not|no|never|doesn['’]?t|does\s+not|isn['’]?t|is\s+not|can['’]?t|won['’]?t|what|why|how|when|which|who|where)(?![\p{L}\p{N}_])/iu.test(items[0]);
+    // A fault opens with its negation or its symptom («بطيء», "slow"), a set
+    // of questions with its question word; a list of what the thing holds
+    // does neither.
+    return !/^(?:لا|لم|لن|ليس|ليست|مش|مو|ما|ماذا|لماذا|كيف|متى|هل|أين|اين|كم|بطيء|بطيئ[ةه]?|بطئ|ثقيل[ةه]?|معطل[ةه]?|خربان[ةه]?|سيء|سيئ[ةه]?|يعلق|يهنج|مهنج|يتوقف|يقفل|not|no|never|doesn['’]?t|does\s+not|isn['’]?t|is\s+not|can['’]?t|won['’]?t|slow|broken|buggy|laggy|crash(?:es|ing)?|freez(?:es|ing)|what|why|how|when|which|who|where)(?![\p{L}\p{N}_])/iu.test(items[0]);
 }
 
 /**
@@ -190,20 +284,20 @@ function isTitledBriefWithContents(g: string): boolean {
  * with its object pronoun («انشره», «احذفه», «صلّحه», «Deploy it») — opening a
  * sentence after the question mark wins over the question before it. A
  * request to explain («اشرحه», «Explain it») or to shape the answer («اكتبها
- * في ثلاث نقاط», «Write two sentences») is still the answer.
+ * في ثلاث نقاط», «Write two sentences») is still the answer, and so is a
+ * second question, a deed word inside a sentence, or a word that is also a
+ * noun without its object (ordersInALaterSentence, requested-action.ts).
  */
-const DEED_AFTER_QUESTION_AR = /(?:^|[\s،:؛.!؟?])[وف]?(?:ثم\s+|الآن\s+|الان\s+|من\s+فضلك\s+)?(?:ابن|ابني|[اأإ]نشئ|[اأإ]نشي|اصنع|صمم|طور|سوي|برمج|شغل|[اأ]وقف|انشر|عدل|احذف|امسح|[اأ]صلح|صلح|افتح|ابحث|نفذ|[اأ]رسل|حمل|نزل|ثبت|احفظ|انسخ|انقل|اختبر|افحص|جرب|ارفع|نظف)(?:ه|ها|هم|هما|هن|ني|نا|لي|وه|يه)?(?=$|[\s،:؛.!؟?])/u;
-// Not «make it short», «add an example», «write two sentences»: those shape the answer.
-const DEED_AFTER_QUESTION_EN = /(?:^|[.!?;\n,]\s*|\b(?:and|then)\s+)(?:(?:please|now|then|just|also)\s+)*(?:build|create|develop|generate|scaffold|implement|deploy|publish|run|edit|delete|remove|fix|open|search|execute|install|update|rename|move|copy|save|push|ship|launch|do\s+(?:it|this|that))\b/i;
 function ordersADeedAfterTheQuestion(g: string): boolean {
-    const at = g.search(/[؟?]/u);
-    if (at < 0) return false;
-    const after = stripArabicDiacritics(g.slice(at + 1)).trim();
-    if (!after) return false;
-    return DEED_AFTER_QUESTION_AR.test(after) || DEED_AFTER_QUESTION_EN.test(after);
+    return ordersInALaterSentence(g, LATER_DEED_ORDER);
 }
 
-function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: number; reason: string } {
+type BuildStructure = { isBuild: boolean; confidence: number; reason: string };
+const buildStructureOnce = rememberLastReadings(readBuildStructure);
+function hasBuildStructure(goalRaw: string): BuildStructure {
+    return { ...buildStructureOnce(String(goalRaw || '')) };
+}
+function readBuildStructure(goalRaw: string): BuildStructure {
     const classificationGoal = maskResultativeMakeForBuild(String(goalRaw || ''));
     const g = unquotedIntentText(classificationGoal);
     const bare = stripArabicDiacritics(g);
@@ -219,9 +313,9 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     const politeActionRequest = /(?:^|[\s،:؛])هل\s+(?:يمكنك|تستطيع|تقدر)|(?:^|[\s،:؛])ممكن\s+(?:ان\s+|أن\s+)?(?:تصمم|تصميم|تبني|بناء|تنشئ|انشاء|إنشاء)/u.test(bare);
     // «كيف حالك؟ ابني لي موقع لمطعمي»: a question, then an order. The order
     // after the first sentence still counts — as «How are you? Build me …»
-    // always did (eval round 19). A verbal noun after it is still a topic.
-    const afterFirstSentence = bare.split(/[؟?.!]/u).slice(1).join(' ');
-    const laterOrder = afterFirstSentence.trim().length > 0 && hasArabicOrderVerb(afterFirstSentence);
+    // always did (eval round 19). A verbal noun after it is still a topic, and
+    // so is «ابني» my son: «كيف أربي ابني؟ ابني عنيد جدا» orders nothing.
+    const laterOrder = ordersInALaterSentence(bare, LATER_ARABIC_ORDER, true);
     if (informationQuestion && !politeActionRequest && !laterOrder) {
         return { isBuild: false, confidence: 0.9, reason: 'information question' };
     }
@@ -239,26 +333,33 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
     // «سوّي لي متجر قهوة» — is an order even when a later clause carries a word
     // the question reader knows: in «ولا تشيل أي قسم», «أي» is «any», not
     // «which» (P14). Not when the order is to know: «أبي أعرف …» is a question.
-    const opening = words(bare);
+    // The opening words are read from the opening; the segmenter walks the
+    // whole message only when a later word can still decide.
+    const opening = words(bare.slice(0, 200));
     const opener = opening[0] || '';
     const second = opening[1] || '';
     // A desire verb that asks to be told something is a question, unless a
     // later word asks for the work itself.
-    if (DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second) && !opening.slice(2).some(w => DOING_VERBS.has(w))) {
+    if (DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second) && !words(bare).slice(2).some(w => DOING_VERBS.has(w))) {
         return { isBuild: false, confidence: 0.85, reason: 'information question' };
     }
     // A true imperative («سوّي», «ابن», «اعمل») opens an order with any
     // container. A desire verb opens one only when its own object is a
     // deliverable («بدي موقع …») or the next word is a doing verb («أبي
     // تعدّل …») — a container word elsewhere («… كود الموقع») is the topic.
-    const artifact = requestedArtifact(g);
-    const desireOrder = DESIRE_OPENERS.has(opener)
-        ? (!!artifact.kind && artifact.evidence.verb === opener) || DOING_VERBS.has(second)
-        : CONTAINER_PATTERN.test(probe) || !!artifact.kind;
+    // The object reader only when the opening word can make it an order.
+    const desireOrder = () => {
+        if (DESIRE_OPENERS.has(opener)) {
+            if (DOING_VERBS.has(second)) return true;
+            const artifact = requestedArtifact(g);
+            return !!artifact.kind && artifact.evidence.verb === opener;
+        }
+        return CONTAINER_PATTERN.test(probe) || !!requestedArtifact(g).kind;
+    };
     const opensWithOrder = !/[؟?]\s*$/u.test(g)
         && hasArabicBuildVerb(opener)
         && !TELL_VERBS.has(second)
-        && desireOrder;
+        && desireOrder();
     if (opensWithOrder) {
         return { isBuild: true, confidence: 0.75, reason: 'opens with an order + container' };
     }
@@ -283,13 +384,13 @@ function hasBuildStructure(goalRaw: string): { isBuild: boolean; confidence: num
         || hasArabicBuildVerb(maskNegatedSpans(bare));
     const hasContainer = CONTAINER_PATTERN.test(probe);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
-    const describesContents = !!columnsAnywhereInHisRequest(g);
 
     if (hasRecordingVerb && hasContainer && hasRecordingIndicator) {
         return { isBuild: true, confidence: 0.9, reason: 'recording verb + container + field list' };
     }
 
-    if (hasDesireVerb && hasContainer && describesContents) {
+    // The column reader (the costliest step) only when it can decide something.
+    if (hasDesireVerb && hasContainer && columnsAnywhereInHisRequest(g)) {
         return { isBuild: true, confidence: 0.85, reason: 'desire verb + container + describes contents' };
     }
 
@@ -330,7 +431,7 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
         return { isBrowser: true, confidence: 0.95, reason: hasUrl ? 'explicit URL' : 'known site named', hasExternalWebTarget: true };
     }
 
-    const strongWeb = STRONG_WEB_VERB.test(bareProbe);
+    const strongWeb = STRONG_WEB_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' '));
     const weakWeb = WEAK_WEB_VERB.test(bareProbe);
     const webNoun = WEB_NOUN.test(bareProbe);
     const interactUi = UI_INTERACTION_VERB.test(bareProbe) && UI_NOUN.test(bareProbe);
@@ -355,7 +456,11 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
     return { isBrowser: false, confidence: 0, reason: 'no browser structure', hasExternalWebTarget: false };
 }
 
+const knowledgeQuestionOnce = rememberLastReadings(readKnowledgeQuestion);
 export function isKnowledgeQuestionStructural(goalRaw: string): boolean {
+    return knowledgeQuestionOnce(String(goalRaw || ''));
+}
+function readKnowledgeQuestion(goalRaw: string): boolean {
     // A complete read/report operation outranks incidental question words in its constraints.
     if (parseExplicitFileReadRequest(goalRaw)) return false;
     const g = unquotedIntentText(String(goalRaw || ''));
@@ -425,12 +530,16 @@ const LOCAL_WORK = /\b(?:files?|folders?|director(?:y|ies)|code(?:base)?|source|
  * object is not his own workspace («ابحث في ملفات المشروع عن TODO» is a file
  * search) addresses the browser, and the browser route answers it.
  */
+//  The verbs of STRONG_WEB_VERB without its nouns: «تسجيل الدخول» and "login"
+//  name the login FEATURE — «أصلح خطأ تسجيل الدخول دون إنشاء مشروع جديد» is
+//  a fix to his app, and it went to the browser.
+const WEB_ORDER_VERB = /(تصف[حح]|سج[لّ]\s*(?:ال)?دخول|ادخل\s*(?:على|الى|إلى|ل|حساب|موقع)|اذهب\s*(?:الى|إلى|ل)|ابحث|دو[رّ]\s*(?:لي\s*)?عن|open\s*(?:the\s*)?browser|browse\b|visit\b|go\s*to\b|\blog\s+in(?:to)?\b|\bsign\s+in\b|search\b)/i;
 export function isWebOrder(goalRaw: string): boolean {
     const g = String(goalRaw || '');
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
     const bareProbe = stripArabicDiacritics(probe);
-    return STRONG_WEB_VERB.test(bareProbe) && !LOCAL_WORK.test(bareProbe) && !hasBuildStructure(g).isBuild;
+    return WEB_ORDER_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' ')) && !LOCAL_WORK.test(bareProbe) && !hasBuildStructure(g).isBuild;
 }
 
 function isEngineeringBriefStructural(goalRaw: string): boolean {
