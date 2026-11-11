@@ -72,7 +72,8 @@ describe('a test run that ran nothing is not a pass', () => {
         const run = await runRequestedTests(root, runTool('empty-run-gate'));
         // Round 22 (Q8): his test files are found and run by the shared Python runner, not `unittest discover`.
         expect(run).toMatchObject({ ran: true, passed: false, runner: expect.stringMatching(/^python tests .* in \.$/u) });
-        expect(String(run.error)).toMatch(/ran no tests \(unittest: Ran 0 tests/);
+        //  Whichever runner the machine has (unittest, or pytest where it is installed), a run that ran nothing is said so.
+        expect(String(run.error)).toMatch(/ran no tests \((?:unittest: Ran 0 tests|pytest: [^)]*no tests ran)/);
     });
 
     it('a Python project whose tests ran and passed is «tested»', async () => {

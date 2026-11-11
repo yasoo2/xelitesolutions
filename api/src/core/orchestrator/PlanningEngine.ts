@@ -2428,8 +2428,20 @@ Rules:
                 };
             }
 
+            /*
+             * ⛔ «TRANSFORM IT INTO …» NAMES THE WORK HE HAS.
+             *
+             * The analysis of 2026-11-11: since fa810595d (2026-09-26) the build reader calls «I want
+             * to transform it into a real turn-by-turn navigation system» a build — «system» is a web
+             * noun — and the enhancement rebuilt the app from scratch again, the very failure the
+             * line above was written for. A request whose own words point at what exists («it», «the
+             * current …», «حوّله», «طوّره», «حسّنه») is an edit, unless it asks for something new.
+             */
+            const pointsAtCurrentWork = /\b(?:transform|turn|convert|improve|upgrade|extend|rework|expand)\s+it\b|\bthe\s+(?:current|existing)\s+(?:[\w-]+\s+){0,2}(?:system|app|application|site|page|project|feature|engine|flow)\b|حوّ?له\s*(?:إلى|الى|ل)|طوّ?ره|حسّ?نه|(?:ال)?(?:نظام|تطبيق|موقع|مشروع)\s+(?:الحالي|الموجود)/iu.test(probe);
+            const asksForSomethingNew = /\b(?:a|another|brand)\s+new\s+(?:project|app|application|site|website|system|page)\b|\bfrom\s+scratch\b|(?:مشروع|تطبيق|موقع|نظام|صفحة)\s+جديد(?:ة)?|من\s+الصفر/iu.test(probe);
             if (projectNewer && (editIntent || fixOrGrow || explicitlyTargetsCurrentProject)
-                && (!(buildVerb && webNoun) || explicitlyTargetsCurrentProject || explicitlyForbidsNewProject)) {
+                && (!(buildVerb && webNoun) || explicitlyTargetsCurrentProject || explicitlyForbidsNewProject
+                    || (fixOrGrow && pointsAtCurrentWork && !asksForSomethingNew))) {
                 return PlanningEngine.projectEditPlan(intent, context);
             }
         }

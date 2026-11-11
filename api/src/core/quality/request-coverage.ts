@@ -1449,7 +1449,10 @@ async function runRequestedTestsNow(root: string, runTool: (tool: string, input:
             const empty = judged.passed ? null : judged.ranNothing ?? emptyTestRun(printed);
             // A failure's own words are at the END of what the runner printed (the
             // assertion, «FAILED (failures=1)»): keep the end, not the first lines.
-            const said = String(run?.output?.stderr || run?.error || 'the tests did not pass').trim();
+            //  unittest prints them to stderr, pytest to stdout: what either printed, its end kept. The
+            //  analysis of 2026-11-11: with pytest installed, a failing test was told only as «command_failed».
+            const streams = [String(run?.output?.stderr ?? ''), String(run?.output?.stdout ?? '')].map(s => s.trim()).filter(Boolean);
+            const said = (streams.find(s => /\bFAIL(?:ED|URES?)?\b|Error\b|\bassert/u.test(s)) || streams[0] || String(run?.error || '') || 'the tests did not pass').trim();
             const error = judged.passed ? undefined
                 : empty ? `the test command ran no tests (${empty.runner}: ${empty.evidence})`
                     : said.length > 400 ? `…${said.slice(-399)}` : said;
