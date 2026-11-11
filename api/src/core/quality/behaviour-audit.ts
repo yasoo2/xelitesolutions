@@ -803,6 +803,11 @@ export function stampPrerequisites(formSel: string): Array<{ sel: string; kind: 
     document.querySelectorAll('input[type="date"],input[type="time"],input[type="datetime-local"],select').forEach((el, i) => {
         if ((form && form.contains(el)) || !shown(el) || (el as HTMLInputElement).disabled) return;
         if ((el as HTMLInputElement).value) return;
+        //  Never another form's field, nor a list's filter: choosing one would narrow the list the persistence check counts (the fifth review).
+        const owner = el.closest('form');
+        if (owner && owner !== form) return;
+        const named = [el.getAttribute('name'), el.id, el.getAttribute('aria-label'), el.getAttribute('data-filter') !== null ? 'filter' : '', (el as HTMLInputElement).labels?.[0]?.textContent].join(' ');
+        if (/search|filter|sort|order\s*by|بحث|فلتر|تصفية|ترتيب|فرز/iu.test(named)) return;
         const type = String((el as HTMLInputElement).type || '').toLowerCase();
         const kind = el.tagName === 'SELECT' ? 'select' : type === 'date' ? 'date' : type === 'time' ? 'time' : 'datetime';
         el.setAttribute('data-joe-pre', String(i));
@@ -906,7 +911,7 @@ export function watchAmbient(): boolean {
  * watching, and returns where each stamped leaf sits (a path from the body), so a reload can
  * stamp them again (restampAmbient). Self-contained.
  */
-export function stampAmbient(): string[] {
+export function stampAmbient(): Array<{ path: string; tag: string }> {
     const w = window as any;
     try { w.__joeQaAmbientObs?.disconnect(); } catch { /* not watching */ }
     const seen: Element[] = Array.from(w.__joeQaAmbientSeen || []);
@@ -918,27 +923,31 @@ export function stampAmbient(): string[] {
         }
         return ['body', ...parts].join(' > ');
     };
-    const out: string[] = [];
+    const out: Array<{ path: string; tag: string }> = [];
     for (const el of seen) {
         if (!(el instanceof HTMLElement) || !el.isConnected || el === document.body || el === document.documentElement) continue;
         if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
         if (el.closest('button,a[href],[role="button"],[role="link"]')) continue;
         if (String(el.textContent || '').length > 160) continue;
         el.setAttribute('data-joe-ambient', '1');
-        if (out.length < 40) out.push(pathOf(el));
+        if (out.length < 40) out.push({ path: pathOf(el), tag: el.tagName });
     }
     return out;
 }
 
 /** Runs in the page: stamps again, where they are, the leaves learnt to change by themselves (stampAmbient's paths). Self-contained. */
-export function restampAmbient(paths: string[]): number {
+export function restampAmbient(leaves: Array<{ path: string; tag: string }>): number {
     let n = 0;
-    for (const p of paths || []) {
+    for (const leaf of leaves || []) {
         let el: Element | null = null;
-        try { el = document.querySelector(p); } catch { el = null; }
-        if (!(el instanceof HTMLElement)) continue;
+        try { el = document.querySelector(leaf.path); } catch { el = null; }
+        //  Still the leaf that was learnt: the same element, as small, outside every control, and
+        //  holding what ticks (a digit) — a total or a status line moved into its place is not stamped.
+        if (!(el instanceof HTMLElement) || el.tagName !== leaf.tag) continue;
         if (el.querySelector('button,a[href],input,select,textarea,form,[role="button"],[role="link"],[contenteditable="true"]')) continue;
-        if (String(el.textContent || '').length > 160) continue;
+        if (el.closest('button,a[href],[role="button"],[role="link"]')) continue;
+        const text = String(el.textContent || '');
+        if (text.length > 160 || !/[0-9٠-٩]/u.test(text)) continue;
         el.setAttribute('data-joe-ambient', '1');
         n++;
     }
@@ -958,12 +967,16 @@ export async function learnAmbient(page: any, watchMs = 1100): Promise<number> {
      * wipe every stamp, and the fourth review (2026-11-11) found the clock back in every fingerprint
      * after the first restore. What was learnt here is stamped again where it is, at once.
      */
-    const learnt: Map<string, string[]> = page.__joeQaAmbientLearnt || (page.__joeQaAmbientLearnt = new Map<string, string[]>());
-    const here = String(page.url() || '');
-    if (learnt.has(here)) {
-        const paths = learnt.get(here) || [];
-        return paths.length ? page.evaluate(restampAmbient, paths).catch(() => 0) : 0;
-    }
+    /*
+     * …per audit (app-audit drops what a page learnt when a new audit begins) and per viewport: a
+     * phone's layout puts other leaves at the desktop's paths (the fifth review, 2026-11-11).
+     */
+    const learnt: Map<string, Array<{ path: string; tag: string }>> = page.__joeQaAmbientLearnt || (page.__joeQaAmbientLearnt = new Map());
+    const size = (() => { try { const v = page.viewportSize?.(); return v ? `${v.width}x${v.height}` : ''; } catch { return ''; } })();
+    const here = `${String(page.url() || '')}|${size}`;
+    const leaves = learnt.get(here);
+    //  Watched once, never again: a view whose times stood still (a booking's «10:30» slots) costs one second, not one per restore.
+    if (leaves) return leaves.length ? page.evaluate(restampAmbient, leaves).catch(() => 0) : 0;
     const state: string = await page.evaluate(() => {
         const w = window as any;
         if (w.__joeQaAmbientAt === location.href) return 'known';
@@ -974,14 +987,14 @@ export async function learnAmbient(page: any, watchMs = 1100): Promise<number> {
         if (!ticks && !holder) w.__joeQaAmbientAt = location.href;
         return ticks || holder ? 'watch' : 'still';
     }).catch(() => 'known');
-    if (state === 'still') learnt.set(here, []);
+    //  A view that showed nothing ticking is asked again next time (cheaply, no wait): a time drawn later is learnt then.
     if (state !== 'watch') return 0;
     await page.evaluate(watchAmbient).catch(() => false);
     await page.waitForTimeout(watchMs).catch(() => { });
-    const paths: string[] = await page.evaluate(stampAmbient).catch(() => [] as string[]);
-    learnt.set(here, paths);
+    const stamped: Array<{ path: string; tag: string }> = await page.evaluate(stampAmbient).catch(() => [] as Array<{ path: string; tag: string }>);
+    learnt.set(here, stamped);
     await page.evaluate(() => { (window as any).__joeQaAmbientAt = location.href; }).catch(() => { });
-    return paths.length;
+    return stamped.length;
 }
 
 function snapshot() {
@@ -1135,7 +1148,13 @@ async function formFeedback(page: any, selector: string): Promise<string> {
         return Array.from(scope.querySelectorAll('[role="alert"],[role="status"],[aria-live],.error,.err,.auth-error,.notice,.feedback,[data-error],[data-status]'))
             //  A status line that changes by itself (a clock: stampAmbient) answers no submit.
             .filter(el => visible(el) && !el.closest('[data-joe-ambient]'))
-            .map(el => (el as HTMLElement).innerText.trim())
+            //  …nor does the clock inside one («Last sync <time>10:32:15</time>»): read without it (the fifth review).
+            .map(el => {
+                if (!el.querySelector('[data-joe-ambient]')) return (el as HTMLElement).innerText.trim();
+                const copy = el.cloneNode(true) as HTMLElement;
+                copy.querySelectorAll('[data-joe-ambient]').forEach(x => x.remove());
+                return String(copy.textContent || '').replace(/\s+/g, ' ').trim();
+            })
             .filter(Boolean)
             .join('\n')
             .slice(0, 1200);
@@ -3547,8 +3566,9 @@ export async function probeForms(
             const savedNow = writes.saved() > savedBeforeSubmit;
             const refusedNow = writes.refused() > refusedBeforeSubmit;
             if (refusedNow && !savedNow && effect !== 'validation' && effect !== 'reload') {
-                //  Told nothing only when the page wrote nothing either: its refusal said again in the same words is telling (watchFormAnswer).
-                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect && !written.some(Boolean)) {
+                //  Told nothing unless the page wrote a refusal: said again in the same words is telling (watchFormAnswer);
+                //  a «Saving…» it then wiped is not (the fifth review).
+                if (!hasNewVisibleFormFeedback(feedbackBefore, await formFeedback(page, f.sel)) && !effect && !written.some(w => isVisibleFormRefusal(w))) {
                     metrics.fieldCasesFailed++;
                     metrics.fieldCaseFailures.push({ form: f.label, field: f.label, meaning: 'form', case: 'form:refused', value: '', ar: 'رُفض الإرسال دون رسالة للزائر', en: 'the submit was refused and the visitor was told nothing', weight: 'minor', outcome: 'refused_silently' });
                 }

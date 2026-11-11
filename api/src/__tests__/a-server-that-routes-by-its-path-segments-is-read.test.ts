@@ -174,4 +174,13 @@ describe('a segment looked up in a table of handlers, compared, or switched on s
             `  return HANDLERS[resource](res);`,
         ])).toEqual(expect.arrayContaining(['/api/rooms', '/api/guests']));
     });
+
+    //  The fifth review, 2026-11-11: the keys of the table checked with Object.keys(…).includes, and a quote inside a pattern of the table.
+    test('a table checked with Object.keys(…).includes(v), and a pattern holding a quote', async () => {
+        expect(await paths([
+            `  const collections = { products: { check: /^[a-z']+$/ }, orders: { check: /^\\{[0-9]+\\}$/ }, invoices: {} };`,
+            `  if (!Object.keys(collections).includes(resource)) { res.writeHead(404); return res.end(); }`,
+            `  res.end(JSON.stringify(collections[resource]));`,
+        ])).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/invoices']));
+    });
 });

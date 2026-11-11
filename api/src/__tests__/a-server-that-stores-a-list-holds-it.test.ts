@@ -17,6 +17,8 @@ describe('what a keeping verb lists is what the system holds', () => {
         ['Build a library API that stores books, members, loans in a database, with tests.', ['books', 'loans', 'members']],
         ['ابني تطبيق ويب لـقسم دعم فني بخادم Node يخزن التذاكر والموظفين والأجهزة في قاعدة بيانات حقيقية، وواجهة مرتبة لإدارتها، مع اختبارات للخادم.', ['devices', 'employees', 'tickets']],
         ['ابني تطبيق ويب لـمنصة دورات تعليمية بخادم Node يخزّن الدورات والدروس والتسجيلات في قاعدة بيانات حقيقية.', ['courses', 'enrollments', 'lessons']],
+        //  The noun «store» comes first and keeps nothing; the verb after it keeps the three (L236).
+        ['Build a web app for a electronics store with a Node server that stores products, orders, warranties in a real database and a clean interface to manage them, with server tests.', ['orders', 'products', 'warranties']],
     ])('«%s»', (request, expected) => {
         expect(keys(request)).toEqual(expect.arrayContaining(expected as string[]));
     });
@@ -62,5 +64,32 @@ describe('«with server tests» asks for tests, as «with API tests» does', () 
 
     test('a server that tests nothing asks for no tests', () => {
         expect(testsRequestedIn('Build a quiz app that tests kids on their times tables, with a Node server.')).toBeNull();
+    });
+
+    //  The fifth review, 2026-11-11: «tests» as a verb after «server», «UI», «browser» asks for none.
+    test.each([
+        'Build a math game where the server tests each answer and shows a score.',
+        'Build a typing trainer whose UI tests your speed.',
+        'Build a browser testing dashboard.',
+    ])('«%s» asks for no tests', request => {
+        expect(testsRequestedIn(request)).toBeNull();
+    });
+});
+
+/*
+ * The fifth review, 2026-11-11: the kept list ran to the sentence's end — «keeps favourites offline,
+ * with recipes …» read a phantom «offlines», «… and sends reminders» a record «reminders».
+ */
+describe('the kept list ends where another clause begins', () => {
+    test('«keeps favourites offline, with recipes, ingredients and shopping lists»', () => {
+        const got = keys('Build a recipe site that keeps favourites offline, with recipes, ingredients and shopping lists.');
+        expect(got).toEqual(expect.arrayContaining(['ingredients', 'recipes']));
+        expect(got.filter(k => /offline/u.test(k))).toEqual([]);
+    });
+
+    test('«stores members, classes and bookings and sends reminders, with a dashboard»', () => {
+        const got = keys('Build a gym app that stores members, classes and bookings and sends reminders, with a dashboard.');
+        expect(got).toEqual(expect.arrayContaining(['bookings', 'classes']));
+        expect(got).not.toContain('reminders');
     });
 });

@@ -32,6 +32,11 @@ test.each([
 test.each([
     'Build a new app from scratch for a gym with classes and bookings.',
     'ابني تطبيق جديد لمطعم فيه قائمة طعام وطلبات',
+    //  The fifth review, 2026-11-11: a build brief whose «it» is the app it asks for builds it.
+    'Create a todo app with categories and due dates, then turn it into a PWA.',
+    'Build an expense tracker with budgets and categories and improve it with charts.',
+    'اصنع تطبيق مهام بسيط ثم طوّره ليدعم التذكيرات',
+    'Build a new chat application from my notes, then convert it into a desktop app.',
 ])('«%s» builds another', async goal => {
     expect(await tools(goal)).not.toBe('project_edit');
 });

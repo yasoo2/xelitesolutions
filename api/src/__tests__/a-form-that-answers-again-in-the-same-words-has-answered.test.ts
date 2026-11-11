@@ -10,7 +10,7 @@
  */
 import http from 'http';
 import { chromium } from 'playwright';
-import { judgeBehaviour, probeControls, probeForms } from '../core/quality/behaviour-audit';
+import { judgeBehaviour, learnAmbient, probeControls, probeForms, restampAmbient } from '../core/quality/behaviour-audit';
 import { getChromiumLaunchOptions } from '../modules/browser/manager';
 
 jest.setTimeout(180_000);
@@ -204,6 +204,82 @@ test('a clock is no button\'s answer after the start is restored either', async 
     } finally {
         await browser.close();
         await new Promise<void>(r => server.close(() => r()));
+    }
+});
+
+/*
+ * The fifth review, 2026-11-11: a clock inside a status line («Last sync <time>…</time>») kept
+ * ticking in the form's feedback; a «Saving…» the page then wiped hid a refusal the visitor was
+ * never told; and what was learnt about a page leaked into the next audit and the next viewport.
+ */
+test('a clock inside a status line is no form\'s feedback either', async () => {
+    const html = page(false).replace('<h1>احجز موعدك</h1>',
+        '<h1>احجز موعدك</h1><div role="status">آخر مزامنة <time id="clock"></time></div><script>function tick() { document.getElementById("clock").textContent = new Date().toLocaleTimeString("en-GB"); } tick(); setInterval(tick, 1000);</script>');
+    const result = await walk(html);
+    expect(Number(result.metrics.formsDeadSubmit || 0)).toBe(1);
+});
+
+test('a refusal the page covers with a «Saving…» it then wipes is a silent refusal', async () => {
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Notes</title>
+<style>body{font-family:sans-serif;margin:16px} button,input{min-height:44px;margin:4px}</style></head><body>
+<h1>Notes</h1><p id="state" class="msg"></p>
+<form id="f"><label>Title <input name="title" required></label><button type="submit">Save note</button></form>
+<script>
+  document.getElementById('f').addEventListener('submit', function (e) {
+    e.preventDefault();
+    var s = document.getElementById('state'); s.textContent = 'Saving…';
+    fetch('/api/notes', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ title: this.elements.title.value }) })
+      .then(function () { s.textContent = ''; });
+  });
+</script></body></html>`;
+    const server = http.createServer((q, r) => {
+        if (q.url === '/api/notes' && q.method === 'POST') { q.resume(); r.writeHead(400, { 'content-type': 'application/json' }); return r.end('{"error":"title_taken"}'); }
+        r.writeHead(200, { 'content-type': 'text/html; charset=utf-8' }); r.end(html);
+    });
+    await new Promise<void>(r => server.listen(0, '127.0.0.1', () => r()));
+    const browser = await chromium.launch(getChromiumLaunchOptions());
+    try {
+        const tab = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+        await tab.goto(`http://127.0.0.1:${(server.address() as any).port}/`, { waitUntil: 'load' });
+        const result = await probeForms(tab, { budgetMs: 60_000 });
+        expect((result.metrics.fieldCaseFailures || []).filter((x: any) => x.outcome === 'refused_silently').length).toBeGreaterThanOrEqual(1);
+    } finally {
+        await browser.close();
+        await new Promise<void>(r => server.close(() => r()));
+    }
+});
+
+test('what a page learnt to change by itself is kept per viewport, and a remembered leaf is stamped only while it still ticks', async () => {
+    const calls: Array<{ fn: string; arg: any }> = [];
+    const fake: any = {
+        url: () => 'http://127.0.0.1/app',
+        size: { width: 1280, height: 900 },
+        viewportSize() { return this.size; },
+        waitForTimeout: async () => undefined,
+        evaluate: async (fn: any, arg: any) => { calls.push({ fn: fn.name || 'anonymous', arg }); return fn.name === 'restampAmbient' ? 1 : fn.name === 'stampAmbient' ? [{ path: 'body > span:nth-child(2)', tag: 'SPAN' }] : 'watch'; },
+    };
+    expect(await learnAmbient(fake)).toBe(1);                                  //  learnt on the desktop
+    expect(calls.some(c => c.fn === 'stampAmbient')).toBe(true);
+    calls.length = 0;
+    expect(await learnAmbient(fake)).toBe(1);                                  //  stamped again at once, no new watch
+    expect(calls.map(c => c.fn)).toEqual(['restampAmbient']);
+    calls.length = 0;
+    fake.size = { width: 390, height: 844 };
+    await learnAmbient(fake);                                                  //  a phone is learnt anew
+    expect(calls.some(c => c.fn === 'stampAmbient')).toBe(true);
+    //  In the page, a leaf moved into the remembered place is not stamped: no digit, or another tag.
+    const browser = await chromium.launch(getChromiumLaunchOptions());
+    try {
+        const tab = await browser.newPage();
+        const stampedIn = async (body: string, leaf: { path: string; tag: string }) => {
+            await tab.setContent(`<!doctype html><html><body>${body}</body></html>`);
+            return tab.evaluate(restampAmbient, [leaf]);
+        };
+        expect(await stampedIn('<p>x</p><span>Total</span>', { path: 'body > span:nth-child(2)', tag: 'SPAN' })).toBe(0);
+        expect(await stampedIn('<p>x</p><b>10:32</b>', { path: 'body > b:nth-child(2)', tag: 'SPAN' })).toBe(0);
+        expect(await stampedIn('<p>x</p><span>10:32:15</span>', { path: 'body > span:nth-child(2)', tag: 'SPAN' })).toBe(1);
+    } finally {
+        await browser.close();
     }
 });
 

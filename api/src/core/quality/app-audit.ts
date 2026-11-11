@@ -823,6 +823,10 @@ export async function auditBuiltApp(
             page.setDefaultTimeout?.(5_000);
             page.setDefaultNavigationTimeout?.(navigationTimeoutMs);
         } catch { /* a minimal browser adapter may not expose Playwright defaults */ }
+        //  What changes by itself is learnt again for every audit (behaviour-audit learnAmbient): the
+        //  borrowed panel page outlives one build, and the fifth review (2026-11-11) found a rebuilt
+        //  app judged with the last build's clock paths.
+        try { delete (page as any).__joeQaAmbientLearnt; } catch { /* a frozen adapter */ }
         // Responsive checks must leave the visible Browser panel in a useful
         // desktop state. Reading the viewport after a phone pass only remembers
         // the transient test size and strands the user in a tiny preview.

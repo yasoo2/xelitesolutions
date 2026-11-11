@@ -118,8 +118,10 @@ const PER_USER_CAPABILITY = (clause: string) => `per-user record isolation — �
  * teachers and tests») is a table of exams, and «a quiz app that tests kids» is
  * a verb — neither asks for automated tests.
  */
-//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too.
-const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional|server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests?|testing|specs?)\b|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
+//  «with server tests» (L232, 2026-11-11) asks for tests as «with API tests» does: where they run is a qualifier too —
+//  as a noun only: «the server tests each answer», «whose UI tests your speed», «a browser testing dashboard» ask
+//  for none (the fifth review).
+const EN_TESTS = /\b(?:unit|integration|automated|automatic|end[- ]to[- ]end|e2e|api|endpoint|regression|acceptance|smoke|functional)\s+(?:tests?|testing|specs?)\b|\b(?:server|back-?end|front-?end|ui|browser|database|db|http|route)\s+(?:tests|specs?)\b(?!\s+(?:each|every|your|the|a|an|whether|if|how|its|their|his|her|our|my|that|this|them|it|what|which|who)\b)|\btest\s+(?:suites?|cases?|coverage|files?|scripts?)\b|\b(?:write|writing|add|adding|include|including|plus|ship|provide|with)\s+(?:(?:some|full|complete|proper|thorough|their|its|the|a)\s+)?(?:tests|specs)\b|\btests?\s+for\s+(?:every|each|all)\b/iu;
 //  The Arabic twins of «test suite», «the tests fail», «make the suite pass», «CI is red»
 //  (the Codex exam in Arabic, C04, 2026-11-08: «مجموعة الاختبارات في المجلد tests/ تفشل.
 //  اجعل المجموعة كلها تنجح» was read as asking for no tests, so «all tests pass» was judged
@@ -765,7 +767,30 @@ const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.spl
 const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
 const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
 
-/** From the brace at `open` to the one that closes it (strings and comments skipped), or '' when it never closes. */
+/**
+ * Where a regular-expression literal that opens at `at` (a «/» where an expression begins) ends,
+ * or -1 when the «/» divides. A quote or a brace inside `/^[a-z']+$/` is the pattern's, not code
+ * (the fifth review, 2026-11-11: `{ products: { check: /^[a-z']+$/ }, orders: … }` read no key).
+ */
+function regexLiteralEnd(text: string, at: number): number {
+    let p = at - 1;
+    while (p >= 0 && /\s/u.test(text[p])) p--;
+    const before = p >= 0 ? text[p] : '';
+    const word = /([A-Za-z_$][\w$]*)$/u.exec(text.slice(Math.max(0, p - 12), p + 1));
+    if (!(before === '' || /[(,=:[!&|?{};+\-*%<>~^]/u.test(before) || (word && /^(?:return|typeof|case|in|of|void|delete|throw)$/u.test(word[1])))) return -1;
+    let inClass = false;
+    for (let i = at + 1; i < text.length && i < at + 2000; i++) {
+        const ch = text[i];
+        if (ch === '\\') { i++; continue; }
+        if (ch === '\n') return -1;
+        if (inClass) { if (ch === ']') inClass = false; continue; }
+        if (ch === '[') { inClass = true; continue; }
+        if (ch === '/') return i;
+    }
+    return -1;
+}
+
+/** From the brace at `open` to the one that closes it (strings, comments and patterns skipped), or '' when it never closes. */
 function balancedFrom(text: string, open: number): string {
     const pairs: Record<string, string> = { '{': '}', '[': ']', '(': ')' };
     const stack: string[] = [];
@@ -777,6 +802,7 @@ function balancedFrom(text: string, open: number): string {
         }
         if (ch === '/' && text[i + 1] === '/') { i = text.indexOf('\n', i); if (i < 0) return ''; continue; }
         if (ch === '/' && text[i + 1] === '*') { i = text.indexOf('*/', i + 2); if (i < 0) return ''; i++; continue; }
+        if (ch === '/') { const end = regexLiteralEnd(text, i); if (end > i) { i = end; continue; } }
         if (pairs[ch]) stack.push(pairs[ch]);
         else if (ch === '}' || ch === ']' || ch === ')') {
             if (stack.pop() !== ch) return '';
@@ -800,6 +826,7 @@ function objectLiteralKeys(literal: string): string[] {
             expectKey = false;
             continue;
         }
+        if (ch === '/') { const end = regexLiteralEnd(literal, i); if (end > i) { i = end; expectKey = false; continue; } }
         if (ch === '{' || ch === '[' || ch === '(') { depth++; if (depth === 1) expectKey = true; continue; }
         if (ch === '}' || ch === ']' || ch === ')') { depth--; continue; }
         if (depth === 1 && ch === ',') { expectKey = true; continue; }
@@ -881,6 +908,13 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
         //  LIST.includes(v), with LIST a literal list of names.
         for (const [v, index] of segmentVars) {
             if (index < 0) continue;
+            //  …or the keys of a table of handlers: `Object.keys(collections).includes(resource)` (the fifth review).
+            for (const m of text.matchAll(new RegExp(`\\bObject\\s*\\.\\s*keys\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*\\)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
+                const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\{`, 'u').exec(text);
+                if (!decl) continue;
+                const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
+                if (keys.length && keys.length <= 40 && keys.every(k => SEGMENT_NAME.test(k))) keys.forEach(k => add(index, k));
+            }
             for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*includes\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) {
                 const list = new RegExp(`\\b(?:const|let|var)\\s+${esc(m[1])}\\s*=\\s*\\[([^\\]]*)\\]`, 'u').exec(text);
                 if (!list) continue;
