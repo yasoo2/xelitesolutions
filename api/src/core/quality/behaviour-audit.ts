@@ -2404,6 +2404,21 @@ export async function probeControls(page: any, opts?: ProbeOptions): Promise<{ c
                 // their successful submit often reveals the most important
                 // follow-up action (delete, cancel, checkout, edit).
                 opts?.onProgress?.('forms');
+                /*
+                 * ⛔ …ON THE PAGE AS IT STARTED, NOT AS THE LAST CONTROL LEFT IT.
+                 *
+                 * qa-live17b, 2026-11-12 (L052, an event tracker): «Add event», then
+                 * the filters «All», «Active», «Done», then the list. The desktop walk
+                 * keeps its presses (not isolated), and its last press was «Done»; the
+                 * forms pass then sent «Add event» on a list filtered to done events.
+                 * The new event, active, was not drawn, and «sent and taken, never
+                 * shown outside the form» refused the delivery four times in 60
+                 * minutes, while Joe's own browser saw it on every fresh page.
+                 */
+                if (baselineMayBeDirty) {
+                    await restoreProbeStart();
+                    baselineMayBeDirty = false;
+                }
                 const r = await probeForms(page, {
                     eyes, budgetMs: Math.max(6000, formsDeadline - Date.now()), seenForms: seenFormsHere,
                     formScope: opts?.formScope, formContext: opts?.formContext, isEyeOpen: eyeIsOpen,
