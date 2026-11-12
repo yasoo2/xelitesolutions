@@ -61,6 +61,11 @@ export interface AppDataSnapshot {
     files: Map<string, KeptFile>;
     /** Data files not copied (too large, or of a database another of whose files was): never written back, and said so. */
     tooLarge: string[];
+    /**
+     * Whether the walk saw every data file. When it stopped at MAX_FILES, a file it
+     * did not see is not one the app created since: nothing is removed then.
+     */
+    complete: boolean;
 }
 
 /**
@@ -86,15 +91,26 @@ function isData(rel: string): boolean {
     return RECORDS_FILE.test(name);
 }
 
-/** The data files under `root` now, relative to it. Links are never followed. */
-async function dataFiles(root: string): Promise<string[]> {
+/**
+ * The data files under `root` now, and whether the walk saw them all. Links are never followed.
+ *
+ * The cap cuts the walk wherever it falls, so two walks of one folder can see
+ * different files: the adversarial review of 2026-11-12 had an app with 2,100
+ * photos in uploads/, a database whose -wal and -shm files went away when its
+ * server closed it cleanly, and the window slid by two — two of the owner's
+ * photos, never seen by the snapshot, were removed as «created by the QA».
+ * A walk that stopped at the cap says so, and nothing is removed on its word.
+ */
+async function dataFiles(root: string): Promise<{ files: string[]; complete: boolean }> {
     const found: string[] = [];
+    let complete = true;
     const walk = async (dir: string, depth: number): Promise<void> => {
-        if (depth > MAX_DEPTH || found.length >= MAX_FILES) return;
+        if (depth > MAX_DEPTH) return;
+        if (found.length >= MAX_FILES) { complete = false; return; }
         let entries: fs.Dirent[];
         try { entries = await fs.promises.readdir(dir, { withFileTypes: true }); } catch { return; }
         for (const e of entries) {
-            if (found.length >= MAX_FILES) return;
+            if (found.length >= MAX_FILES) { complete = false; return; }
             if (e.isSymbolicLink()) continue;
             const abs = path.join(dir, e.name);
             if (e.isDirectory()) {
@@ -105,7 +121,7 @@ async function dataFiles(root: string): Promise<string[]> {
         }
     };
     await walk(root, 0);
-    return found;
+    return { files: found, complete };
 }
 
 /** Removes the copies a verification kept; and those a crashed one left behind, once stale. */
@@ -130,7 +146,7 @@ export async function snapshotAppData(root: string): Promise<AppDataSnapshot> {
     await fs.promises.mkdir(SNAPSHOT_HOME, { recursive: true });
     const dir = await fs.promises.mkdtemp(path.join(SNAPSHOT_HOME, 'snap-'));
     const files = new Map<string, KeptFile>();
-    const found = await dataFiles(root);
+    const { files: found, complete } = await dataFiles(root);
     //  Sizes first, so a database is kept whole or not at all.
     const sizes = new Map<string, number>();
     for (const file of found) { try { sizes.set(file, (await fs.promises.stat(file)).size); } catch { /* gone: nothing to keep */ } }
@@ -158,7 +174,7 @@ export async function snapshotAppData(root: string): Promise<AppDataSnapshot> {
         for (const [file, k] of kept) files.set(file, k);
         total += bytes;
     }
-    return { root, dir, files, tooLarge };
+    return { root, dir, files, tooLarge, complete };
 }
 
 async function unchanged(file: string, k: KeptFile): Promise<boolean> {
@@ -173,14 +189,22 @@ export async function appDataChanges(s: AppDataSnapshot, keep: readonly string[]
     //  A database not copied is not touched at all, journal files it made since included.
     const untouched = new Set(s.tooLarge.map(familyOf));
     const changed: string[] = [];
-    const now = new Set((await dataFiles(s.root)).map(f => path.resolve(f)));
+    const walk = await dataFiles(s.root);
+    const now = new Set(walk.files.map(f => path.resolve(f)));
+    //  A file is «created since» only when both walks saw every data file.
+    const sawAll = s.complete !== false && walk.complete;
     for (const file of now) {
         if (kept.has(file.toLowerCase()) || untouched.has(familyOf(file))) continue;
         const before = s.files.get(file);
-        if (!before) { changed.push(file); continue; }
+        if (!before) { if (sawAll) changed.push(file); continue; }
         try { if (!(await unchanged(file, before))) changed.push(file); } catch { changed.push(file); }
     }
-    for (const file of s.files.keys()) if (!now.has(file) && !kept.has(file.toLowerCase())) changed.push(file);
+    for (const [file, before] of s.files) {
+        if (now.has(file) || kept.has(file.toLowerCase())) continue;
+        //  Not seen now: gone, or past the cap of a walk that stopped early.
+        if (!walk.complete) { try { if (await unchanged(file, before)) continue; } catch { /* gone */ } }
+        changed.push(file);
+    }
     return changed;
 }
 
@@ -248,23 +272,27 @@ export async function restoreAppData(s: AppDataSnapshot, keep: readonly string[]
  * back only once the port is free.
  */
 export async function addressIsFree(url: string, waitMs = 6000): Promise<boolean> {
-    let host = '127.0.0.1';
+    let hosts = ['127.0.0.1'];
     let port = 0;
     try {
         const u = new URL(url);
-        host = u.hostname === 'localhost' ? '127.0.0.1' : u.hostname.replace(/^\[|\]$/gu, '');
+        //  «localhost» is two addresses: a server bound to ::1 alone (a dev server that
+        //  ignores HOST, a listen(port, 'localhost') on a machine that resolves it to IPv6)
+        //  answers there and nowhere else — the adversarial review of 2026-11-12.
+        hosts = u.hostname === 'localhost' ? ['127.0.0.1', '::1'] : [u.hostname.replace(/^\[|\]$/gu, '')];
         port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
     } catch { return true; }
+    //  Refused: nothing listens. Accepted, or no answer at all in a second: something still holds it.
+    const holds = (host: string) => new Promise<boolean>(resolve => {
+        const socket = net.connect({ host, port });
+        const done = (value: boolean) => { socket.destroy(); resolve(value); };
+        socket.setTimeout(1000, () => done(true));
+        socket.once('connect', () => done(true));
+        socket.once('error', () => done(false));
+    });
     const until = Date.now() + waitMs;
     for (;;) {
-        //  Refused: nothing listens. Accepted, or no answer at all in a second: something still holds it.
-        const held = await new Promise<boolean>(resolve => {
-            const socket = net.connect({ host, port });
-            const done = (value: boolean) => { socket.destroy(); resolve(value); };
-            socket.setTimeout(1000, () => done(true));
-            socket.once('connect', () => done(true));
-            socket.once('error', () => done(false));
-        });
+        const held = (await Promise.all(hosts.map(holds))).some(Boolean);
         if (!held) return true;
         if (Date.now() >= until) return false;
         await new Promise(r => setTimeout(r, 250));

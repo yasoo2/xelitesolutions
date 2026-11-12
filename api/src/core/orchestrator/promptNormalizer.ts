@@ -193,8 +193,93 @@ function fuzzyActionContext(tokens: string[], index: number): boolean {
     return /(?:^|[\s،:؛])(?:اريد|بدي|ابي|ابغي|ابغى|عايز|عاوز|ممكن|ثم|وبعدها|بعد ذلك)$/u.test(before);
 }
 
+/**
+ * …UNLESS AN ORDER GOVERNS THE WORD.
+ *
+ * «سوي لي موقغ لمطعمي», «اعمل صفخة هبوط», «افتح صفخة المنتجات», «بدي موقغ
+ * لمحلي» were builds and browser orders, and stopped being read at all when a
+ * changed letter in a four-letter word stopped being repaired (below): the
+ * rule that keeps «صلحه» from becoming «صفحة» also kept «صفخة» from it. What
+ * tells the two apart is not the word — both are one letter from «صفحه» — but
+ * what stands before it: after an order or a wish («سوي لي …», «اعمل …», «افتح
+ * …», «بدي …», «روح على …») the word is the thing ordered, and a thing that
+ * is one letter from a deliverable is that deliverable misspelt. «صلحه» after
+ * «الزر ما بيشتغل،», or alone, is governed by nothing and stays what he wrote.
+ * The class kept here is the governing verbs, never the words they repair —
+ * and the repair is only ever TO a thing an order makes or opens (a page, a
+ * site, an app, an interface): «اعمل شبكة اجتماعية» is a social network, and
+ * no order turns it into a company («شركة»).
+ */
+const THINGS_AN_ORDER_MAKES = new Set(['صفحة', 'موقع', 'تطبيق', 'واجهة', 'متصفح', 'مستودع'].map(foldChars));
+const GOVERNING_ORDERS = new Set([
+    'افتح', 'ابحث', 'احفظ', 'ارسل', 'اكتب', 'ترجم', 'انظر', 'انشئ', 'اصنع', 'ابني', 'ابن', 'صمم', 'اعمل', 'طور', 'حلل',
+    'اريد', 'اذهب', 'ادخل', 'اعطني', 'سجل', 'اضف', 'عدل', 'احذف',
+].map(foldChars));
+/** «لي», «لنا», «على», «إلى»: between the order and its thing. */
+const BETWEEN_ORDER_AND_THING = new Set(['لي', 'لنا', 'لك', 'على', 'الى', 'ل'].map(foldChars));
+function orderGoverns(tokens: string[], index: number): boolean {
+    let skipped = 0;
+    for (let i = index - 1; i >= 0 && index - i < 12; i--) {
+        const word = tokens[i];
+        if (!word || /^\s+$/.test(word)) continue;
+        if (!/[\p{L}\p{N}]/u.test(word)) return false;          // a comma or a full stop: another clause
+        if (BETWEEN_ORDER_AND_THING.has(word) && skipped++ < 2) continue;
+        const bare = /^[وف][؀-ۿ]{2,}/.test(word) && !FOLDED_SYNONYMS[word] && !GOVERNING_ORDERS.has(word) ? word.slice(1) : word;
+        return GOVERNING_ORDERS.has(foldChars(FOLDED_SYNONYMS[bare] || bare));
+    }
+    return false;
+}
+
+/**
+ * ONE MESSAGE IS NORMALISED ONCE.
+ *
+ * A request passes through here from every reader that probes it — the
+ * request-action reader, the build gate, the question reader, the browser
+ * reader, the planner, the design readers — a dozen times and more for the
+ * same string, and each pass folds the text three ways and walks it word by
+ * word against the typo list. The canonical form is a pure function of the
+ * string, so the last readings are kept: 32 strings at most, and at most two
+ * million characters of them, so a run of pasted specifications cannot grow
+ * the memory. A string is its own key — no hash, so no two messages can ever
+ * share an answer.
+ */
+const KEPT_READINGS = 32;
+const KEPT_CHARACTERS = 2_000_000;
+const lastReadings = new Map<string, string>();
+let keptCharacters = 0;
+
 /** Produce the canonicalized companion text for intent detection. */
 export function normalizeIntentText(raw: string): string {
+    const key = String(raw ?? '');
+    const known = lastReadings.get(key);
+    if (known !== undefined) {
+        // Most recently read last: the oldest reading is the first to go.
+        lastReadings.delete(key);
+        lastReadings.set(key, known);
+        return known;
+    }
+    const value = canonicalIntentText(key);
+    const size = key.length + value.length;
+    // One text larger than the whole allowance is read, never kept.
+    if (size <= KEPT_CHARACTERS) {
+        lastReadings.set(key, value);
+        keptCharacters += size;
+        while (lastReadings.size > KEPT_READINGS || keptCharacters > KEPT_CHARACTERS) {
+            const [oldest, reading] = lastReadings.entries().next().value as [string, string];
+            lastReadings.delete(oldest);
+            keptCharacters -= oldest.length + reading.length;
+        }
+    }
+    return value;
+}
+
+/** How many readings are kept, and of how many characters (for the test that bounds them). */
+export function normalizedReadingsKept(): { readings: number; characters: number } {
+    return { readings: lastReadings.size, characters: keptCharacters };
+}
+
+/** The reading itself, never remembered — for the tests that time what one reading costs. */
+export function canonicalIntentText(raw: string): string {
     let text = foldChars(raw);
     if (!text.trim()) return '';
 
@@ -218,7 +303,24 @@ export function normalizeIntentText(raw: string): string {
             if (token === folded) return semanticKeyword(keyword);
             if (Math.abs(folded.length - token.length) <= 1 && levenshtein1(token, folded)) {
                 const canonical = semanticKeyword(keyword);
-                if (!FUZZY_ACTION_TARGETS.has(foldChars(canonical)) || fuzzyActionContext(tokens, index)) return canonical;
+                const action = FUZZY_ACTION_TARGETS.has(foldChars(canonical));
+                /*
+                 * IN A FOUR-LETTER ARABIC WORD, ONE CHANGED LETTER IS ANOTHER WORD.
+                 *
+                 * «صلحه» — «fix it» — is one letter from «صفحه», so «الزر مش شغال،
+                 * صلحه» and «الزر ما بيشتغل، صلحه» were canonically about a PAGE: the
+                 * browser reader saw its web noun, and the front door sent both — and
+                 * a bare «صلحه» — to browser_run. «شبكة» was «شركة» the same way, and
+                 * «موقف» was «موقع». A root is three letters; a changed letter in a
+                 * word of four leaves a different word, not a misspelt one. A letter
+                 * added or dropped («صفحهه», «موقعع», «لشركه») is still repaired, and
+                 * so is a changed letter in a longer word, and an action word where
+                 * an order can stand («بدي امني صفحة») — and the word an order
+                 * governs («اعمل صفخة هبوط»: orderGoverns, above).
+                 */
+                if (!action && token.length === folded.length && token.length <= 4 && /[؀-ۿ]/.test(token)
+                    && !(THINGS_AN_ORDER_MAKES.has(folded) && orderGoverns(tokens, index))) continue;
+                if (!action || fuzzyActionContext(tokens, index)) return canonical;
             }
         }
         return null;

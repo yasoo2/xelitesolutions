@@ -764,6 +764,14 @@ function harvestRouteTable(text: string, file: string, routes: HarvestedRoute[])
  * `known`: the live probe proves it served, never refutes it.
  */
 const SPLIT_PATH = /\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
+/**
+ * The same split taken apart at once: `const [, resource, rawId] = url.pathname.split('/').filter(Boolean)`.
+ * qa-live19, 2026-11-12, L236 (an electronics store): the store on `http.createServer` did exactly
+ * this, then `handlers[resource]` with `handlers = { products, orders, warranties }` — no split was
+ * kept in a variable, so nothing was read, and «products, orders, warranties (not served)» refused a
+ * server that answered every one of them, four times.
+ */
+const SPLIT_PATH_APART = /\b(?:const|let|var)\s*\[([^\]]*)\]\s*=\s*[^;\n]*?\.split\(\s*(['"])\/\2\s*\)(\s*\.\s*filter\(\s*Boolean\s*\))?/gu;
 const PATH_PREFIX = /\.startsWith\(\s*(['"])(\/[A-Za-z0-9_\-/]*?)\/?\1\s*\)/gu;
 const SEGMENT_NAME = /^[A-Za-z][\w-]*$/u;
 
@@ -857,20 +865,29 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
         if (routes.some(r => r.file === file && r.path === routePath)) return;
         routes.push({ path: routePath, method: 'all', file, dynamic: false, known: false });
     };
+    const named = (list: string, shift: number, into: Map<string, number>) =>
+        list.split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) into.set(v, i - shift); });
+    //  A split kept in a variable (`parts`), and a split taken apart at once (no variable to index).
+    const splits: Array<{ parts: string; shift: number; segmentVars: Map<string, number> }> = [];
     for (const split of text.matchAll(SPLIT_PATH)) {
-        const parts = split[1];
         //  Without .filter(Boolean), the leading slash leaves an empty first part.
-        const shift = split[3] ? 0 : 1;
+        splits.push({ parts: split[1], shift: split[3] ? 0 : 1, segmentVars: new Map() });
+    }
+    for (const split of text.matchAll(SPLIT_PATH_APART)) {
         const segmentVars = new Map<string, number>();
-        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
-            segmentVars.set(m[1], Number(m[2]) - shift);
-        }
-        for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) {
-            m[1].split(',').forEach((name, i) => { const v = name.trim(); if (/^[A-Za-z_$][\w$]*$/u.test(v)) segmentVars.set(v, i - shift); });
-        }
-        //  parts[1] === 'summary'
-        for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
-            add(Number(m[1]) - shift, m[3]);
+        named(split[1], split[3] ? 0 : 1, segmentVars);
+        if (segmentVars.size) splits.push({ parts: '', shift: split[3] ? 0 : 1, segmentVars });
+    }
+    for (const { parts, shift, segmentVars } of splits) {
+        if (parts) {
+            for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]`, 'gu'))) {
+                segmentVars.set(m[1], Number(m[2]) - shift);
+            }
+            for (const m of text.matchAll(new RegExp(`\\b(?:const|let|var)\\s*\\[([^\\]]*)\\]\\s*=\\s*${esc(parts)}\\b`, 'gu'))) named(m[1], shift, segmentVars);
+            //  parts[1] === 'summary'
+            for (const m of text.matchAll(new RegExp(`${esc(parts)}\\s*\\[\\s*(\\d+)\\s*\\]\\s*===?\\s*(['"])([^'"]+)\\2`, 'gu'))) {
+                add(Number(m[1]) - shift, m[3]);
+            }
         }
         /*
          * ⛔ A SEGMENT LOOKED UP IN A TABLE OF HANDLERS SERVES EVERY KEY OF THE TABLE.
@@ -898,7 +915,7 @@ function harvestSegmentDispatch(text: string, file: string, routes: HarvestedRou
             for (const m of text.matchAll(new RegExp(`\\b([A-Za-z_$][\\w$]*)\\s*(?:\\?\\.)?\\[\\s*${esc(v)}\\s*\\]`, 'gu'))) tables.add(m[1]);
             for (const m of text.matchAll(new RegExp(`\\b${esc(v)}\\s+in\\s+([A-Za-z_$][\\w$]*)\\b|\\bObject\\s*\\.\\s*(?:hasOwn|prototype\\s*\\.\\s*hasOwnProperty\\s*\\.\\s*call)\\s*\\(\\s*([A-Za-z_$][\\w$]*)\\s*,\\s*${esc(v)}\\s*\\)|\\b([A-Za-z_$][\\w$]*)\\s*\\.\\s*hasOwnProperty\\s*\\(\\s*${esc(v)}\\s*\\)`, 'gu'))) tables.add(String(m[1] || m[2] || m[3]));
             for (const table of tables) {
-                if (table === esc(parts) || table === parts) continue;
+                if (parts && (table === esc(parts) || table === parts)) continue;
                 const decl = new RegExp(`\\b(?:const|let|var)\\s+${esc(table)}\\s*=\\s*\\{`, 'u').exec(text);
                 if (!decl) continue;
                 const keys = objectLiteralKeys(balancedFrom(text, (decl.index || 0) + decl[0].length - 1));
