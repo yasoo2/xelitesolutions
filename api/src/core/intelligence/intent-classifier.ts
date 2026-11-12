@@ -156,31 +156,121 @@ const RELATIVE_NEGATION = new RegExp([
     String.raw`\b(?:that|which|who)\s+(?:(?:is|are|was|were|do|does|did|will|would|can|could|has|have|had)(?:n['’]?t|\s+not|\s+never|\s+no\s+longer)|won['’]?t|can['’]?t|cannot|never|no\s+longer|stopped|fails?)\b(?:\s+[\w-]+)?`,
 ].join('|'), 'giu');
 const OPENING_COURTESY = /^\s*(?:(?:please|pls|kindly|hey|hi|ok|okay|now|just|joe|(?:can|could|would|will)\s+you|يا\s+جو|جو|طيب|يلا|تمام|خلاص|لو\s+سمحت|من\s+فضلك|ممكن|رجاء[اً]?|بليز)[\s،,]+){0,4}/iu;
+/*
+ * …AND A FAULT WITH THE STEPS TO REPRODUCE IT IS STILL A FAULT. The fifth pre-merge
+ * review (2026-11-12): once a message that opens with a deed kept the deed's route,
+ * these lost their fault reading and went to the browser, the deploy tool, the image
+ * tool:
+ *
+ *     تفتح الصفحة لكن الزر ما يشتغل            «the page opens, but…» — it states, it orders nothing
+ *     افتح الصفحة تلاقي الزر ما يشتغل          how to see the fault
+ *     ادخل على صفحة الدفع، الزر ما يشتغل
+ *     Go to the settings page, the save button doesn't work
+ *     Search by name is not working            the search FEATURE, the subject of the fault
+ *     Deploy preview is not working
+ *     The thing that isn't working is the search
+ *     اللي مش شغال هو البحث
+ *     نزل الصورة، الزر لا يعمل
+ *
+ * What the opening word is, is read from what follows it:
+ *   • a «ت»-initial verb is the second person of a polite order only after the word
+ *     that asks («ممكن تفتح…», «لو سمحت تشغل…»). Bare, «تفتح», «تحمل», «ترسل» are the
+ *     third person of a feminine thing — the page that opens, the image that loads;
+ *   • an English deed word with no object of its own, followed by a negated state, is
+ *     the NAME of a feature and the subject of the fault ("Search by name is not
+ *     working", "Email notifications don't arrive"). With an article, a possessive or
+ *     the preposition that takes its complement ("Search the web for…", "Deploy to…")
+ *     it is the verb;
+ *   • to open, enter, visit or go to a page of HIS work and then state what does not
+ *     work there is how a fault is reproduced. The deed keeps its route only when he
+ *     names where on the web to go («افتح example.com وخذ سكرين شوت، الموقع مش شغال»);
+ *   • a relative clause that is the SUBJECT of its sentence — it opens the clause, or
+ *     follows a noun that does («اللي مش شغال هو البحث», "the thing that isn't working
+ *     is the search") — states the fault. Only one that describes the object of a deed
+ *     («ابحث عن الدول التي لم توقع…») is read out;
+ *   • to download and to upload («نزل», «حمل») are no deeds with a route of their own:
+ *     they are also what a page of his does or fails to do, and the registry answered
+ *     «نزل الصورة، الزر لا يعمل» with the image generator.
+ * A false fault costs nothing — the message goes on to the model with no tool chosen
+ * by a word in it; a missed one opens a browser or publishes his site.
+ */
+/** Where a clause ends. The dot of «example.com» ends none. */
+const CLAUSE_MARK = /[,،;؛!?؟\n]|\.(?=\s|$)/u;
+const ASKS_POLITELY_AR = /(?:ممكن|سمحت|فضلك|رجاء|بليز)/u;
 /** Deeds with tools of their own, as an order opens with them (folded spelling). The making verbs take a thing that is not yet there: «سوي الزر يشتغل» is a repair. */
 const MAKING_DEED_AR = new Set(['ابن', 'ابني', 'انشي', 'اصنع', 'صمم', 'سوي', 'اعمل', 'برمج', 'ارسم', 'اكتب']);
-const OPENING_DEED_AR = new Set(['شغل', 'اوقف', 'نفذ', 'ثبت', 'نزل', 'حمل', 'انشر', 'ارفع', 'استضف', 'افتح', 'ابحث', 'ادخل', 'اذهب', 'خذ', 'خد', 'التقط',
+const OPENING_DEED_AR = new Set(['شغل', 'اوقف', 'نفذ', 'ثبت', 'انشر', 'ارفع', 'استضف', 'افتح', 'ابحث', 'ادخل', 'اذهب', 'خذ', 'خد', 'التقط',
     'ارسل', 'ابعت', 'ترجم', 'لخص', 'احفظ', 'انسخ', 'انقل']);
+/** The deeds that take Joe to a place: with a fault stated after them they are the way to it. */
+const NAVIGATING_DEED_AR = new Set(['افتح', 'ادخل', 'اذهب']);
+const NAVIGATING_DEED_EN = /^(?:open|visit|browse|navigate|go\s+to)\b/i;
 const DEED_SUFFIX_AR = /(?:لي|لنا|ه|ها|هم|وا|ي)$/u;
-const OPENING_DEED_EN = /^(?:build|create|generate|draw|design|write|deploy|publish|host|upload|run|start|stop|restart|launch|execute|install|open|visit|browse|search|google|navigate|take|capture|screenshot|send|email|download|translate|summari[sz]e|push|ship|go\s+to|make\s+(?:me|us|a|an))\b(?!\s+(?:is|are|was|were|does|doesn|do|don|did|didn|won|will|can|cannot|isn|aren|wasn|not|never|no|fails?|failed|stopped|keeps?|returns?|shows?|buttons?|page|form|feature|function|bar|box|results?|field|screen|links?|icon|menu|tab|option|section|step|process|script|command|job|pipeline|status)\b)/i;
+const DEED_WORD_EN = String.raw`(?:build|create|generate|draw|design|write|deploy|publish|host|run|start|stop|restart|launch|execute|install|open|visit|browse|search|google|navigate|take|capture|screenshot|send|email|translate|summari[sz]e|push|ship|go\s+to|make\s+(?:me|us|a|an))`;
+const OPENING_DEED_EN = new RegExp(String.raw`^${DEED_WORD_EN}\b(?!\s+(?:is|are|was|were|does|doesn|do|don|did|didn|won|will|can|cannot|isn|aren|wasn|not|never|no|fails?|failed|stopped|keeps?|returns?|shows?|buttons?|page|form|feature|function|bar|box|results?|field|screen|links?|icon|menu|tab|option|section|step|process|script|command|job|pipeline|status)\b)`, 'i');
+/**
+ * "Search by name is not working", "Deploy preview doesn't work", "Upload validation fails",
+ * "Email notifications don't arrive": the deed word and at most four words that are no object
+ * of a verb — no article, no possessive, no pronoun, no connective, none of the prepositions
+ * that take a verb's complement — and then the negated state. «don't» states only after a
+ * plural ("notifications don't"); elsewhere it forbids.
+ */
+const NAMES_NO_OBJECT_EN = String.raw`(?!(?:the|a|an|my|our|your|his|her|their|this|that|these|those|it|its|them|me|us|and|or|but|then|so|please|if|when|unless|until|because|since|while|after|before|once|as|which|who|for|about|to|with|from|into|at)\b)[\w-]+`;
+const NEGATED_STATE_EN = String.raw`(?:(?:does|did|is|are|was|were|will|can|could|has|have)(?:n['’]?t|\s+not)|won['’]?t|can['’]?t|cannot|no\s+longer|stopped|fails?|failed|keeps?\s+(?:crashing|failing|breaking)|(?:is|are)\s+(?:broken|down|failing|crashing|missing|stuck))\b`;
+const A_FEATURE_AND_ITS_FAULT_EN = new RegExp(String.raw`^(?:${DEED_WORD_EN}|upload|download)(?:\s+${NAMES_NO_OBJECT_EN}){0,4}?(?:\s+${NEGATED_STATE_EN}|(?<=s)\s+do(?:n['’]?t|\s+not)\b)`, 'i');
 function opensWithADeedOfItsOwn(bare: string): boolean {
-    const head = bare.slice(0, 160).replace(OPENING_COURTESY, '');
-    if (OPENING_DEED_EN.test(head)) return true;
+    const opening = bare.slice(0, 240);
+    const courtesy = (OPENING_COURTESY.exec(opening) || [''])[0];
+    const head = opening.slice(courtesy.length);
+    //  The deed's own clause, and whether it names where on the web to go.
+    const clause = head.split(CLAUSE_MARK, 1)[0];
+    const namesWhereToGo = () => WEB_ADDRESS.test(clause) || URL_PATTERN.test(clause) || KNOWN_SITE_PATTERN.test(clause);
+    if (OPENING_DEED_EN.test(head)) return !NAVIGATING_DEED_EN.test(head) || namesWhereToGo();
     const [first = '', second = '', third = ''] = foldChars(head).match(/[\p{L}\p{N}_]+/gu) || [];
     if (!/^[؀-ۿ]/u.test(first)) return false;
-    //  «ممكن تفتح…», «تشغل…»: the verb in the second person, as a polite order puts it.
     const forms = [first, first.replace(DEED_SUFFIX_AR, '')];
-    if (first.startsWith('ت')) forms.push(`ا${first.slice(1)}`, first.slice(1), `ا${first.slice(1)}`.replace(DEED_SUFFIX_AR, ''), first.slice(1).replace(DEED_SUFFIX_AR, ''));
-    if (forms.some(form => OPENING_DEED_AR.has(form))) return true;
+    //  «ممكن تفتح…», «لو سمحت تشغل…»: the verb in the second person, as a polite order puts it.
+    if (first.startsWith('ت') && ASKS_POLITELY_AR.test(courtesy)) forms.push(`ا${first.slice(1)}`, first.slice(1), `ا${first.slice(1)}`.replace(DEED_SUFFIX_AR, ''), first.slice(1).replace(DEED_SUFFIX_AR, ''));
+    const deed = forms.find(form => OPENING_DEED_AR.has(form));
+    if (deed) return !NAVIGATING_DEED_AR.has(deed) || namesWhereToGo();
     if (!forms.some(form => MAKING_DEED_AR.has(form))) return false;
     const made = /^(?:لي|لنا)$/u.test(second) ? third : second;
     return !!made && !/^(?:ال|لل)/u.test(made);
+}
+/**
+ * Is the relative clause at `at` the SUBJECT of its sentence? It is when it opens its
+ * clause, or when at most four words stand before it there and the first of them opens a
+ * noun phrase: an article or a demonstrative, a definite Arabic noun — never a deed. Read
+ * from the ninety characters before it, so each clause costs a constant.
+ */
+const OPENS_A_NOUN_PHRASE_EN = /^(?:the|my|our|your|this|that|these|those|a|an|one|every|each|all|what|whatever|something|everything|anything)$/i;
+const OPENS_A_NOUN_PHRASE_AR = /^[وف]?(?:(?:ال|لل)[؀-ۿ]{2,}|هذا|هذه|هذي|هاد|هادا|هاي|هادي|ده|دي|كل|اكثر|اغلب|بعض)$/u;
+function relativeClauseIsTheSubject(bare: string, at: number): boolean {
+    const from = Math.max(0, at - 90);
+    const clauses = bare.slice(from, at).split(/[,،;؛!?؟\n]|\.\s/u);
+    //  No clause mark in ninety characters: a long sentence leads to it, and it describes something in it.
+    if (clauses.length === 1 && from > 0) return false;
+    const lead = clauses[clauses.length - 1].replace(OPENING_COURTESY, '');
+    const before = foldChars(lead).match(/[\p{L}\p{N}_]+/gu) || [];
+    if (!before.length) return true;
+    if (before.length > 4) return false;
+    const first = before[0];
+    if (OPENS_A_NOUN_PHRASE_EN.test(first)) return true;
+    return OPENS_A_NOUN_PHRASE_AR.test(first) && !OPENING_DEED_AR.has(first) && !MAKING_DEED_AR.has(first);
 }
 const repairOrderedOnce = rememberLastReadings((raw: string): boolean => REPAIR_ORDER.test(unquotedIntentText(stripArabicDiacritics(raw))));
 const faultOrFixOnce = rememberLastReadings((raw: string): boolean => {
     if (repairOrderedOnce(raw)) return true;
     const bare = unquotedIntentText(stripArabicDiacritics(raw));
-    const stated = bare.replace(RELATIVE_NEGATION, ' ');
-    if (!(FAULT_STATED.test(stated) || negatesWhatAThingDoes(stated))) return false;
+    //  «الشي اللي ما يشتغل هو البحث»: the clause that is the subject states the fault itself.
+    let theSubjectDoesNot = false;
+    const stated = bare.replace(RELATIVE_NEGATION, (clause: string, at: number) => {
+        if (!relativeClauseIsTheSubject(bare, at)) return ' ';
+        theSubjectDoesNot = true;
+        return clause;
+    });
+    //  The feature a deed word names, and what it does not do: nothing is ordered of it.
+    if (A_FEATURE_AND_ITS_FAULT_EN.test(stated.slice(0, 240).replace(OPENING_COURTESY, ''))) return true;
+    if (!(theSubjectDoesNot || FAULT_STATED.test(stated) || negatesWhatAThingDoes(stated))) return false;
     return !opensWithADeedOfItsOwn(bare);
 });
 export function reportsAFaultOrOrdersAFix(goalRaw: string): boolean {
@@ -235,7 +325,9 @@ const DOING_VERBS = new Set(['تبني', 'تسوي', 'تعدل', 'تضيف', 'ت
  */
 function opensWithArabicQuestion(bare: string): boolean {
     // «ما عم يشتغل الزر، صلحه», «ما زال الخطأ موجود»: an opening «ما» that negates asks nothing.
-    return /^\s*(?:ما|ماذا|لماذا|ليش|ليه|كيف|متى|اين|أين|كم|ايهما|أيهما|وش|ايش|إيش|شو|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(withoutNegatingMa(bare))
+    //  …and so does the «ما» of a file denial read beside its order: «ما تعدلش أي ملف، اعملي صفحة جديدة».
+    const asked = /^\s*ما\s/u.test(bare) && fileDenialBesideItsOrder(bare) ? withoutFileDenials(bare).replace(/^[\s،,]+/u, '') : bare;
+    return /^\s*(?:ما|ماذا|لماذا|ليش|ليه|كيف|متى|اين|أين|كم|ايهما|أيهما|وش|ايش|إيش|شو|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(withoutNegatingMa(asked))
         || /^\s*هل(?=$|[\s،:؛])/u.test(bare);
 }
 

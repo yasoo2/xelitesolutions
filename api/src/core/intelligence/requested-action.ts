@@ -24,7 +24,49 @@ const NO_FILE_CHANGES_UNQUALIFIED = new RegExp(`${START_BOUNDARY}${NO_FILE_CHANG
 //  same denial said with «without». It was no file denial at all, so the «without changing» in it was
 //  taken for «answer only» and the review he ordered was answered from nothing. A word that narrows
 //  the object («any other files», «anything else») keeps it out, as it does for «do not».
-const WITHOUT_FILE_CHANGES_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:(?:any\s+of\s+(?:the|my|our)|any|the|my|our|a\s+single)\s+)?(?:(?:project|existing|current|source|code)\s+)?(?:files?|anything|a\s+thing)\b(?!\s+(?:else|other\s+than|except|but|besides|outside))/i;
+const WITHOUT_FILE_CHANGES_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:(?:any\s+of\s+(?:the|my|our)|any|the|my|our|a\s+single)\s+)?(?:(?:project|existing|current|source|code)\s+)?files?\b(?!\s+(?:else|other\s+than|except|but|besides|outside))/i;
+/*
+ * ⛔ «MOVE THE BUTTON WITHOUT TOUCHING ANYTHING» ORDERS THE MOVE.
+ *
+ * The fifth pre-merge review (2026-11-12): "Move the button to the left without touching
+ * anything" was answered with words once «touching» and «anything» were read as the file
+ * denial above; and in every tree "Fix the typo without changing the layout", "Without
+ * changing anything else, fix the header", "Can you make the button blue without changing
+ * anything else?", "Add dark mode without changing any files except style.css" were
+ * «answer only» — the bare «without changing» was a refusal to execute wherever it stood.
+ *
+ * «Without changing X» beside an order to change his work says what the change must leave
+ * alone: an exclusion, like «without creating a database». It denies only
+ *  - when X is the files themselves or the code ("any files", "the files", "the code"):
+ *    the file denial above, with everything that already follows from it;
+ *  - when nothing is ordered beside it, or what is ordered only reads or runs — review,
+ *    inspect, analyze, check, run, show… («Review the repo without changing anything» is
+ *    the read-only inspection, «Explain the header without changing anything» an answer).
+ * Orders that change are an open class; the verbs that only read or run are the small
+ * closed one, so every other order keeps its exclusion and is carried out.
+ */
+const WITHOUT_CHANGING_EN = /\bwithout\s+(?:creating|writing|changing|modifying|editing|touching|altering|affecting|breaking|rewriting|removing|deleting|moving|messing\s+(?:up|with))(?:\s+or\s+[a-z]+ing)?\s+(?:[^.;!?\n,،:]|\.(?=\S)){1,80}?(?=$|[;!?\n,،:]|\.(?:\s|$)|\s+(?:and|then|but)\s)/gi;
+const WITHOUT_CHANGING_ANYTHING_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:anything|a\s+(?:single\s+)?thing)\b(?!\s+(?:else|other\s+than|except|but|besides|outside))/i;
+const WITHOUT_CHANGING_THE_CODE_EN = /^without\s+[a-z]+(?:\s+(?:up|with))?(?:\s+or\s+[a-z]+ing)?\s+(?:(?:any\s+of\s+(?:the|my|our)|any|the|my|our)\s+)?(?:(?:project|existing|current|source)\s+)?(?:code|codebase|source)\b/i;
+const ORDER_LEAD_EN = /^(?:(?:please|kindly|just|now|then|and|also|ok|okay|hey|joe|(?:can|could|would|will)\s+you|i\s+(?:want|need)\s+(?:you\s+)?to|i(?:\s+would|['’]d)\s+like\s+(?:you\s+)?to)[\s,]+){0,4}/i;
+const READS_OR_RUNS_EN = /^(?:review|inspect|audit|examine|check|analy[sz]e|explore|scan|read|look|see|view|show|list|display|print|find|search|locate|count|measure|verify|validate|confirm|test|run|start|launch|execute|open|diagnose|investigate|study|trace|watch|monitor|compare|report|identify|detect|preview|give\s+me|let\s+me\s+know)\b/i;
+/** Is something that changes his work ordered in what is left once the exclusion is read out? Only its head is read. */
+function ordersAChange(left: string): boolean {
+    const head = left.slice(0, 400).replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '').replace(ORDER_LEAD_EN, '');
+    return !asksForWordsOnly(head) && !READS_OR_RUNS_EN.test(head);
+}
+/** The same pattern, for the reading that asks about each phrase while the one above reads them all out. */
+const EACH_WITHOUT_CHANGING_EN = new RegExp(WITHOUT_CHANGING_EN.source, 'gi');
+/** «without changing X» where it is an exclusion beside an order to change (above) — read out; where it denies, kept. */
+function withoutChangeExclusions(text: string): string {
+    if (!/\bwithout\s/i.test(text)) return text;
+    let changeOrdered: boolean | undefined;
+    return text.replace(EACH_WITHOUT_CHANGING_EN, phrase => {
+        if (WITHOUT_FILE_CHANGES_EN.test(phrase) || WITHOUT_CHANGING_THE_CODE_EN.test(phrase)) return phrase;
+        changeOrdered ??= ordersAChange(text.replace(WITHOUT_CHANGING_EN, ' '));
+        return changeOrdered ? ' ' : phrase;
+    });
+}
 /**
  * ⛔ «DO NOT CHANGE ANY OTHER FILES» IS NOT «DO NOT CHANGE FILES».
  *
@@ -89,9 +131,13 @@ const REMOVING_VERB_AR = '(?:تحذف|تمسح|تنقل|تلمس|تمس)';
 //  «أو تحذف», «ولا تحذف», «وتحذف», «، تحذف», «، ولا تحذف»: every verb opens with «ت», so no separator can be read as part of one.
 const VERB_SEPARATOR_AR = String.raw`(?:\s*[،,]\s*(?:(?:أو|او|ولا|و)\s*)?|\s+(?:أو|او|ولا)\s+|\s+و)`;
 const DENIED_VERBS_AR = String.raw`(?=(?:${REMOVING_VERB_AR}${VERB_SEPARATOR_AR}){0,7}${CHANGING_VERB_AR}(?![\p{L}\p{N}_]))(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})(?:${VERB_SEPARATOR_AR}(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})){0,7}`;
+//  The dialects' denials: Egypt's «ما …ش» («ما تعدلش أي ملف», «متغيريش الملفات») and «بدون ما تعدل», «من غير ما
+//  تغير» ("without your changing"). The «ش» and the «بدون» are what make this «ما» a denial: bare, «بعد ما تعدل
+//  الملفات شغل المشروع» relates, and is not read here.
+const DIALECT_DENIAL_AR = String.raw`[وف]?(?:ما\s*|م)${CHANGING_VERB_AR}ي?ش\s+|(?:بدون|دون|من\s+غير)\s+ما\s+${CHANGING_VERB_AR}\s+`;
 //  The object: «الملفات», «ملفاتي», «أي ملفات», «كل الملفات» — and one file only when it is ANY file
 //  («أي ملف»): «لا تعدل ملف الإعدادات» names the one file it protects and is not read here at all.
-const FILE_DENIAL_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])(?:(?:بدون|دون)\s+(?:أي\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\s+(?:على\s+)?|لا\s+تغييرات\s+|دون\s+تغييرات\s+|دون\s+إنشاء\s+|دون\s+تعديل\s+|[وف]?لا\s+${DENIED_VERBS_AR}\s+)(?:(?:(?:أي|اي|كل|جميع)\s+(?:من\s+)?)?(?:ال)?ملفات(?<own>ي|نا|ك|كم|ه|ها|هم)?|(?:أي|اي)\s+ملف)(?=$|[^\p{L}\p{N}_])(?<tail>[^.؛;!?؟\n]{0,40})`, 'giu');
+const FILE_DENIAL_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])(?:(?:بدون|دون)\s+(?:أي\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\s+(?:على\s+)?|لا\s+تغييرات\s+|دون\s+تغييرات\s+|دون\s+إنشاء\s+|دون\s+تعديل\s+|[وف]?لا\s+${DENIED_VERBS_AR}\s+|${DIALECT_DENIAL_AR})(?:(?:(?:أي|اي|كل|جميع)\s+(?:من\s+)?)?(?:ال)?ملفات(?<own>ي|نا|ك|كم|ه|ها|هم)?|(?:أي|اي)\s+ملف)(?=$|[^\p{L}\p{N}_])(?<tail>[^.؛;!?؟\n]{0,40})`, 'giu');
 /**
  * After «الملفات»: what keeps the object whole — the whole workspace's names
  * (with his possessive: «ملفات موقعي», «ملفات مشروعنا»), the dialect
@@ -157,6 +203,8 @@ const EVERY_CHANGE_LIST_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])[وف]?لا
 export function deniesEveryFileChange(text: string): boolean {
     const t = stripArabicDiacritics(String(text || ''));
     if (NO_FILE_CHANGES_UNQUALIFIED.test(t) || WITHOUT_FILE_CHANGES_EN.test(t)) return true;
+    //  «… without changing anything»: every change, unless an order to change stands beside it.
+    if (WITHOUT_CHANGING_ANYTHING_EN.test(t) && !ordersAChange(t.replace(WITHOUT_CHANGING_EN, ' '))) return true;
     if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t) || EVERY_CHANGE_LIST_AR.test(t)) return true;
     for (const m of t.matchAll(FILE_DENIAL_EN)) if (fileDenialIsWhole(m[2] || '', m[3] || '')) return true;
     for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m.groups?.own || '', m.groups?.tail || '')) return true;
@@ -662,7 +710,8 @@ const RUN_ORDER: OrderWords = {
 /** What is run: his project, app, server, site or tests, a check, a command or a script, or «it» — "Run the code review. Do not modify any files." runs nothing. */
 const WHAT_IS_RUN = /(?<![\p{L}\p{N}_])(?:ال|لل)?(?:مشروع|تطبيق|سيرفر|خادم|موقع|نظام|برنامج|متجر|اختبار|اختبارات|تستات|فحص|[اأ]مر|[اأ]وامر|سكربت)(?:ا|ي|نا|ه|ها)?(?![\p{L}\p{N}_])|^[وف]?شغل(?:ه|ها|و|وه)(?![\p{L}\p{N}_])|\b(?:project|app|application|server|site|website|system|program|tests?|checks?|commands?|scripts?|build|it)\b/iu;
 const CREATE_ORDER: OrderWords = {
-    ar: folded('ابن ابني ابنى أنشئ انشئ انشي اصنع صمم اعمل سوي سو'),
+    //  …and as Egypt and the Levant say it to him: «اعملي صفحة», «اعمللي», «سويلي» («لي» joined to the verb).
+    ar: folded('ابن ابني ابنى أنشئ انشئ انشي اصنع صمم اعمل سوي سو اعملي اعمللي سويلي'),
     en: /^(?:build|create|make|generate|design|scaffold)\b/i,
     object: /^(?:ال)?(?:ملف|ملفا|ملفات)$/u,
 };
@@ -684,7 +733,10 @@ function isFileProhibitedDiagnostic(text: string): boolean {
 //  about, never what he orders (the «index.html» of a bare restriction named an HTML tool, and a plan).
 export function withoutFileDenials(text: string, withWhatTheyName = false): string {
     const kept = (tail: string) => ` ${withWhatTheyName ? tail.replace(/^[^،,]*/u, '') : tail}`;
-    return stripArabicDiacritics(String(text || ''))
+    //  …and so does what «without changing» keeps: the «files» of "Add dark mode without changing any files
+    //  except style.css" named archive_files once the phrase stopped being a refusal.
+    const said = stripArabicDiacritics(String(text || ''));
+    return (withWhatTheyName && /\bwithout\s/i.test(said) ? said.replace(EACH_WITHOUT_CHANGING_EN, ' ') : said)
         .replace(FILE_DENIAL_EN, (_whole, _verbs: string, _object: string, tail: string) => kept(tail))
         .replace(FILE_DENIAL_AR, (_whole: string, ...rest: unknown[]) => kept(((rest[rest.length - 1] || {}) as { tail?: string }).tail || ''));
 }
@@ -841,7 +893,7 @@ const SCOPED_EXCLUSION_EN = new RegExp(String.raw`\b(?:(?:do\s+not|don['’]?t|n
 const AR_EXCLUDED_PART = String.raw`(?:أي\s+|اي\s+)?(?:واجه[ةه](?:\s+(?:مستخدم|المستخدم|أمامية|امامية|اماميه|ويب|رسومية|رسوميه))?|موقع[اً]?|صفح[ةه]|صفحات|تطبيق[اً]?\s+ويب|لوح[ةه]\s+(?:تحكم|إدارة|ادارة|اداره)|قاعد[ةه]\s+(?:ال)?بيانات|تسجيل\s+(?:ال)?دخول|(?:مشروع|مستودع)[اً]?(?:\s+(?:جديد[اً]?|آخر|اخر|ثاني[اً]?|ثان|منفصل[اً]?))?)`;
 const SCOPED_EXCLUSION_AR = new RegExp(String.raw`(?:^|(?<=[\s،:؛.!?]))(?:و?لا\s+(?:تنشئ|تنشي|تبني|تبن|تعمل|تصمم|تضيف|تسوي)|(?:ب?دون|من\s+غير)\s+(?:أي\s+|اي\s+)?(?:إنشاء|انشاء|انشا|بناء|بنا|عمل|تصميم|إضافة|اضافة|اضافه))\s+${AR_EXCLUDED_PART}(?=$|[\s،:؛.!?])`, 'gu');
 function stripPartExclusions(text: string): string {
-    return String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' ');
+    return withoutChangeExclusions(String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' '));
 }
 export function stripScopedExclusions(text: string): string {
     // Read without harakat: «ولا تُنشئْ صفحةً جديدةً» excludes what «ولا تنشئ صفحة جديدة» excludes.
@@ -987,8 +1039,28 @@ const NOTHING_TO_A_THING = new RegExp([
     String.raw`^\s+[بل](?![\p{L}\p{N}_])`,
     String.raw`^\s+(?:to|with|on|in|inside|about|for|at|regarding)\s+(?!${NO_THING_NAMED_EN})(?:(?:the|my|our|your|this|that|these|those|any|a|an)\s+)?[\p{L}\p{N}_-]+`,
 ].join('|'), 'iu');
-const WHEN_NOTHING = String.raw`(?:\s+(?:الحين|الان|الآن|هلا|هلق|هسا|حاليا|ابدا|أبدا|for\s+now|right\s+now|now|yet|please|at\s+all))*`;
+const WHEN_WORD = String.raw`(?:الحين|الان|الآن|هلا|هلق|هسا|حاليا|ابدا|أبدا|for\s+now|right\s+now|now|yet|please|at\s+all)`;
+const WHEN_NOTHING = String.raw`(?:\s+${WHEN_WORD})*`;
 const BUT_ONLY_THIS = new RegExp(String.raw`^${WHEN_NOTHING}[\s.،,;:؛!-]*[وف]?(?:بس|فقط|لكن|انما|إنما|just|only|but|instead)(?![\p{L}\p{N}_])[\s،,:]*`, 'iu');
+/*
+ * ⛔ «DO NOTHING TO THE HEADER FOR NOW» IS STILL A REFUSAL, AND TO WAIT IS NO DEED.
+ *
+ * The fifth pre-merge review (2026-11-12): «لا تسوي شي في الهيدر الحين», "Don't do anything
+ * to the header for now", «لا تسوي شي في المشروع الحين، بس قل لي رايك» were no refusal once
+ * the scope was read: what was left opened with the time word, and a time word is not what
+ * asks for words. And «لا تسوي شي بس استنى», "Don't do anything, just wait" were orders —
+ * «بس», "just" opened something, and anything that is not a telling verb was a deed.
+ *
+ * The head of what is left is read past its marks, its words of time («الحين», "for now",
+ * "yet") and one «بس» / "just" — in that order, each once, from the start of the text, so
+ * the reading is linear. And the verbs of waiting order no deed: the refusal stands.
+ */
+const HEAD_OF_WHAT_IS_LEFT = new RegExp(String.raw`^(?:[\s.،,;:؛!-]*${WHEN_WORD}(?![\p{L}\p{N}_]))*[\s.،,;:؛!-]*(?:[وف]?(?:بس|فقط|لكن|انما|إنما|just|only|but|instead)(?![\p{L}\p{N}_])[\s،,:]*)?`, 'iu');
+const WAITS_ONLY = /^(?:[وف]?(?:انتظر|انتظرني|انتظري|استن[ىاي]?|استناني|اصبر|اصبري|تمهل|خليك)|wait|hold\s+on|hold\s+off|hang\s+on|stand\s+by|sit\s+tight)(?![\p{L}\p{N}_])/iu;
+function ordersNoDeed(text: string): boolean {
+    const left = String(text || '').replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '');
+    return asksForWordsOnly(left) || WAITS_ONLY.test(left);
+}
 function ordersNothingAtAll(text: string): boolean {
     const left: string[] = [];
     let kept = 0;
@@ -1000,16 +1072,15 @@ function ordersNothingAtAll(text: string): boolean {
         if (NOTHING_BUT.test(after)) continue;
         const thing = NOTHING_TO_A_THING.exec(after);
         const onlyThis = thing ? null : BUT_ONLY_THIS.exec(after);
-        if (!thing && !(onlyThis && !asksForWordsOnly(after.slice(onlyThis[0].length)))) return true;
+        if (!thing && !(onlyThis && !ordersNoDeed(after.slice(onlyThis[0].length)))) return true;
         if (thing) excludesAThing = true;
         left.push(text.slice(kept, m.index));
         kept = end + (thing || onlyThis as RegExpExecArray)[0].length;
     }
     if (!excludesAThing) return false;
     left.push(text.slice(kept));
-    //  «بس», «فقط», "just" before the order that is left are not its head.
-    const rest = left.join(' ').replace(/^[\s.،,;:؛!-]+/u, '');
-    return asksForWordsOnly(rest.replace(BUT_ONLY_THIS, ''));
+    //  The words of time and «بس», «فقط», "just" before the order that is left are not its head.
+    return ordersNoDeed(left.join(' ').replace(HEAD_OF_WHAT_IS_LEFT, ''));
 }
 
 function readRequestedAction(goalRaw: string): RequestedActionResult {
@@ -1143,7 +1214,8 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     // After a wish to know a quantity, the order may follow a comma.
     const laterCommand = ordersInALaterSentence(probeStripped, LATER_BUILD_ORDER, true)
         || (WISH_TO_KNOW_HOW_MUCH.test(probeStripped) && ordersInALaterClause(probeStripped, CLAUSE_BUILD_ORDER));
-    if (leadingQuestion && !isPoliteBuild && !isExplainThenBuild && !laterCommand) {
+    //  «ما تعدلش أي ملف، اعملي صفحة…»: the «ما» that opens a denial read beside its order asks nothing.
+    if (leadingQuestion && !besideItsOrder && !isPoliteBuild && !isExplainThenBuild && !laterCommand) {
         return { hasAffirmativeAction: false, hasDenial: false, isAnswerOnly: false,
             isNoFileChanges: false, isPoliteBuild: false, isExplainThenBuild: false,
             confidence: 0.9, reason: 'information question, not execution authority' };

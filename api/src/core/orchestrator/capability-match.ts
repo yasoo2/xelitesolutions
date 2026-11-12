@@ -112,9 +112,27 @@ interface Profile {
     /** Optional explicit evidence required for a write-capable tool to match. */
     matchAnyTerms: Set<string>;
     inputProperties: Record<string, any>;
+    /** The tool called by its own name: `name`, «name tool», «tool name» — and a snake_case name standing alone. */
+    calledByName: RegExp;
+    /** The words of its name that destroy («delete», «remove»…): without one of them in the request it is not what he asked. */
+    destroys: string[];
 }
 
+/**
+ * «RENAME THE FILE» IS NOT «DELETE THE FILE».
+ *
+ * "Don't do anything with the styles, only rename the file to main.css" planned
+ * delete_file: «file» is in its name, and «anything» in its description broke the tie
+ * with the writers. A noun shared by ten tools says which THING he means, never what to
+ * do to it — and for a tool that destroys, guessing the deed is the one guess that cannot
+ * be taken back. A tool whose name carries a destroying verb is matched only when the
+ * request says that verb, or calls the tool by its name.
+ */
+const DESTROYS = new Set(['delete', 'remove', 'destroy', 'drop', 'purge', 'wipe', 'erase', 'uninstall', 'kill']);
+
 let cached: Profile[] | null = null;
+/** Every option some tool declares (context fields never select a tool) — read once with the profiles. */
+let declaredOptions: Record<string, any> = {};
 
 /**
  * What every tool says about itself. Built once — the registry does not change
@@ -125,14 +143,29 @@ export function toolProfiles(force = false): Profile[] {
     cached = (registeredTools as any[])
         // The agent engine's own tools are its alone (modules/tools/engine-tools.ts).
         .filter(t => t && typeof t.name === 'string' && !NEUTRAL.has(t.name) && !isEngineTool(t.name))
-        .map(t => ({
-            name: t.name,
-            inputProperties: t.inputSchema?.properties || {},
-            nameTerms: new Set(terms(String(t.name).replace(/[_-]+/g, ' '))),
-            tagTerms: new Set((t.tags || []).flatMap((g: string) => terms(g))),
-            descTerms: new Set(terms(String(t.description || '')).slice(0, 60)),
-            matchAnyTerms: new Set((t.capabilityMatchAny || []).flatMap((g: string) => terms(g))),
-        }));
+        .map(t => {
+            const nameTerms = new Set(terms(String(t.name).replace(/[_-]+/g, ' ')));
+            const escaped = String(t.name).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            return {
+                name: t.name,
+                inputProperties: t.inputSchema?.properties || {},
+                nameTerms,
+                tagTerms: new Set((t.tags || []).flatMap((g: string) => terms(g))),
+                descTerms: new Set(terms(String(t.description || '')).slice(0, 60)),
+                matchAnyTerms: new Set((t.capabilityMatchAny || []).flatMap((g: string) => terms(g))),
+                //  Compiled once: two patterns per tool were built for every request, and for every part of a chain.
+                calledByName: new RegExp('`' + escaped + '`|\\b' + escaped + '\\s+tool\\b|\\btool\\s+' + escaped + '\\b'
+                    + (String(t.name).includes('_') ? '|(?:^|[\\s`"\\\'])' + escaped + '(?=$|[\\s`"\\\',;.])' : ''), 'i'),
+                destroys: [...nameTerms].filter(w => DESTROYS.has(w)),
+            };
+        });
+    // Only options declared somewhere in the registry can discriminate a
+    // candidate. Context fields never provide selection evidence or authority.
+    declaredOptions = {};
+    for (const profile of cached) for (const [key, schema] of Object.entries(profile.inputProperties)) {
+        if (!isContextOption(key) && (declaredOptions[key] === undefined
+            || /^(width|height)$/i.test(key) && ['number', 'integer'].includes((schema as any)?.type))) declaredOptions[key] = schema;
+    }
     return cached;
 }
 
@@ -151,21 +184,12 @@ export function capableTools(request: string, limit = 4): Capable[] {
     const seen = new Set([...want, ...bridged(String(request || ''))]);
 
     const profiles = toolProfiles();
-    // Only options declared somewhere in the registry can discriminate a
-    // candidate. Context fields never provide selection evidence or authority.
-    const properties: Record<string, any> = {};
-    for (const profile of profiles) for (const [key, schema] of Object.entries(profile.inputProperties)) {
-        if (!isContextOption(key) && (properties[key] === undefined
-            || /^(width|height)$/i.test(key) && ['number', 'integer'].includes((schema as any)?.type))) properties[key] = schema;
-    }
-    const requested = requestedPrimitiveOptions(request, properties).values;
-    const named = profiles.filter(p => {
-        const escaped = p.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        return new RegExp('`'+escaped+'`|\\b'+escaped+'\\s+tool\\b|\\btool\\s+'+escaped+'\\b', 'i').test(request)
-            || p.name.includes('_') && new RegExp('(?:^|[\\s`"\\\'])'+escaped+'(?=$|[\\s`"\\\',;.])', 'i').test(request);
-    });
+    const requested = requestedPrimitiveOptions(request, declaredOptions).values;
+    const named = profiles.filter(p => p.calledByName.test(request));
     const scored: Capable[] = [];
     for (const p of profiles) {
+        // A tool that destroys is matched by its deed, never by the noun in its name alone.
+        if (p.destroys.length && !p.destroys.some(w => seen.has(w)) && !named.includes(p)) continue;
         // Some write-capable workflows deliberately declare the precise evidence
         // they require. Their descriptive prose can mention "analysis" or
         // "verification", but those broad words must never infer a branch/commit.
@@ -235,7 +259,9 @@ export function reachableCount(): number {
  * a numbered list, a new line. Those are shapes of a language again — finite,
  * and they carry the order the user already wrote down.
  */
-const SEQUENCE = /\s*(?:،\s*)?(?:ثمّ?|بعد\s*ذلك|وبعدها|وبعد\s*ذلك|أخيراً|then|after\s+that|next|finally)\s+|[\n\r]+|(?:^|\s)\d+[.)]\s+/gi;
+//  No `\s*` leads the marker: every part is trimmed below, and a pattern that may open with any run of
+//  spaces is tried again from each space of the run — 20 KB of them cost 5–7 s of processor time.
+const SEQUENCE = /(?:،\s*)?(?:ثمّ?|بعد\s*ذلك|وبعدها|وبعد\s*ذلك|أخيراً|then|after\s+that|next|finally)\s+|[\n\r]+|(?:^|\s)\d+[.)]\s+/gi;
 
 export interface ChainStep { name: string; why: string[]; part: string }
 
@@ -251,8 +277,11 @@ export function capabilityChain(request: string, max = 5): ChainStep[] {
     if (parts.length < 2) return [];
 
     const chain: ChainStep[] = [];
+    //  The same part names the same tool: a line repeated down a long message is matched once.
+    const matched = new Map<string, Capable | undefined>();
     for (const part of parts) {
-        const [best] = capableTools(part, 1);
+        if (!matched.has(part)) matched.set(part, capableTools(part, 1)[0]);
+        const best = matched.get(part);
         // A part with no tool breaks the chain honestly rather than being
         // silently dropped — a plan missing its middle step is worse than none.
         if (!best) return [];
