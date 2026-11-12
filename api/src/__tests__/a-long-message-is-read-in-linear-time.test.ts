@@ -16,7 +16,7 @@
  * the eval: not one result changed.
  */
 import { requestedArtifact } from '../core/design/requested-artifact';
-import { normalizeIntentText } from '../core/orchestrator/promptNormalizer';
+import { normalizeIntentText, canonicalIntentText } from '../core/orchestrator/promptNormalizer';
 
 const timed = (work: () => unknown): number => {
     const t = Date.now();
@@ -47,7 +47,10 @@ describe('a long message', () => {
      */
     it.each(LONG)('%s is normalised in time that grows with the text, not with its square', (_label, text) => {
         const quarter = text.slice(0, Math.floor(text.length / 4));
-        const best = (t: string) => Math.max(1, Math.min(timed(() => normalizeIntentText(t)), timed(() => normalizeIntentText(t)), timed(() => normalizeIntentText(t))));
+        //  normalizeIntentText now keeps its last readings (one-message-is-normalised-once.test.ts),
+        //  so the second and third call would time a lookup. What is timed here is the reading
+        //  itself, as it always was.
+        const best = (t: string) => Math.max(1, Math.min(timed(() => canonicalIntentText(t)), timed(() => canonicalIntentText(t)), timed(() => canonicalIntentText(t))));
         const small = best(quarter);
         const whole = best(text);
         expect(whole).toBeLessThan(Math.max(9 * small, 300));

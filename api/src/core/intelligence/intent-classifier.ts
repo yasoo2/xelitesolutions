@@ -1,7 +1,7 @@
 import { stripArabicDiacritics, normalizeIntentText as canonicalReading, foldChars } from '../orchestrator/promptNormalizer';
 import { derivedColumns as readDerivedColumns, columnsAnywhereInHisRequest as readColumnsAnywhere } from '../design/app-blueprints';
 import { routeToModel } from '../llm/intelligent-router';
-import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, LATER_DEED_ORDER, OrderWords, rememberLastReadings } from './requested-action';
+import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, ordersInALaterClause, withoutNegatingMa, LATER_DEED_ORDER, OrderWords, rememberLastReadings } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
 import { BUILD_VERBS, hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact as readRequestedArtifact } from '../design/requested-artifact';
 import { words } from '../language/arabic';
@@ -46,13 +46,32 @@ const STRONG_WEB_VERB = /(تصف[حح]|سج[لّ]\s*(ال)?دخول|تسجيل\s
  * somewhere. «أصلح خطأ تسجيل الدخول دون إنشاء مشروع جديد» went to the browser.
  */
 const LOGIN_FEATURE = /(?:خط[أا]|اخطاء|أخطاء|مشكل[ةه]|مشاكل|صفح[ةه]|شاش[ةه]|زر|نموذج|فورم|ميز[ةه]|خاصي[ةه]|نظام|واجه[ةه]|عملي[ةه]|قسم|بيانات|كود|منطق)\s+(?:ال)?تسجيل\s*(?:ال)?دخول|\blog[\s-]?in\s+(?:bug|page|screen|form|button|flow|feature|issue|error|problem|system|endpoint|api|logic|code|route|validation)s?\b|\b(?:the|a|my|our|its|his)\s+(?:log[\s-]?in|sign[\s-]?in)\b(?!\s+(?:to|into|with|as|using)\b)/giu;
-const WEAK_WEB_VERB = /(افتح|انظر|صِ?ف|وصف|لخ[صص]|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i;
+//  «صف» is «describe» — but never the first letters of «صفحة»: the page he names was both the
+//  verb and the noun of this reader, so «الصفحة ما تفتح صلحها» and «أنا ما أبي صفحة جديدة»
+//  were orders to browse the moment they stopped being read as questions.
+const WEAK_WEB_VERB = /(افتح|انظر|صِ?ف(?!ح)|وصف|لخ[صص]|ترجم|انقر|استخرج|open\b|describe|summari|translate|click|extract)/i;
+//  What that accident was carrying, said outright: reading, entering, going to, scrolling and
+//  closing A PAGE are the browser's («اقرأ الصفحة», «ادخل الصفحة», «انزل لآخر الصفحة»). Only with
+//  a page — «اقرأ كود الموقع» reads his code. Fixing, changing or complaining about a page
+//  («صلح الصفحة», «الصفحة ما تفتح») is not browsing it.
+const PAGE_BROWSING_VERB = /(اقر[أا]|ادخل|اذهب|انتقل|انزل|اصعد|مر[رّ]|اغلق)/;
+const A_PAGE = /صفح[ةه]|صفحات/;
 const WEB_NOUN = /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i;
 const UI_INTERACTION_VERB = /(اضغط|انقر|اختر|اكتب|أدخل|مر[رّ]|انزل|عب[ئئ]|املأ|حد[دّ])/i;
 const UI_NOUN = /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i;
 
-function isKnowledgeQuestionPattern(text: string): boolean {
-    return /(?:^|[\s،:؛])(?:ما|ماذا|لماذا|كيف|متي|اين|أين|كم|اي|ايهما|اشرح|صف|قارن|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(text)
+/**
+ * A question word asks only where it is one. «الزر ما بيشتغل، صلحه» negates,
+ * «بعد ما تخلص» relates (withoutNegatingMa, requested-action.ts); and the «أي»
+ * of an exclusion is «any», not «which» — «غيّر العنوان ولا تعدل أي ملف آخر» was
+ * answered as a question about files. Both are read out before the question
+ * words are looked for. The dialects' «why» («ليش», «ليه») asks as «لماذا»
+ * does: «ليش الزر ما بيشتغل» was a question only through its «ما».
+ */
+const withoutWhatAsksNothing = rememberLastReadings((raw: string) => withoutNegatingMa(stripScopedExclusions(raw)));
+function isKnowledgeQuestionPattern(raw: string): boolean {
+    const text = withoutWhatAsksNothing(raw);
+    return /(?:^|[\s،:؛])(?:ما|ماذا|لماذا|ليش|ليه|لويش|علاش|كيف|متي|اين|أين|كم|اي|ايهما|اشرح|صف|قارن|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(text)
         || /^\s*هل(?=$|[\s،:؛])/i.test(text)
         || /\b(what|why|how|when|which|who|explain|compare|difference|versus|vs|summari[sz]e|describe|translate)\b/i.test(text)
         || /(?:^|[\s،:؛])(?:لخ[ّ]?ص|لخص|ترجم|اشرح|صف)(?=$|[\s،:؛؟])/u.test(text)
@@ -98,8 +117,26 @@ const DOING_VERBS = new Set(['تبني', 'تسوي', 'تعدل', 'تضيف', 'ت
  * ask as «ما» does (the review: «وش أفضل طريقة…» was built).
  */
 function opensWithArabicQuestion(bare: string): boolean {
-    return /^\s*(?:ما|ماذا|لماذا|ليش|ليه|كيف|متى|اين|أين|كم|ايهما|أيهما|وش|ايش|إيش|شو|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(bare)
+    // «ما عم يشتغل الزر، صلحه», «ما زال الخطأ موجود»: an opening «ما» that negates asks nothing.
+    return /^\s*(?:ما|ماذا|لماذا|ليش|ليه|كيف|متى|اين|أين|كم|ايهما|أيهما|وش|ايش|إيش|شو|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/u.test(withoutNegatingMa(bare))
         || /^\s*هل(?=$|[\s،:؛])/u.test(bare);
+}
+
+/**
+ * ⛔ «بدي أعرف كم صرفت، اعملي جدول…» WISHES TO KNOW — AND THEN ORDERS THE TABLE.
+ *
+ * A wish to know that opens the message made the whole of it a question,
+ * though the clause after the comma is an order with its object: «عايز أعرف
+ * مين اشترى، اعمل صفحة تعرض الطلبات» opened a browser, and the table of «بدي
+ * أعرف كم صرفت، اعملي جدول فيه التاريخ والمبلغ والفئة» was never built. The
+ * wish says what the thing is for. A wish to know HOW («بدي أعرف كيف أعمل
+ * جدول، اكتب لي الخطوات») is still the lesson it asks for.
+ */
+const HOW_AR = /(?<![\p{L}\p{N}_])[وف]?(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش)(?![\p{L}\p{N}_])/u;
+function ordersAfterAWishToKnow(bare: string): boolean {
+    const [opener = '', second = ''] = words(bare.slice(0, 200));
+    return DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second)
+        && !HOW_AR.test(bare) && ordersInALaterClause(bare, ORDER_AFTER_A_WISH);
 }
 
 /** The shared build and wish verbs, as a later sentence may open with them («كيف حالك؟ ابني لي موقع»). */
@@ -107,6 +144,17 @@ const VERBAL_NOUNS_FOLDED = new Set(['بناء', 'انشاء', 'تصميم', 'ت
 const LATER_ARABIC_ORDER: OrderWords = {
     ar: new Set(BUILD_VERBS.flatMap(pair => pair.ar).map(w => foldChars(w)).filter(w => !VERBAL_NOUNS_FOLDED.has(w))),
     en: /(?!)/,
+};
+/**
+ * The orders a clause may open with after a wish to know: the making verbs,
+ * and a second wish only with the thing it wishes for («… بدي جدول فيه…»,
+ * never «… عايز الجواب بسرعة»). Not the writing verb: «… اكتب لي الجواب»,
+ * «… اكتبها في نقاط» shape the answer he asked for.
+ */
+const ORDER_AFTER_A_WISH: OrderWords = {
+    ar: new Set(BUILD_VERBS.filter(pair => pair.concept !== 'write').flatMap(pair => pair.ar).map(w => foldChars(w)).filter(w => !VERBAL_NOUNS_FOLDED.has(w))),
+    en: /(?!)/,
+    withObject: new Set(BUILD_VERBS.filter(pair => pair.concept === 'want').flatMap(pair => pair.ar).map(w => foldChars(w))),
 };
 
 /**
@@ -121,7 +169,7 @@ const LATER_ARABIC_ORDER: OrderWords = {
  */
 //  A verb of knowing counts only with its «how» («ابغى اعرف كيف…»): «عشان أعرف
 //  مين دفع، بدي جدول فيه…» says what the table is for.
-const HOW_OR_TELL = /(?<![\p{L}\p{N}_])[وف]?(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش|اشرح|اشرحلي|علمني|علمنى|وضح|وضحلي|فهمني|فهمنى|(?:[اأ]عرف|[اأ]فهم|[اأ]تعلم|نتعلم)\s+(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش))(?![\p{L}\p{N}_])|\bhow\s+(?:to|do|does|did|can|could|should|would|is|are|i|we)\b|\b(?:explain|teach)\b|\b(?:learn|understand|know)\s+how\b/iu;
+const HOW_OR_TELL = /(?<![\p{L}\p{N}_])[وف]?(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش|اشرح|اشرحلي|علمني|علمنى|وضح|وضحلي|فهمني|فهمنى|(?:[اأ]عرف|[اأ]فهم|[اأ]تعلم|نتعلم)\s+(?:كيف|كيفي[ةه]|ازاي|إزاي|شلون|اشلون|كيفاش))(?![\p{L}\p{N}_])|\bhow\s+(?:to|do|does|did|can|could|should|would|is|are|i|we)\b|\b(?:explain|teach)\b|\b(?:learn|understand|know)\s+how\b(?!\s+(?:much|many)\b)/iu;
 const THE_THING = /(?<![\p{L}\p{N}_])[وفب]?(?:ال|لل)?(?:جدول|قائم[ةه]|كشف|سجل|دفتر|كراس[ةه]|نموذج|استمار[ةه]|تطبيق|موقع|نظام|متجر|برنامج|صفح[ةه]|لوح[ةه]|منص[ةه]|قاعد[ةه])|\b(?:table|list|sheet|spreadsheet|form|log|register|ledger|roster|tracker|inventory|database|app|application|site|website|system|store|page|dashboard|program|tool)s?\b/iu;
 function asksHowBeforeTheThing(g: string): boolean {
     const bare = stripArabicDiacritics(g);
@@ -213,7 +261,8 @@ function asksForSomething(g: string): boolean {
     const bare = stripArabicDiacritics(g);
     const normalized = normalizeIntentText(withoutDefiniteVerbalNouns(g));
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
-    const masked = maskNegatedSpans(stripArabicDiacritics(probe));
+    // «أنا ما بدي صفحة جديدة»: a wish that «ما» negates asks for nothing.
+    const masked = maskNegatedSpans(withoutNegatingMa(stripArabicDiacritics(probe), true));
     return hasArabicOrderVerb(masked)
         || RECORDING_ORDER_AR.test(masked) || RECORDING_ORDER_EN.test(masked)
         || ENGLISH_DESIRE_PATTERN.test(masked) || ENGLISH_IMPERATIVE_PATTERN.test(maskNegatedSpans(bare))
@@ -242,8 +291,9 @@ export function asksForAThingThatHolds(goalRaw: string): boolean {
 }
 const thingAskedForWithItsContents = rememberLastReadings(readThingAskedFor);
 function readThingAskedFor(goalRaw: string): string | null {
-    const g = unquotedIntentText(maskResultativeMakeForBuild(String(goalRaw || '')));
-    if (!g.trim() || /[؟?]\s*$/u.test(g) || opensWithArabicQuestion(stripArabicDiacritics(g))) return null;
+    // Harakat are stripped once, here, for every reader below — the column reader too.
+    const g = unquotedIntentText(maskResultativeMakeForBuild(stripArabicDiacritics(String(goalRaw || ''))));
+    if (!g.trim() || /[؟?]\s*$/u.test(g) || opensWithArabicQuestion(g)) return null;
     if (asksHowBeforeTheThing(g)) return null;
     if (hasRequestedAction(g).hasDenial) return null;
     // Both readings need him to ask (a titled brief asks by its title, which
@@ -297,8 +347,10 @@ const buildStructureOnce = rememberLastReadings(readBuildStructure);
 function hasBuildStructure(goalRaw: string): BuildStructure {
     return { ...buildStructureOnce(String(goalRaw || '')) };
 }
-function readBuildStructure(goalRaw: string): BuildStructure {
-    const classificationGoal = maskResultativeMakeForBuild(String(goalRaw || ''));
+function readBuildStructure(goalRawWithMarks: string): BuildStructure {
+    // Harakat and tatweel are not letters: every reader below sees the text without them.
+    const goalRaw = stripArabicDiacritics(String(goalRawWithMarks || ''));
+    const classificationGoal = maskResultativeMakeForBuild(goalRaw);
     const g = unquotedIntentText(classificationGoal);
     const bare = stripArabicDiacritics(g);
     // «أثبت البناء والتشغيل» names a build; the canonical line must not make it «ابن».
@@ -339,8 +391,9 @@ function readBuildStructure(goalRaw: string): BuildStructure {
     const opener = opening[0] || '';
     const second = opening[1] || '';
     // A desire verb that asks to be told something is a question, unless a
-    // later word asks for the work itself.
-    if (DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second) && !words(bare).slice(2).some(w => DOING_VERBS.has(w))) {
+    // later word asks for the work itself — or a later clause orders it
+    // («بدي أعرف كم صرفت، اعملي جدول…»).
+    if (DESIRE_OPENERS.has(opener) && TELL_VERBS.has(second) && !words(bare).slice(2).some(w => DOING_VERBS.has(w)) && !ordersAfterAWishToKnow(bare)) {
         return { isBuild: false, confidence: 0.85, reason: 'information question' };
     }
     // A true imperative («سوّي», «ابن», «اعمل») opens an order with any
@@ -376,12 +429,13 @@ function readBuildStructure(goalRaw: string): BuildStructure {
     }
 
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(bareProbe);
-    const hasDesireVerb = DESIRE_VERB_PATTERN.test(bareProbe) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe)
+    // «أنا ما بدي صفحة جديدة», «الصفحة ما بدي فيها جدول»: the wish «ما» negates is no wish.
+    const hasDesireVerb = DESIRE_VERB_PATTERN.test(withoutNegatingMa(bareProbe, true)) || ENGLISH_DESIRE_PATTERN.test(probe) || ENGLISH_IMPERATIVE_PATTERN.test(probe)
         || /^\s*اعمل(?=[\s،:؛])/u.test(bare) // Unaccented leading imperative; questions and negations do not borrow it.
         // The owner writes Gulf and Levantine imperatives — «أبي», «سوّي», «خلّ»,
         // «حط», «شيل», «بنِ» — read from the verb class requestedArtifact uses,
         // so the gate and the object reader agree on what a build verb is.
-        || hasArabicBuildVerb(maskNegatedSpans(bare));
+        || hasArabicBuildVerb(maskNegatedSpans(withoutNegatingMa(bare, true)));
     const hasContainer = CONTAINER_PATTERN.test(probe);
     const hasRecordingIndicator = RECORDING_INDICATOR.test(bareProbe);
 
@@ -432,7 +486,7 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
     }
 
     const strongWeb = STRONG_WEB_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' '));
-    const weakWeb = WEAK_WEB_VERB.test(bareProbe);
+    const weakWeb = WEAK_WEB_VERB.test(bareProbe) || (PAGE_BROWSING_VERB.test(bareProbe) && A_PAGE.test(bareProbe));
     const webNoun = WEB_NOUN.test(bareProbe);
     const interactUi = UI_INTERACTION_VERB.test(bareProbe) && UI_NOUN.test(bareProbe);
 
@@ -460,12 +514,14 @@ const knowledgeQuestionOnce = rememberLastReadings(readKnowledgeQuestion);
 export function isKnowledgeQuestionStructural(goalRaw: string): boolean {
     return knowledgeQuestionOnce(String(goalRaw || ''));
 }
-function readKnowledgeQuestion(goalRaw: string): boolean {
+function readKnowledgeQuestion(goalRawWithMarks: string): boolean {
     // A complete read/report operation outranks incidental question words in its constraints.
-    if (parseExplicitFileReadRequest(goalRaw)) return false;
-    const g = unquotedIntentText(String(goalRaw || ''));
+    if (parseExplicitFileReadRequest(goalRawWithMarks)) return false;
+    // Harakat and tatweel are not letters: every reader below sees the text without them.
+    const goalRaw = stripArabicDiacritics(String(goalRawWithMarks || ''));
+    const g = unquotedIntentText(goalRaw);
     const action = hasRequestedAction(g);
-    const bare = stripArabicDiacritics(g);
+    const bare = g;
     const normalized = normalizeIntentText(g);
     const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
     // Reading followed by an operational clause is a mixed request. Nouns
@@ -476,8 +532,10 @@ function readKnowledgeQuestion(goalRaw: string): boolean {
         || /(?:[.!?؟;،,:\n]|(?:^|\s)(?:ثم|وبعدها|وبعدين))\s*(?:ثم\s+)?(?:من\s+فضلك\s+)?(?:شغل|نفذ|ابن|ابني|انشئ|اكتب|عدل|احذف|افتح|احفظ|انسخ|انقل|اختبر)(?=$|[\s،:؛.!?؟])/u.test(bare);
     if (readingLead && laterOperation) return false;
     // A thing asked for with its contents listed is a request, whatever
-    // question word its contents carry; an order after the question wins.
-    if (asksForAThingThatHolds(goalRaw) || ordersADeedAfterTheQuestion(g)) return false;
+    // question word its contents carry; an order after the question wins,
+    // and so does an order after a wish to know («بدي أعرف كم واحد اشترى، اعمل
+    // صفحة تعرض الطلبات»: the «كم» is what the page is for).
+    if (asksForAThingThatHolds(goalRaw) || ordersADeedAfterTheQuestion(g) || ordersAfterAWishToKnow(bare)) return false;
 
     // A following answer-format instruction must not hide a yes/no question.
     // A later execution command, however, remains an action for normal planning.
@@ -733,7 +791,8 @@ export function isBuildRequest(goalRaw: string): { isBuild: boolean; confidence:
 
 /** Repair admission is separate from new construction and grants no tool authority. */
 export function isExistingSoftwareRepairRequest(goalRaw: string): boolean {
-    const g = unquotedIntentText(String(goalRaw || ''));
+    // «أصلِحْ الكود» is «أصلح الكود»: the verb is matched by its letters, not by a listed spelling of its marks.
+    const g = unquotedIntentText(stripArabicDiacritics(String(goalRaw || '')));
     if (hasRequestedAction(goalRaw).hasDenial) return false;
     const repairInstruction = /(?:^|[.!?؟;\n])\s*(?:(?:please|can you|could you|would you|من فضلك|هل يمكنك)\s+)?(?:fix|repair|debug|refactor|modify|edit|update|أصلح|اصلح|صلح|عدّل|عدل)\s+/i.test(g);
     const softwareTarget = /\b(?:repository|repo|codebase|code|function|typescript|javascript|python|node(?:\.js)?)\b|(?:^|[\s،:؛.!?؟])(?:الكود|كود|الدالة|دالة|البرمجيات)(?=$|[\s،:؛.!?؟])/i.test(g);

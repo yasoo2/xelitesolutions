@@ -38,7 +38,30 @@ const NO_FILE_CHANGES_UNQUALIFIED = new RegExp(`${START_BOUNDARY}${NO_FILE_CHANG
  * The narrowing words are an open class; what keeps a denial whole is the
  * closed class below: determiners and the names of the whole workspace.
  */
-const FILE_DENIAL_EN = /(?:^|[\s،:؛.!?])do\s+not\s+((?:create|write|modify|edit|change)(?:\s*(?:,|\bor\b|\band\b|\bnor\b)\s*(?:create|write|modify|edit|change|delete|touch|remove))*)\s+([^.;!?\n]*?)\bfiles?\b([^.;!?\n]{0,40})/gi;
+/*
+ * ⛔ «لا تعدل أو تحذف أي ملف» DENIES EVERY FILE CHANGE, WHICHEVER VERB COMES FIRST.
+ *
+ * The Arabic reader knew «لا تعدل الملفات» and «لا تنشئ الملفات»: one verb, the
+ * plural. «لا تعدل أو تحذف أي ملف», «لا تعدل ولا تحذف أي ملف», «راجع الكود ولا
+ * تعدل أي ملف» were no denial at all — and the «أي» in them made each a
+ * question, so a review that forbade every change was answered as «which
+ * file?». In English the list had to open with a changing verb and could not
+ * end «, or delete»: "Do not delete or modify any file" was a read-only audit,
+ * "Do not create, modify, or delete any file" an answer-only contract.
+ *
+ * A denial is a LIST of verbs (one or more, joined by «أو», «ولا», «و», a
+ * comma, "or", "and", "nor") and its object. What makes it a denial of file
+ * CHANGES is that the list holds a verb that changes a file — create, write,
+ * modify, edit, change — wherever it stands; a list that only deletes or moves
+ * («لا تحذف أي ملف», "Do not delete any file") forbids that much and is left to
+ * the readers it always had. The lookahead finds the changing verb past at
+ * most seven others, each item a closed word and each separator disjoint from
+ * the next, so the cost per «لا» / "do not" is a constant.
+ */
+const CHANGING_VERB_EN = '(?:create|write|modify|edit|change)';
+const REMOVING_VERB_EN = '(?:delete|touch|remove)';
+const VERB_SEPARATOR_EN = String.raw`(?:\s*,\s*(?:(?:or|and|nor)\s+)?|\s+(?:or|and|nor)\s+)`;
+const FILE_DENIAL_EN = new RegExp(String.raw`(?:^|[\s،:؛.!?])do\s+not\s+(?=(?:${REMOVING_VERB_EN}${VERB_SEPARATOR_EN}){0,7}${CHANGING_VERB_EN}\b)((?:${CHANGING_VERB_EN}|${REMOVING_VERB_EN})(?:${VERB_SEPARATOR_EN}(?:${CHANGING_VERB_EN}|${REMOVING_VERB_EN})){0,7})\s+([^.;!?\n]*?)\bfiles?\b([^.;!?\n]{0,40})`, 'gi');
 /**
  * …AND «THE APP FILES», «MY PROJECT'S FILES», «THE EXISTING FILES» ARE ALL OF THEM.
  *
@@ -55,7 +78,15 @@ const WHOLE_OBJECT_EN = new Set(['a', 'an', 'any', 'all', 'the', 'my', 'your', '
     'app', 'apps', 'application', 'site', 'website', 'web', 'system', 'program', 'software', 'existing', 'current', 'present']);
 const NARROWING_TAIL_EN = /^\s*(?:other\s+than|except|besides|apart\s+from|aside\s+from|outside|beyond|else|but\b)/i;
 // «ملفاتي», «ملفاته», «ملفاتنا»: the possessive is part of the word.
-const FILE_DENIAL_AR = /(?:^|[\s،:؛.!?])(?:(?:بدون|دون)\s+(?:أي\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\s+(?:على\s+)?|لا\s+تغييرات\s+|دون\s+تغييرات\s+|لا\s+تنشئ\s+|دون\s+إنشاء\s+|لا\s+تعدل\s+|دون\s+تعديل\s+)(?:ال)?ملفات(ي|نا|ك|كم|ه|ها|هم)?(?=$|[^\p{L}\p{N}_])([^.؛;!?؟\n]{0,40})/giu;
+//  The verbs of «لا <verb>»: those that change a file, and those that only remove or move one.
+const CHANGING_VERB_AR = '(?:تنشئ|تنشي|تعدل|تغير|تكتب)';
+const REMOVING_VERB_AR = '(?:تحذف|تمسح|تنقل|تلمس|تمس)';
+//  «أو تحذف», «ولا تحذف», «وتحذف», «، تحذف», «، ولا تحذف»: every verb opens with «ت», so no separator can be read as part of one.
+const VERB_SEPARATOR_AR = String.raw`(?:\s*[،,]\s*(?:(?:أو|او|ولا|و)\s*)?|\s+(?:أو|او|ولا)\s+|\s+و)`;
+const DENIED_VERBS_AR = String.raw`(?=(?:${REMOVING_VERB_AR}${VERB_SEPARATOR_AR}){0,7}${CHANGING_VERB_AR}(?![\p{L}\p{N}_]))(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})(?:${VERB_SEPARATOR_AR}(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})){0,7}`;
+//  The object: «الملفات», «ملفاتي», «أي ملفات», «كل الملفات» — and one file only when it is ANY file
+//  («أي ملف»): «لا تعدل ملف الإعدادات» names the one file it protects and is not read here at all.
+const FILE_DENIAL_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])(?:(?:بدون|دون)\s+(?:أي\s+)?(?:تعديل|تغيير|كتابة|إنشاء)\s+(?:على\s+)?|لا\s+تغييرات\s+|دون\s+تغييرات\s+|دون\s+إنشاء\s+|دون\s+تعديل\s+|[وف]?لا\s+${DENIED_VERBS_AR}\s+)(?:(?:(?:أي|اي|كل|جميع)\s+(?:من\s+)?)?(?:ال)?ملفات(?<own>ي|نا|ك|كم|ه|ها|هم)?|(?:أي|اي)\s+ملف)(?=$|[^\p{L}\p{N}_])(?<tail>[^.؛;!?؟\n]{0,40})`, 'giu');
 /**
  * After «الملفات»: what keeps the object whole — the whole workspace's names
  * (with his possessive: «ملفات موقعي», «ملفات مشروعنا»), the dialect
@@ -71,11 +102,17 @@ function fileDenialIsWhole(object: string, tail: string): boolean {
     if (words.some(w => !WHOLE_OBJECT_EN.has(w))) return false;
     return !NARROWING_TAIL_EN.test(tail);
 }
+/** «أي ملف في المشروع», «الملفات داخل مساحة العمل»: where the files are, when that is the whole workspace. */
+const INSIDE_AR = /^(?:في|فى|داخل|ضمن|ب)$/u;
+/** A condition on the change, not a narrower object: until he allows it, every file is still denied. */
+const UNTIL_AR = /^(?:بدون|دون|بلا|قبل|حتى|الآن|الان|حاليا)$/u;
 function arabicFileDenialIsWhole(possessive: string, tail: string): boolean {
-    const next = stripArabicDiacritics(tail.trim().split(/[\s،,:]+/u)[0] || '');
+    const [next = '', after = ''] = stripArabicDiacritics(tail.trim()).split(/[\s،,:]+/u);
     if (!next) return true;                                   // «لا تعدل الملفات.»
     if (possessive) return !/^(?:الأخرى|الاخرى|الاخري|اخرى|أخرى|الثانية|الثانيه)$/u.test(next);  // «لا تعدل ملفاتي»
     if (/^[وف]\S{2,}/u.test(next)) return true;               // «… الملفات واشرح لي» / «والإعدادات»
+    if (UNTIL_AR.test(next)) return true;                     // «… أي ملف بدون إذني», «… الملفات قبل ما أوافق»
+    if (INSIDE_AR.test(next)) return WORKSPACE_NAME_AR.test(after) || WHOLE_OBJECT_AR.has(after);   // «… في المشروع», «… داخل مساحة العمل»
     return WHOLE_OBJECT_AR.has(next) || WORKSPACE_NAME_AR.test(next) || DIALECT_POSSESSIVE_AR.test(next);
 }
 /**
@@ -101,14 +138,23 @@ function arabicFileDenialIsWhole(possessive: string, tail: string): boolean {
  */
 const EVERY_CHANGE_DENIAL_EN = /(?:^|[\s،:؛.!?])do\s+not\s+(?:create|write|modify|edit|change|delete)(?:(?:\s*,\s*(?:(?:or|and|nor)\s+)?|\s+(?:or|and|nor)\s+)[a-z]+){1,8}\s+(?:anything|everything)\b/i;
 const EVERY_CHANGE_DENIAL_AR = /(?:^|[\s،:؛.!?])لا\s+(?:تنشئ|تعدل|تغير|تحذف|تكتب)(?:(?:\s*[،,]\s*|\s+(?:أو|او|ولا)\s+|\s+و)[^\s،,]+){1,8}\s+(?:أي|اي)\s+شي/u;
+//  «لا تعدل ولا تحذف شيئاً», «ولا تعدل أو تحذف شيء»: the same list without «أي». Here every item must
+//  be one of the verbs — with any word allowed, «لا تعدل، أضف شيئاً» ("do not edit; add something") would deny.
+const EVERY_CHANGE_LIST_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])[وف]?لا\s+(?=(?:${REMOVING_VERB_AR}${VERB_SEPARATOR_AR}){0,7}${CHANGING_VERB_AR}(?![\p{L}\p{N}_]))(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})(?:${VERB_SEPARATOR_AR}(?:${CHANGING_VERB_AR}|${REMOVING_VERB_AR})){1,7}\s+(?:(?:أي|اي)\s+)?شي(?:ء|ئا)?(?![\p{L}\p{N}_])`, 'u');
 
-/** Does the request forbid every file change (not only some files)? */
+/**
+ * Does the request forbid every file change (not only some files)?
+ *
+ * Harakat and tatweel are not letters: «لا تُعدِّل الملفات» denies what «لا تعدل
+ * الملفات» denies. This reader is exported and was asked with the text as he
+ * wrote it, so one vowel mark on the verb made the denial disappear.
+ */
 export function deniesEveryFileChange(text: string): boolean {
-    const t = String(text || '');
+    const t = stripArabicDiacritics(String(text || ''));
     if (NO_FILE_CHANGES_UNQUALIFIED.test(t)) return true;
-    if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t)) return true;
+    if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t) || EVERY_CHANGE_LIST_AR.test(t)) return true;
     for (const m of t.matchAll(FILE_DENIAL_EN)) if (fileDenialIsWhole(m[2] || '', m[3] || '')) return true;
-    for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m[1] || '', m[2] || '')) return true;
+    for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m.groups?.own || '', m.groups?.tail || '')) return true;
     return false;
 }
 
@@ -123,7 +169,10 @@ export function deniesEveryFileChange(text: string): boolean {
 function stripNarrowedFileDenials(text: string): string {
     return String(text || '')
         .replace(FILE_DENIAL_EN, (whole, _verbs: string, object: string, tail: string) => fileDenialIsWhole(object, tail) ? whole : ` ${tail}`)
-        .replace(FILE_DENIAL_AR, (whole, possessive: string | undefined, tail: string) => arabicFileDenialIsWhole(possessive || '', tail) ? whole : ` ${tail.replace(/^\s*\S+/u, '')}`);
+        .replace(FILE_DENIAL_AR, (whole: string, ...rest: unknown[]) => {
+            const { own = '', tail = '' } = (rest[rest.length - 1] || {}) as { own?: string; tail?: string };
+            return arabicFileDenialIsWhole(own, tail) ? whole : ` ${tail.replace(/^\s*\S+/u, '')}`;
+        });
 }
 
 // POLITE_BUILD patterns
@@ -289,7 +338,8 @@ export function withoutDefiniteVerbalNouns(text: string): string {
  * needs its object too («Deploy it», «Run my app») — «Run me through the
  * basics», «Update me on…», «Save money tips» order nothing.
  */
-export interface OrderWords { ar: ReadonlySet<string>; en: RegExp }
+/** `withObject`: verbs that order only with a deliverable after them («… عايز جدول», never «… عايز الجواب بسرعة»). */
+export interface OrderWords { ar: ReadonlySet<string>; en: RegExp; withObject?: ReadonlySet<string> }
 /** Folded imperatives that are also nouns or past verbs: an object makes them orders. */
 const NOUN_TWIN_AR = new Set(['شغل', 'جرب', 'حمل', 'نزل', 'عدل', 'ثبت', 'نفذ', 'طور', 'ارسل', 'اصلح', 'اوقف', 'انشي', 'حط', 'شيل', 'خل', 'عمل', 'اعمل']);
 /** …and those whose pronoun form is a noun too («ابنه» his son, «سويه» together, «ابيه» his father). */
@@ -306,8 +356,10 @@ const AR_DOING = /^(?:تبني|تبنى|تسوي|تعمل|تصمم|تنشي|تن
 const SEQUENCE_LEAD = /^(?:(?:[وف]?(?:ثم|بعدين|بعدها|الان|الآن|هلا|هلق|هسا|يلا|طيب|خلاص|رجاء|رجاءا)|من\s+فضلك|لو\s+سمحت|and|then|please|now|just|also|so|ok|okay|alright)(?:\s*[،,]\s*|\s+))+/iu;
 const EN_OBJECT = /^(?:(?:me|us)\s+)?(?:it|this|that|them|these|those|the|my|our|your|his|her|their|a|an|all|everything|something|both|some|one)\b/i;
 /** foldChars for one short word, without its three Unicode normalizations (a sentence costs microseconds). */
+const FOLDED_LETTER: Record<string, string> = { 'أ': 'ا', 'إ': 'ا', 'آ': 'ا', 'ٱ': 'ا', 'ى': 'ي', 'ئ': 'ي', 'ؤ': 'و', 'ء': '', 'ة': 'ه' };
 function foldArabicWord(w: string): string {
-    return w.replace(/[أإآٱ]/gu, 'ا').replace(/ى/gu, 'ي').replace(/ئ/gu, 'ي').replace(/ؤ/gu, 'و').replace(/ء/gu, '').replace(/ة/gu, 'ه').toLowerCase();
+    //  One pass: this is asked for every word the readers look at.
+    return w.replace(/[أإآٱىئؤءة]/gu, letter => FOLDED_LETTER[letter]).toLowerCase();
 }
 /** Wishes in the first person are not «I do»: «أريد», «أحتاج», «أبغى». */
 const FIRST_PERSON_WISH = new Set(['اريد', 'احتاج', 'ابغي', 'ابغا', 'ابي', 'اود', 'اصمم']);
@@ -334,7 +386,7 @@ function opensWithAnOrder(sentence: string, verbs: OrderWords): boolean {
             if (!verb || !verbs.ar.has(verb)) continue;
             if (hamzaFirst && /^ا/u.test(verb) && !FORM_IV_AR.has(verb) && !FIRST_PERSON_WISH.has(verb)) continue;   // «أبحث», «أكتب», «أعمل»: I do
             const forHim = /^(?:لي|لنا|لك|لكم|الي|الينا)$/u.test(next) || /^(?:لي|لنا|لك|لكم)$/u.test(suffix);
-            if (STRONG_TWIN_AR.has(verb)) { if (forHim || AR_DELIVERABLE.test(next) || AR_DOING.test(next)) return true; continue; }
+            if (STRONG_TWIN_AR.has(verb) || verbs.withObject?.has(verb)) { if (forHim || AR_DELIVERABLE.test(next) || AR_DOING.test(next)) return true; continue; }
             if (NOUN_TWIN_AR.has(verb)) { if (suffix || forHim || /^(?:ال|لل)\S{2,}/u.test(next) || AR_DELIVERABLE.test(next)) return true; continue; }
             return true;
         }
@@ -357,6 +409,177 @@ export function ordersInALaterSentence(text: string, verbs: OrderWords, fromAnyS
     }
     return false;
 }
+/**
+ * ⛔ A WISH TO KNOW, THEN AN ORDER, IS THE ORDER.
+ *
+ * «بدي أعرف كم صرفت، اعملي جدول فيه التاريخ والمبلغ والفئة» says why he wants
+ * the table and then orders it; «عايز أعرف مين اشترى، اعمل صفحة تعرض الطلبات»
+ * and "I want to know how much I spent, make me a table with date, amount and
+ * category" do the same. The readers took the wish to know for the whole
+ * message — a question — because the order came after a COMMA, and the order
+ * reader above looks only after a full stop or a question mark.
+ *
+ * After a wish to know, a clause is enough: a comma, a full stop, a new line,
+ * or «و»/«ف» joined to the verb («… كم صرفت واعملي جدول»). The order must still
+ * OPEN its clause and carry its object, exactly as above — and a wish to know
+ * HOW («بدي أعرف كيف أعمل جدول، اكتب لي الخطوات», "I want to know how to build
+ * a table, write the steps") is a lesson whatever follows it: its callers ask
+ * this reader only when the wish names no how.
+ */
+const CLAUSE_END = /[.!؟?;؛\n،,]/u;
+export function ordersInALaterClause(text: string, verbs: OrderWords): boolean {
+    const g = stripArabicDiacritics(String(text || ''));
+    const at = g.search(CLAUSE_END);
+    // «… كم صرفت واعملي جدول»: the order joined by «و»/«ف», read one word at a time.
+    const first = at < 0 ? g : g.slice(0, at);
+    const joined = first.split(/\s+/u);
+    for (let i = 2; i < joined.length && i < 60; i++) {
+        if (/^[وف][ء-ي]{2,}$/u.test(joined[i]) && opensWithAnOrder(joined.slice(i, i + 3).join(' '), verbs)) return true;
+    }
+    if (at < 0) return false;
+    for (const m of g.slice(at + 1).matchAll(/[^.!؟?;؛\n،,]+([.!؟?;؛\n،,]+|$)/gu)) {
+        if (/[؟?]/u.test(m[1] || '')) continue;               // a question is still a question
+        const clause = m[0].replace(/[.!؟?;؛\n،,]+$/u, '').trim();
+        if (clause && opensWithAnOrder(clause, verbs)) return true;
+    }
+    return false;
+}
+
+/**
+ * ⛔ «الزر ما بيشتغل» SAYS THE BUTTON DOES NOT WORK. IT ASKS NOTHING.
+ *
+ * «الزر ما بيشتغل، صلحه», «الصفحة ما تفتح صلحها», «الفورم ما بيبعت، عدله» are
+ * orders to fix what he names. Every question reader knew «ما» as «what»
+ * wherever it stood, so each was answered with words and nothing was fixed;
+ * «شغّل السيرفر بعد ما تخلص», «عدّل الصفحة زي ما قلت لك», «نفّذ ما طلبته» and
+ * «أضف زر بلون ما» were questions for the same reason.
+ *
+ * «ما» asks where a question can stand: opening its clause («ما الفرق…», «ما
+ * هي أفضل…», «طيب ما معنى…»), after a verb of telling, knowing or asking («قل
+ * لي ما…», «أريد أن أعرف ما…»), or before what a question is about when it
+ * comes later — a pronoun, a demonstrative, a definite noun, «رأيك» («برأيك
+ * الآن ما الحل», «الزر ما هو»). After any other word — the subject («الزر ما
+ * بيشتغل», «صفحتي ما تفتح», «API ما بيرد»), a conjunction («بعد ما», «زي ما»,
+ * «قبل ما»), a verb («نفّذ ما طلبته»), an indefinite noun («بلون ما») — it
+ * negates, relates or leaves open, and asks nothing. And opening its clause it
+ * still negates before a word only a negated verb takes: the aspect words «عم»,
+ * «رح», «راح», «عاد», «زال» («ما عم يشتغل», «ما زال الخطأ موجود»), or the
+ * dialect's present «بيشتغل», «بتفتح» («ما بيشتغل الزر»). «ما يشتغل الزر» and
+ * «ما يميز React» have one shape; that one stays a question, as it always was.
+ *
+ * The words that are closed classes here are the small ones: what may stand
+ * before an asking «ما». The subjects, verbs and nouns after which it negates
+ * are open, and no list of them is kept.
+ *
+ * Each «ما» is read with at most 64 characters before it and one word after:
+ * linear in the text. The negating «ما» is blanked (and, on request, the verb
+ * it negates — «أنا ما بدي صفحة جديدة» wishes for nothing), so the length and
+ * every other word stay where they were.
+ */
+const CLAUSE_OPENS_AFTER = new Set([...'.،,؛;:!?؟\n\r()«»"'].map(mark => mark.charCodeAt(0)));
+/** Words a clause may open with before its question: «طيب ما الفرق…», «وبعدين ما رأيك…». */
+const CLAUSE_LEAD = /^(?:[وف]|ثم|وثم|بعدين|وبعدين|طيب|يعني|لكن|بس|اوكي|اوك|تمام|اذن|هلا|هلق|الان|برايك|براي[كي]م?|بنظرك|بصراحه|سوال|سوالي|السوال|ok|okay|so|and|but|well)$/iu;
+/** After these «ما» opens the question they ask for: «قل لي ما…», «أريد أن أعرف ما…», «ممكن تقول ما…». */
+const ASKS_WHAT = /^[وف]?(?:[اتني]?(?:عرف|علم|فهم|قول|قل|خبر|شرح|وضح|بين|ذكر|حدد|سال|دري)(?:ني|لي|لنا|نا|ك|كم|وا|ي|ه|ها)?|معرفه)$/u;
+/** What an asking «ما» is followed by when it does not open its clause. */
+const ASKED_ABOUT = /^(?:هو|هي|هما|هم|هن|هذا|هذه|هذي|ذلك|تلك|هاد|هادا|هاي|هادي|ده|دي|دا|ذا|راي\S{0,3}|ال\S{2,})$/u;
+/** Only a negated verb takes these: «ما عم يشتغل», «ما رح يفتح», «ما عاد يرد», «ما زال الخطأ». */
+//  «اذهب» is what the canonical line makes of «رح»: «ما اذهب يفتح» there is «ما رح يفتح» here.
+const NEGATED_ASPECT = /^(?:عم|رح|راح|اذهب|عاد|عادت|زال|زالت|زلت|يزال|تزال)$/u;
+/** The dialect's present, «بيشتغل», «بتفتح», «بيبعت» — never «بيانات». */
+const DIALECT_PRESENT = /^ب[يت](?!\S*ات$)[ء-ي]{3,}$/u;
+const MARKED = /[ً-ْٰـ]/u;
+const FOLDABLE = /[أإآٱىئؤءةA-Z]/u;
+/** One word as the patterns above know it: without marks, folded — and untouched when it has neither. */
+function plainWord(w: string): string {
+    const bare = (MARKED.test(w) ? stripArabicDiacritics(w) : w).slice(0, 40);
+    return FOLDABLE.test(bare) ? foldArabicWord(bare) : bare;
+}
+/** Is everything the clause said before its «ما» a lead («طيب», «يا جو», «برأيك»)? Leads are few: five words are not. */
+function onlyLeads(before: string): boolean {
+    const said = before.split(' ').filter(Boolean);
+    if (said.length > 4) return false;
+    for (let i = 0; i < said.length; i++) {
+        const word = plainWord(said[i]);
+        if (word === 'يا' && i + 1 < said.length) i += 1;        // «يا جو ما رأيك»
+        else if (!CLAUSE_LEAD.test(word)) return false;
+    }
+    return true;
+}
+/*
+ * The word before the «ما» is cut out by its space, not matched by a pattern:
+ * an unanchored pattern run for every «ما» cost a third of a millisecond each
+ * on a long text (measured: 20 KB of «الزر ما بيشتغل» took 395 ms with `match`,
+ * 10 ms without).
+ */
+function maAsks(before: string, cutAtClause: boolean, next: string): boolean {
+    const y = plainWord(next);
+    const said = before.trim();
+    if (!said || (cutAtClause && onlyLeads(said))) return !(NEGATED_ASPECT.test(y) || DIALECT_PRESENT.test(y));
+    if (y && ASKED_ABOUT.test(y)) return true;
+    const at = said.lastIndexOf(' ');
+    const word = plainWord(said.slice(at + 1));
+    if (word !== 'لي' && word !== 'لنا') return ASKS_WHAT.test(word);
+    // «قل لي ما…»: the «لي» belongs to the verb before it; «الموقع اللي سويته لي ما يفتح» tells nothing.
+    const rest = said.slice(0, Math.max(at, 0)).trimEnd();
+    return ASKS_WHAT.test(plainWord(rest.slice(rest.lastIndexOf(' ') + 1)));
+}
+const WORD_CHARACTER = /[\p{L}\p{N}_]/u;
+/** JavaScript's `\s`, by character code. */
+function isSpace(code: number): boolean {
+    return code === 32 || (code >= 9 && code <= 13) || code === 160 || code === 0x1680 || (code >= 0x2000 && code <= 0x200A)
+        || code === 0x2028 || code === 0x2029 || code === 0x202F || code === 0x205F || code === 0x3000 || code === 0xFEFF;
+}
+/*
+ * Each standalone «ما» is found by indexOf and the text rebuilt from its
+ * pieces. A replace() with a callback did the same work, but with thousands of
+ * replacements in one text its cost stopped following the text's length
+ * (measured: 5 KB of «ما ما…» 6 ms, 40 KB over a second).
+ */
+function readWithoutNegatingMa(t: string, withItsVerb: boolean): string {
+    const pieces: string[] = [];
+    let kept = 0;
+    let from = 0;
+    for (;;) {
+        const at = t.indexOf('ما', from);
+        if (at < 0) break;
+        const after = at + 2;
+        from = after;
+        // A word of its own: «ماذا», «تماما», «كما» are other words.
+        if ((at > 0 && WORD_CHARACTER.test(t.charAt(at - 1))) || (after < t.length && WORD_CHARACTER.test(t.charAt(after)))) continue;
+        // The word after it, on the same line and in the same clause.
+        let wordStart = after;
+        while (wordStart < t.length && isSpace(t.charCodeAt(wordStart)) && t.charCodeAt(wordStart) !== 10 && t.charCodeAt(wordStart) !== 13) wordStart += 1;
+        let wordEnd = wordStart;
+        if (wordStart > after) {
+            while (wordEnd < t.length && !isSpace(t.charCodeAt(wordEnd)) && !CLAUSE_OPENS_AFTER.has(t.charCodeAt(wordEnd))) wordEnd += 1;
+        }
+        const next = wordEnd > wordStart ? t.slice(wordStart, wordEnd) : '';
+        // The word after a «ما» is read with it, whatever it is («ما ما»: the second is the first one's word).
+        if (next) from = wordEnd;
+        // Back to where the clause opens, 64 characters at most: one short string, read by its codes.
+        const floor = Math.max(0, at - 64);
+        const window = t.slice(floor, at);
+        let cut = window.length - 1;
+        while (cut >= 0 && !CLAUSE_OPENS_AFTER.has(window.charCodeAt(cut))) cut -= 1;
+        // The clause opens inside the window, or the window reaches the start of the text.
+        const cutAtClause = cut >= 0 || floor === 0;
+        if (maAsks(window.slice(cut + 1), cutAtClause, next)) continue;
+        const blankTo = withItsVerb && next ? wordEnd : after;
+        pieces.push(t.slice(kept, at), ' '.repeat(blankTo - at));
+        kept = blankTo;
+    }
+    return pieces.length ? pieces.join('') + t.slice(kept) : t;
+}
+//  The readers ask about the same few strings (his words, their canonical line) many times a message.
+const maReadOut = rememberLastReadings((t: string) => readWithoutNegatingMa(t, false));
+const maAndItsVerbReadOut = rememberLastReadings((t: string) => readWithoutNegatingMa(t, true));
+export function withoutNegatingMa(text: string, withItsVerb = false): string {
+    const t = String(text || '');
+    if (!t.includes('ما')) return t;
+    return withItsVerb ? maAndItsVerbReadOut(t) : maReadOut(t);
+}
+
 const folded = (list: string) => new Set(list.split(/\s+/).filter(Boolean).map(w => foldChars(w)));
 /** The build verbs a later sentence may open with (hasRequestedAction's «laterCommand»). */
 export const LATER_BUILD_ORDER: OrderWords = {
@@ -413,7 +636,8 @@ function stripPartExclusions(text: string): string {
     return String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' ');
 }
 export function stripScopedExclusions(text: string): string {
-    return stripNarrowedFileDenials(stripPartExclusions(text));
+    // Read without harakat: «ولا تُنشئْ صفحةً جديدةً» excludes what «ولا تنشئ صفحة جديدة» excludes.
+    return stripNarrowedFileDenials(stripPartExclusions(stripArabicDiacritics(String(text || ''))));
 }
 
 /**
@@ -443,7 +667,8 @@ const QUESTION_LEAD = /^(?:كيف|كيفية|لماذا|ليش|ليه|لي[هش]
 function asksForWordsOnly(text: string): boolean {
     const left = String(text || '').replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '').replace(/[\s.،,;:؛!«»"'()-]+$/u, '');
     if (!left) return true;
-    return WORDS_ONLY_LEAD.test(left) || QUESTION_LEAD.test(left);
+    // «ما عم يشتغل الزر» opens with a negation, not with «what».
+    return WORDS_ONLY_LEAD.test(left) || QUESTION_LEAD.test(withoutNegatingMa(left).trimStart());
 }
 
 /**
@@ -490,8 +715,23 @@ export function hasRequestedAction(goalRaw: string): RequestedActionResult {
     return { ...readRequestedActionOnce(String(goalRaw || '')) };
 }
 
+/**
+ * «I want to know how much I spent, make me a table…»: a wish to know a
+ * quantity, never a wish to learn how. Only this wish lets an order after a
+ * comma count (ordersInALaterClause); «how to», «how do I», «how it works»
+ * keep the lesson they ask for.
+ */
+const WISH_TO_KNOW_HOW_MUCH = /^\s*(?:please\s+)?i\s+(?:want|need|would\s+like|'d\s+like)\s+to\s+(?:know|learn|understand|see|find\s+out)\s+how\s+(?:much|many)\b/i;
+/** The orders a clause after that wish may open with. Not «write it in two sentences», «make it short»: those shape the answer. */
+const CLAUSE_BUILD_ORDER: OrderWords = {
+    ar: new Set<string>(),
+    en: /^(?:build|create|make|develop|implement|design|generate)(?=\s+(?:(?:me|us)\s+)?(?:a|an|the|my|our|some|one)\b)/i,
+};
+
 function readRequestedAction(goalRaw: string): RequestedActionResult {
-    const g = String(goalRaw || '');
+    // Harakat and tatweel are stripped once, here: every reader below sees the
+    // letters he wrote, so «ولا تُنشئْ صفحةً» and «ولا تنشئ صفحة» are one request.
+    const g = stripArabicDiacritics(String(goalRaw || ''));
 
     // Helper: strip quoted content (straight + smart/curly double quotes) to avoid false positives
     // on denial phrases that appear inside quoted text
@@ -598,11 +838,14 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
 
     // A verb inside a question describes a possible action, not an order.
     // An explicit later command or a polite construction request still counts.
-    const leadingQuestion = /^\s*(?:what|why|how|when|which|who|ما|ماذا|لماذا|كيف|متى|أين|اين)(?=$|[\s،:؛])/i.test(probeStripped)
+    // «ما عم يشتغل الزر، صلحه» opens with a negation: it reports, it does not ask.
+    const leadingQuestion = /^\s*(?:what|why|how|when|which|who|ما|ماذا|لماذا|كيف|متى|أين|اين)(?=$|[\s،:؛])/i.test(withoutNegatingMa(probeStripped))
         || TELL_HOW_LEAD.test(probeStripped);
     // «كيف حالك؟ ابني لي موقع», «What is REST? Build me an API.» — but not
     // «كيف أتعامل مع ابني؟ ابني عمره عشر سنوات» (my son), nor a second question.
-    const laterCommand = ordersInALaterSentence(probeStripped, LATER_BUILD_ORDER, true);
+    // After a wish to know a quantity, the order may follow a comma.
+    const laterCommand = ordersInALaterSentence(probeStripped, LATER_BUILD_ORDER, true)
+        || (WISH_TO_KNOW_HOW_MUCH.test(probeStripped) && ordersInALaterClause(probeStripped, CLAUSE_BUILD_ORDER));
     if (leadingQuestion && !isPoliteBuild && !isExplainThenBuild && !laterCommand) {
         return { hasAffirmativeAction: false, hasDenial: false, isAnswerOnly: false,
             isNoFileChanges: false, isPoliteBuild: false, isExplainThenBuild: false,
