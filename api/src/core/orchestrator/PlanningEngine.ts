@@ -293,7 +293,7 @@ const ASK_ADJUNCT_LEAD = /^(?:of|about|for|to|on|in|at|from|with|عن|حول|ع�
 /** «الموقع», «للموقع», «موقعي», «متجره», «صفحتها»: a particular site, not any site. */
 const AR_DEFINITE_SITE = /^[وف]?(?:[بكل]?ال|لل)|(?:ي|نا|ك|كم)$|(?:موقع|مشروع|نظام|تطبيق|متجر|خادم|سيرفر)(?:ه|ها)$|ت(?:ه|ها)$/u;
 const ASKS_A_CHOICE_OR_A_CONDITION = /^(?:or|ام|ولا|او|free|without|مجانا|ببلاش|بدون|بلا)$/u;
-const FOLLOWS_A_BARE_ORDER = /^(?:now|today|already|immediately|asap|please|pls|thanks|الان|هلق|هلا|دلوقتي|دلوقت|الحين|هسه|اليوم|حالا|فورا|بليز)$/u;
+const FOLLOWS_A_BARE_ORDER = /^(?:now|today|already|immediately|asap|please|pls|thanks|الان|هلق|هلا|دلوقتي|دلوقت|الحين|هسه|اليوم|حالا|فورا|بليز|دابا|دغيا|دروك|ذروك|توا|تو)$/u;
 const ONLINE_PLACE = /^(?:(?:[بل]?ال|لل|عال|ع)?(?:نت|انترنت|ويب)|اونلاين|لايف|online|live|internet|web)$/u;
 const ASK_INTERROGATIVE = /^(?:how|what|why|where|which|who|whether|كيف|كيفيه|ازاي|شلون|اشلون|كيفاش|ليش|ليه|لماذا|متي|امتي|ايمتي|وين|فين|اين|ايش|شو|ماذا|وش|كم|بكم|هل)$/u;
 const ASK_CONNECTIVE = /^(?:and|so|but|و|ف|بس|لكن|بعدين|وبعدين)$/u;
@@ -458,7 +458,7 @@ function readHowPublishIsAsked(userGoal: string, contentAnywhere: boolean): Publ
  *     سمّ الزر انشر الموقع                       … the name he gives a button
  *     زر النشر ما يشتغل، صلحه                   a bug report about a button
  *     انشره غلط كان، رجعه                       an order to undo a publish
- *     انشره بعد ما تصلح الخطأ                   the order is the fix; the publish waits
+ *     انشره بعد ما تصلح الخطأ                   the order is the fix; the publish follows it
  *     انشره لما أقولك · انشره بس بعد ما أقولك   it waits for his word
  *     بعد ما أراجع التصميم بنشره أنا            he publishes it himself
  *     انشره؟ لا لسه                              he asks, and answers no
@@ -472,9 +472,11 @@ function readHowPublishIsAsked(userGoal: string, contentAnywhere: boolean): Publ
  *     and the publish he does himself («أنا أنشره», «بنفسي», "I'll publish it").
  *     A mention is blanked, so no reader after this one sees it.
  *   • AN ORDER THAT WAITS is not for now: a clause of time or condition stands
- *     before it in its sentence («بعد ما تصلح الخطأ، انشره», «لما أقولك، انشره»,
+ *     before it in its sentence («بعد ما أراجعه، انشره», «لما أقولك، انشره»,
  *     "when I say so, deploy") or after it («انشره لما أقولك», "deploy it once the
- *     tests pass"), or he asks and answers no («انشره؟ لا لسه»). A coordinated order
+ *     tests pass"), or he asks and answers no («انشره؟ لا لسه»). When the clause names
+ *     a step of Joe's own («بعد ما تصلح الخطأ، انشره») the publish FOLLOWS that work
+ *     instead of waiting for him (see AFTER_AR above). A coordinated order
  *     is a sequence and does not wait: «اختبر الموقع وبعدين انشره». A courtesy is
  *     not a condition: «انشره لو سمحت», «انشره إذا ممكن», "deploy it when you can".
  *     «بعد» with a noun is not read as one either («انشر الموقع بعد تحديث المحتوى»).
@@ -489,19 +491,91 @@ const USE_HARD_BREAK = /^[\n.!?؟؛;]$/u;
 const USE_COORDINATOR = /^(?:و|ف|ثم|and|then|so|but|بس|لكن|بعدين|وبعدين)$/u;
 /** Where the clause a trailing condition belongs to ends: «انشر الموقع وإذا فشل خبرني» conditions the telling. */
 const USE_ZONE_END = /^(?:و|ف|ثم|and|then|so)$/u;
-const SUBORDINATOR_AR = /^(?:لما|لمن|لين|عندما|حين|حينما|بعدما|قبلما|ريثما|اذا|لو)$/u;
+const SUBORDINATOR_AR = /^(?:لما|لمن|لين|عندما|حين|حينما|بعدما|قبلما|ريثما|ملي|اذا|لو)$/u;
 const SUBORDINATOR_AR_WITH_MA = /^(?:بعد|قبل|وقت|اول|ساعه|يوم|متي|لحد|عقب)$/u;
 const SUBORDINATOR_EN = /^(?:after|before|when|once|until|unless|if|till|whenever)$/u;
 const EN_CLAUSE_SUBJECT = /^(?:i|you|we|it|he|she|they|everything|all|tests?)$/u;
 const A_CONDITION_OF_COURTESY_AR = /^(?:سمحت|سمحتي|تكرمت|تسمح|ممكن|امكن|تقدر|بتقدر|فيك|تريد|بتريد|حبيت)$/u;
-const A_CONDITION_OF_COURTESY_EN = /^(?:can|could|want|like|have|get|wish|please)$/u;
+const A_CONDITION_OF_COURTESY_EN = /^(?:can|could|want|like|wish|please)$/u;
+/** "when you have a moment", "once you get a chance", "when you get to it": a courtesy. "once you have fixed the header" is a step. */
+const HAVE_OR_GET = /^(?:have|get)$/u;
+const A_MOMENT = /^(?:a|the|some|time|chance|moment|minute|second|sec|to|around)$/u;
+/*
+ * WHOSE STEP STANDS BEFORE THE PUBLISH. The fourth pre-merge review (2026-11-12): «انشر
+ * الموقع بعد ما تختبره», «انشره بعد ما تصلح الخطأ», "once you finish the fixes, deploy",
+ * "Publish it after you add the contact page" were read like «انشره بعد ما أراجعه» — a
+ * publish that waits for HIM — though the step they name is Joe's own, ordered in the
+ * same words. A clause of time that says AFTER («بعد ما / لما / أول ما / عقب ما», "after /
+ * once / when / as soon as"), with its verb in the second person, names work Joe does
+ * first: the request is that work and then the publish (`follows`), never a publish that
+ * waits and never a publish alone that skips the work. When the clause only says he is
+ * finished («بعد ما تخلص», "when you're done") no work is named: it is the order, for now.
+ * His own act, an approval or a word from him keeps the publish waiting, whoever the verb
+ * addresses («بعد ما توافق الإدارة», "once you get my approval").
+ */
+const AFTER_AR = /^(?:لما|لمن|عندما|حين|حينما|بعدما|ملي)$/u;
+const AFTER_AR_WITH_MA = /^(?:بعد|وقت|اول|ساعه|يوم|متي|عقب)$/u;
+const AFTER_EN = /^(?:after|when|once|whenever|as)$/u;
+const YOU_DO_AR = /^[بهح]?ت[\p{L}]{2,}$/u;
+const YOU_FINISH_AR = /^[بهح]?ت(?:خلص|نتهي|كمل|فرغ|جهز|سالي|تم)(?:ي|وا|و)?(?:ه|ها|هم)?$/u;
+const BEFORE_YOUR_VERB_AR = /^(?:انت|انتي|انتا|راح|رح|تكون)$/u;
+const HIS_APPROVAL_AR = /^(?:[وفبل]?(?:ال|لل)?(?:موافق[\p{L}]{0,4}|اذن[\p{L}]{0,3}|تاكيد[\p{L}]{0,3}|اعتماد[\p{L}]{0,3})|[بهح]?[تي]?(?:وافق|سمح|اكد|اعتمد|قول)[\p{L}]{0,4}|مني|كلمتي|ردي)$/u;
+const HIS_APPROVAL_EN = /^(?:approv[a-z]*|permission|confirm[a-z]*|ahead|ok|okay|say|word|hear|heard|told|green|me)$/u;
+const YOU_ARE = /^(?:['’]|re|are|ve|have|all)$/u;
+const YOU_FINISH_EN = /^(?:done|finished|ready|through|complete|completed|finish)$/u;
+/*
+ * A REFUSAL IS NOT AN ORDER. «مش عايز انشر دلوقتي», «مابي انشره الحين», «ما ابغى انشره»,
+ * "I do not want to deploy it now" each planned a deploy: the publish verb stood in the
+ * words and the denial reader knew only «لا تنشر». A wish that is negated — the negator,
+ * the wish, the publish verb — denies the publish, in the first person («مش عايز انشره»)
+ * and in the second («مش عاوزك تنشره»).
+ */
+const NEGATES_A_WISH = /^(?:مش|مو|مب|موب|ما|لا|مهو|ماني|مانيش|منيش|لست|لسنا|not|never|t)$/u;
+const A_WISH = /^(?:عايز|عاوز|عايزه|عاوزه|عايزك|عاوزك|عايزين|ابغي|ابغا|ابغاك|ابي|ابيك|بدي|بدنا|اريد|اريدك|نريد|نبي|نبغي|نبيك|ودي|حاب|حابب|حابه|حابين|ناوي|ناويه|باغي|بغيت|محتاج|راح|رح|want|wanna|need|like|wish|going|gonna|plan|planning|intend|ready|have)$/u;
+const A_WISH_NEGATED_IN_ONE_WORD = /^ما(?:بي|بغي|بغا|بدي|ودي|ريد|نبي|بغيت)ش?$/u;
+const BETWEEN_A_WISH_AND_ITS_VERB = /^(?:ان|انك|اني|انو|انه|to|you|u|us)$/u;
+const BETWEEN_A_NEGATOR_AND_A_WISH = /^(?:['’]|do|does|did|would|am|m|re|are|is|really|انا|احنا|نحن)$/u;
+/*
+ * «انشره على الفيسبوك» IS A POST, NOT A SITE ON THE INTERNET. A publish word whose clause
+ * names a social network is read as content is: no deploy tool.
+ */
+const SOCIAL_VENUE = /^(?:[وفبلع]?(?:ال|لل)?(?:فيسبوك|فيس|تويتر|انستغرام|انستقرام|انستجرام|انستا|لينكدان|لينكدن|تيكتوك|يوتيوب|واتساب|واتس|تلغرام|تليجرام|تلجرام|سناب|سنابشات|ريديت|سوشيال)|facebook|fb|twitter|instagram|insta|linkedin|tiktok|youtube|whatsapp|telegram|snapchat|reddit|threads|social)$/u;
+/*
+ * "THE DEPLOY FAILED, TRY AGAIN" ORDERS THE DEPLOY AGAIN. The publish named as a thing
+ * («النشر», "the deploy") is a mention, and orders nothing — until an order to do it again
+ * stands beside it: the retry takes its deed from the thing that failed. «جرب مرة ثانية»,
+ * «أعد المحاولة», «أعد النشر», "try again", "retry the deploy". «لا تحاول مرة ثانية» denies it.
+ */
+const THE_PUBLISH_AR = /^[وفب]?(?:ال|لل)(?:نشر|استضافه|ديبلوي)$/u;
+const THE_PUBLISH_EN = /^(?:deployments?|deploying|publishing)$/u;
+const AN_ACT_HEAD_EN = /^(?:failed|fails|failure|is|was|isn|wasn|did|does|didn|doesn|steps?|process|pipeline|jobs?|command|scripts?|workflow|errors?)$/u;
+const RETRY_AR = /^[وف]?(?:جرب|حاول|عيد|اعد|كرر|عاود)(?:ي|وا|و)?(?:ه|ها)?$/u;
+const RETRY_EN = /^(?:retry|redo|rerun)$/u;
+const AGAIN_AFTER = /^(?:try|it|that|this|do|run|go)$/u;
+const AGAIN_AR = /^(?:مره|تاني|ثاني|ثانيه|تانيه|كمان|من|المحاوله)$/u;
+const DENIES_A_RETRY = /^(?:لا|ما|بلاش|مش|مو|not|never|t|no)$/u;
+/*
+ * «نشرو دغيا», «نشروه دابا»: the Maghreb's imperative drops the alif. Without it the word is
+ * also the noun and the past («نشر الموقع», «نشره أمس»), so it is the order only where a
+ * clause opens with it, carrying its pronoun, and nothing follows but «now» or a courtesy.
+ */
+const ORDER_PUBLISH_NO_ALIF = /^(نشر)(?:و|وه|وها|ه|ها|يه|يها)$/u;
+/*
+ * "fields: sku, name, publish date" LISTS A FIELD. "inventory app: sku, name, publish
+ * date" deployed the app it was asked to build: the publish word names a column. After a
+ * header that announces fields («الحقول:», "columns:") every word up to the end of the
+ * sentence is one; and "host" is the verb only with what it hosts ("host it", "host the
+ * site") — "host, port, user" are fields wherever they stand.
+ */
+const FIELD_HEADER = /^(?:fields?|columns?|attributes?|properties|props|schema|[وفب]?(?:ال)?(?:حقول|اعمده|خانات|خصائص))$/u;
+const WHAT_HOST_HOSTS = /^(?:it|this|that|them|the|my|our|your|a|an|on|with|at)$/u;
 const LABEL_NOUN_AR = new RegExp(`^${AR_CLITICS}(?:زر|ازرار|كلمه|كلمات|نص|نصوص|عنوان|تسميه|اسم|مسمي|عباره|جمله|ايقونه|لافته|تبويب|مكتوب|مكتوبه)(?:ه|ها)?$`, 'u');
 const LABEL_WORD = /^(?:buttons?|labels?|text|words?|title|caption|heading|placeholder|tooltip|named|called|says|reads|renamed?|سم|سمي|سمه|سميه|سمها)$/u;
 const HE_DOES_IT_AR = /^[وف]?(?:انا|راح|رح|سوف)$/u;
 const BY_HIMSELF = /^(?:بنفسي|انا|بيدي|myself|ourselves)$/u;
 const HE_DOES_IT_EN = /^(?:i|we|ll|will|shall|gonna|me)$/u;
 const EN_NOUN_LEAD = /^(?:the|a|an|this|that|my|our|your|its|last|previous|latest|next|failed|wrong|bad|old|new|first|every|each)$/u;
-const EN_NOUN_HEAD = /^(?:buttons?|labels?|links?|text|words?|menu|icon|tab|steps?|scripts?|logs?|keys?|settings?|config|pipeline|status|errors?|failure|process|command|option|feature|screen|form|workflow|jobs?|history|hook|failed|fails|is|was|isn|wasn|did|does|didn|doesn)$/u;
+const EN_NOUN_HEAD = /^(?:buttons?|labels?|links?|text|words?|menu|icon|tab|steps?|scripts?|logs?|keys?|settings?|config|pipeline|status|errors?|failure|process|command|option|feature|screen|form|workflow|jobs?|history|hook|failed|fails|is|was|isn|wasn|did|does|didn|doesn|dates?|times?|datetime|timestamp|states?|urls?|names?|ids?|flags?|fields?|columns?|year|count|toggle|checkbox|targets?|environments?|permissions?|rights|roles?|notifications?|queue|schedule)$/u;
 const EN_PUBLISH_USE = /^(?:(?:re)?deploy|(?:re)?publish|host)$/u;
 const ANSWERS_NO = /^(?:لا|لسه|لسا|لسع|مو|مش|موب|ليس|كلا|استني|اصبر|no|not|nope|nah|wait)$/u;
 const NOT_WORD = /^(?:مو|مش|موب|ليس|not)$/u;
@@ -514,13 +588,22 @@ const A_PUBLISH_WORD_INSIDE = /نشر|رفع|ستض|deploy|publish|host/iu;
 interface PublishUses {
     /** The request with every mention of a publish word blanked: what the denial and content readers read. */
     said: string;
-    /** …and with every order that waits blanked too: what decides a publish now. */
+    /** …and with every order that is not for now blanked too: what decides a publish now. */
     used: string;
-    /** An order to publish stands in the words, and it is not for now. */
+    /** An order to publish stands in the words, and it waits for him: his act, his word, a condition. */
     waits: boolean;
+    /** An order to publish stands in the words, after work of Joe's own that the same words order. */
+    follows: boolean;
+    /** He says he does not want to publish («مش عايز انشره», "I don't want to deploy it now"). */
+    refused: boolean;
+    /** What he publishes goes to a social network («انشره على الفيسبوك»): a post, not a site. */
+    social: boolean;
     /** An order to publish stands in the words, for now: the matcher may act on it. */
     orders: boolean;
 }
+
+/** '' — nothing holds the publish back; 'waits' — it waits for him; 'follows' — it comes after Joe's own work. */
+type PublishWait = '' | 'waits' | 'follows';
 
 function readPublishUses(text: string): PublishUses {
     const found = [...text.matchAll(WORD_OR_BREAK)];
@@ -544,79 +627,195 @@ function readPublishUses(text: string): PublishUses {
         while (q < quoted.length && quoted[q][1] <= offset) q++;
         return q < quoted.length && quoted[q][0] <= offset;
     };
-    const subordinatorAt = (i: number): boolean => {
-        const t = at(i), next = at(i + 1);
-        if (SUBORDINATOR_AR.test(t)) {
-            if (!/^(?:اذا|لو)$/u.test(t)) return true;
-            return !(A_CONDITION_OF_COURTESY_AR.test(next) || (next === 'ما' && /^(?:عليك|فيها|في)$/u.test(at(i + 2))));
-        }
-        if (SUBORDINATOR_AR_WITH_MA.test(t)) return next === 'ما';
-        if (t === 'as' && next === 'soon' && at(i + 2) === 'as') return true;
-        if (!SUBORDINATOR_EN.test(t)) return false;
-        const conditional = !/^(?:after|before)$/u.test(t);
-        if (!(EN_CLAUSE_SUBJECT.test(next) || (conditional && /^(?:the|my|our|all)$/u.test(next)))) return false;
-        return !(next === 'you' && A_CONDITION_OF_COURTESY_EN.test(at(i + 2)));
+    const isComma = (u: string): boolean => u === ',' || u === '،';
+    /** Nothing more is said in the clause from here: its end, a courtesy, «now», or the next order. */
+    const endsItsClause = (k: number): boolean => {
+        const u = at(k);
+        return !u || USE_HARD_BREAK.test(u) || isComma(u) || USE_COORDINATOR.test(u) || ASK_COURTESY.test(u)
+            || FOLLOWS_A_BARE_ORDER.test(u) || ORDER_PUBLISH_AR.test(u) || EN_PUBLISH_USE.test(u) || ASK_YOU_PUBLISH_AR.test(u);
     };
-    const blank: Array<[number, number, boolean]> = [];      // from, to, a mention (true) or a wait (false)
-    let subordinated = false, label = false, free = false, waiting = false;
+    /** The clause after «بعد ما / لما»: his step (the publish waits), Joe's own work (it follows), or only «when you are done» (''). */
+    const yourStepAr = (k: number): PublishWait => {
+        let v = k;
+        for (let seen = 0; seen < 2 && BEFORE_YOUR_VERB_AR.test(at(v)); seen++) v++;
+        const verb = at(v);
+        if (!YOU_DO_AR.test(verb)) return 'waits';
+        for (let j = v; j < f.length && j <= v + 6; j++) {
+            const u = f[j];
+            if (USE_HARD_BREAK.test(u) || isComma(u) || (j > v && ORDER_PUBLISH_AR.test(u))) break;
+            if (HIS_APPROVAL_AR.test(u)) return 'waits';
+        }
+        return YOU_FINISH_AR.test(verb) && endsItsClause(v + 1) ? '' : 'follows';
+    };
+    /** The same after "after / once / when you": `k` is the word after "you". */
+    const yourStepEn = (k: number, after: boolean): PublishWait => {
+        if (A_CONDITION_OF_COURTESY_EN.test(at(k))) return '';
+        for (let j = k; j < f.length && j <= k + 8; j++) {
+            const u = f[j];
+            if (USE_HARD_BREAK.test(u) || isComma(u) || (j > k && EN_PUBLISH_USE.test(u))) break;
+            if (HIS_APPROVAL_EN.test(u)) return 'waits';
+        }
+        if (HAVE_OR_GET.test(at(k)) && A_MOMENT.test(at(k + 1))) return '';
+        if (!after) return 'waits';
+        let v = k;
+        for (let seen = 0; seen < 3 && YOU_ARE.test(at(v)); seen++) v++;
+        if (!YOU_FINISH_EN.test(at(v))) return 'follows';
+        let end = v + 1;
+        if (at(end) === 'with') end++;
+        if (/^(?:it|that|this|everything|up|all)$/u.test(at(end))) end++;
+        return endsItsClause(end) ? '' : 'follows';
+    };
+    const subordinatorAt = (i: number, t: string = at(i)): PublishWait => {
+        const next = at(i + 1);
+        if (SUBORDINATOR_AR.test(t)) {
+            if (/^(?:اذا|لو)$/u.test(t)) return A_CONDITION_OF_COURTESY_AR.test(next) || (next === 'ما' && /^(?:عليك|فيها|في)$/u.test(at(i + 2))) ? '' : 'waits';
+            return AFTER_AR.test(t) ? yourStepAr(i + 1) : 'waits';
+        }
+        if (SUBORDINATOR_AR_WITH_MA.test(t)) return next !== 'ما' ? '' : AFTER_AR_WITH_MA.test(t) ? yourStepAr(i + 2) : 'waits';
+        if (t === 'as' && next === 'soon' && at(i + 2) === 'as') return at(i + 3) === 'you' ? yourStepEn(i + 4, true) : 'waits';
+        if (!SUBORDINATOR_EN.test(t)) return '';
+        const conditional = !/^(?:after|before)$/u.test(t);
+        if (!(EN_CLAUSE_SUBJECT.test(next) || (conditional && /^(?:the|my|our|all)$/u.test(next)))) return '';
+        return next === 'you' ? yourStepEn(i + 2, AFTER_EN.test(t)) : 'waits';
+    };
+    /** The clause a publish word conditions: a subordinator after it, before the sentence or the clause ends. */
+    const waitAfter = (i: number): PublishWait => {
+        for (let j = i + 1; j < f.length && j <= i + 12; j++) {
+            const u = f[j];
+            //  «انشره؟ لا لسه»: he asks, and answers no.
+            if (USE_HARD_BREAK.test(u)) return /^[?؟]$/u.test(u) && ANSWERS_NO.test(at(j + 1)) ? 'waits' : '';
+            if (USE_ZONE_END.test(u) || (/^[وف][\p{L}]{3,}$/u.test(u) && j > i + 1)) return '';
+            //  «انشره بعدين مو الحين»: not now.
+            const kind = subordinatorAt(j) || (NOT_WORD.test(u) && NOW_WORD.test(at(j + 1)) ? 'waits' : '');
+            if (kind) return kind;
+        }
+        return '';
+    };
+    /** «مش عايز انشره», «مابي انشره», "I don't want to publish": the wish before the verb is negated. */
+    const refusedAt = (i: number): boolean => {
+        let k = i - 1;
+        for (let seen = 0; seen < 2 && BETWEEN_A_WISH_AND_ITS_VERB.test(at(k)); seen++) k--;
+        const wish = at(k);
+        if (A_WISH_NEGATED_IN_ONE_WORD.test(wish)) return true;
+        //  «ما بديش»: the «ش» that closes Egypt's and the Levant's negation.
+        if (!A_WISH.test(wish) && !(wish.endsWith('ش') && A_WISH.test(wish.slice(0, -1)))) return false;
+        for (let j = k - 1, seen = 0; j >= 0 && seen < 4; j--, seen++) {
+            if (NEGATES_A_WISH.test(f[j])) return true;
+            if (!BETWEEN_A_NEGATOR_AND_A_WISH.test(f[j])) return false;
+        }
+        return false;
+    };
+    /** A social network named in the publish word's own clause. */
+    const socialAfter = (i: number): boolean => {
+        for (let j = i + 1; j < f.length && j <= i + 8; j++) {
+            const u = f[j];
+            if (SOCIAL_VENUE.test(u)) return true;
+            if (/^[وفبل]?(?:ال)?(?:وسايل|وسائل|مواقع|منصات|شبكات)$/u.test(u)) {
+                if (/^(?:ال)?(?:تواصل|سوشيال)$/u.test(at(j + 1))) return true;
+                continue;
+            }
+            if (USE_HARD_BREAK.test(u) || isComma(u) || USE_ZONE_END.test(u) || /^[وف][\p{L}]{3,}$/u.test(u)) return false;
+        }
+        return false;
+    };
+    const blank: Array<[number, number, boolean]> = [];      // from, to, a mention (true) or not for now (false)
+    let subordinated: PublishWait = '';
+    let label = false, fields = false, free = false, waiting = false, following = false, refusal = false, social = false;
+    let lastPublishNamed = -100;                             // where «النشر», "the deploy" last stood as a thing
+    const hold = (kind: PublishWait): void => { if (kind === 'waits') waiting = true; else following = true; };
     for (let i = 0; i < f.length; i++) {
         const t = f[i];
-        if (USE_HARD_BREAK.test(t)) { subordinated = false; label = false; continue; }
-        if (/^[,،:]$/u.test(t)) { label = false; continue; }
-        if (USE_COORDINATOR.test(t)) { subordinated = false; label = false; continue; }
-        const ar = t.match(ORDER_PUBLISH_AR);
+        if (USE_HARD_BREAK.test(t)) { subordinated = ''; label = false; fields = false; continue; }
+        if (isComma(t) || t === ':') {
+            label = false;
+            if (t === ':' && (FIELD_HEADER.test(at(i - 1)) || FIELD_HEADER.test(at(i - 2)) || FIELD_HEADER.test(at(i - 3)))) fields = true;
+            continue;
+        }
+        //  "when I say so, deploy": this "so" closes his clause and coordinates nothing.
+        if (t === 'so' && /^(?:say|says|said|do|did|think|hope|told)$/u.test(at(i - 1))) continue;
+        if (USE_COORDINATOR.test(t)) {
+            subordinated = ''; label = false;
+            if (/^(?:then|ثم|بعدين|وبعدين)$/u.test(t)) fields = false;       // "…, then publish it" leaves the list
+            continue;
+        }
+        const start = found[i].index || 0, end = start + found[i][0].length;
+        const prev = at(i - 1);
+        let ar = t.match(ORDER_PUBLISH_AR);
+        if (!ar && (i === 0 || USE_HARD_BREAK.test(prev) || isComma(prev) || prev === ':' || USE_COORDINATOR.test(prev) || ASK_COURTESY.test(prev))) {
+            const noAlif = t.match(ORDER_PUBLISH_NO_ALIF);
+            const after = at(i + 1);
+            if (noAlif && (!after || USE_HARD_BREAK.test(after) || isComma(after) || FOLLOWS_A_BARE_ORDER.test(after) || ASK_COURTESY.test(after))) ar = [t, noAlif[1], 'ه'] as unknown as RegExpMatchArray;
+        }
         const en = !ar && EN_PUBLISH_USE.test(t);
         if (!ar && !en) {
             //  «ممكن تنشر الموقع بعد ما أراجعه؟»: the verb he hands Joe waits like the order does.
             //  Only on what follows it: «بعد ما تنشر الموقع ابعتلي الرابط» is not a wait.
             if (ASK_YOU_PUBLISH_AR.test(t)) {
+                if (refusedAt(i)) { blank.push([start, end, true]); refusal = true; continue; }
+                if (socialAfter(i)) social = true;
                 for (let j = i + 1; j < f.length && j <= i + 12; j++) {
                     const u = f[j];
                     if (USE_HARD_BREAK.test(u) || USE_ZONE_END.test(u) || /^[وف][\p{L}]{3,}$/u.test(u)) break;
-                    if (!subordinatorAt(j)) continue;
-                    const start = found[i].index || 0;
-                    blank.push([start, start + found[i][0].length, false]);
-                    waiting = true;
+                    const kind = subordinatorAt(j);
+                    if (!kind) continue;
+                    blank.push([start, end, false]);
+                    hold(kind);
                     break;
                 }
                 continue;
             }
+            if (ASK_PUBLISHING_AR.test(t) && socialAfter(i)) social = true;
+            if (!label && !fields && (THE_PUBLISH_AR.test(t) || THE_PUBLISH_EN.test(t)) && !isQuoted(start)) { lastPublishNamed = i; continue; }
+            //  An order to do it again, beside the publish that is named as a thing.
+            const again = RETRY_EN.test(t) || (t === 'again' && AGAIN_AFTER.test(prev));
+            if ((again || RETRY_AR.test(t)) && !label
+                && !(DENIES_A_RETRY.test(prev) || DENIES_A_RETRY.test(at(i - 2)) || (t === 'again' && DENIES_A_RETRY.test(at(i - 3))))) {
+                const named = again
+                    ? THE_PUBLISH_EN.test(at(i + 1)) || ((THE_PUBLISH_EN.test(at(i + 2)) || EN_PUBLISH_USE.test(at(i + 2))) && EN_NOUN_LEAD.test(at(i + 1)))
+                    : THE_PUBLISH_AR.test(at(i + 1)) || THE_PUBLISH_AR.test(at(i + 2));
+                const afterIt = i - lastPublishNamed <= 12 && (again || endsItsClause(i + 1) || AGAIN_AR.test(at(i + 1)));
+                if (named || afterIt) {
+                    const kind = subordinated || waitAfter(i);
+                    if (kind) hold(kind); else free = true;
+                }
+                continue;
+            }
             const glued = /^[وف][\p{L}]{2,}$/u.test(t);
-            if (subordinatorAt(i) || (glued && SUBORDINATOR_AR.test(t.slice(1)) && !A_CONDITION_OF_COURTESY_AR.test(at(i + 1)))) subordinated = true;
+            const kind = subordinatorAt(i) || (glued && SUBORDINATOR_AR.test(t.slice(1)) ? subordinatorAt(i, t.slice(1)) : '');
+            if (kind) subordinated = kind;
             else if (LABEL_NOUN_AR.test(t) || LABEL_WORD.test(t)) label = true;
             continue;
         }
-        if (ar && /^[وف]/u.test(t)) { subordinated = false; label = false; }      // «… وانشره»: a coordinated order
-        const start = found[i].index || 0, end = start + found[i][0].length;
-        const prev = at(i - 1);
-        const mention = isQuoted(start) || label
-            || (ar ? HE_DOES_IT_AR.test(prev) || BY_HIMSELF.test(at(i + 1)) || BY_HIMSELF.test(at(i + 2)) || BY_HIMSELF.test(at(i + 3))
-                : HE_DOES_IT_EN.test(prev) || EN_NOUN_LEAD.test(prev) || EN_NOUN_HEAD.test(at(i + 1)));
-        if (mention) { blank.push([start, end, true]); continue; }
-        // The clause it conditions: a subordinator after it, before the sentence or the clause ends.
-        let waits = subordinated;
-        for (let j = i + 1; !waits && j < f.length && j <= i + 12; j++) {
-            const u = f[j];
-            if (USE_HARD_BREAK.test(u)) {
-                //  «انشره؟ لا لسه»: he asks, and answers no.
-                waits = /^[?؟]$/u.test(u) && ANSWERS_NO.test(at(j + 1));
-                break;
-            }
-            if (USE_ZONE_END.test(u) || (/^[وف][\p{L}]{3,}$/u.test(u) && j > i + 1)) break;
-            //  «انشره بعدين مو الحين»: not now.
-            waits = subordinatorAt(j) || (NOT_WORD.test(u) && NOW_WORD.test(at(j + 1)));
+        if (ar && /^[وف]/u.test(t)) { subordinated = ''; label = false; }      // «… وانشره»: a coordinated order
+        const next1 = at(i + 1);
+        //  "the deploy", "deploy status", "publish date": the English word as a noun.
+        const asANoun = en && (EN_NOUN_LEAD.test(prev) || EN_NOUN_HEAD.test(next1));
+        const mention = isQuoted(start) || label || fields
+            || (ar ? HE_DOES_IT_AR.test(prev) || BY_HIMSELF.test(next1) || BY_HIMSELF.test(at(i + 2)) || BY_HIMSELF.test(at(i + 3))
+                : HE_DOES_IT_EN.test(prev) || asANoun || (t === 'host' && !WHAT_HOST_HOSTS.test(next1) && !SITE_NOUN_TOKEN.test(next1)));
+        if (mention) {
+            //  "The deploy failed": the publish itself, named as a thing — not its button, its date or its status.
+            if (asANoun && !label && !fields && (AN_ACT_HEAD_EN.test(next1) || !EN_NOUN_HEAD.test(next1))) lastPublishNamed = i;
+            blank.push([start, end, true]);
+            continue;
         }
-        if (waits) { blank.push([start, end, false]); waiting = true; continue; }
+        if (refusedAt(i)) { blank.push([start, end, true]); refusal = true; continue; }
+        if (socialAfter(i)) { blank.push([start, end, false]); social = true; continue; }
+        const state: PublishWait = subordinated || waitAfter(i);
+        if (state) { blank.push([start, end, false]); hold(state); continue; }
         // An order for now. Is it one the matcher may act on?
         if (en) { free = true; continue; }
         const verb = ar![1], pronoun = !!ar![2];
         let next = i + 1;
         if (ASK_OBJECT_FILLER.test(at(next))) next++;
-        if (pronoun) free = free || next >= f.length || FOLLOWS_AN_ORDER.test(at(next)) || FOLLOWS_A_BARE_ORDER.test(at(next)) || ASK_COURTESY.test(at(next));
+        //  A clause of time that held nothing back («انشره اول ما تخلص») leaves the order an order.
+        const timeClause = (k: number): boolean => SUBORDINATOR_AR.test(at(k)) || (SUBORDINATOR_AR_WITH_MA.test(at(k)) && at(k + 1) === 'ما') || SUBORDINATOR_EN.test(at(k)) || (at(k) === 'as' && at(k + 1) === 'soon');
+        if (pronoun) free = free || next >= f.length || FOLLOWS_AN_ORDER.test(at(next)) || FOLLOWS_A_BARE_ORDER.test(at(next)) || ASK_COURTESY.test(at(next)) || timeClause(next);
         else if (verb === 'رفع') free = free || !!publishedThingAt(f, i + 1, false);
         else free = true;
     }
-    if (!blank.length) return { said: text, used: text, waits: false, orders: free };
+    const read = { waits: waiting && !free, follows: following && !free && !waiting, refused: refusal && !free, social: social && !free, orders: free };
+    if (!blank.length) return { said: text, used: text, ...read };
     let said = '', used = '', last = 0;
     for (const [from, to, mention] of blank) {
         const gap = ' '.repeat(to - from);
@@ -624,7 +823,7 @@ function readPublishUses(text: string): PublishUses {
         used += text.slice(last, from) + gap;
         last = to;
     }
-    return { said: said + text.slice(last), used: used + text.slice(last), waits: waiting && !free, orders: free };
+    return { said: said + text.slice(last), used: used + text.slice(last), ...read };
 }
 
 /** An imperative creation verb (folded spelling) — not «نفّذ/implement/fix», whose object is the repairs. */
@@ -684,8 +883,15 @@ export interface DeployIntentReading {
      * «بحث») that the run and stop paths still ask. The deploy decision reads the
      * request frame instead (readHowPublishIsAsked): «هل يمكنك نشر الموقع؟» is a
      * polite order and deploys, «كيف أنشر الموقع؟» asks about publishing and does not.
+     *
+     * 'waits': the publish is ordered for later — his own act or word, or a condition
+     * («انشره لما أقولك»). 'follows': it is ordered after work of Joe's own that the same
+     * words order («انشر الموقع بعد ما تختبره», "publish it after you add the contact
+     * page"): the request is that work and then the publish, so no deploy tool is chosen
+     * ALONE for it — a deploy by itself would skip the work — and the planner that reads
+     * the whole request plans both.
      */
-    veto: '' | 'denied' | 'content' | 'waits';
+    veto: '' | 'denied' | 'content' | 'waits' | 'follows';
     /**
      * An order to publish stands in the words, for now — a use of the publish word, not a
      * mention of it, and not waiting on a time or a condition (readPublishUses), or a
@@ -1016,7 +1222,8 @@ export class PlanningEngine {
         // «لا تنشر الموقع» and «…ولا تنشره» are denials too: the second person
         // («تنشر/ترفع», with its object pronoun) and the conjunction on «ولا»
         // were missing, and the capability matcher chose deploy_pages for both.
-        const deniesExternalPublish = deniesThePublishItself(uses.said);
+        // …and so is a wish he negates: «مش عايز انشره», "I don't want to publish yet".
+        const deniesExternalPublish = uses.refused || deniesThePublishItself(uses.said);
 
         // A question/search ("how do I run…", "ابحث عن كيفية…", "…؟") describes
         // a topic; it does NOT command run/stop/deploy — those must yield to it.
@@ -1091,12 +1298,14 @@ export class PlanningEngine {
         // is never vetoed by its object: "Deploy my blog" deploys the blog.
         const published = readPublishedContent(uses.said);
         const deployVerb = /(\bdeploy\b|استضف|go\s*live)/i.test(probe);
-        const publishesContent = published.anywhere && !deployVerb
-            && (published.asObject || !(deployTarget || published.siteNamed));
+        //  «انشره على الفيسبوك»: what goes to a social network is a post, whatever it is called.
+        const publishesContent = uses.social || (published.anywhere && !deployVerb
+            && (published.asObject || !(deployTarget || published.siteNamed)));
 
         const veto: DeployIntentReading['veto'] = deniesExternalPublish ? 'denied'
             : publishesContent ? 'content'
             : uses.waits ? 'waits'
+            : uses.follows ? 'follows'
             : '';
         // HOW it is asked decides between an order and a question, not the first
         // word or a question mark: a polite request to publish a named site is the

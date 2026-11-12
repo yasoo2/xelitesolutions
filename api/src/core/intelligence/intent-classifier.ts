@@ -126,9 +126,62 @@ const FAULT_STATED = new RegExp([
     String.raw`\b(?:the|my|our|this|that|its)\s+[\w-]+(?:\s+[\w-]+){0,2}\s+(?:(?:does|do|did|is|are|was|were|will|can|could)(?:n['’]?t|\s+not)|won['’]?t|can['’]?t|cannot|no\s+longer|never|stopped|fails?|keeps?\s+(?:crashing|failing|breaking))\b`,
     String.raw`\b(?:is|are|it['’]?s|got)\s+(?:broken|not\s+working|failing|crashing)\b`,
 ].join('|'), 'iu');
+/*
+ * …WHERE THE FAULT OR THE FIX IS THE REQUEST. The fourth pre-merge review (2026-11-12):
+ * the reader above knew a fault by a negator after a definite noun, anywhere, and took
+ * the tool from real orders that carry one:
+ *
+ *     ابحث عن الدول التي لم توقع على اتفاقية باريس        a search — «التي لم» describes what to find
+ *     Search the web for phones that are not working with 5G
+ *     افتح example.com وخذ سكرين شوت، الموقع مش شغال عندي  an order, and why he gives it
+ *     اعمل لي صورة شعار للمطعم، الشعار القديم مش حلو
+ *     Run the tests, the last run did not finish
+ *     انشر الموقع، الرابط القديم لا يعمل
+ *
+ * Two things a negation is, that a fault report is not:
+ *   • the negation of a RELATIVE clause («التي لم», «اللي مش», "that are not", "which
+ *     never") describes the thing named before it. It is read out before a fault is
+ *     looked for. «الزر اللي في الهيدر مش شغال» still states a fault: its negation is the
+ *     sentence's own, after the relative clause.
+ *   • a REMARK beside an order. A message that opens with a deed of its own — a verb
+ *     that makes, runs, opens, searches, captures, publishes or sends, with its object —
+ *     is that order, and the fault it mentions is the reason for it. Verbs that look at
+ *     a fault or change his work («شوف», «جرب», «عدل», "check", "try", "test") open a fault
+ *     report and are not among them, and neither are the verbs that delete: what they
+ *     read is left as careful as it was. An order to repair («صلحه», "fix it") is the
+ *     fix, wherever it stands.
+ */
+const RELATIVE_NEGATION = new RegExp([
+    String.raw`(?<![\p{L}\p{N}_])(?:التي|الذي|اللي|الي|يلي|اللذي|الذين|اللذين|اللتين|اللاتي|اللواتي|اللذان|اللتان)\s+(?:ما|لم|لا|لن|مش|مو|مب|موب|ليس|ليست|ماهو|ماهي)\s+[\p{L}]+`,
+    String.raw`\b(?:that|which|who)\s+(?:(?:is|are|was|were|do|does|did|will|would|can|could|has|have|had)(?:n['’]?t|\s+not|\s+never|\s+no\s+longer)|won['’]?t|can['’]?t|cannot|never|no\s+longer|stopped|fails?)\b(?:\s+[\w-]+)?`,
+].join('|'), 'giu');
+const OPENING_COURTESY = /^\s*(?:(?:please|pls|kindly|hey|hi|ok|okay|now|just|joe|(?:can|could|would|will)\s+you|يا\s+جو|جو|طيب|يلا|تمام|خلاص|لو\s+سمحت|من\s+فضلك|ممكن|رجاء[اً]?|بليز)[\s،,]+){0,4}/iu;
+/** Deeds with tools of their own, as an order opens with them (folded spelling). The making verbs take a thing that is not yet there: «سوي الزر يشتغل» is a repair. */
+const MAKING_DEED_AR = new Set(['ابن', 'ابني', 'انشي', 'اصنع', 'صمم', 'سوي', 'اعمل', 'برمج', 'ارسم', 'اكتب']);
+const OPENING_DEED_AR = new Set(['شغل', 'اوقف', 'نفذ', 'ثبت', 'نزل', 'حمل', 'انشر', 'ارفع', 'استضف', 'افتح', 'ابحث', 'ادخل', 'اذهب', 'خذ', 'خد', 'التقط',
+    'ارسل', 'ابعت', 'ترجم', 'لخص', 'احفظ', 'انسخ', 'انقل']);
+const DEED_SUFFIX_AR = /(?:لي|لنا|ه|ها|هم|وا|ي)$/u;
+const OPENING_DEED_EN = /^(?:build|create|generate|draw|design|write|deploy|publish|host|upload|run|start|stop|restart|launch|execute|install|open|visit|browse|search|google|navigate|take|capture|screenshot|send|email|download|translate|summari[sz]e|push|ship|go\s+to|make\s+(?:me|us|a|an))\b(?!\s+(?:is|are|was|were|does|doesn|do|don|did|didn|won|will|can|cannot|isn|aren|wasn|not|never|no|fails?|failed|stopped|keeps?|returns?|shows?|buttons?|page|form|feature|function|bar|box|results?|field|screen|links?|icon|menu|tab|option|section|step|process|script|command|job|pipeline|status)\b)/i;
+function opensWithADeedOfItsOwn(bare: string): boolean {
+    const head = bare.slice(0, 160).replace(OPENING_COURTESY, '');
+    if (OPENING_DEED_EN.test(head)) return true;
+    const [first = '', second = '', third = ''] = foldChars(head).match(/[\p{L}\p{N}_]+/gu) || [];
+    if (!/^[؀-ۿ]/u.test(first)) return false;
+    //  «ممكن تفتح…», «تشغل…»: the verb in the second person, as a polite order puts it.
+    const forms = [first, first.replace(DEED_SUFFIX_AR, '')];
+    if (first.startsWith('ت')) forms.push(`ا${first.slice(1)}`, first.slice(1), `ا${first.slice(1)}`.replace(DEED_SUFFIX_AR, ''), first.slice(1).replace(DEED_SUFFIX_AR, ''));
+    if (forms.some(form => OPENING_DEED_AR.has(form))) return true;
+    if (!forms.some(form => MAKING_DEED_AR.has(form))) return false;
+    const made = /^(?:لي|لنا)$/u.test(second) ? third : second;
+    return !!made && !/^(?:ال|لل)/u.test(made);
+}
+const repairOrderedOnce = rememberLastReadings((raw: string): boolean => REPAIR_ORDER.test(unquotedIntentText(stripArabicDiacritics(raw))));
 const faultOrFixOnce = rememberLastReadings((raw: string): boolean => {
+    if (repairOrderedOnce(raw)) return true;
     const bare = unquotedIntentText(stripArabicDiacritics(raw));
-    return REPAIR_ORDER.test(bare) || FAULT_STATED.test(bare) || negatesWhatAThingDoes(bare);
+    const stated = bare.replace(RELATIVE_NEGATION, ' ');
+    if (!(FAULT_STATED.test(stated) || negatesWhatAThingDoes(stated))) return false;
+    return !opensWithADeedOfItsOwn(bare);
 });
 export function reportsAFaultOrOrdersAFix(goalRaw: string): boolean {
     return faultOrFixOnce(String(goalRaw || ''));
@@ -551,7 +604,9 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
 
     // The login that does not work, the search that returns nothing, the page that will
     // not open are parts of HIS work to be fixed — not a place to sign in, search or go.
-    if (reportsAFaultOrOrdersAFix(g)) {
+    //  …unless the fault is said of an address he sends Joe to, and no repair is ordered: «الموقع مش
+    //  شغال، افتح example.com وشوف» names its site like «https://…» does (isWebOrder reads it so too).
+    if (reportsAFaultOrOrdersAFix(g) && (repairOrderedOnce(g) || !WEB_ADDRESS.test(bareProbe))) {
         return { isBrowser: false, confidence: 0.8, reason: 'a fault or a fix in his own work', hasExternalWebTarget: false };
     }
 

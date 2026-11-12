@@ -94,11 +94,41 @@ const NAMED_FILE_PATTERNS = [
 // «Node.js», «Vue.js», «Three.js» name a technology, not a file he wants written.
 const TECHNOLOGY_NAME = /^(?:node|vue|next|nuxt|react|express|three|d3|chart|angular|ember|backbone|deno|bun|solid|svelte|alpine|moment|lodash|p5|anime|pixi|babylon|socket\.io)\.js$/i;
 
+/*
+ * ⛔ A FILE HE PROTECTS IS NEVER THE FILE TO WRITE.
+ *
+ * «غير العنوان ولا تلمس ملف config.json» planned ai_write_file with path "config.json":
+ * the one name in the request was the one he forbade. A name that stands under a
+ * protection in its own sentence — «لا تلمس / لا تعدل / بدون / ما عدا / اترك», "do not
+ * touch / never / without / except / leave" — is what the order must keep away from,
+ * and is not counted. A creating verb between the protection and the name opens a new
+ * order («لا تنشئ مشروعاً جديداً، أنشئ ملف notes.md», "don't worry, create a file named
+ * a.txt"); the verb the protection itself negates does not ("do not create a.txt").
+ */
+const PROTECTS_WHAT_FOLLOWS = new RegExp([
+    String.raw`\b(?:do\s+not|don['’]?t|never|without|not|except|excluding|other\s+than|apart\s+from|aside\s+from|besides)\b`,
+    String.raw`\b(?:leave|keep|preserve)\s+(?:the\s+)?(?:file\s+)?$`,
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:(?:لا|ما)\s+ت[\p{L}]+|بدون|دون|بلاش|[اأ]وعى|[إا]ياك|عدا|ماعدا|باستثناء|[إا]لا|اترك)(?![\p{L}\p{N}_])`,
+].join('|'), 'giu');
+const OPENS_A_NEW_ORDER = /\b(?:create|write|make|generate|save|add|build|put)\b|(?<![\p{L}\p{N}_])[وف]?(?:[أا]نشئ|انشي|اكتب|اعمل|سوي|احفظ|[أا]ضف|حط)(?![\p{L}\p{N}_])/iu;
+function standsUnderAProtection(raw: string, at: number): boolean {
+    const sentence = raw.slice(Math.max(0, at - 120), at).split(/[!?؟؛;\n]|\.\s/u).pop() || '';
+    let nearest: RegExpMatchArray | null = null;
+    for (const m of sentence.matchAll(PROTECTS_WHAT_FOLLOWS)) nearest = m;
+    if (!nearest) return false;
+    //  The first word after the protection is the deed it forbids ("do not CREATE …").
+    const after = sentence.slice((nearest.index || 0) + nearest[0].length).replace(/^\s*[\p{L}]+/u, '');
+    return !OPENS_A_NEW_ORDER.test(after);
+}
+
 export function namedTargetFile(input: string, accept?: (name: string) => boolean): string | null {
     const raw = String(input || '');
     const names = new Set<string>();
     for (const re of NAMED_FILE_PATTERNS) {
-        for (const m of raw.matchAll(re)) names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
+        for (const m of raw.matchAll(re)) {
+            if (standsUnderAProtection(raw, m.index || 0)) continue;
+            names.add(String(m[1]).replace(/[.,؛،:»”'"\x60]+$/u, '').replace(/\\/g, '/'));
+        }
     }
     const valid = [...names].filter(n => n && !TECHNOLOGY_NAME.test(n) && !n.includes('..') && !n.startsWith('/') && !/^[A-Za-z]:/.test(n)
         && SAFE_RELATIVE_PATH.test(n) && /\.[A-Za-z0-9]{1,16}$/.test(n)

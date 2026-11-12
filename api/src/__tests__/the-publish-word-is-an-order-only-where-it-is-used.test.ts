@@ -85,14 +85,22 @@ describe('a mention of the publish word is not a use of it', () => {
 });
 
 describe('an order that waits is not an order for now', () => {
+    //  The fourth review: a step of Joe's own before the publish is work the same words order, not a
+    //  wait (a-publish-after-his-own-work-is-an-order-and-a-refusal-is-not). No deploy alone, by any road.
     it.each([
         'انشره بعد ما تصلح الخطأ',
+        'بعد ما تصلح الخطأ، انشره',
+    ])('%s → follows his own work: no deploy alone', text => {
+        expect(read(text)).toMatchObject({ deploy: false, veto: 'follows', ordersAPublish: false });
+        expect(planned(text).filter(tool => PlanningEngine.isSiteDeployTool(tool))).toEqual([]);
+    });
+
+    it.each([
         'انشره بس بعد ما أقولك',
         'انشره لما أقولك',
         'انشر الموقع لما أخلص المراجعة',
         'انشر الموقع بعد ما أقولك',
         'لما أقولك، انشره',
-        'بعد ما تصلح الخطأ، انشره',
         'إذا نجحت الاختبارات انشر الموقع',
         'انشره بعدين مو الحين',
         'publish it after I tell you',
