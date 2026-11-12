@@ -33,7 +33,7 @@ const SECRETS: Record<string, string> = {
     MONGO_URI: 'mongodb://r39user:r39-mongo-pw-5d6e7f8a@r39-db.example/joe',
     ADMIN_EMAIL: 'r39-owner-4b5c6d7e@joe-sentinel.example',
     ADMIN_PASSWORD: 'r39-admin-pw-9e8d7c6b5a4f-sentinel',
-    ANTHROPIC_API_KEY: 'sk-ant-r39-0a1b2c3d4e5f6a7b8c9d0e1f2a3b',
+    ANTHROPIC_API_KEY: 'r39-sentinel-anthropic-0a1b2c3d4e5f',
     R39_INNOCENT_NAME: `ghp_${'r3K9'.repeat(9)}`,
     JOE_DATA_DIR: path.join(TMP, 'r39-joe-data-dir-sentinel-3c4d5e'),
     PORT: '59391',
