@@ -547,6 +547,12 @@ const YOU_FINISH_EN = /^(?:done|finished|ready|through|complete|completed|finish
  * or a bare verb after a plural subject ("the tests pass").
  */
 const AN_APPROVAL_OR_PAYMENT_EN = /^(?:approv[a-z]*|permission|consent|confirm(?:s|ed|ation)?|payments?|paid|pays|signoff|ahead)$/u;
+/** The nouns among them, which may also name something else: "the payment bug", "the confirmation email". */
+const AN_APPROVAL_OR_PAYMENT_NOUN_EN = /^(?:approvals?|permission|consent|confirmation|payments?|signoff)$/u;
+/** What may follow the head of a condition and leave it the head: "payment is confirmed", "approval from legal", "payment clears". */
+const AFTER_ITS_HEAD_EN = /^(?:is|are|was|were|has|have|had|gets|got|comes|came|goes|went|clears|cleared|arrives|arrived|lands|landed|succeeds|completes|from|for|and|then|please|now|today|tomorrow|received|confirmed|done|completed|processed|granted|given)$/u;
+/** "after getting approval", "after receiving the payment": a gerund of what he is given, not of what he does. */
+const GIVEN_TO_HIM_EN = /^(?:getting|receiving|obtaining|hearing|having|awaiting|seeing|marketing|accounting|billing|engineering|testing|staging|meeting|morning|evening|something|anything|nothing|everything|spring|thing|king)$/u;
 const NOT_A_SUBJECT_EN = /^(?:the|a|an|my|our|your|his|her|their|its|this|that|these|those|all|some|any|each|every|last|latest|recent|new|final|next|previous|current|other|remaining|pending|first|second|few|more|of|for|to|in|on|with|at|by|from|into)$/u;
 const AN_AUXILIARY_EN = /^(?:is|are|was|were|has|have|had|gets|got|does|did|can|will|becomes|goes|comes)$/u;
 const A_PLURAL_BY_ITS_ENDING = /(?:ss|us|is|ions|ments|ings|ers|ors|ness|ties|ities|days|weeks|hours|minutes|months|years|fixes|changes|updates|edits|tweaks|tests|checks|builds|releases|sales|pages|images|photos|files|items|steps|tasks|notes|styles|features|sections|details|results|issues|bugs|posts|views|works|needs|plans|designs|costs)$/u;
@@ -559,6 +565,12 @@ const NOT_YOUR_DEED_AR = /^[بهح]?ت(?:ستلم(?:ي|وا|و)?(?:ه|ها|هم)
 /** …the last four only with their subject after them: «تنتهي الاختبارات», «تجهز الصور»; «بعد ما تجهز» alone is "when you are ready". */
 const NEEDS_ITS_SUBJECT_AR = /^[بهح]?ت(?:نجح|كتمل|نتهي|جهز)$/u;
 const ANOTHER_PARTY_AR = new RegExp(`^${AR_CLITICS}(?:عميل|عميله|عملا|زبون|زبونه|زباين|شركه|اداره|مدير|مديره|فريق|مالك|صاحب|بنك|محاسب|مصمم|مصممه|مسوول|جهه|لجنه|شريك|شركا|ممول|مستثمر|كلاينت|مشرف|رييس|ريس|محامي|مراجع|مدقق)(?:ي|نا|ه|ها|هم)?$`, 'u');
+/** The party a verb in «ت» can have as its SUBJECT: feminine, or many. «تضيف المدير» has Joe as its subject and the manager as its object. */
+const SUBJECT_OF_A_VERB_IN_T_AR = new RegExp(`^${AR_CLITICS}(?:عميله|عملا|زبونه|زباين|شركه|اداره|مديره|مصممه|جهه|لجنه|شركا)(?:ي|نا|ه|ها|هم)?$`, 'u');
+/** «تدفع التغييرات على جيت هاب»: what is pushed, not paid. */
+const PUSHED_AR = /^(?:ال)?(?:تغييرات|تعديلات|تحديثات|كود|كوميت|كوميتات|فرع|براتش|ملفات)$/u;
+/** «تجهز الصفحة الرئيسية», «تكتمل صفحة التواصل»: a part of the site is his to make ready; «تجهز الصور», «تكتمل الاختبارات» come from elsewhere. */
+const BUILT_BY_HIM_AR = new RegExp(`^${AR_CLITICS}(?:صفحه|صفحات|قسم|اقسام|سكشن|هيدر|فوتر|نموذج|فورم|زر|ازرار|واجهه|قايمه|موقع|تطبيق|متجر|لوحه|داشبورد|تعديلات|اصلاحات|تغييرات|تحديثات|ميزه|خاصيه)(?:ي|نا|ه|ها)?$`, 'u');
 const AN_ANSWER_AR = new RegExp(`^${AR_CLITICS}(?:رد|ردود|جواب|راي|ملاحظات|تعليق|تعليقات|قرار|فيدباك|من)$`, 'u');
 const AN_APPROVAL_OR_PAYMENT_AR = /^(?:ال|لل)?(?:موافق[\p{L}]{1,4}|اذن|تاكيد|اعتماد|دفع|سداد|توقيع|استلام|تسديد)$/u;
 /** The result of a deed ordered beside the publish: "…and deploy if they pass", «…وانشره لو نجحت». */
@@ -581,11 +593,36 @@ const BETWEEN_A_NEGATOR_AND_A_WISH = /^(?:['’]|do|does|did|would|am|m|re|are|i
  * names a social network is read as content is: no deploy tool.
  */
 const SOCIAL_VENUE = /^(?:[وفبلع]?(?:ال|لل)?(?:فيسبوك|فيس|تويتر|انستغرام|انستقرام|انستجرام|انستا|لينكدان|لينكدن|تيكتوك|يوتيوب|واتساب|واتس|تلغرام|تليجرام|تلجرام|سناب|سنابشات|ريديت|سوشيال)|facebook|fb|twitter|instagram|insta|linkedin|tiktok|youtube|whatsapp|telegram|snapchat|reddit|threads|social)$/u;
-const TO_A_VENUE = /^(?:علي|ع|في|الي|ل|عبر|to|on|onto|via|across)$/u;
-/** «عالفيسبوك», «للفيسبوك», «بالفيسبوك», «لوسائل التواصل»: the preposition written on the venue. */
-const GLUED_TO_A_VENUE = /^(?:عال|لل|بال|فال|[لب])[\p{L}]{3,}$/u;
-const WHOSE_PAGE = /^(?:my|our|the|his|her|their|your|a|personal|business|company|official|(?:ال)?(?:صفح|حساب|قنا|جروب|مجموع)[\p{L}]{0,4})$/u;
-const A_SITE_LIKE_IT = /^(?:apps?|sites?|websites?|projects?|stores?|shops?|platforms?|clone|clones|like|style|styled|bot|bots|button|buttons|widget|integration|login|feed|share|sharing|link|links|icon|icons|api)$/u;
+/*
+ * …WHEREVER THE NETWORK STANDS IN THE CLAUSE. The sixth pre-merge review (2026-11-12): the
+ * venue was read only right after a preposition of place, so a quantifier or any unlisted
+ * word between them deployed the site as the post — «انشره على كل مواقع التواصل», «انشره على
+ * جميع حساباتنا: فيسبوك وتويتر», «انشره على ستوري الانستغرام», "Deploy it to all social
+ * networks" — and «انشره ففيسبوك», "Publish it in our Facebook group", "…through Twitter",
+ * "…to both Facebook and Instagram" lost the reading altogether. The test is turned round: a
+ * network named in the publish clause IS where it goes, unless a SITE NOUN stands beside it as
+ * what is being published or built — after it in English ("my twitter clone", "the reddit
+ * bot", "the app with the WhatsApp button", "the youtube downloader app"), before it in Arabic
+ * («موقع يشبه فيسبوك», «تطبيق السوشيال ميديا», «زر واتساب»). A place noun that a preposition
+ * leads is the venue again: «انشره على موقع فيسبوك».
+ */
+const TO_A_VENUE = /^(?:علي|ع|في|الي|ل|عبر|to|on|onto|via|across|in|at|through)$/u;
+/** «مواقع التواصل», «وسائل التواصل», «منصات السوشيال»: the networks, named together. */
+const THE_NETWORKS_AR = /^[وفبلع]?(?:ال|لل)?(?:وسايل|مواقع|منصات|شبكات|قنوات|حسابات)$/u;
+const THE_NETWORKS_EN = /^(?:media|networks?|networking|channels?|accounts?|platforms|pages|profiles|handles|sites)$/u;
+const OF_THE_NETWORKS_AR =/^(?:ال)?(?:تواصل|سوشيال|سوشل)$/u;
+/** After the network: "twitter clone", "social network app", "WhatsApp button", "facebook login", "youtube downloader app". */
+const A_SITE_LIKE_IT = /^(?:apps?|application|sites?|websites?|projects?|stores?|shops?|platform|clone|clones|replica|alternative|style|styled|bot|bots|button|buttons|widgets?|integration|login|signin|auth|oauth|feed|share|sharing|link|links|icon|icons|api|sdk|pixel|webhook|downloader|scraper|viewer|client|dashboard|embed|plugin|tool|analytics|scheduler|manager|template|theme|landing|game)$/u;
+/** What ends the noun the network opens: "on Twitter FOR the launch", "to Facebook AND Instagram". */
+const ENDS_ITS_NOUN = /^(?:for|to|on|in|at|with|by|from|of|about|and|or|then|so|but|after|before|when|once|if|as|[^\p{L}\p{N}_'’-])$/u;
+/** Before the network, in English: "like twitter", "a clone of twitter", "login with facebook", "sign in via google"… */
+const A_SITE_OF_IT_EN = /^(?:like|clone|clones|copy|replica|similar|inspired|login|signin|sign|log|share|sharing|style|styled)$/u;
+const BETWEEN_IT_AND_THE_NETWORK = /^(?:in|with|via|by|of|to|on|the|a|an|using|through)$/u;
+/** Before the network, in Arabic: the thing built («موقع», «تطبيق», «زر», «أيقونات», «بوت») or its likeness («يشبه», «شبيه», «مثل», «زي»). */
+const A_SITE_OF_IT_AR = new RegExp(`^${AR_CLITICS}(?:موقع|تطبيق|متجر|مشروع|منصه|نظام|نسخه|نسخ|كلون|بوت|زر|ازرار|ايقونه|ايقونات|رابط|روابط|ودجت|لوجين|محمل|داشبورد|لوحه|مشاركه|تكامل|ربط|تسجيل|دخول|ستايل|شبيه|شبيهه|مشابه|مشابهه)(?:ي|نا|ه|ها|ك)?$|^(?:[يت]شبه|شبه|مثل|زي|متل|بحال|كانه)$`, 'u');
+/** …but a PLACE that a preposition leads is where it goes: «على موقع فيسبوك», «في تطبيق انستغرام», «بتطبيق واتساب». */
+const A_PLACE_AR = /^(?:[بلع]|عال|بال|لل|ال)?(?:موقع|تطبيق|منصه)$/u;
+const A_PLACE_LED_AR = /^(?:[بلع]|عال|بال|لل)(?:موقع|تطبيق|منصه)$/u;
 /*
  * "THE DEPLOY FAILED, TRY AGAIN" ORDERS THE DEPLOY AGAIN. The publish named as a thing
  * («النشر», "the deploy") is a mention, and orders nothing — until an order to do it again
@@ -611,6 +648,18 @@ const DENIES_IT_WORKED = /^(?:didn|doesn|isn|wasn|hasn|not|never|no|t|ما|مش|
 const IT_FAILED = /^(?:failed|fails|failing|broke|broken|crashed|crashes|errored|[وف]?(?:فشل|فشلت|خرب|خربت|علق|علقت|تعطل|تعطلت))$/u;
 const ITSELF = /^(?:it|that|this|which|also|again|still|just|and|then|has|have|هو|هي|برضه|كمان|ايضا)$/u;
 const A_RESULT_EN = /^(?:pass|passes|passed|passing|succeed|succeeds|succeeded|green|work|works|worked|clean)$/u;
+/** «واليوم فشل», "today it failed", "then it broke": a word of time before the failure names nothing else that failed. */
+const SINCE_THEN = /^[وف]?(?:اليوم|امس|امبارح|مبارح|البارح|البارحه|الحين|الان|هلق|هلا|دلوقتي|دلوقت|هسه|دابا|بعدين|بعدها|فجاه|today|now|then|later|suddenly|yesterday|since|but|و|ف|بس|لكن)$/u;
+/*
+ * A CONDITION TOLD AS DONE HOLDS NOTHING BACK. "After the client approved it yesterday I want it live:
+ * deploy now" waited for an approval it had just been told of. When the clause of time before the order
+ * is in the past («بعد ما وافق العميل امس», "after the client approved it") and the order itself says now
+ * («انشره دلوقتي», "deploy now"), the order is for now. «إذا / لو», "if" stay conditions in any tense.
+ */
+const RIGHT_NOW = /^(?:now|immediately|asap|الحين|الان|هلق|هلا|دلوقتي|دلوقت|هسه|حالا|فورا|دابا|دغيا|توا)$/u;
+const PAST_TIME = /^(?:yesterday|already|earlier|امس|امبارح|مبارح|البارح|البارحه|خلاص)$/u;
+const A_PAST_FORM_EN = /^(?:[a-z]{3,}ed|paid|gave|said|sent|got|came|went|did)$/u;
+const A_FILE_EXTENSION = /^(?:sh|bash|zsh|ps1|bat|cmd|ya?ml|json|js|mjs|cjs|ts|tsx|jsx|py|rb|php|toml|ini|cfg|conf|md|txt|log|env|xml|html?|css|lock|tf|sql|go|rs|java)$/u;
 /** "…and deploy it", "…and publish the site", "…and deploy when done": the order in a list, with what it publishes or when. */
 const ENDS_A_LIST_EN = /^(?:and|then|also|please)$/u;
 const AFTER_AN_ORDER_IN_A_LIST = /^(?:it|this|that|them|the|my|our|your|everything|when|once|after|now|to|on|please|asap|immediately|today)$/u;
@@ -702,16 +751,24 @@ function readPublishUses(text: string): PublishUses {
         for (let seen = 0; seen < 2 && BEFORE_YOUR_VERB_AR.test(at(v)); seen++) v++;
         const verb = at(v);
         if (!YOU_DO_AR.test(verb)) return 'waits';
-        //  «تستلم الشعار», «توصلك الصور», «تدفع الشركة», «تنجح الاختبارات»: not a deed of his.
-        if (NOT_YOUR_DEED_AR.test(verb) && !(NEEDS_ITS_SUBJECT_AR.test(verb) && endsItsClause(v + 1))) return 'waits';
+        //  «تستلم الشعار», «توصلك الصور», «تدفع الشركة», «تنجح الاختبارات»: not a deed of his —
+        //  «تنتهي من التعديلات», «تجهز لي صفحة الدفع», «تكتمل صفحة التواصل», «تدفع التغييرات» are: the same verb, with his own work after it.
+        const next = at(v + 1);
+        const hisWork = /دفع$/u.test(verb) ? PUSHED_AR.test(next)
+            : /نتهي$/u.test(verb) ? next === 'من'
+            : /(?:جهز|كتمل)$/u.test(verb) ? ASK_OBJECT_FILLER.test(next) || BUILT_BY_HIM_AR.test(next)
+            : false;
+        if (NOT_YOUR_DEED_AR.test(verb) && !hisWork && !(NEEDS_ITS_SUBJECT_AR.test(verb) && endsItsClause(/^من(?:ه|ها|هم)$/u.test(next) ? v + 2 : v + 1))) return 'waits';
         for (let j = v; j < f.length && j <= v + 6; j++) {
             const u = f[j];
             if (USE_HARD_BREAK.test(u) || isComma(u) || (j > v && ORDER_PUBLISH_AR.test(u))) break;
             if (HIS_APPROVAL_AR.test(u)) return 'waits';
-            //  Another party as the verb's subject, as the giver («من العميل»), or as the one who answers («رد العميل»).
-            if (j > v && ANOTHER_PARTY_AR.test(u) && (j === v + 1 || AN_ANSWER_AR.test(f[j - 1]))) return 'waits';
+            //  Another party as the giver («من العميل»), as the one who answers («رد العميل»), or as the verb's subject — which a
+            //  verb in «ت» has only when the party is feminine or many («تدفع الشركة», «توافق الإدارة»). «تضيف المدير», «تراسل
+            //  العميل» are Joe's deeds, with the party as their object.
+            if (j > v && ANOTHER_PARTY_AR.test(u) && (AN_ANSWER_AR.test(f[j - 1]) || (j === v + 1 && SUBJECT_OF_A_VERB_IN_T_AR.test(u)))) return 'waits';
         }
-        return YOU_FINISH_AR.test(verb) && endsItsClause(v + 1) ? '' : 'follows';
+        return YOU_FINISH_AR.test(verb) && endsItsClause(/^من(?:ه|ها|هم)$/u.test(next) ? v + 2 : v + 1) ? '' : 'follows';
     };
     /** The same after "after / once / when you": `k` is the word after "you". */
     const yourStepEn = (k: number, after: boolean): PublishWait => {
@@ -740,10 +797,17 @@ function readPublishUses(text: string): PublishUses {
     /** After "after / once / when": a clause whose subject is not Joe ("the client approves", "management signs off"), or an approval or a payment named ("the client's approval"). */
     const anotherPartysEvent = (k: number): boolean => {
         let subject = false, last = '';
+        //  "after fixing the payment bug", "after adding the confirmation email template": a gerund is work of his own,
+        //  whatever its object is called — unless it is what he is given ("after getting the client's approval").
+        if (/^[a-z]{2,}ing$/u.test(at(k)) && !GIVEN_TO_HIM_EN.test(at(k))) return false;
         for (let j = k; j < f.length && j <= k + 8; j++) {
             const u = f[j];
             if (USE_HARD_BREAK.test(u) || isComma(u) || USE_ZONE_END.test(u) || EN_PUBLISH_USE.test(u)) return false;
-            if (AN_APPROVAL_OR_PAYMENT_EN.test(u) || (u === 'off' && /^sign(?:s|ed)?$/u.test(last))) return true;
+            //  An approval or a payment is the condition where it is its HEAD ("after payment", "after the client's approval",
+            //  "after approval from legal") — not where it names another noun ("the payment integration", "the payments page").
+            const names = AN_APPROVAL_OR_PAYMENT_NOUN_EN.test(u) && /^[a-z]{3,}$/u.test(at(j + 1)) && !AFTER_ITS_HEAD_EN.test(at(j + 1))
+                && !AN_APPROVAL_OR_PAYMENT_EN.test(at(j + 1)) && !EN_PUBLISH_USE.test(at(j + 1));
+            if ((AN_APPROVAL_OR_PAYMENT_EN.test(u) && !names) || (u === 'off' && /^sign(?:s|ed)?$/u.test(last))) return true;
             if (subject && (AN_AUXILIARY_EN.test(u) || (u.length >= 5 && /ed$/u.test(u))
                 || (u.length >= 4 && /[a-z]s$/u.test(u) && (!A_PLURAL_BY_ITS_ENDING.test(u) || /^(?:it|them|this|that|everything)$/u.test(at(j + 1))))
                 || (/[a-z]s$/u.test(last) && A_BARE_VERB_EN.test(u)))) return true;
@@ -798,26 +862,43 @@ function readPublishUses(text: string): PublishUses {
         return false;
     };
     /**
-     * A social network named in the publish word's own clause AS WHERE IT GOES: after a
-     * preposition of place («على / ع / في / لـ / عبر», "to / on / via"), with nothing between
-     * them but whose page it is («على صفحتي في فيسبوك», "on my facebook page"). A network
-     * that says what the app IS or HAS is not a venue: "Deploy my twitter clone", «انشر
-     * موقع يشبه فيسبوك», "Deploy the app with the WhatsApp button" publish a site.
+     * A social network named in the publish word's own clause is WHERE IT GOES — whatever
+     * stands between them («على كل مواقع التواصل», "in our Facebook group", «انشره تويتر») —
+     * unless a site noun stands beside it as what is being published or built: "Deploy my
+     * twitter clone", «انشر موقع يشبه فيسبوك», "Deploy the app with the WhatsApp button",
+     * «انشر تطبيق السوشيال ميديا» publish a site. The clause ends at the next deed: "Deploy
+     * the site and share it on twitter" deploys, and the share is a second deed.
      */
     const socialAfter = (i: number): boolean => {
-        let led = -100;                                      // where a preposition of place last stood
-        for (let j = i + 1; j < f.length && j <= i + 8; j++) {
+        let ofASite = -100;                                  // the network last read as part of a site
+        for (let j = i + 1; j < f.length && j <= i + 10; j++) {
             const u = f[j];
-            if (TO_A_VENUE.test(u)) { led = j; continue; }
-            const network = /^[وفبل]?(?:ال)?(?:وسايل|مواقع|منصات|شبكات)$/u.test(u) && /^(?:ال)?(?:تواصل|سوشيال)$/u.test(at(j + 1));
-            if (SOCIAL_VENUE.test(u) || network) {
-                //  …and the thing it names is the network itself, not a site like it: "on my twitter clone" is a site.
-                if ((j - led <= 3 || GLUED_TO_A_VENUE.test(u)) && !A_SITE_LIKE_IT.test(at(j + 1))) return true;
+            const together = THE_NETWORKS_AR.test(u) && OF_THE_NETWORKS_AR.test(at(j + 1));
+            //  "social" is a network with its noun ("social media", "all our social channels"); "the social proof section" is a section.
+            if ((SOCIAL_VENUE.test(u) && (u !== 'social' || THE_NETWORKS_EN.test(at(j + 1)) || !/^\p{L}/u.test(at(j + 1)))) || together) {
+                //  A site noun before it: «زر واتساب», «موقع يشبه فيسبوك», «نسخة من تويتر», «البوت بتاع تليجرام», "like twitter", "login with facebook".
+                let s = j - 1;
+                if (/^(?:من|مع|بتاع|بتاعه|بتاعت|تبع|حق|مال)$/u.test(at(s))) s--;
+                let before = s > i && A_SITE_OF_IT_AR.test(at(s)) && !(A_PLACE_AR.test(at(s)) && (TO_A_VENUE.test(at(s - 1)) || A_PLACE_LED_AR.test(at(s))));
+                for (let k = j - 1, seen = 0; !before && k > i && seen < 3; k--, seen++) {
+                    if (A_SITE_OF_IT_EN.test(f[k])) before = true;
+                    else if (!BETWEEN_IT_AND_THE_NETWORK.test(f[k])) break;
+                }
+                //  A site noun after it, in the noun the network opens: "twitter clone", "social network app", "youtube downloader app".
+                let after = false;
+                for (let k = j + 1, seen = 0; !after && k < f.length && k <= j + 8 && seen < 3; k++, seen++) {
+                    //  "the facebook and twitter icons": the networks are listed, and the noun is theirs together.
+                    if (/^(?:and|or|,|&)$/u.test(f[k]) && SOCIAL_VENUE.test(at(k + 1))) { k++; seen = 0; continue; }
+                    if (ENDS_ITS_NOUN.test(f[k])) break;
+                    after = A_SITE_LIKE_IT.test(f[k]);
+                }
+                //  …and a network listed with one that names a site names it too: «أيقونات فيسبوك وتويتر», "the facebook and twitter icons".
+                const listed = ofASite === j - 1 || (ofASite === j - 2 && /^(?:and|or|و|او|,|،|&)$/u.test(at(j - 1)));
+                if (!before && !after && !listed) return true;
+                ofASite = together ? j + 1 : j;
                 continue;
             }
-            if (j - led <= 2 && WHOSE_PAGE.test(u)) continue;
-            led = -100;
-            if (USE_HARD_BREAK.test(u) || isComma(u) || USE_ZONE_END.test(u) || /^[وف][\p{L}]{3,}$/u.test(u)) return false;
+            if (USE_HARD_BREAK.test(u) || (isComma(u) && ofASite !== j - 1) || (USE_ZONE_END.test(u) && ofASite !== j - 1) || /^[وف][\p{L}]{3,}$/u.test(u)) return false;
         }
         return false;
     };
@@ -826,6 +907,8 @@ function readPublishUses(text: string): PublishUses {
     let label = false, fields = false, free = false, waiting = false, following = false, refusal = false, social = false;
     let lastPublishNamed = -100;                             // where «النشر», "the deploy" last stood as a thing
     let inItsClause = false;                                 // …and its clause is still being said
+    let workedAt = -100;                                     // where the publish was last said to have worked, in this sentence
+    let subordinatedAt = -100;                               // where the condition that holds the next order opened
     const inList = new Uint8Array(f.length);                 // words of a field list, and its header
     /** The publish named as a thing — unless it is said to have WORKED: "The deploy worked. The login failed, try again" repeats no publish. */
     const nameThePublish = (i: number): void => {
@@ -834,7 +917,7 @@ function readPublishUses(text: string): PublishUses {
             const u = f[j];
             if (USE_HARD_BREAK.test(u) || isComma(u) || USE_COORDINATOR.test(u)) break;
             if (DENIES_IT_WORKED.test(u)) negated = true;
-            else if (IT_WORKED.test(u)) { if (negated) break; lastPublishNamed = -100; inItsClause = false; return; }
+            else if (IT_WORKED.test(u)) { if (negated) break; lastPublishNamed = -100; inItsClause = false; workedAt = i; return; }
         }
         lastPublishNamed = i; inItsClause = true;
     };
@@ -851,10 +934,37 @@ function readPublishUses(text: string): PublishUses {
         return false;
     };
     const hold = (kind: PublishWait): void => { if (kind === 'waits') waiting = true; else following = true; };
+    /** «انشره دلوقتي», "deploy now", "deploy the site right now": the order says now, in its own clause. */
+    const orderedForNow = (i: number): boolean => {
+        for (let j = i + 1; j < f.length && j <= i + 4; j++) {
+            const u = f[j];
+            if (USE_HARD_BREAK.test(u) || isComma(u) || USE_ZONE_END.test(u) || NOT_WORD.test(u)) return false;
+            if (RIGHT_NOW.test(u)) return true;
+        }
+        return false;
+    };
+    /** The condition before the order is told in the past: a word of past time in it, a past form in English, a verb with no prefix of the present after «ما / لما». */
+    const toldAsDone = (from: number, to: number): boolean => {
+        if (from < 0 || to - from > 14) return false;
+        const opens = f[from].replace(/^[وف](?=[\p{L}]{3})/u, ''), withMa = at(from + 1) === 'ما';
+        if (!(AFTER_EN.test(opens) || AFTER_AR.test(opens) || (withMa && AFTER_AR_WITH_MA.test(opens)))) return false;
+        const verb = withMa ? at(from + 2) : at(from + 1);
+        if (/^[\p{L}]{3,}$/u.test(verb) && /^\p{Script=Arabic}/u.test(verb) && !/^[بهح]?[يتنا]/u.test(verb) && !/^(?:ال|لل)/u.test(verb)) return true;
+        //  "is approved", "gets paid" are still to come, and "the fixed header" is a header.
+        for (let j = from + 1; j < to; j++) if (PAST_TIME.test(f[j]) || (A_PAST_FORM_EN.test(f[j]) && !/^(?:is|are|be|being|gets|get|isn|aren|the|a|an|my|our|this|that)$/u.test(f[j - 1]))) return true;
+        return false;
+    };
+    /** «deploy.sh», «scripts/deploy.yml»: the word is a file's name, and its dot ends no sentence. */
+    const inAFileName = (i: number): boolean => {
+        const dot = f[i] === '.' ? i : i + 1;
+        if (f[dot] !== '.' || dot < 1 || dot + 1 >= f.length || !A_FILE_EXTENSION.test(f[dot + 1]) || !/^[a-z0-9_-]+$/u.test(f[dot - 1])) return false;
+        const dotAt = found[dot].index || 0;
+        return (found[dot - 1].index || 0) + found[dot - 1][0].length === dotAt && (found[dot + 1].index || 0) === dotAt + 1;
+    };
     for (let i = 0; i < f.length; i++) {
         const t = f[i];
         if (fields) inList[i] = 1;
-        if (USE_HARD_BREAK.test(t)) { subordinated = ''; label = false; fields = false; inItsClause = false; continue; }
+        if (USE_HARD_BREAK.test(t) && !inAFileName(i)) { subordinated = ''; label = false; fields = false; inItsClause = false; workedAt = -100; continue; }
         if (isComma(t) || t === ':') {
             label = false; inItsClause = false;
             if (t === ':' && (FIELD_HEADER.test(at(i - 1)) || FIELD_HEADER.test(at(i - 2)) || FIELD_HEADER.test(at(i - 3)))) {
@@ -878,8 +988,12 @@ function readPublishUses(text: string): PublishUses {
             const after = at(i + 1);
             if (noAlif && (!after || USE_HARD_BREAK.test(after) || isComma(after) || FOLLOWS_A_BARE_ORDER.test(after) || ASK_COURTESY.test(after))) ar = [t, noAlif[1], 'ه'] as unknown as RegExpMatchArray;
         }
+        //  «احذف ملف النشر deploy.sh»: the publish word is a file's name, and what is ordered is done to the file.
+        if (!ar && EN_PUBLISH_USE.test(t) && inAFileName(i)) { blank.push([start, end, true]); continue; }
         const en = !ar && EN_PUBLISH_USE.test(t);
         if (!ar && !en) {
+            //  «الحقول: الاسم، استضافة الموقع، التكلفة», «زر الاستضافة»: the noun of the publish in a field list or a label is a field, a label.
+            if ((fields || label) && (PUBLISH_WORD_TOKEN.test(t) || THE_PUBLISH_AR.test(t) || ASK_PUBLISHING_AR.test(t) || /^(?:ال)?استضافه$/u.test(t))) { blank.push([start, end, true]); continue; }
             //  «ممكن تنشر الموقع بعد ما أراجعه؟»: the verb he hands Joe waits like the order does.
             //  Only on what follows it: «بعد ما تنشر الموقع ابعتلي الرابط» is not a wait.
             if (ASK_YOU_PUBLISH_AR.test(t)) {
@@ -898,6 +1012,15 @@ function readPublishUses(text: string): PublishUses {
             }
             if (ASK_PUBLISHING_AR.test(t) && socialAfter(i)) social = true;
             if (!label && !fields && (THE_PUBLISH_AR.test(t) || THE_PUBLISH_EN.test(t)) && !isQuoted(start)) { nameThePublish(i); continue; }
+            //  "The deploy was fine yesterday, today it failed, retry": the same publish, said to have failed SINCE — by a pronoun,
+            //  by its own name, or with no subject at all («واليوم فشل») — is named again, and the retry is its.
+            if (workedAt >= 0 && lastPublishNamed < 0 && IT_FAILED.test(t)) {
+                const names = (w: string): boolean => /^[\p{L}]{2,}$/u.test(w) && !ITSELF.test(w) && !SINCE_THEN.test(w)
+                    && !THE_PUBLISH_AR.test(w) && !THE_PUBLISH_EN.test(w) && !EN_PUBLISH_USE.test(w);
+                if (!names(prev) && !(/^[a-z]/u.test(t) ? false : names(at(i + 1)))) { lastPublishNamed = i; inItsClause = false; }
+                workedAt = -100;
+                continue;
+            }
             //  "…The login failed, try again": what failed last is the login, and the retry is its.
             if (lastPublishNamed >= 0 && !inItsClause && IT_FAILED.test(t)) {
                 const another = (w: string): boolean => /^[\p{L}]{2,}$/u.test(w) && !ITSELF.test(w);
@@ -922,7 +1045,7 @@ function readPublishUses(text: string): PublishUses {
             }
             const glued = /^[وف][\p{L}]{2,}$/u.test(t);
             const kind = subordinatorAt(i) || (glued && SUBORDINATOR_AR.test(t.slice(1)) ? subordinatorAt(i, t.slice(1)) : '');
-            if (kind) subordinated = kind;
+            if (kind) { subordinated = kind; subordinatedAt = i; }
             else if (LABEL_NOUN_AR.test(t) || LABEL_WORD.test(t)) label = true;
             continue;
         }
@@ -945,6 +1068,8 @@ function readPublishUses(text: string): PublishUses {
         if (refusedAt(i)) { blank.push([start, end, true]); refusal = true; continue; }
         if (socialAfter(i)) { blank.push([start, end, false]); social = true; continue; }
         let state: PublishWait = subordinated || waitAfter(i);
+        //  "After the client approved it yesterday I want it live: deploy now": the condition is told as done, and the order is for now.
+        if (state === 'waits' && subordinated && orderedForNow(i) && toldAsDone(subordinatedAt, i)) state = waitAfter(i);
         //  "Run the tests and deploy if they pass": the condition is the result of the deed ordered before it.
         if (state === 'waits' && !subordinated && i >= 2 && (/^(?:and|then|ثم|بعدين|وبعدين)$/u.test(prev) || (!!ar && /^[وف]/u.test(t))) && conditionedOnItsResult(i)) state = 'follows';
         if (state) { blank.push([start, end, false]); hold(state); continue; }
@@ -1989,8 +2114,26 @@ Rules:
             if (ranked.length && refusedDeploy(ranked[0]) && whole.veto !== 'follows') {
                 const beside = whole.besideThePublish;
                 const orderedBeside = new Set(beside ? capableTools(beside, 3).map((c: any) => c.name) : []);
-                capable = capable.filter((c: any) => orderedBeside.has(c.name));
+                //  …and a destroying tool is matched only by the deed the request ORDERS (capability-match), never by a word of the refused publish.
+                capable = capable.filter((c: any) => orderedBeside.has(c.name) || c.byDeed);
             }
+            /*
+             * A DESTROYING TOOL IS PLANNED ONLY ON THE THING THE REQUEST NAMES. «احذف الملف temp.txt» names
+             * its file; «احذف الملفات التي لا تستخدم», "Please delete the old backup file" name none — which
+             * file that is, is for the planner that reads the workspace to find out, not for a tool call
+             * with nothing to act on. And the thing is the deed's own object, as the deed reader read it
+             * (capability-match): "Delete a.txt and write hello to b.txt" deletes a.txt, never the file
+             * another clause names.
+             */
+            const toolByName = new Map((registeredTools as any[]).map(tool => [tool.name, tool]));
+            const derive = (candidate: any): Record<string, any> | null => {
+                const tool = toolByName.get(candidate.name);
+                const input = inputForTool(tool, goal, context);
+                if (!candidate.byDeed) return input;
+                const field = Object.keys(tool?.inputSchema?.properties || {}).find(key => /^(?:path|file|filename|filepath)$/i.test(key));
+                return field && candidate.target ? { ...(input || {}), [field]: candidate.target } : null;
+            };
+            capable = capable.filter((c: any) => !c.byDeed || !!derive(c));
             if (!capable.length) return null;
             // IntentParser may supply one registry-backed deterministic
             // candidate. Revalidate it against the current matcher, then keep
@@ -2000,13 +2143,13 @@ Rules:
             const hint = String(intent?.rawIntent?.capabilityCandidate || '');
             const hinted = hint && capable.find((candidate: any) => candidate.name === hint);
             const selected = hinted ? [hinted] : capable.slice(0, 2);
-            const toolByName = new Map((registeredTools as any[]).map(tool => [tool.name, tool]));
             const actionable = hint
                 ? selected.map((candidate: any) => ({
                     candidate,
-                    input: inputForTool(toolByName.get(candidate.name), goal, context),
+                    input: derive(candidate),
                 })).filter(({ input }: any) => input)
-                : selected.map((candidate: any) => ({ candidate, input: null }));
+                //  …and it is handed that thing whichever road the request came by.
+                : selected.map((candidate: any) => ({ candidate, input: candidate.byDeed ? derive(candidate) : null }));
 
             // A tool name is not enough to perform a task. When the registry
             // declares that its inputs cannot be derived, stop before calling
