@@ -169,7 +169,7 @@ async function refreshUpdateCheck(force = false): Promise<void> {
     checking = true;
     try {
         const root = repoRoot();
-        const run = (args: string[]) => executionEngine.runArgv('git', args, { cwd: root, timeout: 25_000 });
+        const run = (args: string[]) => executionEngine.runArgv('git', args, { cwd: root, timeout: 25_000, joeInfrastructure: true });
         await run(['fetch', 'origin', 'main', '--quiet']);
         const behind = await run(['rev-list', '--count', 'HEAD..origin/main']);
         const head = await run(['rev-parse', '--short', 'HEAD']);
@@ -361,6 +361,8 @@ router.post('/update', (req, res) => {
         noteFile: UPDATE_LOG,
         cwd: root,
         env: { JOE_UNATTENDED: '1', JOE_UPDATE_LOG: UPDATE_LOG },
+        //  The updater restarts Joe itself: it is given Joe's own environment.
+        joeInfrastructure: true,
     });
 
     if (!spawned.ok) {
