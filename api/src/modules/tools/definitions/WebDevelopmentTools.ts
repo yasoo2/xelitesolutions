@@ -8,6 +8,7 @@ import { Builder } from '../../../system/Builder';
 import { broadcastThinkingDetail, broadcast } from '../../../api/ws';
 
 import { resolveToolPath } from '../utils';
+import { isWithinRoot } from '../path-containment';
 
 // Flow Agent: Broadcast structured build progress events
 function broadcastBuildProgress(sessionId: string | undefined, phase: string, message: string, progress: number) {
@@ -188,7 +189,19 @@ export class WebPipelineTool extends BaseTool {
 
         // CRITICAL FIX: Update workspace root to the new project path ONLY if it's not a GitHub workspace.
         // If it's a GitHub workspace, we want to maintain the repo container as the root.
-        if (projectPath && workspaceId && !isGitHubWorkspace) {
+        /*
+         * …and never to narrow a workspace that already holds the project. qa-live17b,
+         * 2026-11-12: a repair step scaffolded «car-rental-admin» inside the workspace and
+         * re-pointed (and persisted) the workspace root to it; the next request in the same
+         * workspace built in a sibling folder, and every file tool refused it — «The project
+         * folder is not inside this workspace» — 4 times, then the run ended. A root is the
+         * user's choice or the workspace's home; one project inside it is shown there already.
+         */
+        const alreadyInside = (() => {
+            try { return isWithinRoot(projectPath, repoRoot || workspaceService.getActiveRoot(workspaceId)); }
+            catch { return false; }
+        })();
+        if (projectPath && workspaceId && !isGitHubWorkspace && !alreadyInside) {
             try {
                 await workspaceService.setActiveRoot(projectPath, workspaceId);
                 console.log(`[Pipeline] Workspace root updated to: ${projectPath}`);
