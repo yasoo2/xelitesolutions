@@ -1,7 +1,7 @@
 import { stripArabicDiacritics, normalizeIntentText as canonicalReading, foldChars } from '../orchestrator/promptNormalizer';
 import { derivedColumns as readDerivedColumns, columnsAnywhereInHisRequest as readColumnsAnywhere } from '../design/app-blueprints';
 import { routeToModel } from '../llm/intelligent-router';
-import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, ordersInALaterClause, withoutNegatingMa, LATER_DEED_ORDER, OrderWords, rememberLastReadings } from './requested-action';
+import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, ordersInALaterClause, withoutNegatingMa, LATER_DEED_ORDER, OrderWords, rememberLastReadings, withoutFileDenials, fileDenialBesideItsOrder, negatesWhatAThingDoes } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
 import { BUILD_VERBS, hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact as readRequestedArtifact } from '../design/requested-artifact';
 import { words } from '../language/arabic';
@@ -56,6 +56,9 @@ const WEAK_WEB_VERB = /(افتح|انظر|صِ?ف(?!ح)|وصف|لخ[صص]|ترج
 //  («صلح الصفحة», «الصفحة ما تفتح») is not browsing it.
 const PAGE_BROWSING_VERB = /(اقر[أا]|ادخل|اذهب|انتقل|انزل|اصعد|مر[رّ]|اغلق)/;
 const A_PAGE = /صفح[ةه]|صفحات/;
+//  …and so is capturing one: «خذ لقطة شاشة للصفحة», «التقط سكرين شوت للصفحة الرئيسية» were the
+//  browser's only through the «صف» inside «للصفحة», and stopped being so with it.
+const CAPTURE_VERB = /(التقط|لقط[ةه]|سكرين\s*شوت|screen\s*shot|\bcapture\b)/i;
 const WEB_NOUN = /(متصفح|موقع|صفحة|رابط|الويب|browser|site|page|link|web)/i;
 const UI_INTERACTION_VERB = /(اضغط|انقر|اختر|اكتب|أدخل|مر[رّ]|انزل|عب[ئئ]|املأ|حد[دّ])/i;
 const UI_NOUN = /(زر|الزر|حقل|الحقل|خانة|القائمة|قائمة|رابط|مربع|صندوق|التبويب|button|field|link|menu|dropdown|checkbox|tab|box|input)/i;
@@ -68,7 +71,68 @@ const UI_NOUN = /(زر|الزر|حقل|الحقل|خانة|القائمة|قائ
  * words are looked for. The dialects' «why» («ليش», «ليه») asks as «لماذا»
  * does: «ليش الزر ما بيشتغل» was a question only through its «ما».
  */
-const withoutWhatAsksNothing = rememberLastReadings((raw: string) => withoutNegatingMa(stripScopedExclusions(raw)));
+//  …and so is the «أي» of a denial of every file change that stands beside an order
+//  («شغّل المشروع ولا تنشئ أي ملفات» was «which files?»): a file denial asks nothing.
+const withoutWhatAsksNothing = rememberLastReadings((raw: string) => {
+    const scoped = stripScopedExclusions(raw);
+    return withoutNegatingMa(fileDenialBesideItsOrder(unquotedIntentText(scoped)) ? withoutFileDenials(scoped) : scoped);
+});
+
+/**
+ * ⛔ A FAULT AND A FIX IS A CHANGE TO HIS WORK, NEVER A TOOL NAMED BY A NOUN IN IT.
+ *
+ * While «ما» was read as «what», «الصورة ما تظهر، صلحها», «تسجيل الدخول ما
+ * يشتغل، صلحه», «الترجمة ما تشتغل، صلحها», «التقرير ما يطلع PDF، صلحه», «زر
+ * النشر ما يشتغل، صلحه» were answered as questions — wrong, and harmless. Read
+ * rightly as orders they fell to the registry matcher and the browser reader,
+ * which know a sentence only by its words: the image that does not show named
+ * generate_image, the login that does not work opened a browser, the
+ * translation named browser_translate, the PDF browser_save_pdf, the publish
+ * BUTTON deploy_pages. The same in English, in both trees: "The image does not
+ * show, fix it" named image_studio.
+ *
+ * The thing he names is the SUBJECT of a complaint or the OBJECT of a repair —
+ * a part of his own work — and never the capability he asks for. So a message
+ * that orders a repair of a thing («صلحه», «صاوبها», «عدله», «صلح البحث», «شوف
+ * المشكلة», "fix it", "fix the search") or states what a thing does not do («X
+ * ما يشتغل», «X مش شغال», «X لا يعمل», "the X doesn't work") is not matched
+ * by its words at all: it goes on as a change to his project, the way «صلح
+ * الكود» always did. A site he names outright («افتح github.com وشوف ليش…») is
+ * still the browser's.
+ *
+ * The repair verbs and the negators are closed classes of the language; the
+ * things that break are open, and no list of them is kept.
+ */
+const REPAIR_VERB_AR = '(?:[اأإ]?صلح|صاوب|[اأ]?ظبط|[اأ]?زبط|[اأ]?ضبط|صحح)';
+const ITS_PRONOUN_AR = '(?:ه|ها|هم|هن|و|وه|يه|وها)';
+const REPAIR_ORDER = new RegExp([
+    //  «صلحه», «صاوبها», «ظبطو», «تصلحه» — and «عدله», «عدلها»: with its pronoun the edit is of the thing he just named.
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:[تن]?${REPAIR_VERB_AR}ي?|عدل)${ITS_PRONOUN_AR}(?![\p{L}\p{N}_])`,
+    //  «صلح البحث», «أصلح خطأ تسجيل الدخول», «تصلح الخطأ»: the verb and the thing it repairs.
+    String.raw`(?<![\p{L}\p{N}_])[وف]?[تن]?${REPAIR_VERB_AR}ي?\s+(?:لي\s+|لنا\s+)?[\p{L}]{2,}`,
+    //  «شوف المشكلة», «شوف وين الخلل», «افحص الخطأ»: look at the fault.
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:شوف|شوفلي|انظر|افحص|اكتشف|لاقي)\s+(?:لي\s+)?(?:(?:وين|ايش|إيش|شو|وش|ليش|سبب)\s+)?(?:ال)?(?:مشكل[ةه]|مشاكل|خط[أا]|[أا]خطاء|خلل|عطل|غلط)(?![\p{L}\p{N}_])`,
+    String.raw`\b(?:fix|repair|debug|troubleshoot)\s+(?:it|this|that|them|those|these|the|my|our|its|his|her|their)\b`,
+].join('|'), 'iu');
+const FAULT_STATED = new RegExp([
+    //  «الزر مش شغال», «الصورة مو ظاهرة», «البحث ليس دقيقا»: a definite thing, negated.
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:ال|لل)[\p{L}]{2,}\s+(?:مش|مو|مب|موب|مهو|مهي|ماهو|ماهي|ليس|ليست|لم|لن)\s+[\p{L}]{2,}`,
+    //  «البحث لا يعمل»: a third person after «لا» states. «الصفحة لا تفتح» states too — the «ت» agrees with
+    //  a feminine thing — but «الموقع لا تنتظر» and «الصفحة لا تحذفها» speak to Joe and forbid a deed.
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:ال|لل)[\p{L}]{2,}\s+لا\s+ي[\p{L}]{2,}`,
+    String.raw`(?<![\p{L}\p{N}_])[وف]?(?:ال|لل)[\p{L}]{1,40}(?:[ةهى]|ات|اء)\s+لا\s+(?![\p{L}]+(?:ه|ها|هم)(?![\p{L}\p{N}_]))ت[\p{L}]{2,}`,
+    //  «مش شغال», «مو راضي يفتح»: the dialects' «not working», whatever it is said of.
+    String.raw`(?<![\p{L}\p{N}_])(?:مش|مو|مب|موب)\s+(?:شغال[ةه]?|ظاهر[ةه]?|راضي[ةه]?|زابط[ةه]?|ضابط[ةه]?|مزبوط[ةه]?|قادر[ةه]?)(?![\p{L}\p{N}_])`,
+    String.raw`\b(?:the|my|our|this|that|its)\s+[\w-]+(?:\s+[\w-]+){0,2}\s+(?:(?:does|do|did|is|are|was|were|will|can|could)(?:n['’]?t|\s+not)|won['’]?t|can['’]?t|cannot|no\s+longer|never|stopped|fails?|keeps?\s+(?:crashing|failing|breaking))\b`,
+    String.raw`\b(?:is|are|it['’]?s|got)\s+(?:broken|not\s+working|failing|crashing)\b`,
+].join('|'), 'iu');
+const faultOrFixOnce = rememberLastReadings((raw: string): boolean => {
+    const bare = unquotedIntentText(stripArabicDiacritics(raw));
+    return REPAIR_ORDER.test(bare) || FAULT_STATED.test(bare) || negatesWhatAThingDoes(bare);
+});
+export function reportsAFaultOrOrdersAFix(goalRaw: string): boolean {
+    return faultOrFixOnce(String(goalRaw || ''));
+}
 function isKnowledgeQuestionPattern(raw: string): boolean {
     const text = withoutWhatAsksNothing(raw);
     return /(?:^|[\s،:؛])(?:ما|ماذا|لماذا|ليش|ليه|لويش|علاش|كيف|متي|اين|أين|كم|اي|ايهما|اشرح|صف|قارن|وش\s+معنى|شو\s+معنى|ما\s+رايك|ما\s+رأيك)(?=$|[\s،:؛؟])/i.test(text)
@@ -485,9 +549,15 @@ function hasBrowserStructure(goalRaw: string): { isBrowser: boolean; confidence:
         return { isBrowser: true, confidence: 0.95, reason: hasUrl ? 'explicit URL' : 'known site named', hasExternalWebTarget: true };
     }
 
+    // The login that does not work, the search that returns nothing, the page that will
+    // not open are parts of HIS work to be fixed — not a place to sign in, search or go.
+    if (reportsAFaultOrOrdersAFix(g)) {
+        return { isBrowser: false, confidence: 0.8, reason: 'a fault or a fix in his own work', hasExternalWebTarget: false };
+    }
+
     const strongWeb = STRONG_WEB_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' '));
-    const weakWeb = WEAK_WEB_VERB.test(bareProbe) || (PAGE_BROWSING_VERB.test(bareProbe) && A_PAGE.test(bareProbe));
     const webNoun = WEB_NOUN.test(bareProbe);
+    const weakWeb = WEAK_WEB_VERB.test(bareProbe) || (PAGE_BROWSING_VERB.test(bareProbe) && A_PAGE.test(bareProbe)) || (CAPTURE_VERB.test(bareProbe) && webNoun);
     const interactUi = UI_INTERACTION_VERB.test(bareProbe) && UI_NOUN.test(bareProbe);
 
     const buildStructure = hasBuildStructure(g);
@@ -522,14 +592,20 @@ function readKnowledgeQuestion(goalRawWithMarks: string): boolean {
     const g = unquotedIntentText(goalRaw);
     const action = hasRequestedAction(g);
     const bare = g;
-    const normalized = normalizeIntentText(g);
-    const probe = normalized && normalized !== g.toLowerCase() ? `${g}\n${normalized}` : g;
+    // The canonical line is read from what can ask: it turns the «تنشئ» of «ولا تنشئ
+    // أي ملفات» into «انشئ», which no denial reader knows, and its «أي» asked «which?».
+    const asking = withoutWhatAsksNothing(g);
+    const normalized = normalizeIntentText(asking);
+    const probe = normalized && normalized !== asking.toLowerCase() ? `${g}\n${normalized}` : g;
     // Reading followed by an operational clause is a mixed request. Nouns
     // such as "test counts" in the reading clause are not execution commands.
     const readingLead = /^(?:\s*please\s+)?\s*(?:summari[sz]e|describe|translate|explain|compare)\b/i.test(bare)
         || /^\s*(?:من\s+فضلك\s+)?(?:لخص|ترجم|اشرح|صف|قارن)(?=$|[\s،:؛؟])/u.test(bare);
-    const laterOperation = /(?:[.!?؟;،,:\n]|\b(?:and|then)\b)\s*(?:then\s+)?(?:please\s+)?(?:run|execute|build|create|develop|implement|modify|edit|delete|remove|install|open|save|append|export|overwrite|copy|rename|update|read|inspect|list|browse|search|navigate|click|capture|download|test(?!\s+(?:counts?|results?)\b))\b/i.test(bare)
-        || /(?:[.!?؟;،,:\n]|(?:^|\s)(?:ثم|وبعدها|وبعدين))\s*(?:ثم\s+)?(?:من\s+فضلك\s+)?(?:شغل|نفذ|ابن|ابني|انشئ|اكتب|عدل|احذف|افتح|احفظ|انسخ|انقل|اختبر)(?=$|[\s،:؛.!?؟])/u.test(bare);
+    //  After the mark that opens a clause only the spaces of its own line are skipped: with `\s*`
+    //  every line break of a run opened a clause and skipped the rest of the run — 20 KB of blank
+    //  lines cost this reader two seconds of processor time, in the tree before this one too.
+    const laterOperation = /(?:[.!?؟;،,:\n][^\S\n]*|\b(?:and|then)\b\s*)(?:then\s+)?(?:please\s+)?(?:run|execute|build|create|develop|implement|modify|edit|delete|remove|install|open|save|append|export|overwrite|copy|rename|update|read|inspect|list|browse|search|navigate|click|capture|download|test(?!\s+(?:counts?|results?)\b))\b/i.test(bare)
+        || /(?:[.!?؟;،,:\n][^\S\n]*|(?:^|\s)(?:ثم|وبعدها|وبعدين)\s*)(?:ثم\s+)?(?:من\s+فضلك\s+)?(?:شغل|نفذ|ابن|ابني|انشئ|اكتب|عدل|احذف|افتح|احفظ|انسخ|انقل|اختبر)(?=$|[\s،:؛.!?؟])/u.test(bare);
     if (readingLead && laterOperation) return false;
     // A thing asked for with its contents listed is a request, whatever
     // question word its contents carry; an order after the question wins,
@@ -548,9 +624,9 @@ function readKnowledgeQuestion(goalRawWithMarks: string): boolean {
         const remainder = g.slice(questionEnd + 1);
         const outputWriteOnly = /^\s*(?:please\s+)?write\s+(?:one|two|three|\d+)\s+(?:\w+\s+)?(?:words?|sentences?)[.!?]?\s*$/i.test(remainder);
         if (action.hasAffirmativeAction && !outputWriteOnly) return false;
-        const laterAction = /(?:^|[.!?؟;،,:\n])\s*(?:please\s+)?(?:run|execute|build|create|make|develop|implement|design|code|deploy|generate|scaffold|test|debug|repair|open|install|delete|modify|edit|save|append|export|overwrite|remove|copy|rename|update)\b/i.test(remainder)
-            || /(?:^|[.!?؟;،,:\n])\s*(?:من\s+فضلك\s+)?(?:أنشئ|انشئ|احذف|إحذف|اكتب|نفذ|نفّذ|ابن|ابني|صمم|صمّم|احفظ|انسخ|انقل|شغل|شغّل)(?=$|[\s،,:؛.!?؟])/u.test(remainder);
-        const laterWrite = !outputWriteOnly && /(?:^|[.!?؟;،,:\n])\s*(?:please\s+)?write\b/i.test(remainder);
+        const laterAction = /(?:^|[.!?؟;،,:\n])[^\S\n]*(?:please\s+)?(?:run|execute|build|create|make|develop|implement|design|code|deploy|generate|scaffold|test|debug|repair|open|install|delete|modify|edit|save|append|export|overwrite|remove|copy|rename|update)\b/i.test(remainder)
+            || /(?:^|[.!?؟;،,:\n])[^\S\n]*(?:من\s+فضلك\s+)?(?:أنشئ|انشئ|احذف|إحذف|اكتب|نفذ|نفّذ|ابن|ابني|صمم|صمّم|احفظ|انسخ|انقل|شغل|شغّل)(?=$|[\s،,:؛.!?؟])/u.test(remainder);
+        const laterWrite = !outputWriteOnly && /(?:^|[.!?؟;،,:\n])[^\S\n]*(?:please\s+)?write\b/i.test(remainder);
         if (laterAction || laterWrite) return false;
         return true;
     }
@@ -571,8 +647,11 @@ function readKnowledgeQuestion(goalRawWithMarks: string): boolean {
  * فقط» or «Do not modify anything» is still the boundary.
  */
 export function isReadOnlyStructural(goalRaw: string): boolean {
-    const g = String(goalRaw || '');
-    return isReadOnlyPattern(stripScopedExclusions(stripArabicDiacritics(g)));
+    const bare = stripArabicDiacritics(String(goalRaw || ''));
+    // «شغّل المشروع ولا تنشئ أي ملفات», "Run the project. Do not create any files.": a file
+    // denial beside the order it does not forbid is how the order is to be done, not an audit.
+    const besideItsOrder = fileDenialBesideItsOrder(unquotedIntentText(bare));
+    return isReadOnlyPattern(stripScopedExclusions(besideItsOrder ? withoutFileDenials(bare) : bare));
 }
 
 /** Words naming his own workspace: a search there is not a web search. */
@@ -633,6 +712,8 @@ export function isWebOrder(goalRaw: string): boolean {
     if (!WEB_ORDER_VERB.test(bareProbe.replace(LOGIN_FEATURE, ' '))) return false;
     const named = WEB_VENUE_NAMED.test(bareProbe);
     if (LOCAL_WORK.test(bareProbe) && !named) return false;
+    //  «البحث ما يرجع نتايج، صلحه»: the search of HIS app, to be fixed — unless he names where on the web to look.
+    if (reportsAFaultOrOrdersAFix(g) && !named && !WEB_ADDRESS.test(bareProbe)) return false;
     //  An upper-case TODO is the code marker; "the best todo apps" are the world's.
     if ((PROBABLY_HIS.test(bareProbe) || /\bTODO\b/u.test(g)) && !named && !WEB_ADDRESS.test(bareProbe)) return false;
     return !hasBuildStructure(g).isBuild;

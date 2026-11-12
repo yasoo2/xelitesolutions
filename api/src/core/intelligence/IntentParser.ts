@@ -5,14 +5,14 @@ import { isReadOnlyWorkspaceOverviewRequest } from '../orchestrator/workspace-ov
 import { answerRequestText } from '../llm/requested-answer-language';
 import { isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
-import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { normalizeIntentText, stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
 import { isUndoRequest } from '../engine/select';
-import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache } from './intent-classifier';
-import { hasRequestedAction } from './requested-action';
+import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
+import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
 export { hasTerminalExecutionDenial, boundedNoFileTerminalCommands } from '../orchestrator/runtime-diagnostic-contract';
 import { StructuredSpecification } from './specification';
@@ -482,8 +482,25 @@ Return ONLY a JSON object:
         // وشوف آخر إشعارات» and browser_page_fix — an empty plan — for «تصفّح
         // الويب ولخّص لي أول نتيجة». A search of his own files stays with it.
         const webOrder = !buildCheck.isBuild && isWebOrder(raw);
-        if (!buildCheck.isBuild && !knowledgeCheck && !webOrder) {
-            const [candidate] = capableTools(raw, 1);
+        // A fault and a fix is a change to his work, never a tool named by a noun
+        // in it: «الصورة ما تظهر، صلحها» named generate_image, «زر النشر ما يشتغل،
+        // صلحه» deploy_pages, «التقرير ما يطلع PDF، صلحه» browser_save_pdf
+        // (reportsAFaultOrOrdersAFix). It goes on as «صلح الكود» always did.
+        const faultOrFix = reportsAFaultOrOrdersAFix(raw);
+        if (!buildCheck.isBuild && !knowledgeCheck && !webOrder && !faultOrFix) {
+            // What he forbids names no capability: the «ملف» of «شغّل المشروع ولا
+            // تنشئ أي ملفات» and of «غيّر العنوان ولا تعدل أي ملف آخر» named a
+            // file-writing tool, and "add a logout button and do not edit or
+            // delete any other file" named delete_file. A tool is named by the
+            // order: when the message denies file changes, the candidate must be
+            // the one its words name without the denial too — the clone-and-commit
+            // brief that forbids production files is still a git workflow, and a
+            // message whose tool comes only from the files it protects names none.
+            const bare = stripArabicDiacritics(raw);
+            const ordered = withoutFileDenials(bare, true);
+            const [named] = capableTools(raw, 1);
+            const [byTheOrder] = !named || ordered === bare ? [named] : ordered.trim() ? capableTools(ordered, 1) : [];
+            const candidate = named && byTheOrder?.name === named.name ? named : undefined;
             if (candidate) {
                 return {
                     goal: raw,

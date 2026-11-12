@@ -339,7 +339,11 @@ export function withoutDefiniteVerbalNouns(text: string): string {
  * basics», «Update me on…», «Save money tips» order nothing.
  */
 /** `withObject`: verbs that order only with a deliverable after them («… عايز جدول», never «… عايز الجواب بسرعة»). */
-export interface OrderWords { ar: ReadonlySet<string>; en: RegExp; withObject?: ReadonlySet<string> }
+export interface OrderWords {
+    ar: ReadonlySet<string>; en: RegExp; withObject?: ReadonlySet<string>;
+    /** A thing these verbs make, besides the deliverables every order reader knows («أنشئ ملف …»). */
+    object?: RegExp;
+}
 /** Folded imperatives that are also nouns or past verbs: an object makes them orders. */
 const NOUN_TWIN_AR = new Set(['شغل', 'جرب', 'حمل', 'نزل', 'عدل', 'ثبت', 'نفذ', 'طور', 'ارسل', 'اصلح', 'اوقف', 'انشي', 'حط', 'شيل', 'خل', 'عمل', 'اعمل']);
 /** …and those whose pronoun form is a noun too («ابنه» his son, «سويه» together, «ابيه» his father). */
@@ -386,8 +390,9 @@ function opensWithAnOrder(sentence: string, verbs: OrderWords): boolean {
             if (!verb || !verbs.ar.has(verb)) continue;
             if (hamzaFirst && /^ا/u.test(verb) && !FORM_IV_AR.has(verb) && !FIRST_PERSON_WISH.has(verb)) continue;   // «أبحث», «أكتب», «أعمل»: I do
             const forHim = /^(?:لي|لنا|لك|لكم|الي|الينا)$/u.test(next) || /^(?:لي|لنا|لك|لكم)$/u.test(suffix);
-            if (STRONG_TWIN_AR.has(verb) || verbs.withObject?.has(verb)) { if (forHim || AR_DELIVERABLE.test(next) || AR_DOING.test(next)) return true; continue; }
-            if (NOUN_TWIN_AR.has(verb)) { if (suffix || forHim || /^(?:ال|لل)\S{2,}/u.test(next) || AR_DELIVERABLE.test(next)) return true; continue; }
+            const itsThing = AR_DELIVERABLE.test(next) || !!verbs.object?.test(next);
+            if (STRONG_TWIN_AR.has(verb) || verbs.withObject?.has(verb)) { if (forHim || itsThing || AR_DOING.test(next)) return true; continue; }
+            if (NOUN_TWIN_AR.has(verb)) { if (suffix || forHim || /^(?:ال|لل)\S{2,}/u.test(next) || itsThing) return true; continue; }
             return true;
         }
     }
@@ -536,7 +541,7 @@ function isSpace(code: number): boolean {
  * replacements in one text its cost stopped following the text's length
  * (measured: 5 KB of «ما ما…» 6 ms, 40 KB over a second).
  */
-function readWithoutNegatingMa(t: string, withItsVerb: boolean): string {
+function readWithoutNegatingMa(t: string, withItsVerb: boolean, seen?: (before: string, opensItsClause: boolean, next: string) => void): string {
     const pieces: string[] = [];
     let kept = 0;
     let from = 0;
@@ -565,6 +570,7 @@ function readWithoutNegatingMa(t: string, withItsVerb: boolean): string {
         // The clause opens inside the window, or the window reaches the start of the text.
         const cutAtClause = cut >= 0 || floor === 0;
         if (maAsks(window.slice(cut + 1), cutAtClause, next)) continue;
+        seen?.(window.slice(cut + 1), cutAtClause, next);
         const blankTo = withItsVerb && next ? wordEnd : after;
         pieces.push(t.slice(kept, at), ' '.repeat(blankTo - at));
         kept = blankTo;
@@ -580,6 +586,34 @@ export function withoutNegatingMa(text: string, withItsVerb = false): string {
     return withItsVerb ? maAndItsVerbReadOut(t) : maReadOut(t);
 }
 
+/**
+ * «الصورة ما تظهر», «تسجيل الدخول ما يشتغل», «الجدول ما فيه عمود السعر», «ما عم
+ * يشتغل الزر»: a «ما» that NEGATES what a thing does — after its subject, or
+ * opening the clause before a word only a negated verb takes. Not the «ما»
+ * that relates («بعد ما تخلص», «زي ما قلت», «كل ما أضغط», «نفّذ ما طلبته»): the
+ * words it relates through are a closed class, and after a verb it is «what».
+ * A subject is a definite noun, a pronoun, a Latin name («API ما بيرد») or a
+ * word with its possessive («صفحتي ما تفتح»).
+ */
+const RELATES_THROUGH_MA = new Set(['بعد', 'قبل', 'كل', 'زي', 'مثل', 'متل', 'عند', 'حسب', 'لين', 'لما', 'حتي', 'بدل', 'طول', 'قد', 'وقت', 'ساعه', 'اول', 'حين',
+    'كيف', 'وين', 'بحيث', 'اذا', 'لو', 'الا', 'مهما', 'حيث', 'عشان', 'علشان', 'لان', 'مع', 'بين', 'دون', 'بدون', 'غير', 'ريث', 'عدا', 'نوعا', 'يوما', 'اللي', 'الي', 'الذي', 'التي']);
+const A_SUBJECT = /^(?:[وفب]?(?:ال|لل)[؀-ۿ]{2,}|[a-z0-9][a-z0-9_.-]*|انا|انت|انتي|هو|هي|احنا|نحن|هم|[؀-ۿ]{2,}(?:ي|ه|ها|نا|ك|كم|هم))$/iu;
+export function negatesWhatAThingDoes(text: string): boolean {
+    const t = stripArabicDiacritics(String(text || ''));
+    if (!t.includes('ما')) return false;
+    let negates = false;
+    readWithoutNegatingMa(t, false, (before, opensItsClause, next) => {
+        if (negates || !next) return;
+        const said = before.trim();
+        //  Opening its clause a «ما» is left to this reader only when it negates («ما عم يشتغل», «ما بيفتح»).
+        if (!said || (opensItsClause && onlyLeads(said))) { negates = true; return; }
+        const word = plainWord(said.slice(said.lastIndexOf(' ') + 1));
+        if (RELATES_THROUGH_MA.has(word) || RELATES_THROUGH_MA.has(word.replace(/^[وف](?=.{2})/u, ''))) return;
+        negates = A_SUBJECT.test(word);
+    });
+    return negates;
+}
+
 const folded = (list: string) => new Set(list.split(/\s+/).filter(Boolean).map(w => foldChars(w)));
 /** The build verbs a later sentence may open with (hasRequestedAction's «laterCommand»). */
 export const LATER_BUILD_ORDER: OrderWords = {
@@ -592,6 +626,122 @@ export const LATER_DEED_ORDER: OrderWords = {
     // Not «make it short», «add an example», «write two sentences»: those shape the answer.
     en: /^(?:build|create|develop|generate|scaffold|implement|deploy|publish|run|edit|delete|remove|fix|open|search|execute|install|update|rename|move|copy|save|push|ship|launch|do)\b/i,
 };
+
+/**
+ * ⛔ A FILE DENIAL BESIDE AN ORDER IT DOES NOT FORBID IS A CONDITION ON THAT ORDER.
+ *
+ * «لا تعدل أو تحذف أي ملف، وابني لي صفحة جديدة» was built, and after the
+ * denial reader learnt its list of verbs it was answered with words: the
+ * denial of every file change swallowed the order beside it. But the verbs he
+ * denied are EDIT and DELETE, and the order is to CREATE — a new page touches
+ * no file that exists. And «شغّل المشروع ولا تنشئ أي ملفات» was never run in
+ * either tree: running a project writes no file of his, so the denial is how
+ * he wants it run, not a refusal to run it.
+ *
+ * Two orders stand beside a denial of file changes:
+ *  - an order to RUN, which opens the message once the denial is read out;
+ *  - an order to CREATE a thing, when no verb of the denial creates or writes
+ *    («لا تنشئ أو تعدل أي ملف، وابني لي صفحة» still denies the page).
+ * An order to add, change or fix edits a file that exists, and stays denied
+ * («لا تعدل أو تحذف أي ملف، وأضف زر»); so does anything beside «read only»,
+ * «answer only» or a denial of every change («لا تعدل ولا تحذف شيئاً»).
+ */
+const CREATING_IN_A_DENIAL = /\b(?:create|write)\b|تنشئ|تنشي|تكتب|كتاب[ةه]|[إا]نشاء|تغييرات/iu;
+//  «نفّذ فحصاً محلياً باستخدام shell_execute … ولا تعدّل ملفات», «نفّذ فحص بناء … لا تعدّل أي ملف»: to
+//  execute a check, a command, a test or a script is to run it. Both were shell runs until the denial
+//  reader learnt to read «تعدّل» through its shadda; then both were answered with words.
+const RUN_ORDER: OrderWords = {
+    ar: folded('شغل شغلي نفذ'), en: /^(?:run|start|launch|execute)\b/i,
+    object: /^(?:ال)?(?:فحص|[اأ]مر|[اأ]وامر|اختبار|اختبارات|تستات|سكربت)ا?$/u,
+};
+/** What is run: his project, app, server, site or tests, a check, a command or a script, or «it» — "Run the code review. Do not modify any files." runs nothing. */
+const WHAT_IS_RUN = /(?<![\p{L}\p{N}_])(?:ال|لل)?(?:مشروع|تطبيق|سيرفر|خادم|موقع|نظام|برنامج|متجر|اختبار|اختبارات|تستات|فحص|[اأ]مر|[اأ]وامر|سكربت)(?:ا|ي|نا|ه|ها)?(?![\p{L}\p{N}_])|^[وف]?شغل(?:ه|ها|و|وه)(?![\p{L}\p{N}_])|\b(?:project|app|application|server|site|website|system|program|tests?|checks?|commands?|scripts?|build|it)\b/iu;
+const CREATE_ORDER: OrderWords = {
+    ar: folded('ابن ابني ابنى أنشئ انشئ انشي اصنع صمم اعمل سوي سو'),
+    en: /^(?:build|create|make|generate|design|scaffold)\b/i,
+    object: /^(?:ال)?(?:ملف|ملفا|ملفات)$/u,
+};
+/**
+ * The finite version-and-path diagnostics («اعرض إصدار Node.js ومسار مساحة العمل
+ * الحالية. لا تعدل الملفات…») already have their own way through a file denial,
+ * and it is keyed on that denial (boundedNoFileTerminalCommands): they keep it.
+ * Asked only of a run order beside a file denial, and required when asked —
+ * that module reads its quotes through this one.
+ */
+function isFileProhibitedDiagnostic(text: string): boolean {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const diagnostics = require('../orchestrator/runtime-diagnostic-contract') as { boundedNoFileTerminalCommands?: (request: string) => string[] | null };
+    return typeof diagnostics.boundedNoFileTerminalCommands === 'function' && !!diagnostics.boundedNoFileTerminalCommands(text);
+}
+/** Every file denial read out of the sentence; what stood after each one stays. */
+//  `withWhatTheyName`: what follows the denied files in their own clause goes with them — «… أي ملف غير
+//  index.html», «… أي ملف في مجلد tests», "… any file except config.json" name the files the denial is
+//  about, never what he orders (the «index.html» of a bare restriction named an HTML tool, and a plan).
+export function withoutFileDenials(text: string, withWhatTheyName = false): string {
+    const kept = (tail: string) => ` ${withWhatTheyName ? tail.replace(/^[^،,]*/u, '') : tail}`;
+    return stripArabicDiacritics(String(text || ''))
+        .replace(FILE_DENIAL_EN, (_whole, _verbs: string, _object: string, tail: string) => kept(tail))
+        .replace(FILE_DENIAL_AR, (_whole: string, ...rest: unknown[]) => kept(((rest[rest.length - 1] || {}) as { tail?: string }).tail || ''));
+}
+/** Its clauses, in order — sixty at most: an order beside a denial is never further in. */
+function clausesOf(text: string): string[] {
+    const clauses: string[] = [];
+    for (const m of text.matchAll(/[^.!؟?;؛\n،,]+/gu)) {
+        const clause = m[0].trim();
+        if (clause) clauses.push(clause);
+        if (clauses.length >= 60) break;
+    }
+    return clauses;
+}
+/**
+ * The request with its file denial read out, when the denial stands beside an
+ * order it does not forbid (above); null when the denial is the whole of it.
+ * Asked with the text as he wrote it, without its quoted copy.
+ */
+export function fileDenialBesideItsOrder(text: string): { freed: string; order: 'run' | 'create' } | null {
+    const t = stripArabicDiacritics(String(text || ''));
+    if (!deniesEveryFileChange(t)) return null;
+    const freed = withoutFileDenials(t);
+    //  What is left still denies («no file changes», «لا تعدل ولا تحذف شيئاً»), or says «read only» / «answer only».
+    if (freed === t || deniesEveryFileChange(freed) || READ_ONLY_PATTERN.test(freed) || ANSWER_ONLY_PATTERN.test(freed)) return null;
+    const clauses = clausesOf(freed);
+    if (!clauses.length) return null;
+    if (opensWithAnOrder(clauses[0], RUN_ORDER) && WHAT_IS_RUN.test(clauses[0]) && !isFileProhibitedDiagnostic(t)) return { freed, order: 'run' };
+    let creates = false;
+    for (const m of t.matchAll(FILE_DENIAL_EN)) if (CREATING_IN_A_DENIAL.test(m[1] || '')) creates = true;
+    for (const m of t.matchAll(FILE_DENIAL_AR)) {
+        const tail = m.groups?.tail || '';
+        if (CREATING_IN_A_DENIAL.test(m[0].slice(0, m[0].length - tail.length))) creates = true;
+    }
+    if (creates) return null;
+    return clauses.some(clause => opensWithAnOrder(clause, CREATE_ORDER)) ? { freed, order: 'create' } : null;
+}
+
+/**
+ * ⛔ AN ORDER TO INSPECT HIS PROJECT, WITH NO CHANGE ALLOWED, IS AN INSPECTION.
+ *
+ * «افحص المشروع دون إنشاء أي ملفات أو تعديلها، وأخبرني بما تجده» went to the
+ * read-only audit — the pipeline reads the workspace and stops before it plans
+ * — until the denial reader learnt «أي ملفات»; then it was answered from
+ * nothing, no file read. A denial of changes beside an order to inspect, audit
+ * or review THE PROJECT (the workspace, the repository — what only reading it
+ * can inspect) is the manner of the inspection. It is read only when the words
+ * are the ones the read-only boundary itself knows («دون إنشاء», «دون تعديل»,
+ * "do not modify", "without changing"): the pipeline stops before planning on
+ * those words and no others. «راجع الكود ولا تعدل أي ملف» and «Explain hooks.
+ * Do not create any files.» are still answered.
+ */
+/** The Arabic words isReadOnlyStructural and the pipeline's isReadOnlyRequest both stop on («بدون تعديل», «من دون إنشاء»). */
+const READ_ONLY_BOUNDARY_WORDS_AR = /(?:^|[\s،:؛.!?])(?:من\s+)?ب?دون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)(?![\p{L}\p{N}_])/u;
+//  After the mark that opens the clause only the spaces of its own line are skipped: with `\s*`
+//  every line break of a run opened a clause and skipped the rest of the run (20 KB of blank
+//  lines: 2.2 s of processor time for one reading).
+const INSPECTS_HIS_PROJECT = new RegExp([
+    //  …and to list or read what the workspace holds is to inspect it: «اعرض ملفات مساحة العمل الرئيسية،
+    //  ثم لخّص README للمستخدم دون تعديل أي ملف» was the read-only boundary's, and was answered instead.
+    String.raw`(?:^|[.!؟?;؛\n])[^\S\n]*(?:(?:من\s+فضلك|لو\s+سمحت|رجاء)\s+)?[وف]?(?:[اإأ]فحص|تفحص|راجع|دقق|استكشف|حلل|عاين|تفقد|تحقق\s+من|اطلع\s+على|[اأ]عرض|[اأ]سرد|[اإ]قر[أا])\s+(?:لي\s+)?(?:(?:كل|جميع|كامل|بني[ةه]|هيكل|ملفات|محتويات|كود|حال[ةه])\s+)?(?:ال)?(?:مشروع|مستودع|ريبو|مساح[ةه]\s+العمل)(?:ي|نا)?(?![\p{L}\p{N}_])`,
+    String.raw`(?:^|[.!?;\n])[^\S\n]*(?:please\s+)?(?:inspect|review|audit|examine|check|analy[sz]e|explore|scan)\s+(?:(?:the|my|our|this|whole|entire|existing|current)\s+){0,3}(?:project|workspace|repo(?:sitory)?|codebase)\b`,
+].join('|'), 'iu');
 
 /** Quoted examples and copy are data; share this boundary with structural build detection. */
 export function unquotedIntentText(raw: string): string {
@@ -728,6 +878,15 @@ const CLAUSE_BUILD_ORDER: OrderWords = {
     en: /^(?:build|create|make|develop|implement|design|generate)(?=\s+(?:(?:me|us)\s+)?(?:a|an|the|my|our|some|one)\b)/i,
 };
 
+/**
+ * «لا تسوي شي الحين», «لا تعمل أي شيء», "Do nothing for now.": an order to do
+ * nothing denies every deed. «بعد ما أراجع التصميم بنشره أنا، لا تسوي شي الحين»
+ * was sent to the deploy tool for the «نشر» in what HE will do. The Arabic is
+ * second person («لا تسوي»), never «الزر لا يسوي شي»; the English must open its
+ * clause — "the button does nothing" reports a fault.
+ */
+const DO_NOTHING = /(?:^|[\s،:؛.!?])[وف]?لا\s+(?:تسوي|تسو|تعمل|تفعل)\s+(?:(?:أي|اي)\s+)?(?:شي|شيء|شيئا|شئ|اشي|حاج[ةه])(?![\p{L}\p{N}_])(?!\s+(?:غير|الا|إلا|سوى|ثاني|ثانية|اخر|آخر|زياد[ةه]))|(?:^|[.!?;,\n])[^\S\n]*(?:please\s+)?(?:do\s+nothing|do\s+not\s+do\s+anything|don['’]?t\s+do\s+anything)\b(?!\s+(?:else|except|but|other|more))/iu;
+
 function readRequestedAction(goalRaw: string): RequestedActionResult {
     // Harakat and tatweel are stripped once, here: every reader below sees the
     // letters he wrote, so «ولا تُنشئْ صفحةً» and «ولا تنشئ صفحة» are one request.
@@ -783,8 +942,9 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     // false positives from quoted denial phrases (e.g., "Do not execute" in a label)
     const probeStripped = stripArabicDiacritics(unquotedIntentText(probe));
     // A feature exclusion is scoped to that feature, never to other execution denials.
-    const denialProbe = stripScopedExclusions(probeStripped);
-
+    let denialProbe = stripScopedExclusions(probeStripped);
+    // His own words, without the canonical line: where an order stands is read from what he wrote.
+    const said = stripArabicDiacritics(gStripped);
 
     // Check DENIAL patterns first on stripped probe (without quoted content)
     const isExplainThenBuild = EXPLAIN_THEN_BUILD_PATTERN.test(probeStripped);
@@ -804,6 +964,11 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     // affirmative verbs that may be inside quoted content for quoted copy cases
     // The verb of a scoped exclusion is not an order: «Run the existing app.
     // Do not create a new project.» asks for no creation.
+    // A denial of file changes beside an order it does not forbid — to run, or to
+    // create when no creating verb is denied — is a condition on that order: it
+    // is read out here, and the order is read as if it stood alone.
+    const besideItsOrder = isNoFileChanges && !isExplainThenBuild ? fileDenialBesideItsOrder(said) : null;
+    if (besideItsOrder) denialProbe = withoutFileDenials(denialProbe);
     const hasAffirmativeBuild = AFFIRMATIVE_BUILD_PATTERN.test(denialProbe);
     const hasDesireVerb = DESIRE_VERB_PATTERN.test(probeStripped);
     const hasRecordingVerb = RECORDING_VERB_PATTERN.test(probeStripped);
@@ -821,14 +986,21 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     
     // An exclusion whose request orders nothing else denies the whole build.
     const exclusionIsTheOnlyDeed = stripPartExclusions(probeStripped) !== probeStripped && asksForWordsOnly(denialProbe);
-    const globalDenial = hasGlobalExecutionDenial || exclusionIsTheOnlyDeed || /(?:^|[\s،:؛.!?])(?:do\s+not\s+(?:execute|run|build)|don't\s+(?:execute|run|build)|without\s+(?:executing|running|building)|no\s+(?:execution|build)|answer[-\s]+only|only\s+answer|(?:بدون|دون)\s+(?:تنفيذ|بناء)|لا\s+(?:تنفيذ|بناء)|الرد\s+فقط|[أا]جب\s+فقط|اشرح\s+فقط)/i.test(denialProbe);
+    const globalDenial = hasGlobalExecutionDenial || exclusionIsTheOnlyDeed || /(?:^|[\s،:؛.!?])(?:do\s+not\s+(?:execute|run|build)|don't\s+(?:execute|run|build)|without\s+(?:executing|running|building)|no\s+(?:execution|build)|answer[-\s]+only|only\s+answer|(?:بدون|دون)\s+(?:تنفيذ|بناء)|لا\s+(?:تنفيذ|بناء)|الرد\s+فقط|[أا]جب\s+فقط|اشرح\s+فقط)/i.test(denialProbe)
+        || DO_NOTHING.test(denialProbe);
     if (isNoFileChanges && !globalDenial) isAnswerOnly = false;
     if (globalDenial) { isAnswerOnly = true; isNoFileChanges = false; }
+    // The order the denial stands beside is the request; the denial is how it is to be done.
+    if (besideItsOrder && !globalDenial) isNoFileChanges = false;
     // An exclusion of a part or of some files has been removed from denialProbe:
     // «… دون إنشاء مشروع جديد: أضف …» is an edit. A declared «Read only.» stays.
     const explicitReadOnly = READ_ONLY_PATTERN.test(denialProbe);
+    // An order to inspect his project under the read-only boundary's own words is
+    // the inspection (INSPECTS_HIS_PROJECT), not a chat answer about it.
+    const readOnlyInspection = isNoFileChanges && (explicitReadOnly || READ_ONLY_BOUNDARY_WORDS_AR.test(denialProbe)) && INSPECTS_HIS_PROJECT.test(said);
+    if (readOnlyInspection) isNoFileChanges = false;
     // Denials retain precedence regardless of position; quotation contents grant no authority.
-    if (isAnswerOnly || isNoFileChanges || explicitReadOnly) {
+    if (isAnswerOnly || isNoFileChanges || explicitReadOnly || readOnlyInspection) {
         const denialReason = isAnswerOnly ? 'explicit global execution denial'
             : isNoFileChanges ? 'no file changes requested' : 'explicit read-only request';
         return { hasAffirmativeAction: false, hasDenial: true, denialReason,
@@ -850,6 +1022,14 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
         return { hasAffirmativeAction: false, hasDenial: false, isAnswerOnly: false,
             isNoFileChanges: false, isPoliteBuild: false, isExplainThenBuild: false,
             confidence: 0.9, reason: 'information question, not execution authority' };
+    }
+
+    // «لا تعدل أو تحذف أي ملف، وابني لي صفحة جديدة»: the order to create that stands
+    // beside the denial was read with its object (fileDenialBesideItsOrder) — the
+    // «و» joined to its verb must not hide it from the patterns below.
+    if (besideItsOrder?.order === 'create') {
+        return { hasAffirmativeAction: true, hasDenial: false, isAnswerOnly: false, isNoFileChanges: false,
+            isPoliteBuild, isExplainThenBuild: false, confidence: 0.85, reason: 'order to create beside a denial of edits' };
     }
 
     // SECOND: Check affirmative patterns (only if no denial, or denial was overridden)
