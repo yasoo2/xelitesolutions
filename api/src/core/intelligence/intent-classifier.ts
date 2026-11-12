@@ -1,7 +1,7 @@
 import { stripArabicDiacritics, normalizeIntentText as canonicalReading, foldChars } from '../orchestrator/promptNormalizer';
 import { derivedColumns as readDerivedColumns, columnsAnywhereInHisRequest as readColumnsAnywhere } from '../design/app-blueprints';
 import { routeToModel } from '../llm/intelligent-router';
-import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, ordersInALaterClause, withoutNegatingMa, LATER_DEED_ORDER, OrderWords, rememberLastReadings, withoutFileDenials, fileDenialBesideItsOrder, negatesWhatAThingDoes } from './requested-action';
+import { hasRequestedAction, unquotedIntentText, stripScopedExclusions, withoutDefiniteVerbalNouns, ordersInALaterSentence, ordersInALaterClause, withoutNegatingMa, LATER_DEED_ORDER, OrderWords, rememberLastReadings, withoutFileDenials, fileDenialBesideItsOrder, negatesWhatAThingDoes, deniesEveryFileChangeInHisDialect } from './requested-action';
 import { parseExplicitFileReadRequest } from '../orchestrator/file-intent';
 import { BUILD_VERBS, hasArabicBuildVerb, hasArabicOrderVerb, maskNegatedSpans, requestedArtifact as readRequestedArtifact } from '../design/requested-artifact';
 import { words } from '../language/arabic';
@@ -216,7 +216,37 @@ const OPENING_DEED_EN = new RegExp(String.raw`^${DEED_WORD_EN}\b(?!\s+(?:is|are|
  */
 const NAMES_NO_OBJECT_EN = String.raw`(?!(?:the|a|an|my|our|your|his|her|their|this|that|these|those|it|its|them|me|us|and|or|but|then|so|please|if|when|unless|until|because|since|while|after|before|once|as|which|who|for|about|to|with|from|into|at)\b)[\w-]+`;
 const NEGATED_STATE_EN = String.raw`(?:(?:does|did|is|are|was|were|will|can|could|has|have)(?:n['’]?t|\s+not)|won['’]?t|can['’]?t|cannot|no\s+longer|stopped|fails?|failed|keeps?\s+(?:crashing|failing|breaking)|(?:is|are)\s+(?:broken|down|failing|crashing|missing|stuck))\b`;
-const A_FEATURE_AND_ITS_FAULT_EN = new RegExp(String.raw`^(?:${DEED_WORD_EN}|upload|download)(?:\s+${NAMES_NO_OBJECT_EN}){0,4}?(?:\s+${NEGATED_STATE_EN}|(?<=s)\s+do(?:n['’]?t|\s+not)\b)`, 'i');
+/*
+ * …AND AN ORDER THAT CARRIES A PROHIBITION OR A SECOND DEED IS STILL THE ORDER. The sixth
+ * pre-merge review (2026-11-12): the feature reading above swallowed real orders —
+ *
+ *     Deploy changes do not wait                     «changes do not» was a plural that states
+ *     Run tests don't deploy                         run the tests; do not deploy
+ *     افتح الصفحة وخذ لقطة، الزر مش شغال               the screenshot he orders was lost with the way to the fault
+ *
+ *   • after a plural, «don't» states only what a THING fails to do («notifications don't arrive»,
+ *     «filters don't work»). Followed by a deed that is asked of Joe — to deploy, wait, push, commit,
+ *     seed, install — or by a verb with its object («don't update the lockfile»), it forbids;
+ *   • to open a page AND capture, send, save, copy, translate or summarize it is an order for that
+ *     second deed; only the bare way to a fault («افتح الصفحة تلاقي…», "Go to the settings page, the
+ *     save button doesn't work") is how the fault is reproduced.
+ *
+ * "Deploy anyway even though search is broken" is still read as a fault, on purpose: read as the
+ * order it is, its tool is named by the registry from every word of it — and the «search» of the
+ * remark names a web search. A false fault goes on to the model with no tool chosen; it stays one
+ * until the registry reads the order without its remark.
+ */
+const A_DEED_FOR_JOE_EN = String.raw`(?:(?:deploy|redeploy|publish|ship|push|commit|wait|seed|install|touch|modify|edit|delete|remove|overwrite|reset|migrate|merge|ask|skip|forget|worry|bother|rebuild|restart|lint|rename|refactor|rewrite|kill|wipe|drop|notify|translate|summari[sz]e|screenshot|browse|visit|navigate|google|host|launch|execute|fix|create|generate)\b|(?:open|send|run|start|stop|update|upgrade|load|show|save|sync|close|clear|move|change|test|build|search|use|add|make|write|take|break|format|email|tell)\s+(?!(?:any\s*more|properly|correctly|at\s+all|on|in|when|if|after|before|until|for|at|to|with|up|down|well|right|now|yet|again|here|there|automatically|consistently|reliably|sometimes)\b)[\w-])`;
+const A_FEATURE_AND_ITS_FAULT_EN = new RegExp(String.raw`^(?:${DEED_WORD_EN}|upload|download)(?:\s+${NAMES_NO_OBJECT_EN}){0,4}?(?:\s+${NEGATED_STATE_EN}|(?<=s)\s+do(?:n['’]?t|\s+not)\b(?!\s+${A_DEED_FOR_JOE_EN}))`, 'i');
+/** A second deed in the navigating deed's own clause — one that brings him something («وخذ لقطة», "and take a screenshot"). */
+const SECOND_DEED_EN = /\b(?:and|then)\s+(?:then\s+)?(?:please\s+)?(?:take\s+(?:me\s+)?(?:an?\s+)?(?:full[\s-]?page\s+)?(?:screen\s*shot|snapshot|picture|photo|capture)|capture|screenshot|send|email|translate|summari[sz]e|save|copy|record)\b/i;
+const SECOND_DEED_AR = new Set(['خذ', 'خد', 'التقط', 'ارسل', 'ابعت', 'ترجم', 'لخص', 'احفظ', 'انسخ']);
+function ordersASecondDeed(clause: string): boolean {
+    if (SECOND_DEED_EN.test(clause)) return true;
+    const words = foldChars(clause).match(/[\p{L}\p{N}_]+/gu) || [];
+    return words.slice(1, 14).some(word => /^[وف]./u.test(word)
+        && (SECOND_DEED_AR.has(word.slice(1)) || SECOND_DEED_AR.has(word.slice(1).replace(DEED_SUFFIX_AR, ''))));
+}
 function opensWithADeedOfItsOwn(bare: string): boolean {
     const opening = bare.slice(0, 240);
     const courtesy = (OPENING_COURTESY.exec(opening) || [''])[0];
@@ -224,14 +254,14 @@ function opensWithADeedOfItsOwn(bare: string): boolean {
     //  The deed's own clause, and whether it names where on the web to go.
     const clause = head.split(CLAUSE_MARK, 1)[0];
     const namesWhereToGo = () => WEB_ADDRESS.test(clause) || URL_PATTERN.test(clause) || KNOWN_SITE_PATTERN.test(clause);
-    if (OPENING_DEED_EN.test(head)) return !NAVIGATING_DEED_EN.test(head) || namesWhereToGo();
+    if (OPENING_DEED_EN.test(head)) return !NAVIGATING_DEED_EN.test(head) || namesWhereToGo() || ordersASecondDeed(clause);
     const [first = '', second = '', third = ''] = foldChars(head).match(/[\p{L}\p{N}_]+/gu) || [];
     if (!/^[؀-ۿ]/u.test(first)) return false;
     const forms = [first, first.replace(DEED_SUFFIX_AR, '')];
     //  «ممكن تفتح…», «لو سمحت تشغل…»: the verb in the second person, as a polite order puts it.
     if (first.startsWith('ت') && ASKS_POLITELY_AR.test(courtesy)) forms.push(`ا${first.slice(1)}`, first.slice(1), `ا${first.slice(1)}`.replace(DEED_SUFFIX_AR, ''), first.slice(1).replace(DEED_SUFFIX_AR, ''));
     const deed = forms.find(form => OPENING_DEED_AR.has(form));
-    if (deed) return !NAVIGATING_DEED_AR.has(deed) || namesWhereToGo();
+    if (deed) return !NAVIGATING_DEED_AR.has(deed) || namesWhereToGo() || ordersASecondDeed(clause);
     if (!forms.some(form => MAKING_DEED_AR.has(form))) return false;
     const made = /^(?:لي|لنا)$/u.test(second) ? third : second;
     return !!made && !/^(?:ال|لل)/u.test(made);
@@ -253,7 +283,7 @@ function relativeClauseIsTheSubject(bare: string, at: number): boolean {
     const before = foldChars(lead).match(/[\p{L}\p{N}_]+/gu) || [];
     if (!before.length) return true;
     if (before.length > 4) return false;
-    const first = before[0];
+    const first = before[0] as string;
     if (OPENS_A_NOUN_PHRASE_EN.test(first)) return true;
     return OPENS_A_NOUN_PHRASE_AR.test(first) && !OPENING_DEED_AR.has(first) && !MAKING_DEED_AR.has(first);
 }
@@ -798,7 +828,10 @@ export function isReadOnlyStructural(goalRaw: string): boolean {
     // «شغّل المشروع ولا تنشئ أي ملفات», "Run the project. Do not create any files.": a file
     // denial beside the order it does not forbid is how the order is to be done, not an audit.
     const besideItsOrder = fileDenialBesideItsOrder(unquotedIntentText(bare));
-    return isReadOnlyPattern(stripScopedExclusions(besideItsOrder ? withoutFileDenials(bare) : bare));
+    const left = stripScopedExclusions(besideItsOrder ? withoutFileDenials(bare) : bare);
+    //  «بدون ما تعدل أي ملف، افحص المشروع», «ما تعدلش أي ملف، افحص المشروع»: the dialects' denial of every file
+    //  change is the boundary «بدون تعديل أي ملف» is — the pipeline's reader and requested-action already say so.
+    return isReadOnlyPattern(left) || deniesEveryFileChangeInHisDialect(unquotedIntentText(left));
 }
 
 /** Words naming his own workspace: a search there is not a web search. */

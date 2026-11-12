@@ -15,7 +15,7 @@ import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptN
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
 // No cycle at load: requested-action reaches this module only through a require() it makes when asked
 // (runtime-diagnostic-contract), never while it is loading.
-import { deniesEveryFileChange, withoutFileDenials, unquotedIntentText } from '../intelligence/requested-action';
+import { deniesEveryFileChange, withoutFileDenials, unquotedIntentText, asksForAJudgement } from '../intelligence/requested-action';
 
 /**
  * A knowledge question must not be turned into a tool execution merely because
@@ -68,7 +68,8 @@ const READ_DEED_AR = /^[وف]?(?:[اإأ]فحص|تفحص|راجع|دقق|است�
 /** Does what is left once the denials are read out order only a reading, or nothing? */
 function ordersOnlyAReading(left: string): boolean {
     const head = left.slice(0, 400).replace(BEFORE_THE_ORDER, '');
-    return !head || READ_DEED_EN.test(head) || READ_DEED_AR.test(head);
+    //  …or a judgement, an opinion, advice ("Evaluate the design…", "I want your opinion on…"): words too.
+    return !head || READ_DEED_EN.test(head) || READ_DEED_AR.test(head) || asksForAJudgement(head);
 }
 /** «without changing any files», «without touching anything»: read out with what it names, to find the order beside it. */
 const WITHOUT_CHANGING_PHRASE_EN = /\bwithout\s+(?:creating|writing|changing|modifying|editing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+[^.;!?\n,،:]{1,80}?(?=$|[.;!?\n,،:]|\s+(?:and|then|but)\s)/gi;

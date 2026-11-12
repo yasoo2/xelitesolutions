@@ -46,25 +46,118 @@ const WITHOUT_FILE_CHANGES_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing
  * closed one, so every other order keeps its exclusion and is carried out.
  */
 const WITHOUT_CHANGING_EN = /\bwithout\s+(?:creating|writing|changing|modifying|editing|touching|altering|affecting|breaking|rewriting|removing|deleting|moving|messing\s+(?:up|with))(?:\s+or\s+[a-z]+ing)?\s+(?:[^.;!?\n,،:]|\.(?=\S)){1,80}?(?=$|[;!?\n,،:]|\.(?:\s|$)|\s+(?:and|then|but)\s)/gi;
-const WITHOUT_CHANGING_ANYTHING_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:anything|a\s+(?:single\s+)?thing)\b(?!\s+(?:else|other\s+than|except|but|besides|outside))/i;
 const WITHOUT_CHANGING_THE_CODE_EN = /^without\s+[a-z]+(?:\s+(?:up|with))?(?:\s+or\s+[a-z]+ing)?\s+(?:(?:any\s+of\s+(?:the|my|our)|any|the|my|our)\s+)?(?:(?:project|existing|current|source)\s+)?(?:code|codebase|source)\b/i;
-const ORDER_LEAD_EN = /^(?:(?:please|kindly|just|now|then|and|also|ok|okay|hey|joe|(?:can|could|would|will)\s+you|i\s+(?:want|need)\s+(?:you\s+)?to|i(?:\s+would|['’]d)\s+like\s+(?:you\s+)?to)[\s,]+){0,4}/i;
+/*
+ * ⛔ …BUT «WITHOUT CHANGING ANYTHING» BESIDE WORDS IS STILL A DENIAL.
+ *
+ * The sixth pre-merge review (2026-11-12): with every order that is not a reading taken
+ * for a change, the denial was dropped wherever the request was for words this reader
+ * had no verb for — and the request was BUILT, or handed to a tool:
+ *
+ *     Evaluate the design without changing anything          → the build pipeline
+ *     I want your opinion on the footer without changing anything
+ *     A code review please, without changing anything
+ *     Is the build ok? Check without changing anything
+ *     Document the API without changing anything             → a project plan
+ *     Do a security audit without modifying anything         → the dependency audit
+ *
+ * What asks for words is an open class too. So which side is open depends on what the
+ * phrase keeps:
+ *  - EVERYTHING — a bare «anything», «a thing», with no «else», no «except X», no «in /
+ *    about X» of one part: a denial of every change, whatever stands beside it, unless
+ *    its sentence opens with one of the CLOSED verbs that change his work (fix, move,
+ *    add, remove, rename, translate, refactor, deploy…) or makes a thing built in files
+ *    («Build a todo app…»). An unknown head is denied: a missed order costs him an
+ *    answer in words, a missed denial changes the files he said to leave alone;
+ *  - ONE THING («the layout», «anything else», «any files except style.css», «anything
+ *    about its behavior») — the exclusion it was, unless its sentence only reads, runs
+ *    or asks for words or a judgement.
+ * The head read is the head of the phrase's OWN sentence («Is the build ok? Check
+ * without…» is governed by «Check»), from the four hundred characters on each side.
+ *
+ * And the same in Arabic for the one thing: «كبر الخط دون تغيير الألوان», «غير لون الزر
+ * بدون تغيير الخط» were a declared read-only request — «دون تغيير» is the boundary's word
+ * wherever it stands — and the change was never made. «بدون تعديل أي ملف / الكود /
+ * المشروع / أي شيء», or with nothing named, stays the denial it was.
+ */
+const BEFORE_THE_ORDER = /^(?:[\s.،,;:؛!؟?«»"'()-]|(?:please|pls|kindly|just|now|then|and|also|so|first|ok|okay|hey|hi|joe|let['’]?s|go\s+ahead\s+and|(?:can|could|would|will)\s+you|you\s+(?:can|could|should|may)|(?:i|we)\s+(?:want|need)\s+(?:you\s+)?to|(?:i|we)(?:\s+would|['’]d)\s+like\s+(?:you\s+)?to|من\s+فضلك|لو\s+سمحت|رجاء|ممكن|بليز|ثم|بعدين|[أا]ولا|يا\s+جو|جو|طيب|يلا)(?![\p{L}\p{N}_]))*/iu;
 const READS_OR_RUNS_EN = /^(?:review|inspect|audit|examine|check|analy[sz]e|explore|scan|read|look|see|view|show|list|display|print|find|search|locate|count|measure|verify|validate|confirm|test|run|start|launch|execute|open|diagnose|investigate|study|trace|watch|monitor|compare|report|identify|detect|preview|give\s+me|let\s+me\s+know)\b/i;
-/** Is something that changes his work ordered in what is left once the exclusion is read out? Only its head is read. */
-function ordersAChange(left: string): boolean {
-    const head = left.slice(0, 400).replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '').replace(ORDER_LEAD_EN, '');
-    return !asksForWordsOnly(head) && !READS_OR_RUNS_EN.test(head);
+const READS_AR = /^[وف]?(?:[اإأ]فحص|تفحص|راجع|دقق|استكشف|حلل|عاين|تفقد|تحقق|ت[أا]كد|[اإأ]طلع|[اأ]عرض|[اأ]سرد|[اإ]قر[أا]|قيم|شوف|شف|وري?|فرج|شغل|نفذ|اختبر|جرب|عطني|[اأ]عطني|هات)(?:لي|ني|نا|ي)?(?![\p{L}\p{N}_])|^(?:ما\s+)?ر[أا]يك(?![\p{L}\p{N}_])/u;
+/** What asks for a judgement, an opinion or advice — words, whatever it is asked about. */
+const ASKS_FOR_A_JUDGEMENT_EN = /^(?:evaluate|assess|rate|critique|judge|comment\s+on|estimate|think|consider|recommend|advise|reproduce|benchmark|profile|know|wonder|help\s+me\s+(?:pick|choose|decide|understand|see)|(?:only|just)\s+look|(?:take|have)\s+a\s+look|(?:(?:i|we)\s+(?:want|need|would\s+like|['’]d\s+like)\s+|need\s+|give\s+me\s+)?(?:your|an?|some|one|another)\s+(?:(?:quick|honest|second|short|brief|code|design|security)\s+){0,2}(?:opinion|thoughts?|feedback|advice|take|view|review|assessment|audit|question|estimate|recommendation|suggestions?)\b|(?:quick\s+)?question\b)\b/i;
+export function asksForAJudgement(head: string): boolean {
+    return ASKS_FOR_A_JUDGEMENT_EN.test(head);
 }
-/** The same pattern, for the reading that asks about each phrase while the one above reads them all out. */
+/** The CLOSED verbs that change his work: beside one of them, «without changing anything» says what the change leaves alone. */
+const CHANGES_HIS_WORK_EN = /^(?:fix|repair|correct|patch|move|shift|add|insert|append|remove|delete|drop|rename|translate|locali[sz]e|refactor|restructure|reorgani[sz]e|reorder|rearrange|update|change|modify|edit|alter|adjust|tweak|replace|swap|resize|restyle|recolou?r|redesign|rewrite|rework|redo|revert|undo|restore|deploy|redeploy|publish|ship|install|uninstall|upgrade|downgrade|bump|clean(?:\s+up)?|cleanup|tidy(?:\s+up)?|format|reformat|lint|prettify|polish|improve|enhance|optimi[sz]e|simplify|shorten|enlarge|shrink|increase|decrease|reduce|cent(?:er|re)|align|hide|enable|disable|convert|migrate|merge|split|extract|implement|apply|set|put|turn|switch|get\s+rid\s+of|speed\s+up|make\s+(?:it|this|that|them|these|those|the|my|our|its|all|every|each)\b)\b/i;
+const CHANGES_HIS_WORK_AR = /^[وف]?(?:[اأإ]?صلح|صحح|عدل|غير|بدل|حرك|[اأ]نقل|[اأإ]ضف|ضيف|زيد|[اإ]حذف|شيل|امسح|سمي?|ترجم|حسن|حدث|استبدل|كبر|صغر|لون|[اأ]نشر|ثبت|رتب|نظف|نسق|خلي?|اجعل|حط|ضع)(?:ي|ه|ها|هم|و|لي)?(?![\p{L}\p{N}_])/u;
+const MAKES_A_THING_EN = /^(?:build|create|make|generate|design|scaffold|write|develop|code)\b/i;
+function changesHisWork(head: string): boolean {
+    return CHANGES_HIS_WORK_EN.test(head) || CHANGES_HIS_WORK_AR.test(head) || (MAKES_A_THING_EN.test(head) && makesAThingBuiltInFiles(head.slice(0, 200)));
+}
+function onlyReadsOrAsks(head: string): boolean {
+    return asksForWordsOnly(head) || READS_OR_RUNS_EN.test(head) || ASKS_FOR_A_JUDGEMENT_EN.test(head) || READS_AR.test(head);
+}
+/** Every «without changing X», one at a time. */
 const EACH_WITHOUT_CHANGING_EN = new RegExp(WITHOUT_CHANGING_EN.source, 'gi');
-/** «without changing X» where it is an exclusion beside an order to change (above) — read out; where it denies, kept. */
+/** «without changing anything», «without touching a thing» — and «… in the project», which is all of it. */
+const KEEPS_EVERYTHING_EN = /^without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:anything|a\s+(?:single\s+)?thing)(?:\s+(?:at\s+all|whatsoever|please|yet|for\s+now|right\s+now|now))*(?:\s+(?:in|inside|of|within|about|on)\s+(?:the|my|our|this|that)\s+(?:(?:whole|entire|existing|current)\s+)?(?:project|workspace|repo|repository|codebase|code|app|application|site|website|system))?\s*$/i;
+/** Where a sentence ends. The dot of «utils.js» ends none. */
+const SENTENCE_END = /[!?؟;؛\n]|\.(?:\s|$)/u;
+/** The head of the sentence the phrase at `at` stands in, the «without» phrases read out of it. */
+function headOfItsSentence(text: string, at: number, length: number, phrases: RegExp): string {
+    const before = text.slice(Math.max(0, at - 400), at);
+    let from = before.length;
+    while (from > 0) {
+        const c = before.charCodeAt(from - 1);
+        //  \n ! ? ; ؛ ؟ — and a dot only when a space follows it.
+        if (c === 10 || c === 33 || c === 63 || c === 59 || c === 0x61B || c === 0x61F) break;
+        if (c === 46 && (from === before.length || isSpace(before.charCodeAt(from)))) break;
+        from -= 1;
+    }
+    const after = text.slice(at + length, at + length + 400);
+    const end = after.search(SENTENCE_END);
+    //  Only its head is read: three hundred characters hold the courtesies and the verb, and keep each phrase's cost a constant.
+    return `${before.slice(from)} ${end < 0 ? after : after.slice(0, end)}`.slice(0, 300).replace(phrases, ' ').replace(BEFORE_THE_ORDER, '');
+}
+/** Is the «without changing X» at `at` what a change must leave alone (true), or a denial (false)? */
+function isAnExclusionBesideItsOrder(text: string, at: number, phrase: string): boolean {
+    if (WITHOUT_FILE_CHANGES_EN.test(phrase) || WITHOUT_CHANGING_THE_CODE_EN.test(phrase)) return false;
+    const head = headOfItsSentence(text, at, phrase.length, WITHOUT_CHANGING_EN);
+    if (changesHisWork(head)) return true;
+    return !KEEPS_EVERYTHING_EN.test(phrase) && !onlyReadsOrAsks(head);
+}
+/** «… without changing anything» beside no order that changes his work: every change is denied. */
+function deniesEveryChangeWithout(text: string): boolean {
+    if (!/\bwithout\s/i.test(text)) return false;
+    for (const m of text.matchAll(EACH_WITHOUT_CHANGING_EN)) {
+        if (KEEPS_EVERYTHING_EN.test(m[0]) && !changesHisWork(headOfItsSentence(text, m.index as number, m[0].length, WITHOUT_CHANGING_EN))) return true;
+    }
+    return false;
+}
+/** «بدون تعديل X», «من دون تغيير X», «من غير تعديل X», «دون أي تعديل على X»: the words the read-only boundary stops on, with what they name. */
+const EACH_WITHOUT_CHANGE_AR = /(?<![\p{L}\p{N}_])(?:(?:من\s+)?ب?دون|من\s+غير)\s+(?:(?:أي|اي)\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)(?![\p{L}\p{N}_])(?<object>[^.؛;!?؟\n،,:]{0,80})/gu;
+/** What leaves nothing to change: the code, the project, anything — never with a word that narrows it («شي ثاني», «أي شيء آخر»). */
+const EVERYTHING_AR = /^(?:(?:على|في|فى)\s+)?(?:(?:أي|اي|كل|جميع)\s+(?:من\s+)?)?(?:ال)?(?:كود|سورس|مشروع|مستودع|ريبو|شي|شيء|شيئا|شئ|حاج[ةه])(?:ي|نا|ك|ه|ها)?(?![\p{L}\p{N}_])(?!\s+(?:[آا]خر|[أا]خرى|ثاني[ةه]?|جديد[ةه]?|غير|سوى|[إا]لا|عدا|باستثناء|ما\s+عدا)(?![\p{L}\p{N}_]))/u;
+const WITHOUT_CHANGE_AR = new RegExp(EACH_WITHOUT_CHANGE_AR.source, 'gu');
+const NAMES_NOTHING_AR = /^(?:\s*(?:فقط|[أا]بدا|نهائيا|بتاتا|[إا]طلاقا|الآن|الان|حاليا))*\s*$/u;
+/** A list of changes («دون إنشاء أو تعديل…», «دون تعديل ولا حذف…») names no one thing either. */
+const ANOTHER_CHANGE_AR = /^\s*(?:[أا]و|ولا|و)\s*(?:تعديل|كتابة|إنشاء|تغيير|حذف)/u;
+function namesOneThingAr(phrase: string, object: string): boolean {
+    if (NAMES_NOTHING_AR.test(object) || ANOTHER_CHANGE_AR.test(object)) return false;
+    return !EVERYTHING_AR.test(object.trimStart()) && !(phrase.includes('ملف') && deniesEveryFileChange(phrase));
+}
+/** «without changing X» / «بدون تعديل X» where it is an exclusion beside its order (above) — read out; where it denies, kept. */
 function withoutChangeExclusions(text: string): string {
-    if (!/\bwithout\s/i.test(text)) return text;
-    let changeOrdered: boolean | undefined;
-    return text.replace(EACH_WITHOUT_CHANGING_EN, phrase => {
-        if (WITHOUT_FILE_CHANGES_EN.test(phrase) || WITHOUT_CHANGING_THE_CODE_EN.test(phrase)) return phrase;
-        changeOrdered ??= ordersAChange(text.replace(WITHOUT_CHANGING_EN, ' '));
-        return changeOrdered ? ' ' : phrase;
+    const english = /\bwithout\s/i.test(text)
+        ? text.replace(EACH_WITHOUT_CHANGING_EN, (phrase: string, at: number) => isAnExclusionBesideItsOrder(text, at, phrase) ? ' ' : phrase)
+        : text;
+    if (!/دون\s|غير\s/u.test(english)) return english;
+    return english.replace(EACH_WITHOUT_CHANGE_AR, (phrase: string, ...rest: unknown[]) => {
+        const { object = '' } = (rest[rest.length - 1] || {}) as { object?: string };
+        if (!namesOneThingAr(phrase, object)) return phrase;
+        const at = rest[rest.length - 3] as number;
+        return onlyReadsOrAsks(headOfItsSentence(english, at, phrase.length, WITHOUT_CHANGE_AR)) ? phrase : ' ';
     });
 }
 /**
@@ -203,8 +296,8 @@ const EVERY_CHANGE_LIST_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])[وف]?لا
 export function deniesEveryFileChange(text: string): boolean {
     const t = stripArabicDiacritics(String(text || ''));
     if (NO_FILE_CHANGES_UNQUALIFIED.test(t) || WITHOUT_FILE_CHANGES_EN.test(t)) return true;
-    //  «… without changing anything»: every change, unless an order to change stands beside it.
-    if (WITHOUT_CHANGING_ANYTHING_EN.test(t) && !ordersAChange(t.replace(WITHOUT_CHANGING_EN, ' '))) return true;
+    //  «… without changing anything»: every change, unless one of the verbs that change his work stands beside it.
+    if (deniesEveryChangeWithout(t)) return true;
     if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t) || EVERY_CHANGE_LIST_AR.test(t)) return true;
     for (const m of t.matchAll(FILE_DENIAL_EN)) if (fileDenialIsWhole(m[2] || '', m[3] || '')) return true;
     for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m.groups?.own || '', m.groups?.tail || '')) return true;
@@ -834,7 +927,19 @@ function makesAThingBuiltInFiles(clause: string): boolean {
  * Do not create any files.» are still answered.
  */
 /** The Arabic words isReadOnlyStructural and the pipeline's isReadOnlyRequest both stop on («بدون تعديل», «من دون إنشاء»). */
-const READ_ONLY_BOUNDARY_WORDS_AR = /(?:^|[\s،:؛.!?])(?:من\s+)?ب?دون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)(?![\p{L}\p{N}_])/u;
+//  …and the same denial as Egypt and the Levant say it: «بدون ما تعدل أي ملف، افحص المشروع», «من غير ما تغير أي
+//  ملف، راجع المشروع», «ما تعدلش أي ملف، افحص المشروع», «متعدلش أي ملف وراجع المشروع» were a file denial and no
+//  inspection — answered from nothing, no file read — while the pipeline's boundary already knew them.
+const READ_ONLY_BOUNDARY_WORDS_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])(?:(?:من\s+)?ب?دون\s+(?:أي\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)(?![\p{L}\p{N}_])|${DIALECT_DENIAL_AR})`, 'u');
+const OPENS_IN_HIS_DIALECT = new RegExp(String.raw`^[\s،:؛.!?]?(?:${DIALECT_DENIAL_AR})`, 'u');
+/** Does the request deny every file change in the dialects' own words («ما تعدلش أي ملف», «بدون ما تغير الملفات»)? */
+export function deniesEveryFileChangeInHisDialect(text: string): boolean {
+    const t = stripArabicDiacritics(String(text || ''));
+    for (const m of t.matchAll(FILE_DENIAL_AR)) {
+        if (OPENS_IN_HIS_DIALECT.test(m[0]) && arabicFileDenialIsWhole(m.groups?.own || '', m.groups?.tail || '')) return true;
+    }
+    return false;
+}
 //  After the mark that opens the clause only the spaces of its own line are skipped: with `\s*`
 //  every line break of a run opened a clause and skipped the rest of the run (20 KB of blank
 //  lines: 2.2 s of processor time for one reading).
@@ -895,9 +1000,11 @@ const SCOPED_EXCLUSION_AR = new RegExp(String.raw`(?:^|(?<=[\s،:؛.!?]))(?:و?�
 function stripPartExclusions(text: string): string {
     return withoutChangeExclusions(String(text || '').replace(SCOPED_EXCLUSION_EN, ' ').replace(SCOPED_EXCLUSION_AR, ' '));
 }
+//  Read without harakat: «ولا تُنشئْ صفحةً جديدةً» excludes what «ولا تنشئ صفحة جديدة» excludes. One text is read
+//  once: every reader of a request asks for the same few texts without their exclusions, several times each.
+const scopedExclusionsReadOut = rememberLastReadings((text: string) => stripNarrowedFileDenials(stripPartExclusions(stripArabicDiacritics(text))));
 export function stripScopedExclusions(text: string): string {
-    // Read without harakat: «ولا تُنشئْ صفحةً جديدةً» excludes what «ولا تنشئ صفحة جديدة» excludes.
-    return stripNarrowedFileDenials(stripPartExclusions(stripArabicDiacritics(String(text || ''))));
+    return scopedExclusionsReadOut(String(text || ''));
 }
 
 /**
