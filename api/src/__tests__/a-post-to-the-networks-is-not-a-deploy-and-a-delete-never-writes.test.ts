@@ -175,14 +175,20 @@ describe('1 — his own step before the publish is followed by it', () => {
 
 describe('2 — a payment is the condition only where it is its head', () => {
     it.each([
-        'Deploy after fixing the payment bug',
-        'Deploy after adding the payments page',
         'Deploy after the payment integration',
-        'Publish after adding the confirmation email template',
-        'Deploy after updating the content',
     ])('his own work, not a wait: %s', (text) => {
         expect(read(text).veto).toBe('');
         expect(read(text).ordersAPublish).toBe(true);
+    });
+
+    it.each([
+        'Deploy after fixing the payment bug',
+        'Deploy after adding the payments page',
+        'Publish after adding the confirmation email template',
+        'Deploy after building the contact page',
+    ])('his own deed first, then the publish — never the publish before it: %s', (text) => {
+        expect(read(text).veto).toBe('follows');
+        expect(everyPlan(text).filter(tool => PlanningEngine.isSiteDeployTool(tool))).toEqual([]);
     });
 
     it.each([
@@ -261,24 +267,16 @@ describe('P1 — a deed done to a file never plans a write of it', () => {
         expect(everyPlan(text).filter(tool => tool !== 'delete_file')).toEqual([]);
     });
 
-    it('…and is planned on the file it names, whichever road the request came by', () => {
-        for (const text of ['احذف الملف temp.txt', 'Delete the file temp.txt']) {
+    it('…and the fast path plans nothing for it, whichever road the request came by: the planner that reads the whole request decides a deletion', () => {
+        for (const text of ['احذف الملف temp.txt', 'Delete the file temp.txt', 'Delete scripts/deploy.yml', 'Delete a.txt, b.txt and c.txt', 'Delete ../secrets.env']) {
             for (const candidate of ['delete_file', '', 'ai_write_file']) {
-                const plan = PlanningEngine.capabilityPlan({ goal: text, rawIntent: { capabilityCandidate: candidate } }, {});
-                expect(plan?.steps.map((step: any) => [step.tool, step.input.path])).toEqual([['delete_file', 'temp.txt']]);
+                expect(PlanningEngine.capabilityPlan({ goal: text, rawIntent: { capabilityCandidate: candidate } }, {})).toBeNull();
             }
         }
     });
 
-    it('…and never on a file that another clause names', () => {
-        const paths = (text: string, candidate: string) => (PlanningEngine.capabilityPlan({ goal: text, rawIntent: { capabilityCandidate: candidate } }, {})?.steps || [])
-            .filter((step: any) => step.tool === 'delete_file').map((step: any) => step.input.path);
-        expect(paths('Delete a.txt and write hello to b.txt', 'delete_file')).toEqual(['a.txt']);
-        expect(paths('احذف ملف النشر deploy.sh', 'delete_file')).toEqual(['deploy.sh']);
-        expect(paths('Delete scripts/deploy.yml', 'delete_file')).toEqual(['scripts/deploy.yml']);
-        //  More than one file is not one tool call: the planner that reads the whole request takes it.
-        expect(everyPlan('Delete a.txt, b.txt and c.txt')).toEqual([]);
-        expect(everyPlan('Delete ../secrets.env')).toEqual([]);
+    it('…and a clause beside it plans as it always did, with no delete', () => {
+        expect(everyPlan('Delete a.txt and write hello to b.txt')).not.toContain('delete_file');
     });
 
     it.each([
@@ -333,8 +331,8 @@ describe('P2 — a publish word that names a file is not a publish order', () =>
         expect(everyPlan(text).filter(tool => PlanningEngine.isSiteDeployTool(tool) || WRITERS.test(tool))).toEqual([]);
     });
 
-    it('the delete it orders is the plan', () => {
-        expect(planned('احذف ملف النشر deploy.sh')).toEqual(['delete_file']);
+    it('the delete it orders is left to the planner that reads the whole request', () => {
+        expect(everyPlan('احذف ملف النشر deploy.sh')).toEqual([]);
     });
 
     it('a sentence that ends on the publish word is still the order', () => {
@@ -348,9 +346,62 @@ describe('P3 — a delete beside a refused publish is the delete', () => {
         'Don\'t deploy, just delete the file temp.txt',
     ])('%s', (text) => {
         expect(read(text)).toMatchObject({ deploy: false, veto: 'denied' });
-        expect(plannedWith(text, 'deploy_pages')).toEqual(['delete_file']);
-        expect(plannedWith(text, '')).toEqual(['delete_file']);
-        expect(planned(text)).toEqual(['delete_file']);
+        //  Neither the refused publish nor a write: the delete is the planner's to decide.
+        expect(everyPlan(text)).toEqual([]);
+    });
+});
+
+describe('the seventh review — no file is ever deleted on the fast path', () => {
+    it.each([
+        //  A: the file named is not the deed's object
+        'remove the files section from index.html',
+        'remove the file extension check from upload.js',
+        'delete the file upload handler in server.js',
+        'remove the file path from config.json',
+        'احذف قسم الملفات من index.html',
+        'add a menu item "Delete the file" to index.html',
+        'create an endpoint to delete the file by id in server.js',
+        'remove the file temp.txt from .gitignore',
+        'امسح محتوى الملف temp.txt',
+        //  B: except X
+        'delete every file except temp.txt',
+        'delete all files other than main.py',
+        'احذف كل الملفات إلا index.html',
+        'امسح كل الملفات غير main.py',
+        //  C: a negation further back or in other words
+        'do not under any circumstances ever delete the file temp.txt',
+        'rather than delete the file temp.txt, comment out its contents',
+        'اوعى تحذف الملف temp.txt',
+        'حذاري تحذف الملف temp.txt',
+        'مين قالك تحذف الملف temp.txt',
+        //  D: retractions, conditions, deferrals
+        'Delete temp.txt? No, keep it',
+        'delete the file temp.txt — actually no, don\'t',
+        'احذف الملف temp.txt؟ لا، خليه',
+        'if the tests pass, delete the file temp.txt',
+        'delete the file temp.txt only if I confirm',
+        'احذف الملف temp.txt لو ما كان مستخدم',
+        'احذف الملف temp.txt بعدين مش هلق',
+        //  E: quotes, mentions, features
+        'المستخدم كتب: «احذف الملف temp.txt» — رد عليه برسالة مهذبة',
+        'explain the command: delete the file temp.txt',
+        'the app should delete the file temp.txt on logout',
+        'اكتب دالة تحذف الملف temp.txt عند الخروج',
+        'حذف الملف temp.txt فشل',
+        //  F: a name with spaces or a variable
+        'delete the file my notes.txt',
+        'delete the file $HOME/x.txt',
+    ])('%s', (text) => {
+        expect(everyPlan(text)).not.toContain('delete_file');
+        expect(plannedWith(text, 'delete_file')).not.toContain('delete_file');
+    });
+
+    it.each([
+        'delete the file temp.txt then deploy the site',
+        'احذف الملف temp.txt ثم انشر الموقع',
+        'Delete a.txt and write hello to b.txt',
+    ])('a request that orders a deletion is the planner\'s whole — no other deed is planned without it: %s', (text) => {
+        expect(everyPlan(text)).toEqual([]);
     });
 });
 

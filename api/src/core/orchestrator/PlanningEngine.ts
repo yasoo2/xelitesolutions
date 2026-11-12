@@ -44,6 +44,8 @@ export interface ExecutionStep {
  * belongs at the read-only boundary, not in an answer-only reply. A bare
  * prohibition («Explain hooks. Do not create any files.») stays a question.
  */
+/** A tool whose name says it destroys: never planned on the capability fast path (seventh review, 2026-11-12). */
+const DESTROYING_TOOL = /(?:^|_)(?:delete|remove|drop|wipe|purge|erase|destroy|truncate|unlink|rmdir)(?:_|$)/iu;
 const READ_ONLY_PERMISSION = /\bread[-\s]?only\b|\breadonly\b|\bonly\s+(?:read|inspect|analy[sz]e|review|verify)\b|(?:^|[\s،:؛])(?:قراءة|للقراءة)\s+فقط(?=$|[\s،:؛.!؟])/iu;
 function isReadOnlyInspectionRequest(goal: string): boolean {
     // Both readers: the planner's boundary below asks isReadOnlyStructural, the
@@ -832,6 +834,10 @@ function readPublishUses(text: string): PublishUses {
         if (t === 'before') return EN_CLAUSE_SUBJECT.test(next) ? (next === 'you' ? yourStepEn(i + 2, false) : 'waits') : '';
         if (next === 'you') return yourStepEn(i + 2, AFTER_EN.test(t));
         if (EN_CLAUSE_SUBJECT.test(next) || (t !== 'after' && /^(?:the|my|our|all)$/u.test(next))) return 'waits';
+        //  "Deploy after fixing the payment bug": his own work comes first, as «انشره بعد ما تصلح الخطأ» — the seventh
+        //  review found it deployed at once, before the fix. A thing named in -ing ("something", "the morning") is no deed.
+        if (AFTER_EN.test(t) && /^[a-z]{2,}ing$/u.test(next) && !GIVEN_TO_HIM_EN.test(next)
+            && !/^(?:(?:some|any|every|no)thing|thing|morning|evening|spring|string|ceiling)$/u.test(next)) return 'follows';
         return anotherPartysEvent(i + 1) ? 'waits' : '';
     };
     /** The clause a publish word conditions: a subordinator after it, before the sentence or the clause ends. */
@@ -2068,6 +2074,9 @@ Rules:
             };
             const chain = capabilityChain(goal, 5)
                 .filter((c: any) => !refusedDeployStep(c?.name, String(c?.part || goal)));
+            //  A deletion is never planned on this fast path (see derive below): a chain that holds one goes,
+            //  whole, to the planner that reads the request — dropping the step would publish what he meant to delete first.
+            if (chain.some((c: any) => DESTROYING_TOOL.test(String(c?.name || '')))) return null;
             if (chain.length >= 2) {
                 console.log(`[PlanningEngine] capability chain -> ${chain.map((c: any) => c.name).join(' → ')}`);
                 return {
@@ -2125,15 +2134,24 @@ Rules:
              * (capability-match): "Delete a.txt and write hello to b.txt" deletes a.txt, never the file
              * another clause names.
              */
+            /*
+             * …AND THIS FAST PATH PLANS NO DESTROYING TOOL AT ALL. The seventh review (2026-11-12) gave
+             * the deed reader's target a real path and found some hundred requests that deleted a file
+             * nobody ordered deleted: "remove the files section from index.html" → delete index.html,
+             * "delete every file except temp.txt" → delete temp.txt, «اوعى تحذف الملف temp.txt»,
+             * "Delete temp.txt? No, keep it", "the app should delete the file temp.txt on logout".
+             * A deletion cannot be undone; the planner that reads the whole request — its negations,
+             * conditions, quotes and retractions — decides it. The deed reader still does its other
+             * job: the deed's clause is matched by no writer, so a delete never plans a write.
+             */
             const toolByName = new Map((registeredTools as any[]).map(tool => [tool.name, tool]));
             const derive = (candidate: any): Record<string, any> | null => {
-                const tool = toolByName.get(candidate.name);
-                const input = inputForTool(tool, goal, context);
-                if (!candidate.byDeed) return input;
-                const field = Object.keys(tool?.inputSchema?.properties || {}).find(key => /^(?:path|file|filename|filepath)$/i.test(key));
-                return field && candidate.target ? { ...(input || {}), [field]: candidate.target } : null;
+                if (candidate.byDeed) return null;
+                return inputForTool(toolByName.get(candidate.name), goal, context);
             };
-            capable = capable.filter((c: any) => !c.byDeed || !!derive(c));
+            //  A request that orders a deletion is the planner's whole: planning the rest here would do the other
+            //  deeds and silently leave the deletion out ("delete temp.txt then deploy" would publish temp.txt).
+            if (capable.some((c: any) => c.byDeed) || capable.some((c: any) => DESTROYING_TOOL.test(String(c?.name || '')) && !derive(c))) return null;
             if (!capable.length) return null;
             // IntentParser may supply one registry-backed deterministic
             // candidate. Revalidate it against the current matcher, then keep

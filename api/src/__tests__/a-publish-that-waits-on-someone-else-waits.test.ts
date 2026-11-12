@@ -185,8 +185,9 @@ describe('4 — a refused deploy is not a request for the next tool', () => {
         expect(planned(text, '')).toEqual([]);
     });
 
-    it('another deed ordered in a clause of its own keeps its tool', () => {
-        expect(planned('Don\'t deploy, just delete the file temp.txt', 'delete_file')).toEqual(['delete_file']);
+    it('another deed ordered in a clause of its own is read apart from the refused publish', () => {
+        //  A deletion is the planner's to decide, never this fast path's (the seventh review): no tool here, and no deploy.
+        expect(planned('Don\'t deploy, just delete the file temp.txt', 'delete_file')).toEqual([]);
         expect(read('Don\'t deploy, just delete the file temp.txt').besideThePublish).toMatch(/delete the file temp\.txt/);
         expect(read('انشره على الفيسبوك مع صورة للشعار').besideThePublish).toBe('');
         expect(read('columns: id, deploy target, delete flag, run count, send date').besideThePublish).toBe('');
