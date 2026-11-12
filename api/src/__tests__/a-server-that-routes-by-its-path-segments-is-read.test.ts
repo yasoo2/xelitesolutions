@@ -175,6 +175,34 @@ describe('a segment looked up in a table of handlers, compared, or switched on s
         ])).toEqual(expect.arrayContaining(['/api/rooms', '/api/guests']));
     });
 
+    /*
+     * qa-live19, 2026-11-12, L236 again: the split taken apart at once, with no variable to index —
+     * `const [, resource, rawId, extra] = url.pathname.split('/').filter(Boolean)` — and a table of
+     * handlers written in shorthand, `{ products, orders, warranties }`. Nothing was read, and the
+     * store was refused four times with «products, orders, warranties (not served)».
+     */
+    test('a split taken apart at once, and a shorthand table of handlers', async () => {
+        const server = [
+            `const http = require('node:http');`,
+            `const handlers = { products, orders, warranties };`,
+            `async function handleApi(db, req, res, url) {`,
+            `  const [, resource, rawId, extra] = url.pathname.split('/').filter(Boolean);`,
+            `  const h = handlers[resource];`,
+            `  if (!h || extra !== undefined) throw new Error('404');`,
+            `  if (req.method === 'GET') return res.end(JSON.stringify(h.list(db)));`,
+            `}`,
+            `http.createServer((req, res) => {`,
+            `  const url = new URL(req.url, 'http://x');`,
+            `  if (url.pathname === '/api' || url.pathname.startsWith('/api/')) return handleApi(null, req, res, url);`,
+            `}).listen(3000);`,
+        ].join('\n');
+        const got = (await collectServerEvidence([tree({ 'src/app.js': server })], [])).routes.map(r => r.path);
+        expect(got).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/warranties']));
+        //  Without .filter(Boolean) the first part is the empty one before the leading slash.
+        const bare = server.replace(".split('/').filter(Boolean)", ".split('/')").replace('const [, resource, rawId, extra]', 'const [, , resource, rawId, extra]');
+        expect((await collectServerEvidence([tree({ 'src/app.js': bare })], [])).routes.map(r => r.path)).toEqual(expect.arrayContaining(['/api/products', '/api/orders', '/api/warranties']));
+    });
+
     //  The fifth review, 2026-11-11: the keys of the table checked with Object.keys(…).includes, and a quote inside a pattern of the table.
     test('a table checked with Object.keys(…).includes(v), and a pattern holding a quote', async () => {
         expect(await paths([
