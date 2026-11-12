@@ -20,6 +20,11 @@ const ANSWER_ONLY_PATTERN = new RegExp(`${START_BOUNDARY}(?:${ANSWER_ONLY_EN}|${
 // A denial with no object to qualify: «no file changes», «without making any changes».
 const NO_FILE_CHANGES_UNQUALIFIED_EN = `(?:no\\s+file\\s+changes?|without\\s+file\\s+changes?|without\\s+(?:creating|writing|modifying|editing|making)\\s+(?:any\\s+)?(?:file\\s+)?changes?)`;
 const NO_FILE_CHANGES_UNQUALIFIED = new RegExp(`${START_BOUNDARY}${NO_FILE_CHANGES_UNQUALIFIED_EN}`, 'i');
+//  «Without changing any files, review the project», «Review the repo without changing anything»: the
+//  same denial said with «without». It was no file denial at all, so the «without changing» in it was
+//  taken for «answer only» and the review he ordered was answered from nothing. A word that narrows
+//  the object («any other files», «anything else») keeps it out, as it does for «do not».
+const WITHOUT_FILE_CHANGES_EN = /(?:^|[\s،:؛.!?])without\s+(?:creating|writing|modifying|editing|changing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+(?:(?:any\s+of\s+(?:the|my|our)|any|the|my|our|a\s+single)\s+)?(?:(?:project|existing|current|source|code)\s+)?(?:files?|anything|a\s+thing)\b(?!\s+(?:else|other\s+than|except|but|besides|outside))/i;
 /**
  * ⛔ «DO NOT CHANGE ANY OTHER FILES» IS NOT «DO NOT CHANGE FILES».
  *
@@ -151,7 +156,7 @@ const EVERY_CHANGE_LIST_AR = new RegExp(String.raw`(?:^|[\s،:؛.!?])[وف]?لا
  */
 export function deniesEveryFileChange(text: string): boolean {
     const t = stripArabicDiacritics(String(text || ''));
-    if (NO_FILE_CHANGES_UNQUALIFIED.test(t)) return true;
+    if (NO_FILE_CHANGES_UNQUALIFIED.test(t) || WITHOUT_FILE_CHANGES_EN.test(t)) return true;
     if (EVERY_CHANGE_DENIAL_EN.test(t) || EVERY_CHANGE_DENIAL_AR.test(t) || EVERY_CHANGE_LIST_AR.test(t)) return true;
     for (const m of t.matchAll(FILE_DENIAL_EN)) if (fileDenialIsWhole(m[2] || '', m[3] || '')) return true;
     for (const m of t.matchAll(FILE_DENIAL_AR)) if (arabicFileDenialIsWhole(m.groups?.own || '', m.groups?.tail || '')) return true;
@@ -714,7 +719,52 @@ export function fileDenialBesideItsOrder(text: string): { freed: string; order: 
         if (CREATING_IN_A_DENIAL.test(m[0].slice(0, m[0].length - tail.length))) creates = true;
     }
     if (creates) return null;
-    return clauses.some(clause => opensWithAnOrder(clause, CREATE_ORDER)) ? { freed, order: 'create' } : null;
+    return clauses.some(clause => opensWithAnOrder(clause, CREATE_ORDER) && makesAThingBuiltInFiles(clause)) ? { freed, order: 'create' } : null;
+}
+/**
+ * ⛔ «MAKE A PLAN» BESIDE «DO NOT MODIFY ANY FILES» MAKES NO FILE.
+ *
+ * Once an order to create stood free beside a denial of edits, ANY «make X» did:
+ * "Do not modify any files. Make a plan for the refactor.", «لا تعدل أي ملف، سوي لي
+ * خطة للتعديلات», «… اعمل لي ملخص للمشروع», "… Make a list of the problems you see."
+ * were all BUILT — a project scaffolded for a request that asked for words and
+ * forbade every change. The verbs «make», «create», «اعمل», «سوي» say nothing of
+ * what is made; the object does.
+ *
+ * The order is freed only when its object is a thing that is built in files: a
+ * page, a site, an app, a component, a screen, a file. A plan, a list, a summary,
+ * a report, a backup, an explanation — and any object this reader does not know —
+ * leave the denial whole, as it was before the order could be freed at all.
+ *
+ * The object is the head of what the verb takes. In Arabic the head comes first
+ * («صفحة تقرير» is a page, «تقرير عن الصفحة» a report); in English it comes last,
+ * before the first preposition («a todo list app» is an app, «a site plan» a plan,
+ * «a list of the pages» a list).
+ */
+const BUILT_IN_FILES_AR = /^(?:ال|لل)?(?:موقع|صفح[ةه]|صفحات|صفحتين|تطبيق|متجر|نظام|منص[ةه]|لوح[ةه]|واجه[ةه]|[اأ]دا[ةه]|برنامج|بواب[ةه]|خدم[ةه]|لعب[ةه]|مدون[ةه]|سكربت|بوت|مشروع|نموذج|استمار[ةه]|فورم|مكون|كومبوننت|شاش[ةه]|ملف|ملفات|داشبورد|حاسب[ةه])(?:ا|ين)?$/u;
+const BUILT_IN_FILES_EN = /^(?:pages?|sites?|websites?|webpages?|homepages?|apps?|applications?|webapps?|components?|screens?|dashboards?|forms?|stores?|shops?|blogs?|portfolios?|games?|tools?|scripts?|apis?|servers?|services?|backends?|frontends?|interfaces?|ui|systems?|platforms?|projects?|programs?|modules?|widgets?|calculators?|trackers?|bots?|cli|extensions?|plugins?|templates?|portals?|files?|prototypes?|clones?)$/i;
+const MADE_OF_WORDS_EN = /^(?:plans?|lists?|summar(?:y|ies)|reports?|backups?|explanations?|analys[ei]s|reviews?|outlines?|overviews?|checklists?|roadmaps?|proposals?|diagrams?|estimates?|cop(?:y|ies)|notes?|comparisons?|descriptions?|drafts?|sketch(?:es)?|audits?|inventor(?:y|ies)|breakdowns?|guides?|tables?|charts?|strateg(?:y|ies)|documents?|docs?|mockups?|wireframes?|designs?|ideas?|names?|diffs?|snapshots?)$/i;
+/** Where the English object ends: what follows says what it is for, of or about. */
+const AFTER_THE_OBJECT_EN = /^(?:for|of|about|to|that|with|in|on|from|which|where|who|showing|listing|describing|explaining|using|named|called|and|or|then|so|as|by|at|into)$/i;
+/** «أي صفحة», «أول موقع», «كم صفحة»: a word before the head that is not it. */
+const BEFORE_THE_OBJECT_AR = /^(?:[أا]ي|[أا]ول|كم|عد[ةه]|بعض|مجموع[ةه])$/u;
+function makesAThingBuiltInFiles(clause: string): boolean {
+    //  The verb, then «لي» / "me", then the object: twelve words are more than any object's own.
+    const words = clause.replace(SEQUENCE_LEAD, '').split(/[\s:]+/u, 14).filter(Boolean)
+        .map(word => word.slice(0, 40).replace(/^[^\p{L}\p{N}]+/u, '').replace(/[^\p{L}\p{N}]$/u, ''));
+    let at = 1;
+    if (/^(?:لي|لنا|لك|me|us)$/iu.test(words[at] || '')) at += 1;
+    if (BEFORE_THE_OBJECT_AR.test(words[at] || '')) at += 1;
+    const head = words[at] || '';
+    if (!/^[a-z]/i.test(head)) return BUILT_IN_FILES_AR.test(head);
+    let built = false;
+    for (let i = at; i < words.length; i++) {
+        const word = words[i].replace(/['’]s$/i, '');
+        if (i > at && AFTER_THE_OBJECT_EN.test(word)) break;
+        if (BUILT_IN_FILES_EN.test(word)) built = true;
+        else if (MADE_OF_WORDS_EN.test(word)) built = false;
+    }
+    return built;
 }
 
 /**
@@ -736,11 +786,19 @@ const READ_ONLY_BOUNDARY_WORDS_AR = /(?:^|[\s،:؛.!?])(?:من\s+)?ب?دون\s+(
 //  After the mark that opens the clause only the spaces of its own line are skipped: with `\s*`
 //  every line break of a run opened a clause and skipped the rest of the run (20 KB of blank
 //  lines: 2.2 s of processor time for one reading).
+/*
+ * …AND THE DENIAL MAY COME FIRST. «بدون تعديل أي ملف، افحص المشروع وقل لي المشاكل»,
+ * «من فضلك، بدون تعديل أي ملف، افحص المشروع», "Without changing any files, review
+ * the project" put the manner before the order; the verb was looked for only at
+ * the head of a SENTENCE, so each was answered from nothing, no file read. The
+ * order opens a clause: after a comma too, or joined to what came before it by
+ * «و» / «ف» / "and" («بدون تعديل أي ملف وافحص المشروع»).
+ */
 const INSPECTS_HIS_PROJECT = new RegExp([
     //  …and to list or read what the workspace holds is to inspect it: «اعرض ملفات مساحة العمل الرئيسية،
     //  ثم لخّص README للمستخدم دون تعديل أي ملف» was the read-only boundary's, and was answered instead.
-    String.raw`(?:^|[.!؟?;؛\n])[^\S\n]*(?:(?:من\s+فضلك|لو\s+سمحت|رجاء)\s+)?[وف]?(?:[اإأ]فحص|تفحص|راجع|دقق|استكشف|حلل|عاين|تفقد|تحقق\s+من|اطلع\s+على|[اأ]عرض|[اأ]سرد|[اإ]قر[أا])\s+(?:لي\s+)?(?:(?:كل|جميع|كامل|بني[ةه]|هيكل|ملفات|محتويات|كود|حال[ةه])\s+)?(?:ال)?(?:مشروع|مستودع|ريبو|مساح[ةه]\s+العمل)(?:ي|نا)?(?![\p{L}\p{N}_])`,
-    String.raw`(?:^|[.!?;\n])[^\S\n]*(?:please\s+)?(?:inspect|review|audit|examine|check|analy[sz]e|explore|scan)\s+(?:(?:the|my|our|this|whole|entire|existing|current)\s+){0,3}(?:project|workspace|repo(?:sitory)?|codebase)\b`,
+    String.raw`(?:(?:^|[.!؟?;؛\n،,])[^\S\n]*(?:(?:من\s+فضلك|لو\s+سمحت|رجاء)\s+)?[وف]?|[^\S\n][وف])(?:[اإأ]فحص|تفحص|راجع|دقق|استكشف|حلل|عاين|تفقد|تحقق\s+من|اطلع\s+على|[اأ]عرض|[اأ]سرد|[اإ]قر[أا])\s+(?:لي\s+)?(?:(?:كل|جميع|كامل|بني[ةه]|هيكل|ملفات|محتويات|كود|حال[ةه])\s+)?(?:ال)?(?:مشروع|مستودع|ريبو|مساح[ةه]\s+العمل)(?:ي|نا)?(?![\p{L}\p{N}_])`,
+    String.raw`(?:(?:^|[.!?;\n,،])[^\S\n]*(?:(?:and|then|but|just)\s+)?(?:please\s+)?|[^\S\n](?:and|then)\s+)(?:inspect|review|audit|examine|check|analy[sz]e|explore|scan)\s+(?:(?:the|my|our|this|whole|entire|existing|current)\s+){0,3}(?:project|workspace|repo(?:sitory)?|codebase)\b`,
 ].join('|'), 'iu');
 
 /** Quoted examples and copy are data; share this boundary with structural build detection. */
@@ -814,8 +872,15 @@ export function stripScopedExclusions(text: string): string {
  */
 const WORDS_ONLY_LEAD = /^(?:(?:من\s+فضلك|لو\s+سمحت|رجاء|ممكن|please|kindly|can\s+you|could\s+you|would\s+you)\s+)?(?:(?:صف|[اأ]وصف|اشرح|وضح|اقترح|خطط|لخص|قل|قول|خبر|[اأ]خبر|احك|احكي|اذكر|عدد|قارن|فكر)(?:لي|ني|لنا|ي)?(?=$|[^\p{L}\p{N}_])|(?:describe|explain|suggest|propose|plan|outline|tell|summari[sz]e|brainstorm|compare|imagine)\b)/iu;
 const QUESTION_LEAD = /^(?:كيف|كيفية|لماذا|ليش|ليه|لي[هش]|وش|شو|[اإأ]يش|ما(?=\s)|ماذا|متى|[اأ]ين|وين|هل\s+(?!ممكن|يمكن|تقدر|تستطيع)|what\b|how\b|why\b|which\b|when\b|where\b|who\b|is\s+it\b|are\s+there\b|does\b|do\s+(?:i|we)\b)/iu;
+/*
+ * Only the HEAD of what is left is read, so only the head is trimmed. The tail
+ * was trimmed too, with `[\s.،…]+$` — and an end-anchored run is tried again from
+ * every character of every run in the text: «شغل المشروع», 20 KB of blank lines,
+ * «ولا تعدل أي ملف» cost 18.8 s of processor time for one reading. The leading
+ * trim already leaves nothing when nothing but marks is left.
+ */
 function asksForWordsOnly(text: string): boolean {
-    const left = String(text || '').replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '').replace(/[\s.،,;:؛!«»"'()-]+$/u, '');
+    const left = String(text || '').replace(/^[\s.،,;:؛!؟?«»"'()-]+/u, '');
     if (!left) return true;
     // «ما عم يشتغل الزر» opens with a negation, not with «what».
     return WORDS_ONLY_LEAD.test(left) || QUESTION_LEAD.test(withoutNegatingMa(left).trimStart());
@@ -885,7 +950,67 @@ const CLAUSE_BUILD_ORDER: OrderWords = {
  * second person («لا تسوي»), never «الزر لا يسوي شي»; the English must open its
  * clause — "the button does nothing" reports a fault.
  */
-const DO_NOTHING = /(?:^|[\s،:؛.!?])[وف]?لا\s+(?:تسوي|تسو|تعمل|تفعل)\s+(?:(?:أي|اي)\s+)?(?:شي|شيء|شيئا|شئ|اشي|حاج[ةه])(?![\p{L}\p{N}_])(?!\s+(?:غير|الا|إلا|سوى|ثاني|ثانية|اخر|آخر|زياد[ةه]))|(?:^|[.!?;,\n])[^\S\n]*(?:please\s+)?(?:do\s+nothing|do\s+not\s+do\s+anything|don['’]?t\s+do\s+anything)\b(?!\s+(?:else|except|but|other|more))/iu;
+const DO_NOTHING = /(?:^|[\s،:؛.!?])[وف]?لا\s+(?:تسوي|تسو|تعمل|تفعل)\s+(?:(?:أي|اي)\s+)?(?:شي|شيء|شيئا|شئ|اشي|حاج[ةه])(?![\p{L}\p{N}_])|(?:^|[.!?;,\n])[^\S\n]*(?:please\s+)?(?:do\s+nothing|do\s+not\s+do\s+anything|don['’]?t\s+do\s+anything)\b/giu;
+/** «لا تسوي شي غير…», "do nothing else": nothing BUT something — no order to do nothing. */
+const NOTHING_BUT = /^\s+(?:غير|الا|إلا|سوى|ثاني|ثانية|اخر|آخر|زياد[ةه]|else|except|but|other|more)(?![\p{L}\p{N}_])/iu;
+/**
+ * ⛔ «DO NOTHING TO THE HEADER» EXCLUDES THE HEADER. IT REFUSES NOTHING ELSE.
+ *
+ * «لا تسوي شي في الهيدر، بس غير لون الفوتر», «لا تعمل شي بالتصميم، بس صلح الخطأ»,
+ * "don't do anything to the database, just fix the form", "Do nothing to the
+ * header; change the footer color to black" were each answered with words and
+ * nothing was changed: the order to do nothing was read wherever it stood, and
+ * a global denial outranks the order beside it.
+ *
+ * It denies every deed only when it is about everything and nothing is ordered
+ * after it:
+ *  - a preposition and the thing it names («في الهيدر», «بالتصميم», «للهيدر»,
+ *    "to the database", "with the styles") SCOPE it to that thing — an
+ *    exclusion, like «do not build a database». Not the prepositions of time
+ *    and manner: «في الوقت الحالي», "for now", "at all", «بالمرة» name no thing;
+ *  - «بس», «فقط», «لكن», "just", "only", "but" after it open what he DOES want;
+ *    when that is an order («بس صلح الزر», "just fix the form") the order is
+ *    the request. When it asks for words («لا تسوي شي، بس اشرح لي الكود»,
+ *    "don't do anything yet, just explain the plan") the denial stands.
+ * And an exclusion with nothing else ordered is still a refusal, as it is for a
+ * part («Explain the header. Don't do anything to it yet»).
+ *
+ * Each order to do nothing is read with the 240 characters after it, so the
+ * reading is linear in the text.
+ */
+const NO_THING_NAMED_AR = String.raw`(?:(?:هذا|هذه|هذي|ها)\s*)?(?:ال)?(?:وقت|لحظ[ةه]|حين|فتر[ةه]|مرحل[ةه]|يوم|طول|نفسك|راسك|كيفك)`;
+const NO_THING_NAMED_EN = String.raw`(?:now|the\s+(?:moment|meantime|time\s+being|present)|a\s+(?:while|bit|moment|second|sec|minute)|today|tonight|your\s+own|yourself|advance|general|particular|return|response|(?:me|us|all|once)\b|this\s+(?:moment|time|point|stage)|that\s+(?:case|point)|any\s+case)`;
+const NOTHING_TO_A_THING = new RegExp([
+    String.raw`^\s+(?:في|فى|على|علي|ع|مع|داخل|ضمن|بخصوص|حول)\s+(?!${NO_THING_NAMED_AR}(?![\p{L}\p{N}_]))(?:(?:هذا|هذه|هذي)\s+)?[\p{L}\p{N}_-]+`,
+    String.raw`^\s+(?:بال|لل|عال|فال)(?!(?:وقت|مر[ةه]|لحظ[ةه]|حين|ان|آن|غلط|خط[أا]|كامل)(?![\p{L}\p{N}_]))[\p{L}\p{N}_-]{2,}`,
+    //  «بالتصميم» on the canonical line: its verbal noun is read out there (withoutDefiniteVerbalNouns), the «ب» stays.
+    String.raw`^\s+[بل](?![\p{L}\p{N}_])`,
+    String.raw`^\s+(?:to|with|on|in|inside|about|for|at|regarding)\s+(?!${NO_THING_NAMED_EN})(?:(?:the|my|our|your|this|that|these|those|any|a|an)\s+)?[\p{L}\p{N}_-]+`,
+].join('|'), 'iu');
+const WHEN_NOTHING = String.raw`(?:\s+(?:الحين|الان|الآن|هلا|هلق|هسا|حاليا|ابدا|أبدا|for\s+now|right\s+now|now|yet|please|at\s+all))*`;
+const BUT_ONLY_THIS = new RegExp(String.raw`^${WHEN_NOTHING}[\s.،,;:؛!-]*[وف]?(?:بس|فقط|لكن|انما|إنما|just|only|but|instead)(?![\p{L}\p{N}_])[\s،,:]*`, 'iu');
+function ordersNothingAtAll(text: string): boolean {
+    const left: string[] = [];
+    let kept = 0;
+    let excludesAThing = false;
+    for (const m of text.matchAll(DO_NOTHING)) {
+        const end = (m.index || 0) + m[0].length;
+        if (end <= kept) continue;
+        const after = text.slice(end, end + 240);
+        if (NOTHING_BUT.test(after)) continue;
+        const thing = NOTHING_TO_A_THING.exec(after);
+        const onlyThis = thing ? null : BUT_ONLY_THIS.exec(after);
+        if (!thing && !(onlyThis && !asksForWordsOnly(after.slice(onlyThis[0].length)))) return true;
+        if (thing) excludesAThing = true;
+        left.push(text.slice(kept, m.index));
+        kept = end + (thing || onlyThis as RegExpExecArray)[0].length;
+    }
+    if (!excludesAThing) return false;
+    left.push(text.slice(kept));
+    //  «بس», «فقط», "just" before the order that is left are not its head.
+    const rest = left.join(' ').replace(/^[\s.،,;:؛!-]+/u, '');
+    return asksForWordsOnly(rest.replace(BUT_ONLY_THIS, ''));
+}
 
 function readRequestedAction(goalRaw: string): RequestedActionResult {
     // Harakat and tatweel are stripped once, here: every reader below sees the
@@ -987,7 +1112,7 @@ function readRequestedAction(goalRaw: string): RequestedActionResult {
     // An exclusion whose request orders nothing else denies the whole build.
     const exclusionIsTheOnlyDeed = stripPartExclusions(probeStripped) !== probeStripped && asksForWordsOnly(denialProbe);
     const globalDenial = hasGlobalExecutionDenial || exclusionIsTheOnlyDeed || /(?:^|[\s،:؛.!?])(?:do\s+not\s+(?:execute|run|build)|don't\s+(?:execute|run|build)|without\s+(?:executing|running|building)|no\s+(?:execution|build)|answer[-\s]+only|only\s+answer|(?:بدون|دون)\s+(?:تنفيذ|بناء)|لا\s+(?:تنفيذ|بناء)|الرد\s+فقط|[أا]جب\s+فقط|اشرح\s+فقط)/i.test(denialProbe)
-        || DO_NOTHING.test(denialProbe);
+        || ordersNothingAtAll(denialProbe);
     if (isNoFileChanges && !globalDenial) isAnswerOnly = false;
     if (globalDenial) { isAnswerOnly = true; isNoFileChanges = false; }
     // The order the denial stands beside is the request; the denial is how it is to be done.
