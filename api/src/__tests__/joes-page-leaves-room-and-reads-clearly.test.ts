@@ -23,7 +23,9 @@ function contrast(hexA: string, hexB: string): number {
 describe('Joe\'s page leaves room and reads clearly', () => {
     it('the update notice sits in the header\'s own flow, not over it', () => {
         const header = web('components', 'JoeHeader.tsx');
-        expect(header).toMatch(/<div className="joe-header-center">\s*<UpdateAutoPilot inline \/>/);
+        //  Inside the header's centre, before that div closes; the reply notice
+        //  (4c2a1b9bb) shares the same flow beside it.
+        expect(header).toMatch(/<div className="joe-header-center">(?:(?!<\/div>)[\s\S])*<UpdateAutoPilot inline \/>/);
         const item = web('components', 'UpdateJoeItem.tsx');
         expect(item).toMatch(/return inline \? banner : createPortal\(banner, document\.body\);/);
         // The commit id is in the tooltip, not in the sentence.
@@ -67,8 +69,15 @@ describe('Joe\'s page leaves room and reads clearly', () => {
     });
 
     it('a Gravatar miss is remembered, so the console is not given a 404 on every load', () => {
+        //  Since 186f907c1 the 404 is never asked for, so there is no miss to
+        //  remember: Gravatar is asked with d=blank (an address with none
+        //  answers a transparent picture), and the initials are always drawn
+        //  underneath with the picture laid over them.
+        const identity = web('lib', 'userIdentity.ts');
+        expect(identity).toMatch(/gravatar\.com\/avatar\/\$\{hash\}\?d=blank&/);
+        expect(identity).not.toMatch(/[?&]d=404/);
         const header = web('components', 'JoeHeader.tsx');
-        expect(header).toMatch(/localStorage\.setItem\(GRAVATAR_MISS/);
-        expect(header).toMatch(/Date\.now\(\) - Number\(miss\.at\) < 86_400_000\) return;/);
+        expect(header).toMatch(/<span className="joe-avatar-stack">\s*<div\s+className="joe-avatar-placeholder"/);
+        expect(header).toMatch(/\{photo && !photoBroken && \(\s*<img[^>]*className="joe-avatar joe-avatar-over"/);
     });
 });

@@ -123,19 +123,17 @@ function lookup(tokens: string[]): ArtifactPair | null {
     return null;
 }
 
-/** Greedy longest-phrase segmentation of a clause into lexicon units. */
-function units(tokens: string[]): Unit[] {
-    const out: Unit[] = [];
+/** Greedy longest-phrase segmentation of a clause into lexicon units, one at a time (a reader that stops early reads no further). */
+function* units(tokens: string[]): Generator<Unit> {
     for (let i = 0; i < tokens.length;) {
         let hit: Unit | null = null;
         for (let n = Math.min(MAX_WORDS, tokens.length - i); n >= 1; n--) {
             const pair = lookup(tokens.slice(i, i + n));
             if (pair) { hit = { text: tokens.slice(i, i + n).join(' '), pair, n }; break; }
         }
-        out.push(hit || { text: tokens[i], pair: null, n: 1 });
+        yield hit || { text: tokens[i], pair: null, n: 1 };
         i += hit ? hit.n : 1;
     }
-    return out;
 }
 
 const ARABIC = /[ء-ي]/u;
@@ -200,7 +198,7 @@ function kindOfPhrase(np: Unit[]): { kind: ArtifactKind; presentation: boolean; 
     return { kind: narrowed || (family as ArtifactKind), presentation: !narrowed && presentation, head: head.text };
 }
 
-const INJECTED_BLOCK = /\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i;
+const INJECTED_BLOCK = /(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i;
 const CLAUSES = /[:：،,;؛!?\n()«»"]+|\.(?=\s|$)/u;
 
 /**
@@ -361,14 +359,25 @@ function readObject(request: string): { kind: ArtifactKind | null; presentation:
     return read;
 }
 
+/**
+ * How far after a verb its object is read. A noun phrase is a few words; reading the
+ * whole rest of the clause after EVERY verb made a long message quadratic — 3.3 s at
+ * 5 KB, 81 s at 20 KB of «build a build a …», on every request (2026-11-11).
+ */
+const OBJECT_WINDOW = 40;
+/** Verbs whose object is read: one that 64 verbs did not name is not named by the 65th. */
+const MAX_VERBS_READ = 64;
+
 function readVerbObject(request: string): { kind: ArtifactKind | null; presentation: boolean; head: string; object: string; verb: string } {
     const clauses = maskNegatedSpans(String(request || '').replace(INJECTED_BLOCK, '')).split(CLAUSES).filter(c => c && c.trim());
     const tried: string[] = [];
+    let verbsRead = 0;
     for (const clause of clauses) {
         const tokens = words(clause);
-        for (let i = 0; i < tokens.length; i++) {
+        for (let i = 0; i < tokens.length && verbsRead < MAX_VERBS_READ; i++) {
             if (!VERBS.has(tokens[i])) continue;
-            const np = objectOf(tokens.slice(i + 1));
+            verbsRead++;
+            const np = objectOf(tokens.slice(i + 1, i + 1 + OBJECT_WINDOW));
             const k = kindOfPhrase(np);
             tried.push(np.map(u => u.text).join(' '));
             if (k) return { ...k, object: np.map(u => u.text).join(' '), verb: tokens[i] };

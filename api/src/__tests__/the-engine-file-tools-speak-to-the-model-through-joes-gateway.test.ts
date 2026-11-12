@@ -195,7 +195,8 @@ describe('the loop runs them', () => {
         }), { userId: String(fx.context.userId), sessionId: String(fx.context.sessionId), runId: String(fx.context.runId) });
 
         expect(result.status).toBe('delivered');
-        expect(result.filesChanged).toEqual([{ path: 'index.html', change: 'modified', bytes: 22 }]);
+        //  The run created the file, so the receipt says created after its edit (afc1b6a8a).
+        expect(result.filesChanged).toEqual([{ path: 'index.html', change: 'created', bytes: 22 }]);
         expect(seen[0]).toBe('Wrote index.html (created, 14 bytes).');
         expect(seen[2]).toContain('     1\t<h1>Book a table</h1>');
         expect(fx.text('index.html')).toBe('<h1>Book a table</h1>\n');

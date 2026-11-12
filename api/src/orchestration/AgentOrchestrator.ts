@@ -284,7 +284,14 @@ export class AgentOrchestrator {
     };
 
     // Initialize Runtime Memory
-    const runtimeMemory = new ExecutionMemory(goal.id);
+    //
+    // …AND THE SAME RULE FOR EVERYTHING SAID DURING THE RUN. memory.sessionId
+    // is the address of every later broadcast — the stall and recovery notes,
+    // the narrator's line, a parallel batch, the reviewer department — and it
+    // was the RUN id, so with a session present each of them went to a
+    // listener nobody has open. The memory is still kept under the run
+    // (this.memory is per execution); what it carries is where to speak.
+    const runtimeMemory = new ExecutionMemory(liveSession);
     this.memory.set(goal.id, runtimeMemory);
 
     let traceEnded = false;
@@ -294,10 +301,11 @@ export class AgentOrchestrator {
         this.context!.signal = modelCancellation.signal;
         this.throwIfCancelled();
         // [Departments] BA analyses the request, then the Architect plans it.
-        emitDepartment(goal.id, 'analyst');
+        // Addressed to the session, like every other broadcast of this run.
+        emitDepartment(liveSession, 'analyst');
 
         // 1. Initial Dynamic Planning
-        emitDepartment(goal.id, 'architect');
+        emitDepartment(liveSession, 'architect');
         const dag = await this.plan(goal.goal, undefined, goal.traceId);
         this.throwIfCancelled();
         dag.id = goal.id;
@@ -311,15 +319,15 @@ export class AgentOrchestrator {
         }
 
         // 2. Adaptive Coordination Execution (Developer department)
-        emitDepartment(goal.id, 'developer');
+        emitDepartment(liveSession, 'developer');
         const result = await executionFirewall.runInContext(goal.traceId, () => {
             return this.coordinate(dag, runtimeMemory, this.context, goal.traceId, goal.goal);
-        }, { userId: goal.context?.userId, sessionId: goal.context?.sessionId || goal.id, runId: canonicalRunId });
+        }, { userId: goal.context?.userId, sessionId: liveSession, runId: canonicalRunId });
         this.throwIfCancelled();
 
         // [Departments] QA reviews the outcome, then it's delivered.
-        emitDepartment(goal.id, 'reviewer');
-        emitDepartment(goal.id, 'delivered', result.ok ? 'ok' : 'failed');
+        emitDepartment(liveSession, 'reviewer');
+        emitDepartment(liveSession, 'delivered', result.ok ? 'ok' : 'failed');
 
         if (goal.traceId) {
             traceManager.endTrace(goal.traceId);
@@ -457,6 +465,20 @@ export class AgentOrchestrator {
      */
     let lastDone: { task: string; ok: boolean; summary?: string } | undefined;
     let stepNo = 0;
+    /**
+     * ⛔ A RUN WHOSE TIME IS SPENT STARTS NOTHING NEW.
+     *
+     * qa-live17b, 2026-11-12 (L160, a car-rental admin): the build node used the
+     * whole run budget (3600 s), the run ended «deadline_exceeded», the user was
+     * told — and this loop, still alive behind the finished run, planned a
+     * 13-node repair: it scaffolded a new project with the old pipeline and
+     * re-pointed the workspace at it. The next request in that workspace (L236)
+     * then found every file tool refused: «The project folder is not inside
+     * this workspace». Work after the deadline is work nobody asked for and
+     * nobody sees; it stops where the run stopped.
+     */
+    const coordinationStartedAt = Date.now();
+    const runTimeSpent = () => Date.now() - coordinationStartedAt >= RUN_DEADLINE_MS;
     const maxIterations = Math.max(10, dag.nodes.length * 5);
     // Every «the orchestrator gave up» exit carries the run's steps with it: a
     // run that failed halfway still built things, and the reply used to be the
@@ -465,6 +487,12 @@ export class AgentOrchestrator {
 
     while (completedNodes.size < dag.nodes.length) {
       this.throwIfCancelled();
+      if (runTimeSpent()) {
+        dag.status = "failed";
+        console.error(`[AgentOrchestrator] The run's time (${Math.round(RUN_DEADLINE_MS / 1000)}s) is spent — no further step starts.`);
+        if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'run_time_spent', completed: completedNodes.size, of: dag.nodes.length });
+        return giveUp(`deadline_exceeded: the run's ${Math.round(RUN_DEADLINE_MS / 1000)}s are spent`);
+      }
       iterations++;
       if (iterations > maxIterations) {
         dag.status = "failed";
@@ -1018,6 +1046,13 @@ export class AgentOrchestrator {
             }
             console.error('[AgentOrchestrator] No LLM provider reachable — ending the run honestly after bounded engineering retry.');
             if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'provider_unreachable' });
+            return { ok: false, result: lastNodeError ?? result.error, steps: runSteps(dag) };
+          }
+
+          //  No repair plan once the run's time is spent (see coordinationStartedAt above).
+          if (runTimeSpent()) {
+            console.error(`[AgentOrchestrator] Node ${node.id} failed after the run's time was spent — ending without a repair plan.`);
+            if (traceId) traceManager.logEvent(traceId, 'orchestrator', { event: 'recovery_skipped', nodeId: node.id, reason: 'run_time_spent' });
             return { ok: false, result: lastNodeError ?? result.error, steps: runSteps(dag) };
           }
 

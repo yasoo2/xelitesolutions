@@ -5,14 +5,14 @@ import { isReadOnlyWorkspaceOverviewRequest } from '../orchestrator/workspace-ov
 import { answerRequestText } from '../llm/requested-answer-language';
 import { isBoundedTerminalDiagnosticRequest } from '../orchestrator/buildIntent';
 import intelligentRouter from '../llm/intelligent-router';
-import { normalizeIntentText } from '../orchestrator/promptNormalizer';
+import { normalizeIntentText, stripArabicDiacritics } from '../orchestrator/promptNormalizer';
 import { readModelJsonObject } from '../../shared/utils/json';
 import { parseExplicitAppendFileRequest, parseExplicitFileRequest, parseExplicitFileReadRequest, parseExplicitFileEditRequest, parseQuotedTextWriteRequest, hasGlobalExplicitReadDenial } from '../orchestrator/file-intent';
 import { capabilityFamilyFromRequest } from '../capabilities/decision-profiles';
 import { capableTools } from '../orchestrator/capability-match';
 import { isUndoRequest } from '../engine/select';
-import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, clearIntentCache } from './intent-classifier';
-import { hasRequestedAction } from './requested-action';
+import { classifyIntent, isBuildRequest, isBrowserRequest, isKnowledgeQuestionStructural, isWebOrder, clearIntentCache, reportsAFaultOrOrdersAFix } from './intent-classifier';
+import { hasRequestedAction, withoutFileDenials } from './requested-action';
 import { hasTerminalExecutionDenial, boundedNoFileTerminalCommands, parseRuntimeDiagnosticFacts } from '../orchestrator/runtime-diagnostic-contract';
 export { hasTerminalExecutionDenial, boundedNoFileTerminalCommands } from '../orchestrator/runtime-diagnostic-contract';
 import { StructuredSpecification } from './specification';
@@ -133,7 +133,12 @@ export class IntentParser {
             constraints: ['Read-only fixed Node-version/current-workspace-path diagnostics; no file changes, installation or server start.'],
             rawIntent: { primary: userText, terminalDiagnostic: true, readOnly: true, noFileChanges: true, deterministic: true },
         };
-        if (requestedAction.isNoFileChanges && !boundedExplicitRead) {
+        // A route decision changes no file by construction (decide_capability_route
+        // is read-only and its contract forbids mutation), so «Choose the
+        // least-setup route … Do not change files.» is the decision he asked
+        // for, not a question to answer in prose.
+        const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
+        if (requestedAction.isNoFileChanges && !boundedExplicitRead && !capabilityDecision) {
             if (boundedReadNavigationUnderFileConstraint(userText)) {
                 // Allow browser navigation to proceed with noFileChanges constraint
                 console.log('[IntentParser] ⚡ No file changes constraint with browser target — preserving constraint, allowing browser navigation.');
@@ -223,7 +228,6 @@ export class IntentParser {
         // been inspected.  Keep the fast path for genuinely browser-only requests,
         // but let substantial build/develop/debug work reach the evidence-first
         // planner (and its project_pipeline route).
-        const capabilityDecision = IntentParser.capabilityDecisionIntent(userText);
         const engineeringBrief = IntentParser.looksLikeEngineeringBrief(userText);
         if (engineeringBrief && !capabilityDecision) {
             console.log('[IntentParser] ⚙️ Engineering brief detected — routing to evidence-first project_pipeline.');
@@ -415,10 +419,13 @@ Return ONLY a JSON object:
     /** A route-choice request is a bounded read-only decision, not a model task. */
     static capabilityDecisionIntent(userText: string): StructuredIntent | null {
         const raw = String(userText || '').trim();
-        if (!raw || !capabilityFamilyFromRequest(raw)) return null;
+        // The words of a decision first: the profile reader is consulted only
+        // for a request that asks for a choice (parse asks this ahead of the
+        // no-file-changes guard, which must not reach it for other denials).
         const decision = /\b(?:choose|select|decide)\b|least[-\s]?setup|local\s+(?:or|vs)\s+external|اختر|اختيار|أقل\s*إعداد|مسار\s*(?:محلي|خارجي|أنسب)|مزود\s*(?:محلي|خارجي|أنسب)/iu.test(raw);
+        if (!raw || !decision || !capabilityFamilyFromRequest(raw)) return null;
         const explicitDecisionLead = /^\s*(?:choose|select|decide)\b|^\s*(?:اختر|اختيار)/iu.test(raw);
-        if (!decision || (isBuildRequest(raw).isBuild && !explicitDecisionLead)) return null;
+        if (isBuildRequest(raw).isBuild && !explicitDecisionLead) return null;
         return {
             goal: raw,
             complexity: 'low',
@@ -470,8 +477,30 @@ Return ONLY a JSON object:
         }
         const buildCheck = isBuildRequest(raw);
         const knowledgeCheck = isKnowledgeQuestionStructural(raw);
-        if (!buildCheck.isBuild && !knowledgeCheck) {
-            const [candidate] = capableTools(raw, 1);
+        // An order to browse, search or visit the web is the browser's, ahead
+        // of a registry guess: the matcher named git_ops for «ادخل على جيت هاب
+        // وشوف آخر إشعارات» and browser_page_fix — an empty plan — for «تصفّح
+        // الويب ولخّص لي أول نتيجة». A search of his own files stays with it.
+        const webOrder = !buildCheck.isBuild && isWebOrder(raw);
+        // A fault and a fix is a change to his work, never a tool named by a noun
+        // in it: «الصورة ما تظهر، صلحها» named generate_image, «زر النشر ما يشتغل،
+        // صلحه» deploy_pages, «التقرير ما يطلع PDF، صلحه» browser_save_pdf
+        // (reportsAFaultOrOrdersAFix). It goes on as «صلح الكود» always did.
+        const faultOrFix = reportsAFaultOrOrdersAFix(raw);
+        if (!buildCheck.isBuild && !knowledgeCheck && !webOrder && !faultOrFix) {
+            // What he forbids names no capability: the «ملف» of «شغّل المشروع ولا
+            // تنشئ أي ملفات» and of «غيّر العنوان ولا تعدل أي ملف آخر» named a
+            // file-writing tool, and "add a logout button and do not edit or
+            // delete any other file" named delete_file. A tool is named by the
+            // order: when the message denies file changes, the candidate must be
+            // the one its words name without the denial too — the clone-and-commit
+            // brief that forbids production files is still a git workflow, and a
+            // message whose tool comes only from the files it protects names none.
+            const bare = stripArabicDiacritics(raw);
+            const ordered = withoutFileDenials(bare, true);
+            const [named] = capableTools(raw, 1);
+            const [byTheOrder] = !named || ordered === bare ? [named] : ordered.trim() ? capableTools(ordered, 1) : [];
+            const candidate = named && byTheOrder?.name === named.name ? named : undefined;
             if (candidate) {
                 return {
                     goal: raw,

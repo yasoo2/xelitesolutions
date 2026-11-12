@@ -51,9 +51,19 @@ describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () 
     test.each([
         ['فحص أمني للموقع', 'security_scanner'],
         ['اضغط الصور', 'archive_files'],
-        ['ترجم هذا النص إلى الإنجليزية', 'browser_translate'],
+        ['خذ لقطة شاشة للصفحة', 'browser_fullpage_shot'],
     ])('capabilityPlan still claims: %s', (goal, expected) => {
         expect(toolsOf(goal)).toContain(expected);
+    });
+
+    // Translating is a READING verb since b906f3bc8 (like summarise and
+    // explain): «ترجم هذا النص» is carried out by the answer itself, and
+    // browser_translate cannot run on it — it needs a page URL the sentence
+    // does not have. What must not be swallowed is the order to translate a
+    // PAGE: it is claimed by the browser route, ahead of this guard.
+    test('a translation order still reaches the page it names', () => {
+        expect(IntentParser.quickIntent('ترجم الصفحة https://example.com إلى الإنجليزية')?.requiredTools)
+            .toEqual(['browser_run']);
     });
 
     /**
@@ -88,11 +98,27 @@ describe('INVARIANT: the guard refuses questions WITHOUT swallowing orders', () 
     });
 
     it('asks for a missing capability target instead of executing a malformed tool call', async () => {
+        //  29de8e49f: a tool's own field names are no longer the owner's
+        //  question by default — the matcher makes no plan and the planners
+        //  after it read the request whole. The malformed call must not
+        //  happen either way; the question is still there, opted into with
+        //  JOE_ASK_TOOL_FIELDS=on.
         const intent = IntentParser.quickIntent('فحص أمني للموقع');
         expect(intent).not.toBeNull();
-        const plan = await PlanningEngine.generatePlan({ intent: intent! });
-        expect(plan.steps.map(step => step.tool)).toEqual(['ask_user']);
-        expect(plan.steps[0]?.input.question).toContain('security_scanner');
+        const byDefault = await PlanningEngine.generatePlan({ intent: intent! });
+        expect(byDefault.steps.filter(step => step.tool === 'security_scanner' && !step.input?.projectPath)).toEqual([]);
+        expect(byDefault.steps.map(step => String(step.input?.question || ''))
+            .filter(question => question.includes('security_scanner'))).toEqual([]);
+        const before = process.env.JOE_ASK_TOOL_FIELDS;
+        process.env.JOE_ASK_TOOL_FIELDS = 'on';
+        try {
+            const plan = await PlanningEngine.generatePlan({ intent: intent! });
+            expect(plan.steps.map(step => step.tool)).toEqual(['ask_user']);
+            expect(plan.steps[0]?.input.question).toContain('security_scanner');
+        } finally {
+            if (before === undefined) delete process.env.JOE_ASK_TOOL_FIELDS;
+            else process.env.JOE_ASK_TOOL_FIELDS = before;
+        }
     });
 
     it('uses an explicit filesystem target when the capability contract has one', async () => {

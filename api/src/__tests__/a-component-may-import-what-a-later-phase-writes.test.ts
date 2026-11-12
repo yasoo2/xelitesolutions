@@ -15,6 +15,7 @@ import path from 'path';
 import { executeTool } from '../modules/services/ToolService';
 import { workspaceService } from '../modules/services/WorkspaceService';
 import { PhaseExecutorTool } from '../modules/tools/definitions/PhaseExecutorTool';
+import { planWrites } from '../modules/tools/auto-build-readiness';
 
 /**
  * Eval round 12, 2026-10-23 (P001): phase 2 wrote App.tsx, which imports
@@ -54,6 +55,17 @@ describe('a component may import what a later phase writes', () => {
 
     it('the agent loop gives each phase the whole plan\'s written files', () => {
         const src = fs.readFileSync(path.join(__dirname, '..', 'modules', 'services', 'AgentLoopService.ts'), 'utf8');
-        expect(src).toContain('plannedProjectFiles: Array.from(new Set<string>(phases.flatMap(');
+        // b81f63a83 moved the plan-wide file list into planWrites(phases), so a
+        // scaffold's files count too; the agent loop hands that list to every phase.
+        expect(src).toContain('plannedProjectFiles: planWrites(phases)');
+        const phases = [
+            { phaseNumber: 2, tasks: [{ tool: 'ai_write_file', args: { path: 'clinic/src/App.tsx' } }] },
+            { phaseNumber: 3, tasks: [
+                { tool: 'ai_write_file', args: { path: 'clinic/src/components/Header.tsx' } },
+                { tool: 'write_file', args: { path: 'clinic/src/pages/Hero.tsx' } },
+            ] },
+            { phaseNumber: 4, tasks: [{ tool: 'ai_write_file', args: { path: 'clinic/src/App.tsx' } }] },
+        ];
+        expect(planWrites(phases)).toEqual(['clinic/src/App.tsx', 'clinic/src/components/Header.tsx', 'clinic/src/pages/Hero.tsx']);
     });
 });

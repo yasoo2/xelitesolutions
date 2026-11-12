@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { RequestResourceManager } from '../core/resources/RequestResourceManager';
-import { askWithin, askForTheContract } from '../modules/tools/model-call-race';
+import { askWithin, askForTheContract, askToAuthor } from '../modules/tools/model-call-race';
 import { namedRequirements } from '../core/quality/named-requirements';
 import { acceptanceBlocksDelivery, deliveryErrorForUnreadRequest } from '../modules/tools/definitions/ReactProjectTool';
 
@@ -125,16 +125,37 @@ describe('an unread request is not a pass', () => {
 });
 
 describe('the wiring in react_project', () => {
+    afterEach(() => jest.useRealTimers());
     const source = fs.readFileSync(path.join(__dirname, '..', 'modules', 'tools', 'definitions', 'ReactProjectTool.ts'), 'utf8');
 
-    it('no model call is raced without being stopped', () => {
+    it('no model call is raced without being stopped', async () => {
         expect(source).not.toMatch(/Promise\.race\(\[\s*routeToModel\(/);
-        expect((source.match(/askWithin\(\(context: any\) => routeToModel\(/g) || []).length).toBe(3);
+        // 812c8e463: the three authoring calls (copy, catalogue, interface) now
+        // go through askToAuthor, which keeps askWithin's aborting leash on
+        // remote providers. Every routeToModel call goes through a stopping asker.
+        expect((source.match(/askToAuthor\(\(context: any\) => routeToModel\(/g) || []).length).toBe(3);
+        const allCalls = (source.match(/routeToModel\(\[/g) || []).length;
+        const stoppedCalls = (source.match(/(?:askToAuthor|askForTheContract)\(\(context: any\) => routeToModel\(\[/g) || []).length;
+        expect(allCalls).toBeGreaterThan(0);
+        expect(stoppedCalls).toBe(allCalls);
+        // And the authoring asker really stops the call it abandons.
+        jest.useFakeTimers();
+        let aborted = false;
+        const pending = askToAuthor((callContext: any) => new Promise<string>((_, reject) => {
+            callContext.signal.addEventListener('abort', () => { aborted = true; reject(new Error('aborted')); }, { once: true });
+        }), CLOUD, 12_000);
+        const outcome = expect(pending).rejects.toThrow('the model did not answer in time');
+        await jest.advanceTimersByTimeAsync(12_000);
+        await outcome;
+        expect(aborted).toBe(true);
     });
     it('reading and judging go through the contract asker', () => {
         expect(source).toMatch(/const askTheModel = async \(prompt: string\): Promise<string> => \{\s*const \{ routeToModel \} = require\([^)]*\);\s*return askForTheContract\(/);
         expect(source).toContain('await readRequestRequirements(request, isAr, askTheModel, term)');
-        expect(source).toContain('await verifyNamed(namedByHim, projectEvidence, isAr, askTheModel,');
+        // b30edcf7e: with no model the judge is deterministic-only; with one, it
+        // is the same contract asker that read the request.
+        expect(source).toMatch(/const judgeNamedWith = noBrainToAsk\s*\?[\s\S]{0,200}:\s*askTheModel;/);
+        expect(source).toContain('await verifyNamed(namedByHim, projectEvidence, isAr, judgeNamedWith,');
     });
     it('the reader\'s outcome reaches the gate', () => {
         expect(source).toContain('requestUnread = reading.requestUnread;');

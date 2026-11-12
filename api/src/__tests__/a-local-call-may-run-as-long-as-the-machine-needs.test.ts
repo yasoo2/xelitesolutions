@@ -3,6 +3,7 @@ import path from 'path';
 import { managedOllamaChat } from '../core/llm/providers/managed-ollama-chat';
 import { LOCAL_INFERENCE_HARD_MAX_MS } from '../core/llm/local-throughput';
 import { localPlannerCeilingMs } from '../core/orchestrator/planner-run-boundary';
+import { RequestResourceManager } from '../core/resources/RequestResourceManager';
 
 /**
  * Owner, 2026-10-23: the laptop is for development only; Joe will run on a GPU
@@ -39,9 +40,21 @@ describe('a local call may run as long as the machine needs', () => {
 
     it('no local inference path keeps its own 30-minute cap', () => {
         const read = (p: string) => fs.readFileSync(path.join(__dirname, '..', p), 'utf8');
+        const THIRTY_MINUTES = /30 \* 60(?:_000| \* 1000)/;
         for (const file of ['core/llm/providers/managed-ollama-chat.ts', 'core/llm/providers/local.ts',
-            'core/orchestrator/planner-run-boundary.ts', 'core/resources/RequestResourceManager.ts']) {
-            expect(read(file)).not.toMatch(/30 \* 60(?:_000| \* 1000)/);
+            'core/orchestrator/planner-run-boundary.ts']) {
+            expect(read(file)).not.toMatch(THIRTY_MINUTES);
         }
+        //  The resource queue: a local call's own wait reaches the hard maximum,
+        //  not 30 minutes — asked of the queue itself, not of its source.
+        const manager = new RequestResourceManager({ sampleMemory: () => ({ totalBytes: 16 * 1024 ** 3, availableBytes: 8 * 1024 ** 3 }) });
+        expect((manager as any).timeout(2 * 60 * 60_000)).toBe(2 * 60 * 60_000);
+        expect((manager as any).timeout(LOCAL_INFERENCE_HARD_MAX_MS + 1)).toBe(LOCAL_INFERENCE_HARD_MAX_MS);
+        //  Its one 30-minute bound is memoryWaitMs (617b843e2): how long a HEAVY
+        //  step waits for memory another program holds before it is refused —
+        //  not how long a local call may run. Any other 30-minute literal there
+        //  is the old cut come back.
+        const capped = read('core/resources/RequestResourceManager.ts').split(/\r?\n/).filter(line => THIRTY_MINUTES.test(line));
+        expect(capped.filter(line => !/\bmemoryWaitMs: boundedInteger\(options\.memoryWaitMs,/.test(line))).toEqual([]);
     });
 });

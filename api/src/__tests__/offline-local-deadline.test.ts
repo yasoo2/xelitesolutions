@@ -28,7 +28,11 @@ describe('offline local provider deadline', () => {
     // Eval 2026-10-22: Auto + OFFLINE_MODE preflight reported a live CPU model as
     // TIMEOUT after 8 s (mesh) or 15 s (direct) while its warm-up was still running.
     it('offline Auto preflight probes the configured local model with the local cold-start bound', () => {
-        expect(ROUTER).toContain("if (providerAllowedByCost('Local (Auto)') && localProvider.isConfigured()) {");
+        // 05c47f06f named the condition `localFirst` and gave a light page-load
+        // check its own branch (the installed-models list); the real probe is
+        // the non-light branch.
+        expect(ROUTER).toContain("const localFirst = providerAllowedByCost('Local (Auto)') && localProvider.isConfigured();");
+        expect(ROUTER).toContain('if (localFirst && !cfg.light) {');
         expect(ROUTER).toContain('const localProbeTimeout = offlineOnlyLocal ? localVerificationBudgetMs() : 15_000;');
         expect(ROUTER).toContain('if (warmup > 0 && isLocalBrainReady()) {');
     });

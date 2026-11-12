@@ -556,9 +556,35 @@ export function acceptanceFor(request: string): Criterion[] {
     // UI shapes that the acceptance catalogue already checks directly.
     // A natural-language field list need not literally say "fields" or "table".
     // Keep the separate widget-only guard below even when that list was parsed.
+    /**
+     *  ⛔ A FEATURE THIS JUDGE ALREADY CHECKS IS NOT A COLUMN EITHER.
+     *
+     *  Measured on «Create a page with a counter, title, and production
+     *  build.»: the column reader hands back counter · title · production
+     *  build, the sentence opens with a build verb, so once 76f66a5d3 let
+     *  hasExplicitRecordSchema overrule the generic-kind guard, three
+     *  criteria became six — among them «a column "production build"
+     *  exists», which a page can never meet. A criterion that cannot pass
+     *  blocks the delivery forever, exactly as one that cannot fail proves
+     *  nothing.
+     *
+     *  The widget guard knew counter and title by name and not the third.
+     *  It does not need to: every item there already has its own criterion
+     *  in THIS request's catalogue. When every derived item is a widget or
+     *  a feature this judge already checks under its own id, the list is
+     *  the list of features he asked for, judged where features are judged
+     *  — and a single item the catalogue does not know keeps the columns.
+     */
+    const judgedHere = new Set(catalogue.map(criterion => criterion.id));
+    const judgedAsAFeature = (label: string): boolean => {
+        const item = String(label || '').trim();
+        if (!item) return false;
+        if (CATALOGUE.some(c => judgedHere.has(c.id) && (c.says ? saysAny(item, c.says) : requestAsksFor(c.asked, item)))) return true;
+        return requestedCapabilities(item).some(capability => judgedHere.has(CAPABILITY_CATALOGUE_ALIAS[capability.id] || capability.id));
+    };
     const columns = !explicitSchema && !hasExplicitRecordSchema(t) && detectedKind === 'generic'
         ? []
-        : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label))
+        : !explicitSchema && derived.length > 0 && derived.every(column => uiOnlyLabel(column.label) || judgedAsAFeature(column.label))
         ? []
         : derived;
     const requestedFilters = willBuildATable ? requestedFilterFields(t, columns) : [];
@@ -614,6 +640,16 @@ export function acceptanceFor(request: string): Criterion[] {
         if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
         if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:لا|لات)\s+(?:تنشر|ترفع\s+(?:إلى|الى)?\s*الإنتاج)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
         if (rule.kind !== 'change') return false;
+        //  A FIELD NAMED WITH A VERB IS HIS COLUMN, NOT A CHANGE HE ORDERED.
+        //  «…: item name, quantity, add date» — the clause «add date» opens
+        //  with a change verb, and the column reader has it as his third
+        //  column, with its own criterion below. Kept as `rule:n` too, one
+        //  field was owed twice, and the second time as a condition no source
+        //  can prove. «add date and edit history» is two of them in one clause.
+        const hisLabels = new Set((columns as DerivedField[]).map(col => String(col.label || '').trim().toLocaleLowerCase()));
+        const named = text.trim().replace(/[\s.,;:!?،؛]+$/u, '').toLocaleLowerCase()
+            .split(/\s*,\s*|\s+and\s+|\s+&\s+/u).map(part => part.replace(/^and\s+/u, '').trim()).filter(Boolean);
+        if (named.length > 0 && named.every(part => hisLabels.has(part))) return true;
         const asksForFilters = requestedFilters.length > 0
             && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);
         const asksForProgress = wantsProgress
