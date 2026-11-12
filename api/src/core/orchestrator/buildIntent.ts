@@ -13,6 +13,9 @@
  */
 import { normalizeIntentText, stripArabicDiacritics, foldChars } from './promptNormalizer';
 import { derivedColumns, columnsAnywhereInHisRequest } from '../design/app-blueprints';
+// No cycle at load: requested-action reaches this module only through a require() it makes when asked
+// (runtime-diagnostic-contract), never while it is loading.
+import { deniesEveryFileChange, withoutFileDenials, unquotedIntentText } from '../intelligence/requested-action';
 
 /**
  * A knowledge question must not be turned into a tool execution merely because
@@ -37,8 +40,73 @@ export function isKnowledgeQuestion(goalRaw: string): boolean {
  * Read-only is a safety boundary, not a weaker form of build intent.
  * Long audit prompts often mention "build" while explicitly forbidding it.
  */
+/*
+ * ⛔ A CHANGE BESIDE AN EXCLUSION IS NOT A READ-ONLY REQUEST, AND A DENIAL IN HIS DIALECT IS ONE.
+ *
+ * requested-action learnt (bdc78839d) that «without changing X» beside an order that
+ * changes his work says what the change must leave alone, and that «بدون ما تعدل أي ملف»,
+ * «من غير ما تغير أي ملف», «ما تعدلش أي ملف» deny every file change. This boundary still
+ * read with its own words: «صلح الزر بدون تعديل التصميم» was a read-only audit (the fix
+ * fenced), while «بدون ما تعدل أي ملف، افحص المشروع», "Review the repo without changing
+ * anything" and "Without changing any files, review the project" were no boundary at all.
+ *
+ * One rule, the one requested-action reads:
+ *  - a denial of every file change (asked of requested-action's own reader, so both know
+ *    the same words) is the read-only boundary when what is ordered beside it only reads
+ *    — review, inspect, analyze, check, audit, explain, show, list, summarize, a question —
+ *    or when nothing is ordered at all;
+ *  - «بدون تعديل X» where X is one thing (the design, the layout, the header) beside an
+ *    order that changes is an exclusion, and is read out before the boundary's words are
+ *    looked for. Where X is the files, the code, the project or anything — or nothing is
+ *    named — it stays the denial it was.
+ * Orders that change are an open class; the deeds that only read are the small closed one.
+ * Only the head of what is left is read (400 characters), so the reading is linear.
+ */
+const BEFORE_THE_ORDER = /^(?:[\s.،,;:؛!؟?«»"'()\-]|(?:please|kindly|just|now|then|and|also|first|ok|okay|hey|joe|(?:can|could|would|will)\s+you|i\s+(?:want|need)\s+(?:you\s+)?to|i(?:\s+would|['’]d)\s+like\s+(?:you\s+)?to|من\s+فضلك|لو\s+سمحت|رجاء|ممكن|ثم|بعدين|[أا]ولا|يا\s+جو|جو)(?![\p{L}\p{N}_]))*/iu;
+const READ_DEED_EN = /^(?:review|inspect|audit|examine|check|analy[sz]e|explore|scan|read|look|see|view|show|list|display|print|find|search|locate|count|measure|verify|validate|confirm|diagnose|investigate|study|trace|compare|report|identify|detect|describe|explain|summari[sz]e|outline|tell|suggest|propose|give\s+me|let\s+me\s+know|what|how|why|which|when|where|who|is\s+(?:it|there|this)|are\s+there|does|do\s+(?:i|we))\b/i;
+const READ_DEED_AR = /^[وف]?(?:[اإأ]فحص|تفحص|راجع|دقق|استكشف|حلل|عاين|تفقد|تحقق|ت[أا]كد|[اإأ]طلع|[اأ]عرض|[اأ]سرد|[اإ]قر[أا]|اشرح|وضح|فسر|لخص|صف|[اأ]وصف|قل|قول|[اأ]خبر|خبر|[اأ]ذكر|عدد|قارن|اقترح|قيم|شوف|شف|وري?|فرج)(?:لي|ني|نا|ي)?(?![\p{L}\p{N}_])|^(?:ماذا|ما|كيف|لماذا|ليش|ليه|وش|شو|[اإأ]يش|[اأ]ين|وين|متى|كم|هل(?!\s+(?:ممكن|يمكن|تقدر|تستطيع)))(?![\p{L}\p{N}_])/u;
+/** Does what is left once the denials are read out order only a reading, or nothing? */
+function ordersOnlyAReading(left: string): boolean {
+    const head = left.slice(0, 400).replace(BEFORE_THE_ORDER, '');
+    return !head || READ_DEED_EN.test(head) || READ_DEED_AR.test(head);
+}
+/** «without changing any files», «without touching anything»: read out with what it names, to find the order beside it. */
+const WITHOUT_CHANGING_PHRASE_EN = /\bwithout\s+(?:creating|writing|changing|modifying|editing|touching|altering)(?:\s+or\s+[a-z]+ing)?\s+[^.;!?\n,،:]{1,80}?(?=$|[.;!?\n,،:]|\s+(?:and|then|but)\s)/gi;
+/** A denial of every file change beside no order that changes: the read-only boundary. */
+function deniesEveryChangeAndOrdersNone(written: string): boolean {
+    const said = unquotedIntentText(written);
+    if (!deniesEveryFileChange(said)) return false;
+    return ordersOnlyAReading(withoutFileDenials(said).replace(WITHOUT_CHANGING_PHRASE_EN, ' '));
+}
+/** «بدون تعديل X», «من دون تغيير X», «دون أي تعديل على X»: the words this boundary stops on, with what they name. */
+const WITHOUT_CHANGE_AR = /(?<![\p{L}\p{N}_])(?:من\s+)?ب?دون\s+(?:(?:أي|اي)\s+)?(?:تعديل|كتابة|إنشاء|تغيير|حذف)(?![\p{L}\p{N}_])(?<object>[^.؛;!?؟\n،,:]{0,80})/gu;
+/** What leaves nothing to change: the files (asked of requested-action), the code, the project, anything — and their own narrowing words. */
+const EVERYTHING_AR = /^(?:(?:على|في|فى)\s+)?(?:(?:أي|اي|كل|جميع)\s+(?:من\s+)?)?(?:ال)?(?:كود|سورس|مشروع|مستودع|ريبو|شي|شيء|شيئا|شئ|حاج[ةه])(?:ي|نا|ك|ه|ها)?(?![\p{L}\p{N}_])(?!\s+(?:[آا]خر|[أا]خرى|ثاني[ةه]?|جديد[ةه]?|غير|سوى|[إا]لا|عدا|باستثناء|ما\s+عدا)(?![\p{L}\p{N}_]))/u;
+const NAMES_NOTHING_AR = /^(?:\s*(?:فقط|[أا]بدا|نهائيا|بتاتا|[إا]طلاقا|الآن|الان|حاليا))*\s*$/u;
+/** A list of changes («دون إنشاء أو تعديل…», «دون تعديل ولا حذف…») names no one thing either. */
+const ANOTHER_CHANGE_AR = /^\s*(?:[أا]و|ولا|و)\s*(?:تعديل|كتابة|إنشاء|تغيير|حذف)/u;
+function excludesOneThing(phrase: string, object: string): boolean {
+    if (NAMES_NOTHING_AR.test(object) || ANOTHER_CHANGE_AR.test(object)) return false;
+    return !EVERYTHING_AR.test(object.trimStart()) && !deniesEveryFileChange(phrase);
+}
+/** The request with each «بدون تعديل <one thing>» read out, when an order that changes stands beside them. */
+function withoutChangeExclusionsBesideAChange(written: string): string {
+    if (!/دون\s/u.test(written)) return written;
+    let excluded = false;
+    const left = written.replace(WITHOUT_CHANGE_AR, (phrase: string, ...rest: unknown[]) => {
+        const { object = '' } = (rest[rest.length - 1] || {}) as { object?: string };
+        if (!excludesOneThing(phrase, object)) return phrase;
+        excluded = true;
+        return ' ';
+    });
+    return excluded && !ordersOnlyAReading(left) ? left : written;
+}
+
 export function isReadOnlyRequest(goalRaw: string): boolean {
-    const text = stripArabicDiacritics(String(goalRaw || '')).replace(/\s+/g, ' ').trim();
+    const written = stripArabicDiacritics(String(goalRaw || '')).replace(/\s+/g, ' ').trim();
+    if (!written) return false;
+    if (deniesEveryChangeAndOrdersNone(written)) return true;
+    const text = withoutChangeExclusionsBesideAChange(written).replace(/\s+/g, ' ').trim();
     if (!text) return false;
 
     const readOnlySignal = /\b(?:read[-\s]?only|readonly|only\s+(?:read|inspect|analy[sz]e|review|verify)|without\s+(?:changing|modifying|writing|creating|editing)|without\s+(?:making|any)\s+(?:file\s+)?(?:changes?|modifications?)|no\s+(?:file\s+)?(?:changes?|writes?|modifications?))\b/i.test(text)
