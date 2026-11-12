@@ -315,100 +315,14 @@ async function killRootTree(root: Root): Promise<boolean> {
 
 /* ───────────────────────── the child's environment ───────────────────────── */
 
-const SECRET_ENV_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASS|PRIVATE|CREDENTIAL|COOKIE|SESSION|AUTH|MONGO|DATABASE/iu;
-/** An address that carries a password: `postgres://user:pw@host`, a proxy with credentials. */
-const CREDENTIAL_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]*:[^\s/@]+@/iu;
 /**
- * A value shaped like a credential, whatever the variable is called: the
- * published prefixes of API keys and tokens (the `sk-` model API keys,
- * GitHub `ghp_`/`gho_`/`ghu_`/`ghs_`/`ghr_`/`github_pat_`, Groq `gsk_`,
- * Hugging Face `hf_`, Slack `xox?-`, AWS `AKIA`/`ASIA`, Google `AIza`), a
- * signed JWT, and a PEM private key.
+ * What a child must not see, and what an agent's commands add, live in
+ * shared/child-environment.ts (no tool imports there, so the kernel uses the
+ * same rules for every process it starts). The names this file has always
+ * exported are re-exported unchanged.
  */
-const CREDENTIAL_VALUE = /^(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gsk_[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|A(?:KIA|SIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+)$|-----BEGIN [A-Z ]*PRIVATE KEY-----/u;
-
-/** A variable a child must not see: its name says it is a secret, or its value is one (an address with a password, a token). */
-export function isSecretEnv(name: string, value: string | undefined): boolean {
-    if (SECRET_ENV_NAME.test(name)) return true;
-    if (typeof value !== 'string') return false;
-    const v = value.trim();
-    return CREDENTIAL_URL.test(v) || CREDENTIAL_VALUE.test(v);
-}
-
-/**
- * JOE'S OWN PROCESS SETTINGS ARE NOT THE PROJECT'S.
- *
- * Joe is started with its own port and mode (start-joe.ps1 sets PORT=5002
- * and NODE_ENV=development; a server sets NODE_ENV=production), and npm, when
- * it starts Joe (`npm start`), describes that invocation in npm_* variables:
- * Joe's package, its script, and the install settings it was given. A child
- * that inherits them is configured as Joe: a generated server's
- * `process.env.PORT || 3000` binds Joe's own port and dies with EADDRINUSE,
- * and `npm install` under NODE_ENV=production (or npm_config_omit=dev) leaves
- * out devDependencies, so the project's build tools are never installed.
- * Joe's JOE_* settings name Joe's own folders (its data and chat store) and
- * policies; a project has no use for them. A child gets PORT only when the
- * model names a port, and the project decides its own mode.
- *
- * npm's configuration of the MACHINE stays: its registry, a proxy, a CA
- * (NPM_CONFIG_REGISTRY on a server behind a mirror). An install needs it, and
- * it is the machine's, not Joe's. Only the npm settings that decide what an
- * install writes and where are removed.
- */
-const JOE_PROCESS_ENV = /^(?:PORT|NODE_ENV|INIT_CWD|JOE_.*|npm_(?:lifecycle_.*|package_.*|command|execpath|node_execpath)|npm_config_(?:prefix|local_prefix|cache|global|production|omit|include|only|argv|workspaces?))$/iu;
-
-/** A variable that describes Joe's own process rather than the machine. */
-export function isJoeProcessEnv(name: string): boolean {
-    return JOE_PROCESS_ENV.test(name);
-}
-
-/**
- * Non-interactive, colourless, UTF-8, and on loopback: what an agent's
- * commands need, whatever runs them. HOST keeps a server a command starts off
- * the network (a host Joe was started with, 0.0.0.0 on a server, would expose
- * every generated app).
- */
-const CHILD_SETTINGS: Readonly<Record<string, string>> = Object.freeze({
-    CI: '1',
-    BROWSER: 'none',
-    FORCE_COLOR: '0',
-    HOST: '127.0.0.1',
-    npm_config_yes: 'true',
-    npm_config_fund: 'false',
-    npm_config_audit: 'false',
-    npm_config_update_notifier: 'false',
-    //  A package already in npm's cache is used without asking the registry again; one that is
-    //  missing is still fetched. The ladder, 2026-11-09: `npm install` took 4–8 minutes in
-    //  L143, L147 and L149 for packages installed many times before.
-    npm_config_prefer_offline: 'true',
-    PYTHONUTF8: '1',
-    PYTHONIOENCODING: 'utf-8',
-    PIP_DISABLE_PIP_VERSION_CHECK: '1',
-});
-
-/**
- * The overrides the kernel merges over process.env. A secret, and a setting
- * of Joe's own process, is set to undefined, which removes it from the
- * child's environment entirely (a child of a clean machine sees no such name,
- * so a project's own `process.env.SESSION_SECRET ?? 'dev'` and
- * `process.env.PORT || 3000` fallbacks still work).
- */
-export function childEnvironment(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = {};
-    const names = Object.keys(process.env);
-    for (const name of names) {
-        if (isSecretEnv(name, process.env[name]) || isJoeProcessEnv(name)) env[name] = undefined;
-    }
-    for (const [name, value] of Object.entries({ ...CHILD_SETTINGS, ...extra })) {
-        env[name] = value;
-        //  Windows names are case-insensitive: a differently cased copy of the
-        //  same variable must not keep its old value beside the new one.
-        if (WINDOWS) {
-            for (const other of names) if (other !== name && other.toLowerCase() === name.toLowerCase()) env[other] = value;
-        }
-    }
-    return env;
-}
+import { isSecretEnv, isJoeProcessEnv, childEnvironment } from '../../../shared/child-environment';
+export { isSecretEnv, isJoeProcessEnv, childEnvironment };
 
 /* ───────────────────────── what a command may name ───────────────────────── */
 

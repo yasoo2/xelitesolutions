@@ -172,7 +172,7 @@ export async function run(
     try {
         child = executionEngine.runArgvStreaming(file, args, {
             cwd,
-            env: { ...process.env, NODE_NO_WARNINGS: '1', CI: '1' },
+            env: { NODE_NO_WARNINGS: '1', CI: '1' },
             // The engine's own absolute timer and cancellation: silence resets,
             // these do not.
             ...(bounds.ceilingMs && bounds.ceilingMs > 0 ? { timeout: bounds.ceilingMs } : {}),

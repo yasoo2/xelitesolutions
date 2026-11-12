@@ -4,6 +4,7 @@ import { ToolPermission } from '../types';
 import { ExecutionGateway } from '../../../kernel/ExecutionGateway';
 import path from 'path';
 import fs from 'fs';
+import { previewBindHost } from '../../../shared/utils/network';
 import { Builder } from '../../../system/Builder';
 import { broadcastThinkingDetail, broadcast } from '../../../api/ws';
 
@@ -21,7 +22,7 @@ function broadcastBuildProgress(sessionId: string | undefined, phase: string, me
 }
 
 
-async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promise<number> {
+async function findAvailablePort(start: number, host: string = '127.0.0.1'): Promise<number> {
     const { isPortOpen } = require('../../../shared/utils/network');
     let port = start;
     while (port < start + 100) {
@@ -30,6 +31,14 @@ async function findAvailablePort(start: number, host: string = '0.0.0.0'): Promi
         port++;
     }
     return start;
+}
+
+/** Whether this Joe is the one on the server, behind nginx, rather than on a developer's machine. */
+function isProductionHost(): boolean {
+    return process.env.NODE_ENV === 'production' ||
+        !!process.env.JWT_SECRET?.includes('persistent') ||
+        fs.existsSync('/etc/letsencrypt') ||
+        fs.existsSync('/.dockerenv');
 }
 
 export class WebPipelineTool extends BaseTool {
@@ -466,8 +475,10 @@ export class DevServerTool extends BaseTool {
             return { ok: false, error: 'dev_server_start needs the project folder (`cwd`) — no server was started.', logs };
         }
         const baseCwd = resolveToolPath(cwdArg, { sandbox: true });
+        //  This machine only, never 0.0.0.0 (shared/utils/network.ts, previewBindHost).
+        const bindHost = previewBindHost(isProductionHost());
         let port = Number(input?.port);
-        if (!port) port = await findAvailablePort(5180);
+        if (!port) port = await findAvailablePort(5180, bindHost);
 
         // 1. IMPROVED: Robustly detect the actual web project root
         // Strategy: check for monorepo (workspaces in package.json), then index.html, then subdirs
@@ -533,17 +544,17 @@ export class DevServerTool extends BaseTool {
         if (!command) {
             if (fs.existsSync(path.join(actualCwd, 'package.json'))) {
                 // Use Vite for projects with a package.json
-                command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
+                command = `npx --yes vite --host ${bindHost} --port ${port} --base /preview/${port}/`;
             } else if (fs.existsSync(path.join(actualCwd, 'index.html'))) {
                 // Use serve for simple HTML files
-                command = `npx -y serve -l ${port} -s . --no-clipboard`;
+                command = `npx -y serve -l tcp://${bindHost}:${port} -s . --no-clipboard`;
             } else {
                 // Fallback: create an ad-hoc vite config to allow access
                 const configPath = path.join(actualCwd, 'vite.config.js');
                 if (!fs.existsSync(configPath)) {
-                    fs.writeFileSync(configPath, `export default { server: { host: '0.0.0.0', allowedHosts: true }, base: '/preview/${port}/' };`);
+                    fs.writeFileSync(configPath, `export default { server: { host: '${bindHost}', allowedHosts: true }, base: '/preview/${port}/' };`);
                 }
-                command = `npx --yes vite --host 0.0.0.0 --port ${port} --base /preview/${port}/`;
+                command = `npx --yes vite --host ${bindHost} --port ${port} --base /preview/${port}/`;
             }
         }
 
@@ -553,7 +564,7 @@ export class DevServerTool extends BaseTool {
             // Use ExecutionGateway for detached server start
             const result = await ExecutionGateway.execute(command, [], {
                 cwd: actualCwd,
-                env: { ...process.env, PORT: String(port), HOST: '0.0.0.0', BROWSER: 'none' },
+                env: { PORT: String(port), HOST: bindHost, BROWSER: 'none' },
                 stdio: ['ignore', 'pipe', 'pipe'],
                 detached: true,
                 shell: true
@@ -578,7 +589,7 @@ export class DevServerTool extends BaseTool {
                 try {
                     const http = require('http');
                     await new Promise<void>((resolve, reject) => {
-                        const req = http.get(`http://127.0.0.1:${port}/preview/${port}/`, (res: any) => {
+                        const req = http.get(`http://${bindHost}:${port}/preview/${port}/`, (res: any) => {
                             res.resume();
                             resolve();
                         });
@@ -595,10 +606,7 @@ export class DevServerTool extends BaseTool {
             logs.push(`dev_server_wait elapsed=${elapsed}ms ready=${serverReady}`);
 
             // [FIX] استخدام localhost بدلاً من api في بيئة التطوير
-            const isProd = process.env.NODE_ENV === 'production' ||
-                process.env.JWT_SECRET?.includes('persistent') ||
-                fs.existsSync('/etc/letsencrypt') ||
-                fs.existsSync('/.dockerenv');
+            const isProd = isProductionHost();
 
             let previewUrl: string;
             let userPreviewUrl: string;

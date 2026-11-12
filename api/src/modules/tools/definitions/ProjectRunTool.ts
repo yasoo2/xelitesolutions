@@ -251,7 +251,7 @@ export function dependencyFreeRecordsBundleRoot(cwd: string): string | null {
 async function startStaticBuildPreview(root: string, port: number, strict = false): Promise<{ ready: boolean; pid?: number; url?: string; error?: string }> {
     const result = await ExecutionGateway.execute(process.execPath, ['-e', STATIC_PREVIEW_SERVER_SOURCE], {
         cwd: root,
-        env: { ...process.env, PORT: String(port), JOE_STATIC_STRICT: strict ? '1' : '' },
+        env: { PORT: String(port), JOE_STATIC_STRICT: strict ? '1' : '' },
         background: true,
         shell: false,
         stdio: 'ignore',
@@ -1914,7 +1914,7 @@ export class ProjectRunTool implements ToolDefinition {
         const [launcher, launcherArgs] = parsedLauncher;
         const managed = ExecutionGateway.startManaged(launcher, launcherArgs, {
             cwd,
-            env: { ...process.env, PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
+            env: { PORT: String(port), HOST: '127.0.0.1', BROWSER: 'none', CI: '1' },
             windowsHide: true,
             //  The preview is recorded with the project and adopted by the next
             //  Joe (adoptRecordedPreviews): the process ledger leaves it alone.

@@ -9,6 +9,7 @@ import { traceManager } from '../modules/services/TraceManager';
 import { executionFirewall } from '../orchestration/AgentExecutionFirewall';
 import { dropReaped, forgetChild, isOwnRecord, parseProcessListing, parsePsElapsed, planReap, processLedgerFile, readLedger, recordChild } from './process-ledger';
 import type { LiveProcess } from './process-ledger';
+import { projectEnvironment } from '../shared/child-environment';
 
 /**
  * A long-lived child goes into the ledger while it lives (process-ledger.ts),
@@ -150,6 +151,17 @@ export interface ExecutionOptions {
     windowsHide?: boolean;
     /** Resolve when the owning Joe run is cancelled; terminate the child tree. */
     cancel?: Promise<void>;
+    /**
+     * JOE'S OWN INFRASTRUCTURE, WHICH NEEDS JOE'S OWN ENVIRONMENT.
+     *
+     * By default a child never sees Joe's secrets or the settings of Joe's
+     * own process (isolatedExecutionEnv). `true` gives it Joe's whole
+     * environment, for the few jobs that are Joe working on Joe or with the
+     * owner's credentials: git with its auth, Joe's deploy of Joe, the
+     * updater, Joe's own browser install, a device bridge. Only the files in
+     * JOE_INFRASTRUCTURE_SITES (shared/child-environment.ts) may pass it.
+     */
+    joeInfrastructure?: boolean;
 }
 
 export interface ExecutionSession {
@@ -205,9 +217,24 @@ function resolveNpmCli(): string | null {
  * installs into the API directory; `npm_config_cache` then made the failure
  * depend on an unrelated session's cache. Remove both after caller overrides
  * have been merged so every spawn route receives the same clean environment.
+ *
+ * THE USER'S CODE NEVER SEES JOE'S SECRETS — AND THAT IS THE DEFAULT, HERE.
+ *
+ * Every spawn route below builds its child's environment with this function,
+ * so the rule holds for a caller that passes no environment, a partial one,
+ * or a copy of Joe's whole environment: the child gets the machine's environment
+ * without Joe's secrets (JWT_SECRET, the Mongo address, provider keys,
+ * ADMIN_*, SECRETS_MASTER_KEY) and without the settings of Joe's own process
+ * (PORT, NODE_ENV, JOE_*), then the caller's own values
+ * (shared/child-environment.ts, projectEnvironment).
+ *
+ * Only `joeInfrastructure: true` gives a child Joe's whole environment, and
+ * only the files named in JOE_INFRASTRUCTURE_SITES may pass it.
  */
-function isolatedExecutionEnv(overrides?: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-    const env: NodeJS.ProcessEnv = { ...process.env, ...overrides };
+function isolatedExecutionEnv(overrides?: NodeJS.ProcessEnv, opts?: { joeInfrastructure?: boolean }): NodeJS.ProcessEnv {
+    const env: NodeJS.ProcessEnv = opts?.joeInfrastructure === true
+        ? { ...process.env, ...overrides }
+        : projectEnvironment(process.env, overrides);
     for (const key of Object.keys(env)) {
         if (/^npm_config_(prefix|cache)$/i.test(key)) delete env[key];
     }
@@ -523,7 +550,7 @@ export class ExecutionEngine {
                 // '/bin/sh' does not exist on Windows — when node-pty is missing
                 // there, this hardcoded shell made EVERY manual command fail.
                 // undefined lets Node pick the platform default (cmd.exe / sh).
-                exec(cmd, { cwd: currentCwd, env: isolatedExecutionEnv(options.env), shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
+                exec(cmd, { cwd: currentCwd, env: isolatedExecutionEnv(options.env, options), shell: process.platform === 'win32' ? undefined : '/bin/sh', timeout: 30000 }, (err: any, stdout: string, stderr: string) => {
                     if (err && !stdout && !stderr) {
                         resolve(`Error: ${err.message}\n`);
                     } else {
@@ -805,7 +832,7 @@ export class ExecutionEngine {
         const child = useShell
             ? spawn(line, [], {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
-                env: isolatedExecutionEnv(rest.env),
+                env: isolatedExecutionEnv(rest.env, rest),
                 shell: true,
                 /**
                  *  A CHILD WITH NO CONSOLE TO INHERIT MAKES ITS OWN.
@@ -838,7 +865,7 @@ export class ExecutionEngine {
             } as any)
             : spawn(cmd, spawnArgs, {
                 cwd: rest.cwd || this.getWorkspaceRoot(),
-                env: isolatedExecutionEnv(rest.env),
+                env: isolatedExecutionEnv(rest.env, rest),
                 shell: false,
                 windowsHide: (rest as any).windowsHide !== false,
             } as any);
@@ -1060,7 +1087,7 @@ export class ExecutionEngine {
                 : process.platform !== 'win32';
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: isolatedExecutionEnv(options.env),
+                env: isolatedExecutionEnv(options.env, options),
                 detached: detach,
                 // stdin closed: a detached updater must never sit waiting on a
                 // keypress nobody can give it.
@@ -1177,7 +1204,7 @@ export class ExecutionEngine {
         return new Promise((resolve) => {
             const child = spawn(file, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: isolatedExecutionEnv(options.env),
+                env: isolatedExecutionEnv(options.env, options),
                 shell: false, // argv is already tokenized — never let a shell re-parse it
                 stdio: options.stdio || 'pipe',
                 //  Same question, same answer — see the note in runArgvStreaming.
@@ -1237,7 +1264,7 @@ export class ExecutionEngine {
 
             const child = spawn(cmd, args, {
                 cwd: options.cwd || this.getWorkspaceRoot(),
-                env: isolatedExecutionEnv(options.env),
+                env: isolatedExecutionEnv(options.env, options),
                 shell: options.shell !== undefined ? options.shell : true,
                 detached: options.detached,
                 windowsHide: options.windowsHide !== false,
@@ -1323,7 +1350,7 @@ export class ExecutionEngine {
         const result = spawnSync(cmd, args, {
             ...options,
             encoding: 'utf8',
-            env: isolatedExecutionEnv(options.env)
+            env: isolatedExecutionEnv(options.env, options)
         });
 
         return {
