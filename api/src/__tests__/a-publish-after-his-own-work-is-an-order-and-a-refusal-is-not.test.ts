@@ -196,7 +196,10 @@ describe('R5 — a publish after his own work is an order, and it does not skip 
     });
 
     it('a sequence and a noun of time still deploy', () => {
-        expect(read('Deploy after the tests pass')).toMatchObject({ deploy: true, veto: '' });
+        //  "Deploy after the tests pass" was pinned here as a deploy; the fifth review ruled that a result nobody
+        //  ordered Joe to produce is a wait (a-publish-that-waits-on-someone-else-waits.test.ts). A noun of his work is not.
+        expect(read('Deploy after the tests pass')).toMatchObject({ deploy: false, veto: 'waits' });
+        expect(read('Deploy the site after the content update')).toMatchObject({ deploy: true, veto: '' });
         expect(read('انشر الموقع بعد تحديث المحتوى')).toMatchObject({ deploy: true, veto: '' });
         expect(planned('اختبر الموقع ثم انشره')).toEqual(['api_tester', 'deploy_pages']);
     });
