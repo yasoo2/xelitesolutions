@@ -356,3 +356,38 @@ describe('a dev server Joe starts listens on this machine only', () => {
         expect(nginx).toContain(`proxy_pass http://${PREVIEW_PROXY_DIALS}:$p_port;`);
     });
 });
+
+/*
+ * The post-code review of 2026-11-12 spawned real children through the kernel and found Joe values
+ * the name rule let through: a webhook address, SUPER_ADMIN_EMAILS, a key in a URL's query, a Bearer
+ * value, a Telegram bot token, a *_PAT, and Joe's own HOST (0.0.0.0 on a server) reaching a child
+ * that sets only PORT. Who a commit is by (GIT_AUTHOR_*) and a pip index are the machine's.
+ */
+describe('what the review found still reaching a child', () => {
+    it.each([
+        ['ALERT_WEBHOOK_URL', 'https://hooks.example.com/services/T000/B000/abcdefghijkl'],
+        ['SUPER_ADMIN_EMAILS', 'owner@example.com,second@example.com'],
+        ['GITHUB_PAT', 'abcdefghijklmnopqrstuvwxyz0123'],
+        ['NOTIFY_URL', 'https://api.example.com/notify?api_key=abcdef0123456789'],
+        ['UPSTREAM_HEADER', 'Bearer abcdefghijklmnop0123456789'],
+        ['BOT', '123456789:AAabcdefghijklmnopqrstuvwxyz0123456789'],
+    ])('%s is hidden', (name, value) => {
+        expect(isHiddenFromProject(name, value)).toBe(true);
+    });
+
+    it('HOST is a setting of Joe\'s own process', () => {
+        expect(isJoeProcessEnv('HOST')).toBe(true);
+        expect(projectEnvironment({ HOST: '0.0.0.0', PATH: '/usr/bin' }, { PORT: '4000' }).HOST).toBeUndefined();
+        expect(projectEnvironment({ HOST: '0.0.0.0', PATH: '/usr/bin' }, { HOST: '127.0.0.1' }).HOST).toBe('127.0.0.1');
+    });
+
+    it.each(['GIT_AUTHOR_NAME', 'GIT_AUTHOR_EMAIL', 'GIT_COMMITTER_NAME', 'GIT_COMMITTER_DATE', 'PIP_INDEX_URL', 'PIP_EXTRA_INDEX_URL'])('%s stays: it is the machine\'s', (name) => {
+        expect(isMachineEnv(name)).toBe(true);
+        expect(isHiddenFromProject(name, 'value')).toBe(false);
+    });
+
+    it('a plain address or sentence is not a credential', () => {
+        expect(isHiddenFromProject('DOCS_URL', 'https://example.com/docs?page=2')).toBe(false);
+        expect(isHiddenFromProject('GREETING', 'Bearer of good news')).toBe(false);
+    });
+});

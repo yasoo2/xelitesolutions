@@ -50,7 +50,10 @@ export const MACHINE_ENV = new RegExp('^(?:'
     + '|npm_config_(?:registry|cafile|ca|strict[_-]ssl|https?[_-]proxy|proxy|noproxy)'
     + '|npm_config_(?:@[^:]+:registry|\\/\\/.+:_authToken)'
     + '|NODE_AUTH_TOKEN|NPM_TOKEN'
+    + '|PIP_(?:EXTRA_)?INDEX_URL'
     + '|SSH_AUTH_SOCK|GIT_ASKPASS|SSH_ASKPASS|XAUTHORITY|DBUS_SESSION_BUS_ADDRESS'
+    //  Who a commit is by: the name rule would read AUTH in GIT_AUTHOR_* as a secret.
+    + '|GIT_(?:AUTHOR|COMMITTER)_(?:NAME|EMAIL|DATE)'
     + '|LANG|LANGUAGE|LC_\\w+|TZ'
     + ')$', 'iu');
 
@@ -67,7 +70,8 @@ const SECRET_ENV_NAME = /KEY|TOKEN|SECRET|PASSWORD|PASS|PRIVATE|CREDENTIAL|COOKI
  * administrator is, the mail server Joe sends through, Joe's payment and
  * error-reporting accounts.
  */
-const SECRET_ENV_NAME_WHOLE = /^(?:(?:\w+_)?ADMIN_(?:EMAIL|USER|USERNAME|NAME)|SMTP_\w+|STRIPE_\w+|SENTRY_DSN)$/iu;
+//  A webhook address is a bearer secret (ALERT_WEBHOOK_URL); SUPER_ADMIN_EMAILS names Joe's administrators; a *_PAT is a token.
+const SECRET_ENV_NAME_WHOLE = /^(?:(?:\w+_)?ADMIN_(?:EMAILS?|USERS?|USERNAME|NAME)|SMTP_\w+|STRIPE_\w+|SENTRY_DSN|\w*WEBHOOK\w*|\w*_PAT)$/iu;
 /** The address of a data store: `REDIS_URL`, `DB_URI`, `QUEUE_DSN`, `POSTGRES_URL`. */
 const STORE_WORD = /^(?:DB|DATABASE|MONGO|MONGODB|POSTGRES|POSTGRESQL|PG|MYSQL|REDIS|AMQP|RABBIT|RABBITMQ|QUEUE)$/iu;
 const ADDRESS_WORD = /^(?:URI|URL|DSN)$/iu;
@@ -89,12 +93,20 @@ const CREDENTIAL_URL = /\b[a-z][a-z0-9+.-]*:\/\/[^\s/@:]*:[^\s/@]+@/iu;
  */
 const CREDENTIAL_VALUE = /^(?:sk-[A-Za-z0-9_-]{16,}|gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|gsk_[A-Za-z0-9]{20,}|hf_[A-Za-z0-9]{20,}|xox[abprs]-[A-Za-z0-9-]{10,}|A(?:KIA|SIA)[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|eyJ[A-Za-z0-9_-]{8,}\.eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+)$|-----BEGIN [A-Z ]*PRIVATE KEY-----/u;
 
+/**
+ * More values that are credentials whatever they are called (the review of 2026-11-12): an address
+ * carrying its key in the query (`?api_key=…`, `&token=…`), a `Bearer …` header value, a Telegram bot token.
+ */
+const QUERY_CREDENTIAL = /[?&](?:api[_-]?key|apikey|key|token|access[_-]?token|secret|password|sig|signature)=[^&\s]{8,}/iu;
+const BEARER_VALUE = /^Bearer\s+\S{16,}$/iu;
+const TELEGRAM_BOT_TOKEN = /^\d{6,}:AA[A-Za-z0-9_-]{30,}$/u;
+
 /** A variable a child must not see: its name says it is a secret, or its value is one (an address with a password, a token). */
 export function isSecretEnv(name: string, value: string | undefined): boolean {
     if (SECRET_ENV_NAME.test(name) || SECRET_ENV_NAME_WHOLE.test(name) || isStoreAddressName(name)) return true;
     if (typeof value !== 'string') return false;
     const v = value.trim();
-    return CREDENTIAL_URL.test(v) || CREDENTIAL_VALUE.test(v);
+    return CREDENTIAL_URL.test(v) || CREDENTIAL_VALUE.test(v) || QUERY_CREDENTIAL.test(v) || BEARER_VALUE.test(v) || TELEGRAM_BOT_TOKEN.test(v);
 }
 
 /* ───────────────────────── what is Joe's own process ───────────────────────── */
@@ -119,7 +131,8 @@ export function isSecretEnv(name: string, value: string | undefined): boolean {
  * it is the machine's, not Joe's. Only the npm settings that decide what an
  * install writes and where are removed.
  */
-const JOE_PROCESS_ENV = /^(?:PORT|NODE_ENV|INIT_CWD|JOE_.*|npm_(?:lifecycle_.*|package_.*|command|execpath|node_execpath)|npm_config_(?:prefix|local_prefix|cache|global|production|omit|include|only|argv|workspaces?))$/iu;
+//  HOST too: a host Joe was started with (0.0.0.0 on a server) would expose a child that sets only PORT.
+const JOE_PROCESS_ENV = /^(?:PORT|HOST|NODE_ENV|INIT_CWD|JOE_.*|npm_(?:lifecycle_.*|package_.*|command|execpath|node_execpath)|npm_config_(?:prefix|local_prefix|cache|global|production|omit|include|only|argv|workspaces?))$/iu;
 
 /** A variable that describes Joe's own process rather than the machine. */
 export function isJoeProcessEnv(name: string): boolean {
