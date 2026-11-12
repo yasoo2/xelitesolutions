@@ -90,14 +90,32 @@ function userPartOf(rawGoal: string): string {
  * is denied when nothing else orders one («لا تنشر الموقع», «ابنِ الموقع ولا تنشره»),
  * or when the denial names the same site, or its pronoun, with nothing qualifying it.
  */
-const PUBLISH_DENIAL = /(?:^|[\s،؛,:.!?])(?:[وف]?(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)([تن]?نشر(?:ه|ها|هم|وا|ي)?|انشر|أنشر|ت?رفع(?:ه|ها)?|استضافة|deploy(?:ing)?|publish(?:ing)?|host(?:ing)?|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?])([^\n.!?؟؛;،,]{0,80})/giu;
+const PUBLISH_DENIAL = /(?:^|[\s،؛,:.!?])(?:[وف]?(?:لا|ليس|بدون|غير)\s+(?:(?:أي|أية|اي)\s+)?|(?:do\s+not|don't|without|no)\s+(?:(?:any|external)\s+)?)([تن]?نشر(?:ه|ها|هم|وا|ي)?|انشر|أنشر|ت?رفع(?:ه|ها)?|استضافة|deploy(?:ing)?|publish(?:ing)?|host(?:ing)?|go\s*live|github\s*pages)(?=$|[\s،؛,:.!?؟])([^\n.!?؟؛;،,]{0,80})/giu;
 const PUBLISH_ORDER = /(?:^|[\s،؛,:.!?])[وف]?(?:انشر|أنشر|ارفع|استضف)(?:ه|ها)?(?=$|[\s،؛,:.!?])|\b(?:deploy|publish|host|go\s*live)\b/iu;
 const THE_SITE_ITSELF = /^(?:(?:ال)?(?:موقع|مشروع|تطبيق|متجر|نظام|صفحات)|it|this|them|(?:the|my|our|this)\s+(?:site|website|app|application|project|store))$/iu;
 const QUALIFIES_A_DENIAL = /^(?:قبل|حتى|[إا]لا|لحد|لين|لما|على|في|[إا]لى|الان|الآن|حاليا|before|until|unless|till|on|to|yet|now|while|externally)$/iu;
-function deniesThePublishItself(userGoal: string): boolean {
-    const denials = [...String(userGoal || '').matchAll(PUBLISH_DENIAL)];
+/*
+ * «ممكن ما تنشره؟», «ما تنشر الموقع», «بلاش تنشر الموقع», «متنشرش الموقع», "Can you not
+ * deploy it yet?": the same denial in the dialects' words, in Egyptian's «ما…ش» wrapped
+ * round the verb, and put as a polite question. The denial reader knew «لا / بدون / do
+ * not» only, so none of these vetoed anything. Each is rewritten into the form it reads,
+ * and the rules above judge them like every other denial (a part, a time, the site
+ * itself). «ما» denies only where a clause, a courtesy or a request opens, or after «و»:
+ * «بعد ما تنشر الموقع ابعتلي الرابط» is "after you publish", and stays one.
+ */
+const DENIAL_IN_OTHER_WORDS: Array<[RegExp, string]> = [
+    [/(^|[\s،؛,:.!?؟])(?:ما[ \t]*|م)(ت(?:نشر|رفع))[^\s،؛,:.!?؟]{0,3}ش(?=$|[\s،؛,:.!?؟])/gu, '$1لا $2'],
+    [/(^|[\n.،؛,:!?؟][ \t]*|(?:^|\s)(?:ممكن|يمكن|تقدر|بتقدر|ينفع|فيك|سمحت|فضلك)[ \t]+)ما[ \t]+(?=ت(?:نشر|رفع))/gu, '$1لا '],
+    [/(\s[وف])ما[ \t]+(?=ت(?:نشر|رفع))/gu, '$1لا '],
+    [/(^|\s)([وف]?)بلاش[ \t]+(?=ت?(?:نشر|رفع))/gu, '$1$2لا '],
+    [/\b(?:can|could|would|will)\s+(?:you|u)\s+(?:(?:please|kindly)\s+)?not\s+(?=(?:deploy|publish|host|go\s*live)\b)/giu, 'do not '],
+];
+function deniesThePublishItself(userGoalRaw: string): boolean {
+    let userGoal = String(userGoalRaw || '');
+    for (const [otherWords, asRead] of DENIAL_IN_OTHER_WORDS) userGoal = userGoal.replace(otherWords, asRead);
+    const denials = [...userGoal.matchAll(PUBLISH_DENIAL)];
     if (!denials.length) return false;
-    if (!PUBLISH_ORDER.test(String(userGoal || '').replace(PUBLISH_DENIAL, ' '))) return true;
+    if (!PUBLISH_ORDER.test(userGoal.replace(PUBLISH_DENIAL, ' '))) return true;
     return denials.some(m => {
         const verb = m[1];
         const words = (m[2] || '').trim().split(/\s+/u).filter(Boolean);
@@ -212,6 +230,201 @@ function readPublishedContent(userGoal: string): { anywhere: boolean; asObject: 
     return { anywhere: roles.includes('content'), asObject, siteNamed: roles.includes('site') };
 }
 
+/**
+ * «ممكن تنشر الموقع؟» IS AN ORDER. «كيف أنشر الموقع؟» IS A QUESTION.
+ *
+ * The deploy decision asked one coarse reader «is this a question?» — a first
+ * word (can, is, هل…) or a trailing "?" — and knew the order in one form only,
+ * the imperative. Measured on the reader itself, before this:
+ *
+ *     Can you deploy the site?         → no deploy   ("can" opens it)
+ *     Could you publish it now?        → no deploy   (the "?")
+ *     هل يمكن نشر الموقع الآن؟          → no deploy   («هل»; «نشر» is not «انشر»)
+ *     ممكن تنشر الموقع؟                 → no deploy   («تنشر» is not «انشر»)
+ *     تقدر ترفع الموقع على النت؟        → no deploy   («رفع» was never a publish)
+ *     ازاي انشر الموقع؟                 → DEPLOY      («ازاي» was not on the list)
+ *     ممكن تشرح لي كيف أنشر الموقع؟     → DEPLOY      («كيف» does not open it)
+ *
+ * The politest way to ask for a publish published nothing, and two ways of
+ * asking HOW published his project. What tells them apart is grammar, and it
+ * is read here once, over the words:
+ *
+ *   • A REQUEST FRAME hands Joe the verb: «ممكن / تقدر / هل يمكنك / فيك /
+ *     ينفع», "can you / could you / would you / is it possible to", and the
+ *     wish «عايزك / ابغاك / بدي ياك», "I'd like you to". The verb after it is
+ *     Joe's — second person («تنشر»), the masdar («نشر الموقع») or the English
+ *     base form — and it NAMES WHAT TO PUBLISH: a site as its object, or a
+ *     pronoun. "Can you deploy to AWS?" names nothing: it asks what Joe can do.
+ *   • It stays a question when the frame governs another verb («ممكن تشرح لي
+ *     كيف…», "can you explain how…"), when an interrogative stands before it
+ *     («كيف ممكن تنشر الموقع؟»), when it asks a choice or a condition («… ولا
+ *     أستنى؟», "… or wait?", «مجاناً؟», "for free?", "without a domain?"), or
+ *     when nobody is addressed and no particular site is meant ("is it
+ *     possible to deploy a site …").
+ *   • An INTERROGATIVE before the publish word, in the same clause, is a
+ *     question about publishing wherever it stands: «ازاي / شلون / كيف / ليش /
+ *     وين», "how / why / where". One inside an order ends at the conjunction —
+ *     «شوف وين المشكلة وانشر الموقع» still publishes.
+ *   • «ارفع الموقع على النت», "upload the site to the web": an upload of the
+ *     site itself to the internet is a publish. «ارفع الصور على الموقع» and
+ *     «ارفع الموقع على جيت هاب» are not read here.
+ *   • «انشره», "publish it" opening the request, with nothing after it but
+ *     «الآن» or a courtesy: the pronoun has no antecedent in the request, so it
+ *     is what is open — the project. With an antecedent («اكتب ملخصاً وانشره»)
+ *     or a place («انشره على تويتر») it is left to the readers that had it.
+ *
+ * A denial is read before any of this («ممكن ما تنشره؟» → denied). One walk
+ * over the words, bounded looks ahead: linear.
+ */
+const ASK_COURTESY = /^(?:please|pls|plz|kindly|hey|hi|hello|ok|okay|so|now|well|just|joe|يا|جو|طيب|يلا|تمام|خلاص|اوكي|الان|هلا|هلق|بليز|لطفا|رجا|فضلا|ارجوك|ارجو|[,،!])$/u;
+const ASK_CAN_YOU_AR = /^(?:[بهح]?تقدر|تستطيع|تسطيع|يمكنك|بامكانك|بمقدورك|بوسعك|فيك|يمديك|تگدر|تكدر|عايزك|عاوزك|ابغاك|ابيك|اريدك|اباك|نبيك)$/u;
+const ASK_IS_IT_POSSIBLE_AR = /^(?:ممكن|يمكن|بالامكان|ينفع|يصير|بيصير)$/u;
+const ASK_YOU_PUBLISH_AR = /^[بهح]?ت(نشر|رفع|ستضيف)(?:ي|وا|و)?(ه|ها)?(?:لي|لنا)?$/u;
+const ASK_PUBLISHING_AR = /^(نشر|رفع|استضافه)(ه|ها)?$/u;
+const ORDER_PUBLISH_AR = /^[وف]?ا(نشر|رفع|ستضف)(?:ي|وا|و)?(ه|ها)?(?:لي|لنا)?$/u;
+const ASK_OBJECT_DETERMINER = /^(?:the|my|our|your|this|that|هذا|هذه|هاد|هاي|ده|دي)$/u;
+const ASK_OBJECT_FILLER = /^(?:لي|لنا|me|us)$/u;
+const ASK_ADJUNCT_LEAD = /^(?:of|about|for|to|on|in|at|from|with|عن|حول|علي|في|الي|من|مع)$/u;
+/** «الموقع», «للموقع», «موقعي», «متجره», «صفحتها»: a particular site, not any site. */
+const AR_DEFINITE_SITE = /^[وف]?(?:[بكل]?ال|لل)|(?:ي|نا|ك|كم)$|(?:موقع|مشروع|نظام|تطبيق|متجر|خادم|سيرفر)(?:ه|ها)$|ت(?:ه|ها)$/u;
+const ASKS_A_CHOICE_OR_A_CONDITION = /^(?:or|ام|ولا|او|free|without|مجانا|ببلاش|بدون|بلا)$/u;
+const FOLLOWS_A_BARE_ORDER = /^(?:now|today|already|immediately|asap|please|pls|thanks|الان|هلق|هلا|دلوقتي|دلوقت|الحين|هسه|اليوم|حالا|فورا|بليز)$/u;
+const ONLINE_PLACE = /^(?:(?:[بل]?ال|لل)?(?:نت|انترنت|ويب)|اونلاين|لايف|online|live|internet|web)$/u;
+const ASK_INTERROGATIVE = /^(?:how|what|why|where|which|who|whether|كيف|كيفيه|ازاي|شلون|اشلون|كيفاش|ليش|ليه|لماذا|متي|امتي|ايمتي|وين|فين|اين|ايش|شو|ماذا|وش|كم|بكم|هل)$/u;
+const ASK_CONNECTIVE = /^(?:and|so|but|و|ف|بس|لكن|بعدين|وبعدين)$/u;
+/** The words the deploy decision reacts to, as whole tokens: «انشر», «استضف», "deploy", "publish", "host". */
+const PUBLISH_WORD_TOKEN = /^(?:[وف]?ا?نشر(?:ي|وا|و)?(?:ه|ها|هم)?(?:لي|لنا)?|[وف]?استض[\p{L}]{0,6}|(?:re)?deploy|(?:re)?publish|host)$/u;
+
+interface PublishAsk {
+    /** A request to publish a named site, put as a polite question or a wish. */
+    polite: boolean;
+    /** A question about publishing: an interrogative governs the publish word. */
+    about: boolean;
+    /** An order to upload the site itself to the internet. */
+    uploadsTheSite: boolean;
+    /** What is published is a pronoun with no antecedent in the request: the open project. */
+    pronounTarget: boolean;
+}
+
+/** Past the courtesies a request opens with: «لو سمحت», «يا جو», "please", "ok,". A few of them — the look ahead is bounded. */
+function afterCourtesy(tokens: string[], from: number): number {
+    let i = from;
+    for (let seen = 0; seen < 8; seen++) {
+        const t = tokens[i] || '', u = tokens[i + 1] || '';
+        if (ASK_COURTESY.test(t)) i++;
+        else if ((/^(?:لو|اذا)$/u.test(t) && /^(?:سمحت|تكرمت|تسمح)$/u.test(u)) || (t === 'من' && u === 'فضلك')) i += 2;
+        else break;
+    }
+    return i;
+}
+
+/** The request frame at a position: where the verb it hands over stands, and whether the frame itself addresses Joe. */
+function requestFrameAt(tokens: string[], from: number): { next: number; addressed: boolean } | null {
+    const j = tokens[from] === 'هل' ? from + 1 : from;
+    const at = (k: number) => tokens[j + k] || '';
+    let next = -1, addressed = true;
+    if (/^(?:can|could|would|will)$/u.test(at(0)) && /^(?:you|u)$/u.test(at(1))) next = j + 2;
+    else if (at(0) === 'is' && at(1) === 'it' && at(2) === 'possible' && at(3) === 'to') { next = j + 4; addressed = false; }
+    else if (at(0) === 'would' && at(1) === 'it' && at(2) === 'be' && at(3) === 'possible' && at(4) === 'to') { next = j + 5; addressed = false; }
+    else if (at(0) === 'i') {
+        let k = 1;
+        if (at(k) === 'would') k++;
+        else if (/^['’]$/u.test(at(k)) && at(k + 1) === 'd') k += 2;
+        if (/^(?:want|need|like)$/u.test(at(k)) && at(k + 1) === 'you' && at(k + 2) === 'to') next = j + k + 3;
+    }
+    else if (ASK_CAN_YOU_AR.test(at(0))) next = j + 1;
+    else if (at(0) === 'بدي' && /^(?:ياك|اياك)$/u.test(at(1))) next = j + 2;
+    else if (ASK_IS_IT_POSSIBLE_AR.test(at(0))) { next = j + 1; addressed = false; }
+    if (next < 0) return null;
+    next = afterCourtesy(tokens, next);
+    if (tokens[next] === 'ان') next++;
+    return { next, addressed };
+}
+
+/** The publish verb at a position: inside a frame, the verb Joe is asked to do («تنشر», «نشر», "deploy"); alone, the order («انشر», "publish"). */
+function publishVerbAt(tokens: string[], at: number, framed: boolean): { verb: 'deploy' | 'publish' | 'upload'; pronoun: boolean; second: boolean; next: number } | null {
+    const t = tokens[at] || '';
+    if (/^(?:re)?deploy$/u.test(t)) return { verb: 'deploy', pronoun: false, second: false, next: at + 1 };
+    if (/^(?:(?:re)?publish|host)$/u.test(t)) return { verb: 'publish', pronoun: false, second: false, next: at + 1 };
+    if (t === 'upload') return { verb: 'upload', pronoun: false, second: false, next: at + 1 };
+    if (t === 'go' && tokens[at + 1] === 'live') return { verb: 'deploy', pronoun: false, second: false, next: tokens[at + 2] === 'with' ? at + 3 : at + 2 };
+    const you = framed ? t.match(ASK_YOU_PUBLISH_AR) : null;
+    const ar = you || (framed ? t.match(ASK_PUBLISHING_AR) : t.match(ORDER_PUBLISH_AR));
+    if (!ar) return null;
+    return { verb: ar[1] === 'رفع' ? 'upload' : ar[1] === 'نشر' ? 'publish' : 'deploy', pronoun: !!ar[2], second: !!you, next: at + 1 };
+}
+
+/** What the verb publishes: a pronoun, or the site named as its object — never content, never the object of a preposition. */
+function publishedThingAt(tokens: string[], at: number, pronounOnVerb: boolean): { pronoun: boolean; definite: boolean; next: number } | null {
+    if (pronounOnVerb) return { pronoun: true, definite: true, next: at };
+    if (/^(?:it|this)$/u.test(tokens[at] || '') && !SITE_NOUN_TOKEN.test(tokens[at + 1] || '')) return { pronoun: true, definite: true, next: at + 1 };
+    let definite = false;
+    for (let j = at, words = 0; j < tokens.length && words < 4; j++) {
+        const t = tokens[j];
+        if (CLAUSE_BREAK.test(t) || CONTENT_NOUN_TOKEN.test(t) || ASK_ADJUNCT_LEAD.test(t)) return null;
+        if (ASK_OBJECT_DETERMINER.test(t)) { definite = true; continue; }
+        if (ASK_OBJECT_FILLER.test(t)) continue;
+        if (SITE_NOUN_TOKEN.test(t)) {
+            const arabic = /[؀-ۿ]/u.test(t);
+            if (!arabic && CONTENT_NOUN_TOKEN.test(tokens[j + 1] || '')) return null;      // "a blog post" is a post
+            return { pronoun: false, definite: definite || (arabic && AR_DEFINITE_SITE.test(t)), next: j + 1 };
+        }
+        words++;
+    }
+    return null;
+}
+
+function readHowPublishIsAsked(userGoal: string, contentAnywhere: boolean): PublishAsk {
+    const tokens = foldChars(String(userGoal || '')).match(WORD_OR_BREAK) || [];
+    const out: PublishAsk = { polite: false, about: false, uploadsTheSite: false, pronounTarget: false };
+    const head = afterCourtesy(tokens, 0);
+    //  0: no interrogative in this clause. 1: one inside it («شوف وين المشكلة…»), which a
+    //  conjunction ends. 2: one that opens it («ازاي أختبر وأنشر الموقع؟»), which only the
+    //  end of the clause ends.
+    let asking = 0;
+    let opens = true;
+    for (let i = 0; i < tokens.length; i++) {
+        const t = tokens[i];
+        if (CLAUSE_BREAK.test(t)) { asking = 0; opens = true; continue; }
+        if (ASK_CONNECTIVE.test(t)) { if (asking === 1) asking = 0; opens = true; continue; }
+        const coordinated = /^[وف]/u.test(t) && ORDER_PUBLISH_AR.test(t);
+        if (coordinated && asking === 1) asking = 0;
+        if ((opens || coordinated) && !asking) {
+            const start = opens ? afterCourtesy(tokens, i) : i;
+            const frame = requestFrameAt(tokens, start);
+            const verb = publishVerbAt(tokens, frame ? frame.next : start, !!frame);
+            const thing = verb ? publishedThingAt(tokens, verb.next, verb.pronoun) : null;
+            if (verb && thing) {
+                let goesOnline = false;
+                for (let j = thing.next; j < tokens.length && j < thing.next + 3 && !CLAUSE_BREAK.test(tokens[j]); j++) goesOnline = goesOnline || ONLINE_PLACE.test(tokens[j]);
+                let bare = thing.next;
+                for (let seen = 0; seen < 4 && FOLLOWS_A_BARE_ORDER.test(tokens[bare] || ''); seen++) bare = afterCourtesy(tokens, bare + 1);
+                const after = tokens[bare];
+                const nothingElse = after === undefined || CLAUSE_BREAK.test(after) || after === 'and' || /^و[\p{L}]{3,}$/u.test(after);
+                let choiceOrCondition = false;
+                for (let j = thing.next; j < tokens.length && j < thing.next + 12 && !CLAUSE_BREAK.test(tokens[j]); j++) choiceOrCondition = choiceOrCondition || ASKS_A_CHOICE_OR_A_CONDITION.test(tokens[j]);
+                const names = thing.pronoun
+                    ? !contentAnywhere && start === head && nothingElse && verb.verb !== 'upload'
+                    : verb.verb !== 'upload' || goesOnline;
+                if (names && frame) {
+                    if (!choiceOrCondition && (frame.addressed || verb.second || thing.definite)) {
+                        out.polite = true;
+                        out.pronounTarget = out.pronounTarget || thing.pronoun;
+                    }
+                } else if (names) {
+                    out.uploadsTheSite = out.uploadsTheSite || verb.verb === 'upload';
+                    out.pronounTarget = out.pronounTarget || thing.pronoun;
+                }
+            }
+        }
+        const opensTheClause = opens;
+        opens = false;
+        if (ASK_INTERROGATIVE.test(t)) asking = Math.max(asking, opensTheClause ? 2 : 1);
+        else if (asking && PUBLISH_WORD_TOKEN.test(t)) out.about = true;
+    }
+    return out;
+}
+
 /** An imperative creation verb (folded spelling) — not «نفّذ/implement/fix», whose object is the repairs. */
 const CONSTRUCTION_VERB_TOKEN = /^(?:build|create|scaffold|develop|generate|design|make|[وف]?(?:ابن|ابني|انشي|اصنع|اعمل|صمم|طور|برمج|سوي)(?:لي|لنا)?)$/u;
 /** Where an imperative stands: the start of a clause, or after a conjunction or courtesy. */
@@ -265,15 +478,23 @@ export interface DeployIntentReading {
      * post, a tweet) rather than a site — the publish verb's own object, or
      * content with no site named at all; «انشر الموقع وأخبرني بالرابط» and
      * «انشر الموقع بعد تحديث المحتوى» publish the site. A question is not a veto here: the
-     * fast path's `isQuestion` is a coarse reader (a trailing «؟», any «بحث»),
-     * and «هل يمكنك نشر الموقع؟» is a polite order — capabilityPlan has its own
-     * deed-first question reader for that.
+     * fast path's `isQuestion` is a coarse reader (a first word, a trailing "?", any
+     * «بحث») that the run and stop paths still ask. The deploy decision reads the
+     * request frame instead (readHowPublishIsAsked): «هل يمكنك نشر الموقع؟» is a
+     * polite order and deploys, «كيف أنشر الموقع؟» asks about publishing and does not.
      */
     veto: '' | 'denied' | 'content';
     isQuestion: boolean;
     hasBuildVerb: boolean;
     projectTarget: boolean;
     deniesExternalPublish: boolean;
+    /**
+     * The deploy was read from a pronoun with no antecedent in the text («انشره»,
+     * "publish it"): it names no site of its own. A step cut out of a longer request
+     * («اكتب مقالاً ثم انشره») has its antecedent in another step, so the chain reader
+     * does not take this for a named site target.
+     */
+    targetIsPronoun: boolean;
 }
 
 /** Does this string actually look like a web address? Free classifier models
@@ -663,8 +884,18 @@ export class PlanningEngine {
         const veto: DeployIntentReading['veto'] = deniesExternalPublish ? 'denied'
             : publishesContent ? 'content'
             : '';
-        const deploy = !veto && !isQuestion && !hasBuildVerb && (strongDeploy || (softPublish && deployTarget));
-        return { deploy, veto, isQuestion, hasBuildVerb, projectTarget, deniesExternalPublish };
+        // HOW it is asked decides between an order and a question, not the first
+        // word or a question mark: a polite request to publish a named site is the
+        // order («ممكن تنشر الموقع؟», "Could you deploy the app?"), and an
+        // interrogative before the publish word is a question about publishing
+        // wherever it stands («ازاي انشر الموقع؟»). See readHowPublishIsAsked.
+        const asked = readHowPublishIsAsked(userGoal, published.anywhere);
+        const named = deployTarget || asked.pronounTarget;
+        const ordered = !isQuestion && !asked.about
+            && (strongDeploy || asked.uploadsTheSite || (softPublish && named));
+        const deploy = !veto && !hasBuildVerb && (asked.polite || ordered);
+        const targetIsPronoun = deploy && asked.pronounTarget && !deployTarget;
+        return { deploy, veto, isQuestion, hasBuildVerb, projectTarget, deniesExternalPublish, targetIsPronoun };
     }
 
     /**
@@ -1110,7 +1341,9 @@ Rules:
                 if (!PlanningEngine.isSiteDeployTool(name)) return false;
                 if (whole.veto === 'denied') return true;
                 const own = PlanningEngine.readDeployIntent(part);
-                return !!own.veto || (!!whole.veto && !own.deploy);
+                // «انشره» cut out of «اكتب مقالاً ثم انشره» names no site: its pronoun's
+                // antecedent is the article, in the step before it.
+                return !!own.veto || (!!whole.veto && !(own.deploy && !own.targetIsPronoun));
             };
             const chain = capabilityChain(goal, 5)
                 .filter((c: any) => !refusedDeployStep(c?.name, String(c?.part || goal)));
