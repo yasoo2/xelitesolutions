@@ -467,7 +467,8 @@ function listIsTheArchetypeSchema(kind: AppKind, request: string): boolean {
 }
 
 export function detectAppKind(requestRaw: string): AppKind | null {
-    const request = String(requestRaw || '')
+    //  A diacritized request reads like the plain one.
+    const request = stripArabicDiacritics(String(requestRaw || ''))
         .replace(/(?<!\n)\n+\[(STANDING USER INSTRUCTIONS|ENGINEERING DISCIPLINE|ATTACHED FILES|RESPONSE LANGUAGE)[\s\S]*$/i, '');
     if (!request.trim()) return null;
     const intentRequest = maskNegatedSpans(request);
@@ -2609,17 +2610,48 @@ const BEHAVIOUR_VERBS = [
     'يجمع', 'تجمع', 'يرتب', 'ترتب', 'يبحث', 'تبحث', 'يطبع', 'تطبع',
 ];
 
+/*
+ *  THE LANGUAGE LAYER IS ASKED ONLY ABOUT A WORD THAT CAN ANSWER YES.
+ *
+ *  Measured by the third pre-merge review (2026-11-12), CPU time of derivedColumns,
+ *  columnsAnywhereInHisRequest and detectAppKind — each runs on every request:
+ *
+ *      «بدي أعرف، » repeated            0.9 s at 2 KB · 2.0 s at 5 KB · 8.5 s at 20 KB
+ *      «صلح الصفحة الرئيسية، » repeated  the same
+ *
+ *  The profile put nine tenths of it here: every list item of two words takes its
+ *  first word to saysAny, which stems the sixteen verbs again and segments the word,
+ *  about four milliseconds a call. Two things make the question cheap and leave
+ *  every answer what it was:
+ *
+ *    - the stemmer only takes letters off the two ends of a word (and folds hamza,
+ *      alef and taa marbuta, which none of these verbs has), so a word that reads
+ *      as «يطلع» in any inflection still holds «طلع» in it. A word holding none of
+ *      the eight roots is answered here, with no call;
+ *    - and a word asked once is remembered: a request says the same words again.
+ */
+const BEHAVIOUR_ROOTS = [...new Set(BEHAVIOUR_VERBS.map(verb => verb.slice(1)))];
+const behaviourAnswers = new Map<string, boolean>();
+
 function opensAsABehaviour(word: string): boolean {
-    const w = String(word || '').trim();
+    //  The marks the language layer itself drops, dropped the same way.
+    const w = String(word || '').normalize('NFKD').replace(/[̀-ًͯ-ٰٟـ]/gu, '').trim();
     if (!w) return false;
     //  The verbs are Arabic, so only an Arabic word is taken to the language
     //  layer. It costs milliseconds a call: a long English list of two-word
     //  items («due date», «add date») paid it once per item — 15 s at 20 KB.
     if (!/[؀-ۿ]/u.test(w)) return false;
+    if (!BEHAVIOUR_ROOTS.some(root => w.includes(root))) return false;
+    const known = behaviourAnswers.get(w);
+    if (known !== undefined) return known;
+    let answer: boolean;
     try {
         const { saysAny } = require('../language/arabic');
-        return saysAny(w, BEHAVIOUR_VERBS);
-    } catch { return BEHAVIOUR_VERBS.includes(w); }
+        answer = saysAny(w, BEHAVIOUR_VERBS);
+    } catch { answer = BEHAVIOUR_VERBS.includes(w); }
+    if (behaviourAnswers.size >= 2000) behaviourAnswers.clear();
+    behaviourAnswers.set(w, answer);
+    return answer;
 }
 
 /**
@@ -2764,7 +2796,7 @@ function fieldsNamedWithAVerb(parts: string[], context: string): Set<number> {
     return named;
 }
 
-function isAColumnAndNotAClause(item: string, index: number, namedWithAVerb = false): boolean {
+function isAColumnAndNotAClause(item: string, index: number, namedWithAVerb = false, judgedAName = false): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
     // Stop at the first action phrase so "search" and "status filtering" do
@@ -2836,7 +2868,8 @@ function isAColumnAndNotAClause(item: string, index: number, namedWithAVerb = fa
      */
     const leadWords = t.split(/\s+/).filter(Boolean);
     if (leadWords.length > 1 && opensAsABehaviour(leadWords[0])) return false;
-    if (!everyItemIsADefiniteName([t])) return false;
+    //  The colon reader has already ruled its Arabic items names (theFieldAColonListNames).
+    if (!(judgedAName && /[\u0600-\u06FF]/u.test(t)) && !everyItemIsADefiniteName([t])) return false;
     const words = t.split(/\s+/);
     return !words.slice(1).some(w => ARABIC_FUNCTION_WORD.test(w));
 }
@@ -2862,12 +2895,12 @@ function isAColumnAndNotAClause(item: string, index: number, namedWithAVerb = fa
  */
 const HE_NAMED_A_PAGE = new RegExp('^(?:ال)?صفح[ةه](?:$|\\s)|^(?:a|an|the)?\\s*[a-z0-9-]+\\s+page$', 'i');
 
-function columnsEndWhereHisNextRequestBegins(parts: string[], request = ''): string[] {
+function columnsEndWhereHisNextRequestBegins(parts: string[], request = '', judgedNames = false): string[] {
     const mine = parts.filter(p => !HE_NAMED_A_PAGE.test(String(p || '').trim()));
     //  The request the list was read from says what the app's actions are done
     //  to; without it the list itself still says which objects repeat.
     const namedWithAVerb = fieldsNamedWithAVerb(mine, request || mine.join(', '));
-    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i, namedWithAVerb.has(i)));
+    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i, namedWithAVerb.has(i), judgedNames));
     return stop < 0 ? mine : mine.slice(0, stop);
 }
 
@@ -3244,38 +3277,149 @@ const oneSpaceEach = (text: string): string => String(text || '')
  *    - and every item is a name, as every column reader here demands:
  *      definite in Arabic, no article in English, three at least.
  */
+/*
+ *  …AND THE LIST ENDS WHERE HE STOPS NAMING FIELDS — measured by the third
+ *  pre-merge review (2026-11-12), on the reader above the day it was written:
+ *
+ *      «نظام مخزون: اسم الصنف، الكمية، السعر، وأبغاه بالعربي»   → a 4th column «وأبغاه بالعربي»
+ *      «نظام مخزون: اسم الصنف، الكمية، حذف الصنف»               → a 3rd column «حذف الصنف»
+ *      «نظام مخزون: اسم الصنف، الكمية، السعر، والمورد»           → nothing («والمورد» is not definite)
+ *      «تطبيق مصاريف: التاريخ، المبلغ، الفئة، ملاحظات»           → nothing («ملاحظات» is not definite)
+ *      «نظام مخزون: اسم الصنف، الكمية، آخر تعديل»                → nothing
+ *      «نظام مخزون:» and the fields on the lines under it        → nothing
+ *
+ *  A wish passed on a possessive ending that is no possession: «أبغاه» is a verb
+ *  and its object, «بالعربي» a preposition and a noun. And the record's lifecycle
+ *  was read at the head of a list only. So, in this reader:
+ *
+ *    - «و» glued to an item after a comma is the conjunction, when the item is a
+ *      name only without it («والمورد», «وصورة»); «وزن الصنف» and «وصف المنتج» are
+ *      names as written and keep their letter;
+ *    - an Arabic name of more than one word is definite by a word that OPENS with
+ *      «ال», by a possessive ending on its LAST word, or by opening with a
+ *      superlative or an ordinal («آخر تعديل», «أول طلب»), which Arabic makes
+ *      definite with no article. A word that wears a preposition («بالعربي»,
+ *      «للطباعة») proves nothing, nor does an ending on the first word;
+ *    - a single bare word after two fields is a field («ملاحظات», «صورة»), as
+ *      every list reader here already rules, and so is a yes-or-no («تم»);
+ *    - an action on the record — «إضافة / تعديل / حذف / إزالة / بحث», bare or with
+ *      its object — is not a field anywhere in the list. Standing second it is
+ *      the name of one and is not read here: «تاريخ الإضافة», «سبب الحذف».
+ *
+ *  The list ends at the first item that is none of these; what stands before it
+ *  is still his list. Lines under a colon that ends its line are the list too.
+ */
+const AN_ARABIC_ACTION_ON_THE_RECORD = /^(?:ال)?(?:[إأا]ضاف[ةه]|تعديل|حذف|[إأا]زال[ةه]|بحث)(?:\s+\S.*)?$/u;
+const WEARS_A_PREPOSITION = /^[وف]?(?:[بكل]ال|لل)/u;
+const A_SUPERLATIVE_OR_AN_ORDINAL = /^(?:[آاأ]خر|[أا]ول|[أا]حدث|[أا]قدم|[أا]على|[أا]دنى|[أا]قل|[أا]كثر|[أا]كبر|[أا]صغر)$/u;
+/**
+ *  A wish, a state of being, or an order opens a clause, never the name of a field: «أبغى
+ *  الواجهة عربية», «يكون الخط كبير», «خلي الألوان هادئة», «أضف زر الطباعة». A closed class
+ *  of the language, like READS_AS_A_RULE — no noun of any business is in it.
+ */
+const A_WISH_OR_AN_ORDER_OPENS = /^(?:[اأ]بغ[ىيا][ء-ي]{0,2}|[اأ]ب[يىا](?:ه|ها)?|بد(?:ي|نا)(?:ياه|ياها)?|[اأن]ريد(?:ه|ها)?|عا[يو]ز(?:ه|ها|ة)?|ود(?:ي|نا)|نب[يىغ][ء-ي]{0,3}|حاب(?:ب|ين)?|[اأ]تمنى|[اأ]حتاج|محتاج|[اأ]فضل|يا?ريت|لازم|يجب|ممكن|ضروري|المفروض|[يت]كون|[يت]صير|[يت]بقى|ليكن|خل(?:ي|يه|يها|ه|ها|ينا)?|اجعل(?:ه|ها)?|[اأ]ضف|ضيف|زيد|حط|اعمل|سوي?(?:لي)?|[اأ]نش[ئي]|اكتب|احذف|امسح|شيل|عدل|اعرض|[اأ]ظهر|اطبع|احفظ|ارسل|اربط|استخدم)$/u;
+const A_LIST_MARK = /^\s*(?:[-•*–—▪◦]|\d{1,2}[.)])\s*/u;
+
+function isADefiniteNameOfItsOwn(item: string): boolean {
+    const words = stripArabicDiacritics(String(item || '')).trim().split(/\s+/u).filter(Boolean);
+    if (!words.length) return false;
+    if (words.some(word => /^ال[ء-ي]/u.test(word))) return true;
+    const last = words[words.length - 1];
+    if (!WEARS_A_PREPOSITION.test(last) && /[ء-ي](?:ه|ها|هم|هن|ي|ك|كم|نا)$/u.test(last)) return true;
+    return words.length > 1 && A_SUPERLATIVE_OR_AN_ORDINAL.test(words[0]);
+}
+
+/** One item of a colon list, as the field it names — or null where the list of fields ends. */
+function theFieldAColonListNames(raw: string, index: number): string | null {
+    const written = String(raw || '').trim();
+    if (!/[؀-ۿ]/u.test(written)) return written;      // a Latin item is judged by the readers below
+    //  «، والمورد», «، وصورة», «، واسم المورد»: the conjunction, where what follows it opens
+    //  with the article or names a kind of value. «وزن», «وصف», «وقت» keep their letter.
+    const after = index > 0 ? /^و([ء-ي]{3,})/u.exec(stripArabicDiacritics(written)) : null;
+    const item = after && (/^ال/u.test(after[1]) || namesAFieldOfARecord(after[1])) ? written.replace(/^و/u, '') : written;
+    const bare = stripArabicDiacritics(item);
+    if (AN_ARABIC_ACTION_ON_THE_RECORD.test(bare) || AN_ARABIC_ACTION_ON_THE_RECORD.test(bare.replace(/^و/u, ''))) return null;
+    //  A rule or a long clause is not a name: «لا تنشره», «وما يقبل مبلغ صفر».
+    if (!isAName(bare)) return null;
+    if (/\s/u.test(bare)) {
+        if (A_WISH_OR_AN_ORDER_OPENS.test(bare.split(/\s+/u)[0].replace(/^[وف](?=[ء-ي]{3,})/u, ''))) return null;
+        return isADefiniteNameOfItsOwn(bare) ? item : null;
+    }
+    if (ASKS_YES_OR_NO.test(bare) || isADefiniteNameOfItsOwn(bare)) return item;
+    //  A bare word among named fields is a field — the rule isAColumnAndNotAClause states.
+    return index >= 2 && bare.length >= 3 && !ARABIC_FUNCTION_WORD.test(bare) && !READS_AS_A_RULE.test(bare) ? item : null;
+}
+
 function theFieldsOfTheAppHeNamed(request: string): DerivedField[] | null {
     if (!/[:：]/u.test(request)) return null;
     const intent = maskNegatedSpans(request);
     if (PAGE_SIGNAL.test(intent) || siteNounWithoutAppRequest(intent)) return null;
-    if (!strongestArchetype(intent) && !(APP_SIGNAL.test(intent) && MANAGE_SIGNAL.test(intent))) return null;
-    for (const sentence of request.split(/[.؟!\n]/)) {
-        const colons = [sentence.indexOf(':'), sentence.indexOf('：')].filter(at => at >= 0);
-        if (!colons.length) continue;
-        const items = sentence.slice(Math.min(...colons) + 1)
-            .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
-            .map(part => part.trim().replace(/^and\s+/iu, '').trim())
-            .filter(part => part.length >= 2 && part.length <= 32)
+    const keepsRecords = !!strongestArchetype(intent) || (APP_SIGNAL.test(intent) && MANAGE_SIGNAL.test(intent));
+    const lines = request.split('\n');
+    for (let l = 0; l < lines.length; l++) {
+        const sentences = lines[l].split(/[.؟!]/);
+        for (let s = 0; s < sentences.length; s++) {
+            const sentence = sentences[s];
+            const colons = [sentence.indexOf(':'), sentence.indexOf('：')].filter(at => at >= 0);
+            if (!colons.length) continue;
+            const colonAt = Math.min(...colons);
+            //  The app he named before the colon is what the list hangs from: an
+            //  application that keeps records, or simply an application («recipe
+            //  app: name, ingredients, cook time»). The items still have to be fields.
+            if (!keepsRecords && !APP_SIGNAL.test(maskNegatedSpans(sentence.slice(0, colonAt)))) continue;
+            const tail = sentence.slice(colonAt + 1);
             //  Ten columns is the most any reader here takes; an eleventh
             //  item is enough to know the list is longer, and no more are read.
-            .slice(0, 11);
-        if (items.length < 3 || items.some(item => OPENS_WITH_AN_ARTICLE.test(item))) continue;
-        if (!namesAFieldOfARecord(items[0]) || items.filter(item => !namesAFieldOfARecord(item)).length > 1) continue;
-        const run = columnsEndWhereHisNextRequestBegins(items, request);
-        const names = run.filter(isAName).filter(notAContainerItself);
-        if (names.length < 3 || names.length > 10 || names.length !== run.length) continue;
-        if (!everyItemIsADefiniteName(names)) continue;
-        const built = fieldsFromLabels(names);
-        if (!built) continue;
-        //  Asked last, of a list that already qualified: the artifact reader
-        //  is the costly one on a long message.
-        if (requestedArtifact(request).kind === 'cli' || requestedArtifactWithoutStockEngine(intent)) return null;
-        return applyStatedRules(built, statedRules(request)).fields;
+            const written = tail.trim() || s < sentences.length - 1
+                ? tail.split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+                : lines.slice(l + 1, l + 12).map(line => line.replace(A_LIST_MARK, ''));
+            const listed = written
+                .map(part => part.trim().replace(/^and\s+/iu, '').trim())
+                .filter(part => part.length >= 2 && part.length <= 32)
+                .slice(0, 11);
+            const items: string[] = [];
+            for (const part of listed) {
+                const field = theFieldAColonListNames(part, items.length);
+                if (field === null) break;
+                items.push(field);
+            }
+            if (items.length < 3 || items.some(item => OPENS_WITH_AN_ARTICLE.test(item))) continue;
+            //  A yes-or-no word alone («تم», «مدفوع») is the state of the row: it is not
+            //  counted as a field here, and not against the list either.
+            if (!namesAFieldOfARecord(items[0])
+                || items.filter(item => !namesAFieldOfARecord(item) && !ASKS_YES_OR_NO.test(stripArabicDiacritics(item))).length > 1) continue;
+            const run = columnsEndWhereHisNextRequestBegins(items, request, true);
+            const names = run.filter(isAName).filter(notAContainerItself);
+            if (names.length < 3 || names.length > 10 || names.length !== run.length) continue;
+            const built = fieldsFromLabels(names);
+            if (!built) continue;
+            //  Asked last, of a list that already qualified: the artifact reader
+            //  is the costly one on a long message.
+            if (requestedArtifact(request).kind === 'cli' || requestedArtifactWithoutStockEngine(intent)) return null;
+            return applyStatedRules(built, statedRules(request)).fields;
+        }
     }
     return null;
 }
 
+/*
+ *  A DIACRITIZED REQUEST READS LIKE THE PLAIN ONE — AND HIS SPELLING STAYS HIS.
+ *
+ *  «نِظام مَخزون: اِسم الصنف، الكَمية، السِعر» read nothing where its plain twin read
+ *  three columns (the third pre-merge review, 2026-11-12): the readers below match
+ *  letters, and a mark stands between them. But a label is his own word, and
+ *  «زُرْقَمُونِي» is pinned to come back as he wrote it. So the request is read as
+ *  written first, and without its marks only where that reading found nothing.
+ */
+const AN_ARABIC_MARK = /[\u064B-\u0652\u0670\u0640]/u;
+
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
+    const written = derivedColumnsAsWritten(requestRaw);
+    if (written || !AN_ARABIC_MARK.test(String(requestRaw || ''))) return written;
+    return derivedColumnsAsWritten(stripArabicDiacritics(String(requestRaw || '')));
+}
+
+function derivedColumnsAsWritten(requestRaw: string): DerivedField[] | null {
     requestRaw = hisSentence(requestRaw);
     const request = oneSpaceEach(String(requestRaw || ''));
     // A nested form schema is more specific than the surrounding tracker or
@@ -3765,14 +3909,21 @@ export function hasExplicitRecordSchema(requestRaw: string): boolean {
      *  the work, not an order to build.
      */
     const clauseStart = '(?:(?:^|[.؟!\\n،,;؛])\\s*(?:and\\s+|و)?|\\s+(?:and\\s+|و))';
-    const isBuildRequest = new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make(?!\\s+sure\\b)|develop|design|scaffold|generate)\\b`, 'i').test(request)
-        || new RegExp(`${clauseStart}(?:i|we)\\s+(?:want|need|would\\s+like)\\b|${clauseStart}i\\s*['’]d\\s+like\\b`, 'i').test(request)
-        || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(request);
-    if (!isBuildRequest) return false;
+    const asksToBuild = (text: string): boolean => new RegExp(`${clauseStart}(?:please\\s+)?(?:create|build|make(?!\\s+sure\\b)|develop|design|scaffold|generate)\\b`, 'i').test(text)
+        || new RegExp(`${clauseStart}(?:i|we)\\s+(?:want|need|would\\s+like)\\b|${clauseStart}i\\s*['’]d\\s+like\\b`, 'i').test(text)
+        || new RegExp(`${clauseStart}(?:بدي|أريد|اريد|أنشئ|انشئ|ابن|اصنع|صمم|طوّر|طور|اعمل)(?:\\s|$)`, 'iu').test(text);
+    if (!asksToBuild(request)) return false;
     // CLI/utility/script requests are NOT persistent record schemas
     if (isCliRequest(requestRaw)) return false;
     const columns = columnsAnywhereInHisRequest(requestRaw);
-    return Array.isArray(columns) && columns.length >= 2;
+    if (!Array.isArray(columns) || columns.length < 2) return false;
+    //  "crm with name, email, create date, delete date": the only «create» is the name of
+    //  his third field (fieldsNamedWithAVerb). A field is not the order to build.
+    const verbFields = columns.map(column => String(column.label || '')).filter(label => A_RECORD_VERB_AND_ONE_NOUN.test(label));
+    if (!verbFields.length) return true;
+    let withoutThem = request;
+    for (const label of verbFields) withoutThem = withoutThem.split(label).join(' x ');
+    return asksToBuild(withoutThem);
 }
 
 function fieldsFromLabels(parts: string[]): DerivedField[] | null {
