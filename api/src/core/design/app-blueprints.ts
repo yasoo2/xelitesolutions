@@ -2612,6 +2612,10 @@ const BEHAVIOUR_VERBS = [
 function opensAsABehaviour(word: string): boolean {
     const w = String(word || '').trim();
     if (!w) return false;
+    //  The verbs are Arabic, so only an Arabic word is taken to the language
+    //  layer. It costs milliseconds a call: a long English list of two-word
+    //  items («due date», «add date») paid it once per item — 15 s at 20 KB.
+    if (!/[؀-ۿ]/u.test(w)) return false;
     try {
         const { saysAny } = require('../language/arabic');
         return saysAny(w, BEHAVIOUR_VERBS);
@@ -2653,17 +2657,114 @@ const AN_OBJECT_PRONOUN = /(?:^|\s)(?:it|them|this|that|these|those|everything|e
 const A_RECORD_ACTION = /^(?:add|edit|delete|remove|create|save|duplicate|rename)(?=$|\s)/iu;
 const NOT_A_GOVERNING_WORD = /^(?:a|an|the|and|or|with|of|for|in|on|at|by|from|to|per|via|into|about|without|plus)$/iu;
 
+/**
+ *  …AND THE ARABIC HALF IS SAID WITH A MASDAR, WHICH THE ARTICLE CANNOT STOP.
+ *
+ *  The note above trusted the definiteness test to refuse «إضافة» and «حذف».
+ *  It refuses them bare. With a definite object the phrase passes on the
+ *  strength of its second word, exactly as «يطلع المجموع» once did:
+ *
+ *      «اعمل جدول مهام: اضافة المهام، تعديل المهام، حذف المهام»
+ *      → columns: «اضافة المهام» · «تعديل المهام» · «حذف المهام»
+ *
+ *  Three text boxes named after the three things the table should let him do.
+ *  The same record lifecycle as the English class, read where an action list
+ *  shows itself: at its HEAD. A list of fields opens with a field, so a list
+ *  that opens «إضافة …» was never one. Later in a list the word is left to
+ *  the tests it already passes — «الاسم، الراتب، تعديل الراتب» keeps its
+ *  third column — and standing second it is the name of a field and is not
+ *  read here at all: «تاريخ الإضافة», «سجل التعديلات», «سبب الحذف».
+ */
+const AN_ARABIC_RECORD_ACTION = /^(?:[إأا]ضاف[ةه]|تعديل|حذف|[إأا]زال[ةه])\s+\S/u;
+
 function namesAnActionNotAField(item: string): boolean {
     const t = String(item || '').trim();
     if (!t || /[؀-ۿ]/u.test(t)) return false;
     if (AN_OBJECT_PRONOUN.test(t) || A_RECORD_ACTION.test(t)) return true;
     //  The article is matched in lower case on purpose: «Vitamin A level» is
     //  a name with a capital letter in it, not a verb and its object.
-    const governed = /^(\S+)\s+(?:a|an|the)\s+\S/u.exec(t);
+    const governed = t.match(/^(\S+)\s+(?:a|an|the)\s+\S/u);
     return !!governed && !NOT_A_GOVERNING_WORD.test(governed[1]);
 }
 
-function isAColumnAndNotAClause(item: string, index: number): boolean {
+/**
+ *  «ADD DATE» IS A DATE. «ADD TASKS» IS SOMETHING THE APP DOES.
+ *
+ *  Measured, on a list of four fields:
+ *
+ *      «Build an inventory tracker: item name, quantity, add date, edit history»
+ *      → columns: item name · quantity
+ *      «Build an asset register: asset name, add date, remove date, status»
+ *      → nothing
+ *      «Build a contact list with name, phone, email and add date»
+ *      → columns: name · phone · «email and»
+ *
+ *  The rule above reads the first word, and English spells «the date it was
+ *  added» with the verb's own letters. So the list ended at the first field
+ *  named that way, and every column after it went with it.
+ *
+ *  A word cannot settle it — «add date» and «add task» are one shape — but
+ *  the list and the request can, and none of it is a catalogue of nouns:
+ *
+ *    - an action list OPENS with an action («add tasks, edit them, delete
+ *      them»). A field named with a verb stands AFTER a plain name: «item
+ *      name, quantity, add date»;
+ *    - it is the verb's word and ONE bare singular noun. A plural is a verb
+ *      and its objects («add tasks», «save changes»), and so is a pronoun,
+ *      an article or a quantity («edit them», «add a task», «delete all»);
+ *    - and its noun is not what the app's actions are done TO: that noun is
+ *      named again somewhere in the request — it is what the table holds, or
+ *      the object of the next action («a students table: name, class, grade,
+ *      add student, delete student»). The noun of a field is named once,
+ *      unless it is a kind of value — «add date, edit date» are two dates,
+ *      read by the same marks that type every column.
+ *
+ *  The limit, stated: one telegraphic action on a thing the request names
+ *  nowhere else, after plain names — «item name, quantity, add stock» — reads
+ *  as a column. Before this every field named with a verb ended the list.
+ */
+const A_RECORD_VERB_AND_ONE_NOUN = /^(?:add|edit|delete|remove|create|save|duplicate|rename)\s+([a-z][a-z'’-]*)$/iu;
+const NOT_THE_NOUN_OF_A_NAME = /^(?:new|all|each|every|any|some|more|another|multiple|existing|old|one|as)$/iu;
+
+//  How many times each word is written in a request. Every sentence of one
+//  request asks about the same text, so it is counted once, not once per
+//  sentence — a long request stays linear.
+let countedRequest: { text: string; times: Map<string, number> } | null = null;
+function timesEachWordIsNamed(text: string): Map<string, number> {
+    if (countedRequest && countedRequest.text === text) return countedRequest.times;
+    const times = new Map<string, number>();
+    for (const word of text.toLowerCase().match(/[a-z][a-z'’-]*/gu) || []) times.set(word, (times.get(word) || 0) + 1);
+    countedRequest = { text, times };
+    return times;
+}
+
+function fieldsNamedWithAVerb(parts: string[], context: string): Set<number> {
+    const named = new Set<number>();
+    let aPlainNameCameFirst = false;
+    for (let i = 0; i < parts.length; i++) {
+        const t = String(parts[i] || '').trim();
+        const shaped = AN_OBJECT_PRONOUN.test(t) ? null : t.match(A_RECORD_VERB_AND_ONE_NOUN);
+        if (!shaped) {
+            aPlainNameCameFirst = aPlainNameCameFirst || (isAName(t) && !namesAnActionNotAField(t));
+            continue;
+        }
+        if (!aPlainNameCameFirst) continue;
+        const noun = shaped[1].toLowerCase();
+        if (NOT_A_GOVERNING_WORD.test(noun) || NOT_THE_NOUN_OF_A_NAME.test(noun)) continue;
+        if (/s$/u.test(noun) && !/(?:ss|us|is)$/u.test(noun)) continue;
+        if (!namesAFieldOfARecord(noun)) {
+            const timesNamed = timesEachWordIsNamed(String(context || ''));
+            const forms = new Set([noun, `${noun}s`, `${noun}es`, noun.replace(/y$/u, 'ies')]);
+            let times = 0;
+            for (const form of forms) times += timesNamed.get(form) || 0;
+            if (times > 1) continue;
+        }
+        named.add(i);
+    }
+    return named;
+}
+
+function isAColumnAndNotAClause(item: string, index: number, namedWithAVerb = false): boolean {
     const t = String(item || '').trim();
     if (index > 0 && OPENS_A_NEW_REQUEST.test(t)) return false;
     // Stop at the first action phrase so "search" and "status filtering" do
@@ -2680,7 +2781,10 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
     //  …and something the app DOES to a row is not a column of it, in any
     //  position: at the head of the list it means there was no list of
     //  fields at all («add, edit, delete»), later it is where the list ends.
-    if (namesAnActionNotAField(t)) return false;
+    //  A field NAMED with a verb's word («add date», after plain names) is
+    //  the caller's to tell: it reads the whole list (fieldsNamedWithAVerb).
+    if (!namedWithAVerb && namesAnActionNotAField(t)) return false;
+    if (index === 0 && AN_ARABIC_RECORD_ACTION.test(stripArabicDiacritics(t))) return false;
     /**
      *  AND A BARE NOUN AMONG NAMED COLUMNS IS A COLUMN.
      *
@@ -2758,9 +2862,12 @@ function isAColumnAndNotAClause(item: string, index: number): boolean {
  */
 const HE_NAMED_A_PAGE = new RegExp('^(?:ال)?صفح[ةه](?:$|\\s)|^(?:a|an|the)?\\s*[a-z0-9-]+\\s+page$', 'i');
 
-function columnsEndWhereHisNextRequestBegins(parts: string[]): string[] {
+function columnsEndWhereHisNextRequestBegins(parts: string[], request = ''): string[] {
     const mine = parts.filter(p => !HE_NAMED_A_PAGE.test(String(p || '').trim()));
-    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i));
+    //  The request the list was read from says what the app's actions are done
+    //  to; without it the list itself still says which objects repeat.
+    const namedWithAVerb = fieldsNamedWithAVerb(mine, request || mine.join(', '));
+    const stop = mine.findIndex((part, i) => !isAColumnAndNotAClause(part, i, namedWithAVerb.has(i)));
     return stop < 0 ? mine : mine.slice(0, stop);
 }
 
@@ -2831,7 +2938,7 @@ function entityAndItsAttributes(request: string): DerivedField[] | null {
     //  is what a condition that cannot fail looks like from outside.
     const head = theNameHeEndedOn(raw[0]);
     if (!head) return null;
-    const run = columnsEndWhereHisNextRequestBegins([head, ...raw.slice(1)]);
+    const run = columnsEndWhereHisNextRequestBegins([head, ...raw.slice(1)], request);
     if (run.length < 3) return null;
     const pointing = run.slice(1).filter(part => ownedByTheFirst(part.split(/\s+/).pop() || ''));
     if (!pointing.length) return null;
@@ -2875,8 +2982,13 @@ export function clausesBeyondTheColumns(requestRaw: string): string[] {
             .filter(part => part.length >= 2 && part.length <= 64);
         //  The first fragment carries the request itself — «بدي جدول
         //  للموظفين فيه الاسم» — and is never one of his extra asks.
+        //  A field named with a verb («add date») is a column here as it is
+        //  for the column reader, not an ask nobody wrote down.
+        //  …and the first fragment's own column is what follows its colon.
+        const listed = parts.map((part, i) => (i === 0 ? (part.split(/[:：]/u).pop() || '').trim() : part));
+        const namedWithAVerb = fieldsNamedWithAVerb(listed, request);
         for (let i = 1; i < parts.length; i++) {
-            if (isAColumnAndNotAClause(parts[i], i)) continue;
+            if (isAColumnAndNotAClause(parts[i], i, namedWithAVerb.has(i))) continue;
             const clause = parts[i].replace(/^(?:و|مع|with|plus|and)\s*/iu, '').trim();
             if (clause.length >= 4 && !out.includes(clause)) out.push(clause);
         }
@@ -2942,6 +3054,37 @@ function fieldsDeclaredInsideAForm(request: string): DerivedField[] | null {
     return built ? applyStatedRules(built, statedRules(request)).fields : null;
 }
 
+/**
+ *  WHERE THE LIST ENDS AND HIS NEXT CLAUSE BEGINS — AT A WORD, NOT INSIDE ONE.
+ *
+ *  The cut was a look-ahead tried at every character, for a closed set of
+ *  words that open a behaviour: «…; validate», «… and show totals». Measured:
+ *
+ *      «… with name, phone, email and add date»      → name · phone · «email and»
+ *      «… with name, latest version and status»      → name · «la»
+ *
+ *  «add date» is a field (fieldsNamedWithAVerb), and «latest» only contains
+ *  «test». So the word must START where it is found, and a record verb that
+ *  opens a list item of one noun is left for the list reader to judge — it
+ *  knows what stands around the item, and when it rules «action» the list
+ *  ends there exactly as it did. What is cut never leaves the conjunction
+ *  that led to it hanging on the last column.
+ */
+const A_CLAUSE_OPENS_IN_THE_TAIL = /[;；]|(?<![\p{L}\p{N}_])(?:(?:empty|blank|missing)[-\s]+(?:name|field|input)\s+validation|required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b/giu;
+const A_LIST_ITEM_OPENS_HERE = /(?:^|[,，]|\band|&)\s*$/iu;
+
+function theListBeforeHisNextClause(rawTail: string): string {
+    for (const hit of rawTail.matchAll(A_CLAUSE_OPENS_IN_THE_TAIL)) {
+        const at = hit.index || 0;
+        if (A_RECORD_ACTION.test(hit[0]) && A_LIST_ITEM_OPENS_HERE.test(rawTail.slice(Math.max(0, at - 6), at))) {
+            const item = rawTail.slice(at, at + 48).split(/[,，.;；!?]|\s+and\s+|\s+&\s+/iu)[0].trim();
+            if (A_RECORD_VERB_AND_ONE_NOUN.test(item)) continue;
+        }
+        return rawTail.slice(0, at).trimEnd().replace(/(?:^|\s)(?:and|&)$/iu, '').trimEnd();
+    }
+    return rawTail;
+}
+
 function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
     const formFields = fieldsDeclaredInsideAForm(request);
     if (formFields) return formFields;
@@ -2950,11 +3093,20 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         const at = ENGLISH_INTRODUCES_A_LIST.exec(sentence);
         if (!at) continue;
         const rawTail = sentence.slice((at.index || 0) + at[0].length);
+        //  INSIDE A LIST A COLON ALREADY OPENED, «ADD DATE» IS AN ITEM OF IT.
+        //
+        //  «add» is the one introducer that is also a record verb. In «…
+        //  tracker: item name, quantity, add date, edit history, save count»
+        //  it handed over «date · edit history · save count» and the two
+        //  columns before it were gone. The colon opened that list; a word
+        //  inside it hands nothing over. The container reader has the list.
+        if (/add$/iu.test(at[0]) && /[:：]/u.test(sentence.slice(0, at.index || 0))
+            && A_RECORD_VERB_AND_ONE_NOUN.test(`add ${rawTail.split(/[,，.;；!?]|\s+and\s+|\s+&\s+/iu)[0].trim()}`)) continue;
         // A semicolon often separates the declared schema from the next
         // behavior: "add amount, category, date, and note; validate...".
         // Keeping that clause attached makes the last label fail the bounded
         // name check and silently falls back to a stock schema.
-        const tail = rawTail.split(/\s*(?:[;；]\s*|(?=(?:(?:empty|blank|missing)[-\s]+(?:name|field|input)\s+validation|required(?:[-\s]field)?\s+validation|validation|allow|add|delete|ensure|fix|persist|show|test|validate|verify)\b))/iu)[0];
+        const tail = theListBeforeHisNextClause(rawTail);
         const rawItems = tail
             .split(/\s*[,，]\s*|\s+and\s+|\s+&\s+/iu)
             // Parenthetical type hints describe the field contract; they are
@@ -2980,7 +3132,7 @@ function theListAnIntroducerHandedOver(request: string): DerivedField[] | null {
         //  An article means he is asking for the THING, not naming a
         //  column of one.
         if (rawItems.length && rawItems.every(part => OPENS_WITH_AN_ARTICLE.test(part))) continue;
-        const run = columnsEndWhereHisNextRequestBegins(items);
+        const run = columnsEndWhereHisNextRequestBegins(items, request);
         const containerPrefix = sentence.slice(0, at.index);
         const typedPair = /\b(?:app|application|board|tracker|table|register|directory|form)\b/iu.test(containerPrefix)
             && run.some(part => /\b(?:toggle|checkbox|switch|input|field)\s*$/iu.test(part));
@@ -3058,6 +3210,70 @@ export function hisSentence(request: string): string {
  */
 const oneSpaceEach = (text: string): string => String(text || '')
     .replace(/\s+/gu, run => (run.includes('\n') ? '\n' : ' '));
+
+/**
+ *  «نظام مخزون: اسم الصنف، الكمية، …» — THE COLON HANGS THE LIST FROM THE APP.
+ *
+ *  Measured, the twin of a sentence that reads four columns in English only
+ *  because English happened to say «tracker»:
+ *
+ *      «Build an inventory tracker: item name, quantity, add date, edit history» → 4
+ *      «نظام مخزون: اسم الصنف، الكمية، تاريخ الإضافة، سجل التعديلات»              → nothing
+ *      «نظام مخزون: اسم الصنف، الكمية، السعر»                                     → nothing
+ *      «Build an inventory system: item name, quantity, price»                    → nothing
+ *
+ *  «نظام» and «system» hold an application, not records, so no reader took
+ *  the list — and in the first Arabic sentence «سجل» was found INSIDE the
+ *  list, in the name of his fourth field, and read as the container the list
+ *  hangs from. He got the stock inventory columns and none of his own.
+ *
+ *  The container rule stands for a reason: «تطبيق مطعم: القائمة، الطلبات،
+ *  الحجوزات» lists the app's sections, and a site's colon lists its pages. So
+ *  this reads a colon list only where every one of these holds, and it is
+ *  tried only after the taught words and the introducers found nothing:
+ *
+ *    - the request, read without any list, is already an application that
+ *      keeps records — a stock archetype, or an app that manages something —
+ *      and not a page, a site, a command-line tool, or an artifact with no
+ *      records engine (a game, a bot, a report). A table is being built
+ *      either way; the only question left is whose columns it gets;
+ *    - the list OPENS with a field — the record's own name, a title, or a
+ *      kind of value (namesAFieldOfARecord) — and at most ONE item names
+ *      none. A list of sections opens with a section, and «name, price,
+ *      quantity, checkout, receipts» has stopped listing fields;
+ *    - and every item is a name, as every column reader here demands:
+ *      definite in Arabic, no article in English, three at least.
+ */
+function theFieldsOfTheAppHeNamed(request: string): DerivedField[] | null {
+    if (!/[:：]/u.test(request)) return null;
+    const intent = maskNegatedSpans(request);
+    if (PAGE_SIGNAL.test(intent) || siteNounWithoutAppRequest(intent)) return null;
+    if (!strongestArchetype(intent) && !(APP_SIGNAL.test(intent) && MANAGE_SIGNAL.test(intent))) return null;
+    for (const sentence of request.split(/[.؟!\n]/)) {
+        const colons = [sentence.indexOf(':'), sentence.indexOf('：')].filter(at => at >= 0);
+        if (!colons.length) continue;
+        const items = sentence.slice(Math.min(...colons) + 1)
+            .split(/\s*[،,]\s*|\s+و(?=\S)|\s+and\s+|\s+&\s+/iu)
+            .map(part => part.trim().replace(/^and\s+/iu, '').trim())
+            .filter(part => part.length >= 2 && part.length <= 32)
+            //  Ten columns is the most any reader here takes; an eleventh
+            //  item is enough to know the list is longer, and no more are read.
+            .slice(0, 11);
+        if (items.length < 3 || items.some(item => OPENS_WITH_AN_ARTICLE.test(item))) continue;
+        if (!namesAFieldOfARecord(items[0]) || items.filter(item => !namesAFieldOfARecord(item)).length > 1) continue;
+        const run = columnsEndWhereHisNextRequestBegins(items, request);
+        const names = run.filter(isAName).filter(notAContainerItself);
+        if (names.length < 3 || names.length > 10 || names.length !== run.length) continue;
+        if (!everyItemIsADefiniteName(names)) continue;
+        const built = fieldsFromLabels(names);
+        if (!built) continue;
+        //  Asked last, of a list that already qualified: the artifact reader
+        //  is the costly one on a long message.
+        if (requestedArtifact(request).kind === 'cli' || requestedArtifactWithoutStockEngine(intent)) return null;
+        return applyStatedRules(built, statedRules(request)).fields;
+    }
+    return null;
+}
 
 export function derivedColumns(requestRaw: string): DerivedField[] | null {
     requestRaw = hisSentence(requestRaw);
@@ -3146,6 +3362,16 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         const handed = theListAnIntroducerHandedOver(request);
         if (handed) return handed;
         const holder = RECORD_CONTAINER.exec(request);
+        //  A container word found AFTER the colon of its sentence stands in
+        //  the list, in the name of a field («…: اسم الصنف، سجل التعديلات»):
+        //  it is not what the list hangs from, and the app named before the
+        //  colon is asked first. With no container at all, the same.
+        const insideAColonList = !!holder
+            && /[:：]/u.test(request.slice(0, holder.index || 0).split(/[.؟!\n]/).pop() || '');
+        if (!holder || insideAColonList) {
+            const hung = theFieldsOfTheAppHeNamed(request);
+            if (hung) return hung;
+        }
         if (!holder) {
             //  ORDER IS THE WHOLE ARGUMENT HERE.
             //
@@ -3190,7 +3416,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
         //  The rule is removed first; what remains must then be a list of
         //  definite names, which is what keeps «قهوة، أدوات، حلويات» out.
         //  The list ends where his next request begins — same table.
-        items = columnsEndWhereHisNextRequestBegins(items);
+        items = columnsEndWhereHisNextRequestBegins(items, request);
         const names = items.filter(isAName).filter(notAContainerItself);
         /**
          *  TWO NAMED COLUMNS ARE A TABLE WHEN HE NAMED THE TABLE.
@@ -3334,7 +3560,7 @@ export function derivedColumns(requestRaw: string): DerivedField[] | null {
     //  so the truncation took «صورة» with it. Measured: stripping after the
     //  cut fixed the bracket and still lost everything behind it.
     //  The list ends where his next request begins.
-    parts = columnsEndWhereHisNextRequestBegins(parts);
+    parts = columnsEndWhereHisNextRequestBegins(parts, request);
     /**
      *  «فيه» POINTS AT WHATEVER HE NAMED, AND THAT NEED NOT HOLD RECORDS.
      *

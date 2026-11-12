@@ -640,6 +640,16 @@ export function acceptanceFor(request: string): Criterion[] {
         if (/^(?:do not|don't|never)\s+(?:claim|report|declare|mark|say)\b|^(?:لا|لات)\s+(?:تدع|تدعي|تعلن|تذكر)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
         if (/^(?:do not|don't|never)\s+(?:deploy|publish|release|push\s+(?:to\s+)?production)\b|^(?:لا|لات)\s+(?:تنشر|ترفع\s+(?:إلى|الى)?\s*الإنتاج)(?=$|[^\p{L}\p{N}_])/iu.test(text)) return true;
         if (rule.kind !== 'change') return false;
+        //  A FIELD NAMED WITH A VERB IS HIS COLUMN, NOT A CHANGE HE ORDERED.
+        //  «…: item name, quantity, add date» — the clause «add date» opens
+        //  with a change verb, and the column reader has it as his third
+        //  column, with its own criterion below. Kept as `rule:n` too, one
+        //  field was owed twice, and the second time as a condition no source
+        //  can prove. «add date and edit history» is two of them in one clause.
+        const hisLabels = new Set((columns as DerivedField[]).map(col => String(col.label || '').trim().toLocaleLowerCase()));
+        const named = text.trim().replace(/[\s.,;:!?،؛]+$/u, '').toLocaleLowerCase()
+            .split(/\s*,\s*|\s+and\s+|\s+&\s+/u).map(part => part.replace(/^and\s+/u, '').trim()).filter(Boolean);
+        if (named.length > 0 && named.every(part => hisLabels.has(part))) return true;
         const asksForFilters = requestedFilters.length > 0
             && /\bfilters?\b|تصف(?:ية|يات)|فلتر/iu.test(text);
         const asksForProgress = wantsProgress
