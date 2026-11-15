@@ -568,7 +568,7 @@ export const CAPABILITIES: Capability[] = [
     },
     {
         id: 'loyalty', ar: 'برنامج الولاء', en: 'loyalty program',
-        ask: /\bloyalty\b|\brewards?\b|\bpoints\b|الولاء|نقاط المكافآت/i,
+        ask: /\bloyalty\b|\brewards?\b|\bpoints\b|الولاء|(?:برنامج|برامج|نقاط|بطاقة|بطاقات)\s+ولاء|نقاط المكافآت/i,
         evidence: /\bloyalty\b|reward_?points|\/api\/loyalty/i,
     },
     {
@@ -734,24 +734,55 @@ const SHIPPING_NAMED = /\bshipping\b|(?<!\p{L})(?:ال)?شحن(?!\p{L})/iu;
  * definite adjective belongs to it, so «أضف للمتجر سلة تسوق» still asks a cart.
  */
 const ORG_EN = String.raw`(?:compan(?:y|ies)|business(?:es)?|firms?|agenc(?:y|ies)|shops?|stores?|boutiques?|marketplaces?|markets?|platforms?|startups?|brands?|restaurants?|caf[eé]s?|baker(?:y|ies)|clinics?|hospitals?|pharmac(?:y|ies)|schools?|academ(?:y|ies)|warehouses?|hotels?|gyms?|salons?|garages?|studios?|offices?|cent(?:er|re)s?|chains?|retailers?|wholesalers?|distributors?|carriers?|couriers?|services?|providers?|organi[sz]ations?|charit(?:y|ies)|clubs?|practices?|labs?|laborator(?:y|ies))`;
-const BUSINESS_EN = new RegExp(String.raw`\bfor\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?(?:[\p{L}'’-]+\s+){0,3}?${ORG_EN}\b`, 'giu');
 const ORG_AR = '(?:(?:شرك|مؤسس|منص|عياد|صيدلي|مدرس|أكاديمي|اكاديمي|مغسل|ورش|وكال|جمعي|منظم|مكتب)(?:ة|ه|ات)|مكتب|متجر|متاجر|محل|محلات|سوق|أسواق|مطعم|مقه[ىي]|مخبز|مستشف[ىي]|مستودع|مخزن|فندق|نادي|صالون|معرض|مركز|مصنع|استوديو)';
 const BUSINESS_AR = new RegExp(`(?<![\\p{L}\\p{M}])(لـ\\s*(?:ال)?|لل|ل)${ORG_AR}(?![\\p{L}\\p{M}])`, 'gu');
 /** Words that end an Arabic business name instead of completing it. */
 const AR_NAME_ENDS = /^(?:و|ف|مع|في|فيه|فيها|على|من|عن|إلى|الى|حيث|به|بها|له|لها|التي|الذي|الذين|يعرض|تعرض|يحتوي|تحتوي|لديه|لديها|ذات|ذو)/u;
 
+/*
+ * ⛔ A PLATFORM'S OWN WORDS ARE WHAT IT IS BUILT WITH.
+ *
+ * The r40 review, 2026-11-15: «an e-commerce website for a multi-vendor
+ * marketplace», «the backend for an analytics platform with charts», «a REST
+ * API for a loyalty rewards platform», «لسوق متعدد البائعين», «لمنصة تحليلات»
+ * were read as the business they are for, and multi-vendor, analytics and
+ * loyalty were never asked: a delivery without them passed. A company, a clinic,
+ * a bakery is WHO it is for, and its trade asks for nothing («an HR app for a
+ * shipping company»). A platform, a marketplace, a store is the very thing
+ * being built: the head noun is blanked, and the words that say what kind of
+ * platform it is (multi-vendor, analytics, loyalty, «متعدد البائعين»,
+ * «تحليلات») are still asked. The words that only say it is online («online»,
+ * «e-commerce», «إلكتروني») restate the venue and ask nothing: «a landing page
+ * for an online store» asks no catalogue. A service or a provider is a
+ * business («an HR app for a shipping service»), never a platform.
+ */
+const PLATFORM_EN = /^(?:platforms?|marketplaces?|markets?|stores?|shops?|boutiques?)$/iu;
+const CHANNEL_EN = /^(?:online|e-?commerce|digital|web|internet|virtual|new|own|small|local|little|big|large)$/iu;
+const BUSINESS_EN_PARTS = new RegExp(String.raw`\b(for\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?)((?:[\p{L}'’-]+\s+){0,3}?)(${ORG_EN})\b`, 'giu');
+const PLATFORM_AR = /^(?:منص(?:ة|ه|ات)|سوق|أسواق|اسواق|متجر|متاجر)$/u;
+const CHANNEL_AR = /^(?:ال)?(?:إلكتروني|الكتروني|إلكترونية|الكترونية|أونلاين|اونلاين|رقمي|رقمية|جديد|جديدة|صغير|صغيرة)$/u;
+
+/** A business name blanked; on a platform head, only the head and the words that say it is online. */
+function blankBusinessEn(match: string, lead: string, mods: string, head: string): string {
+    if (!PLATFORM_EN.test(head)) return ' '.repeat(match.length);
+    const kept = mods.replace(/[\p{L}'’-]+/gu, w => CHANNEL_EN.test(w) ? ' '.repeat(w.length) : w);
+    return ' '.repeat(lead.length) + kept + ' '.repeat(head.length);
+}
+
 /** The request with the business it is for blanked out: what is left asks for things to build. */
 function withoutBusinessNames(raw: string): string {
-    const text = String(raw || '').replace(BUSINESS_EN, m => ' '.repeat(m.length));
+    const text = String(raw || '').replace(BUSINESS_EN_PARTS, (m, lead, mods, head) => blankBusinessEn(m, lead, mods, head));
     const cuts: Array<[number, number]> = [];
     for (const m of text.matchAll(BUSINESS_AR)) {
         const lead = m[1];
         const definite = lead === 'لل' || /ال$/u.test(lead);
+        const platform = PLATFORM_AR.test(m[0].slice(lead.length));
         let end = m.index! + m[0].length;
-        //  The word that completes the name: «لـشركة شحن», «للشركة الناشئة».
+        //  The word that completes the name: «لـشركة شحن», «للشركة الناشئة»; of a platform, only «إلكتروني».
         for (let k = 0; k < (definite ? 2 : 1); k++) {
             const next = /^(\s+)([\p{L}\p{M}ـ]+)/u.exec(text.slice(end));
             if (!next || (definite ? !/^ال/u.test(next[2]) : AR_NAME_ENDS.test(next[2]))) break;
+            if (platform && !CHANNEL_AR.test(next[2])) break;
             end += next[0].length;
         }
         cuts.push([m.index!, end]);

@@ -66,6 +66,9 @@ const add = (list: Repair[], id: string, detail: string, count: number) => {
 
 /* ── the document shell ──────────────────────────────────────────────────── */
 
+/** Languages written right to left, by their BCP 47 primary tag. */
+const RTL_LANG = /^(?:ar|fa|he|iw|ur|ps|ku|ckb|yi|dv|sd|ug)(?:-|$)/i;
+
 /**
  * index.html carries the four things a page is judged on before a single
  * component renders: its language, its direction, its viewport and its title.
@@ -81,8 +84,21 @@ export function repairHtmlShell(html: string, opts: { isArabic?: boolean; title?
     if (htmlTag) {
         let tag = htmlTag[0];
         const before = tag;
-        if (!/\blang\s*=/.test(tag)) tag = tag.replace(/<html\b/i, `<html lang="${isAr ? 'ar' : 'en'}"`);
-        if (isAr && !/\bdir\s*=/.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
+        /*
+         * The page's direction is the page's: its own lang, else its own words — the reply language
+         * only for an empty app shell. Before 2026-11-15 an owner whose Joe speaks Arabic got
+         * dir="rtl" on an English page (<html lang="en">) by every mend, and the mend was kept.
+         */
+        const langAttr = (before.match(/\blang\s*=\s*["']?([A-Za-z]{2,3}(?:-[A-Za-z0-9]+)*)/i) || [])[1] || '';
+        const body = (text.match(/<body\b[^>]{0,4000}>([\s\S]*)/i) || [])[1] ?? text;
+        const words = body.replace(/<script\b[\s\S]*?(?:<\/script>|$)|<style\b[\s\S]*?(?:<\/style>|$)|<[^>]{0,4000}>/gi, ' ');
+        const rtlLetters = (words.match(/[֐-׿؀-ۿݐ-ݿࢠ-ࣿﭐ-﷿ﹰ-﻿]/g) || []).length;
+        const latinLetters = (words.match(/[A-Za-z]/g) || []).length;
+        const pageRtl = langAttr
+            ? RTL_LANG.test(langAttr)
+            : rtlLetters + latinLetters === 0 ? isAr : rtlLetters >= latinLetters;
+        if (!langAttr) tag = tag.replace(/<html\b/i, `<html lang="${pageRtl ? (/[֐-׿]/.test(words) && !/[؀-ۿ]/.test(words) ? 'he' : 'ar') : 'en'}"`);
+        if (pageRtl && !/\bdir\s*=/.test(tag)) tag = tag.replace(/<html\b/i, '<html dir="rtl"');
         if (tag !== before) {
             text = text.replace(before, tag);
             add(repairs, 'html_lang', 'أضفتُ لغة المستند واتجاهه إلى وسم <html>', 1);

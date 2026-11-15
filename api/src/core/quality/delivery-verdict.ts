@@ -172,11 +172,20 @@ export function readUnverifiedRecord(item: string): UnverifiedRecord | null {
 /** The unverified records a served route its passing tests call, with a requirement judged met, measured. */
 export function verifiedAsRequirements(unverified: string[], met: string[], testsPassed: boolean): string[] {
     if (!testsPassed) return [];
-    return (unverified || []).filter(item => {
-        const record = readUnverifiedRecord(item);
-        if (!record || record.presence || !record.routes.length || !record.words) return false;
+    const records = (unverified || []).map(item => ({ item, record: readUnverifiedRecord(item) }));
+    /*
+     * A route vouches for one record, never for two (the r40 review, 2026-11-15: every
+     * transliterated record was handed the same unclaimed routes, and «/api/settings» stood
+     * for «العروض», never built). The coverage lists only the routes bound to a record
+     * (request-coverage routeBoundTo); a route listed for two records here stands for neither.
+     */
+    const listedFor = new Map<string, number>();
+    for (const { record } of records) for (const route of new Set(record?.routes || [])) listedFor.set(route, (listedFor.get(route) || 0) + 1);
+    return records.filter(({ record }) => {
+        if (!record || record.presence || !record.words) return false;
+        if (!record.routes.some(route => listedFor.get(route) === 1)) return false;
         return readAsRequirements([record.words], met).length === 1;
-    });
+    }).map(({ item }) => item);
 }
 
 /** What he named that no instrument measured, once the records served, tested and judged met are read. */

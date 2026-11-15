@@ -75,16 +75,47 @@ export const MODEL_FAILURE_LIMIT = 3;
  */
 export const TRANSIENT_WAITS_MS: readonly number[] = [30_000, 120_000, 300_000];
 
-/** A failure that waiting can cure: 408, 409, 425, 429, 5xx, or a network failure with no status. */
+/*
+ * ⛔ ONLY THE PROVIDER'S OWN BAD MINUTES ARE WAITED OUT.
+ *
+ * The r40 review, 2026-11-15: with no status, any «timeout» or «overloaded» in
+ * the words was waited on — «Local inference timeout must be between 1 ms and …»
+ * (a setting, OLLAMA_TIMEOUT_INPUT) and «Ollama: model overloaded, out of memory»
+ * (a local model that does not fit) got 30 s + 2 min + 5 min and a fourth call,
+ * and 501 (not implemented) and 505 (version not supported) counted as trouble
+ * that passes. Waited on now: 408, 409, 425, 429, 500, 502, 503, 504, 529; with
+ * no status, only the shapes a provider or the network gives — a rate limit, the
+ * API overloaded, one of those statuses in its words, a connection reset, timed
+ * out or dropped, «Connection error», «fetch failed». A failure that carries a
+ * code of Joe's own (OLLAMA_*, MODEL_*, LOCAL_*, RESOURCE_*) is never one, and
+ * neither are words of a setting or of a model out of memory.
+ */
+const TRANSIENT_STATUSES: ReadonlySet<number> = new Set([408, 409, 425, 429, 500, 502, 503, 504, 529]);
+/** The network's own failure codes; any other code on the failure is Joe's own word for it. */
+const NETWORK_CODE = /^(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNABORTED|UND_ERR_(?:SOCKET|CLOSED|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))$/u;
+/** Words of a setting, a request or a machine that waiting does not change. */
+const NEVER_WAITED_TEXT = /ECONNREFUSED|out of memory|\boom\b|insufficient (?:memory|vram)|cuda error|must be (?:between|at (?:least|most)|one of|a |an |positive|greater|less|lower|higher)|\binvalid\b|is required|not supported|unsupported|not implemented/iu;
+const PROVIDER_TRANSIENT_TEXT = /\b(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|ECONNABORTED|UND_ERR_(?:SOCKET|CLOSED|CONNECT_TIMEOUT|HEADERS_TIMEOUT|BODY_TIMEOUT))\b|connection error|socket hang up|fetch failed|network (?:error|failure)|request timed out|rate[- ]?limit(?:ed|s)?\b|too many requests|overloaded_error|(?:the\s+)?(?:api|model|engine|server|servers|service)\s+(?:is|are)\s+(?:currently\s+|temporarily\s+)?overloaded|^\s*overloaded\.?\s*$|temporarily unavailable|service unavailable|bad gateway|gateway time-?out|internal server error/iu;
+/** One of the waited statuses in the failure's words: at its start, in brackets, or after «status», «HTTP», «error», «code». */
+const STATUS_IN_TEXT = /(?:^\s*|\((?=\d{3}\))|\b(?:status(?:\s*code)?|http(?:\/[\d.]+)?|error|code)\s*[:=]?\s*)(?:408|429|500|502|503|504|529)\b(?!\s*(?:ms|s|sec|seconds?|tokens?|bytes?|mb|gb|kb)\b)/iu;
+
+/** A failure that waiting can cure: a provider's 408, 409, 425, 429, 500, 502, 503, 504, 529, or a network failure with no status. */
 export function transientModelFailure(e: unknown): boolean {
     const err = e as any;
     const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status);
-    if (Number.isFinite(status) && status > 0) return status === 408 || status === 409 || status === 425 || status === 429 || (status >= 500 && status <= 599);
-    //  No status: the call never got an answer. A connection refused means nothing is
-    //  listening (a local server that is not started): waiting minutes does not start it.
-    const text = `${String(err?.code ?? '')} ${String(err?.cause?.code ?? '')} ${message(e)}`;
-    if (/ECONNREFUSED/u.test(text)) return false;
-    return /\b(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|UND_ERR_[A-Z_]+)\b|connection error|socket hang up|fetch failed|network (?:error|failure)|timed? ?out|overloaded|temporarily unavailable/iu.test(text);
+    if (Number.isFinite(status) && status > 0) return TRANSIENT_STATUSES.has(status);
+    //  No status: the call never got an answer. A code of Joe's own names a failure of its own.
+    const code = String(err?.code ?? '');
+    if (code && code !== 'PROVIDER_FAILURE' && !NETWORK_CODE.test(code)) return false;
+    const said = message(e);
+    const text = `${code} ${String(err?.cause?.code ?? '')} ${said}`;
+    //  A connection refused means nothing is listening (a local server that is not started):
+    //  waiting minutes does not start it; nor does it fix a setting or free a machine's memory.
+    if (NEVER_WAITED_TEXT.test(text)) return false;
+    if (NETWORK_CODE.test(code) || NETWORK_CODE.test(String(err?.cause?.code ?? ''))) return true;
+    //  The provider's words come after the engine's own prefix («The Claude API call failed: …»).
+    const theirs = said.replace(/^.*?\bAPI call failed(?:\s*\(\d+\))?:\s*/iu, '');
+    return PROVIDER_TRANSIENT_TEXT.test(said) || PROVIDER_TRANSIENT_TEXT.test(theirs) || STATUS_IN_TEXT.test(said) || STATUS_IN_TEXT.test(theirs);
 }
 
 /** What the server asked us to wait, in ms, from a Retry-After (seconds or a date) or retry-after-ms; 0 when it said nothing. */
@@ -95,7 +126,10 @@ export function retryAfterMs(e: unknown, nowMs: number): number {
     const read = (name: string): string => {
         if (!h) return '';
         if (typeof h.get === 'function') return String(h.get(name) ?? '');
-        return String(h[name] ?? '');
+        //  A plain object's header names keep whatever case they came in («Retry-After»).
+        if (typeof h !== 'object') return '';
+        const key = Object.keys(h).find(k => k.toLowerCase() === name);
+        return key === undefined ? '' : String(h[key] ?? '');
     };
     const ms = Number(read('retry-after-ms'));
     if (Number.isFinite(ms) && ms > 0) return ms;

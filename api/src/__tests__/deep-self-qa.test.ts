@@ -227,7 +227,8 @@ describe('the forms are filled in and sent, not counted', () => {
         const b = B();
         expect(b).toMatch(/export async function probeForms/);
         //  2026-11-10: by type alone a postcode got «Joe QA <nonce>» and a year 3 (qa-field-cases.ts fillValueFor).
-        expect(b).toContain('let value = fillValueFor(caseField, runNonce, pageLanguage);');
+        //  …with this form's own mark, never the walk's shared one (the review of 2026-11-15: form A's row proved form B's record).
+        expect(b).toContain('let value = fillValueFor(caseField, formMark, pageLanguage);');
         expect(b).toMatch(/await el\.fill\(value, \{ timeout: 2500 \}\)/);
         //  A select gets the option its meaning asks for (qa-field-cases selectValueFor), its first one otherwise:
         //  a card's expiry-year select given this year was a card the checkout rightly refused (the exam, 2026-11-13).

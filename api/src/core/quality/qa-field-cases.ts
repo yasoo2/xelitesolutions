@@ -35,6 +35,11 @@ export interface QaField {
     autocomplete?: string;
     /** Its placeholder alone, when the page reports it apart from its words (it is among them too). */
     placeholder?: string;
+    /**
+     * The words of the form it sits in, when the page reports them: its heading, legend, submit and
+     * its other fields' words. A «Security code» is a card's only in a form that pays (cardMeaning).
+     */
+    context?: string;
 }
 
 export type FieldMeaning =
@@ -93,12 +98,30 @@ export function luhnValid(digits: string): boolean {
     return sum % 10 === 0;
 }
 
-/** A card that is not paid with: a gift card, a member card, an identity card, a bank account. */
-const NOT_A_PAYMENT_CARD = /gift|loyalty|member|library|\bsim\b|\bid\s*card|identity|national|business\s*card|iban|account|هوية|هدية|عضوية|ولاء|شخصية|وطنية|مكتبة|حساب|آيبان|ايبان/u;
+/*
+ * ⛔ A CARD THAT IS NOT PAID WITH IS NOT A PAYMENT CARD.
+ *
+ * The r40 review, 2026-11-15: «Insurance card number», «رقم بطاقة التأمين», «Student card
+ * number», «رقم البطاقة الجامعية», «Health card no», «Employee card number» were read as a
+ * payment card, and «Security code», «رمز الأمان» as its CVC with no card anywhere. Each was
+ * sent letters as a major case: a clinic that rightly keeps an alphanumeric insurance number
+ * was refused for «field accepts invalid», and the Luhn test number broke a form that checks
+ * a 12-digit civil number. A card named for what it is not paid with (an identity, an
+ * insurance, a school, an employer, a family, a membership) is never a payment card; neither
+ * is one in a form named for such a card that never pays; and a bare «security code» is a
+ * CVC only on a card, or in a form that pays or holds a card number.
+ */
+const NOT_A_PAYMENT_CARD = /gift|loyalty|member|library|\bsim\b|\bid\s*card|identity|national|business\s*card|iban|account|insurance|insured|health|medical|patient|student|school|universit|college|campus|employee|staff|civil|family|resident|driv(?:er|ing)|licen[cs]e|transit|parking|access\s*card|key\s*card|voter|هوية|هدية|عضوية|ولاء|شخصية|وطنية|مكتبة|حساب|آيبان|ايبان|تأمين|تامين|(?<![؀-ۿ])(?:ال)?صحي(?:ة|ه)?(?![؀-ۿ])|جامعي|طالب|طلاب|موظف|مدني|عائل|أسرة|اسرة|إقامة|اقامة|رخصة|مريض/u;
+/** A form for a card nobody pays with — never «account» or «gift», which a store's own checkout carries. */
+const NOT_PAID_FORM = /insurance|insured|health\s*card|medical|patient|student|universit|college|employee|staff|civil|national\s*id|library|membership|loyalty|تأمين|تامين|(?<![؀-ۿ])(?:ال)?صحي(?:ة|ه)?(?![؀-ۿ])|جامعي|طالب|طلاب|موظف|مدني|وطنية|مكتبة|عضوية|ولاء|مريض/u;
+/** Words of a form that pays: what a bare «security code» needs to be a card's. */
+const PAYMENT_WORDS = /(?<![a-z])(?:payments?|pay|paying|checkout|check\s*out|credit|debit|visa|mastercard|master\s*card|amex|billing)(?![a-z])|دفع|ائتمان|(?<![؀-ۿ])مدى(?![؀-ۿ])|فيزا|ماستر\s*كارد|ماستركارد/u;
 /** Words that put a field on a payment card (a kanban «Card title» has them too: never enough alone). */
 const CARD_CONTEXT = /(?<![a-z])card|(?<![a-z])cc[-_ ]?(?:num|no|exp|csc|cvc|cvv|name)|بطاق/u;
 const CARD_NUMBER_WORDS = /(?<![a-z])card\s*(?:number|no\b|num\b|#)|(?<![a-z])card[-_]?(?:number|num|no)\b|(?<![a-z])cc[-_ ]?(?:number|num|no)\b|ccnum|credit\s*card|debit\s*card|رقم\s*(?:ال)?بطاق|بطاقة\s*(?:ال)?(?:ائتمان|دفع|مصرفي|بنكي)|(?:ال)?بطاقة\s*(?:ال)?(?:ائتماني|مصرفي|بنكي)/u;
-const CVC_WORDS = /cvc|cvv|\bcsc\b|\bcvn\b|security\s*code|card\s*verification|verification\s*value|(?:ال)?(?:رمز|رقم)\s*(?:ال)?سري\s*(?:لل|ل)?بطاق|رمز\s*(?:ال)?أمان|(?:ال)?رمز\s*(?:ال)?أمني|رمز\s*(?:ال)?تحقق\s*(?:من\s*|لل|ل)?(?:ال)?بطاق/u;
+const CVC_WORDS = /cvc|cvv|\bcsc\b|\bcvn\b|card\s*verification|verification\s*value|(?:ال)?(?:رمز|رقم)\s*(?:ال)?سري\s*(?:لل|ل)?بطاق|رمز\s*(?:ال)?تحقق\s*(?:من\s*|لل|ل)?(?:ال)?بطاق/u;
+/** A security code: a card's only on a card or in a form that pays (a sign-in's «security code» is a one-time code). */
+const SECURITY_CODE_WORDS = /security\s*code|رمز\s*(?:ال)?أمان|(?:ال)?رمز\s*(?:ال)?أمني/u;
 const CARDHOLDER_WORDS = /card\s*holder|cardholder|name\s*on\s*(?:the\s*)?card|nameoncard|(?<![a-z])cc[-_ ]?name|حامل\s*(?:ال)?بطاق|(?:ال)?اسم\s*(?:على|في)\s*(?:ال)?بطاق|صاحب\s*(?:ال)?بطاق/u;
 const EXPIRY_WORDS = /expir|(?:\b|card|cc|_)exp(?=$|[\s_\-.:/(]|month|year|date|mm|yy)|valid\s*(?:thru|through|until|till)|good\s*thru|انتهاء|صلاحي|صالحة\s*حتى|ينتهي/u;
 /** «MM/YY», «MM / YYYY», «MMYY», «شهر/سنة» — never the end of «DD/MM/YYYY». */
@@ -118,8 +141,13 @@ function cardMeaning(f: QaField, type: string, words: string): FieldMeaning | nu
     if (/\bcc-exp\b/.test(ac)) return 'expiry';
     if (/\bcc-(?:name|given-name|family-name)\b/.test(ac)) return 'cardholder';
     if (has(NOT_A_PAYMENT_CARD, words)) return null;
+    const context = String(f.context || '').toLowerCase();
+    const pays = has(PAYMENT_WORDS, words) || has(PAYMENT_WORDS, context);
+    //  A form named for a card it does not pay with (a clinic's insurance, a school's student card) that never pays.
+    if (context && !pays && has(NOT_PAID_FORM, context)) return null;
     if (has(CVC_WORDS, words)) return 'cvc';
     const onCard = has(CARD_CONTEXT, words);
+    if (has(SECURITY_CODE_WORDS, words) && (onCard || pays || has(CARD_NUMBER_WORDS, context))) return 'cvc';
     const expiry = has(EXPIRY_WORDS, words);
     if (expiry || (onCard && /month|year|شهر|سنة/u.test(words))) {
         if (has(MMYY_SHAPE, words)) return 'expiry';

@@ -94,9 +94,11 @@ describe('a CVC', () => {
         expect(meaningOf(f({ name: 'CVV', type: 'password', maxLength: 3 }))).toBe('cvc');
         expect(meaningOf(f({ name: 'x', autocomplete: 'cc-csc' }))).toBe('cvc');
         expect(meaningOf(f({ name: 'cardCvc' }))).toBe('cvc');
-        expect(meaningOf(f({ name: 'Security code' }))).toBe('cvc');
+        //  A bare «security code» is a card's only on a card or in a form that pays (the r40 review:
+        //  a sign-in's one-time code was a CVC; a-card-nobody-pays-with-is-not-a-payment-card.test.ts).
+        expect(meaningOf(f({ name: 'Security code', context: 'Card number Expiry Security code Pay now' }))).toBe('cvc');
         expect(meaningOf(f({ name: 'الرمز السري للبطاقة' }))).toBe('cvc');
-        expect(meaningOf(f({ name: 'رمز الأمان' }))).toBe('cvc');
+        expect(meaningOf(f({ name: 'رمز الأمان', context: 'رقم البطاقة تاريخ الانتهاء رمز الأمان ادفع' }))).toBe('cvc');
         expect(meaningOf(f({ name: 'رمز التحقق من البطاقة' }))).toBe('cvc');
         //  A password stays a password, a plain verification code is not a card's.
         expect(meaningOf(f({ type: 'password', name: 'Password' }))).toBe('password');

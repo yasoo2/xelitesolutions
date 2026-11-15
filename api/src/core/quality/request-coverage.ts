@@ -1858,7 +1858,7 @@ function recordByParameter(route: HarvestedRoute): boolean {
  * records, and called by the project's own tests (`/api/blood-units` for
  * «وحدات الدم», P139). Shown as «METHOD path», a GET first.
  */
-function unclaimedTestedRoutes(evidence: CoverageEvidence, records: RequestedRecord[], liveTests: string): string[] {
+function unclaimedTestedRoutes(evidence: CoverageEvidence, records: RequestedRecord[], liveTests: string): Array<{ shown: string; resource: string }> {
     const claimed = new Set(records.flatMap(r => identifiersFor(r, evidence.labelKeys[r.key] || [], records)).map(id => id.toLowerCase()));
     const byResource = new Map<string, HarvestedRoute[]>();
     for (const route of evidence.routes) {
@@ -1868,10 +1868,86 @@ function unclaimedTestedRoutes(evidence: CoverageEvidence, records: RequestedRec
         if (!new RegExp(`/${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'iu').test(liveTests)) continue;
         byResource.set(resource, [...(byResource.get(resource) || []), route]);
     }
-    return Array.from(byResource.values()).slice(0, 4).map(routes => {
+    return Array.from(byResource.entries()).map(([resource, routes]) => {
         const shown = routes.find(r => ['get', 'all', 'route', 'api_route'].includes(r.method)) || routes[0];
-        return `${shown.method.toUpperCase()} ${shown.path}`;
+        return { shown: `${shown.method.toUpperCase()} ${shown.path}`, resource };
     });
+}
+
+/*
+ * ⛔ A ROUTE VOUCHES ONLY FOR THE RECORD IT IS BOUND TO.
+ *
+ * The r40 review, 2026-11-15: every transliterated record was handed the same
+ * list of unclaimed tested routes, never bound to it, so with two such records
+ * and two unrelated routes (`/api/settings`, `/api/blood-units`) a record that
+ * was not built at all («العروض») passed once the judge's met text held its
+ * words. A route is that record's only where the delivery itself ties the two:
+ * his word written beside the route's name — on the same line, near it (a test
+ * «POST /api/blood-units ينشئ وحدة دم … في وحدات الدم», an index «العروض:
+ * '/api/showtimes'», a page row «/api/services/:id/offers … عروض الخدمة») or in
+ * the handler a route registration opens (P139's «notFound('وحدة الدم')»). A
+ * route bound to two of his records vouches for neither.
+ */
+/** The stem of an Arabic word: without its clitics, its article and a plural or feminine ending. */
+function arabicStem(word: string): string {
+    let w = String(word || '').replace(/[ً-ْـ]/gu, '');
+    w = w.replace(/^[وف](?=ال|لل|بال|كال)/u, '').replace(/^(?:بال|كال|فال|وال|لل|ال)/u, '');
+    if (w.length > 3) w = w.replace(/(?:ات|ون|ين|ية|ة|ه)$/u, '');
+    return w;
+}
+const ARABIC_WORD = /[ء-يً-ْـ]+/gu;
+/** The words a binding must find: each word of his label that names something (two letters or more, never a joining word). */
+function bindingStems(record: RequestedRecord): string[] {
+    const his = String(record.ar || record.item || '');
+    return Array.from(new Set((his.match(ARABIC_WORD) || []).map(arabicStem).filter(s => s.length >= 2 && !/^(?:في|من|على|عن|مع|او|أو|ثم)$/u.test(s))));
+}
+/** A line that registers a route: a method called with a path («app.get('/api/x'», «@app.get("/x"»), never «store.get(id)». */
+const ROUTE_REGISTRATION = /\.\s*(?:get|post|put|patch|delete|all|route|api_route)\s*\(\s*[rf]?['"`]\//u;
+
+/** Whether the delivery's own text writes his word beside this route's resource name. */
+function routeBoundTo(resource: string, record: RequestedRecord, texts: string[]): boolean {
+    const stems = bindingStems(record);
+    if (!stems.length || !resource) return false;
+    const token = new RegExp(`(?<![A-Za-z0-9_-])${escapeRe(resource)}(?![A-Za-z0-9_-])`, 'giu');
+    const holds = (span: string) => {
+        const found = new Set((span.match(ARABIC_WORD) || []).map(arabicStem));
+        return stems.every(s => found.has(s));
+    };
+    for (const text of texts) {
+        for (const m of String(text || '').matchAll(token)) {
+            const at = m.index ?? 0;
+            const lineStart = text.lastIndexOf('\n', at) + 1;
+            const nl = text.indexOf('\n', at);
+            const lineEnd = nl < 0 ? text.length : nl;
+            //  Beside it on its own line (a minified bundle's one line is never read as a whole).
+            if (holds(text.slice(Math.max(lineStart, at - 120), Math.min(lineEnd, at + m[0].length + 120)))) return true;
+            //  In the handler its registration opens: the few lines up to the next registration.
+            if (!ROUTE_REGISTRATION.test(text.slice(lineStart, lineEnd))) continue;
+            const handler: string[] = [];
+            let from = lineEnd + 1;
+            for (let k = 0; k < 4 && from < text.length; k++) {
+                const end = text.indexOf('\n', from) < 0 ? text.length : text.indexOf('\n', from);
+                const line = text.slice(from, end);
+                if (ROUTE_REGISTRATION.test(line)) break;
+                handler.push(line.slice(0, 240));
+                from = end + 1;
+            }
+            if (holds(handler.join('\n'))) return true;
+        }
+    }
+    return false;
+}
+
+/** For each record whose only Latin name is a transliteration, the unclaimed tested routes bound to it and to no other of them. */
+function boundTestedRoutes(candidates: Array<{ shown: string; resource: string }>, records: RequestedRecord[], evidence: CoverageEvidence, liveTests: string): Map<string, string[]> {
+    const texts = [evidence.sourceText, liveTests];
+    const bound = new Map<string, string[]>();
+    for (const candidate of candidates) {
+        const owners = records.filter(record => routeBoundTo(candidate.resource, record, texts));
+        if (owners.length !== 1) continue;
+        bound.set(owners[0].key, [...(bound.get(owners[0].key) || []), candidate.shown].slice(0, 4));
+    }
+    return bound;
 }
 
 export function judgeRequestCoverage(input: {
@@ -1891,10 +1967,10 @@ export function judgeRequestCoverage(input: {
     // nothing — the live probe decides, or the record is «not measured» (P157).
     const unreadRoute = evidence.routes.find(route => route.dynamic && ['get', 'all', 'route', 'use'].includes(route.method));
     const byParameter = evidence.routes.find(recordByParameter);
-    //  One route no named record claims stands for one record whose name is a transliteration, never for two.
-    const transliterated = records.entities.filter(record => transliteratedOnly(record, evidence.labelKeys[record.key] || [])).length;
+    //  A route no named record claims stands for the one record whose name is a transliteration it is bound to, never for two (routeBoundTo).
+    const transliterated = records.entities.filter(record => transliteratedOnly(record, evidence.labelKeys[record.key] || []));
     const testedRoutes = unclaimedTestedRoutes(evidence, records.entities, liveTests);
-    const unclaimed = testedRoutes.length >= transliterated ? testedRoutes : [];
+    const boundRoutes = boundTestedRoutes(testedRoutes, transliterated, evidence, liveTests);
     const out: RecordCoverage[] = records.entities.map(record => {
         const labelKeys = evidence.labelKeys[record.key] || [];
         const ids = identifiersFor(record, labelKeys, records.entities);
@@ -1951,7 +2027,7 @@ export function judgeRequestCoverage(input: {
         let routes: string[] | undefined;
         let how: string | undefined;
         if (notMeasured && onlyTransliterated) {
-            routes = servedApplies ? unclaimed : [];
+            routes = servedApplies ? (boundRoutes.get(record.key) || []) : [];
             const his = record.ar || record.item;
             const name = (routes.length === 1 ? resourceSegment(routes[0].split(' ').pop() || '') : '') || 'its-route-name';
             how = servedApplies
