@@ -22,7 +22,7 @@
  * answer is «not built», because overstating is the failure being fixed here.
  */
 import { clausesBeyondTheColumns, columnsAnywhereInHisRequest, statedRules } from '../design/app-blueprints';
-import { asksAsWords } from '../design/arabic-words';
+import { asksAsWords, standsAsWords } from '../design/arabic-words';
 import { intentProbe } from '../orchestrator/promptNormalizer';
 import { requestedRecords } from './request-coverage';
 import fs from 'fs';
@@ -556,7 +556,8 @@ export const CAPABILITIES: Capability[] = [
          * cancel deliveries») asks for no shipping at all.
          */
         ask: /\b(?:shipping|shipments?|fulfilment|fulfillment|shipping\s+(?:options?|address|service|management)|delivery\s+(?:tracking|status|options?|address|service|management)|deliver(?:y|ies)\s+(?:orders?|packages?|products?))\b|الشحن|(?:خدمة|خدمات|خيارات|عنوان|عناوين|رسوم|تكلفة|تكاليف|مناطق|إدارة|نظام|طرق|طريقة|تتبع|حالة|حالات)\s+(?:الشحن|التوصيل)|توصيل\s+(?:الطلبات|الطرود|المنتجات|الشحنات)|تتبع\s+(?:الشحنة|الشحنات|التوصيل|التوصيلات|الطرود)/i,
-        evidence: /"key":"shipments"|\/api\/shipping|tracking_?number|\bshipment_/i,
+        //  A served shipments or deliveries API is shipping's evidence, as /api/orders is the orders' (P476).
+        evidence: /"key":"shipments"|\/api\/shipping|\/api\/(?:[\w:-]+\/)*(?:shipments?|deliveries)\b|tracking_?number|\bshipment_/i,
         records: ['shipments', 'shipment', 'deliveries'],
     },
     {
@@ -711,22 +712,130 @@ const SHIPPING_SYSTEM = /\bshipping\s+(?:options?|address(?:es)?|service|managem
 /** The shipping system named by its own name («Shipping», «الشحن»), not deliveries or shipments as records. */
 const SHIPPING_NAMED = /\bshipping\b|(?<!\p{L})(?:ال)?شحن(?!\p{L})/iu;
 
-function capabilityIsRequested(capability: Capability, text: string): boolean {
-    //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
-    if (!asksAsWords(capability.ask, text)) return false;
-    if (capability.id === 'coupons') return !(DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text));
-    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
-    if (capability.id === 'shipping') return !(REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text));
-    if (capability.id !== 'accounts') return true;
-    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return false;
-    return !/\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
+/*
+ * THE BUSINESS IT IS FOR IS NOT A FEATURE TO BUILD.
+ *
+ * The 500-prompt exam on Claude, 2026-11-12/13. «Build a complete full-stack
+ * system for a freelance marketplace: … management of gigs, proposals,
+ * reviews» (P199) and «an interactive single-page report for a freelance
+ * marketplace that loads sample proposals data» (P399) were refused «missing:
+ * multi-vendor marketplace»: the word «marketplace» named WHO the system is
+ * for, and the audit wanted vendor_id in a report of proposals. A capability
+ * is asked for where its word is a thing to build; the business named after
+ * «for a …» or «لـ…» («لـشركة شحن», «لـمتجر عطور») is the client, and the
+ * words of its name ask for nothing.
+ *
+ * The business is told by its head noun: a kind of organisation or venue
+ * (a company, a shop, a marketplace, a clinic, a warehouse …). That is a
+ * closed class of the language, not a list of domains: «an API for a shopping
+ * cart» ends on «cart», which is no organisation, so the cart is still asked.
+ * In Arabic the name is the head after «لـ/ل/لل» and the one word that
+ * completes it («لـشركة شحن», «لـمتجر إلكتروني»); after a definite head only a
+ * definite adjective belongs to it, so «أضف للمتجر سلة تسوق» still asks a cart.
+ */
+const ORG_EN = String.raw`(?:compan(?:y|ies)|business(?:es)?|firms?|agenc(?:y|ies)|shops?|stores?|boutiques?|marketplaces?|markets?|platforms?|startups?|brands?|restaurants?|caf[eé]s?|baker(?:y|ies)|clinics?|hospitals?|pharmac(?:y|ies)|schools?|academ(?:y|ies)|warehouses?|hotels?|gyms?|salons?|garages?|studios?|offices?|cent(?:er|re)s?|chains?|retailers?|wholesalers?|distributors?|carriers?|couriers?|services?|providers?|organi[sz]ations?|charit(?:y|ies)|clubs?|practices?|labs?|laborator(?:y|ies))`;
+const BUSINESS_EN = new RegExp(String.raw`\bfor\s+(?:(?:a|an|the|my|our|his|her|their|your)\s+)?(?:[\p{L}'’-]+\s+){0,3}?${ORG_EN}\b`, 'giu');
+const ORG_AR = '(?:(?:شرك|مؤسس|منص|عياد|صيدلي|مدرس|أكاديمي|اكاديمي|مغسل|ورش|وكال|جمعي|منظم|مكتب)(?:ة|ه|ات)|مكتب|متجر|متاجر|محل|محلات|سوق|أسواق|مطعم|مقه[ىي]|مخبز|مستشف[ىي]|مستودع|مخزن|فندق|نادي|صالون|معرض|مركز|مصنع|استوديو)';
+const BUSINESS_AR = new RegExp(`(?<![\\p{L}\\p{M}])(لـ\\s*(?:ال)?|لل|ل)${ORG_AR}(?![\\p{L}\\p{M}])`, 'gu');
+/** Words that end an Arabic business name instead of completing it. */
+const AR_NAME_ENDS = /^(?:و|ف|مع|في|فيه|فيها|على|من|عن|إلى|الى|حيث|به|بها|له|لها|التي|الذي|الذين|يعرض|تعرض|يحتوي|تحتوي|لديه|لديها|ذات|ذو)/u;
+
+/** The request with the business it is for blanked out: what is left asks for things to build. */
+function withoutBusinessNames(raw: string): string {
+    const text = String(raw || '').replace(BUSINESS_EN, m => ' '.repeat(m.length));
+    const cuts: Array<[number, number]> = [];
+    for (const m of text.matchAll(BUSINESS_AR)) {
+        const lead = m[1];
+        const definite = lead === 'لل' || /ال$/u.test(lead);
+        let end = m.index! + m[0].length;
+        //  The word that completes the name: «لـشركة شحن», «للشركة الناشئة».
+        for (let k = 0; k < (definite ? 2 : 1); k++) {
+            const next = /^(\s+)([\p{L}\p{M}ـ]+)/u.exec(text.slice(end));
+            if (!next || (definite ? !/^ال/u.test(next[2]) : AR_NAME_ENDS.test(next[2]))) break;
+            end += next[0].length;
+        }
+        cuts.push([m.index!, end]);
+    }
+    let out = text;
+    for (const [a, b] of cuts.reverse()) out = out.slice(0, a) + ' '.repeat(b - a) + out.slice(b);
+    return out;
 }
 
-/** Which capabilities the request actually names. */
+/*
+ * A NOUN HE MANAGES AS RECORDS IS THE RECORDS INSTRUMENT'S, NOT A SYSTEM.
+ *
+ * P476 (2026-11-12): «يسمح للمستخدم بحجز أو إلغاء الشحنات من خلال المحادثة» —
+ * a warehouse's chatbot that books and cancels shipments. «الشحنات» carries
+ * «الشحن», and the bot that served GET and POST /api/shipments was refused
+ * «artifact coverage 0% — missing: shipping» for 72 minutes. L182 met the same
+ * fault with «التوصيلات». Shipments booked or cancelled are records: the word
+ * governed by a verb that books, cancels, edits or deletes rows is measured by
+ * the records instrument (asRecords), never judged here as a shipping system.
+ * Adding is not among the verbs: «أضف سلة تسوق», «add a cart» ask a feature.
+ */
+const RECORD_VERB_EN = /\b(?:book|cancel|edit|delete|remove|update|reschedule|record|log|archive)(?:s|ed|ing|led|ling)?\s+(?:(?:the|their|his|her|my|your|our|its|new|existing|own|upcoming|any)\s+){0,2}$/iu;
+const RECORD_VERB_AR = /(?:^|[\s،,؛(])[وف]?(?:ب|ل|لل)?(?:حجز|إلغاء|الغاء|تعديل|حذف|أرشفة|يحجز|يلغي|تحجز|تلغي|يعدل|يعدّل|يحذف|تحذف|احجز|ألغ[يِ]?|الغ[ي]?)\s+$/u;
+
+function wordBounds(text: string, start: number, end: number): [number, number] {
+    let a = start, b = end;
+    while (a > 0 && /[\p{L}\p{N}\p{M}ـ]/u.test(text[a - 1])) a--;
+    while (b < text.length && /[\p{L}\p{N}\p{M}ـ]/u.test(text[b])) b++;
+    return [a, b];
+}
+
+/** The request with this capability's words that are managed records blanked out, and whether any was. */
+function withoutManagedRecords(capability: Capability, raw: string): { rest: string; managed: boolean } {
+    if (!capability.records?.length || capability.ask.constructor !== RegExp) return { rest: raw, managed: false };
+    const g = new RegExp(capability.ask.source, capability.ask.flags.replace(/[gy]/gu, '') + 'g');
+    const cuts: Array<[number, number]> = [];
+    for (let m = g.exec(raw); m; m = g.exec(raw)) {
+        const start = m.index, end = m.index + m[0].length;
+        if (end === start) { g.lastIndex++; continue; }
+        if (!standsAsWords(raw, start, end)) { g.lastIndex = start + 1; continue; }
+        const [a, b] = wordBounds(raw, start, end);
+        const before = raw.slice(Math.max(0, a - 80), a);
+        if (RECORD_VERB_EN.test(before) || RECORD_VERB_AR.test(before)) cuts.push([a, b]);
+    }
+    let rest = raw;
+    for (const [a, b] of cuts.reverse()) rest = rest.slice(0, a) + ' '.repeat(b - a) + rest.slice(b);
+    return { rest, managed: cuts.length > 0 };
+}
+
+/** A named capability that is not asked for after all: a field, a report's data, a form without its system. */
+function notAskedAfterAll(capability: Capability, text: string): boolean {
+    if (capability.id === 'coupons') return DISCOUNT_FIELD.test(text) && !COUPON_SYSTEM.test(text);
+    //  …but «Shipping» named as a feature is asked for, beside «Analytics» or not (his platform request).
+    if (capability.id === 'shipping') return REPORT_ONLY.test(text) && !SHIPPING_SYSTEM.test(text) && !SHIPPING_NAMED.test(text);
+    if (capability.id !== 'accounts') return false;
+    if (FORM_ONLY.test(text) && !ACCOUNT_SYSTEM.test(text.replace(FORM_ONLY, ' '))) return true;
+    return /\b(?:does\s+not|doesn't|do\s+not|don't|without|no)\s+(?:require(?:s|d)?\s+)?auth(?:entication|orization)?\b|\bno[- ]auth\b/iu.test(text);
+}
+
+/**
+ * How the request names a capability: asked for as a thing to build; named as
+ * records it manages (judged by the records instrument); named only as the
+ * business it is for; or not named at all (null).
+ */
+export type CapabilityReading = 'asked' | 'records' | 'business' | null;
+
+export function capabilityReading(capability: Capability, request: string): CapabilityReading {
+    const raw = String(request || '');
+    const text = intentProbe(raw);
+    //  As words: «مغسلة» (laundry) is no «سلة» (cart), P272 (arabic-words.ts).
+    if (!asksAsWords(capability.ask, text)) return null;
+    if (notAskedAfterAll(capability, text)) return null;
+    const { rest, managed } = withoutManagedRecords(capability, withoutBusinessNames(raw));
+    if (asksAsWords(capability.ask, intentProbe(rest))) return 'asked';
+    return managed ? 'records' : 'business';
+}
+
+/** Which capabilities the request actually names — as things to build or as records it manages. */
 export function requestedCapabilities(request: string): Capability[] {
-    const text = intentProbe(String(request || ''));
-    if (!text.trim()) return [];
-    return CAPABILITIES.filter(c => capabilityIsRequested(c, text));
+    if (!String(request || '').trim()) return [];
+    return CAPABILITIES.filter(c => {
+        const reading = capabilityReading(c, request);
+        return reading === 'asked' || reading === 'records';
+    });
 }
 
 const CODE_EXT = /\.(jsx?|tsx?|css|html|json|webmanifest|py)$/i;
@@ -926,7 +1035,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
             .map(value => foldForCompare(value)),
     );
     const unchecked = clausesBeyondTheColumns(request)
-        .filter(clause => !CAPABILITIES.some(c => capabilityIsRequested(c, intentProbe(clause))))
+        .filter(clause => !CAPABILITIES.some(c => capabilityReading(c, clause) !== null))
         .filter(clause => {
             const c = foldForCompare(clause);
             if (explicitPageNames.has(c)) return false;
@@ -943,7 +1052,7 @@ export function scopeReport(request: string, projectDirs: string[]): ScopeReport
     //  the orders record and passed it. The keyword wanted a cart. A record he
     //  manages is the records instrument's to judge.
     const recordWords = recordWordsOf(request);
-    const asRecords = requested.filter(c => (c.records || []).some(w => recordWords.has(w)));
+    const asRecords = requested.filter(c => (c.records || []).some(w => recordWords.has(w)) || capabilityReading(c, request) === 'records');
     const judged = requested.filter(c => !asRecords.includes(c));
     const src = readProjectSource(projectDirs);
     const ctx: ScopeEvidenceContext = { serviceOnly: !deliveredTreeHasInterface(projectDirs) };

@@ -45,6 +45,8 @@ export interface EngineDeps {
      * tells the model, in its first message, what was done and where it stopped.
      */
     before?: (ctx: ToolContext, tools: Map<string, EngineTool>) => Promise<{ finish?: string; note?: string; refused?: (failed: string) => string } | null>;
+    /** Waits between transient model failures; a test hands in one that does not sleep. Settles early when the run is cancelled. */
+    wait?: (ms: number, signal: AbortSignal) => Promise<void>;
 }
 
 /** Steps with no file changed, no command passing and no page served before the engine steps in. */
@@ -55,6 +57,70 @@ export const REPEAT_LIMIT = 4;
 export const IDLE_LIMIT = 3;
 /** Model calls in a row that fail before the run ends. */
 export const MODEL_FAILURE_LIMIT = 3;
+/**
+ * A PROVIDER'S BAD MINUTES ARE WAITED OUT, NOT TURNED INTO A FAILED RUN.
+ *
+ * The 500-prompt exam on Claude, 2026-11-12/13: P231 («Connection error»), and
+ * P394 and P444 seven minutes apart («503 credential validation failed», one
+ * incident at the provider), each ended as failed after three calls in a row
+ * that the SDK's own quick retries could not carry over. Nothing was wrong with
+ * the work. A failure of the transient kinds — a rate limit (429), the server's
+ * own trouble (5xx, 529 overloaded), a timeout, a connection that dropped — is
+ * now waited out before the call is asked again: 30 s, then 2 min, then 5 min
+ * (longer when the server's Retry-After asks for longer), and the chat says so
+ * while Joe waits. A refusal the provider means (a 4xx: the key, the request)
+ * is not waited on. The run's deadline and its budget guard stay in charge: a
+ * wait that would pass the deadline ends the run now, and every call that
+ * follows a wait still goes through the budget guard.
+ */
+export const TRANSIENT_WAITS_MS: readonly number[] = [30_000, 120_000, 300_000];
+
+/** A failure that waiting can cure: 408, 409, 425, 429, 5xx, or a network failure with no status. */
+export function transientModelFailure(e: unknown): boolean {
+    const err = e as any;
+    const status = Number(err?.status ?? err?.statusCode ?? err?.response?.status);
+    if (Number.isFinite(status) && status > 0) return status === 408 || status === 409 || status === 425 || status === 429 || (status >= 500 && status <= 599);
+    //  No status: the call never got an answer. A connection refused means nothing is
+    //  listening (a local server that is not started): waiting minutes does not start it.
+    const text = `${String(err?.code ?? '')} ${String(err?.cause?.code ?? '')} ${message(e)}`;
+    if (/ECONNREFUSED/u.test(text)) return false;
+    return /\b(?:ECONNRESET|ETIMEDOUT|ESOCKETTIMEDOUT|EPIPE|EAI_AGAIN|ENETUNREACH|ENETDOWN|EHOSTUNREACH|UND_ERR_[A-Z_]+)\b|connection error|socket hang up|fetch failed|network (?:error|failure)|timed? ?out|overloaded|temporarily unavailable/iu.test(text);
+}
+
+/** What the server asked us to wait, in ms, from a Retry-After (seconds or a date) or retry-after-ms; 0 when it said nothing. */
+export function retryAfterMs(e: unknown, nowMs: number): number {
+    const err = e as any;
+    if (Number.isFinite(Number(err?.retryAfterMs)) && Number(err.retryAfterMs) > 0) return Number(err.retryAfterMs);
+    const h = err?.headers ?? err?.response?.headers;
+    const read = (name: string): string => {
+        if (!h) return '';
+        if (typeof h.get === 'function') return String(h.get(name) ?? '');
+        return String(h[name] ?? '');
+    };
+    const ms = Number(read('retry-after-ms'));
+    if (Number.isFinite(ms) && ms > 0) return ms;
+    const after = read('retry-after').trim() || String(err?.retryAfter ?? '').trim();
+    if (!after) return 0;
+    if (/^\d+(?:\.\d+)?$/u.test(after)) return Math.round(Number(after) * 1000);
+    const at = Date.parse(after);
+    return Number.isFinite(at) ? Math.max(0, at - nowMs) : 0;
+}
+
+function spokenDuration(ms: number, ar: boolean): string {
+    const s = Math.round(ms / 1000);
+    if (s < 90) return ar ? `${s} ثانية` : `${s} s`;
+    const m = Math.round(s / 60);
+    return ar ? `${m} دقائق` : `${m} min`;
+}
+
+function sleepUnlessCancelled(ms: number, signal: AbortSignal): Promise<void> {
+    return new Promise(resolve => {
+        if (signal.aborted) { resolve(); return; }
+        const done = () => { clearTimeout(timer); signal.removeEventListener('abort', done); resolve(); };
+        const timer = setTimeout(done, ms);
+        signal.addEventListener('abort', done, { once: true });
+    });
+}
 /**
  * Joe's checks refusing the same thing this many times in a row ends the run.
  * Measured on 2026-11-01: a store whose every requirement worked was refused
@@ -235,6 +301,10 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
     const failures = new Map<string, number>();
     let idle = 0;
     let modelFailures = 0;
+    let transientFailures = 0;
+    const waited: number[] = [];
+    const wait = deps.wait ?? sleepUnlessCancelled;
+    const speaksArabic = /^ar\b/iu.test(String(req.replyLanguage || req.language || ''));
     let cutReplies = 0;
     let quietSteps = 0;
     let warnings = 0;
@@ -268,6 +338,8 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
             try {
                 turn = await deps.model.step(conv.forCall(), schemas, { signal: req.signal, deadlineAt: req.deadlineAt });
                 modelFailures = 0;
+                transientFailures = 0;
+                waited.length = 0;
             } catch (e) {
                 state.modelMs += now() - asked;
                 if (req.signal.aborted) { ending = { status: 'cancelled', reason: 'the run was cancelled' }; break; }
@@ -290,6 +362,32 @@ export async function runEngine(req: EngineRequest, deps: EngineDeps): Promise<E
                     cutReplies++;
                     if (cutReplies >= MODEL_FAILURE_LIMIT) { ending = { status: 'failed', reason: 'the model\'s reply was cut off by the output limit three times in a row' }; break; }
                     conv.push({ role: 'user', content: 'Your last reply was cut off: it was longer than the room left for an answer, so none of it was used. Make smaller calls: write a big file as a short skeleton with file_write, then add each part with file_edit.' });
+                    continue;
+                }
+                if (transientModelFailure(e)) {
+                    transientFailures++;
+                    const failedTimes = transientFailures + modelFailures;
+                    if (transientFailures > TRANSIENT_WAITS_MS.length) {
+                        const after = waited.map(ms => spokenDuration(ms, false)).join(', ');
+                        ending = { status: 'failed', reason: `the model call failed ${failedTimes} times in a row (Joe waited ${after} between them): ${message(e)}` };
+                        break;
+                    }
+                    const ms = Math.max(TRANSIENT_WAITS_MS[transientFailures - 1], retryAfterMs(e, now()));
+                    if (now() + ms >= req.deadlineAt) {
+                        ending = { status: 'failed', reason: `the model call failed ${failedTimes} times in a row, and waiting ${spokenDuration(ms, false)} for it would pass the run's deadline: ${message(e)}` };
+                        break;
+                    }
+                    const left = TRANSIENT_WAITS_MS.length - transientFailures + 1;
+                    req.emit({
+                        type: 'thought',
+                        text: speaksArabic
+                            ? `⏳ تعذّر الوصول إلى النموذج الآن (${firstLine(message(e)).slice(0, 160)}). عطل مؤقت عند المزوّد، فلن أوقف العمل: أنتظر ${spokenDuration(ms, true)} ثم أعيد المحاولة من حيث توقفت (بقيت ${left} محاولة).`
+                            : `⏳ The model cannot be reached right now (${firstLine(message(e)).slice(0, 160)}). This is the provider's temporary trouble, so the work is not stopped: waiting ${spokenDuration(ms, false)}, then asking again from where it stopped (${left} attempt(s) left).`,
+                    });
+                    waited.push(ms);
+                    await wait(ms, req.signal);
+                    if (req.signal.aborted) { ending = { status: 'cancelled', reason: 'the run was cancelled' }; break; }
+                    //  Nothing was appended, so the next step asks again from the same history.
                     continue;
                 }
                 modelFailures++;
