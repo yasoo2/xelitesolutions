@@ -147,11 +147,39 @@ export const RUN_START_FILE = 'pdfs-at-run-start.json';
 const RUNS_ON_DISK = 20;
 type RunStartRecord = { runId: string; at: number; pdfs: Record<string, number> };
 
+const busy = (e: unknown) => { const code = (e as NodeJS.ErrnoException)?.code; return code === 'EPERM' || code === 'EBUSY' || code === 'EACCES'; };
+/** Windows refuses a rename over (or a read of) a file another writer is replacing (EPERM/EBUSY/EACCES) for a moment: try again, briefly. */
+const BUSY_WAITS_MS = [25, 50, 100, 200, 400];
+async function whenNotBusy<T>(act: () => Promise<T>): Promise<T> {
+    for (let i = 0; ; i++) {
+        try { return await act(); } catch (e) {
+            if (i >= BUSY_WAITS_MS.length || !busy(e)) throw e;
+            await new Promise(r => setTimeout(r, BUSY_WAITS_MS[i]));
+        }
+    }
+}
+
 async function readRunStarts(stateDir: string): Promise<RunStartRecord[]> {
     try {
-        const o = JSON.parse(await fs.promises.readFile(path.join(stateDir, RUN_START_FILE), 'utf8'));
+        const o = JSON.parse(await whenNotBusy(() => fs.promises.readFile(path.join(stateDir, RUN_START_FILE), 'utf8')));
         return Array.isArray(o?.runs) ? o.runs.filter((r: any) => r && typeof r.runId === 'string' && r.pdfs && typeof r.pdfs === 'object') : [];
     } catch { return []; }
+}
+
+/**
+ * One writer at a time per record file in this process (review 4 of r40, M4): two runs on
+ * one project each read the record, add their own run and write it back, so without the
+ * queue the second write dropped the first run's record.
+ */
+const RECORD_WRITES = new Map<string, Promise<void>>();
+function oneWriterAtATime(file: string, write: () => Promise<void>): Promise<void> {
+    const key = path.resolve(file).toLowerCase();
+    const prev = RECORD_WRITES.get(key) || Promise.resolve();
+    const next = prev.then(write, write);
+    const tail = next.catch(() => { /* told by the caller */ });
+    RECORD_WRITES.set(key, tail);
+    void tail.then(() => { if (RECORD_WRITES.get(key) === tail) RECORD_WRITES.delete(key); });
+    return next;
 }
 
 /** Kept at run start (loop.ts): rel → mtimeMs of the project's .pdf files, in memory and, given stateDir, on disk. */
@@ -161,14 +189,21 @@ export async function rememberPdfsAtRunStart(runId: string, root: string, stateD
     RUN_START_PDFS.set(runId, times);
     while (RUN_START_PDFS.size > RUNS_KEPT) RUN_START_PDFS.delete(RUN_START_PDFS.keys().next().value as string);
     if (!stateDir) return;
-    try {
-        const runs = (await readRunStarts(stateDir)).filter(r => r.runId !== runId);
-        runs.push({ runId, at: Date.now(), pdfs: Object.fromEntries(times) });
-        await fs.promises.mkdir(stateDir, { recursive: true });
-        const file = path.join(stateDir, RUN_START_FILE);
-        await fs.promises.writeFile(`${file}.tmp`, JSON.stringify({ runs: runs.slice(-RUNS_ON_DISK) }));
-        await fs.promises.rename(`${file}.tmp`, file);
-    } catch { /* the memory copy still answers in this process */ }
+    const file = path.join(stateDir, RUN_START_FILE);
+    //  Each write has its own temporary name (pid + random), so two writers never share one.
+    const tmp = `${file}.${process.pid}.${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}.tmp`;
+    await oneWriterAtATime(file, async () => {
+        try {
+            const runs = (await readRunStarts(stateDir)).filter(r => r.runId !== runId);
+            runs.push({ runId, at: Date.now(), pdfs: Object.fromEntries(times) });
+            await fs.promises.mkdir(stateDir, { recursive: true });
+            await fs.promises.writeFile(tmp, JSON.stringify({ runs: runs.slice(-RUNS_ON_DISK) }));
+            await whenNotBusy(() => fs.promises.rename(tmp, file));
+        } catch {
+            await fs.promises.rm(tmp, { force: true }).catch(() => { /* never written */ });
+            //  the memory copy still answers in this process
+        }
+    });
 }
 
 /** The PDFs the project had when this run began: from memory, else from the run's record in stateDir; undefined when neither knows. */
