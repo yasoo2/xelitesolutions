@@ -11,6 +11,7 @@
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { mapApiError } from '../core/engine/anthropic';
 import { runEngine, retryAfterMs, transientModelFailure, TRANSIENT_WAITS_MS, MODEL_FAILURE_LIMIT, type EngineDeps } from '../core/engine/loop';
 import { planUpdateTool } from '../core/engine/plan';
 import { finishTool, type Verifier } from '../core/engine/finish';
@@ -200,5 +201,15 @@ describe('which failures are transient', () => {
         expect(retryAfterMs({ headers: { 'retry-after': 'Fri, 13 Nov 2026 10:14:00 GMT' } }, now)).toBe(120_000);
         expect(retryAfterMs({ retryAfterMs: 5_000 }, 0)).toBe(5_000);
         expect(retryAfterMs(new Error('no header'), 0)).toBe(0);
+    });
+});
+
+describe('the Retry-After Claude sends reaches the loop', () => {
+    it('mapApiError keeps the response headers, so a 429 waits as long as the API asked', () => {
+        const sdkError = Object.assign(new Error('rate limited'), { status: 429, headers: { 'retry-after': '42' } });
+        const mapped = mapApiError(sdkError);
+        expect((mapped as any).code).toBe('PROVIDER_FAILURE');
+        expect(retryAfterMs(mapped, 0)).toBe(42_000);
+        expect(retryAfterMs(mapApiError(Object.assign(new Error('x'), { status: 529 })), 0)).toBe(0);
     });
 });
